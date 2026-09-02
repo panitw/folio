@@ -97,6 +97,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [propertyError, setPropertyError] = useState<PropertyCommitError>()
   const [fontChainError, setFontChainError] = useState<FontChainCommitError>()
   const [fontChainBusy, setFontChainBusy] = useState(false)
+  // THE BUSY FLAG IS ALSO HELD IN A REF, because the window it now guards is a
+  // NETWORK CHAIN. Since Story 16.1 a web-tier pick awaits up to six sequential
+  // cross-origin round-trips before any command is sent, and a React state read
+  // inside an event handler is the value that handler CLOSED OVER: two picks
+  // dispatched before the re-render both see `false`, both resolve, and two
+  // embeds commit. The ref is the same value read at the instant of the call.
+  const fontChainBusyRef = useRef(false)
+  const holdFontChain = (busy: boolean) => { fontChainBusyRef.current = busy; setFontChainBusy(busy) }
   const [fileError, setFileError] = useState<string>()
   const [fileStatus, setFileStatus] = useState<string>()
   const [fileBusy, setFileBusy] = useState(false)
@@ -576,11 +584,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // exactly the same place a located COMPONENT_INVALID is, with one rule.
   // The message is the engine's own string and is stored unprefixed, because
   // the control already says where it belongs.
-  const applyFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
-    if (!engine || fileBusy || fontChainBusy) return
+  //
+  // THE BUSY HOLD IS THE CALLER'S, NOT THIS FUNCTION'S. `sendFontChain` is the
+  // command half alone; `applyFontChain` is that half plus the re-entry guard,
+  // for the callers whose whole work IS the command. `pickCatalogueFamily` holds
+  // the flag across a wider window — see its own note — and calls the inner
+  // half, so the guard is taken exactly once per pick rather than after the
+  // network work it exists to serialise.
+  const sendFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
+    if (!engine) return
     setCommitError(undefined)
     setFontChainError(undefined)
-    setFontChainBusy(true)
     try {
       const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', payload)
@@ -589,8 +603,16 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if ((snapshotRef.current?.revision ?? -1) < result.snapshot.revision) setCurrentSnapshot(result.snapshot)
     } catch (error) {
       if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) setFontChainError({ control, selectionKey, message: componentDiagnosticDetail(error).message })
+    }
+  }
+
+  const applyFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
+    if (!engine || fileBusy || fontChainBusyRef.current) return
+    holdFontChain(true)
+    try {
+      await sendFontChain(payload, control, responseGeneration, selectionKey)
     } finally {
-      if (documentGeneration.current === responseGeneration) setFontChainBusy(false)
+      if (documentGeneration.current === responseGeneration) holdFontChain(false)
     }
   }
 
@@ -626,8 +648,26 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // shipped faces for the scripts the picked face does not cover, in the order
   // scriptFallbackFaces names them. The author edits it afterwards with the
   // chain editor like any other chain (AC3).
+  // THE BUSY FLAG IS HELD ACROSS THE WHOLE RESOLUTION, NOT ONLY THE COMMAND.
+  // Before Story 16.1 the awaited work in front of `applyFontChain` was ONE
+  // same-origin read of a precached bundle asset, so the window in which a
+  // second pick could pass this guard was negligible. It is now a chain of up to
+  // six sequential cross-origin round-trips — up to four `METADATA.pb` probes,
+  // then the licence file, then the face bytes — and a second pick during that
+  // window would resolve concurrently and commit a second embed. So the flag is
+  // taken HERE and released in the `finally`, and the command half is called
+  // through `sendFontChain`, which does not take it again.
   const pickCatalogueFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string) => {
-    if (!engine || fileBusy || fontChainBusy) return
+    if (!engine || fileBusy || fontChainBusyRef.current) return
+    holdFontChain(true)
+    try {
+      await resolveAndEmbedFamily(source, responseGeneration, selectionKey)
+    } finally {
+      if (documentGeneration.current === responseGeneration) holdFontChain(false)
+    }
+  }
+
+  const resolveAndEmbedFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string) => {
     // A refusal that resolves after the selection or the document moved on is
     // dropped rather than shown against a control the author is no longer
     // looking at — applyFontChain's own rule, applied to the half of the flow
@@ -653,10 +693,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     } else {
       const outcome = await fetchWebFamily(source.family)
       if (!outcome.ok) { refuse(outcome.reason); return }
+      // LAYOUT DIVERGENCE IS AN OBSERVATION, AND AN OBSERVATION NEEDS A READER.
+      // `fetchWebFamily` records when the directory a family was resolved in
+      // disagrees with the licence its own metadata declares — never a refusal
+      // (D-16.R.6: METADATA.pb wins, the directory is only where the files sit),
+      // but worth seeing, because systematically it means the probe order is
+      // costing round-trips. It is written to the browser's own log, which is
+      // where a person already looks for what the designer did on a pick; it is
+      // deliberately NOT a UI surface, because nothing here is wrong and an
+      // author has no decision to make about it.
+      if (outcome.face.layoutDivergence !== undefined) console.info(outcome.face.layoutDivergence)
       embedded = { ...outcome.face, scripts: source.row.scripts }
     }
     const tail = scriptFallbackFaces.filter(([script]) => !embedded.scripts.includes(script)).map(([, shipped]) => shipped)
-    await applyFontChain(embedFontFamilyCommand({ chain: embedded.family, family: embedded.family, style: embedded.style, licence: embedded.licence, licenceText: embedded.licenceText, copyright: embedded.copyright, source: embedded.source, mediaType: embedded.mediaType, bytes: embedded.bytes, tail }), { action: 'embed' }, responseGeneration, selectionKey)
+    await sendFontChain(embedFontFamilyCommand({ chain: embedded.family, family: embedded.family, style: embedded.style, licence: embedded.licence, licenceText: embedded.licenceText, copyright: embedded.copyright, source: embedded.source, mediaType: embedded.mediaType, bytes: embedded.bytes, tail }), { action: 'embed' }, responseGeneration, selectionKey)
   }
 
   // Story 5.13: choosing a local image is a two-step boundary crossing — the

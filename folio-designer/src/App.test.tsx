@@ -1474,6 +1474,94 @@ describe('typography controls over the engine-projected closed sets', () => {
     }
   })
 
+  // ONE PICK AT A TIME, ACROSS THE WHOLE RESOLUTION AND NOT ONLY THE COMMAND.
+  // A web-tier pick awaits a chain of cross-origin round-trips before any
+  // command is sent — up to four METADATA.pb probes, then the licence file, then
+  // the bytes — so a second pick during that window used to pass the re-entry
+  // guard, resolve concurrently, and commit a SECOND embed of the same family.
+  // The guard is now taken before the fetch and held until the command returns.
+  it('holds one pick at a time across the whole web-tier resolution, so two overlapping picks embed once', async () => {
+    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
+    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
+    // THE FIRST ROUND-TRIP IS HELD OPEN, which is what makes the second pick
+    // overlap the first rather than follow it.
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const fetchStub = vi.fn(async (url: string) => {
+      if (url.endsWith('/ofl/kanit/METADATA.pb')) { await held; return { ok: true, status: 200, text: async () => metadata } }
+      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => 'SIL Open Font License' }
+      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
+      return { ok: false, status: 404, text: async () => '' }
+    })
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      const request = select()
+      const pick = () => {
+        const combobox = screen.getByRole('combobox', { name: 'Font family' })
+        fireEvent.focus(combobox)
+        fireEvent.change(combobox, { target: { value: 'Kanit' } })
+        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*add to document$/ })
+        if (option) fireEvent.click(option)
+        return option !== null
+      }
+      expect(pick(), 'the first pick must be offered').toBe(true)
+      await waitFor(() => expect(fetchStub).toHaveBeenCalled())
+      // THE CONTROL SAYS SO WHILE IT IS WORKING: the combobox is disabled for
+      // the whole resolution, not only for the command at the end of it.
+      expect(screen.getByRole('combobox', { name: 'Font family' })).toBeDisabled()
+      // A second pick inside the window, driven the same way the author would.
+      pick()
+      release()
+      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+      // EXACTLY ONE EMBED COMMAND, and exactly one resolution behind it.
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(fetchStub.mock.calls.filter((call) => String(call[0]).endsWith('METADATA.pb'))).toHaveLength(1)
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // LAYOUT DIVERGENCE IS AN OBSERVATION, AND AN OBSERVATION NEEDS A READER.
+  // `fetchWebFamily` records that a family resolved in `ofl/` declares APACHE2 —
+  // METADATA.pb wins, `Apache-2.0` is admitted, and the pick is NOT refused
+  // (D-16.R.6). Recording it into a value nobody reads would make the record a
+  // claim about the code rather than something a person can see, so it reaches
+  // the browser's log.
+  it('reports a directory that disagrees with the declared token, and embeds it anyway', async () => {
+    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
+    const metadata = 'name: "Kanit"\nlicense: "APACHE2"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
+    const fetchStub = vi.fn(async (url: string) => {
+      if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => metadata }
+      if (url.endsWith('/ofl/kanit/LICENSE.txt')) return { ok: true, status: 200, text: async () => 'Apache License, Version 2.0' }
+      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
+      return { ok: false, status: 404, text: async () => '' }
+    })
+    const restore = globalThis.fetch
+    const noted = vi.spyOn(console, 'info').mockImplementation(() => {})
+    globalThis.fetch = fetchStub as never
+    try {
+      const request = select()
+      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
+      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+      const observed = noted.mock.calls.map((call) => String(call[0])).join('\n')
+      expect(observed).toContain('ofl/')
+      expect(observed).toContain('APACHE2')
+      expect(observed).toContain('the metadata is the authority on the terms')
+      // NOT A REFUSAL: the document carries the id METADATA.pb declared.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
+      expect(payload['licence']).toBe('Apache-2.0')
+    } finally {
+      globalThis.fetch = restore
+      noted.mockRestore()
+    }
+  })
+
   // OFFLINE DEGRADES, NEVER BREAKS, AND THE REFUSAL IS LOCATED AT THE CONTROL
   // THE AUTHOR ACTED ON. No network means no NEW family; it never means a
   // document that will not render — the three shipped Noto faces are the

@@ -41,7 +41,40 @@ describe('the build-time index snapshot', () => {
   // the shipped-face path, so those rows never ship at all.
   it('excludes CJK families from the snapshot rather than filtering them in the browser', () => {
     expect(indexExcludedCjkFamilies).toBeGreaterThan(0)
+    // A COROLLARY, NOT THE CHECK. `scriptsOf` emits only `latin` and `thai`, so
+    // this line is structurally incapable of failing whatever the filter does —
+    // the filter itself is exercised by the test below, over a fixture.
     expect(familyIndex.some((row) => row.scripts.includes('cjk'))).toBe(false)
+  })
+
+  // THE REAL FILTER, RUN. `trimSnapshot` — not a restatement of it — over a
+  // hand-written `familyMetadataList` carrying one family per CJK subset the
+  // exclusion list names, plus two that must survive. Asserting the returned
+  // families AND the excluded count directly is what makes deleting a subset
+  // from `cjkSubsets` red: nothing else in this suite reads that list, because
+  // the shipped snapshot is a fixed artefact that a narrower filter would not
+  // change until it were regenerated.
+  it('runs the CJK exclusion over every subset it names, and counts what it excluded', async () => {
+    const { trimSnapshot } = await import('../scripts/build-font-index.mjs')
+    const cjk = ['chinese-simplified', 'chinese-traditional', 'chinese-hongkong', 'japanese', 'korean']
+    const published = {
+      familyMetadataList: [
+        ...cjk.map((subset, index) => ({ family: `CJK ${subset}`, category: 'SANS_SERIF', subsets: [subset, 'latin', 'menu'], fonts: { 400: {} }, popularity: index + 1 })),
+        { family: 'Variable Latin', category: 'SANS_SERIF', subsets: ['latin', 'menu'], axes: [{ tag: 'wght' }], fonts: { 400: {} }, popularity: 6 },
+        { family: 'Static Thai', category: 'SERIF', subsets: ['latin', 'thai', 'menu'], fonts: { 400: {}, 700: {} }, popularity: 7 },
+      ],
+    }
+    const snapshot = trimSnapshot(published, '2026-09-03')
+    expect(snapshot.families.map((entry) => entry.family), 'every CJK subset in the list is excluded and nothing else is').toEqual(['Variable Latin', 'Static Thai'])
+    expect(snapshot.publishedFamilies).toBe(7)
+    expect(snapshot.excludedCjkFamilies).toBe(5)
+    expect(snapshot.snapshotDate).toBe('2026-09-03')
+    // AND THE TRIM ITSELF: `menu` is a subsetting artefact and is dropped, and
+    // `axes` is carried as the variable-only PREDICTION the browser filters on.
+    expect(snapshot.families[0].axes).toEqual(['wght'])
+    expect(snapshot.families[1].axes).toEqual([])
+    expect(snapshot.families[1].subsets).toEqual(['latin', 'thai'])
+    expect(snapshot.families[1].styles).toEqual(['400', '700'])
   })
 
   // AN OFFLINE RELEASE BUILD IS A SHIPPED GATE, so the step that emits this

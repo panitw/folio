@@ -74,12 +74,22 @@ export const probeDirectories = ['ofl', 'apache', 'ufl', 'cc-by-sa'] as const
  * them would make the document state terms its own record contradicts. If the
  * file the declared licence names is not there, the pick is REFUSED — a
  * document may not carry a face without its terms.
+ *
+ * THE MAP HOLDS EXACTLY THE IDS THE TOKEN TABLE CAN EMIT, AND NO OTHERS. It is
+ * keyed on `classifyLicenceToken`'s admitted output, not on D-8.5.3's four
+ * identifiers, and those are different sets on purpose: `font-licence.ts`
+ * deliberately has no `MIT` row and argues at length that this is ABSENCE, NOT
+ * NARROWING — `google/fonts` publishes no MIT token, so nothing here can ever
+ * be asked for one. A speculative `MIT` row would be dead on arrival and, worse,
+ * would be the mapping a future MIT token silently inherited without anybody
+ * reviewing which file upstream actually publishes. If the token table ever
+ * gains a row, this map gains one in the same change, and until then a missing
+ * row is a stated refusal below rather than a URL ending in `undefined`.
  */
 const licenceFileFor: Readonly<Record<string, string>> = {
   'OFL-1.1': 'OFL.txt',
   'Apache-2.0': 'LICENSE.txt',
   'Ubuntu-font-1.0': 'UFL.txt',
-  MIT: 'LICENSE.txt',
 }
 
 /**
@@ -135,7 +145,14 @@ export function parseFamilyMetadata(source: string): FamilyMetadata | undefined 
     const line = rawLine.trim()
     if (line === '' || line.startsWith('#')) continue
     if (line === '}') {
-      depth -= 1
+      // DEPTH HAS A FLOOR, AND THE FLOOR IS WHAT KEEPS A MALFORMED FILE FROM
+      // RESOLVING TO THE WRONG STRING. Unfloored, one stray `}` drives the
+      // depth negative, the next `{` returns it to 0 without opening a block,
+      // and the `name:` inside a `fonts { … }` entry — upstream blocks really
+      // do carry one — is then read as the FAMILY name and confirmed against.
+      // That is precisely the confusion the name-equality confirmation exists
+      // to prevent. Floored, an unbalanced file can only fail to resolve.
+      depth = Math.max(0, depth - 1)
       if (depth === 0 && block !== undefined) {
         if (block.filename !== '') faces.push(block)
         block = undefined
@@ -269,6 +286,15 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
   const mediaType = mediaTypeOf(filename)
   if (mediaType === undefined) return refuse(`${family}'s Regular is published as ${filename}, which is not a font file this engine reads`)
 
+  // A MISSING ROW IS A STATED REFUSAL, NEVER A MALFORMED FETCH. Unguarded, this
+  // lookup would build a URL ending in `undefined`, fetch it, and refuse the
+  // family by naming a licence file that does not exist anywhere — a message
+  // that sends the reader upstream to look for a file nobody ever published.
+  // The admitted set and this map are meant to be the same set; if they ever
+  // diverge, this says so in those words.
+  if (!Object.hasOwn(licenceFileFor, classification.spdx)) {
+    return refuse(`${family} declares ${classification.spdx}, which this designer admits but has no licence file name for, so its terms cannot be fetched to travel with it`, classification)
+  }
   const licenceFile = licenceFileFor[classification.spdx]
   const licenceText = await readText(fetcher, `${fontsRepositoryBase}/${directory}/${slug}/${licenceFile}`)
   if (licenceText === undefined || licenceText.trim() === '') {

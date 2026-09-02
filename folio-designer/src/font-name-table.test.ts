@@ -90,6 +90,39 @@ describe('the shared sfnt name-table reader', () => {
     expect(faceCopyright(sfntWithCopyright('  Copyright 2026 Someone  '))).toBe('Copyright 2026 Someone')
   })
 
+  // THE UNTRUSTED CALLER GETS THE VERSION GUARD TOO. `faceCopyright`'s hottest
+  // caller is `font-source.ts`, over bytes fetched from a third party seconds
+  // earlier, so it reads the directory through `requireStaticTrueTypeTables`
+  // rather than through the unchecked walk: an `OTTO`/CFF or WOFF container has
+  // a directory at the same offsets and means something else, and a 200 that is
+  // not a font at all has no directory to walk. Both are REFUSED, in the version
+  // message, rather than producing a plausible string.
+  it('refuses a container that is not a static TrueType sfnt rather than walking it', () => {
+    for (const version of [0x4f54544f, 0x774f4646, 0x774f4632]) {
+      const wrapped = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright someone else' }], { sfntVersion: version })
+      expect(() => faceCopyright(wrapped)).toThrow(/not a static TrueType sfnt/)
+    }
+    // A plain 200 that is not a font — an error page, a redirect notice — is the
+    // same answer in the same words, and never a `RangeError` from the walk.
+    expect(() => faceCopyright(new TextEncoder().encode('<!doctype html><title>404: Not Found</title>'))).toThrow(/not a static TrueType sfnt/)
+    expect(() => faceCopyright(new Uint8Array([0x00, 0x01]))).toThrow(/not a static TrueType sfnt/)
+  })
+
+  // A TRUNCATED OR HOSTILE `name` TABLE YIELDS ABSENCE, NOT GARBAGE. The record
+  // offsets are third-party numbers; a record pointing past the table's own
+  // declared length is skipped, so the caller that requires a value states its
+  // refusal instead of the walk throwing or slicing whatever follows.
+  it('reads no record that points past the name table the file declares', () => {
+    const bytes = new Uint8Array(sfntWithCopyright('Copyright 2026 Someone'))
+    const view = fontView(bytes)
+    const name = requireStaticTrueTypeTables(view)['name']
+    // The record's string offset, moved far beyond the end of the table.
+    const record = name.offset + 6
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(record + 10, 0xfff0)
+    expect(nameTableString(fontView(bytes), requireStaticTrueTypeTables(fontView(bytes)), 0)).toBeUndefined()
+    expect(() => faceCopyright(bytes)).toThrow(/declares no copyright in its own `name` table \(nameID 0\)/)
+  })
+
   it('reads an ArrayBuffer and a view over one identically', () => {
     const bytes = sfntWithCopyright('Copyright 2026 Someone')
     expect(faceCopyright(bytes)).toBe(faceCopyright(new Uint8Array(bytes)))

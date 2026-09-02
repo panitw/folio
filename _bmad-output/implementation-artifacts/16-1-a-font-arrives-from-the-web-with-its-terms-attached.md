@@ -2,17 +2,85 @@
 title: 'Story 16.1: A font arrives from the web with its terms attached'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_commit: '9cbff85084ed7d8ff3e98e66cbea14d4c45d844b'
+baseline_revision: 'bb14662900f6056e6987874acd565d8e352592ee'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
   - '{project-root}/_bmad-output/specs/spec-folio/folio-format.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-16-decision-log.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      No browser witness exists for any web-tier pick or refusal; every
+      fetch/classify/embed claim is asserted in jsdom against a stubbed fetcher.
+    evidence: |-
+      e2e/font-embed-boundary.spec.ts asserts only that web rows EXIST; its
+      embed loop still covers the 21 local faces alone. The empirical claims the
+      mechanism rests on — that raw.githubusercontent.com sends
+      access-control-allow-origin: *, and that fonts.google.com/metadata/fonts
+      does not — are measured in prose and by curl, never by anything the suite
+      runs. Intent-authorised: D-16.R.1's cadence denies this story an in-story
+      browser run and names the run as debt.
+    location: >-
+      folio-designer/e2e/font-embed-boundary.spec.ts
+    severity: medium
+  - summary: >-
+      A fetched face's recorded `source` names the `main` branch, not a commit,
+      so the provenance a .folio publishes is not reproducible.
+    evidence: |-
+      font-source.ts builds source as `${host}/google/fonts/main/${dir}/${slug}/${file}`.
+      Under AD-8/D-16.2 a face is identified by the SHA-256 of its bytes, so two
+      authors picking the same family a month apart embed different bytes and
+      record an identical, unfalsifiable source string. Pinning the fetch to a
+      commit SHA is what would make DW-158's "a newer release is a different
+      face, not a newer one" argument hold for the web tier too.
+    location: >-
+      folio-designer/src/font-source.ts
+    severity: low
+  - summary: >-
+      66 addable families declare neither `latin` nor `thai`, so they resolve to
+      `scripts: []` and contribute nothing to a script this product supports.
+    evidence: |-
+      Measured over the committed font-index.json: 66 non-variable, non-CJK
+      families carry only Devanagari, Arabic, Hebrew or Ethiopic subsets.
+      scriptsOf emits only 'latin' and 'thai', so such a pick proposes all three
+      shipped fallbacks as its tail and the embedded face draws nothing.
+      font-catalogue.md's "Script coverage — Latin and Thai" criterion is
+      applied to the local tier and not to the web tier; the intent contract
+      excludes CJK by name but is silent on other scripts, so this is a product
+      question rather than a deviation.
+    location: >-
+      folio-designer/scripts/build-font-index.mjs
+    severity: low
+  - summary: >-
+      `popularity` is carried on every emitted index row and read by nothing, so
+      the 50-row paint cap shows the alphabetical head of the library.
+    evidence: |-
+      offeredFamilies orders local-tier-first and otherwise preserves the
+      upstream index's own alphabetical order; renderedFamilyLimit then slices
+      50. An author opening the control sees ABeeZee, ADLaM Display, AR One
+      Sans. D-16.R.2's argument for hiding variable-only families turns on which
+      families a user reaches first, so the ordering deserves to be a stated
+      decision with a test rather than an artefact of the upstream response.
+    location: >-
+      folio-designer/src/font-index.ts
+    severity: low
+  - summary: >-
+      Offline-release cache headroom has narrowed to 20 of 64 slots, and no
+      build script checks it.
+    evidence: |-
+      Measured this dispatch: s1.assetCount is 44 against maximumCacheAssets 64.
+      It was 23 at Epic 8. This story adds no asset — the snapshot module is
+      source and consumes no slot, verified — but the remaining margin is now 20
+      rather than the 41 the earlier note recorded. parseS1Payload returns
+      undefined past the ceiling and only a Vitest test and the runtime catch it.
+    location: >-
+      folio-designer/src/release-payload.ts:33
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -653,7 +721,25 @@ and this story's whole mechanism rests on it. It held on 2026-09-03; it may not 
 
 ## Review Triage Log
 
-_No review pass has run. This dispatch halted after planning._
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 7: (high 0, medium 3, low 4)
+- defer: 5: (high 0, medium 1, low 4)
+- reject: 10: (high 0, medium 0, low 10)
+- addressed_findings:
+  - `[medium]` `[patch]` `font-name-table.ts:128` — `faceCopyright` walked untrusted fetched bytes with the UNCHECKED `sfntTableDirectory` while `requireStaticTrueTypeTables` exists in the same module for exactly that purpose (its own comment at `:37` claims the guard for it). Switched to the checked reader, added a `byteLength < 12` floor, and bounded every `name`-record slice against `min(name.offset + name.length, view.byteLength)`. Safe for the other two callers: all 27 committed `.ttf` faces measured sfnt version `00010000`. Tests added for `OTTO`/`wOFF`/`wOF2` magic, an HTML error-page body, a 2-byte body and an out-of-range string offset.
+  - `[medium]` `[patch]` `App.tsx` — `pickCatalogueFamily` guarded re-entry on `fontChainBusy`, but `setFontChainBusy(true)` was only reached inside `applyFontChain`, i.e. AFTER up to six sequential cross-origin round-trips. Two overlapping picks both passed the guard and two embeds could commit. The hold is now taken once per pick and released in a `finally`; the command half moved to `sendFontChain`, which does not re-take it. A `fontChainBusyRef` backs the flag because two picks dispatched in one tick both read the state value they closed over. The `responseGeneration`/`selectionKey` drop rule is unchanged.
+  - `[medium]` `[patch]` `font-index.test.ts:42-45` — the CJK-exclusion test was VACUOUS in its load-bearing half and the real filter was executed by nothing. `scriptsOf` only ever pushes `latin`/`thai`, so `row.scripts.includes('cjk')` could never be true whatever `trimSnapshot` did, and no test imported `trimSnapshot` or `trimFamily`. A test now runs the real `trimSnapshot` over a hand-written `familyMetadataList` (one family per `cjkSubsets` entry, one axes-declaring, one static Thai) and asserts survivors and counts directly. Red-proved by deleting `'korean'` from `cjkSubsets`.
+  - `[low]` `[patch]` `font-source.ts:300,315` — `layoutDivergence` was computed, typed, returned and asserted in tests, and read by no consumer; the contract says the divergence "is recorded". It is now written to the browser log at the pick, deliberately not to a UI surface (the contract is explicit that it is an observation, never a refusal), and the consumer is asserted.
+  - `[low]` `[patch]` `font-source.ts:78-83` — `licenceFileFor` carried an `MIT` row for an SPDX id `classifyLicenceToken` can never emit, contradicting `font-licence.ts`'s "absence, not narrowing" reasoning about the same identifier. Row dropped; the map is now documented as keyed on what the token table can emit, and a missing row is a stated refusal instead of a fetch of `.../undefined`.
+  - `[low]` `[patch]` `font-source.ts:130-146` — `parseFamilyMetadata` decremented `depth` without a floor, so an extra `}` drove it negative and a later `{` returned it to 0, after which a NESTED face `name` could be read as the top-level family name. That is exactly the confusion the `name`-equality confirmation exists to prevent. Depth floored; a malformed file can now only fail to resolve, never resolve to the wrong string.
+  - `[low]` `[patch]` `font-source.test.ts` — two test defects. `.replace(/robotoslab/g, 'robotoslab')` was a literal no-op and left the fixture registering a URL with an unencoded space, a shape production had never been shown to handle; and `if (outcome.ok) return` sat inside a `for` loop, so the empty-licence-text case was skipped whenever the 404 case regressed. Fixture corrected to `RobotoSlab-Regular.ttf` with an assertion that no asked URL contains a space; the loop is now `it.each`, so both cases always run and report independently.
+
+**Verified before triage, not taken on reviewer confidence.** Every routed finding was checked against the code first. Three claims that arrived as findings were rejected on measurement: the service worker does NOT break the new cross-origin fetches (its `fetch` handler returns early for non-cacheable requests and there is no CSP `connect-src`); the e2e "narrowing" is not a lost bound (the removed clause was made false by this story, and the exact-equality bound on the local tier survives alongside new staleness assertions); and the absence of a browser-side byte cap is the contract's own matrix row, which assigns that refusal to the engine.
+
+**The ten rejects, with the authority each was tested against.** No byte cap on a fetched face (matrix row assigns it to the engine's existing located refusal) · CSP/service-worker breakage (measured false) · e2e narrowing (bound made false by the story itself) · no fetch timeout/`AbortSignal` (not required by the contract; offline is covered by its own row) · undeclared Node type-stripping (`RELEASE_RUNTIME` already pins v24.16.0) · `npm test` writing gitignored `src/generated/font-index.ts` (`npm test` already prepends `build:wasm`, which writes identical content) · the `558` axes figure (prose inside a preserved struck-through block) · `refreshSnapshot` having no ceiling (a manual step whose output lands as a reviewed diff) · an `fvar` check on the fetched bytes (Go is the declared authority; D-16.R.2a) · a pre-emptive offline disclosure (the matrix row specifies a stated refusal, which is what ships).
 
 ## Spec Change Log
 
@@ -800,36 +886,110 @@ records what the cut did to this spec.
 
 ## Auto Run Result
 
-Status: ready-for-dev
+Status: done
 Blocking condition: none
 
-**Dispatch:** second re-plan of Story 16.1 at HEAD `9cbff85`, `Halt after planning.`, 2026-09-03. Tree
-clean at dispatch; the only file this dispatch modifies is this one. No code was written, no commit was
-made, no branch, no push.
+**Dispatch:** build of Story 16.1 at `baseline_revision` `bb14662`, 2026-09-03. Tree clean at dispatch
+and clean at finalization. Commits on `main` only; no branch, no push, no `git add -A`.
 
-**The prior halt is discharged.** The `blocked` / `intent gap` result recorded in the Spec Change Log
-above was answered by D-16.R.7 (three-valued, two-sided tie) and D-16.R.8 (the guard becomes Story
-16.1b, built and closed at `f6953da`). Nothing in this story now depends on it being re-decided.
+### What was implemented
 
-**Planning completed** — the story cut twice, `multiple-goals` cleared, all anchors re-measured at
-`9cbff85`, the baseline re-taken, and one new Go task and one extraction task added from measurements
-taken at this gate.
+The **fetch path and its admission decision**: a family the author picks becomes a face in the
+document with terms this product accepts, or it does not become one at all. The build-time index
+snapshot ships with the designer and the browser never fetches the list; the typeface itself is
+fetched at the moment of a pick, from `raw.githubusercontent.com/google/fonts` and never from
+`fonts.googleapis.com/css2`. The 21 committed faces survive untouched as the local face tier, joined
+on exact `family` equality, and a local pick issues no request at all.
 
-**Flagged for the gate, none of which blocks the build dispatch:**
-1. Two **I/O-matrix rows inside the preserved contract are superseded** — *"nameID 13 absent or
-   unparseable → Refused, saying which of the two"* is the D-16.R.5 contract; D-16.R.7 made it **NO
-   EVIDENCE → ADMIT** and `licencesignature.go` implements the latter. The rows describe 16.1b's door.
-   They may not be used as acceptance here. Amending the contract is the orchestrator's call.
-2. Two **Block If clauses in the contract are discharged elsewhere** — the ≥50-family falsifier (run at
-   the previous gate, 100 faces) and the before-the-tag narrowing (landed with 16.1b, registered as
-   **DW-153**). Neither can trigger in this story.
-3. The contract's **Approach names D-16.4's scan amendment**, which CUT 2 moves to a successor story.
-   The lead pre-authorised the cut (D-16.R.8); the contract sentence now points at work this story does
-   not do.
-4. **The successor guard lands after the population it polices** — the inverse of 16.1b's ordering, and
-   the shape D-16.R.8's own reasoning warns about. The exposure is repository hygiene (does a host string
-   appear outside one module), not documents or bytes, so the class is materially lower than D-8.6.5's;
-   recorded rather than absorbed.
-5. **DW-152 masks its own class.** The standing red is already firing, so a new `getComputedStyle`
-   violation would change the failure's array contents and not its status, and every file this story adds
-   is auto-enrolled by directory walk. Read the array, not the count.
+### Files changed
+
+- `folio-designer/src/font-licence.ts` (new) — the closed token→SPDX table, three states, no
+  fall-through and no permissive default. Names no host.
+- `folio-designer/src/font-source.ts` (new) — the single declared home of every allowed host;
+  slug-and-confirm, the probe order, the Regular filename READ from `style:"normal" weight:400`, the
+  upstream licence file, and classify-before-fetch enforced by ordering.
+- `folio-designer/src/font-index.ts` (new) — the local-tier join, the variable-only filter, and the
+  addable-count disclosure.
+- `folio-designer/src/font-name-table.ts` (new) — the extracted nameID-0 reader; the two pre-existing
+  hand-written copies now use it. No font-parsing dependency added.
+- `folio-designer/scripts/build-font-index.mjs` (new) + committed `font-index.json` → the gitignored
+  `src/generated/font-index.ts`. The emit step reaches no network, because an offline release build is
+  a shipped gate.
+- `folio-designer/scripts/forbidden-font-hosts.mjs` + `src/forbidden-font-hosts.test.ts` — the scan's
+  second half, beside the module it polices.
+- `folio-designer/src/App.tsx` — `pickCatalogueFamily` gains a source; `embedFontFamilyCommand` stays
+  at twelve fields.
+- `folio-go/internal/fontset/licencesignature_test.go` — the mirror contract now reads
+  `src/font-licence.ts`'s admitted set, not only the build-time table.
+- `folio-go/internal/template/parse.go` — the one-door asymmetry comment (D-16.R.11).
+- `SPEC.md`, `font-catalogue.md`, `folio-format.md`, `deferred-work.md` (DW-158, DW-159).
+
+### Review findings
+
+7 patched (0 high, 3 medium, 4 low) · 5 deferred · 10 rejected · 0 intent_gap · 0 bad_spec.
+See `## Review Triage Log`. Follow-up review recommended: **true** — `3 × 3 + 1 × 4 = 13`, at or above
+the threshold of 5. No patched finding was `high`.
+
+### Verification performed
+
+Re-run by the builder after the patches, not relayed from the implementation subagent. Baseline was
+re-measured at `bb14662` on a clean tree before any change and matched the spec's `9cbff85` table
+exactly.
+
+| Suite | Baseline `bb14662` | After patches | wd |
+|---|---|---|---|
+| `go test -count=1 ./...` | 1910 pass / 2 fail / 5 skip | **1910 / 2 / 5** | `folio-go` |
+| `go vet ./...` | exit 0, no output | exit 0, no output | `folio-go` |
+| `gofmt -l <abs>/folio-go` | empty | empty | repo root |
+| `go test -count=1 ./...` | four `ok` | four `ok` | `lint` |
+| `npm run typecheck` | clean | clean | `folio-designer` |
+| `npm run lint` | 4 warn / 0 err | **4 warn / 0 err** | `folio-designer` |
+| `npm test` | 43 files / 437, 1 fail | **47 files / 506, 1 fail (505 pass)** | `folio-designer` |
+| `npm run test:e2e:compile` | clean | clean | `folio-designer` |
+| `npm run scan:font-hosts` | exit 0, 0 occ / 586 files | **exit 0, 0 occ / 598 files** | `folio-designer` |
+| `npm run build` + `verify:offline:red` + `verify:offline:wasm` | — | all exit 0, node `v24.16.0` | `folio-designer` |
+
+**The two baseline reds are unchanged and neither is this story's.** `TestCorpusMeetsP6ExerciseFloors`
+and its `P6g_(opaque_names)` subtest are the mandated permanent red. `canvas-authority-contract.test.ts:190`
+is DW-152, and its **received array contents were read, not just its status**: still exactly
+`["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`, so none of the seven files this
+story adds to that directory-walked corpus introduced a violation.
+
+**Invariants asserted.** 23 golden digests unmoved (`go test` set byte-identical between
+`bb14662` and now: no test gained, lost or changed status). `SupportedMajor` still 2. `maximumCacheAssets`
+still 64, `s1.assetCount` **44**, and the snapshot module consumes **no** cache slot (verified absent
+from the emitted manifest). `font-catalogue.json` and the 21 committed faces untouched
+(`git diff --stat` empty for both paths).
+
+**Three red-proofs taken by the builder, by DELETION rather than by falsifying a condition.**
+1. Removing `src/font-source.ts`'s declaration markers makes `npm run scan:font-hosts` **exit 1** with
+   both hosts reported as `(declared-only)` findings and guidance naming the module. Restored by `cp`,
+   byte-identical.
+2. Emptying `DECLARED_ONLY_FONT_HOSTS` reds **3 of the 14** tests in `forbidden-font-hosts.test.ts`, so
+   the new half is non-vacuous.
+3. Adding a fourth SPDX id to `font-licence.ts` reds `TestGoLicenceTableSubsumesTheDesignerTable` with
+   the message naming the hazard — that Go's signature table has no row for it, so a face declaring it
+   would be tied against nothing and admitted as NO EVIDENCE.
+
+**Matrix test audit: satisfied.** Every I/O matrix row has at least one covering test that RAN and
+PASSED. The two rows the contract assigns to the engine are covered by Story 16.1b's shipped Go tests,
+both confirmed green in this dispatch's run:
+`TestEmbedFontFamilyRefusesAFaceWhoseOwnBytesContradictTheDeclaredLicence` (contradiction refuses) and
+`TestRefuseContradictedLicenceAdmitsSilence` (nothing readable admits).
+
+**Endpoints re-measured at implementation HEAD**, as `## Verification` requires: the index still 200
+with **no** `access-control-allow-origin`; `METADATA.pb`, `OFL.txt` and the static TTF all 200 with
+ACAO `*`. The index body measured 2,700,544 bytes against the plan gate's 2,699,611 — a live endpoint
+drifting, not a discrepancy.
+
+### Residual risks
+
+1. **No browser run, and it is the sharpest unverified edge.** Deferred by D-16.R.1's cadence, which
+   denies this story an in-story browser run. Every web-tier claim is witnessed in jsdom against a
+   stubbed fetcher; the CORS facts the whole mechanism rests on are measured by `curl`, never by
+   anything the suite executes. Registered as the first `deferred:` item.
+2. **`-tags=matrix`, the four AD-21 legs and `TestCrossTargetByteIdentity` were not run** — end-of-run
+   catch-up per the cadence. Not reported as green.
+3. **The snapshot ages between releases**, by design and by CORS. The list's staleness is stated in the
+   UI; only the typeface is live.
+4. Cache headroom is now 20 of 64 slots, down from 41 at Epic 8, and no build script checks it.

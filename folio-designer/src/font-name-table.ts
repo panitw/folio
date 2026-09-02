@@ -55,6 +55,11 @@ export function sfntTableDirectory(view: DataView): Readonly<Record<string, Sfnt
  * as if its offsets meant the same thing.
  */
 export function requireStaticTrueTypeTables(view: DataView): Readonly<Record<string, SfntTable>> {
+  // TOO SHORT TO HOLD A TABLE DIRECTORY IS THE SAME ANSWER, said in the same
+  // words. A 200 carrying an error page — or two bytes — is not a font, and
+  // reading its first four bytes as a version would be a `RangeError` from
+  // inside the walk rather than a statement about the file.
+  if (view.byteLength < 12) throw new Error(`not a static TrueType sfnt: ${view.byteLength} bytes is too short to carry a table directory`)
   const version = view.getUint32(0)
   if (version !== 0x00010000 && version !== 0x74727565) throw new Error(`not a static TrueType sfnt: version 0x${version.toString(16).padStart(8, '0')}`)
   return sfntTableDirectory(view)
@@ -89,15 +94,24 @@ const latin1 = (view: DataView, at: number, length: number): string => {
 export function nameTableString(view: DataView, tables: Readonly<Record<string, SfntTable>>, nameID: number): string | undefined {
   const name = tables['name']
   if (name === undefined) return undefined
+  // EVERY READ IS BOUNDED BY WHAT THE TABLE ITSELF DECLARES, and by the file.
+  // The offsets below come from third-party bytes fetched seconds earlier, so a
+  // truncated or hostile `name` table must produce ABSENCE — which the caller
+  // that requires a value turns into a stated refusal — rather than a slice of
+  // whatever happens to follow, or a bare `RangeError` from the walk.
+  const limit = Math.min(name.offset + name.length, view.byteLength)
+  if (name.offset + 6 > limit) return undefined
   const count = view.getUint16(name.offset + 2)
   const storage = name.offset + view.getUint16(name.offset + 4)
   let singleByte: string | undefined
   for (let index = 0; index < count; index++) {
     const record = name.offset + 6 + index * 12
+    if (record + 12 > limit) break
     if (view.getUint16(record + 6) !== nameID) continue
     const platform = view.getUint16(record)
     const length = view.getUint16(record + 8)
     const offset = view.getUint16(record + 10)
+    if (storage + offset + length > limit) continue
     if ((platform === 3 || platform === 0) && length % 2 === 0) return utf16BE(view, storage + offset, length)
     singleByte ??= latin1(view, storage + offset, length)
   }
@@ -124,10 +138,19 @@ export function fontView(bytes: ArrayBuffer | ArrayBufferView): DataView {
  * `requireEmbeddedFaceLicence`), so a pick that carried one would write a file
  * the product's own parser rejects. Blank counts as absent: `" "` states
  * exactly as much as `""`.
+ *
+ * THE CONTAINER IS CHECKED FIRST, BECAUSE THIS READER'S HOTTEST CALLER IS AN
+ * UNTRUSTED ONE. `src/font-source.ts` calls this on bytes fetched from a third
+ * party moments earlier, so the version guard `requireStaticTrueTypeTables`
+ * carries is exactly the guard those bytes need: an `OTTO`/CFF or WOFF wrapper,
+ * or a 200 that is not a font at all, is REFUSED here rather than walked as if
+ * its offsets meant the same thing. The other two callers read the committed
+ * faces, every one of which is measured sfnt version `00010000`, so the check
+ * costs them nothing.
  */
 export function faceCopyright(bytes: ArrayBuffer | ArrayBufferView): string {
   const view = fontView(bytes)
-  const copyright = nameTableString(view, sfntTableDirectory(view), 0)?.trim()
+  const copyright = nameTableString(view, requireStaticTrueTypeTables(view), 0)?.trim()
   if (!copyright) throw new Error('this face declares no copyright in its own `name` table (nameID 0); a face embedded into a document must state whose it is, and the engine refuses to load a document that does not')
   return copyright
 }

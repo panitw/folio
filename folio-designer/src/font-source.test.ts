@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { familyDirectorySlug, fetchWebFamily, fontHostDeclarations, parseFamilyMetadata, probeDirectories, regularFilename } from './font-source'
+import { admittedByTheTokenTable } from './font-licence'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
 
@@ -143,6 +144,30 @@ describe('reading METADATA.pb', () => {
   it('returns nothing at all for a file that declares neither a name nor a licence', () => {
     expect(parseFamilyMetadata('# a comment\n')).toBeUndefined()
   })
+
+  // A MALFORMED FILE MAY FAIL TO RESOLVE; IT MAY NEVER RESOLVE TO THE WRONG
+  // STRING. One stray `}` used to drive the depth counter negative, and the next
+  // `{` returned it to zero WITHOUT opening a block — so the `name:` inside a
+  // `fonts { … }` entry, which upstream blocks really do carry, was read as the
+  // FAMILY name and then confirmed against. That is exactly the confusion the
+  // name-equality confirmation exists to prevent, arriving through the parser.
+  it('never reads a nested face name as the family name, however unbalanced the braces are', () => {
+    const unbalanced = `license: "OFL"
+source {
+  files {
+    dest_file: "Kanit-Thin.ttf"
+  }
+}
+}
+fonts {
+  name: "Kanit Thin"
+  style: "normal"
+  weight: 400
+  filename: "Kanit-Thin.ttf"
+}
+`
+    expect(parseFamilyMetadata(unbalanced), 'an unbalanced file may fail to resolve, never resolve to a face name').toBeUndefined()
+  })
 })
 
 describe('fetching a family from the web tier', () => {
@@ -170,14 +195,23 @@ describe('fetching a family from the web tier', () => {
   })
 
   it('walks the probe order and stops at the directory that answers', async () => {
-    const apache = kanitMetadata.replace('license: "OFL"', 'license: "APACHE2"').replace(/Kanit/g, 'Roboto Slab').replace(/robotoslab/g, 'robotoslab')
+    // THE FILENAMES ARE THE SHAPE UPSTREAM ACTUALLY PUBLISHES: `google/fonts`
+    // names its files after the family with the spaces removed, so Roboto Slab's
+    // Regular is `RobotoSlab-Regular.ttf`. The rename below is done BEFORE the
+    // family rename, so no fixture URL carries an unencoded space — a shape no
+    // real fetch produces and one this module has never been asked to handle.
+    const apache = kanitMetadata.replace('license: "OFL"', 'license: "APACHE2"').replace(/Kanit-/g, 'RobotoSlab-').replace(/Kanit/g, 'Roboto Slab')
     const { fetcher, asked } = stub({
       [`${base}/apache/robotoslab/METADATA.pb`]: { body: apache },
       [`${base}/apache/robotoslab/LICENSE.txt`]: { body: 'Apache License, Version 2.0' },
-      [`${base}/apache/robotoslab/Roboto Slab-Regular.ttf`]: { body: face },
+      [`${base}/apache/robotoslab/RobotoSlab-Regular.ttf`]: { body: face },
     })
     const outcome = await fetchWebFamily('Roboto Slab', fetcher)
     expect(outcome.ok).toBe(true)
+    // AND NOTHING THIS MODULE BUILT CARRIES A SPACE: the directory is the slug
+    // and the filename is READ, so a family whose display name has a space still
+    // produces a URL a fetch can be made with.
+    for (const url of asked) expect(url, `${url} must be a URL a fetch can be made with`).not.toContain(' ')
     expect(asked[0]).toContain('/ofl/robotoslab/METADATA.pb')
     expect(asked[1]).toContain('/apache/robotoslab/METADATA.pb')
     // AND IT DID NOT KEEP PROBING once a directory answered.
@@ -262,18 +296,24 @@ describe('fetching a family from the web tier', () => {
     expect(outcome.reason).toMatch(/not a font file this engine reads/)
   })
 
-  it('refuses a family whose licence file is missing or empty, stating why', async () => {
-    for (const overrides of [{ [`${base}/ofl/kanit/OFL.txt`]: { status: 404 } }, { [`${base}/ofl/kanit/OFL.txt`]: { body: '   \n' } }]) {
-      const { fetcher, asked } = stub(kanitUpstream(overrides))
-      const outcome = await fetchWebFamily('Kanit', fetcher)
-      expect(outcome.ok).toBe(false)
-      if (outcome.ok) return
-      expect(outcome.reason).toMatch(/publishes no OFL\.txt/)
-      expect(outcome.reason).toMatch(/may not carry a face without the text of its licence/)
-      // AND THE BYTES WERE NEVER FETCHED: a face may not reach the document
-      // before its terms are in hand.
-      expect(asked.some((url) => url.endsWith('.ttf'))).toBe(false)
-    }
+  // TWO CASES, TWO TESTS, REPORTED INDEPENDENTLY. Written as one loop the
+  // narrowing `if (outcome.ok) return` exits the whole TEST rather than the
+  // iteration, so a regression in the first case silently skips the second and
+  // one red hides the other. `it.each` is what makes each case its own result.
+  const missingLicenceFile: ReadonlyArray<readonly [string, Readonly<Record<string, StubFile>>]> = [
+    ['absent upstream', { [`${base}/ofl/kanit/OFL.txt`]: { status: 404 } }],
+    ['present but blank', { [`${base}/ofl/kanit/OFL.txt`]: { body: '   \n' } }],
+  ]
+  it.each(missingLicenceFile)('refuses a family whose licence file is %s, stating why', async (_case, overrides) => {
+    const { fetcher, asked } = stub(kanitUpstream(overrides))
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toMatch(/publishes no OFL\.txt/)
+    expect(outcome.reason).toMatch(/may not carry a face without the text of its licence/)
+    // AND THE BYTES WERE NEVER FETCHED: a face may not reach the document
+    // before its terms are in hand.
+    expect(asked.some((url) => url.endsWith('.ttf'))).toBe(false)
   })
 
   // THE LICENCE FILE IS NAMED BY THE DECLARED TERMS, NOT BY THE DIRECTORY, so a
@@ -285,6 +325,41 @@ describe('fetching a family from the web tier', () => {
     await fetchWebFamily('Moved Family', fetcher)
     expect(asked.some((url) => url.endsWith('/ofl/movedfamily/LICENSE.txt'))).toBe(true)
     expect(asked.some((url) => url.endsWith('/ofl/movedfamily/OFL.txt'))).toBe(false)
+  })
+
+  // THE CONTAINER IS CHECKED BEFORE THE WALK, AND THIS IS THE UNTRUSTED CALLER
+  // THAT MAKES THAT MATTER. These bytes arrived from a third party seconds
+  // earlier: an `OTTO`/CFF or WOFF wrapper has a table directory at the same
+  // offsets meaning something else, and a 200 carrying an error page has none at
+  // all. Both are refused in the version's own words rather than walked into a
+  // plausible-looking copyright.
+  it('refuses a fetched body that is not a static TrueType container, rather than walking it', async () => {
+    const notAFont = new TextEncoder().encode('<!doctype html><title>404: Not Found</title>').buffer as ArrayBuffer
+    for (const body of [sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright someone else' }], { sfntVersion: 0x4f54544f }), notAFont]) {
+      const { fetcher } = stub(kanitUpstream({ [`${base}/ofl/kanit/Kanit-Regular.ttf`]: { body } }))
+      const outcome = await fetchWebFamily('Kanit', fetcher)
+      expect(outcome.ok).toBe(false)
+      if (outcome.ok) continue
+      expect(outcome.reason).toMatch(/not a static TrueType sfnt/)
+    }
+  })
+
+  // THE LICENCE-FILE MAP HOLDS EXACTLY THE IDS THE TOKEN TABLE CAN EMIT. Not
+  // D-8.5.3's four: `font-licence.ts` deliberately has no MIT row — absence, not
+  // narrowing — so a MIT row here would be dead code, and the mapping a future
+  // MIT token would silently inherit without anybody reviewing it. This walks
+  // every admitted id and asserts a real filename was asked for; a `.../undefined`
+  // is what an unguarded lookup would produce.
+  it('asks for a real licence file for every id the token table can emit, and holds no row it cannot', async () => {
+    expect(admittedByTheTokenTable.length, 'a new admitted id must bring its licence file name with it').toBe(3)
+    for (const [token, file] of [['OFL', 'OFL.txt'], ['APACHE2', 'LICENSE.txt'], ['UFL', 'UFL.txt']] as const) {
+      const { fetcher, asked } = stub({
+        [`${base}/ofl/afamily/METADATA.pb`]: { body: `name: "A Family"\nlicense: "${token}"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "AFamily-Regular.ttf"\n}\n` },
+      })
+      await fetchWebFamily('A Family', fetcher)
+      expect(asked.some((url) => url.endsWith(`/ofl/afamily/${file}`)), `${token} must ask for ${file}`).toBe(true)
+      for (const url of asked) expect(url, `${token} produced a malformed URL`).not.toContain('undefined')
+    }
   })
 
   it('refuses a face that carries no copyright in its own name table', async () => {
