@@ -1017,3 +1017,35 @@ Both proposed by the lead in the same message that carried its own instance of t
 
 These sit alongside D-16.R.22's standing consequence (re-derive a gating figure at the gate) rather than
 replacing it: that rule says *re-derive*, these say *what to carry* and *what to compare*.
+
+### D-16.R.25 — A third rule, added because the first two would not have caught the error that prompted them
+
+The lead verified D-16.R.23's structural claims against the artifacts rather than accepting them
+(`n = 1811`, 1,100 distinct values, min 2, max 1373, `sorted(set(p)) != range(1, n+1)`; and
+`build-font-index.mjs:75` reading `popularity: entry.popularity ?? 0`), then diagnosed its own error more
+precisely than D-16.R.24 does.
+
+**Its error was not a figure travelling.** It computed the number itself, correctly, in the message where
+it stated it — so D-16.R.24's rule 1, which governs quoting a figure computed elsewhere, does not reach
+it. The number was **true of what was measured and false of what was claimed**: nine families, selected
+*because* they sat near the membership boundary, with the movement rate then reported as a property of two
+1,811-family files. That is **sampling on the dependent variable**. Hence:
+
+3. **Before any sentence of the form "only N of them…", ask what the denominator is and whether it is the
+   population being described.** A subset chosen for relevance is never a neutral sample of the corpus it
+   was drawn from.
+
+**The worse half, recorded because the outcome concealed it.** A *mechanism* was inferred from that biased
+sample — *"not a dense re-rank; Raleway would have shifted by one and did not"* — where one grep of
+`build-font-index.mjs:75` settles it. **The conclusion happened to be correct** (upstream did recompute),
+which is exactly why it survived review: *a right answer reached by bad reasoning is never caught by
+checking the answer.* The governing rule — read the code that implements the mechanism before reasoning
+about the mechanism — was already on the books. This was a failure to apply, not a missing rule, and three
+of the four rules now in this log would have caught it.
+
+**The positive exemplar, worth naming because this run has now mishandled the same shape four times.** The
+comment above `build-font-index.mjs:73` states its heuristic *with its own sample size and its own limit*:
+*"`axes != []` is the only signal available here, it is a good heuristic (verified on Roboto and six
+others), and the authority stays Go."* A shipped artifact carrying its confidence level and naming where
+final authority lives is the correct treatment of precisely the kind of claim these four rules exist to
+discipline. Prefer that form.
