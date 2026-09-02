@@ -7,6 +7,16 @@ export const RELEASE_RUNTIME = 'v24.16.0'
 
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
+// THE ONE SPELLING OF "THIS ASSET IS A STORY 8.5 CATALOGUE FACE".
+// `build-wasm.mjs` fingerprints each catalogue face to `<prefix><id>.ttf`, Vite
+// re-hashes that into `/assets/<prefix><id>.<20 hex>-<vite hash>.ttf`, and
+// `generate-offline-release.mjs` recognises the catalogue's share of the Brotli
+// weight by this prefix (AC5). It lives here, in the module both sides already
+// import, because a second copy of it is a copy that drifts — the same reason
+// the cache-asset bound below is DERIVED rather than re-typed.
+export const CATALOGUE_ASSET_PREFIX = 'catalogue-'
+export const isCatalogueAssetUrl = (url) => new RegExp(String.raw`^/assets/${CATALOGUE_ASSET_PREFIX}[a-z0-9]+\.[a-f0-9]{20}-[A-Za-z0-9_-]+\.ttf$`).test(url)
+
 export function normalizePublicPath(value) {
   return `/${value.replaceAll('\\', '/').replace(/^\/+/, '')}`
 }

@@ -296,12 +296,33 @@ the list (Story 8.4j).
 
 | Path | Licence | Copyright | Serves |
 |---|---|---|---|
+| folio-designer/public/fonts/cascadiacode/CascadiaCode-Regular.ttf | OFL-1.1 | Copyright © 2021 Microsoft Corporation. All Rights Reserved. | committed asset (folio-designer/public/fonts/cascadiacode) |
+| folio-designer/public/fonts/cascadiamono/CascadiaMono-Regular.ttf | OFL-1.1 | Copyright © 2021 Microsoft Corporation. All Rights Reserved. | committed asset (folio-designer/public/fonts/cascadiamono) |
+| folio-designer/public/fonts/cousine/Cousine-Regular.ttf | OFL-1.1 | Copyright 2026 The Cousine Project Authors (https://github.com/googlefonts/cousine) | committed asset (folio-designer/public/fonts/cousine) |
+| folio-designer/public/fonts/firacode/FiraCode-Regular.ttf | OFL-1.1 | Copyright 2014-2021 The Fira Code Project Authors (https://github.com/tonsky/FiraCode) | committed asset (folio-designer/public/fonts/firacode) |
+| folio-designer/public/fonts/geist/Geist-Regular.ttf | OFL-1.1 | Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font) | committed asset (folio-designer/public/fonts/geist) |
+| folio-designer/public/fonts/geistmono/GeistMono-Regular.ttf | OFL-1.1 | Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git) | committed asset (folio-designer/public/fonts/geistmono) |
 | folio-designer/public/fonts/ibmplexmono/IBMPlexMono-Regular.ttf | OFL-1.1 | Copyright © 2017 IBM Corp. with Reserved Font Name "Plex" | committed asset (folio-designer/public/fonts/ibmplexmono) |
 | folio-designer/public/fonts/ibmplexsans/IBMPlexSans-Regular.ttf | OFL-1.1 | Copyright © 2017 IBM Corp. with Reserved Font Name "Plex" | committed asset (folio-designer/public/fonts/ibmplexsans) |
 | folio-designer/public/fonts/ibmplexsansthai/IBMPlexSansThai-Regular.ttf | OFL-1.1 | Copyright © 2017 IBM Corp. with Reserved Font Name "Plex" | committed asset (folio-designer/public/fonts/ibmplexsansthai) |
+| folio-designer/public/fonts/intelonemono/IntelOneMono-Regular.ttf | OFL-1.1 | Copyright 2023-2024 The Intel One Mono Project Authors (https://github.com/intel/intel-one-mono) | committed asset (folio-designer/public/fonts/intelonemono) |
+| folio-designer/public/fonts/inter/Inter-Regular.ttf | OFL-1.1 | Copyright 2016 The Inter Project Authors | committed asset (folio-designer/public/fonts/inter) |
+| folio-designer/public/fonts/interdisplay/InterDisplay-Regular.ttf | OFL-1.1 | Copyright 2016 The Inter Project Authors | committed asset (folio-designer/public/fonts/interdisplay) |
+| folio-designer/public/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf | OFL-1.1 | Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) | committed asset (folio-designer/public/fonts/jetbrainsmono) |
+| folio-designer/public/fonts/literata/Literata-Regular.ttf | OFL-1.1 | Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata) | committed asset (folio-designer/public/fonts/literata) |
 | folio-designer/public/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans) |
 | folio-designer/public/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | committed asset (folio-designer/public/fonts/notosanssc) |
 | folio-designer/public/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthai) |
+| folio-designer/public/fonts/notosansthailooped/NotoSansThaiLooped-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthailooped) |
+| folio-designer/public/fonts/notoserif/NotoSerif-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notoserif) |
+| folio-designer/public/fonts/notoserifthai/NotoSerifThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notoserifthai) |
+| folio-designer/public/fonts/roboto/Roboto-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto) |
+| folio-designer/public/fonts/sourcecodepro/SourceCodePro-Regular.ttf | OFL-1.1 | Copyright © 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’ | committed asset (folio-designer/public/fonts/sourcecodepro) |
+| folio-designer/public/fonts/sourcesans3/SourceSans3-Regular.ttf | OFL-1.1 | Copyright © 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’ | committed asset (folio-designer/public/fonts/sourcesans3) |
+| folio-designer/public/fonts/sourceserif4/SourceSerif4Display-Regular.ttf | OFL-1.1 | Copyright © 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’. | committed asset (folio-designer/public/fonts/sourceserif4) |
+| folio-designer/public/fonts/spacegrotesk/SpaceGrotesk-Regular.ttf | OFL-1.1 | Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) | committed asset (folio-designer/public/fonts/spacegrotesk) |
+| folio-designer/public/fonts/ubuntusans/UbuntuSans-Regular.ttf | Ubuntu-font-1.0 | Copyright 2011, 2022, 2023 Canonical Ltd. Licensed under the Ubuntu Font Licence 1.0 | committed asset (folio-designer/public/fonts/ubuntusans) |
+| folio-designer/public/fonts/ubuntusansmono/UbuntuSansMono-Regular.ttf | Ubuntu-font-1.0 | Copyright 2011, 2022, 2023 Canonical Ltd. Licensed under the Ubuntu Font Licence 1.0 | committed asset (folio-designer/public/fonts/ubuntusansmono) |
 | folio-go/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
 | folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | folio-go shipped |
 | folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | folio-go shipped |

@@ -88,13 +88,31 @@ function declaredFamilies(generator: string): ReadonlyArray<string> {
 
 /**
  * Families declared by a rule in the WHOLE exact spelling the intent fixes —
- * `src` an `${assets.<slot>}` interpolation included. `declaredFamilies` above
- * matches the rule PREFIX only, so the two differ exactly by the rules that
- * escape the family->file join in font-binary-identity.test.ts. Their equality
- * is asserted below, and is the ceiling a `>=` floor cannot state.
+ * `src` a `./runtime/` interpolation included. `declaredFamilies` above matches
+ * the rule PREFIX only, so the two differ exactly by the rules that escape the
+ * family->file join in font-binary-identity.test.ts. Their equality is asserted
+ * below, and is the ceiling a `>=` floor cannot state.
+ *
+ * TWO INTERPOLATIONS ARE WELL FORMED, NOT ONE, SINCE STORY 8.5:
+ *
+ *   - `${assets.<slot>}` — the six hand-written rules, whose slots
+ *     `font-binary-identity.test.ts` joins family by family to a source file.
+ *   - `${face.filename}` — the one rule the CATALOGUE emitter templates, looped
+ *     over `font-catalogue.json`. Twenty-one faces are a list, not a
+ *     vocabulary, and writing them out as twenty-one more `assets` keys is the
+ *     shape Story 8.5's Design Note 4 exists to refuse.
+ *
+ * WHAT THE WIDENING DOES NOT GIVE UP, which is the whole reason this guard
+ * exists: the `src` must still be a `./runtime/` path built from an
+ * interpolated fingerprint. A rule with a LITERAL src — a family fetched from
+ * an arbitrary URL rather than from the offline asset graph — is still
+ * invisible to this parse, still visible to `declaredFamilies`, and still
+ * reddens the equality below. The catalogue's own binaries are held to their
+ * committed bytes by `src/font-catalogue.test.ts`, which is the join
+ * `${assets.<slot>}` buys for the other six.
  */
 function wellFormedRuleFamilies(generator: string): ReadonlyArray<string> {
-  return [...generator.matchAll(/@font-face \{ font-family: '([^']+)'; src: url\('\.\/runtime\/\$\{assets\.\w+\}'\) format\('truetype'\); font-display: swap; \}/g)].map((m) => m[1])
+  return [...generator.matchAll(/@font-face \{ font-family: '([^']+)'; src: url\('\.\/runtime\/\$\{(?:assets\.\w+|face\.filename)\}'\) format\('truetype'\); font-display: swap; \}/g)].map((m) => m[1])
 }
 
 /**
@@ -309,7 +327,12 @@ describe('the canvas paints with the faces the engine measured', () => {
   // different ones.
   it('declares no @font-face outside the exact rule spelling the guards parse', () => {
     const wellFormed = wellFormedRuleFamilies(withoutComments(generator))
-    expect(wellFormed.length, `read no well-formed @font-face rules out of ${generatorPath}`).toBe(6)
+    // SEVEN SINCE STORY 8.5: the six hand-written rules, plus the ONE
+    // catalogue rule the emitter templates over `font-catalogue.json`. It is a
+    // count of RULE SPELLINGS IN THE GENERATOR, not of emitted rules — the
+    // catalogue's twenty-one are counted where they are declared, in
+    // `src/font-catalogue.test.ts`, against the manifest and the binaries.
+    expect(wellFormed.length, `read no well-formed @font-face rules out of ${generatorPath}`).toBe(7)
     expect(
       declared,
       'the generator declares an @font-face whose src is not a `${assets.<slot>}` interpolation, so it is invisible to the '
@@ -327,6 +350,16 @@ describe('the canvas paints with the faces the engine measured', () => {
     // which is exactly the gap; the equality above is what turns it red.
     expect(declaredFamilies(`${good}\n${stray}`)).toEqual(['Noto Sans', 'Comic Sans MS'])
     expect(wellFormedRuleFamilies(`${good}\n${stray}`)).toEqual(['Noto Sans'])
+
+    // AND THE CATALOGUE'S OWN SHAPE, both directions (Story 8.5). The templated
+    // rule is well formed; the same rule with its `src` repointed at a live
+    // font service — the shape D-8.5.12 declined and the forbidden-host scan
+    // watches for — is not, and reddens the equality above.
+    const catalogued = "@font-face { font-family: '${face.family}'; src: url('./runtime/${face.filename}') format('truetype'); font-display: swap; }"
+    const fetched = "@font-face { font-family: '${face.family}'; src: url('https://fonts.example.invalid/${face.id}.ttf') format('truetype'); font-display: swap; }"
+    expect(wellFormedRuleFamilies(catalogued)).toEqual(['${face.family}'])
+    expect(wellFormedRuleFamilies(fetched)).toEqual([])
+    expect(declaredFamilies(fetched)).toEqual(['${face.family}'])
   })
 
   it('reads a non-empty request list from the canvas rule', () => {

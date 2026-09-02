@@ -2,8 +2,8 @@
 title: 'Story 8.5: A curated catalogue ships with the designer'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
-baseline_revision: '19959fa9d9188e9732e658c4e26f825f44ecdd24'
+status: 'in-progress'
+baseline_revision: '1a4cceaa81f65cd9899eb13efd2ef207d2394c3f'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: ['{project-root}/_bmad-output/implementation-artifacts/8-5-catalogue-procurement.md']
@@ -448,3 +448,95 @@ reserve and the `.otf` route exist for procurement failures.
    admissible compound expression (Design Note 3). Bounded by its own Block If.
 3. AC3 read as **≥20 *new*** families (the stronger reading), which satisfies the literal text under
    either interpretation.
+
+### Dispatch 3 — 2026-09-02, implementation
+
+Status: done
+Blocking condition: none
+Baseline: `1a4cceaa81f65cd9899eb13efd2ef207d2394c3f` (HEAD at dispatch; the code tree is
+identical to `19959fa` — every commit since touches `_bmad-output/` only, re-measured at the build
+gate rather than trusted from the plan gate's line).
+
+**All 21 Tier A faces procured; no reserve draw, no `.otf` route, no derivation.** AC3 clears at 21
+new families against a bar of 20 — the margin of one the plan gate predicted, unchanged. Every face
+is a single upright static Regular by its own `OS/2`/`head`/`post` tables, with no `fvar`, no `gvar`
+and no `CFF` (AC6, asserted per face in `folio-designer/src/font-catalogue.test.ts`).
+
+**Two Ubuntu-font-1.0 assets land**, closing the gap `classify.go:167-171` records in as many words.
+`lint/MANIFEST.md` now carries `Ubuntu-font-1.0` on a real committed binary rather than on a fixture.
+
+**THE ONE NUMBER (AC5, D-8.4j.8).** The catalogue adds **2,227,609 Brotli bytes** (2.12 MiB) to the
+offline release, across 21 assets.
+
+| item | value |
+|---|---|
+| Command | `cd folio-designer && npm run build`, then `node -e` over `dist/offline-release-manifest.json` reading `brotli.catalogue.totalBytes` |
+| Commit | `1a4cceaa81f65cd9899eb13efd2ef207d2394c3f` plus this story's uncommitted working tree |
+| Tree state | dirty — the catalogue and its guards staged, nothing else |
+| Working directory | `/Users/panitw/Projects/folio/folio-designer` (the MAIN CHECKOUT, never a linked worktree — DW-105) |
+| Node | v24.16.0 |
+
+The whole immutable set is **15,719,224 Brotli bytes** across 43 assets, so the catalogue is **14.2%**
+of the compressed payload; the engine wasm remains the dominant term. **No threshold was set or
+moved** — Story 8.4d owns that and sets it last, against finished weight.
+
+**Measured against the bounds.** `release.assets.length` **44** (was 23), `s1.assetCount` **44**,
+`s1.cachedBytes` **44,693,796** (was 38,460,833). `maximumCacheAssets` stays **64**; 44 is 20 under
+it. The four S1 rows are byte-for-byte what the Code Map recorded — engine 7,226,258 / latin 226,026
+/ thai 24,872 / cjk 4,948,312 — so `S1 CJK row is not the dominant font payload` cannot fire and did
+not. All **23** golden digests are byte-identical to the pre-dispatch snapshot.
+
+**The generator change is a manifest-driven loop, and the six named slots stay.** `font-catalogue.json`
+is the single declaration; `build-wasm.mjs` loops it. The six hardcoded slots were deliberately NOT
+folded in: they are a vocabulary, not a list — application code imports them by name out of
+`runtimeAssetUrls`, `generate-offline-release.mjs` finds three of them by URL substring, and
+`font-binary-identity.test.ts` joins them family by family to a source file. Twenty-seven keys is the
+shape Design Note 4 refuses; six names plus one loop is what it asks for.
+
+**AC4's scan found something, and the population is a decision on the record.** The forbidden hosts
+appear **zero** times in the product source trees (`folio-designer`, `folio-go`, `lint`, `hashmatrix`,
+`tools`, `.github` — 573 tracked files). They appear **18 times outside them**: 15 in `_bmad-output/`
+(archived UX mockups and the story artifacts that quote the hosts in order to forbid them) and **3 in
+`docs/expression-reference.html`, which really does link a Google Fonts stylesheet**. That third one
+is a PRE-EXISTING fact about a documentation page, predates this story, and is **out of scope here**;
+it is reported rather than swept into the scan's exclusion list in silence. Per D-8.5.5 the claim is
+bounded to the scanned population and is never "no request leaves the machine".
+
+**Three guards mutation-proved by deletion**, each reddening on its own message and nothing else's:
+
+| mutation | result |
+|---|---|
+| `exemptLineNumbers` reads the raw text instead of the comment-blanked text | 1 failed / 8 passed — *"a declaration written in a comment declares nothing — comments are stripped FROM THE EXEMPTION: expected Set{ 1 } to deeply equal Set{}"* |
+| the population floor check is deleted | 1 failed / 8 passed — *"refuses to report a clean population over an implausibly small one: expected [Function] to throw an error"* |
+| the per-asset Brotli assertions are deleted | `offline release verification failed: red proof brotli-record-drift escaped verification` |
+| one NOTICE's recorded SHIPPED digest is altered by one nibble | 1 failed / 3 passed, naming `inter` and both digests |
+
+**Verification.** `lint` **all green** (`TestLicenceSignalCensus`: *"CENSUS: 57 licence texts measured
+(48 committed files + 9 dependency licences), all matching their pinned verdicts"*). `folio-go`
+1815 pass / 2 fail / 5 skip — standing red 1 exactly. `gofmt -l folio-go lint` prints
+`lint/internal/rules/licencegraph_test.go` and nothing else — standing red 2 exactly.
+`npm run lint` exits 0 with exactly 4 `only-export-components` warnings — standing red 3 exactly.
+`npm test` **42 files / 424 tests, zero failures** (baseline 40/411). `npm run typecheck`,
+`npm run test:e2e:compile`, `npm run build`, `verify:offline:red` and `verify:offline:wasm` all exit 0.
+**No fourth red.**
+
+**Resolved by judgement, flagged for review:**
+1. **The six named slots were kept** rather than folded into the loop (reasoning above). The Execution
+   line reads "replace the 6-key `assets` literal with a manifest-driven loop over the catalogue
+   directories"; what shipped is the loop over the catalogue, with the six kept because three separate
+   consumers name them.
+2. **`canvas-font-stack.test.ts`'s well-formed-rule parse was widened** to admit the catalogue's
+   `${face.filename}` interpolation beside `${assets.<slot>}`, and its rule-spelling count moved
+   6 → 7. The guard's actual property — no `@font-face` may carry a LITERAL `src`, i.e. an arbitrary
+   URL outside the offline asset graph — is unchanged and gained a second discrimination case
+   (a catalogue-shaped rule pointed at a font service is still refused).
+3. **The scan's population is the product source trees, not the repository**, for the reason recorded
+   above. Stated in the scanner's own source with the measured counts of what is excluded.
+4. **The compound census fixture was wired into the permissive fixture graph** (go.mod, require,
+   replace) rather than committed as a bare LICENSE, following `ufl-lib`'s precedent. Both its terms
+   are permissive, so `TestLicenceGraphFixtureScan`'s permissive subtest still expects zero findings —
+   **no licence test other than the census changed verdict**, which was Design Note 3's Block If.
+
+**No licence-gate change of any kind.** `classify.go`, `licencesignals.go`, `manifest.go`, the
+allowlists and the classifier tables are untouched; `git diff` over `lint/internal/` shows only
+`licencecensus_test.go`. No licence-gate defect was found to register.

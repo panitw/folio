@@ -1,0 +1,149 @@
+[
+  {
+    "id": "cascadiacode",
+    "directory": "cascadiacode",
+    "file": "CascadiaCode-Regular.ttf",
+    "family": "Cascadia Code",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "cascadiamono",
+    "directory": "cascadiamono",
+    "file": "CascadiaMono-Regular.ttf",
+    "family": "Cascadia Mono",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "cousine",
+    "directory": "cousine",
+    "file": "Cousine-Regular.ttf",
+    "family": "Cousine",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "firacode",
+    "directory": "firacode",
+    "file": "FiraCode-Regular.ttf",
+    "family": "Fira Code",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "geist",
+    "directory": "geist",
+    "file": "Geist-Regular.ttf",
+    "family": "Geist",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "geistmono",
+    "directory": "geistmono",
+    "file": "GeistMono-Regular.ttf",
+    "family": "Geist Mono",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "intelonemono",
+    "directory": "intelonemono",
+    "file": "IntelOneMono-Regular.ttf",
+    "family": "Intel One Mono",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "inter",
+    "directory": "inter",
+    "file": "Inter-Regular.ttf",
+    "family": "Inter",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "interdisplay",
+    "directory": "interdisplay",
+    "file": "InterDisplay-Regular.ttf",
+    "family": "Inter Display",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "jetbrainsmono",
+    "directory": "jetbrainsmono",
+    "file": "JetBrainsMono-Regular.ttf",
+    "family": "JetBrains Mono",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "literata",
+    "directory": "literata",
+    "file": "Literata-Regular.ttf",
+    "family": "Literata",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "notosansthailooped",
+    "directory": "notosansthailooped",
+    "file": "NotoSansThaiLooped-Regular.ttf",
+    "family": "Noto Sans Thai Looped",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "notoserif",
+    "directory": "notoserif",
+    "file": "NotoSerif-Regular.ttf",
+    "family": "Noto Serif",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "notoserifthai",
+    "directory": "notoserifthai",
+    "file": "NotoSerifThai-Regular.ttf",
+    "family": "Noto Serif Thai",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "roboto",
+    "directory": "roboto",
+    "file": "Roboto-Regular.ttf",
+    "family": "Roboto",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "sourcecodepro",
+    "directory": "sourcecodepro",
+    "file": "SourceCodePro-Regular.ttf",
+    "family": "Source Code Pro",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "sourcesans3",
+    "directory": "sourcesans3",
+    "file": "SourceSans3-Regular.ttf",
+    "family": "Source Sans 3",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "sourceserif4",
+    "directory": "sourceserif4",
+    "file": "SourceSerif4Display-Regular.ttf",
+    "family": "Source Serif 4 Display",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "spacegrotesk",
+    "directory": "spacegrotesk",
+    "file": "SpaceGrotesk-Regular.ttf",
+    "family": "Space Grotesk",
+    "licence": "OFL-1.1"
+  },
+  {
+    "id": "ubuntusans",
+    "directory": "ubuntusans",
+    "file": "UbuntuSans-Regular.ttf",
+    "family": "Ubuntu Sans",
+    "licence": "Ubuntu-font-1.0"
+  },
+  {
+    "id": "ubuntusansmono",
+    "directory": "ubuntusansmono",
+    "file": "UbuntuSansMono-Regular.ttf",
+    "family": "Ubuntu Sans Mono",
+    "licence": "Ubuntu-font-1.0"
+  }
+]

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
+import { CATALOGUE_ASSET_PREFIX } from './offline-release-contract.mjs'
 
 const designerRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const generatedDir = join(designerRoot, 'src', 'generated')
@@ -97,6 +98,50 @@ const assets = {
   plexSansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsansthai', 'IBMPlexSansThai-Regular.ttf'), 'ibm-plex-sans-thai.ttf'),
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// THE CATALOGUE (Story 8.5). The six slots above are HARDCODED BY NAME because
+// each one is load-bearing under a name: `src/main.tsx` and
+// `src/engine.worker.ts` import them out of `runtimeAssetUrls`,
+// `generate-offline-release.mjs` finds three of them by URL substring to build
+// the S1 payload, and `src/font-binary-identity.test.ts` pins the six-family
+// join family by family. They are a vocabulary, not a list.
+//
+// THE CATALOGUE IS A LIST, and so it is driven by one. `font-catalogue.json` is
+// the single place a face is declared; adding one is a directory, a NOTICE and
+// a row there, never an edit in three places (Design Note 4). Twenty-seven
+// hardcoded keys emitting a twenty-seven-line CSS string is the shape this
+// deliberately does not take.
+//
+// THE EMITTED CSS SHAPE IS IDENTICAL to the six rules below it — one static
+// Regular per family, `format('truetype')`, `font-display: swap`, and NO
+// `font-weight` and NO `font-style` descriptor — so AC6's "no bold, no italic,
+// no variable axis" stays observable from the generated file itself rather than
+// from prose. `src/font-catalogue.test.ts` reads each committed binary's own
+// `name` and `OS/2` tables and holds the catalogue to that.
+//
+// These faces reach Vite's asset graph through the `url()` in the emitted
+// stylesheet alone — they are deliberately NOT added to `runtimeAssetUrls`,
+// which exists for the assets application code names in an import.
+const catalogue = JSON.parse(readFileSync(join(designerRoot, 'font-catalogue.json'), 'utf8'))
+if (!Array.isArray(catalogue) || catalogue.length === 0) throw new Error('font-catalogue.json declares no catalogue faces')
+const catalogueIds = new Set()
+const catalogueFamilies = new Set(Object.keys(assets))
+const catalogueFaces = catalogue.map((entry) => {
+  for (const field of ['id', 'directory', 'file', 'family']) {
+    if (typeof entry?.[field] !== 'string' || entry[field] === '') throw new Error(`font-catalogue.json entry is missing a ${field}: ${JSON.stringify(entry)}`)
+  }
+  // The id becomes a runtime filename stem AND the token the release manifest
+  // recognises a catalogue asset by, so it is held to one shape here rather
+  // than trusted to stay one.
+  if (!/^[a-z0-9]+$/.test(entry.id)) throw new Error(`font-catalogue.json id ${JSON.stringify(entry.id)} is not lower-case alphanumeric`)
+  if (catalogueIds.has(entry.id)) throw new Error(`font-catalogue.json declares the id ${JSON.stringify(entry.id)} twice`)
+  if (catalogueFamilies.has(entry.family)) throw new Error(`font-catalogue.json declares the family ${JSON.stringify(entry.family)} twice, or over a family the six shipped rules already declare`)
+  catalogueIds.add(entry.id)
+  catalogueFamilies.add(entry.family)
+  if (!entry.file.endsWith('.ttf')) throw new Error(`font-catalogue.json face ${entry.id} is ${entry.file}; the emitted @font-face rule declares format('truetype') and the engine decodes only font/ttf and font/otf`)
+  return { ...entry, filename: fingerprint(join(designerRoot, 'public', 'fonts', entry.directory, entry.file), `${CATALOGUE_ASSET_PREFIX}${entry.id}.ttf`) }
+})
+
 rmSync(wasmPath, { force: true })
 rmSync(gluePath, { force: true })
 rmSync(starterPath, { force: true })
@@ -131,4 +176,8 @@ writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and s
 // src/font-binary-identity.test.ts, which opens each file and reads its own
 // `name` table: a family name is an assertion about bytes, and that is where it
 // is checked rather than discovered by a designer squinting at glyphs.
-writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`)
+writeFileSync(join(generatedDir, 'runtime-fonts.css'), `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`
+  // AND THE CATALOGUE, one rule per declared face, emitted from the manifest
+  // rather than written out. Same shape as the six above, deliberately: no
+  // `font-weight`, no `font-style`, one static Regular per family (AC6).
+  + catalogueFaces.map((face) => `@font-face { font-family: '${face.family}'; src: url('./runtime/${face.filename}') format('truetype'); font-display: swap; }\n`).join(''))

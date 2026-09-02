@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
 import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
-import { RELEASE_RUNTIME, declaredCacheAssetBounds, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
+import { RELEASE_RUNTIME, declaredCacheAssetBounds, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -115,8 +115,42 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
       const compressed = readFileSync(sidecar)
       if (!brotliDecompressSync(compressed).equals(original)) fail(`stale Brotli sidecar ${asset.url}`)
       if (!brotliCompressSync(original, brotliOptions).equals(compressed)) fail(`non-deterministic Brotli sidecar ${asset.url} under ${RELEASE_RUNTIME}`)
-    } else if (asset.url !== '/index.html') fail(`unexpected mutable runtime entry ${asset.url}`)
+      // AC5, Story 8.5. THE RECORD IS HELD TO THE SIDECAR IT DESCRIBES.
+      // `generate-offline-release.mjs` writes each asset's compressed weight
+      // into the manifest as it writes the sidecar; an unasserted record drifts
+      // silently, and a per-asset weight table nobody checks is decoration
+      // rather than evidence. Red-proved as `brotli-record-drift`.
+      //
+      // It sits LAST inside this loop deliberately: the decompress and
+      // re-compress checks above own the "the sidecar is wrong" direction, so
+      // reaching here means the sidecar is right and the only thing left that
+      // can be wrong is the RECORD OF IT. That is what makes the red proof
+      // provable on this guard's own message rather than on a neighbour's.
+      if (!Number.isSafeInteger(asset.brotliBytes) || asset.brotliBytes <= 0) fail(`brotli-record-drift: ${asset.url} carries no recorded Brotli byte count`)
+      if (asset.brotliBytes !== compressed.byteLength) fail(`brotli-record-drift: ${asset.url} records ${asset.brotliBytes} Brotli bytes and its emitted sidecar is ${compressed.byteLength}`)
+    } else if (asset.url !== '/index.html') {
+      fail(`unexpected mutable runtime entry ${asset.url}`)
+    } else if (asset.brotliBytes !== undefined) {
+      fail(`brotli-record-drift: ${asset.url} is not immutable, carries no Brotli sidecar, and must not record a Brotli byte count`)
+    }
   }
+  // AND THE TOTALS ARE THE ROWS' OWN ARITHMETIC, on the shape
+  // `release.s1VisibleBytes` already uses: a headline number that is not the sum
+  // of the rows under it is the one figure a reader will quote and nobody will
+  // re-derive. The catalogue subtotal is the number Story 8.4d inherits (AC5).
+  const immutable = release.assets.filter((asset) => asset.immutable)
+  const catalogue = release.assets.filter((asset) => isCatalogueAssetUrl(asset.url))
+  const brotli = release.brotli
+  if (!brotli || brotli.version !== 1 || !brotli.catalogue) fail('brotli-record-drift: the release carries no per-asset Brotli record')
+  if (brotli.immutableAssetCount !== immutable.length) fail(`brotli-record-drift: the Brotli record counts ${brotli.immutableAssetCount} immutable assets and the release carries ${immutable.length}`)
+  if (brotli.totalBytes !== immutable.reduce((total, asset) => total + asset.brotliBytes, 0)) fail('brotli-record-drift: the recorded Brotli total is not the per-asset rows\' arithmetic')
+  // A CATALOGUE OF NOTHING MUST NOT READ AS A CATALOGUE THAT COSTS NOTHING.
+  // Every other check here would pass over a release with zero catalogue faces
+  // and a subtotal of zero, which is exactly the vacuous green Story 8.5's own
+  // design notes name as the trap.
+  if (catalogue.length === 0) fail('brotli-record-drift: the release carries no Story 8.5 catalogue face at all, so its recorded catalogue weight describes nothing')
+  if (brotli.catalogue.familyCount !== catalogue.length) fail(`brotli-record-drift: the Brotli record counts ${brotli.catalogue.familyCount} catalogue faces and the release carries ${catalogue.length}`)
+  if (brotli.catalogue.totalBytes !== catalogue.reduce((total, asset) => total + asset.brotliBytes, 0)) fail('brotli-record-drift: the recorded catalogue Brotli total is not the catalogue rows\' arithmetic')
   if (wasmWitness) {
     const glue = release.assets.find((asset) => asset.url.includes('/wasm-exec.'))
     if (!glue) fail('wasm runtime glue is absent from the release')
@@ -302,6 +336,26 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     generateOfflineRelease(outputDir)
     return () => { writeFileSync(file, original); generateOfflineRelease(outputDir) }
   }, 'development offline bypass shipped in')
+  // THE BROTLI RECORD, PROVED BY DRIFTING IT (AC5, Story 8.5).
+  // `rewriteRelease` writes BOTH the manifest and the worker and recomputes the
+  // identities, so neither the sw/manifest comparison nor the identity checks
+  // can trip first — and `expected` holds the proof to this guard's own
+  // message rather than to any failure at all. Deleting the assertion makes
+  // this report `escaped verification`.
+  redProof('brotli-record-drift', (outputDir) => {
+    const manifest = join(outputDir, 'offline-release-manifest.json')
+    const worker = join(outputDir, 'sw.js')
+    const oldManifest = readFileSync(manifest)
+    const oldWorker = readFileSync(worker)
+    const release = readRelease(outputDir)
+    const witness = release.assets.find((asset) => asset.immutable)
+    if (!witness) fail('red proof brotli-record-drift has no immutable witness')
+    witness.brotliBytes += 1
+    release.brotli.totalBytes += 1
+    if (isCatalogueAssetUrl(witness.url)) release.brotli.catalogue.totalBytes += 1
+    rewriteRelease(outputDir, release)
+    return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
+  }, 'brotli-record-drift')
   proveVCSStampGuardDiscriminates()
   redProof('worker-progress-before-marker', (outputDir) => { const worker = join(outputDir, 'sw.js'); const original = readFileSync(worker, 'utf8'); const moved = original.replace("    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))\n    await progress('verified', activeAsset)", "    await progress('verified', activeAsset)\n    await cache.put(MARKER, new Response(RELEASE.id, { headers: { 'content-type': 'text/plain' } }))"); if (moved === original) fail('red proof could not find final marker ordering'); writeFileSync(worker, moved); return () => writeFileSync(worker, original) })
 }

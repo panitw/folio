@@ -20,8 +20,14 @@ type censusVerdict struct {
 }
 
 // pinnedCensus is the WHOLE licence population of this repository with
-// its verdict written down — 26 committed LICENSE*/COPYING files plus
+// its verdict written down — 48 committed LICENSE*/COPYING files plus
 // the 9 dependency licences the three Go module graphs resolve to.
+//
+// IT GREW BY 22 AT STORY 8.5: the catalogue's 21 faces, and the compound
+// fixture D-8.4j.2 requires. That is the largest single addition this
+// table has taken, and every row is written out by hand for the reason
+// the paragraph below gives — a new redistributed licence is exactly the
+// event that must not land unrecorded.
 //
 // THIS TABLE IS THE OBSERVATION. It replaces a differential that stopped
 // observing anything the moment ClassifyLicenceText's body became a call
@@ -45,12 +51,42 @@ type censusVerdict struct {
 // unrecorded.
 var pinnedCensus = []censusVerdict{
 	{"LICENSE", FamilyPermissive, "MIT"},
+	// STORY 8.5'S CATALOGUE, 21 NEW COMMITTED LICENCE TEXTS, PINNED ONE BY
+	// ONE. They are the first faces this repository has ever put through the
+	// fail-closed asset gate in bulk, and two of them —
+	// ubuntusans/ and ubuntusansmono/ — are the first Ubuntu-font-1.0 ASSET
+	// this repository has ever carried, closing the gap classify.go:167-171
+	// records ("there is no analogue of TestCommittedOFLTextClassifiesAsOFL11
+	// to write until Story 8.5 lands a face under it"). Written out longhand,
+	// on D-8.4i.3's reasoning: an expectation derived from the thing it
+	// checks passes any edit to that thing.
+	{"folio-designer/public/fonts/cascadiacode/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/cascadiamono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/cousine/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/firacode/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/geist/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/geistmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/ibmplexmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/ibmplexsans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/ibmplexsansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/intelonemono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/inter/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/interdisplay/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/jetbrainsmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/literata/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosansthailooped/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notoserif/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notoserifthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/roboto/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/sourcecodepro/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/sourcesans3/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/sourceserif4/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/spacegrotesk/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/ubuntusans/LICENSE-UFL.txt", FamilyPermissive, "Ubuntu-font-1.0"},
+	{"folio-designer/public/fonts/ubuntusansmono/LICENSE-UFL.txt", FamilyPermissive, "Ubuntu-font-1.0"},
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-APACHE-2.0", FamilyPermissive, "Apache-2.0"},
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-CMAPS", FamilyPermissive, "BSD-3-Clause"},
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-LIBERATION", FamilyPermissive, "OFL-1.1"},
@@ -68,6 +104,14 @@ var pinnedCensus = []censusVerdict{
 	{"lint/testdata/licence/copyleft/example.test/sspl-lib/LICENSE", FamilyCopyleft, "SSPL-1.0"},
 	{"lint/testdata/licence/permissive/example.test/apache-lib/LICENSE", FamilyPermissive, "Apache-2.0"},
 	{"lint/testdata/licence/permissive/example.test/bsd-lib/LICENSE", FamilyPermissive, "BSD-3-Clause"},
+	// D-8.4j.2'S COMPOUND CASE, seeded as a fixture because no procurable
+	// font carries one the four-id allowlist admits (Design Note 3, measured
+	// before the decision per D-000.12: Hack is MIT + Bitstream Vera and
+	// Public Sans is OFL-1.1 + CC0-1.0, and BOTH must fail the gate). The id
+	// pinned here is the WHOLE EXPRESSION, which is what Story 8.4j's
+	// whole-line capture returns and what per-term admission then tests; a
+	// regression to the one-token capture reports "MIT" and reds this row.
+	{"lint/testdata/licence/permissive/example.test/compound-lib/LICENSE", FamilyPermissive, "MIT OR Apache-2.0"},
 	{"lint/testdata/licence/permissive/example.test/mit-lib/LICENSE", FamilyPermissive, "MIT"},
 	{"lint/testdata/licence/permissive/example.test/ufl-lib/LICENSE", FamilyPermissive, "Ubuntu-font-1.0"},
 	{"dep folio-go -> github.com/boxesandglue/textshape", FamilyPermissive, "MIT"},
