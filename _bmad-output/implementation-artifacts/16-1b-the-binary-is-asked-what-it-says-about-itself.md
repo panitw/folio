@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-09-03'
 status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 baseline_commit: '384c8ac'
 baseline_revision: 'e250dc78c779d4a725c5584ec0bc898967ef8146'
 context:
@@ -12,7 +12,58 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-16-decision-log.md'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The licence tie has ONE door where its `fvar` sibling has two, so a hand-authored `.folio`
+      embedding a face whose own bytes name a contradicted or copyleft licence loads, renders and
+      exports unchecked.
+    evidence: |-
+      `RefuseVariableFace` is called both from `embedFontFamily` and from `fontset.New` at render,
+      expressly because "a hand-written `.folio` bypasses this command entirely"
+      (component_commands.go:2404-2408). `RefuseContradictedLicence` has no caller outside
+      `embedFontFamily`, and `requireEmbeddedFaceLicence` at load checks only that the three licence
+      fields are non-empty and bounded, never that they agree with the bytes. Deferred rather than
+      fixed because the intent contract names `embedFontFamily` as the siting; widening to the load
+      path is a decision, not a patch.
+    location: >-
+      folio-go/component_commands.go:2443
+    severity: medium
+  - summary: >-
+      The mirror-contract test compares SPDX ids and never the patterns behind them, so the two
+      tables can disagree about what a licence sentence looks like with nothing red.
+    evidence: |-
+      `TestGoLicenceTableSubsumesTheDesignerTable` extracts the TS keys and asserts each appears in
+      the Go id set; it never reads the TS `RegExp` values. Narrowing the TS row to
+      /Open Font License/i while Go keeps /SIL Open Font License/i leaves the test green, and a face
+      whose record 13 omits "SIL" would pass the build gate and be NO EVIDENCE at runtime. The test's
+      own comment names this as the failure it means to prevent. In contract as written — the intent
+      asks only that the Go table subsume the TS table's POPULATION — so recorded rather than patched.
+    location: >-
+      folio-go/internal/fontset/licencesignature_test.go:423
+    severity: medium
+  - summary: >-
+      The refuse-signature patterns fire on any mention of a copyleft licence, including a bare URL
+      or a compatibility note, and the record-0 widening makes copyright prose their likely home.
+    evidence: |-
+      `(?i)\b(?:A|L)?GPL(?:[-\s]?v?\d[.\d]*)?\b` matches "gnu.org/licenses/gpl.html",
+      "compatible with the GPL" and "not licensed under the GPL". Measured as not firing on the real
+      corpus — zero refuse-signature hits across the 99 upstream faces sampled this dispatch — so it
+      is a latent over-broadness rather than an observed one, and narrowing it is a decision about
+      the table reserved to the engineering lead.
+    location: >-
+      folio-go/internal/fontset/licencesignature.go:111
+    severity: low
+  - summary: >-
+      `apache/yellowtail` states Apache terms in record 0 in wording the minted Apache regex cannot
+      reach, so it is admitted as NO EVIDENCE — the nearest thing to a table gap on the sample.
+    evidence: |-
+      Its record 0 reads "...Available under the Apache 2.0 licence. http://www.apache.org/licenses/L",
+      which is semantically Apache and invisible to /Apache License,?\s+Version 2\.0/i. It ADMITS,
+      so it is not a refusal and not a blocking finding under D-16.R.7's ship criterion; widening the
+      regex is a change to the table, i.e. a decision, not a fix. Recorded so the lead sees it.
+    location: >-
+      folio-go/internal/fontset/licencesignature.go:96
+    severity: low
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -470,13 +521,98 @@ reportable as a refusal; they are reported here as observations rather than find
   genuine Ubuntu family was refused, and the row had never once been observed to confirm anything.
   `ofl/lohittamil` also confirms through record 0.
 
+## Review Triage Log
+
+### 2026-09-03 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 11: (high 0, medium 3, low 8)
+- defer: 4: (high 0, medium 2, low 2)
+- reject: 12
+- addressed_findings:
+  - `[medium]` `[patch]` The OFL admit row — the row 19 of the 21 catalogue faces and the OFL
+    majority of upstream travel under — had no CONTRADICTION control: every assertion that a refusal
+    HAPPENS was driven by the Apache or Ubuntu row, and "admits" is also what a row matching nothing
+    returns. Confirmed by demonstration: narrowing the OFL pattern to an anchored prefix left the
+    entire `internal/fontset` suite green while breaking real faces such as `cascadiacode`, whose
+    record 13 opens "Microsoft supplied font…" and carries the OFL sentence further in. Added
+    `TestRefuseContradictedLicenceRefusesWhatTheOFLRowContradicts` with two arms — the committed OFL
+    fixture declared `Apache-2.0`, and the same statement behind a prefix. Re-verified independently:
+    the narrowing now reds.
+  - `[medium]` `[patch]` The refuse half's over-broadness control asserted almost nothing:
+    `err != nil && strings.Contains(err.Error(), "copyleft")` passes when the error is a contradiction
+    and goes fully vacuous if the refusal prose ever drops the word "copyleft". Rewritten so each
+    permissive sentence is declared the id its own bytes name and must return `nil`, consulting no
+    substring of the prose. Probed by widening a refuse row to match "License": reds on all three.
+  - `[medium]` `[patch]` Refusal messages could exceed the host's own cut and lose their most
+    informative clause. `maxComponentFailureMessageBytes` is 512 and the host truncates there;
+    measured, the contradiction message was 378 bytes and the copyleft message 420 with only a
+    46-byte statement, so a face whose record 13 carries the full licence body (common) had the
+    trailing `The face says: %q` clause silently cut off. Added a 72-byte rune-boundary excerpt with
+    a marked elision, and a test that builds ~5.9 kB statements and asserts the message stays within
+    512 with both sides still named. Probed three ways: excerpt removed (6211/6302 bytes), rune walk
+    removed (a split UTF-8 sequence), host constant moved (the source-read tie reds).
+  - `[low]` `[patch]` The mirror-contract extraction could truncate silently without tripping its own
+    vacuity guard — the non-greedy regex stops at the first column-0 `}`, so a nested object drops
+    every later id while still returning a non-empty list. Now asserts the extracted set contains the
+    ids the TS table declares today, with a message saying a miss means the extraction rotted rather
+    than that the table shrank. Probed with a nested literal; TS file restored byte-exact.
+  - `[low]` `[patch]` `matched[0].label` reintroduced the order-dependence the comment above it
+    rejects — the scan visits every admit row so table order does not become policy, then named only
+    the first match. Now names every matched label.
+  - `[low]` `[patch]` The I/O matrix's non-Latin row (`ofl/wdxllubrifonttc`, which states OFL 1.1 in
+    Traditional Chinese) was unexercised. Added that case with a genuine Traditional Chinese sentence,
+    round-tripped through the name table and admitted under two different declarations.
+  - `[low]` `[patch]` Two comment overclaims in `licencesignature.go`: (a) `ReadLicenceStatement`
+    promised a distinction — "they admit for different reasons and a later reader is owed the
+    difference" — that its `("", false)` return cannot express; now states the three failures are
+    deliberately collapsed. (b) The fidelity note framed the vendor reader's record-dropping as only
+    ever making the check quieter; it now names the case it does not cover — `ot.Name.entries` is
+    keyed by nameID alone and each decodable record overwrites the last, so the FINAL record 13 in
+    table order decides. Recorded as a known limit; no second parser, per the spec's prohibition.
+  - `[low]` `[patch]` `buildNameTable` cast lengths to `uint16` with no overflow check, so a record
+    or storage pool over 65535 bytes wrapped into a corrupt table that the assertions above it would
+    have passed over. Now fatals on all three overflow shapes; probed with an 80,000-byte record.
+  - `[low]` `[patch]` The refuse-beats-confirm precedence had no test over a statement that names
+    BOTH, which is the shape real dual-licensed faces ship (OFL plus GPL-with-font-exception). Added
+    it; probed by moving the admit half ahead of the refuse half.
+  - `[low]` `[patch]` `TestLicenceGuardPreconditions` did not pin the three sentence constants to the
+    admit rows they stand for, so a drift between a constant and its pattern could quiet the record-0
+    tests. Now pinned by each row's own pattern.
+  - `[low]` `[patch]` The `## Auto Run Result` called the falsifier a "100-face re-run" while the
+    section it summarises reports 135 attempted and 99 parsed, and the NO EVIDENCE prose left it
+    ambiguous whether `ofl/arvo` lacked record 13 or merely failed to match. Corrected below.
+
+**Rejected (12), with the authority each was tested against.** Case- and whitespace-normalising
+`declared` (three layers proposed it): a lowercase `ofl-1.1` is not an admitted SPDX id at all, the
+resulting refusal names both sides accurately, and the browser path is closed by D-16.R.4's token
+table — normalising would mint a canonicalisation policy reserved to that table. An empty `declared`
+is unreachable (`requireEmbeddedFaceLicence` requires non-empty). Committing the sample script:
+not required, and the spec asks for provenance rather than an artifact. Sample selection bias: already
+stated in the spec's own falsifier section. DW-150's status "not updated": factually wrong — it reads
+`Status: CLOSED 2026-09-03 — reconciled`. `ot.ParseFont(data, 0)` ignoring later faces of a collection:
+the spec directs the parse to copy `readPostScriptName` exactly, which does the same. Brittle
+line-number citations: the needle form is already used where it is load-bearing. `removeNameTable`
+leaving `searchRange`/`entrySelector` stale: test-only, and the vendor reader does not read them.
+The remaining rejects are the two frontmatter-baseline observations, the "one implementation also
+covers the local tier" phrasing, and DW-153 lacking a back-reference planted in Story 15.3.
+
+**One reviewer observation is accepted as true and recorded rather than actioned:** the 99-face
+corpus run falsifies the ADMIT half only. It produced one refusal and that refusal was a
+contradiction; zero faces hit a refuse-signature, so the copyleft floor's only evidence is the
+synthesised control D-16.R.9 requires. That is what the ruling anticipated when it ordered a control
+for that half specifically, but the sample must not be read as evidence for both halves.
+
 ## Auto Run Result
 
 Status: done
 Blocking condition: none
 
 **Dispatch:** build of Story 16.1b at HEAD `e250dc7`, 2026-09-03, working directory
-`/Users/panitw/Projects/folio`. Branch `main`; no branch created, nothing pushed, no `git add -A`.
+`/Users/panitw/Projects/folio`, branch `main`. No branch created, nothing pushed, no `git add -A`.
+The `<intent-contract>` block is byte-identical to the version at dispatch (7,019 bytes, md5
+`f1be40fb96e326f3c567909f1f66def6`), verified before implementation and again at close.
 
 **What landed.**
 
@@ -485,40 +621,92 @@ Blocking condition: none
   (AD-1, never a map range), refuse-signatures applied to every face first, then the declared id's
   admit-signature, then the three outcomes. Untyped `fmt.Errorf`, `nil` on every parse failure.
   Record 0 consulted **only** when record 13 is absent; "present" defined in code as a non-empty
-  parsed string, with the vendor reader's fidelity limit recorded rather than left to be discovered.
-- `folio-go/component_commands.go` — one call from `embedFontFamily`, beside the `fvar` refusal at
-  `:2414` and before anything reaches `t.doc.Assets`. The file stays a caller, not a checker.
-- `folio-go/internal/fontset/licencesignature_test.go` (new) — the two positive controls D-16.R.9
-  requires (contradiction over committed Roboto declared `OFL-1.1`; copyleft over a name table
-  synthesised in-process, 10 statements across GPL/LGPL/AGPL/SSPL/ShareAlike), both over-broadness
-  controls, the silence arms, both halves of the record-0 rule, the AD-1 ordering guard, the
+  parsed string; the vendor reader's fidelity limit — including which record wins when a nameID
+  appears twice — recorded rather than left to be discovered. Refusal messages carry a bounded
+  rune-safe excerpt of what the bytes said, so the host's 512-byte cut cannot swallow the clause
+  the message exists for.
+- `folio-go/component_commands.go` — one call from `embedFontFamily`, beside the `fvar` refusal and
+  before anything reaches `t.doc.Assets`. The file stays a caller, not a checker.
+- `folio-go/internal/fontset/licencesignature_test.go` (new) — both positive controls D-16.R.9
+  requires with no new committed binary: contradiction over committed `Roboto-Regular.ttf` declared
+  `OFL-1.1`, and the copyleft half over a name table synthesised in-process across ten
+  GPL/LGPL/AGPL/SSPL/ShareAlike statements. Plus the OFL row's own contradiction control, both
+  over-broadness controls, the silence arms (no name table, non-font bytes, unrecognised statement,
+  non-Latin statement, an id with no signature row), both halves of the record-0 rule, the
+  refuse-beats-confirm precedence, the AD-1 ordering guard, the message-bound test, the
   **mirror-contract** test reading `font-catalogue.test.ts` as source text, and a test asserting the
   build-time tie is still present ("both, or halt").
-- `folio-go/component_commands_test.go` — `embedCommandDeclaring` (the declared id is now
-  load-bearing), the reachability-and-writes-nothing test at the command, and
-  `TestStaticFaceIsStillEmbeddedAtBothDoors` corrected to declare Roboto's actual `Apache-2.0`.
-- `deferred-work.md` — **DW-150 confirmed reconciled at landing**; **DW-153** added as the
+- `folio-go/component_commands_test.go` — `embedCommandDeclaring` (the declared id is load-bearing
+  now), the reachability-and-writes-nothing test at the command, and
+  `TestStaticFaceIsStillEmbeddedAtBothDoors` corrected to declare Roboto's actual `Apache-2.0` —
+  without which it would have been measuring a refusal from a different guard.
+- `deferred-work.md` — DW-150 confirmed reconciled at landing; **DW-153** added as the
   before-the-tag ledger entry for Story 15.3 (D-000.15).
 
-**Red-proved by DELETION, never by falsifying a condition** (all 2026-09-03, wd `folio-go`):
+**Review findings breakdown.** 11 patches applied (medium 3, low 8), 4 items deferred, 12 rejected;
+no `intent_gap` and no `bad_spec`, so no repair loopback ran and `review_loop_iteration` stays 0.
+Follow-up review recommended: **true** — 3 × medium + 8 × low scores 17 against a threshold of 5.
+Details and the authority each rejection was tested against are in the Review Triage Log above.
+
+**Red-proved by DELETION, never by falsifying a condition, and every one re-run independently of the
+implementing agent** (2026-09-03, wd `folio-go`):
 
 | Deletion | Reds |
 |---|---|
 | the `RefuseContradictedLicence` call in `embedFontFamily` | `TestEmbedFontFamilyRefusesAFaceWhoseOwnBytesContradictTheDeclaredLicence` |
 | the guard's body (`return nil` before the tables) | the contradiction, copyleft and record-0 tests |
-| adding a `'BSD-3-Clause'` row to the TS table with no Go counterpart | `TestGoLicenceTableSubsumesTheDesignerTable` |
+| a `'BSD-3-Clause'` row in the TS table with no Go counterpart | `TestGoLicenceTableSubsumesTheDesignerTable` |
+| renaming `const licenceSignatures` in the TS file | the same test, with `t.Fatal` and not a skip |
+| narrowing the OFL row to an anchored prefix | `TestRefuseContradictedLicenceRefusesWhatTheOFLRowContradicts` (added this pass; the suite was green under this mutation before it) |
 
-**Verification.** `go test ./...` — green but for the pre-declared `internal/text` P6g exercise-floor
-red (`got 7, need >=20`), byte-identical to the baseline measured before any change. `go vet ./...`
-clean; `gofmt -l .` empty. `npm run test` — `1 failed | 436 passed`, the single failure being the
-pre-declared DW-152 red at `canvas-authority-contract.test.ts:190`. `npm run build` (including
-`build:offline` and `verify:offline`) exit 0. **23 golden digests unmoved** (`byte_neutrality_test.go`
-green). `SupportedMajor` still `2`. `font-catalogue.test.ts:197-200` and `:355-366` unchanged, and now
-guarded by a Go test. The 100-face falsifier re-run is recorded in full above: **1 refusal, a genuine
-contradiction; zero refusals traceable to silence.**
+**Verification, measured this dispatch and re-measured after the review patches.**
 
-**No browser run**, per D-16.R.8: this story has no browser surface. e2e specs are compile-only.
+- `cd folio-go && go test -count=1 ./...` → **1910 pass / 2 fail / 5 skip**. Both failures are the
+  pre-declared mandated P6g exercise floor, `TestCorpusMeetsP6ExerciseFloors` and its
+  `P6g_(opaque_names)` subtest (`got 7, need >=20`) — identical in shape and count to the baseline
+  measured at `e250dc7` before any change.
+- `go vet ./...` clean; `gofmt -l .` printed nothing.
+- `cd folio-designer && npm run test` → **1 failed | 436 passed (437)**, files 1 failed | 42 passed.
+  The single failure is the pre-declared DW-152 red at `canvas-authority-contract.test.ts:190` over
+  `e2e/e9-5-border-no-ink.spec.ts`, owned by the Epic 9/10 lane.
+- `npm run build`, including `build:offline` and `verify:offline`, exit 0.
+- `cd lint && go test -count=1 ./...` → four `ok` packages, no failures (run with `-count=1`
+  deliberately: the rules package walks a directory and Go's test cache does not track `ReadDir`).
+- `go vet -tags=matrix ./...` clean; `npm run typecheck` clean; `npm run lint` shows the four
+  pre-existing `only-export-components` warnings and nothing new.
+- **23 golden digests unmoved** (`goldenDigestRecord` still 23 entries;
+  `TestGoldenDigestAgreesAtEveryDeclaredSite` green). `SupportedMajor` still `2`.
+  `folio-designer/` has **no diff at all** against the dispatch baseline, so
+  `font-catalogue.test.ts:197-200` and `:355-366` are untouched — both guards kept.
+- **The one refusal on the sample was verified by hand, independently of the implementing agent.**
+  `apache/mountainsofchristmas` was fetched fresh from `google/fonts`, its `METADATA.pb` read
+  (`license: "APACHE2"`) and its name table parsed directly: record 13 states *"This Font Software is
+  licensed under the SIL Open Font License, Version 1.1"*. Put through the shipped door it refuses
+  under `Apache-2.0`, naming both sides, and admits under `OFL-1.1`. A genuine contradiction, not a
+  silence.
 
-**Not attempted:** no `.folio` format change, no new committed font binary, no row added to
-`vendor-boundary.md` (`Get` substitutes nothing — it returns the zero value, which is observably
-absent), no change to the build-time tie.
+**The falsifier's result, in the terms D-16.R.7 set.** 135 families attempted, **99 parsed** with zero
+sfnt parse errors; 90 CONFIRMATION, 8 NO EVIDENCE (all admitted), **1 CONTRADICTION, refused**.
+**Every refusal is a contradiction and none is a silence — the ship criterion is met.** Refusal rate
+1.0% against 50.0% under the contract D-16.R.7 replaced. The full breakdown, provenance and the eight
+NO EVIDENCE faces are recorded under "The falsifier, re-run" above; note it is a 135-attempt run, not
+the "100-face" sample the earlier draft of this section called it.
+
+**Residual risks, stated rather than discovered later.**
+
+- **The corpus run falsifies the ADMIT half only.** No sampled face hit a refuse-signature, so the
+  copyleft floor's sole evidence is the synthesised control D-16.R.9 required for exactly that reason.
+  The 1-refusal result must not be read as evidence that both halves fire.
+- **One door, where the `fvar` sibling has two.** A hand-authored `.folio` embedding a mislabelled
+  face is not seen by this guard; the load path checks only that the licence fields are non-empty.
+  Deferred, with evidence, in the frontmatter.
+- **The mirror contract is a population contract, not a behaviour one** — the two tables' patterns can
+  drift with nothing red. Also deferred.
+- The refuse patterns would fire on a face that merely mentions a copyleft licence; zero instances
+  across the 99 sampled, so latent rather than observed.
+- **No browser run**, per D-16.R.8: this story has no browser surface, and its e2e specs are
+  compile-only.
+
+**Not attempted, deliberately:** no `.folio` format change, no new committed font binary, no row added
+to `vendor-boundary.md` (`Get` substitutes nothing — it returns the zero value, which is observably
+absent), no change to the build-time tie, and no softening of any refusal to a warning.

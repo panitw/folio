@@ -3,6 +3,8 @@ package fontset
 import (
 	"fmt"
 	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/boxesandglue/textshape/ot"
 )
@@ -119,6 +121,59 @@ var refuseLicenceSignatures = []licenceSignature{
 	{label: "a ShareAlike licence (CC BY-SA)", pattern: regexp.MustCompile(`(?i)ShareAlike|Share-Alike|\bCC[-\s]?BY[-\s]?SA\b`)},
 }
 
+// maxQuotedStatementBytes bounds the EXCERPT of a face's own statement that a
+// refusal below quotes, and it exists to defend a constant in another package.
+//
+// WHOSE CONSTANT, AND WHY THE TAIL IS THE PART WORTH KEEPING. A component
+// failure message is cut at maxComponentFailureMessageBytes = 512
+// (component_commands.go:1974, itself hand-copied from the wasm host's own
+// literal), and that cut takes the TAIL. `The face says: %q` is the LAST
+// clause of both refusals here and the whole reason either is actionable — it
+// is the side of the comparison the author cannot look up. So an unbounded
+// statement does not merely make a refusal long: it makes the host delete
+// exactly the clause the refusal exists for, silently.
+//
+// This is the common case rather than an exotic one. Measured on the committed
+// fixtures, the contradiction message is 378 bytes and the copyleft message
+// 420 bytes over a 46-byte statement — most of the budget is already spent
+// before the statement arrives — while a face's record 13 is frequently the
+// ENTIRE OFL body and record 0 can run to kilobytes.
+//
+// truncateAtRuneBoundary in package `folio` does this same job for DataPath,
+// but it is unexported there and package `folio` imports this package rather
+// than the other way round, so the equivalent is written here instead of
+// shared.
+//
+// WHAT THIS BOUND DOES NOT COVER, said plainly. It removes the one UNBOUNDED
+// term from the message — a statement that can be kilobytes — and leaves the
+// rest: `name` and `declared` are interpolated whole, and a caller passing a
+// pathologically long font-chain name (legal up to the DataPath cut of 256)
+// can still overrun 512 on its own. That is a property every refusal in this
+// codebase shares and is not this door's to fix; the statement is the term
+// that is long in the ORDINARY case, which is what made it worth bounding.
+const maxQuotedStatementBytes = 72
+
+// statementExcerptElision marks a cut so a reader can tell a short statement
+// from a truncated one, and so nobody reads the excerpt as the whole of what
+// the bytes said.
+const statementExcerptElision = " […]"
+
+// statementExcerpt cuts a statement to maxQuotedStatementBytes AT A RUNE
+// BOUNDARY. Cutting by bytes alone would split a multi-byte rune — a real
+// risk here and not a theoretical one, since the matrix's non-Latin row
+// (`ofl/wdxllubrifonttc` states OFL 1.1 in Traditional Chinese) is exactly a
+// statement with no single-byte runes in it at all.
+func statementExcerpt(statement string) string {
+	if len(statement) <= maxQuotedStatementBytes {
+		return statement
+	}
+	cut := maxQuotedStatementBytes
+	for cut > 0 && !utf8.RuneStart(statement[cut]) {
+		cut--
+	}
+	return statement[:cut] + statementExcerptElision
+}
+
 // ReadLicenceStatement returns the licence statement a face makes about
 // ITSELF, and reports whether it made one at all.
 //
@@ -154,18 +209,45 @@ var refuseLicenceSignatures = []licenceSignature{
 // one step early. That can only make this check QUIETER, never louder — it
 // cannot manufacture a false refusal — and D-16.R.7's own "how we'd know
 // it was wrong" accepts exactly that cost: "a check quieter than intended,
-// never a document publishing false terms". Do not "fix" it by
-// hand-parsing the name table; a second parser here would be a second
-// authority on what a face says about itself.
+// never a document publishing false terms".
+//
+// AND THE CASE THAT ARGUMENT DOES NOT COVER, named here so it is a KNOWN
+// LIMIT rather than a later discovery. (*ot.Name) holds ONE entry per
+// nameID — Name.entries is keyed by nameID alone, with no platform or
+// language in the key — so a face carrying record 13 under SEVERAL
+// platform/language combinations is reduced to a single string: each
+// decodable record overwrites the last, so the FINAL one in table order
+// wins, which is a property of the file's record layout and of nothing
+// this project chose. A face whose English record 13 is permissive and whose
+// record 13 under another platform or language names a copyleft licence is
+// therefore decided by whichever record the vendor parser kept, and this
+// door may read the permissive one and admit. That is louder than merely
+// quiet: it is a contradiction this check can miss outright.
+//
+// It is recorded and NOT fixed. Do not "fix" it by hand-parsing the name
+// table; a second parser here would be a second authority on what a face
+// says about itself, and the spec forbids one. The floor underneath is the
+// same as everywhere else in this file: refuseLicenceSignatures still
+// applies to whichever record IS read, and the build-time tie still covers
+// every face this repository itself redistributes.
 func ReadLicenceStatement(data []byte) (string, bool) {
 	parsed, err := ot.ParseFont(data, 0)
 	if err != nil {
 		return "", false
 	}
-	// The guard ORDER is readPostScriptName's, copied deliberately: it is
-	// what keeps "the face has no name table" distinguishable from "the
-	// name table would not parse". Both admit here, but they admit for
-	// different reasons and a later reader is owed the difference.
+	// The guard ORDER is readPostScriptName's, copied deliberately, so that
+	// each failure is refused by the narrowest condition that explains it
+	// rather than by a later one that would have caught it anyway.
+	//
+	// THE THREE FAILURES ARE DELIBERATELY COLLAPSED, and this signature
+	// cannot tell them apart: no name table, a name table that will not
+	// parse, and a name table that parses to nothing in 13 or 0 all return
+	// ("", false), and every caller and every test in this package sees the
+	// same NO EVIDENCE. That is not an oversight to be repaired by widening
+	// the return: all three admit, for the one reason recorded on
+	// RefuseContradictedLicence — a face that says nothing has made no
+	// statement to be false — so a caller that could distinguish them would
+	// have nothing different to do with the distinction.
 	if !parsed.HasTable(ot.TagName) {
 		return "", false
 	}
@@ -229,7 +311,7 @@ func RefuseContradictedLicence(name, declared string, data []byte) error {
 					"share-alike face whatever licence is declared for it (this one is declared %q): a font program is "+
 					"embedded and subset into every PDF the author produces, so its terms attach to the author's own "+
 					"documents. The face says: %q",
-				name, signature.label, declared, statement,
+				name, signature.label, declared, statementExcerpt(statement),
 			)
 		}
 	}
@@ -252,6 +334,18 @@ func RefuseContradictedLicence(name, declared string, data []byte) error {
 		return nil // NO EVIDENCE: the bytes made no claim this table recognises.
 	}
 
+	// EVERY MATCHED LABEL IS NAMED, not just the first. The scan above
+	// deliberately visits every row so that table order does not become
+	// policy; naming matched[0] alone would hand the order that policy back
+	// one line later, and it would do it in the message — the one artefact a
+	// reader diagnoses from. A statement that names two licences neither of
+	// which is the declared one is a face with two things wrong with it, and
+	// a refusal that mentioned one of them would send the author to fix half.
+	labels := make([]string, 0, len(matched))
+	for _, signature := range matched {
+		labels = append(labels, signature.label)
+	}
+
 	// CONTRADICTION. The message names BOTH sides, because either one alone
 	// is unactionable: the author cannot tell whether the catalogue row is
 	// wrong or the binary is the wrong binary without seeing the two
@@ -260,6 +354,6 @@ func RefuseContradictedLicence(name, declared string, data []byte) error {
 		"fontset: font %q: this face is declared %q and its own `name` table names %s instead — the binary's own "+
 			"statement of its terms is the one that cannot be edited from outside it, so the declaration is what is "+
 			"wrong here, or the bytes are not the face they are labelled as. The face says: %q",
-		name, declared, matched[0].label, statement,
+		name, declared, strings.Join(labels, " and "), statementExcerpt(statement),
 	)
 }

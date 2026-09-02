@@ -52,10 +52,26 @@ type nameRecord struct {
 // given records, each as platform 3 (Windows) / encoding 1 (UCS-2) /
 // language 0x0409 — the combination ot.ParseName decodes as UTF-16BE, and
 // the one every real face in this repository uses for these records.
-func buildNameTable(records []nameRecord) []byte {
+//
+// EVERY LENGTH AND OFFSET IN THIS TABLE IS A uint16, AND THE HELPER FATALS
+// RATHER THAN WRAPPING. A `name` record's length and its offset into the
+// string storage pool are both 16-bit fields, so a record over 65535 bytes —
+// or a cumulative storage pool over 65535 bytes — would silently wrap into a
+// table that parses to something other than what the caller asked for, and
+// every assertion built on top of it would then be passing over garbage. The
+// multi-kilobyte statements the truncation test builds put a caller within
+// reach of this, so it is a t.Fatal and not a comment.
+func buildNameTable(t *testing.T, records []nameRecord) []byte {
+	t.Helper()
 	var directory, storage []byte
 	for _, record := range records {
 		encoded := encodeUTF16BEForTest(record.value)
+		if len(encoded) > 0xFFFF {
+			t.Fatalf("buildNameTable: record %d encodes to %d bytes, which does not fit the `name` table's 16-bit length field — it would wrap and the assertions made over this face would be made over a corrupt table", record.id, len(encoded))
+		}
+		if len(storage)+len(encoded) > 0xFFFF {
+			t.Fatalf("buildNameTable: the string storage pool would reach %d bytes at record %d, which does not fit the `name` table's 16-bit offset field — the next record's offset would wrap and point into the middle of an earlier string", len(storage)+len(encoded), record.id)
+		}
 		entry := make([]byte, 12)
 		binary.BigEndian.PutUint16(entry[0:], 3)      // platformID: Windows
 		binary.BigEndian.PutUint16(entry[2:], 1)      // encodingID: Unicode BMP
@@ -65,6 +81,9 @@ func buildNameTable(records []nameRecord) []byte {
 		binary.BigEndian.PutUint16(entry[10:], uint16(len(storage)))
 		directory = append(directory, entry...)
 		storage = append(storage, encoded...)
+	}
+	if 6+12*len(records) > 0xFFFF {
+		t.Fatalf("buildNameTable: %d records put the string storage offset past the header's 16-bit field", len(records))
 	}
 	header := make([]byte, 6)
 	binary.BigEndian.PutUint16(header[0:], 0) // format 0
@@ -143,7 +162,7 @@ func removeNameTable(t *testing.T, src []byte) []byte {
 // name table replaced by exactly the records given.
 func faceWithNames(t *testing.T, records ...nameRecord) []byte {
 	t.Helper()
-	return replaceNameTable(t, testFontBytes(t), buildNameTable(records))
+	return replaceNameTable(t, testFontBytes(t), buildNameTable(t, records))
 }
 
 const (
@@ -172,6 +191,32 @@ func TestLicenceGuardPreconditions(t *testing.T) {
 	}
 	if !strings.Contains(noto, "SIL Open Font License") {
 		t.Fatalf("precondition: NotoSansThai-VF.ttf's licence statement is %q and no longer names the SIL OFL", noto)
+	}
+
+	// AND THE THREE SYNTHESISED SENTENCES, pinned to the rows they stand for.
+	// The committed fixtures above are pinned because a fixture that stopped
+	// carrying its sentence would turn a CONTRADICTION assertion into a NO
+	// EVIDENCE one; the constants below have exactly the same failure mode and
+	// were not pinned. ubuntuSentence is the reachable case: it is the only
+	// statement the record-0 tests have, so if it and the Ubuntu row's pattern
+	// ever drift apart — a spelling, a "License"/"Licence" — every assertion
+	// in TestNameID0IsConsultedOnlyWhenNameID13IsAbsent about record 0 being
+	// CONSULTED goes quiet, answered by NO EVIDENCE, and stays green.
+	for _, pin := range []struct {
+		sentence string
+		id       string
+	}{
+		{silSentence, "OFL-1.1"},
+		{apacheSentence, "Apache-2.0"},
+		{ubuntuSentence, "Ubuntu-font-1.0"},
+	} {
+		index := slices.IndexFunc(admitLicenceSignatures, func(s licenceSignature) bool { return s.id == pin.id })
+		if index < 0 {
+			t.Fatalf("precondition: this file synthesises %q to stand for the admit row %q, and no such row exists any more", pin.sentence, pin.id)
+		}
+		if !admitLicenceSignatures[index].pattern.MatchString(pin.sentence) {
+			t.Errorf("precondition: the sentence this file synthesises for %q is %q, and the row's own pattern %v does not match it — the constant and the pattern have drifted apart, so every test built on that sentence is answered by NO EVIDENCE and passes for the wrong reason", pin.id, pin.sentence, admitLicenceSignatures[index].pattern)
+		}
 	}
 }
 
@@ -210,6 +255,213 @@ func TestRefuseContradictedLicenceRefusesTheDeclaredIdTheBytesContradict(t *test
 	for _, want := range []string{"Roboto", "OFL-1.1", "Apache License"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+}
+
+// TestRefuseContradictedLicenceRefusesWhatTheOFLRowContradicts is the
+// CONTRADICTION control for the OFL row, and it is owed because every other
+// assertion in this file that a refusal HAPPENS is driven by the Apache row or
+// the Ubuntu row. The OFL row covers 19 of the 21 catalogue faces and the OFL
+// majority of upstream, and until this test it was only ever asserted to
+// ADMIT — which is also what a row matching NOTHING returns. A broken OFL row
+// is therefore invisible to an admit-only assertion.
+//
+// Measured, at the review that added this: narrowing the OFL pattern to
+// `(?i)^This Font Software is licensed under the SIL Open Font License` left
+// the whole internal/fontset suite GREEN while breaking real faces —
+// `cascadiacode`'s record 13 OPENS "Microsoft supplied font..." and carries
+// the OFL sentence further in, which is the very reason the table's comment
+// says SUBSTRING and not prefix.
+//
+// So both shapes are asserted, and both use the REAL committed OFL fixture's
+// own statement rather than a sentence invented here: the fixture as
+// committed, and the same bytes' statement carried behind a leading clause —
+// the cascadiacode shape, which no committed face in THIS repository has.
+func TestRefuseContradictedLicenceRefusesWhatTheOFLRowContradicts(t *testing.T) {
+	oflStatement, present := ReadLicenceStatement(variableNotoBytes(t))
+	if !present {
+		t.Fatal("precondition: the OFL fixture makes no readable statement, so neither shape below is a contradiction")
+	}
+
+	// The fixture as committed, declared the one other permissive id whose
+	// bytes are also committed here. A TRUE contradiction: the statement names
+	// an admitted licence, and it is not the one being claimed.
+	if err := RefuseContradictedLicence("Noto Sans Thai", "Apache-2.0", variableNotoBytes(t)); err == nil {
+		t.Error("a face whose own name table names the SIL OFL was admitted under a declared Apache-2.0 — the OFL row, which covers 19 of the 21 catalogue faces and the OFL majority of upstream, refuses nothing")
+	} else {
+		requireNamesBothSides(t, err, "Noto Sans Thai", "Apache-2.0", "SIL Open Font License")
+	}
+
+	// THE SUBSTRING SHAPE. The same real statement, behind the leading clause
+	// cascadiacode carries. This is the arm that dies under an anchored
+	// pattern while every other test in the file stays green.
+	embedded := faceWithNames(t, nameRecord{id: 13, value: "Microsoft supplied font. " + oflStatement})
+	err := RefuseContradictedLicence("Cascadia-shaped", "Apache-2.0", embedded)
+	if err == nil {
+		t.Fatal("a face whose record 13 OPENS with another clause and names the SIL OFL further in was admitted under a declared Apache-2.0 — the OFL row has become a prefix or equality match, and `cascadiacode` and `cascadiamono` are exactly this shape")
+	}
+	requireNamesBothSides(t, err, "Cascadia-shaped", "Apache-2.0", "SIL Open Font License")
+}
+
+// requireNamesBothSides is the "either side alone is unactionable" assertion,
+// factored out because four tests now make it: the author cannot tell whether
+// the catalogue row is wrong or the binary is the wrong binary without seeing
+// the declaration and the bytes' own words together.
+func requireNamesBothSides(t *testing.T, err error, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+}
+
+// TestContradictionRefusalNamesEveryMatchedLicence pins the decision the admit
+// scan already makes and the message used not to report. The scan visits EVERY
+// row before deciding, so that table order does not become policy; naming only
+// the first match would hand that policy straight back in the one artefact a
+// reader actually diagnoses from, and would send an author to fix half of what
+// is wrong with the face.
+func TestContradictionRefusalNamesEveryMatchedLicence(t *testing.T) {
+	// A statement naming TWO admitted licences, declared a THIRD. Neither
+	// match is the declaration, so both are contradictions and both are owed.
+	both := faceWithNames(t, nameRecord{id: 13, value: "Portions " + apacheSentence + ". Portions licensed under the SIL Open Font License."})
+	err := RefuseContradictedLicence("Two-Terms Face", "Ubuntu-font-1.0", both)
+	if err == nil {
+		t.Fatal("a face naming two admitted licences, neither of them the declared one, was admitted")
+	}
+	// ASSERTED OVER THE CLAUSE THAT NAMES THE ROWS, NOT OVER THE WHOLE
+	// MESSAGE. The message also QUOTES the statement, and the statement is
+	// where both licence names came from — so a search of the whole string
+	// finds "the Apache License, Version 2.0" in the face's own words and
+	// passes no matter what the guard concluded. That is the vacuity this
+	// test exists to avoid, so it reads only the head.
+	head, _, found := strings.Cut(err.Error(), "The face says:")
+	if !found {
+		t.Fatalf("the refusal no longer carries a `The face says:` clause, so this test cannot separate what the GUARD concluded from what the FACE said: %v", err)
+	}
+	for _, want := range []string{"the SIL Open Font License", "the Apache License, Version 2.0"} {
+		if !strings.Contains(head, want) {
+			t.Errorf("the refusal names only some of what the bytes matched — %q is missing from %q, so the message reports whichever row happens to come first in the table and table order has become policy after all", want, head)
+		}
+	}
+}
+
+// TestRefuseBeatsConfirmWhenAStatementNamesBoth pins the PRECEDENCE between
+// the two halves over a statement that triggers both, which is the case real
+// dual-licensed faces present: an OFL sentence and a GPL-with-font-exception
+// in one record. The refuse half runs first and against every face, so this
+// must be a REFUSAL — a confirmation of the declared OFL-1.1 would be a face
+// whose own bytes name the GPL walking in under a token this project admits,
+// which is AD-26's stated Prevents in full.
+func TestRefuseBeatsConfirmWhenAStatementNamesBoth(t *testing.T) {
+	dual := faceWithNames(t, nameRecord{id: 13, value: silSentence + " It is also available under the GNU General Public License version 2 with the font exception."})
+	err := RefuseContradictedLicence("Dual Licensed", "OFL-1.1", dual)
+	if err == nil {
+		t.Fatal("a face whose record 13 names the SIL OFL AND the GNU GPL was admitted under a declared OFL-1.1 — the admit half is deciding before the refuse half, so any copyleft statement can be waved through by pairing it with a permissive sentence and declaring the permissive id")
+	}
+	if !strings.Contains(err.Error(), "GNU GPL family") {
+		t.Errorf("the refusal of a dual OFL/GPL statement does not name the copyleft family, so it was refused as a mere contradiction and the copyleft floor did not fire: %v", err)
+	}
+}
+
+// hostFailureMessageCutBytes is maxComponentFailureMessageBytes
+// (component_commands.go:1974), HAND-COPIED across a package boundary and tied
+// by the source read in the test below rather than by the compiler — package
+// `folio` keeps it unexported and imports this package, not the reverse.
+const hostFailureMessageCutBytes = 512
+
+// hostFailureMessageCutLiteral reads that constant back out of the host's own
+// source, the way canvas_projection_wire_test.go reads engine-protocol.ts. A
+// bound copied by hand and never checked is the defect this file is otherwise
+// full of guards against.
+var hostFailureMessageCutLiteral = regexp.MustCompile(`maxComponentFailureMessageBytes\s*=\s*(\d+)`)
+
+// TestRefusalsSurviveTheHostsFailureMessageCut is the bound on the quoted
+// statement, asserted rather than described.
+//
+// The host cuts a component failure message at 512 bytes and the cut takes the
+// TAIL, which is where `The face says: %q` sits — the last clause of both
+// refusals and the whole reason either is actionable. A face's record 13 is
+// frequently the ENTIRE OFL body and record 0 can run to kilobytes, so without
+// a bound the common case is a refusal whose most informative clause is the
+// part the host deletes.
+func TestRefusalsSurviveTheHostsFailureMessageCut(t *testing.T) {
+	// The hand-copied bound, tied to the host's own literal.
+	host, err := os.ReadFile(filepath.Join("..", "..", "component_commands.go"))
+	if err != nil {
+		t.Fatalf("read the host's own failure-message bound: %v", err)
+	}
+	literal := hostFailureMessageCutLiteral.FindSubmatch(host)
+	if literal == nil {
+		t.Fatal("component_commands.go no longer declares maxComponentFailureMessageBytes where this test can read it; re-derive the extraction rather than deleting the check — the bound below is hand-copied and this read is the only thing tying it to the host")
+	}
+	if got := string(literal[1]); got != "512" {
+		t.Fatalf("the host now cuts failure messages at %s bytes and this file still bounds its excerpt against %d — the two moved apart, and a refusal's quoted statement is what the difference deletes", got, hostFailureMessageCutBytes)
+	}
+
+	// A record 13 carrying the whole licence body, which is the ordinary
+	// shape rather than an invented one.
+	body := strings.Repeat(silSentence+" This license is available with a FAQ at: https://scripts.sil.org/OFL. ", 40)
+	if len(body) < 4096 {
+		t.Fatalf("this test's subject is a multi-kilobyte statement and the one it built is %d bytes", len(body))
+	}
+
+	for _, arm := range []struct {
+		what      string
+		declared  string
+		statement string
+		names     []string
+	}{
+		{
+			what:      "CONTRADICTION",
+			declared:  "Apache-2.0",
+			statement: body,
+			names:     []string{"Big Face", "Apache-2.0", "SIL Open Font License"},
+		},
+		{
+			what:      "REFUSE-SIGNATURE",
+			declared:  "OFL-1.1",
+			statement: "Licensed under the GNU General Public License version 3. " + body,
+			names:     []string{"Big Face", "OFL-1.1", "GNU GPL family"},
+		},
+		{
+			// THE CUT LANDS INSIDE A MULTI-BYTE RUNE HERE, which is what
+			// makes the rune-boundary walk in statementExcerpt a witnessed
+			// requirement rather than a defensive habit. The prefix is 8
+			// bytes and every rune after it is 3, so byte 72 falls one byte
+			// into a rune: a cut by bytes alone emits a broken UTF-8
+			// sequence into a message the host must encode as JSON.
+			what:      "REFUSE-SIGNATURE, NON-LATIN",
+			declared:  "OFL-1.1",
+			statement: "GPL-3.0 " + strings.Repeat("本字型軟體採用開放字型授權條款釋出並依規定散布。", 200),
+			names:     []string{"Big Face", "OFL-1.1", "GNU GPL family"},
+		},
+	} {
+		face := faceWithNames(t, nameRecord{id: 13, value: arm.statement})
+		err := RefuseContradictedLicence("Big Face", arm.declared, face)
+		if err == nil {
+			t.Errorf("%s: a %d-byte statement was admitted, so this arm asserts nothing about the message", arm.what, len(arm.statement))
+			continue
+		}
+		if len(err.Error()) > hostFailureMessageCutBytes {
+			t.Errorf("%s: the refusal is %d bytes and the host cuts at %d, so the tail — `The face says:`, the one side of the comparison the author cannot look up — is deleted before it is ever read: %v", arm.what, len(err.Error()), hostFailureMessageCutBytes, err)
+		}
+		// AND IT STILL NAMES BOTH SIDES. A bound that made the message fit by
+		// losing what it is for would be worse than the truncation.
+		requireNamesBothSides(t, err, arm.names...)
+		// AND THE CUT IS MARKED, so nobody reads the excerpt as the whole of
+		// what the bytes said.
+		if !strings.Contains(err.Error(), statementExcerptElision) {
+			t.Errorf("%s: a %d-byte statement was quoted with no mark of the elision, so the excerpt reads as the face's entire statement: %v", arm.what, len(arm.statement), err)
+		}
+		// AND THE CUT IS AT A RUNE BOUNDARY. %q escapes an invalid byte as
+		// \xNN rather than failing, so a mid-rune cut is silent in the string
+		// itself; the mangled rune is what a reader sees instead of the word
+		// the face wrote.
+		if strings.Contains(err.Error(), `\x`) {
+			t.Errorf("%s: the quoted statement carries an escaped raw byte, so the excerpt was cut in the middle of a multi-byte rune: %v", arm.what, err)
 		}
 	}
 }
@@ -265,10 +517,28 @@ func TestRefuseContradictedLicenceRefusesCopyleftWhateverIsDeclared(t *testing.T
 	// must not fire on the permissive sentences real faces carry, or every
 	// admitted face becomes a refusal and the guard is turned off within a
 	// week.
-	for _, statement := range []string{silSentence, apacheSentence, ubuntuSentence} {
-		face := faceWithNames(t, nameRecord{id: 13, value: statement})
-		if err := RefuseContradictedLicence("Permissive Face", "OFL-1.1", face); err != nil && strings.Contains(err.Error(), "copyleft") {
-			t.Errorf("a refuse-signature fired on the permissive statement %q: %v", statement, err)
+	//
+	// EACH SENTENCE IS DECLARED THE ID ITS OWN BYTES NAME, and the assertion
+	// is `err == nil`. Both of those are corrections. Declaring every row
+	// `OFL-1.1` made the Apache and Ubuntu rows TRUE CONTRADICTIONS, so they
+	// returned a non-nil error for a reason that had nothing to do with the
+	// refuse half; and the check they were put through — `err != nil &&
+	// strings.Contains(err.Error(), "copyleft")` — then passed having asserted
+	// nothing at all, and would have gone fully vacuous for the OFL row too
+	// the moment the refusal's wording dropped the word "copyleft". Declaring
+	// the confirming id makes NIL the only correct answer, which is an
+	// assertion that depends on no substring of the refusal prose.
+	for _, confirmed := range []struct {
+		statement string
+		declared  string
+	}{
+		{silSentence, "OFL-1.1"},
+		{apacheSentence, "Apache-2.0"},
+		{ubuntuSentence, "Ubuntu-font-1.0"},
+	} {
+		face := faceWithNames(t, nameRecord{id: 13, value: confirmed.statement})
+		if err := RefuseContradictedLicence("Permissive Face", confirmed.declared, face); err != nil {
+			t.Errorf("the permissive statement %q, declared %q — the very id its own bytes name, so a CONFIRMATION and the least refusable face there is — was refused: a signature has widened onto the sentences real faces carry, and every admitted face becomes a refusal: %v", confirmed.statement, confirmed.declared, err)
 		}
 	}
 }
@@ -303,6 +573,24 @@ func TestRefuseContradictedLicenceAdmitsSilence(t *testing.T) {
 	unknown := faceWithNames(t, nameRecord{id: 13, value: "All rights reserved by a licence this table has never heard of."})
 	if err := RefuseContradictedLicence("Unknown Terms", "OFL-1.1", unknown); err != nil {
 		t.Errorf("a face whose statement matches no signature was refused: %v", err)
+	}
+
+	// A SENTENCE IN A NON-LATIN SCRIPT — the matrix's own row, which named
+	// `ofl/wdxllubrifonttc` (it states OFL 1.1 in Traditional Chinese) and had
+	// no test. Every pattern in both tables is ASCII, so no ASCII regex
+	// reaches under this floor: the statement is present and readable, matches
+	// nothing, and is NO EVIDENCE. It admits under any declared id, including
+	// one it plainly is not — which is the cost of the floor, stated here
+	// rather than discovered.
+	chinese := "本字型軟體採用 SIL 開放字型授權條款第 1.1 版釋出，並依該授權條款之規定散布。"
+	statement, present := ReadLicenceStatement(faceWithNames(t, nameRecord{id: 13, value: chinese}))
+	if !present || statement != chinese {
+		t.Fatalf("precondition: a Traditional Chinese statement did not survive the name table round trip (present=%v, got %q), so the arm below is testing a different string than the one it names", present, statement)
+	}
+	for _, declared := range []string{"OFL-1.1", "Apache-2.0"} {
+		if err := RefuseContradictedLicence("WDXL Lubrifont TC", declared, faceWithNames(t, nameRecord{id: 13, value: chinese})); err != nil {
+			t.Errorf("a face stating its terms in Traditional Chinese, declared %q, was refused: no signature in either table is anything but ASCII, so this can only be a pattern that has started matching what it cannot read: %v", declared, err)
+		}
 	}
 
 	// A declared id with NO admit-signature row (D-16.R.10). MIT is the
@@ -441,6 +729,23 @@ func TestGoLicenceTableSubsumesTheDesignerTable(t *testing.T) {
 	// changed quote style would silently produce.
 	if len(designerIDs) == 0 {
 		t.Fatal("vacuity guard: the extraction read 0 ids out of the designer's licenceSignatures table, so `Go subsumes TS` says nothing")
+	}
+	// AND THE VACUITY GUARD ABOVE IS NOT ENOUGH, because the extraction can
+	// truncate without emptying. designerLicenceSignatureTable is non-greedy
+	// to the FIRST column-0 `}`, so a nested object literal — or a reformat
+	// that puts a brace at column 0 mid-table — ends the match early and drops
+	// every id after that point while still returning a non-empty list. `len
+	// == 0` never fires, and "Go subsumes TS" is then asserted over a PARTIAL
+	// table: precisely the ids the extraction lost are the ids nothing checks.
+	//
+	// So the ids the TS table is KNOWN to declare today are named here. A miss
+	// means the extraction has rotted, NOT that the table shrank — a table
+	// that genuinely shrank is a decision somebody made in font-catalogue.
+	// test.ts, and updating this list is part of making it.
+	for _, known := range []string{"OFL-1.1", "Ubuntu-font-1.0"} {
+		if !slices.Contains(designerIDs, known) {
+			t.Errorf("the extraction read %v out of the designer's licenceSignatures table and %q is not among them. The likeliest cause is NOT that the TS table shrank but that THIS TEST'S EXTRACTION ROTTED: the regexp is non-greedy to the first column-0 `}`, so a nested object or a reformat truncates it silently and leaves the vacuity guard above green over a partial table. Re-derive the extraction before touching either table.", designerIDs, known)
+		}
 	}
 
 	goIDs := make([]string, 0, len(admitLicenceSignatures))
