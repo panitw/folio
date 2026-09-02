@@ -4,10 +4,12 @@
 // TypeScript-aware exists in the pipeline — the same reason every other file
 // under `scripts/` is `.mjs`.
 export interface ForbiddenFontHost { readonly host: string; readonly declaration: string }
-export interface FontHostFinding { readonly file: string; readonly host: string; readonly line: number; readonly text: string }
+export interface FontHostFinding { readonly file: string; readonly host: string; readonly half: string; readonly line: number; readonly text: string }
 export interface FontHostScanResult { readonly files: number; readonly floor: number; readonly findings: ReadonlyArray<FontHostFinding> }
 
 export const FORBIDDEN_FONT_HOSTS: ReadonlyArray<ForbiddenFontHost>
+export const DECLARED_ONLY_FONT_HOSTS: ReadonlyArray<ForbiddenFontHost>
+export const SCANNED_FONT_HOSTS: ReadonlyArray<ForbiddenFontHost & { readonly half: string }>
 export const DECLARATION_MARKER: string
 export const SCANNED_ROOTS: ReadonlyArray<string>
 export const SCANNED_EXTENSIONS: ReadonlyArray<string>

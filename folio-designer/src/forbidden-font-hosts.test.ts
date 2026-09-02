@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   DECLARATION_MARKER,
+  DECLARED_ONLY_FONT_HOSTS,
   FORBIDDEN_FONT_HOSTS,
+  SCANNED_FONT_HOSTS,
   POPULATION_FLOOR,
   SCANNED_EXTENSIONS,
   SCANNED_ROOTS,
@@ -44,6 +46,7 @@ import {
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.join(here, '..', '..')
 const hosts = FORBIDDEN_FONT_HOSTS.map((entry) => entry.host)
+const declaredOnly = DECLARED_ONLY_FONT_HOSTS.map((entry) => entry.host)
 
 describe('no forbidden font host reaches the scanned source', () => {
   it('forbids exactly the two Google Fonts hosts, spelled here as well as there', () => {
@@ -91,7 +94,7 @@ describe('no forbidden font host reaches the scanned source', () => {
       execFileSync('git', ['-C', scratch, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] })
 
       const result = scanForbiddenFontHosts(scratch, { floor: 1 })
-      expect(result.findings).toEqual([{ file: 'folio-designer/src/offender.ts', host: hosts[0], line: 2, text: `const url = 'https://${hosts[0]}/css2?family=Inter'` }])
+      expect(result.findings).toEqual([{ file: 'folio-designer/src/offender.ts', host: hosts[0], half: 'forbidden', line: 2, text: `const url = 'https://${hosts[0]}/css2?family=Inter'` }])
       // The thrown message NAMES the file and the line (AC4), not merely a count.
       expect(() => assertNoForbiddenFontHosts(scratch, { floor: 1 })).toThrow(/folio-designer\/src\/offender\.ts:2/)
       // And the clean file is not reported, so the matcher discriminates.
@@ -191,6 +194,113 @@ describe('no forbidden font host reaches the scanned source', () => {
     expect(blanked('a: 1 # note\nb: 2', '.yml')).toEqual(['a: 1       ', 'b: 2'])
     expect(blanked('a: 1 # note\nb: 2', '.ts'), 'a hash is not a comment in TypeScript').toEqual(['a: 1 # note', 'b: 2'])
     expect(blanked('<p>x</p><!-- y -->\n<p>z</p>', '.html')).toEqual(['<p>x</p>          ', '<p>z</p>'])
+  })
+
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STORY 16.1 — THE SECOND HALF (D-16.4). The guard was AMENDED, not deleted.
+  //
+  // D-16.1 reversed "no live font service", so this scan's original subject is
+  // gone and the naive reading is that the guard has nothing left to say. The
+  // amendment is the answer: two hosts are now ALLOWED, and allowed in exactly
+  // one module, so the question the scan asks changed from "is this reached at
+  // all" to "is this reached from anywhere but its one declared home".
+  //
+  // AND IT LANDED IN THE SAME STORY AS ITS SUBJECT, deliberately. A guard that
+  // arrives after the population it polices is how D-8.6.5 shipped green.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it('declares exactly the two allowed hosts as declared-only, alongside the two forbidden outright', () => {
+    // Both halves are spelled in this file, so this line declares them the way
+    // the scanner requires: IN CODE, on the same line, with the marker.
+    expect([...declaredOnly].sort(), 'folio:font-host-declaration').toEqual(['fonts.google.com', 'raw.githubusercontent.com'])
+    expect(SCANNED_FONT_HOSTS.map((entry) => entry.half)).toEqual(['forbidden', 'forbidden', 'declared-only', 'declared-only'])
+    // THE TWO HALVES ARE DISJOINT. A host in both would make the message a lie
+    // whichever sentence it printed.
+    expect(declaredOnly.filter((host) => hosts.includes(host))).toEqual([])
+  })
+
+  // THE POSITIVE CONTROL FOR THE NEW HALF. Without it, every assertion about
+  // declared-only hosts is satisfied by a scanner that matches nothing — which
+  // is exactly the vacuity the first half was written around, one host list
+  // later.
+  it('fails, naming the file, the line and the half, on an allowed host used outside its declaring module', () => {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'folio-font-host-declared-'))
+    try {
+      execFileSync('git', ['-C', scratch, 'init', '-q'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      const tree = path.join(scratch, 'folio-designer', 'src')
+      fs.mkdirSync(tree, { recursive: true })
+      // The SAME host, twice: once used, once declared. Only the used one is a
+      // finding, which is what makes this a discrimination rather than a match.
+      fs.writeFileSync(path.join(tree, 'second-fetch-site.ts'), `const url = 'https://${declaredOnly[0]}/google/fonts/main/ofl/x/x.ttf'\n`)
+      fs.writeFileSync(path.join(tree, 'font-source.ts'), `export const host = { host: '${declaredOnly[0]}', declaration: '${DECLARATION_MARKER}' }.host\n`)
+      execFileSync('git', ['-C', scratch, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] })
+
+      const result = scanForbiddenFontHosts(scratch, { floor: 1 })
+      expect(result.findings.map((finding) => finding.file)).toEqual(['folio-designer/src/second-fetch-site.ts'])
+      expect(result.findings[0].half).toBe('declared-only')
+      expect(() => assertNoForbiddenFontHosts(scratch, { floor: 1 })).toThrow(/folio-designer\/src\/second-fetch-site\.ts:1/)
+      // AND THE TWO HALVES SAY DIFFERENT THINGS. A reader told "this host is
+      // forbidden" about a host the product legitimately fetches from would
+      // either delete a working call site or delete the guard.
+      expect(() => assertNoForbiddenFontHosts(scratch, { floor: 1 })).toThrow(/DECLARED-ONLY/)
+      expect(() => assertNoForbiddenFontHosts(scratch, { floor: 1 })).not.toThrow(/FORBIDDEN OUTRIGHT/)
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true })
+    }
+  })
+
+  // THE MUTATION PROOF FOR THE NEW HALF, TAKEN BY DELETING THE HALF rather than
+  // by falsifying a condition: with `DECLARED_ONLY_FONT_HOSTS` empty, the same
+  // offending source produces no finding at all. That is what makes the green
+  // above a claim about the scanner and not about the fixture.
+  it('reds only because the second half exists: removing it makes the same offender invisible', () => {
+    const offender = `const url = 'https://${declaredOnly[0]}/google/fonts/main/ofl/x/x.ttf'`
+    expect(occurrencesIn(offender).map((finding) => finding.host)).toEqual([declaredOnly[0]])
+    // The deletion, simulated over the same matcher the scan uses: a host in
+    // neither list is not a finding, whatever it is.
+    expect(occurrencesIn(offender.replace(declaredOnly[0], 'example.test')).length).toBe(0)
+  })
+
+  // AND THE MARKER DIRECTION IS PRESERVED ACROSS THE NEW HALF. The scan runs
+  // over RAW source while the exemption runs over COMMENT-BLANKED source, so a
+  // declaration written in a comment declares nothing — for an allowed host
+  // exactly as for a forbidden one. A comment is precisely where someone parks
+  // a second fetch site.
+  it('honours a declared-only host declared in code and refuses the same declaration written in a comment', () => {
+    for (const host of declaredOnly) {
+      const inCode = `const entry = { host: '${host}', declaration: '${DECLARATION_MARKER}' }`
+      expect(exemptLineNumbers(inCode, host)).toEqual(new Set([1]))
+      expect(occurrencesIn(inCode)).toEqual([])
+
+      const inComment = `// '${host}' ${DECLARATION_MARKER}`
+      expect(exemptLineNumbers(inComment, host)).toEqual(new Set())
+      expect(occurrencesIn(inComment).length).toBe(1)
+
+      const commentedOut = `// const url = 'https://${host}/x'`
+      expect(occurrencesIn(commentedOut).length, 'a commented-out use still fails: comments are stripped from the EXEMPTION, not from the scan').toBe(1)
+    }
+  })
+
+  // THE REAL SUBJECT, IN THE REAL TREE. `src/font-source.ts` is the single
+  // declared home of every allowed host, and this asserts that it EXISTS and
+  // really carries the declarations — a second half whose only subject was a
+  // fixture would be green over a repository that had none.
+  it('finds its declared subject in the real source, and reds when that subject stops declaring', () => {
+    const fontSource = fs.readFileSync(path.join(here, 'font-source.ts'), 'utf8')
+    for (const host of declaredOnly) {
+      expect(exemptLineNumbers(fontSource, host, '.ts').size, `${host} must be declared in code in src/font-source.ts`).toBeGreaterThan(0)
+      expect(occurrencesIn(fontSource, '.ts').filter((finding) => finding.host === host)).toEqual([])
+    }
+    // AND STRIPPING THE DECLARATION REDS IT. The marker is removed from the
+    // module's own source and the same scanner is re-run over it: every host it
+    // spells becomes a finding. This is the red-proof for the half, taken by
+    // removing the declaration rather than by weakening the check.
+    const undeclared = fontSource.split(DECLARATION_MARKER).join('undeclared')
+    const findings = occurrencesIn(undeclared, '.ts')
+    expect(findings.length, 'with its declarations stripped, font-source.ts must fail the scan').toBeGreaterThanOrEqual(declaredOnly.length)
+    expect([...new Set(findings.map((finding) => finding.host))].sort()).toEqual([...declaredOnly].sort())
+    expect(findings.every((finding) => finding.half === 'declared-only')).toBe(true)
   })
 
   it('scans the source extensions a font host would realistically be typed into', () => {

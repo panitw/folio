@@ -16,6 +16,7 @@
     "verify:offline:red": "node scripts/verify-offline-release.mjs --red-proof",
     "verify:offline:red:controls": "node scripts/verify-offline-release.mjs --red-only",
     "scan:font-hosts": "node scripts/forbidden-font-hosts.mjs",
+    "refresh:font-index": "node scripts/build-font-index.mjs --refresh",
     "build": "npm run scan:font-hosts && npm run build:wasm && tsc -b && vite build && npm run build:offline && npm run verify:offline",
     "typecheck": "npm run build:wasm && tsc -b",
     "lint": "oxlint",

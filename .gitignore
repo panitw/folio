@@ -69,6 +69,10 @@ folio-designer/src/generated/runtime/
 folio-designer/src/generated/offline-assets.ts
 folio-designer/src/generated/runtime-fonts.css
 folio-designer/src/generated/font-catalogue.ts
+# Story 16.1's family-index module is GENERATED from the COMMITTED
+# folio-designer/font-index.json by scripts/build-font-index.mjs, with no
+# network and no second input. The snapshot is committed; its projection is not.
+folio-designer/src/generated/font-index.ts
 
 # ── Rendering / test output ───────────────────────────────────────
 tmp/

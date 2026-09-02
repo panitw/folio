@@ -32,12 +32,43 @@ qualification is describing something this product does not do. See D-16.1, D-16
 | Criterion | Rule |
 |---|---|
 | Licence | One of the four identifiers D-8.5.3 admits — **OFL-1.1, Apache-2.0, MIT, UFL** — enforced the way AD-26's dependency ban is: fail the build, never warn, with an unclassifiable licence treated as failure (D-8.5.2). *(This row read "OFL-1.1 only" until Story 8.6 corrected it; the allowlist has been four identifiers since 8.5, and two shipped catalogue faces are `Ubuntu-font-1.0`.)* The licence identifier **and its text** ship with the face and are recorded in every document that embeds it — since Story 8.6 they are **required** there, and so is the copyright line, or the document is refused at load. |
-| Instance | Static, single-instance faces derived ahead of the build, exactly as the shipped set is (`tools/fontgen`, committed outputs, replayable derivation, NOTICE per face). A face generated at build time makes the PDF a function of the build environment. **Extended 2026-09-02 by D-16.5 to the fetched path:** a family that ships **variable-only** upstream — 558 of 1,946, 28.7%, measured — has no static Regular to fetch and is **refused, visibly and with its reason**; the ones worth having are put through `tools/fontgen` ahead of the build like the shipped set, which is why `Noto Sans Thai` and `Noto Serif Thai` are offered despite being variable upstream. **Instancing in the browser is refused**: it makes the embedded face a function of the *author's runtime*, which is the same hazard one step further out, and folio has no backend to do it anywhere else. A row is refused because no static face is obtainable, never because upstream happens to be variable. |
+| Instance | Static, single-instance faces derived ahead of the build, exactly as the shipped set is (`tools/fontgen`, committed outputs, replayable derivation, NOTICE per face). A face generated at build time makes the PDF a function of the build environment. **Extended 2026-09-02 by D-16.5 to the fetched path:** a family that ships **variable-only** upstream — 558 of 1,946, 28.7%, measured — has no static Regular to fetch and is **refused, visibly and with its reason**; the ones worth having are put through `tools/fontgen` ahead of the build like the shipped set, which is why `Noto Sans Thai` and `Noto Serif Thai` are offered despite being variable upstream. **Instancing in the browser is refused**: it makes the embedded face a function of the *author's runtime*, which is the same hazard one step further out, and folio has no backend to do it anywhere else. A row is refused because no static face is obtainable, never because upstream happens to be variable. **CORRECTED 2026-09-03 by Story 16.1, under D-16.R.2 and D-16.R.2a; the sentence above is preserved verbatim and two of its clauses are now false.** (1) **Variable-only families are FILTERED OUT, not refused.** Measured: **37 of the 50 most popular families are variable-only** — Roboto, Open Sans, Inter, Montserrat, Raleway, Nunito, Oswald, Playfair Display — so listing them and refusing means the most common first action in the product fails. A row the author cannot act on is a row that should not be there, and the count the browser reports is the count of families it can actually add, and says so. **A hidden row is a presentation choice, never a guard:** the engine's refusal stays for anything that reaches it. (2) **The derivation premise was false.** `tools/fontgen/instance_faces.py` drives a hardcoded three-entry list of **engine** faces; **none of the 21 catalogue faces is derived** (every `NOTICE.md` reads *"NO DERIVATION APPLIES"*), and of the two Thai families cited, only `Noto Sans Thai` is a derivation. (3) **"Variable-only" is a property of the BYTE SOURCE, not of the family.** `Roboto` and `Inter` are committed here as byte-for-byte upstream *statics*, and appear among the 558 only because the `google/fonts` mirror carries VF-only builds of them — so a family the local tier holds is offered from it and the mirror's `axes` field is never consulted for it. **Instancing in the browser stays refused**, unchanged. |
 | Script coverage | Latin and Thai scale. CJK families are excluded from the embeddable catalogue in this scope — a full SC face is 10.6 MB against 646 KB (Noto Sans) and 47 KB (Noto Sans Thai). |
 | Size budget | Each catalogue face is counted against the offline bundle budget, and against the weight it will add to every document that embeds it. |
 
 Which families, and how many, was an open question in `SPEC.md` and is **settled** there
 (D-8.5.3, owner decision): 20+ families, admitted by the named permissive allowlist above.
+
+## The local face tier, and the tier beside it
+
+**Added 2026-09-03 by Story 16.1 (D-16.R.3).** The 21 families this file describes did not go away when
+D-16.1 opened the published library. They survive **unchanged**, as the **local face tier** — this
+manifest, the committed binaries, the `LICENSE*` and `NOTICE.md` beside each one, and the build-time
+gate over all of it. `pickCatalogueFamily` **gained a source; it did not swap one.**
+
+*(The term is the **local face tier**, not the "derived-static tier". None of the 21 is derived — see
+the correction in the Instance row above.)*
+
+- **Join key: exact `family` string equality.** No case-folding, no whitespace normalisation, no fuzzy
+  match. Measured: `Inter Display` and `Source Serif 4 Display` have **no upstream index row at all**,
+  so 2 of the 21 are unjoinable under any normalisation — while `Geist` / `Geist Mono` / `Geist Pixel`
+  is exactly the neighbourhood a loose matcher gets wrong. **A local face with no index row is
+  local-tier-only, and that is correct behaviour, not a defect.**
+- **Local wins, with no third-party fetch at all** — no `METADATA.pb`, no upstream licence file. The
+  committed bytes carry a **stronger** record than any fetch can produce; preferring a fetch would
+  replace a verified record with an unverified one. In the browser a local-tier row says so, and the
+  pick works offline.
+- **Divergence is deliberately not reconciled.** Under AD-8 and D-16.2 a face is identified by the
+  SHA-256 of its bytes, so *"upstream released a newer version"* is a **different face**, not a newer
+  one. No staleness check, no update prompt, no version compare — registered as **DW-158** with its
+  trigger.
+
+**And what the tier beside it does NOT ship.** The family **list** is a build-time snapshot:
+`fonts.google.com/metadata/fonts` sends no `access-control-allow-origin`, so a browser cannot read it,
+and *"the list changes only when the designer is released"* is as true of the ~1,800 snapshot families
+as it was of these 21. Only the **face, its licence text and its per-family metadata** are live. The
+snapshot carries **no licence field**, deliberately: a licence token cached beside the list would be a
+second authority on the terms, ageing on its own schedule. **No licence is knowable before a pick.**
 
 ## Per-entry record
 

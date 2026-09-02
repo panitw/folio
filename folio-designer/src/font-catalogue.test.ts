@@ -9,6 +9,11 @@ import { describe, expect, it } from 'vitest'
 // binary was right, and the artifact BETWEEN them — the only thing the pick
 // actually reads — was checked by nothing.
 import { catalogueFaces as generatedFaces } from './generated/font-catalogue'
+// THE SHARED sfnt `name`-TABLE READER (Story 16.1). This file used to write out
+// its own `DataView` walk, byte-identical to a second copy in
+// `scripts/build-wasm.mjs`; Story 16.1 needed a THIRD at runtime, over bytes
+// fetched from a third party, and extracted the walk here instead of adding one.
+import { nameTableString, requireStaticTrueTypeTables, type SfntTable } from './font-name-table'
 
 // STORY 8.5 — THE CATALOGUE, HELD TO ITS OWN RECORD.
 //
@@ -69,47 +74,32 @@ const digest = (file: string) => crypto.createHash('sha256').update(fs.readFileS
 // No font library, deliberately, on the ground `src/font-binary-identity.test.ts`
 // already records: reading four integers out of a table directory is a short
 // DataView walk, and a parser dependency added to check them would put a new
-// package in the designer's graph.
+// package in the designer's graph. Story 16.1 moved the `name`-table half of
+// that walk into `src/font-name-table.ts` and left the OS/2, head and post reads
+// here, where they are this file's own question.
+//
+// ⚠ ONE READER, AND THE COST IS STATED. The comment that used to sit on
+// `copyright` below claimed the comparison was "between two independent readers
+// rather than one reader agreeing with itself". After the extraction that is no
+// longer true of the browser side, and the claim is corrected rather than left
+// standing: the generated catalogue and this test now read nameID 0 through the
+// SAME module. What was bought is that the runtime reader — the one that decides
+// what `font.copyright` a fetched face publishes — is the reader these 21
+// committed faces exercise on every run, instead of a third hand-copy nobody
+// checks. The independence that remains is Go's: `internal/fontset` walks the
+// same table again, from the bytes, for its own different question.
+//
+// THE SWITCH WAS WITNESSED, not assumed. This file's assertions were run against
+// the generated catalogue emitted by the OLD hand-written reader and again by the
+// shared one, and all 21 `copyright` values were byte-identical.
 // ---------------------------------------------------------------------------
-type SfntTable = { readonly offset: number; readonly length: number }
 
 function fontView(file: string): DataView {
   const bytes = fs.readFileSync(file)
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
-function sfntTables(view: DataView): Readonly<Record<string, SfntTable>> {
-  const version = view.getUint32(0)
-  if (version !== 0x00010000 && version !== 0x74727565) throw new Error(`not a static TrueType sfnt: version 0x${version.toString(16).padStart(8, '0')}`)
-  const tables: Record<string, SfntTable> = {}
-  const count = view.getUint16(4)
-  for (let index = 0; index < count; index++) {
-    const record = 12 + index * 16
-    let tag = ''
-    for (let byte = 0; byte < 4; byte++) tag += String.fromCharCode(view.getUint8(record + byte))
-    tables[tag] = { offset: view.getUint32(record + 8), length: view.getUint32(record + 12) }
-  }
-  return tables
-}
-
-function nameTableString(view: DataView, tables: Readonly<Record<string, SfntTable>>, nameID: number): string | undefined {
-  const name = tables['name']
-  if (name === undefined) throw new Error('font has no name table')
-  const count = view.getUint16(name.offset + 2)
-  const storage = name.offset + view.getUint16(name.offset + 4)
-  let singleByte: string | undefined
-  for (let index = 0; index < count; index++) {
-    const record = name.offset + 6 + index * 12
-    if (view.getUint16(record + 6) !== nameID) continue
-    const platform = view.getUint16(record)
-    const length = view.getUint16(record + 8)
-    const offset = view.getUint16(record + 10)
-    const bytes = Buffer.from(view.buffer.slice(view.byteOffset + storage + offset, view.byteOffset + storage + offset + length))
-    if ((platform === 3 || platform === 0) && length % 2 === 0) return bytes.swap16().toString('utf16le')
-    singleByte ??= bytes.toString('latin1')
-  }
-  return singleByte
-}
+const sfntTables = (view: DataView): Readonly<Record<string, SfntTable>> => requireStaticTrueTypeTables(view)
 
 /** Everything AC6 asks a face about itself, read from its own bytes. */
 function instanceOfFile(file: string) {
@@ -125,9 +115,8 @@ function instanceOfFile(file: string) {
     // nameID 13 is the LICENCE DESCRIPTION the face carries in its own bytes.
     licenceDescription: nameTableString(view, tables, 13) ?? '<the file declares no licence description>',
     // nameID 0 is the COPYRIGHT, and it is the value the generated catalogue
-    // publishes as `copyright`. Read here by this file's OWN sfnt walk so the
-    // comparison is between two independent readers rather than one reader
-    // agreeing with itself.
+    // publishes as `copyright`. Read through the shared reader — see the note
+    // above for what that costs and what it bought.
     copyright: nameTableString(view, tables, 0)?.trim(),
     usWeightClass: view.getUint16(os2.offset + 4),
     // fsSelection bit 0 ITALIC, bit 5 BOLD, bit 6 REGULAR, bit 9 OBLIQUE.

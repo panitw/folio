@@ -1,6 +1,7 @@
 package fontset
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"path/filepath"
@@ -688,6 +689,28 @@ var designerLicenceSignatureTable = regexp.MustCompile(`(?s)const licenceSignatu
 // designerLicenceSignatureKey pulls the SPDX ids out of that literal.
 var designerLicenceSignatureKey = regexp.MustCompile(`(?m)^\s*'([^']+)'\s*:`)
 
+// designerTokenTable extracts the RUNTIME licence table Story 16.1 added —
+// `folio-designer/src/font-licence.ts`'s `licenceTokens`, the closed map from an
+// upstream `METADATA.pb` token to the SPDX id a `.folio` carries.
+//
+// A SECOND TABLE ON THE OTHER SIDE OF THE SAME SEAM, and the one that actually
+// decides what reaches `RefuseContradictedLicence`. The build-time table above
+// runs over 21 reviewed faces; this one runs over ~1,946 families nobody has
+// looked at, and its output is literally this package's input:
+// `component_commands.go` passes the browser's `licence` wire field straight in.
+// D-16.R.10 names exactly this gap and nominates this test to close it.
+//
+// Anchored on the declaration's OWN identifier for the same reason as above: an
+// object literal is that file's commonest shape, and an unanchored match would
+// read some other table and compare it to this one.
+var designerTokenTable = regexp.MustCompile(`(?s)const licenceTokens[^=]*=\s*\{(.*?)\n\}`)
+
+// designerTokenSPDX pulls the ADMITTED SPDX ids out of that literal — the
+// `{ spdx: 'X' }` rows only. A `{ refusal: … }` row admits nothing and must not
+// be compared against Go's signature table: a refused token never produces an
+// SPDX id at all.
+var designerTokenSPDX = regexp.MustCompile(`\{\s*spdx:\s*'([^']+)'\s*\}`)
+
 // TestGoLicenceTableSubsumesTheDesignerTable is the mirror contract, enforced
 // by a test and not by a comment.
 //
@@ -756,6 +779,72 @@ func TestGoLicenceTableSubsumesTheDesignerTable(t *testing.T) {
 		if !slices.Contains(goIDs, id) {
 			t.Errorf("the designer's build-time tie admits %q and the Go table — the authority for what goes into a document — has no row for it. The two are a mirror contract: they move in ONE commit. Go declares %v.", id, goIDs)
 		}
+	}
+
+	// ── STORY 16.1: THE SECOND DESIGNER TABLE, AND WHY IT IS READ HERE ──
+	//
+	// Until 16.1 the designer had ONE licence table, at build time, over 21
+	// reviewed faces — and that is what the extraction above reads. 16.1 added
+	// a SECOND, at RUNTIME, which decides what SPDX id a family fetched from
+	// the open library publishes into a document. Nothing watched it.
+	//
+	// The consequence of an unwatched second table is quiet rather than loud:
+	// an SPDX id this module can EMIT that `admitLicenceSignatures` has no row
+	// for lands in NO EVIDENCE and ADMITS (D-16.R.10), with no tie at all.
+	// D-16.R.10 accepted that as a bounded gap FOR TODAY'S CLOSED TOKEN SET —
+	// the moment the TS table can emit a fourth id, the gap is bounded by
+	// nothing a test reads. This is the test that reads it.
+	tokenPath := filepath.Join("..", "..", "..", "folio-designer", "src", "font-licence.ts")
+	tokenSource, err := os.ReadFile(tokenPath)
+	if err != nil {
+		// NOT A SKIP, for the same reason as above: a missing guard on the
+		// other side of a mirror contract is a finding, not an excuse.
+		t.Fatalf("read the designer's runtime licence token table %s: %v", tokenPath, err)
+	}
+	tokenMatch := designerTokenTable.FindSubmatch(tokenSource)
+	if tokenMatch == nil {
+		t.Fatal("font-licence.ts no longer declares `const licenceTokens` where this test can read it; if the table was restructured, re-derive this extraction rather than deleting the check — the runtime table is what decides which SPDX id reaches RefuseContradictedLicence")
+	}
+	var tokenIDs []string
+	for _, key := range designerTokenSPDX.FindAllSubmatch(tokenMatch[1], -1) {
+		tokenIDs = append(tokenIDs, string(key[1]))
+	}
+	// VACUITY GUARD, the same shape as the one above and for the same reason:
+	// "every TS id is covered by Go" is also true of a table read as empty.
+	if len(tokenIDs) == 0 {
+		t.Fatal("vacuity guard: the extraction read 0 admitted SPDX ids out of the designer's licenceTokens table, so `Go subsumes TS` says nothing about the runtime path")
+	}
+	// AND THE KNOWN-IDS LIST, because the extraction can TRUNCATE without
+	// emptying: designerTokenTable is non-greedy to the first column-0 `}`, so
+	// a nested literal or a reformat ends the match early and drops every row
+	// after it while the vacuity guard stays green over a partial table. A miss
+	// here means the extraction rotted, NOT that the table shrank — a table
+	// that genuinely shrank is a decision somebody made in font-licence.ts, and
+	// updating this list is part of making it.
+	for _, known := range []string{"OFL-1.1", "Apache-2.0", "Ubuntu-font-1.0"} {
+		if !slices.Contains(tokenIDs, known) {
+			t.Errorf("the extraction read %v out of the designer's licenceTokens table and %q is not among them. The likeliest cause is NOT that the TS table shrank but that THIS TEST'S EXTRACTION ROTTED: the regexp is non-greedy to the first column-0 `}`, so a nested object or a reformat truncates it silently. Re-derive the extraction before touching either table.", tokenIDs, known)
+		}
+	}
+	// SUBSUMPTION IS STRICT TODAY AND THAT IS WHY THIS IS NOT VACUOUS: the TS
+	// runtime table admits {OFL-1.1, Apache-2.0, Ubuntu-font-1.0} and Go
+	// declares exactly those three. Red-prove it by adding a row with a fourth
+	// SPDX id to `licenceTokens` and running this test.
+	for _, id := range tokenIDs {
+		if !slices.Contains(goIDs, id) {
+			t.Errorf("the designer's RUNTIME token table can put %q into a document's font.licence and the Go signature table has no row for it, so a face declaring it would be tied against nothing and admitted as NO EVIDENCE. D-16.R.10 bounded that gap to today's closed token set; a fourth id unbounds it. Go declares %v.", id, goIDs)
+		}
+	}
+	// AND THE REFUSED ROWS ARE NOT SILENTLY DROPPED BY THE EXTRACTION. `CC-BY-SA`
+	// is in the TS table precisely so that ABSENT and REFUSED stop looking the
+	// same; an extraction that read the whole table as admitted rows, or that
+	// missed the refused one entirely, would be reading a different table from
+	// the one that ships.
+	if !bytes.Contains(tokenMatch[1], []byte("CC-BY-SA")) {
+		t.Error("the designer's licenceTokens table no longer carries its refused row. It is there so a fifth upstream directory reads as `we have not classified this` rather than as a policy decision nobody made; if it was removed, that is a decision to make in font-licence.ts and to record, not a rotted extraction to paper over")
+	}
+	if slices.Contains(tokenIDs, "CC-BY-SA") {
+		t.Error("the extraction read the REFUSED row as an admitted SPDX id; a refused token produces no SPDX id at all, and comparing it against Go's signature table asserts the wrong thing")
 	}
 }
 

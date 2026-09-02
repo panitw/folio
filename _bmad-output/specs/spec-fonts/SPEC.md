@@ -47,9 +47,18 @@ the faces a document uses are declared in it, chosen in the designer, and carrie
 - **CAP-3 — Bundled font catalogue in the designer**
   - **intent:** The author searches a curated catalogue of freely-licensed families and picks one,
     and picking it puts that face in the document.
-  - **success:** With the browser offline, the author searches the catalogue, picks a family, and
+  - ~~**success:** With the browser offline, the author searches the catalogue, picks a family, and
     the saved file contains that face's bytes and its licence record; no request leaves the
-    machine at any point in that flow.
+    machine at any point in that flow.~~
+  - **success (AMENDED 2026-09-03 by Story 16.1 under D-16.1; the original is preserved above
+    verbatim):** The author searches **two tiers behind one control** — the 21 committed faces and a
+    build-time snapshot of the published library — and picks a family. Picking one of the 21 puts that
+    face's bytes and its licence record in the saved file **with no request leaving the machine**;
+    picking one from the snapshot fetches its metadata, its upstream licence file and its face bytes,
+    **refuses before any byte is embedded** if those terms are not ones this product admits, and
+    otherwise puts the same three-part record in the file. **With the browser offline the first still
+    works and the second states that a family cannot be added right now** — a degradation, never a
+    document that will not render.
 
 - **CAP-4 — Located failure for a broken font reference**
   - **intent:** A chain entry that names neither a shipped face nor a present, decodable font
@@ -69,9 +78,24 @@ the faces a document uses are declared in it, chosen in the designer, and carrie
   storage mechanism, no new canonical-serialization rule.
 - **Nothing is fetched or read at render time.** No network, no host-installed font, no path on
   disk (FR33). A document renders from its own bytes plus the shipped set.
-- **The designer's authoring path is offline too.** The catalogue and its faces ship in the offline
+- ~~**The designer's authoring path is offline too.** The catalogue and its faces ship in the offline
   release bundle behind the service worker's verified asset URLs; no call to `fonts.google.com` or
-  `fonts.gstatic.com` at any point.
+  `fonts.gstatic.com` at any point.~~
+  **AMENDED 2026-09-03 by Story 16.1, under D-16.1 and D-16.3; the original is preserved above
+  verbatim.** The clause above followed from the catalogue being the only source, which D-16.1
+  reversed. **What still holds, and it is the larger half:** `fonts.gstatic.com` and
+  `fonts.googleapis.com` are still **never called** — the second because D-16.3 measured that its
+  `css2` endpoint serves a browser `woff2` (which this engine refuses by design) split by
+  `unicode-range` into per-script subsets, and a source scan fails the build on either host appearing
+  anywhere outside its one declared module. The **local face tier** — the 21 committed faces — still
+  ships in the offline release bundle behind the service worker's verified asset URLs, and picking one
+  contacts no third party at all. **What changed:** a family the author reaches beyond those 21 has its
+  `METADATA.pb`, its licence file and its face bytes fetched from
+  `raw.githubusercontent.com/google/fonts` at the moment it is picked. **The family LIST is not
+  fetched** — `fonts.google.com/metadata/fonts` sends no `access-control-allow-origin`, so a browser
+  cannot read it and it ships as a dated build-time snapshot. **The degradation is stated:** offline,
+  the 21 local faces and anything this machine already holds are still pickable, and the control says
+  a new family cannot be added right now — never a document that will not render.
 - **Embedded faces are stored whole.** No save-time subsetting: the data a template renders changes
   between saves, so a subset chosen at save time drops glyphs a later render needs. Subsetting
   stays where it already is — once per render, inside the PDF producer.

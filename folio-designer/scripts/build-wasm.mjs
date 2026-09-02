@@ -5,6 +5,13 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
 import { CATALOGUE_ASSET_PREFIX } from './offline-release-contract.mjs'
+import { emitFontIndexModule } from './build-font-index.mjs'
+// THE ONE sfnt `name`-TABLE READER (Story 16.1). This script used to carry
+// its own hand-written `DataView` walk, and `src/font-catalogue.test.ts`
+// carried a second one; Story 16.1 needed a THIRD, at runtime, and extracted
+// the walk into one production module instead. Node 24 strips the types, so
+// this plain-ESM build script imports the TypeScript directly.
+import { faceCopyright as readFaceCopyright } from '../src/font-name-table.ts'
 
 const designerRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const generatedDir = join(designerRoot, 'src', 'generated')
@@ -233,42 +240,20 @@ const catalogueFaces = catalogue.map((entry) => {
 // two licences emit two copies here. (The DOCUMENT still carries one copy per
 // embedded face — deliberately, because an asset passed on alone must carry its
 // own terms — but there is no reason for the BUNDLE to pay for that.)
-const sfntTableDirectory = (view) => {
-  const tables = {}
-  const count = view.getUint16(4)
-  for (let index = 0; index < count; index++) {
-    const record = 12 + index * 16
-    let tag = ''
-    for (let byte = 0; byte < 4; byte++) tag += String.fromCharCode(view.getUint8(record + byte))
-    tables[tag] = { offset: view.getUint32(record + 8), length: view.getUint32(record + 12) }
-  }
-  return tables
-}
-const nameTableString = (view, tables, nameID) => {
-  const name = tables['name']
-  if (name === undefined) return undefined
-  const count = view.getUint16(name.offset + 2)
-  const storage = name.offset + view.getUint16(name.offset + 4)
-  let singleByte
-  for (let index = 0; index < count; index++) {
-    const record = name.offset + 6 + index * 12
-    if (view.getUint16(record + 6) !== nameID) continue
-    const platform = view.getUint16(record)
-    const length = view.getUint16(record + 8)
-    const offset = view.getUint16(record + 10)
-    const bytes = Buffer.from(view.buffer.slice(view.byteOffset + storage + offset, view.byteOffset + storage + offset + length))
-    if ((platform === 3 || platform === 0) && length % 2 === 0) return bytes.swap16().toString('utf16le')
-    singleByte ??= bytes.toString('latin1')
-  }
-  return singleByte
-}
+// THE COPYRIGHT READER IS NOW SHARED (Story 16.1). `sfntTableDirectory`,
+// `nameTableString` and `faceCopyright` used to be written out here, by hand,
+// beside a byte-identical second copy in `src/font-catalogue.test.ts`. Both are
+// now `src/font-name-table.ts`, which the designer also uses AT RUNTIME to read
+// nameID 0 out of a face fetched seconds earlier. One walk, three callers, no
+// font-parsing dependency added.
 const faceCopyright = (file) => {
-  const bytes = readFileSync(file)
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const copyright = nameTableString(view, sfntTableDirectory(view), 0)?.trim()
-  if (!copyright) throw new Error(`${file} declares no copyright in its own name table (nameID 0); a face embedded into a document must state whose it is, and the engine refuses to load a document that does not`)
-  return copyright
+  try {
+    return readFaceCopyright(readFileSync(file))
+  } catch (error) {
+    throw new Error(`${file}: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
+
 // PER FACE, NEVER PER IDENTIFIER. This was keyed by SPDX id and filled from
 // whichever face reached that id first, which gave 17 of 21 faces ANOTHER
 // PROJECT'S licence text — every OFL-1.1 face emitted cascadiacode's LICENSE,
@@ -364,3 +349,8 @@ writeFileSync(join(generatedDir, 'runtime-fonts.css'), shippedRules
   // rather than written out. Same shape as the six above, deliberately: no
   // `font-weight`, no `font-style`, one static Regular per family (AC6).
   + catalogueFaces.map((face) => `@font-face { font-family: '${face.family}'; src: url('./runtime/${face.filename}') format('truetype'); font-display: swap; }\n`).join(''))
+
+// THE FAMILY INDEX SNAPSHOT MODULE, emitted beside the catalogue module and
+// from committed data alone — no network, because an offline release build is a
+// shipped gate. See scripts/build-font-index.mjs for what is committed and why.
+emitFontIndexModule()

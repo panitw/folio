@@ -43,6 +43,57 @@ export const FORBIDDEN_FONT_HOSTS = [
   { host: 'fonts.gstatic.com', declaration: 'folio:font-host-declaration' },
 ]
 
+/**
+ * STORY 16.1 — THE SCAN'S SECOND HALF (D-16.4). THE GUARD IS AMENDED, NEVER
+ * DELETED.
+ *
+ * D-16.1 reversed *"no live font service"*: the author now reaches the published
+ * library, and a family's face, licence text and metadata are fetched from a
+ * third party at the moment of the pick. The obvious reading of that reversal is
+ * that this scan has lost its subject. It has not — it has gained a second one.
+ *
+ * THE TWO HALVES SAY DIFFERENT THINGS, and collapsing them would lose the
+ * distinction the reversal turns on:
+ *
+ *   FIRST HALF (`FORBIDDEN_FONT_HOSTS`) — the two stylesheet-and-asset hosts
+ *   declared above stay FORBIDDEN OUTRIGHT. Not because they are Google's, but
+ *   because D-16.3 measured what the `css2` endpoint actually serves a browser:
+ *   `woff2`, which `decodeRecognisedFont` refuses by design, split by
+ *   `unicode-range` into per-script subsets that would embed partial coverage
+ *   into a document naming the whole family. Forbidding the host is what keeps
+ *   that trap shut.
+ *
+ *   SECOND HALF (`DECLARED_ONLY_FONT_HOSTS`, declared just below) — the
+ *   repository host that serves face bytes with CORS, and the index host the
+ *   build script snapshots. Both are ALLOWED, and allowed IN EXACTLY ONE PLACE:
+ *   they may appear only on a line carrying the declaration marker in code, and
+ *   anywhere else under `SCANNED_ROOTS` fails the build. That is what keeps
+ *   `src/font-source.ts` the single declared home of every host this designer
+ *   reaches, instead of a fetch site appearing wherever somebody found it
+ *   convenient.
+ *
+ * ⚠ NEITHER HALF'S HOSTS MAY BE SPELLED IN THIS COMMENT, and that is the guard
+ * working on its own file: the scan reads RAW source, so a host named in prose
+ * here is an occurrence like any other. Read them off the two arrays.
+ *
+ * ⚠ THE SECOND HALF WOULD PASS VACUOUSLY ON INTRODUCTION IF ITS SUBJECT DID NOT
+ * EXIST, which is the same trap the first half was written around and the reason
+ * this amendment lands in the SAME story as the module it polices, rather than
+ * in a successor: a guard that arrives after the population it polices is how
+ * D-8.6.5 shipped green. `src/forbidden-font-hosts.test.ts` red-proves it by
+ * DELETING THE HALF, never by falsifying a condition.
+ */
+export const DECLARED_ONLY_FONT_HOSTS = [
+  { host: 'raw.githubusercontent.com', declaration: 'folio:font-host-declaration' },
+  { host: 'fonts.google.com', declaration: 'folio:font-host-declaration' },
+]
+
+/** Both halves, scanned by one walk. The half a finding came from is carried on it. */
+export const SCANNED_FONT_HOSTS = [
+  ...FORBIDDEN_FONT_HOSTS.map((entry) => ({ ...entry, half: 'forbidden' })),
+  ...DECLARED_ONLY_FONT_HOSTS.map((entry) => ({ ...entry, half: 'declared-only' })),
+]
+
 /** The marker a line must carry, IN CODE, to declare a host deliberately. */
 export const DECLARATION_MARKER = 'folio:font-host-declaration'
 
@@ -171,11 +222,11 @@ export function exemptLineNumbers(source, host, extension = '.ts') {
 export function occurrencesIn(source, extension = '.ts') {
   const lines = source.split('\n')
   const found = []
-  for (const { host } of FORBIDDEN_FONT_HOSTS) {
+  for (const { host, half } of SCANNED_FONT_HOSTS) {
     const exempt = exemptLineNumbers(source, host, extension)
     for (let index = 0; index < lines.length; index++) {
       if (!lines[index].includes(host) || exempt.has(index + 1)) continue
-      found.push({ host, line: index + 1, text: lines[index].trim().slice(0, 160) })
+      found.push({ host, half, line: index + 1, text: lines[index].trim().slice(0, 160) })
     }
   }
   return found
@@ -248,12 +299,24 @@ export function assertNoForbiddenFontHosts(root, options = {}) {
     throw new Error(`forbidden font host scan read only ${result.files} files, under its floor of ${result.floor} — refusing to report a clean population over one this small, because a scan that read almost nothing is indistinguishable from a scan that found nothing`)
   }
   if (result.findings.length > 0) {
-    const named = result.findings.map((finding) => `  ${finding.file}:${finding.line}: ${finding.host}\n    ${finding.text}`).join('\n')
+    const named = result.findings.map((finding) => `  ${finding.file}:${finding.line}: ${finding.host} (${finding.half})\n    ${finding.text}`).join('\n')
+    // THE TWO HALVES GET TWO SENTENCES, because they are two different findings.
+    // A reader told "this host is forbidden" about a host the product legitimately
+    // fetches from would either delete a working call site or delete the guard.
+    const forbidden = result.findings.some((finding) => finding.half === 'forbidden')
+    const declaredOnly = result.findings.some((finding) => finding.half === 'declared-only')
     throw new Error(`forbidden font host in scanned source (${result.findings.length} occurrence(s) across ${result.files} files scanned):\n${named}\n`
-      + 'The catalogue is BUNDLED AND PRECACHED (D-8.5.12): SPEC.md\'s ## Non-goals forbids a live font service, an arbitrary '
-      + 'URL and a download on first use, and no middle tier was invented. A commented-out host fails too — comments are '
-      + 'stripped from the EXEMPTION, not from the scan. If a line must name a host, declare it in code with the marker '
-      + `\`${DECLARATION_MARKER}\` on that same line.`)
+      + (forbidden
+        ? `FORBIDDEN OUTRIGHT: ${FORBIDDEN_FONT_HOSTS.map((entry) => entry.host).join(' and ')} are never reached. D-16.3 measured that the `
+          + 'stylesheet endpoint serves woff2 — which the engine refuses by design — split by unicode-range into per-script subsets '
+          + 'that would embed partial coverage into a document naming the whole family. '
+        : '')
+      + (declaredOnly
+        ? 'DECLARED-ONLY: this host is one the designer legitimately fetches from, and it may be spelled in exactly one module — '
+          + 'src/font-source.ts, the single declared home of every allowed host (D-16.4). Do not add a second fetch site; call that one. '
+        : '')
+      + 'A commented-out host fails too — comments are stripped from the EXEMPTION, not from the scan. If a line must name a host, '
+      + `declare it in code with the marker \`${DECLARATION_MARKER}\` on that same line.`)
   }
   return result
 }

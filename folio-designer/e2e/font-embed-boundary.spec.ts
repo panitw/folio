@@ -91,12 +91,37 @@ async function currentRevision(page: import('@playwright/test').Page): Promise<n
   return match ? Number(match[1]) : -1
 }
 
-test('the designer offers exactly the families the catalogue declares', async ({ page }) => {
+// STORY 16.1 SPLIT THE SECOND GROUP IN TWO, AND THIS TEST NOW ASSERTS THE
+// TIER RATHER THAN THE WHOLE LIST.
+//
+// The control used to offer exactly the 21 committed families and nothing else.
+// It now offers those PLUS families from the build-time index snapshot, whose
+// bytes are fetched at the moment of a pick — and the painted list is capped
+// while the count is not. So "exactly the families the catalogue declares" is
+// no longer a true statement about the listbox, and the property that replaced
+// it is the one the ruling actually cares about: THE LOCAL FACE TIER IS OFFERED
+// IN FULL, IT SAYS THAT IT NEEDS NO DOWNLOAD, AND NOTHING IS MISSING FROM IT.
+// A twenty-second committed family still cannot escape this harness.
+const LOCAL_NOTE = ' — add to document, already on this machine'
+const WEB_NOTE = ' — add to document'
+
+test('the designer offers the whole local face tier, marked as needing no download', async ({ page }) => {
   await placeAndSelectText(page)
   await page.getByRole('combobox', { name: 'Font family' }).click()
   const options = await page.getByRole('listbox', { name: 'Fonts' }).getByRole('option').allTextContents()
-  const offered = options.filter((text) => text.includes('— add to document')).map((text) => text.replace(' — add to document', '').trim())
-  expect([...offered].sort()).toEqual([...families].sort())
+  const local = options.filter((text) => text.includes(LOCAL_NOTE)).map((text) => text.replace(LOCAL_NOTE, '').trim())
+  expect([...local].sort()).toEqual([...families].sort())
+  // AND THE SECOND TIER IS REALLY THERE, distinct from the first: rows that
+  // carry the plain note are families whose bytes are not on this machine.
+  const web = options.filter((text) => text.includes(WEB_NOTE) && !text.includes(LOCAL_NOTE))
+  expect(web.length, 'the snapshot tier must contribute rows of its own').toBeGreaterThan(0)
+  // AND THE COUNT IS THE ADDABLE COUNT, WITH THE LIST'S STALENESS STATED. The
+  // family list is a build-time snapshot — its endpoint sends no CORS header —
+  // and only the typeface is fetched.
+  const disclosure = options.find((text) => text.includes('families you can add'))
+  expect(disclosure, 'the control must state how many families can be added').toBeTruthy()
+  expect(disclosure).toMatch(/snapshot taken on \d{4}-\d{2}-\d{2}/)
+  expect(disclosure).toMatch(/changes only when the designer is released/)
 })
 
 test('every catalogue family embeds, and no pick is answered by a boundary sentence', async ({ page }) => {
@@ -112,7 +137,7 @@ test('every catalogue family embeds, and no pick is answered by a boundary sente
     const combobox = page.getByRole('combobox', { name: 'Font family' })
     await combobox.click()
     await combobox.fill(family)
-    await page.getByRole('option', { name: `${family} — add to document` }).click()
+    await page.getByRole('option', { name: `${family}${LOCAL_NOTE}` }).click()
     let outcome = 'TIMED OUT with no engine answer'
     try {
       await expect

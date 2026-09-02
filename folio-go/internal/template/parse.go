@@ -468,6 +468,51 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 // `"\n"` are keys that state exactly as much as `""` does — nothing — while
 // passing a length check. A rule that can be satisfied by a space is a rule
 // about typing rather than about terms.
+//
+// ---------------------------------------------------------------------------
+// THE ONE-DOOR ASYMMETRY IS DELIBERATE, AND IT IS NOT A GAP TO TIDY UP
+// (D-16.R.11).
+//
+// This function requires that an embedded face STATE its terms. It does not ask
+// whether the bytes AGREE with the terms stated. That second question — the
+// licence tie — is asked at exactly one door, `fontset.RefuseContradictedLicence`
+// called from `embedFontFamily` in `component_commands.go`, so a document
+// written by this product cannot carry a face whose own `name` table
+// contradicts its declared licence. A document HAND-AUTHORED with a
+// contradictory pair still loads.
+//
+// THE SECOND DOOR IS DEFERRED PAST `folio-go/v0.1.0`, AND NO MIGRATION IS OWED.
+// Registered with its trigger; the deferral is a ruling, not an oversight, and
+// the reasoning is short enough to keep here so the next reader does not close
+// the gap as a tidy-up and thereby ship an unpriced narrowing:
+//
+//   - It is a DIFFERENT CLASS from the `fvar` case that D-16.6 ruled "both, or
+//     halt" on. `fvar`'s guard already HAD two doors and its defect was a
+//     document that saves cleanly and fails at RENDER. Here the bytes can be
+//     honoured, the render is correct, and what is wrong is a label the
+//     hand-author wrote themselves. "Both, or halt" governs REMOVING a guard,
+//     not declining to duplicate a new one.
+//   - The deadline does not bite, because the migration prices at nothing.
+//     Under the three-valued tie (D-16.R.7) silence ADMITS, so the only
+//     documents this narrowing could ever break are documents whose font bytes
+//     CONTRADICT their declared licence — measured at 1.0% upstream, and the
+//     product's own writer can no longer produce one. The "migration" is a
+//     located diagnostic saying the document declares terms its own font bytes
+//     contradict: a refusal telling the truth, not a compatibility break.
+//
+// ⚠ THE TRIGGER IS A CONDITION, NOT A DATE, and it is the reason this paragraph
+// exists rather than a backlog line. Widening the tie's ADMIT side stays free
+// forever. ADDING A REFUSE-SIGNATURE AFTER THE TAG IS ITSELF THE NARROWING,
+// because a face that admits today as NO EVIDENCE becomes a CONTRADICTION
+// tomorrow. So: close this second door before any refuse-signature is added to
+// `internal/fontset/licencesignature.go` after `folio-go/v0.1.0` is cut, or
+// accept that the addition is itself the narrowing and price it then. Owner:
+// whoever adds that signature, or Story 15.3 if it elects to close it inside the
+// tag — which is a scope decision for the owner, not an engineering tidy-up.
+//
+// AND THE ONE DOOR THAT DOES EXIST MUST STAY PROVABLY PRESENT: Story 16.1b's
+// test that a contradiction is refused at the command may not be deleted on the
+// reasoning that the load path covers it. It does not.
 func requireEmbeddedFaceLicence(asset Asset, key, entryField string) error {
 	missing := func(name string) error {
 		return newLoadError("assets."+key+".font."+name, "", "",

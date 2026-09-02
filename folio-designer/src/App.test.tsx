@@ -8,6 +8,7 @@ import type { EngineClient } from './engine-client'
 import type { CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
+import { sfntWithNames } from './test/sfnt-fixture'
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
@@ -1326,10 +1327,25 @@ describe('typography controls over the engine-projected closed sets', () => {
     // is which.
     // The accessible name collapses the note's leading space, so the pattern is
     // whitespace-tolerant rather than pinned to one spelling of the gap.
-    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*add to document$/ })
+    //
+    // STORY 16.1: THE NOTE NOW SAYS WHICH TIER THE ROW COMES FROM. `Inter` is
+    // one of the 21 committed faces — the LOCAL FACE TIER — so its row states
+    // that nothing is downloaded. A family that exists only in the build-time
+    // index snapshot carries the plain note, because picking it fetches.
+    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*add to document, already on this machine$/ })
     expect(inter).toBeInTheDocument()
     expect(screen.getByText('In this document')).toBeInTheDocument()
     expect(screen.getByText('Catalogue — not yet in this document')).toBeInTheDocument()
+    // AND THE COUNT IS THE ADDABLE COUNT, WITH "LIVE" QUALIFIED. The list is a
+    // dated build-time snapshot — the endpoint that publishes it sends no
+    // CORS header and a browser cannot read it — and only the typeface is
+    // fetched at the moment of a pick. A control that let this read as a live
+    // font browser would be saying something untrue.
+    const disclosure = screen.getByText(/families you can add/)
+    expect(disclosure.textContent).toMatch(/already on this machine/)
+    expect(disclosure.textContent).toMatch(/snapshot taken on \d{4}-\d{2}-\d{2}/)
+    expect(disclosure.textContent).toMatch(/changes only when the designer is released/)
+    expect(disclosure.textContent).toMatch(/single variable file are not shown/)
     // AND THE DECLINE IS STATED. There is no import control to be found
     // missing, so the answer to "where do I add my own font file?" is written
     // where the question is asked, rather than left to be inferred from its
@@ -1338,6 +1354,12 @@ describe('typography controls over the engine-projected closed sets', () => {
     // The declared group never carries the addition note: picking one of those
     // sets a property, and it is already in the file.
     expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])
+    // AND A SNAPSHOT-ONLY FAMILY IS REACHED BY TYPING, because the painted list
+    // is capped while the count is not: `Kanit` is in the published library and
+    // not among the 21, its row carries the PLAIN note because picking it
+    // fetches, and the cap notice states how much of the match set is painted.
+    fireEvent.change(combobox, { target: { value: 'Kanit' } })
+    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }), 'a snapshot-only family is offered, and its row does not claim to be on this machine').toBeInTheDocument()
   })
 
   // STORY 8.6, AC1/AC3 AT THE BROWSER BOUNDARY. Picking a catalogue entry
@@ -1358,12 +1380,19 @@ describe('typography controls over the engine-projected closed sets', () => {
       const request = select()
       const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
       fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*add to document$/ }))
+      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*add to document, already on this machine$/ }))
       await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
       // THE BYTES CAME FROM THE BUNDLE, not from a host. The URL is one of the
       // release's own content-addressed assets, which is what makes the pick
       // work offline — SPEC-fonts requires no call to either Google Fonts host
       // at any point, and `forbidden-font-hosts.test.ts` is what names them.
+      //
+      // STORY 16.1 MAKES THIS THE LOCAL-TIER WITNESS (D-16.R.3): `Inter` is one
+      // of the 21 committed faces, so the pick issues EXACTLY ONE request, to a
+      // relative release asset — no `METADATA.pb`, no licence file, no third
+      // party. `Inter` is variable-only on the `google/fonts` mirror and static
+      // here, which is precisely why the snapshot's `axes` field is not
+      // consulted for a family the local tier holds.
       expect(fetchStub).toHaveBeenCalledTimes(1)
       expect(String(fetchStub.mock.calls[0][0])).not.toMatch(/^https?:/)
       expect(sent).toHaveLength(1)
@@ -1383,6 +1412,86 @@ describe('typography controls over the engine-projected closed sets', () => {
       // AC3: Inter covers Latin and nothing else, so the proposed tail is the
       // shipped faces for the scripts it does NOT cover, in order.
       expect(payload['tail']).toEqual(['Noto Sans Thai', 'Noto Sans SC'])
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // STORY 16.1, THE WEB TIER, END TO END AT THE BROWSER BOUNDARY. A row in the
+  // designer's BUILD-TIME snapshot of the published library becomes a command
+  // payload — and the three fields the engine refuses a document without come
+  // from three DIFFERENT authorities, none of them invented here: `licence`
+  // from the family's own METADATA.pb token mapped through the closed table,
+  // `licenceText` from the upstream licence file fetched beside the face, and
+  // `copyright` from nameID 0 of the bytes themselves.
+  it('resolves a snapshot family through METADATA.pb into one embed command carrying its terms', async () => {
+    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
+    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
+    const licence = 'This Font Software is licensed under the SIL Open Font License, Version 1.1.'
+    const fetchStub = vi.fn(async (url: string) => {
+      if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => metadata }
+      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => licence }
+      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
+      return { ok: false, status: 404, text: async () => '' }
+    })
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      const request = select()
+      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
+      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
+      expect(payload['kind']).toBe('embedFontFamily')
+      // TWELVE FIELDS, UNCHANGED. componentFields(raw, 12) counts every
+      // top-level key and refuses anything else; this story changed the SOURCE
+      // of the values and not the arity.
+      expect(Object.keys(payload)).toHaveLength(12)
+      expect(payload['family']).toBe('Kanit')
+      // THE SPDX ID, NEVER THE UPSTREAM `OFL` TOKEN.
+      expect(payload['licence']).toBe('OFL-1.1')
+      expect(payload['licenceText']).toBe(licence)
+      expect(payload['copyright']).toBe('Copyright 2020 The Kanit Project Authors')
+      expect(payload['mediaType']).toBe('font/ttf')
+      expect(String(payload['source'])).toContain('ofl/kanit/Kanit-Regular.ttf')
+      // Kanit covers Latin and Thai, so the proposed tail is the shipped face
+      // for the one script it does not cover.
+      expect(payload['tail']).toEqual(['Noto Sans SC'])
+      // THE BYTES CAME FROM THE DECLARED REPOSITORY HOST AND NEVER FROM A
+      // STYLESHEET ENDPOINT: css2 serves woff2, which the engine refuses by
+      // design, split by unicode-range into per-script subsets. The host is
+      // spelled below with the scanner's marker, in code, on its own line —
+      // see scripts/forbidden-font-hosts.mjs.
+      const urls = fetchStub.mock.calls.map((call) => String(call[0]))
+      const repositoryHost = { host: 'raw.githubusercontent.com', declaration: 'folio:font-host-declaration' }.host
+      expect(urls.some((url) => url.includes(repositoryHost))).toBe(true)
+      expect(urls.some((url) => /css2|woff2|googleapis|gstatic/.test(url))).toBe(false)
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // OFFLINE DEGRADES, NEVER BREAKS, AND THE REFUSAL IS LOCATED AT THE CONTROL
+  // THE AUTHOR ACTED ON. No network means no NEW family; it never means a
+  // document that will not render — the three shipped Noto faces are the
+  // coverage and an embedded face travels inside the `.folio`.
+  it('states that a family cannot be added right now when the network is down, and commits nothing', async () => {
+    const fetchStub = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      const request = select()
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toMatch(/You cannot add a family without a network connection/)
+      expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
+      expect(request).not.toHaveBeenCalled()
     } finally {
       globalThis.fetch = restore
     }

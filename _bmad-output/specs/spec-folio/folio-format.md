@@ -535,6 +535,19 @@ It is a record *about* the face for the people reading and reusing the document 
 on what terms and by whose grant the bytes may be passed on, and the `source` that says where they
 came from. The engine derives none of it from the bytes and none of it is required to **render**.
 
+**THE RECORD IS UNCHANGED BY EPIC 16; ITS SOURCE IS NOT** *(noted 2026-09-03 by Story 16.1, under
+D-16.1)*. Every field above means exactly what it meant, is required of a chain-named asset exactly as
+it was, and is refused at load on exactly the same terms. What changed is **where the designer gets the
+values**: until Epic 16 all three came from the 21 committed faces and their committed `LICENSE*`
+files; now a family fetched from the published library supplies `licenceText` from **its own upstream
+licence file, fetched with it and carried verbatim** (never a hand-copy — a hand-copy would be a second
+authority on the terms), `copyright` from **nameID 0 of the face's own `name` table** (the one statement
+of provenance that cannot be edited from outside the binary), and `licence` from a **closed token
+table** mapping the upstream vocabulary to the SPDX identifiers this project admits. **`licence` carries
+the SPDX id and never the upstream token** — `OFL-1.1`, not `OFL` — because two vocabularies in one
+field make a document unsortable by its own terms. A document written before Epic 16 and a document
+written after it are the same shape, readable by the same parser, and nothing here moved.
+
 **Whether `font` is optional depends on whether a chain names the asset, and that is the whole
 rule.**
 

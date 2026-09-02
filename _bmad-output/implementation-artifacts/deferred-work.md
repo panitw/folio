@@ -7261,3 +7261,73 @@ statement the table failed to read.
 failure is the intended floor.
 
 ---
+
+### DW-158 — the local face tier and its upstream mirror are allowed to diverge, with no staleness check and no way to notice
+
+- **Deferred by:** Story 16.1 (2026-09-03), on the ruling that created the condition (D-16.R.3). This
+  is a **registered consequence of a decision**, not an omission found afterwards.
+- **Owner:** whoever proposes reconciling the two tiers, or the epic that adds a face-update path.
+- **Severity:** LOW — by construction it can never produce a wrong document; it can only leave an
+  older face in a new one.
+- **Status:** OPEN.
+
+Nineteen of the 21 local-tier families also exist upstream in `google/fonts`, and a local pick uses the
+**committed** bytes with **no fetch at all** — no `METADATA.pb`, no licence file, no version compare.
+Upstream will move; the committed bytes will not. **There is no staleness check, no update prompt and
+no version comparison anywhere in Epic 16**, and the browser does not tell the author that the family
+they picked exists upstream in a later cut.
+
+**Why that is deliberate rather than missing.** Under AD-8 and D-16.2 a face is identified by the
+SHA-256 of its bytes, so *"upstream released a newer version"* is a **different face, not a newer one**.
+Silently preferring the fetch would be the silent substitution both rules forbid, and it would replace a
+**verified** record — a reviewed licence identifier, the upstream `LICENSE*` committed beside the
+binary, a `NOTICE.md` — with an unverified one. The local tier wins because its record is *stronger*,
+not because it is fresher.
+
+**The trigger, and it is a condition rather than a date:** the first time a local-tier face is shown to
+be materially behind its upstream — a fixed `cmap`, a licence restated, a family renamed — the question
+stops being "should we reconcile" and becomes "which of these two faces does this document mean". That
+is when it comes back, and it comes back as a **decision about identity**, not as a refresh button.
+
+**What discharges it:** a ruling on whether a divergence is disclosed (the author is told, and chooses)
+or reconciled (the committed bytes are re-cut through the same provenance regime and the local tier
+moves as one reviewed change). Adding a live version compare to the pick path discharges nothing — it
+is the shape both AD-8 and D-16.2 refuse.
+
+---
+
+### DW-159 — moving the licence gate to runtime leaves the build with nothing to fail on
+
+- **Deferred by:** Story 16.1 (2026-09-03). Registered as the **cost of D-16.1**, priced rather than
+  absorbed.
+- **Owner:** the engineering lead, at the first review of Epic 16's licence posture.
+- **Severity:** MEDIUM — this is D-8.6.5's defect class, and D-8.6.5 is the precedent for what it costs
+  when nobody is watching.
+- **Status:** OPEN.
+
+D-8.5.2/D-8.5.3 made licence admission a **build gate**: an unclassifiable licence **failed the build**,
+the way AD-26's dependency ban does. For the 21 committed faces that gate is intact —
+`font-catalogue.test.ts`, the committed `LICENSE*` beside each binary, `lint`'s own admission rules.
+For the ~1,800 families reachable from the snapshot **there is no build-time gate at all**, because
+their licences are not known until `METADATA.pb` is fetched on the author's machine.
+
+**What still watches, and it is not nothing:** `src/font-licence.ts`'s closed table refuses anything it
+has not classified (no fall-through, no permissive default); its admitted set is asserted a subset of
+D-8.5.3's four; `TestGoLicenceTableSubsumesTheDesignerTable` ties that table to Go's signature table in
+one commit; and `RefuseContradictedLicence` refuses a face whose bytes contradict its declared terms.
+
+**What is genuinely unwatched:** nothing fails a BUILD when upstream changes what it publishes. If a
+family's `METADATA.pb` token changes, or a fifth top-level directory appears, or an admitted family's
+`OFL.txt` is replaced with different terms, the first place anyone learns of it is an author's refusal
+message — or, in the case of a *changed but still admitted* licence text, nowhere at all, because the
+text travels into the document verbatim and is correct by construction for whatever it now says.
+
+**The trigger:** the first upstream token this table has not classified reaching an author — which the
+refusal message is deliberately worded to make legible ("not recognised", never "forbidden") so that it
+arrives as a report rather than as a bug.
+
+**What discharges it:** a periodic build-time or CI audit that re-reads the snapshot's families against
+the token table and fails on an unclassified token — the build gate re-created over the population it
+can actually see, rather than over the one family an author happened to pick.
+
+---
