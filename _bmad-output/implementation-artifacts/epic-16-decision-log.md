@@ -960,3 +960,60 @@ eleven — which nearly confirmed the wrong one. In each case the correction cam
 **re-deriving the number against the committed artifact**, never from anyone re-reading the prose.
 **Standing consequence: a figure that gates a decision is re-derived at the gate, from the artifact the
 story's acceptance names, not carried from the message that first reported it.**
+
+### D-16.R.23 — The batch is pinned to the snapshot's commit, because the ranking field churns a quarter of the batch in a day
+
+**Gate outcome: 16.1a's twenty are AGREED as proposed** — Open Sans, Google Sans, Roboto Mono, DM Sans,
+Montserrat, Arimo, Roboto Slab, Lora, Roboto Condensed, Oswald, Plus Jakarta Sans, Jost, Raleway, Nunito,
+Fraunces, Heebo, Nunito Sans, Playfair Display, Libre Baskerville, Instrument Sans — with the membership
+rule and its explicit family-name tie-break as written.
+
+**The lead asked for one guardrail: pin the batch to the snapshot *commit*, not the file.** Its argument
+was that "the boundary is one position wide — Jost in at 20, Raleway out at 21 — and the values
+demonstrably move day to day," so `reproducible from font-index.json` is not a reproduction contract
+without a sha. Adopted. TASK 1 now reads **reproducible from `folio-designer/font-index.json` at commit
+`d6d51f16988cddf20d1a28697cd556b3d0a63f62`**, and 16.1a records that sha beside the membership.
+
+**Measured, because the justification turned out to be much larger than the argument for it.** Applying
+16.1a's own membership rule to a live `fonts.google.com/metadata/fonts` fetch taken on the snapshot's own
+nominal date:
+
+| Measurement | Value |
+|---|---|
+| Families whose `popularity` differs, live vs. committed snapshot | **946 of 1,811 — 52%** |
+| Members of the top-20 that differ | **5 of 20** |
+| Out, against live | Jost, Plus Jakarta Sans, Heebo, Libre Baskerville, Instrument Sans |
+| In, against live | Rubik, Dancing Script, Manrope, Merriweather, Public Sans |
+
+The boundary is not one position wide. It is **a quarter of the batch** wide. This does not weaken the
+proposal — it vindicates its choice of authority. The committed snapshot is the correct input *because*
+it is pinned and the live field is not: **AD-22** (determinism) and **AD-19** (offline is a build
+artifact) selecting the reproducible source over the current one. The snapshot is not a stale
+convenience; it is the only version of this list that is reproducible at all.
+
+**Two superseded explanations, both recorded because both were stated with confidence.**
+
+1. **"A dense re-rank after the CJK removal"** (offered in D-16.R.22's entry above as *"consistent with
+   the snapshot being regenerated with 135 CJK families removed"*) is **false**.
+   `scripts/build-font-index.mjs:75` copies `entry.popularity` verbatim; the CJK filter removes rows and
+   never renumbers them. No re-rank was ever on the table for either file.
+2. **"Only three families moved"** (the lead's) is **a sample claim stated as a corpus claim**. The three
+   were the three that mattered to the list under discussion. The corpus figure is 946.
+
+**And `popularity` is not a rank at all** — 1,811 families carry 1,100 distinct values, min 2, max 1373.
+It is a sparse, tied score. That is *why* ties straddle the cut, and why the name tie-break in the
+membership rule is load-bearing rather than pedantic.
+
+### D-16.R.24 — Two standing practice rules, adopted for the rest of the run
+
+Both proposed by the lead in the same message that carried its own instance of the first. Adopted:
+
+1. **A figure restated downstream carries a pointer to the measurement that produced it.** D-8.4j.8
+   governs *taking* a measurement; nothing governed *quoting* one, which is the gap all four instances in
+   this epic fell through. One clause closes it.
+2. **Agreement on a count is not agreement on a set — verify membership, not size.** The first eleven
+   matched in cardinality and differed in membership, and the match read as confirmation. Cardinality is
+   the weakest available witness and the one most likely to be checked.
+
+These sit alongside D-16.R.22's standing consequence (re-derive a gating figure at the gate) rather than
+replacing it: that rule says *re-derive*, these say *what to carry* and *what to compare*.
