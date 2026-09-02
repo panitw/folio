@@ -87,45 +87,26 @@ deferred:
 
 *This section is background, not a requirement; the contract below governs.*
 
-The designer has shipped with twenty-one typefaces, chosen when it was built. From here it **also**
-reaches the library the web publishes — around two thousand families, thirty-four of them Thai — and
-fetches the one the author picks, at the moment they pick it. The twenty-one do not go away. They stay
-as the faces this machine already holds, and when the author picks one of those, nothing is downloaded
-at all.
+The designer shipped with twenty-one typefaces. It now also reaches the library the web publishes —
+about two thousand families — and downloads the one an author picks at the moment they pick it. The
+twenty-one stay as the faces this machine already holds, and picking one of those downloads nothing.
 
-Three things about that are less simple than they sound.
+The scope fence first, because it is a limit rather than a feature. **The list is not live.** Whoever
+publishes it will not let a browser read it, so the list ships inside the designer as a dated snapshot
+and ages between releases exactly as the old catalogue did. Only the typeface is fetched, and the
+control says so rather than leaving anyone to find out.
 
-The first is that the **list** cannot be fetched. Google publishes it, but not in a way a browser is
-allowed to read, so the list ships with the designer and ages between releases exactly as the old
-catalogue did. What is genuinely live is the typeface itself. Anyone describing this as a live font
-browser without that qualification is saying something untrue.
+The paperwork now happens on the author's machine, mid-click. Before any byte enters the document, the
+terms stated for that family are checked against the short list this product accepts. Anything else is
+refused and named — and named differently depending on why: terms we know and decline say so, while
+terms never classified say they were not recognised, so something new upstream never reads as a decision
+nobody made. Nothing is admitted by default.
 
-The second is the paperwork, and it matters more than it sounds. A typeface put into a document carries
-terms — whose it is, and what the person receiving the file may do with it. Until now those terms were
-checked when the designer was built, by a gate that failed the build. Fetching at the moment of choosing
-moves that check to the author's machine, in the middle of a click. **The half of that check that reads
-the typeface's own bytes has already been built and shipped** — Story 16.1b, closed at `f6953da`, so
-the engine now refuses a face whose bytes contradict the terms written beside them. What is left for
-*this* story is the other half: deciding, from what the library says about a family, whether its terms
-are ones this product accepts at all, and refusing before a single byte is embedded. The last time this
-went wrong, seventeen of twenty-one typefaces travelled under another project's licence and nobody
-noticed until review.
+About a quarter of the library ships as one file holding every weight at once, which this product does
+not accept. Those families are not listed, and the count on the control is what can actually be added.
 
-The third is that about a quarter of the library ships as a single file holding every weight at once,
-which this product does not accept — accepting it would mean guessing which weight you meant, and would
-make the same template print differently on different machines. Those families are **not shown**. They
-are not listed and then refused: a row the author cannot act on is a row that should not be there, and
-the number the browser reports is the number of families that can actually be added, and says so. The
-engine still refuses such a face if one ever reaches it — hiding a row is a presentation choice, never
-a guard.
-
-One thing worth knowing, because an earlier draft of this page got it wrong. "Ships as one variable
-file" is a fact about *the shelf we are looking at*, not about the typeface. Roboto and Inter are both
-on that list, and Folio already carries both — as ordinary single-weight files, taken from those
-projects' own releases rather than from Google's mirror. So they are offered from the twenty-one, and
-the web list's opinion about them is never consulted. Nor is this repository in the business of
-converting variable fonts: of the faces it ships, exactly one was produced that way, and every other
-one is an upstream file copied byte for byte.
+One thing will look wrong later and is not: **none of this has been witnessed in a real browser.** Every
+claim here is proved against a stand-in for the network. That run is owed, and recorded as owed.
 
 <intent-contract>
 
@@ -993,3 +974,160 @@ drifting, not a discrepancy.
 3. **The snapshot ages between releases**, by design and by CORS. The list's staleness is stated in the
    UI; only the typeface is live.
 4. Cache headroom is now 20 of 64 slots, down from 41 at Epic 8, and no build script checks it.
+
+## Delivery Log
+
+### 2026-09-03 — done
+
+Baseline `bb14662`. Closed on `main` at the commit named at the end of this entry; nothing pushed —
+`origin/main` is still `c985b9c`, five commits behind.
+
+**What shipped.** The fetch path and its admission decision, as the cut left it: a build-time index
+snapshot the browser never fetches at runtime, a live face fetch from the one declared repository host,
+the closed token→SPDX table with its three states, the local-face-tier join on exact `family` equality,
+the variable-only filter with an addable count that says which count it is, the slug-and-confirm
+directory rule, the forbidden-host scan's second half beside the module it polices, the extracted
+nameID-0 reader, the extended Go mirror contract, and the `parse.go` one-door asymmetry comment. The 21
+committed faces, `font-catalogue.json` and every per-face licence file are untouched — verified by an
+empty `git diff` over those paths across `bb14662..HEAD`.
+
+**Findings triaged by the build: 7 patched / 5 deferred / 10 rejected**, 0 intent_gap, 0 bad_spec. The
+routes reconcile against the declared population (7 + 5 + 10 = 22). The ten rejections are **enumerated**
+with the authority each was tested against, so they could be spot-checked rather than taken on a count.
+
+**The follow-up review (`followup_review_recommended: true`) was given, and all three mediums have
+teeth.** Each was probed by reinstating the finding's own defect, not by weakening an assertion:
+
+1. *Unchecked table directory over fetched bytes.* `faceCopyright` now calls the checked reader. Putting
+   the unchecked directory back reddened **2 tests across 2 files** (scope: `font-name-table.test.ts` and
+   `font-source.test.ts`), including the fetched-body case, which stops refusing a non-TrueType container
+   and walks it instead. The guard is applied **before** the walk and a malformed directory is refused.
+2. *Re-entry hold released before the network work.* Reinstating the pre-patch shape exactly — the hold
+   taken only inside the command half, and read from React state rather than the ref — makes
+   `engine.request('command', …)` fire **twice** on two overlapping picks. **The double-commit is real
+   and observable**, and the new test asserts it. Worth recording precisely: under the mutation the test
+   reds at its *first* assertion (the control is not disabled), so the load-bearing assertion was probed
+   separately by suspending that line — with it suspended the second pick performs a **second full
+   resolution (2 `METADATA.pb` fetches, not 1)**, and with the ref restored to the command half as well,
+   a **second embed command**. All three arms were re-run at close; the file was restored byte-exact by
+   `cp` and md5-verified.
+3. *Vacuous CJK exclusion.* Deleting `'korean'` from `cjkSubsets` now reds the new fixture test, with the
+   survivor list showing 3 families where 2 are expected. Confirmed at close, restored byte-exact.
+
+**A regression introduced BY the concurrency patch was found at close and fixed here.** The patch backs
+the busy flag with a ref because a state read inside a handler is stale — correct — but the flag now
+lives in **two places** and the document-reset path in `setCurrentSnapshot` cleared only the **state**
+copy. Replace the document while a pick is in flight (Start blank is reachable during the six-round-trip
+window; it is guarded on `fileBusy`, not on the font hold) and the pick's own `finally` declines to
+release a hold that no longer matches its generation, while the reset clears the half the guard does not
+read. `fontChainBusyRef` then stays `true` for the rest of the session: the combobox looks perfectly
+enabled and **every subsequent pick silently does nothing**. This is the same defect class the ref was
+introduced to fix — one flag, two copies, one of them updated. Fixed by routing that reset through
+`holdFontChain`, with a test that reds without the fix (measured: the second pick sends no command at
+all) and passes with it. One line of production change, inside the story's own patch, so it is in scope.
+
+**Gates measured at close, on a clean tree, wd `/Users/panitw/Projects/folio`, node `v24.16.0`.** These
+are my numbers, not the build's.
+
+| Suite | Measured at close | Baseline `bb14662` |
+|---|---|---|
+| `folio-go` `go test -count=1 ./...` | **1910 pass / 2 fail / 5 skip** | 1910 / 2 / 5 |
+| `folio-go` `go vet ./...` | exit 0, no output | exit 0 |
+| `gofmt -l <abs>/folio-go` (repo root) | empty | empty |
+| `lint` `go test -count=1 ./...` | four `ok`, no FAIL | four `ok` |
+| designer `npm run typecheck` | clean | clean |
+| designer `npm run lint` | 4 warnings / 0 errors | 4 / 0 |
+| designer `npm test` | **47 files / 507 tests — 506 pass, 1 fail** | 43 / 437, 1 fail |
+| designer `npm run test:e2e:compile` | clean | clean |
+| designer `npm run scan:font-hosts` | exit 0, 0 occurrences over **598** files | 586 |
+| designer `npm run build` + `verify:offline:red` + `verify:offline:wasm` | all exit 0 | — |
+
+The designer total is **507**, one above the build's 506, because this close added the regression test
+described above. **23 golden digests unmoved** (`byte_neutrality_test.go` byte-identical to baseline, 23
+records counted); `SupportedMajor` still **2**; `maximumCacheAssets` still **64** with **44** assets and
+`s1.assetCount` **44**, and the index snapshot consumes **no** cache slot (absent from the emitted
+manifest). Headroom is therefore **20 slots**, which is registered as DW-162.
+
+**The two standing reds are unchanged and neither is this story's.** `TestCorpusMeetsP6ExerciseFloors`
+and its `P6g_(opaque_names)` subtest are the mandated permanent red. DW-152 was verified **independently
+at `bb14662`**, not taken on the build's word: the contract test file is byte-identical between baseline
+and HEAD, and running it in a detached worktree at `bb14662` produced the **same single-element received
+array** as at HEAD — `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. So none of the
+files this story adds to that directory-walked corpus introduced a violation, and the array's
+*contents* were read rather than its status. **The "pre-existing" claim reproduces.** (A third
+countable claim in the build's record is off: it says **seven** files were added to that corpus.
+Measured, `git diff --name-status bb14662..HEAD` adds **nine** tracked files under `src/`, plus the
+gitignored generated snapshot module, which the walk also enrols. The conclusion is unaffected — none
+of them violates — but the number was not measured.)
+
+**The Go count discrepancy is resolved, and the build's account of it is confirmed by a second route.**
+A patch subagent reported 1908 against the build's 1910; measured at close, it is **1910**. The stronger
+check is structural: `git diff bb14662..HEAD -- folio-go/` adds **no `func Test` and no `t.Run`** — the
+mirror-contract extension grew an existing test's body — so the suite is genuinely unchanged in shape,
+not merely equal in total.
+
+**Two figures in the build's own record disagree with each other, and the commit message is the stale
+one.** `d6d51f1`'s body says the scan was green over **597** files; the `## Auto Run Result` says **598**;
+measured at close it is **598**. Since `04068d6` adds **no file** (`git diff --name-status` shows only
+modifications), the population was 598 at `d6d51f1` too, so 597 was transcribed rather than measured. The
+same commit body's "47 files / 497 tests" is not a discrepancy — it is the pre-patch count, correctly
+stated for its moment. Separately, the `## Spec Change Log`'s claim that the intent contract is
+"byte-identical to `9cbff85`" is **now false as a statement about this file**: the contract was changed by
+the orchestrator at `c1accf6` and has been byte-stable from `c1accf6` through this close (17,721 bytes,
+sha-256 `aaea1949…`), including across both build commits and this one. The build preserved it correctly
+from its own baseline; the record simply quotes a superseded gate.
+
+**Rejections spot-checked.** The ten are enumerated, so each could be tested against the authority it
+cites. Nine hold as stated. **One is scope-correct and its consequence has since changed:** the build
+rejected "no fetch timeout / `AbortSignal`" because the contract does not require one and offline has its
+own matrix row — true, and confirmed: there is no `AbortSignal` anywhere on the pick path. But the same
+dispatch's concurrency patch moved the busy hold to **before** the fetch chain, so a fetch that *hangs*
+(as opposed to rejecting, which is the offline case the row covers) now disables the control for the
+session. That is not a defect in the patch and the trade is the right way round; it is a residual the
+rejection could not have priced, and nothing re-read it afterwards. Filed as **DW-165** rather than fixed
+here, because adding a timeout policy is a design decision with a blast radius beyond this story.
+
+**Red-proofs re-run at close, not relayed.** Stripping `src/font-source.ts`'s two declaration markers
+makes `scan:font-hosts` throw with exactly **2 findings**, both labelled `(declared-only)`, naming file,
+line and host with the guidance that points at the one declaring module. Emptying
+`DECLARED_ONLY_FONT_HOSTS` reds **3 of the 14** cases in `forbidden-font-hosts.test.ts` — the build's
+count, confirmed. Both files restored by `cp` and md5-verified; the scan is green over 598 files
+afterwards and the release build was re-run after every mutation, so no gate here was measured against a
+mutated or half-generated tree.
+
+**Suites NOT run, deferred to the end-of-run heavy-test catch-up (D-16.R.1), and not reported as green:**
+`-tags=matrix`; the **four AD-21 legs**; `TestCrossTargetByteIdentity`; and **every browser spec** —
+`npm run test:e2e` was not executed, only `test:e2e:compile`. Consequently **this story has no browser
+witness for any web-tier pick or refusal**: every fetch, classify, refuse and embed claim is asserted in
+jsdom against a stubbed fetcher, and the CORS facts the mechanism rests on are `curl` measurements in
+prose. That is intent-authorised by the cadence and it is stated here rather than implied. Note that
+`TestShippedFacesReproduceFromUpstream` fails under `-tags=matrix` as a **could-not-execute**
+(`fontgen: fontTools is not importable by this interpreter`) — never report that as a byte divergence.
+
+**Deferrals registered.** The build wrote **DW-158** and **DW-159** into `deferred-work.md` as its spec
+tasks required, but left all **five triaged deferrals in this spec's `deferred:` frontmatter only**, where
+nothing sweeps them. All five are now in the register, plus one filed from the re-read rejection:
+
+- **DW-160** — the recorded `source` names the `main` branch, not a commit, so a `.folio`'s provenance is
+  not reproducible. **Filed LOW by the build and raised to MEDIUM here.** The premise of the format is
+  that the file travels alone and states what it redistributes (D-8.6.1); a branch name is not a fixed
+  point, so two authors embedding different bytes record an identical, unfalsifiable string — and it
+  leaves DW-158's "a newer release is a different face" argument enforceable on the local tier and
+  unenforceable on the web tier. Owner: the engineering lead, before Story 16.2 makes a fetched face
+  travel.
+- **DW-161** — no browser witness for the web tier; the largest evidence gap in the epic so far.
+  Ordering-linked to **DW-101**, which is the CI half of the same obligation.
+- **DW-162** — cache headroom is **20 of 64**, not the 41 an Epic 8 note records, and **no build script
+  checks the margin**. Over the ceiling fails; approaching it is watched by nothing. Trigger: the next
+  story that adds a cache asset.
+- **DW-163** — 66 addable families declare neither Latin nor Thai and embed a face that draws nothing.
+- **DW-164** — `popularity` is emitted and read by nothing, so the browser shows the alphabetical head of
+  the library while D-16.R.2's own argument turns on which families a user reaches first.
+- **DW-165** — the stalled-fetch residual described above.
+
+**What was NOT done, so silence is not read as verification.** No browser suite ran. `-tags=matrix`, the
+AD-21 legs and `TestCrossTargetByteIdentity` were not run. The upstream endpoints were **not** re-measured
+at close — the build re-measured them at implementation HEAD and that measurement is taken on report; a
+CORS posture change since then would be invisible here, which is DW-161's whole point. Rejections were
+spot-checked against their cited authorities but not independently re-derived from the reviewer's original
+wording, which this record does not carry.

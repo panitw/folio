@@ -7331,3 +7331,185 @@ the token table and fails on an unclassified token — the build gate re-created
 can actually see, rather than over the one family an author happened to pick.
 
 ---
+
+### DW-160 — a `.folio` records the branch a fetched face came from, not the commit, so its provenance is not reproducible
+
+- **Deferred by:** Story 16.1's build (2026-09-03), in that spec's `deferred:` frontmatter at severity
+  LOW; **raised to MEDIUM and placed into this register at the story's close**, on the reasoning below.
+- **Owner:** the engineering lead, before any story makes a fetched face travel further than the machine
+  that fetched it (Story 16.2 is the first).
+- **Severity:** **MEDIUM.** Filed LOW by the build as a nicety. It is not one: it contradicts the premise
+  the format is built on.
+- **Status:** OPEN.
+
+**The claim.** A fetched face's recorded `source` is assembled against the **`main` branch** of the
+upstream repository — `<host>/google/fonts/main/<dir>/<slug>/<file>` — in `folio-designer/src/font-source.ts`.
+Every fetch in the story reads the same branch.
+
+**Why this is not a cosmetic defect.** The whole premise of the `.folio` format (D-8.6.1) is that **the
+file travels alone and states what it redistributes**. `source` is the field that carries that statement.
+A branch name is not a fixed point: it is a moving reference whose contents are whatever upstream last
+pushed. Two authors picking the same family a month apart embed **different bytes** — and under AD-8 and
+D-16.2 different bytes are a **different face** — while recording an **identical** `source` string. The
+record therefore cannot distinguish the two, and cannot be used to re-fetch what a given document
+actually carries. It is unfalsifiable: no future reader can check it, because the thing it names has
+already changed. That is the same class of statement D-8.6.5 shipped — a licence field that was correct
+in form and wrong in substance, with nothing able to tell.
+
+**And it undercuts an argument this epic relies on.** DW-158 declines to reconcile the local tier with
+upstream on the ground that *"a newer release is a different face, not a newer one."* That argument holds
+for the local tier because the committed bytes are pinned by the repository. For the web tier it does not
+hold at all, because nothing is pinned — so the epic states a rule it enforces on one tier and cannot
+enforce on the other.
+
+**The trigger, and it is already close:** the first time anyone asks what a `.folio` in hand actually
+contains — a licence audit, a support question, a byte-identity comparison between two documents naming
+the same family.
+
+**What discharges it:** pinning the fetch to a **commit SHA** (resolved at snapshot time and carried in
+the index, or resolved once per pick) and recording that SHA in `source`. A checksum recorded beside the
+branch URL would be second best and would still not let anyone re-fetch the bytes.
+
+---
+
+### DW-161 — no browser has ever witnessed a web-tier pick, a web-tier refusal, or a web-tier embed
+
+- **Deferred by:** Story 16.1's build (2026-09-03), and **intent-authorised** — D-16.R.1's cadence denies
+  this story an in-story browser run and names the run as debt.
+- **Owner:** the end-of-run heavy-test catch-up (D-16.R.1), and thereafter whoever wires the browser
+  suite into CI. **Ordering: this entry and [DW-101] discharge together or not at all** — DW-101 is
+  "the specs exist and CI never runs them"; this is "for the web tier there are no such specs to run."
+- **Severity:** **MEDIUM.** The largest evidence gap in Epic 16 so far.
+- **Status:** OPEN.
+
+**The gap, measured at the story's close.** `folio-designer/e2e/font-embed-boundary.spec.ts` asserts only
+that web-tier rows **exist** in the control; its embed loop still covers the **21 local faces alone**.
+Every claim this story makes about fetching, classifying, refusing and embedding a web-tier face is
+asserted in **jsdom against a stubbed fetcher**. The two empirical facts the entire mechanism rests on —
+that the repository host sends `access-control-allow-origin: *`, and that the index host does not — are
+measured **in prose and by `curl`**, never by anything the suite executes. A CORS posture change upstream
+would be invisible to every gate this repository runs.
+
+**Why the deferral is legitimate and still costly.** The cadence ruling is real and this story is not one
+of its named overrides, so declining the run was correct. What the deferral does **not** buy is the right
+to describe the web tier as verified. It is not: it is verified against a model of the network that this
+repository wrote.
+
+**The trigger:** the first web-tier defect reported by a person rather than by a test — or the catch-up
+run itself, whichever comes first.
+
+**What discharges it:** an executed browser run covering three cases the stubbed suite already covers in
+jsdom — a pick with the network up, a pick with it down, and a pick whose licence is outside the
+allowlist — against the real hosts, so the CORS facts become measurements the suite takes rather than
+notes somebody wrote.
+
+---
+
+### DW-162 — offline-release cache headroom is 20 of 64 slots, down from 41, and no build script checks the margin
+
+- **Deferred by:** Story 16.1's build (2026-09-03), measured this dispatch and re-measured at close.
+- **Owner:** the next story that adds a cache asset — it inherits the check as its own precondition.
+- **Severity:** LOW today, and the severity is a function of the margin rather than a property of the
+  defect.
+- **Status:** OPEN.
+
+**Measured at close (2026-09-03, clean tree, after `npm run build`):** `dist/offline-release-manifest.json`
+carries **44 assets** and `s1.assetCount` is **44**, against `maximumCacheAssets` **64**. Headroom is
+**20 slots**. An Epic 8 note recorded the remaining margin as **41**; that figure is now stale by half and
+would mislead anyone budgeting against it. **This story adds no asset** — the index snapshot is source and
+consumes no cache slot, verified absent from the emitted manifest.
+
+**What is and is not watched.** Going **over** the ceiling is caught: `verify-offline-release.mjs` fails
+the release, and `parseS1Payload` rejects the payload at runtime. **Approaching** it is watched by
+nothing. There is no warning threshold, no trend, and no build output that states the remaining margin —
+so the first signal is a release that fails outright, in whatever story happens to add the forty-fifth
+through sixty-fifth asset. See also [DW-112], which concerns where the bound is read from rather than how
+much of it is left.
+
+**The trigger:** the next story that adds a cache asset, and specifically any story adding several at once
+(a second font tier, an icon set, additional pdfjs support files).
+
+**What discharges it:** the release build printing the margin and failing — or at minimum warning — at a
+declared threshold, so the number is measured on every build rather than carried in a note that ages.
+
+---
+
+### DW-163 — 66 addable families declare neither Latin nor Thai, so picking one embeds a face that draws nothing
+
+- **Deferred by:** Story 16.1's build (2026-09-03). It is a **product question**, not a deviation: the
+  intent contract excludes CJK by name and is silent on other scripts.
+- **Owner:** the owner, at the first review of what the font browser offers (Story 16.3 or 16.4 is the
+  natural gate).
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+Measured over the committed index snapshot: **66** non-variable, non-CJK families carry only Devanagari,
+Arabic, Hebrew or Ethiopic subsets. `scriptsOf` emits only `latin` and `thai`, so those rows resolve to
+`scripts: []`, and such a pick proposes all three shipped fallbacks as its tail while the embedded face
+draws nothing the document uses. `font-catalogue.md`'s *"Script coverage — Latin and Thai"* criterion is
+applied to the local tier and not to the web tier.
+
+**The trigger:** the first author who picks one and reports that the typeface did not apply — which will
+read as a rendering bug and is not one.
+
+**What discharges it:** a ruling on whether the web tier inherits the local tier's script-coverage
+criterion. If it does, these rows are filtered exactly as variable-only rows are; if it does not, the
+control says what coverage a family has before the pick.
+
+---
+
+### DW-164 — `popularity` is carried on every index row and read by nothing, so the browser shows the alphabetical head of the library
+
+- **Deferred by:** Story 16.1's build (2026-09-03).
+- **Owner:** the story that builds the font browser dialog (Story 16.3).
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`offeredFamilies` orders local-tier-first and otherwise preserves the upstream index's own alphabetical
+order; the render cap then slices the first rows. An author opening the control sees `ABeeZee`,
+`ADLaM Display`, `AR One Sans`. The `popularity` field is emitted into every snapshot row and read by no
+consumer.
+
+**Why it is worth a register entry rather than a shrug.** D-16.R.2's argument for hiding variable-only
+families turns explicitly on **which families a user reaches first** — measured as 37 of the 50 most
+popular. That argument is applied to the filter and not to the ordering, so the epic reasons about
+popularity when deciding what to hide and ignores it when deciding what to show first.
+
+**The trigger:** Story 16.3, which decides what the browser looks like.
+
+**What discharges it:** a stated decision on the ordering with a test that pins it — either popularity
+order, or alphabetical order chosen deliberately rather than inherited from the upstream response shape.
+
+---
+
+### DW-165 — a font pick now holds the control across up to six cross-origin round-trips with no timeout, and a stalled fetch holds it for the session
+
+- **Deferred by:** Story 16.1's **close** (2026-09-03). The build **rejected** the reviewer finding that
+  asked for a fetch timeout, on the ground that the contract does not require one and that offline is
+  covered by its own matrix row. **That rejection was scope-correct and is not reopened here** — but the
+  same dispatch's concurrency patch changed what the absence costs, and nothing re-read the rejection
+  afterwards.
+- **Owner:** the engineering lead, at the first review of Epic 16's pick path; naturally discharged by
+  Story 16.2 or 16.3, which both touch this flow.
+- **Severity:** LOW-MEDIUM.
+- **Status:** OPEN.
+
+**What changed underneath the rejection.** Before the patch, the re-entry hold was taken only around the
+engine command; a stalled fetch left the control **enabled**, so an author could retry (at the cost of the
+double-embed the patch fixed). After the patch the hold is taken **before** the fetch chain and released in
+a `finally`. A fetch that **rejects** — the ordinary offline case, and the one the matrix row covers —
+still releases it. A fetch that **hangs** never settles, so the `finally` never runs and the font family
+control stays disabled **for the rest of the session**, with no message and no way back.
+
+**Why this is not a defect in the patch.** The patch is correct and the trade is the right way round: a
+double-embed writes a wrong document, a stalled control does not. This entry records the residual, which
+was previously masked by a wider bug.
+
+**The trigger:** any real network that stalls rather than failing — a captive portal, a hung proxy, a
+half-open connection. None of these is reachable by the stubbed suite, which is why [DW-161] and this
+entry are likely to be discharged by the same run.
+
+**What discharges it:** an `AbortSignal.timeout` (or equivalent) on the pick's fetch chain, so a stall
+becomes the same stated, located refusal that offline already produces.
+
+---

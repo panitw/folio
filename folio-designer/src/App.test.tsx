@@ -1522,6 +1522,66 @@ describe('typography controls over the engine-projected closed sets', () => {
     }
   })
 
+  // THE HOLD IS ONE FLAG IN TWO PLACES, AND A DOCUMENT SWAP MUST CLEAR BOTH.
+  // The re-entry guard above is backed by a ref precisely because a React state
+  // read is stale inside a handler — but `setCurrentSnapshot`'s document-reset
+  // path clears the STATE copy only. A pick is now a chain of cross-origin
+  // round-trips, so "the document was replaced while a pick was in flight" is a
+  // real window: the pick's own `finally` declines to release a hold that no
+  // longer belongs to its generation, and the reset clears the half the guard
+  // does not read. The ref would then stay held for the rest of the session
+  // with the control looking perfectly enabled, and EVERY later pick would
+  // silently do nothing. Clearing one of two copies of a flag is the same
+  // defect class the ref was introduced to fix.
+  it('releases the pick hold when the document is replaced mid-resolution, so later picks still commit', async () => {
+    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
+    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    let first = true
+    const fetchStub = vi.fn(async (url: string) => {
+      if (url.endsWith('/ofl/kanit/METADATA.pb')) { if (first) { first = false; await held } return { ok: true, status: 200, text: async () => metadata } }
+      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => 'SIL Open Font License' }
+      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
+      return { ok: false, status: 404, text: async () => '' }
+    })
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      const componentCanvas = { ...canvas, components: [textComponent] }
+      const request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 3 : 2, byteLength: 3, canvas: componentCanvas } }))
+      render(<App engine={engine(request as never)} blankBytes={bytes} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+      fireEvent.click(screen.getByLabelText('text component e1'))
+      const pick = () => {
+        const combobox = screen.getByRole('combobox', { name: 'Font family' })
+        fireEvent.focus(combobox)
+        fireEvent.change(combobox, { target: { value: 'Kanit' } })
+        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*add to document$/ })
+        if (option) fireEvent.click(option)
+        return option !== null
+      }
+      expect(pick(), 'the first pick must be offered').toBe(true)
+      await waitFor(() => expect(fetchStub).toHaveBeenCalled())
+
+      // THE DOCUMENT IS REPLACED WHILE THE PICK IS STILL WAITING ON THE NETWORK.
+      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
+      release()
+      await waitFor(() => expect(fetchStub.mock.calls.some((call) => String(call[0]).endsWith('Kanit-Regular.ttf'))).toBe(true))
+
+      // AND THE CONTROL IS STILL A CONTROL. A pick in the new document must
+      // reach the engine; a hold left behind by the replaced one would make this
+      // return silently with nothing to show the author why.
+      fireEvent.click(screen.getByLabelText('text component e1'))
+      const embeds = () => request.mock.calls.filter((call) => call[0] === 'command').length
+      const before = embeds()
+      expect(pick(), 'the second pick must still be offered').toBe(true)
+      await waitFor(() => expect(embeds()).toBeGreaterThan(before))
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
   // LAYOUT DIVERGENCE IS AN OBSERVATION, AND AN OBSERVATION NEEDS A READER.
   // `fetchWebFamily` records that a family resolved in `ofl/` declares APACHE2 —
   // METADATA.pb wins, `Apache-2.0` is admitted, and the pick is NOT refused
