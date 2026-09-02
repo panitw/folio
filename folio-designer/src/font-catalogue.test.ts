@@ -186,6 +186,15 @@ function recordedShippedSize(noticeFile: string): number {
 const licenceSignatures: Readonly<Record<string, RegExp>> = {
   'OFL-1.1': /SIL Open Font License/i,
   'Ubuntu-font-1.0': /Ubuntu Font Licence/i,
+  // ADMITTED BY STORY 16.1a, AND THIS LINE IS THE DECISION THE COMMENT ABOVE
+  // DEMANDS BE MADE HERE. `Roboto Slab` is the batch's one non-OFL face:
+  // `github.com/googlefonts/robotoslab` ships an Apache-2.0 `LICENSE.txt` and
+  // the binary's nameID 13 reads "Licensed under the Apache License, Version
+  // 2.0" — the two agree, which is the property this table exists to check.
+  // `Apache-2.0` is the second of the owner's four ids (D-8.5.3), already on
+  // `lint`'s `fontAssetLicenceAllowlist`, so admission is unchanged; what is
+  // new is only that a catalogue face now exercises it.
+  'Apache-2.0': /Apache License/i,
 }
 
 /**
@@ -289,7 +298,17 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
   // truncated manifest would satisfy all of them silently — the exact shape of
   // vacuous green this story's design notes are written against.
   it('declares at least twenty NEW families, none of them a family the six shipped rules already declare', () => {
-    expect(catalogue.length, 'AC3 requires at least 20 new families beyond the 6 already shipped').toBeGreaterThanOrEqual(20)
+    // THE POPULATION FLOOR — ONE OF THREE, AND ALL THREE MOVE TOGETHER.
+    // The other two are `src/font-index.test.ts` ("is the whole bundled
+    // catalogue, unchanged") and `src/font-name-table.test.ts` ("reads a
+    // copyright out of every committed catalogue face"). Raised 20 -> 31 by
+    // Story 16.1a, which added ten families to the local face tier.
+    // D-16.R.12: "a floor left at 21 while the tier grows to 30 is a floor
+    // that stops measuring the thing it was built to measure" — and
+    // D-16.R.18's correction to it: a floor that exists in three files is
+    // three floors, so a batch that raises one and leaves two behind is
+    // silently unmeasured at the two it left.
+    expect(catalogue.length, 'AC3 requires at least 20 new families beyond the 6 already shipped; Story 16.1a raised the floor to 31').toBeGreaterThanOrEqual(31)
     const families = catalogue.map((face) => face.family)
     expect(new Set(families).size, 'two catalogue entries declare the same family').toBe(families.length)
     expect(families.filter((family) => shippedFamilies.includes(family)), 'a catalogue face must not redeclare one of the six shipped families').toEqual([])

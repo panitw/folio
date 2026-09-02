@@ -296,9 +296,11 @@ the list (Story 8.4j).
 
 | Path | Licence | Copyright | Serves |
 |---|---|---|---|
+| folio-designer/public/fonts/arimo/Arimo-Regular.ttf | OFL-1.1 | Copyright 2020 The Arimo Project Authors (https://github.com/googlefonts/arimo) | committed asset (folio-designer/public/fonts/arimo) |
 | folio-designer/public/fonts/cascadiacode/CascadiaCode-Regular.ttf | OFL-1.1 | Copyright © 2021 Microsoft Corporation. All Rights Reserved. | committed asset (folio-designer/public/fonts/cascadiacode) |
 | folio-designer/public/fonts/cascadiamono/CascadiaMono-Regular.ttf | OFL-1.1 | Copyright © 2021 Microsoft Corporation. All Rights Reserved. | committed asset (folio-designer/public/fonts/cascadiamono) |
 | folio-designer/public/fonts/cousine/Cousine-Regular.ttf | OFL-1.1 | Copyright 2026 The Cousine Project Authors (https://github.com/googlefonts/cousine) | committed asset (folio-designer/public/fonts/cousine) |
+| folio-designer/public/fonts/dmsans/DMSans-Regular.ttf | OFL-1.1 | Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts) | committed asset (folio-designer/public/fonts/dmsans) |
 | folio-designer/public/fonts/firacode/FiraCode-Regular.ttf | OFL-1.1 | Copyright 2014-2021 The Fira Code Project Authors (https://github.com/tonsky/FiraCode) | committed asset (folio-designer/public/fonts/firacode) |
 | folio-designer/public/fonts/geist/Geist-Regular.ttf | OFL-1.1 | Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font) | committed asset (folio-designer/public/fonts/geist) |
 | folio-designer/public/fonts/geistmono/GeistMono-Regular.ttf | OFL-1.1 | Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git) | committed asset (folio-designer/public/fonts/geistmono) |
@@ -310,13 +312,21 @@ the list (Story 8.4j).
 | folio-designer/public/fonts/interdisplay/InterDisplay-Regular.ttf | OFL-1.1 | Copyright 2016 The Inter Project Authors | committed asset (folio-designer/public/fonts/interdisplay) |
 | folio-designer/public/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf | OFL-1.1 | Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) | committed asset (folio-designer/public/fonts/jetbrainsmono) |
 | folio-designer/public/fonts/literata/Literata-Regular.ttf | OFL-1.1 | Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata) | committed asset (folio-designer/public/fonts/literata) |
+| folio-designer/public/fonts/lora/Lora-Regular.ttf | OFL-1.1 | Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name "Lora". | committed asset (folio-designer/public/fonts/lora) |
+| folio-designer/public/fonts/montserrat/Montserrat-Regular.ttf | OFL-1.1 | Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat) | committed asset (folio-designer/public/fonts/montserrat) |
 | folio-designer/public/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans) |
 | folio-designer/public/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | committed asset (folio-designer/public/fonts/notosanssc) |
 | folio-designer/public/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthai) |
 | folio-designer/public/fonts/notosansthailooped/NotoSansThaiLooped-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthailooped) |
 | folio-designer/public/fonts/notoserif/NotoSerif-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notoserif) |
 | folio-designer/public/fonts/notoserifthai/NotoSerifThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notoserifthai) |
+| folio-designer/public/fonts/opensans/OpenSans-Regular.ttf | OFL-1.1 | Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans) | committed asset (folio-designer/public/fonts/opensans) |
+| folio-designer/public/fonts/oswald/Oswald-Regular.ttf | OFL-1.1 | Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont) | committed asset (folio-designer/public/fonts/oswald) |
+| folio-designer/public/fonts/plusjakartasans/PlusJakartaSans-Regular.ttf | OFL-1.1 | Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans) | committed asset (folio-designer/public/fonts/plusjakartasans) |
 | folio-designer/public/fonts/roboto/Roboto-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto) |
+| folio-designer/public/fonts/robotocondensed/RobotoCondensed-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/robotocondensed) |
+| folio-designer/public/fonts/robotomono/RobotoMono-Regular.ttf | OFL-1.1 | Copyright 2015 The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono) | committed asset (folio-designer/public/fonts/robotomono) |
+| folio-designer/public/fonts/robotoslab/RobotoSlab-Regular.ttf | Apache-2.0 | Copyright 2018 The Roboto Slab Project Authors (https://github.com/googlefonts/robotoslab) | committed asset (folio-designer/public/fonts/robotoslab) |
 | folio-designer/public/fonts/sourcecodepro/SourceCodePro-Regular.ttf | OFL-1.1 | Copyright © 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’ | committed asset (folio-designer/public/fonts/sourcecodepro) |
 | folio-designer/public/fonts/sourcesans3/SourceSans3-Regular.ttf | OFL-1.1 | Copyright © 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’ | committed asset (folio-designer/public/fonts/sourcesans3) |
 | folio-designer/public/fonts/sourceserif4/SourceSerif4Display-Regular.ttf | OFL-1.1 | Copyright © 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’. | committed asset (folio-designer/public/fonts/sourceserif4) |

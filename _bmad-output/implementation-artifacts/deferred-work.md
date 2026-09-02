@@ -7432,6 +7432,24 @@ much of it is left.
 **What discharges it:** the release build printing the margin and failing — or at minimum warning — at a
 declared threshold, so the number is measured on every build rather than carried in a note that ages.
 
+**CONSUMED BY STORY 16.1a (2026-09-03), and this is the entry's first real exercise.** The local face
+tier batch added **ten** cache assets — one per added family, each a `catalogue-*.ttf` — so
+`s1.assetCount` moved **44 → 54** and the margin against `maximumCacheAssets` (64) moved **20 → 10**.
+Measured after `npm run build` on a clean tree, from `dist/offline-release-manifest.json`; all 31
+catalogue faces are among the 54. `maximumCacheAssets` was **not** moved, and D-16.R.16 forbids moving it
+anywhere in this epic.
+
+**The severity note above said the severity is a function of the margin. The margin has halved.** Ten
+slots is still slack, but it is now within reach of a single story: a second font batch of this size, or
+an icon set, exhausts it, and the first signal would be a release that fails outright. The story that
+adds the fifty-fifth through sixty-fifth asset inherits the check as its own precondition, and now has
+half the room the previous holder did.
+
+**Sequencing note (D-16.R.21).** Story 15.0 — fetch-on-first-pick — is `backlog`, so D-8.4d.1 is a policy
+with no implementation and these ten faces are **precached today**. When 15.0 lands, catalogue faces stop
+consuming precache slots at all and this margin question dissolves for the font tier specifically. Until
+then it is real.
+
 ---
 
 ### DW-163 — 66 addable families declare neither Latin nor Thai, so picking one embeds a face that draws nothing
@@ -7511,5 +7529,108 @@ entry are likely to be discharged by the same run.
 
 **What discharges it:** an `AbortSignal.timeout` (or equivalent) on the pick's fetch chain, so a stall
 becomes the same stated, located refusal that offline already produces.
+
+---
+
+### DW-166 — the local face tier batch is a snapshot of a distribution that moves, and nothing re-runs it
+
+- **Deferred by:** Story 16.1a's build (2026-09-03), and registered **by the story's own contract**
+  rather than discovered: *"a batch nobody re-runs is a queue, and a queue was the thing the owner was
+  told they were not funding"* (D-16.R.2).
+- **Owner:** the **engineering lead**, as the standing holder of Epic 16's font-tier decisions — the same
+  authority that declined to supply an N and replaced the criterion instead (D-16.R.16). A re-run under
+  the existing criterion is the lead's; a change to the **criterion** is an owner decision.
+- **Severity:** LOW today, rising slowly and silently. Nothing breaks when it is not done.
+- **Status:** OPEN — and it is a **standing obligation**, not a task with a completion state.
+
+**What was done, so what is left is legible.** Story 16.1a added ten families to the local face tier by a
+stated rule: *the refused families within the top 20 by `popularity` on the committed index snapshot,
+minus CJK, minus the families the tier already held, minus the `shippedFamilies` collisions, minus
+anything with no obtainable static from its own project upstream.* Recorded in full, with its exclusions
+itemised, in `_bmad-output/specs/spec-fonts/font-catalogue.md` under *"The Story 16.1a batch"*.
+
+**Why it cannot be a one-off.** `popularity` is a distribution and it moves; the snapshot it was computed
+against carries a `snapshotDate`, and *"the list changes only when the designer is released"* is as true
+of that field as of the family names. The rule is a **ranking** rule precisely so that popularity
+movement changes membership rather than silently overflowing a threshold — but a ranking rule that is
+never re-evaluated produces exactly the batch it produced on the day it was written, forever, while the
+head of the distribution walks away from it.
+
+**The trigger — any one of these:**
+
+1. The index snapshot is regenerated (`scripts/build-font-index.mjs`) and the top-20-by-popularity
+   membership moves.
+2. **Story 15.0 lands.** Fetch-on-first-pick removes the precache-slot constraint that bounded this run's
+   arithmetic, so the goal-set may be re-derived without it.
+3. A previously unobtainable family becomes obtainable — `Google Sans` published under one of the four
+   admitted identifiers, or `Jost` shipping a static whose `name` table says `Jost` rather than `Jost*`.
+
+**What discharges it:** nothing, permanently — it is standing. What discharges an *instance* is a re-run
+of the rule against the current snapshot, with the resulting membership diff recorded in
+`font-catalogue.md` beside the first one, including families the rule now **drops** (a face falling out of
+the top 20 is a candidate for removal, and this entry is the only place that will ever say so).
+
+---
+
+### DW-167 — the `source` shape correction Story 16.1a spent, for Story 15.3's hand-over
+
+- **Deferred by:** **Story 16.1a** (2026-09-03), per D-000.15's obligation to record what the format
+  freedom was spent on rather than reconstruct it from a diff later, and per D-16.R.13's own instruction
+  to put this on the running list.
+- **Owner:** **STORY 15.3** (`folio-go/v0.1.0`). Not a defect and nothing to fix — a LEDGER ENTRY.
+- **Severity:** N/A. It is a record.
+- **Status:** OPEN until Story 15.3 reads it.
+
+**What changed.** `source`, one of the twelve wire fields a `.folio` records for an embedded face,
+changed **shape** on both tiers. It stays a `string` and the arity is unchanged, so this is not a
+narrowing of what the format accepts — it is a change in what this product **writes** into a field whose
+own definition (`font-catalogue.md`: *"upstream release and the derivation that produced the shipped
+instance"*) one of the two writers did not meet.
+
+| Tier | Before | After |
+|---|---|---|
+| Committed | `folio-designer/public/fonts/<dir>/<file> — see that directory's NOTICE.md for the pinned upstream release and digest` | `googlefonts/roboto-3-classic@v3.016 — android/static/Roboto-Regular.ttf, fetched 2026-09-02` |
+| Fetched | the declared fetch host, then `/google/fonts/main/<dir>/<slug>/<file>` — **a bare mutable branch URL** | `google/fonts — ofl/kanit/Kanit-Regular.ttf, fetched 2026-09-03` |
+
+**Both halves in one story, deliberately.** The two writers disagreed in **kind**, so a reader holding a
+`.folio` could not tell which tier a face came from; a field whose two writers use different vocabularies
+is uninterpretable rather than merely inconsistent. Correcting one half alone would have left that.
+
+**What it carries and what it must never carry** (D-16.R.13): the **upstream project**, the **path within
+it**, the **fetch date** — and never a scheme, never a host, never a branch name, and **never the
+SHA-256**, which is already the asset key and would otherwise be a second authority on one fact.
+
+**One clause of the ruling was NOT implemented, and this is the record of that.** D-16.R.13 and Story
+16.1a's own task list both say the committed tier should *"inline the pinned upstream release **and the
+committed digest**"*, while the same ruling's verdict lists *"not the SHA-256"* among the three things
+`source` must never carry, on the stated ground that duplicating the asset key creates two authorities on
+one fact. For a committed-tier face those are the same value — the face is stored under the SHA-256 of
+its own bytes — so the two clauses cannot both be honoured. **The prohibition was taken as governing**,
+because it is the clause carrying the reasoning and it is stated absolutely in both documents; the
+substantive half of the instruction (stop pointing at a `NOTICE.md` the recipient does not have; inline
+the pinned release) is implemented in full. **Raised here rather than resolved silently** — if the lead
+meant the digest to be inlined anyway, this is a one-line change in
+`build-wasm.mjs`'s `committedFaceSource`, and `src/font-provenance.test.ts` would have to have its
+digest assertion relaxed for the committed tier alone.
+
+**The tripwire, because the convention alone will not hold:** `src/font-provenance.test.ts` asserts, over
+**both** tiers, that `source` carries no scheme, no host, no branch name and no SHA-256 — and that each
+tier has exactly **one** writer, since a second assignment site writing its own string is how the branch
+URL survived a suite that already had opinions about this field.
+
+**What did NOT move:** `source` stays a `string`, the twelve-field arity is unchanged, `SupportedMajor`
+stays `2`, no `.folio` reader or writer changed, and **all 23 golden digests hold**.
+
+**Verified rather than reasoned through**, as D-16.R.13's guardrail asked. One fixture feeding a golden
+**does** embed a face — `fixtures/embedded-font/input.folio`, whose `source` reads
+`folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf — …`. It is untouched, and that is a property of
+where it comes from rather than luck: a fixture's `source` is **hand-authored JSON**, not a value either
+writer produces, so neither `build-wasm.mjs`'s `committedFaceSource` nor `font-source.ts`'s
+`webFaceSource` reaches it. `source` is metadata besides — the producer does not draw it — so the
+committed shape of that fixture is left exactly as it was, and all 23 digests were re-measured at the
+repository root and matched `goldenDigestRecord` one for one.
+
+**What discharges it:** Story 15.3 reading this entry when it decides what `folio-go/v0.1.0`'s
+compatibility promise covers.
 
 ---

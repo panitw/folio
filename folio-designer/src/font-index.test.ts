@@ -12,6 +12,24 @@ import { addableFamilyCount, familyIndexDisclosure, indexExcludedCjkFamilies, lo
 const here = path.dirname(fileURLToPath(import.meta.url))
 const manifest: ReadonlyArray<{ family: string; licence: string }> = JSON.parse(fs.readFileSync(path.join(here, '..', 'font-catalogue.json'), 'utf8'))
 
+/**
+ * THE STORY 16.1a BATCH, WRITTEN OUT RATHER THAN DERIVED.
+ *
+ * Derived from the catalogue it would be a tautology — "the families in the
+ * catalogue are in the catalogue" — and the property under test is that these
+ * TEN SPECIFIC families, the refused head of the popularity distribution, are
+ * the ones an author can now reach. The membership rule that produced it is
+ * D-16.R.16's, corrected by D-16.R.19: the refused families within the top 20
+ * by `popularity` on the committed snapshot, minus CJK, minus the families the
+ * tier already held, minus the `shippedFamilies` collisions, minus anything with
+ * no obtainable static from its own project upstream (`Google Sans`, which
+ * publishes none, and `Jost`, whose static names itself `Jost*`).
+ */
+const batchFamilies: ReadonlyArray<string> = [
+  'Arimo', 'DM Sans', 'Lora', 'Montserrat', 'Open Sans',
+  'Oswald', 'Plus Jakarta Sans', 'Roboto Condensed', 'Roboto Mono', 'Roboto Slab',
+]
+
 describe('the build-time index snapshot', () => {
   // NON-VACUITY FIRST. Every filter below is over `familyIndex`, and an empty
   // or truncated snapshot satisfies all of them silently.
@@ -104,7 +122,17 @@ describe('the local face tier', () => {
   // THE 21 COMMITTED FACES SURVIVE EPIC 16 UNCHANGED. `pickCatalogueFamily`
   // gained a source; it did not swap one.
   it('is the whole bundled catalogue, unchanged', () => {
-    expect(catalogueFaces.length).toBeGreaterThanOrEqual(20)
+    // THE POPULATION FLOOR — ONE OF THREE, AND ALL THREE MOVE TOGETHER.
+    // The other two are `src/font-catalogue.test.ts` ("declares at least
+    // twenty NEW families") and `src/font-name-table.test.ts` ("reads a
+    // copyright out of every committed catalogue face"). Raised 20 -> 31 by
+    // Story 16.1a, which added ten families to the local face tier.
+    // D-16.R.12: "a floor left at 21 while the tier grows to 30 is a floor
+    // that stops measuring the thing it was built to measure" — and
+    // D-16.R.18's correction to it: a floor that exists in three files is
+    // three floors, so a batch that raises one and leaves two behind is
+    // silently unmeasured at the two it left.
+    expect(catalogueFaces.length, 'the local face tier population floor; Story 16.1a raised it 20 -> 31').toBeGreaterThanOrEqual(31)
     expect(catalogueFaces.length).toBe(manifest.length)
     for (const face of catalogueFaces) expect(localTierHolds(face.family)).toBe(true)
   })
@@ -141,12 +169,46 @@ describe('the local face tier', () => {
   // field is not consulted for a family the local tier holds.
   it('offers a locally-held family from the local tier even when the index calls it variable-only', () => {
     const variableUpstream = catalogueFaces.filter((face) => familyIndex.some((row) => row.family === face.family && row.variable))
-    expect(variableUpstream.map((face) => face.family), 'the measured cases this rule exists for').toEqual(expect.arrayContaining(['Roboto', 'Inter']))
+    expect(variableUpstream.map((face) => face.family), 'the measured cases this rule exists for').toEqual(expect.arrayContaining(['Roboto', 'Inter', ...batchFamilies]))
     for (const face of variableUpstream) {
       const offered = offeredFamilies(face.family).filter((source) => source.family === face.family)
       expect(offered, `${face.family} must be offered exactly once`).toHaveLength(1)
       expect(offered[0].tier).toBe('local')
     }
+  })
+
+  // STORY 16.1a — THE BATCH, NAMED, AND WHAT ADDING IT DID TO THE COUNT.
+  //
+  // Every one of these ten is variable-only on the `google/fonts` mirror and was
+  // therefore already filtered OUT of `webFamilies` before this story; each one's
+  // own project publishes an ordinary static Regular, which is what the local
+  // tier now carries. So ADDING A FAMILY LOCALLY IS WHAT MAKES IT OFFERED, and
+  // the addable count rises by exactly the batch size rather than by some
+  // number that depends on what the mirror happened to hold.
+  it('offers every family the batch added, exactly once and from the local tier', () => {
+    expect(batchFamilies.length, 'the batch list is empty, so every assertion over it is vacuous').toBe(10)
+    for (const family of batchFamilies) {
+      expect(localTierHolds(family), `${family} was added by Story 16.1a and the local tier does not hold it`).toBe(true)
+      const offered = offeredFamilies(family).filter((source) => source.family === family)
+      expect(offered, `${family} must be offered exactly once`).toHaveLength(1)
+      expect(offered[0].tier, `${family} must be offered from the local tier, with no fetch`).toBe('local')
+      expect(webFamilies.some((row) => row.family === family), `${family} must not also be offered from the web tier`).toBe(false)
+    }
+  })
+
+  // AND THE COUNT ROSE BY EXACTLY THE BATCH SIZE. Recomputed from the index and
+  // from the catalogue MINUS the batch, rather than compared against a number
+  // typed in from a previous run — a hardcoded "before" is a second authority
+  // that ages, and this one cannot.
+  it('raised the addable count by exactly the batch size', () => {
+    const beforeLocal = new Set(catalogueFaces.map((face) => face.family).filter((family) => !batchFamilies.includes(family)))
+    expect(beforeLocal.size, 'the pre-batch tier is the catalogue minus the ten').toBe(catalogueFaces.length - batchFamilies.length)
+    const beforeWeb = familyIndex.filter((row) => !row.variable && !beforeLocal.has(row.family))
+    const beforeAddable = beforeWeb.length + beforeLocal.size
+    expect(
+      addableFamilyCount - beforeAddable,
+      'the batch adds ten families the web tier could not offer, so the addable count must rise by exactly ten. A batch family that were statically published on the mirror would have been addable already, and the delta would be short by one.',
+    ).toBe(batchFamilies.length)
   })
 
   it('offers a family the local tier holds exactly once, never from both tiers', () => {

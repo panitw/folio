@@ -2,7 +2,7 @@
 title: 'Story 16.1a — batch proposal (TASK 1 survey output)'
 type: 'gate-artifact'
 created: '2026-09-03'
-status: 'awaiting-gate'
+status: 'settled'
 story: '_bmad-output/implementation-artifacts/16-1a-the-local-face-tier-covers-the-head-of-the-library.md'
 ---
 
@@ -197,7 +197,49 @@ console.log(admissible.length, manifest.s1.assetCount, 64 - manifest.s1.assetCou
 
 Expected at this commit: `32 44 20`.
 
-## Status
+## Status — SETTLED 2026-09-03, and the ruling replaced this document's own criterion
 
-**HALT — `blocked`, blocking condition `batch proposal awaiting gate`.** No upstream fetch has been
-made and none will be until this list is agreed.
+**The gate did not pick an N.** D-16.R.16 declined to supply one and **replaced the criterion instead**,
+on the ground that *"the most popular N that fit"* — the rule proposed above — is **a criterion with no
+budget term**: it says yes until the resource runs out and will consume whatever margin exists, on any
+run, in any epic, forever.
+
+**The criterion that governs, in its place:** *the refused families within the **top 20** by `popularity`,
+minus CJK, minus families already in the local tier, minus `shippedFamilies` collisions, minus anything
+with no obtainable static from its own project upstream. **Whatever that yields is the batch.*** If it
+overflows the margin it **halts and returns the overflow** rather than truncating to fit.
+
+**Consequences for the table above, stated so this document is not read as still governing.**
+
+- **The ceiling stops binding.** The goal-set is twelve candidates in the top 20, not thirty-two in the
+  top 50, so *"32 candidates want 20 slots"* — the fact this document called the single most important
+  one for the gate — **dissolves**. It was a true measurement of the wrong question.
+- **The reserve is a residue.** Rows 21–32 are not next-in-line for a slot; they are simply outside the
+  goal-set. Nothing is allocated to them.
+- **The tie-break is not needed.** `Instrument Sans`/`Rubik` at popularity 22 straddled the `N = 20` cut
+  this document proposed. That cut does not arise, so no tie decides membership.
+- **`Google Sans` (row 2 above) is OUT, on evidence** (D-16.R.16): `isBrandFont`, and it 404s in all four
+  of `google/fonts`' licence directories — no obtainable static, no fetchable licence text.
+- **The set was recomputed once more, from the COMMITTED snapshot** (D-16.R.19), after the first
+  computation was taken against the live index and could not be reproduced.
+
+**The membership that landed: TEN, not eleven.** D-16.R.19's corrected set named eleven —
+`Open Sans · Roboto Mono · DM Sans · Montserrat · Arimo · Roboto Slab · Lora · Roboto Condensed ·
+Oswald · Plus Jakarta Sans · Jost`. Nine of the ten survivors are unchanged; **`Jost` dropped for cause
+at TASK 2**, by the criterion's own *"no obtainable static from its own project upstream"* clause and
+recorded with its evidence rather than derived silently:
+
+> `indestructible-type/Jost` publishes `fonts/ttf/Jost-400-Book.ttf` at every release and at HEAD. Its
+> own `name` table calls the family **`Jost*`** (nameID 1), with nameID 2 `Regular`. The asterisk is
+> outside `build-wasm.mjs`'s `familyShape`, because that string is interpolated unescaped into
+> `font-family: '<name>'`; and `src/font-catalogue.test.ts` ties the manifest's `family` to nameID 1
+> byte-for-byte, on the stated ground that *"a family name is an assertion about bytes"*. Declaring it
+> as `Jost` — the spelling the index uses and the only one that would join — would publish a family name
+> the face's own bytes contradict. **There is no admissible static, so the family is out.**
+
+**Reproduced offline at implementation time**, from the same committed snapshot, before any byte was
+fetched: the twelve top-20 candidates came back identical to D-16.R.19's, in the same order.
+
+**What landed:** ten faces, `s1.assetCount` **44 → 54** against `maximumCacheAssets` **64**, margin
+**10**. `maximumCacheAssets` was not moved. The batch's rule, size, **owner** and **re-run trigger** are
+recorded in `_bmad-output/specs/spec-fonts/font-catalogue.md` and registered as **DW-166**.

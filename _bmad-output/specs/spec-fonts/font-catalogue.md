@@ -70,6 +70,71 @@ as it was of these 21. Only the **face, its licence text and its per-family meta
 snapshot carries **no licence field**, deliberately: a licence token cached beside the list would be a
 second authority on the terms, ageing on its own schedule. **No licence is knowable before a pick.**
 
+### The Story 16.1a batch — the tier grows to 31, by rule, with an owner and a re-run trigger
+
+**Added 2026-09-03 by Story 16.1a (D-16.R.16, membership corrected by D-16.R.19).** The local face tier
+was 21 families and is now **31**. The ten added are:
+
+> **Arimo · DM Sans · Lora · Montserrat · Open Sans · Oswald · Plus Jakarta Sans · Roboto Condensed ·
+> Roboto Mono · Roboto Slab**
+
+**Why a batch at all.** Measured against the committed index snapshot, **38 of the 50 most popular
+families are variable-only on the `google/fonts` mirror** and so cannot be added from the fetched tier
+at all. Their **own project releases** publish perfectly ordinary single-weight statics; only the mirror
+lacks them. So the head of the distribution is reachable by the mechanism this repository had already
+executed 21 times — commit the upstream static, its unmodified `LICENSE*`, its `NOTICE.md` and its
+manifest row — and by no other.
+
+**THE MEMBERSHIP RULE, and it is a GOAL rule rather than a margin rule.** *The refused families within
+the **top 20 by `popularity` on the committed index snapshot**, minus CJK (a standing Non-goal), minus
+the families the local tier already holds, minus the `shippedFamilies` collisions, minus anything with
+no obtainable static from its own project upstream. Whatever that yields is the batch.* Refused means
+`axes` non-empty on the snapshot row; the sort is `popularity` ascending with family name ascending as
+the tie-break, so the set is reproducible offline from committed artifacts alone.
+
+**It is deliberately not "the most popular N that fit".** A rule with no goal term says yes until the
+resource runs out and will consume whatever margin exists, on any run, forever (D-16.R.16). If the
+goal-set ever **overflows** the slot budget, the batch **halts and returns the overflow** — it is never
+truncated to fit, because truncation-by-resource silently converts a goal-bounded set back into a
+margin-bounded one.
+
+**The exclusions, itemised, because a set is only checkable against the things it left out.** Within the
+top 20: `Roboto` (popularity 2) and `Inter` (4) the tier already held · `Lato` (6), `Black Ops One` (7),
+`Poppins` (7) and `Archivo Black` (12) publish statics on the mirror and were never refused ·
+`Noto Sans` (8) and `IBM Plex Sans` (15) are `shippedFamilies` collisions that throw at
+`build-wasm.mjs`'s family guard (D-16.R.17: two different problems sharing a symptom, both registered
+rather than solved here) · **`Google Sans` (3) has no obtainable static** — `isBrandFont`, and absent
+from all four licence directories · **`Jost` (16) has no obtainable static under an admissible name**:
+`indestructible-type/Jost` publishes `Jost-400-Book.ttf`, whose own `name` table calls the family
+**`Jost*`**, and the asterisk is both outside the family-name shape the emitted stylesheet permits and
+unequal to the index's `Jost`, so the face cannot be declared without publishing a family name its own
+bytes contradict. **Twelve candidates, minus those two, is ten.**
+
+**The size, measured, not chosen:** ten faces into **twenty** free precache slots
+(`s1.assetCount` 44 → **54**, `maximumCacheAssets` 64), leaving a margin of **10**. The cap was not
+moved and must not be moved by this epic under any circumstance.
+
+**OWNER: the engineering lead**, as the standing holder of this epic's font-tier decisions — the same
+authority that declined to supply an N and replaced the criterion instead (D-16.R.16). A change to the
+**criterion** is an owner decision and is escalated; a **re-run under the existing criterion** is the
+lead's. *(This appointment was made by the story rather than received from the gate, and is recorded
+that way so it can be overridden by naming someone else here.)*
+
+**RE-RUN TRIGGER — any one of these, and the batch is recomputed, not extended by hand:**
+
+1. **The index snapshot is regenerated** (`scripts/build-font-index.mjs`) and the top-20-by-popularity
+   membership moves. Popularity is a distribution that shifts; this batch is a snapshot of it, and a
+   batch nobody re-runs is a queue (**DW-166**).
+2. **Story 15.0 lands.** D-8.4d.1's fetch-on-first-pick is policy with no implementation today, so these
+   faces are **precached**; when it ships, the slot constraint dissolves and the goal-set may be
+   re-derived without it.
+3. **A previously unobtainable family becomes obtainable** — `Google Sans` published under one of the
+   four identifiers, or `Jost` shipping a static whose `name` table says `Jost`.
+
+**And what a re-run may NOT do:** raise `maximumCacheAssets`, take bytes from the `google/fonts` mirror,
+add a variable face, hand-copy a licence text, or admit a face whose `cmap` disagrees with its declared
+`scripts` in either direction. Those are the same Block Ifs the first run was held to.
+
 ## Per-entry record
 
 Each catalogue entry carries what the designer shows and what the document will record:

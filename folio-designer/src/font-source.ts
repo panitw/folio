@@ -210,6 +210,36 @@ const mediaTypeOf = (filename: string): string | undefined => {
   return Object.hasOwn(mediaTypes, extension) ? mediaTypes[extension] : undefined
 }
 
+/**
+ * `source` NAMES PROVENANCE, NOT A RETRIEVAL PATH (D-16.R.13, DW-160).
+ *
+ * This field used to be the fetch host declared above followed by
+ * `/google/fonts/main/<path>` —
+ * a bare mutable branch URL, and three separate defects in one string.
+ *
+ *   - **A resolvable-looking URL is a promise of fetchability**, and a promise
+ *     that decays is worse than none: a dead link in a year reads as "this
+ *     provenance is broken" when the provenance is in fact intact.
+ *   - **`main` is a branch**, so the string does not identify the bytes it
+ *     claims to describe — upstream may move it tomorrow.
+ *   - It disagreed in KIND with the committed tier's own `source`, so a reader
+ *     holding a `.folio` could not tell which tier a face came from, which
+ *     makes the field uninterpretable rather than merely inconsistent.
+ *
+ * What it carries instead is exactly three things: the **upstream project**,
+ * the **path within it**, and the **fetch date**. It carries no scheme and no
+ * host — `src/font-provenance.test.ts` is the tripwire, because the convention
+ * alone will not hold — and it carries **no SHA-256**: that is already the
+ * asset key the face is stored under, and duplicating it would create two
+ * authorities on one fact that can disagree.
+ *
+ * The cost, stated rather than hidden: a recipient cannot refetch the exact
+ * bytes. They do not need to — CAP-2 puts the face inside the file, the asset
+ * key pins its identity, and `licenceText` and `copyright` travel with it.
+ */
+export const webFaceSource = (pathWithinProject: string, today: string): string =>
+  `google/fonts — ${pathWithinProject}, fetched ${today}`
+
 /** Everything `embedFontFamilyCommand` requires of a fetched face, and the divergence note. */
 export type FetchedFace = Readonly<{
   family: string
@@ -237,7 +267,7 @@ const refuse = (reason: string, classification?: LicenceClassification): FetchOu
  * never on a keystroke: four probes across 1,946 families must not become a
  * browsing cost.
  */
-export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) => fetch(url)): Promise<FetchOutcome> {
+export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) => fetch(url), today: string = new Date().toISOString().slice(0, 10)): Promise<FetchOutcome> {
   const slug = familyDirectorySlug(family)
   if (slug === '') return refuse(`${family} has no directory this designer can derive from its name`)
 
@@ -335,7 +365,7 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
       licence: classification.spdx,
       licenceText,
       copyright,
-      source: `${fontsRepositoryHost}/google/fonts/main/${directory}/${slug}/${filename}`,
+      source: webFaceSource(`${directory}/${slug}/${filename}`, today),
       mediaType,
       bytes,
       layoutDivergence,

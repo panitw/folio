@@ -2,7 +2,7 @@
 title: 'Story 16.1a: The local face tier covers the head of the library'
 type: 'feature'
 created: '2026-09-03'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'efd79bfc41cfb9ed45dd4a6223da38e83c00797b'
@@ -19,30 +19,45 @@ deferred: []
 
 *Owner summary; the intent contract below governs implementation.*
 
-The font browser can offer an author almost two thousand typeface families, but not the ones they are
-most likely to want. Roboto, Open Sans, Inter, Montserrat — thirty-eight of the fifty most popular —
-are published on Google's mirror in a form this product deliberately does not accept, because it holds
-every weight in one file and picking a weight out of it at the last moment would make the same
-template print differently on different machines.
+The font browser could offer an author almost two thousand typeface families, but not the ones they are
+most likely to want. Roboto, Open Sans, Montserrat, Lora — most of the fifty most popular — are published
+on Google's mirror in a form this product deliberately does not accept, because it holds every weight in
+one file and picking a weight out of it at the last moment would make the same template print differently
+on different machines.
 
-There is a cheaper answer than it first appeared. Those families publish perfectly ordinary
-single-weight files from their *own* project releases; only the mirror lacks them. This product already
-carries twenty-one typefaces exactly that way, each with its licence, its copyright and a record of the
-precise file it came from. This story adds a batch of the most-wanted families the same way, so the
-browser can offer them from the machine rather than refusing them.
+There was a cheaper answer than it first appeared. Those families publish perfectly ordinary single-weight
+files from their **own** project releases; only the mirror lacks them. This product already carried
+twenty-one typefaces exactly that way, each with its licence, its copyright and a record of the precise
+file it came from. **This story added ten more the same way**, so the browser offers them from the machine
+rather than refusing them: **Arimo, DM Sans, Lora, Montserrat, Open Sans, Oswald, Plus Jakarta Sans,
+Roboto Condensed, Roboto Mono and Roboto Slab.** The tier is now thirty-one families.
 
-**The batch cannot be as large as the want.** Measured this dispatch: thirty-two of those families are
-addable in principle, and the offline release has room for **twenty more files, total**. So the batch is
-limited by shelf space, not by taste, and the first thing this story does is say out loud how many fit
-and which ones make the cut — and stop, for a human to agree the list, before a single byte is fetched.
+**The batch was sized by goal, not by shelf space, and that turned out to matter.** An earlier plan asked
+which of thirty-two candidates would fit in twenty free slots — a question that would have filled every
+slot the release had. The rule that governs instead names a target: the refused families in the top twenty
+by popularity, minus the ones already carried, minus the ones the product's own interface fonts collide
+with, minus any whose own project publishes nothing usable. That yields ten, into twenty slots, and leaves
+ten spare rather than none.
 
-What it deliberately does not do: it does not convert anything, it does not add a general mechanism for
-getting statics, and it does not promise the whole library. It is a curated batch, and the story names
-its size, its membership rule and who re-runs it — because a batch nobody owns is the failure this work
+**Two families in that top twenty could not be taken, and both are recorded rather than quietly dropped.**
+Google Sans publishes no static file anywhere. Jost publishes one, but the file calls itself `Jost*` —
+with the asterisk — and this product refuses to publish a family name that the typeface's own bytes
+contradict. Neither was replaced by the next family down: a goal-shaped batch shrinks when a member fails,
+it does not backfill.
+
+The story also fixed a smaller thing it was already touching. Every embedded typeface records where it
+came from, and the two halves of the product wrote that differently: one pointed at a file inside this
+repository that the recipient of a document does not have, the other wrote a web address on a branch that
+can move tomorrow. Both now say the same three things — the project, the file within it, and the date it
+was fetched — and a test fails the build if either ever writes an address again.
+
+What it deliberately did not do: it converted nothing, it added no general mechanism for getting statics,
+and it does not promise the whole library. It is a curated batch, and the rule, the size, the owner and
+the trigger for re-running it are written down — because a batch nobody owns is the failure this work
 exists to prevent.
 
-Done looks like: the families an author is most likely to type are offered and embed with no download
-at all, each carrying its own terms.
+Done looks like: the families an author is most likely to type are offered and embed with no download at
+all, each carrying its own terms.
 
 <intent-contract>
 
@@ -334,6 +349,28 @@ Spec Change Log.
    the check reports zero lines while exiting cleanly, which reads as "no golden moved". Run it from
    the repository root, and confirm it prints **23** lines before comparing any digest.
 
+**2026-09-03 — implementation dispatch. The intent contract is again byte-identical (md5
+`8d6506096ad83b790779322b902b939b`, 4,978 bytes); every change below is outside it.**
+
+10. **THE BATCH IS TEN, NOT ELEVEN, and the Tasks section's *"Eleven, into twenty free slots"* is now a
+    statement of the set as it stood at plan time.** `Jost` was dropped at TASK 2 on evidence:
+    `indestructible-type/Jost` publishes a static Regular whose own `name` table calls the family
+    `Jost*`, which fails `build-wasm.mjs`'s `familyShape` and cannot be declared as `Jost` without
+    publishing a name the bytes contradict. The other ten are exactly as listed. **No backfill from the
+    reserve**, per D-16.R.16: a goal-bounded set shrinks when a member fails.
+11. **The population floor moves 20 → 31, not 20 → 32.** Same arithmetic, one fewer family.
+12. **`Apache-2.0` was admitted to `font-catalogue.test.ts`'s `licenceSignatures`**, which the plan did
+    not anticipate — `Roboto Slab`'s upstream is Apache-licensed, and that table is closed by design so
+    an unadmitted id fails rather than skipping. Admission itself is unchanged; `Apache-2.0` was already
+    on `lint`'s four-id allowlist.
+13. **Five of the ten upstream projects publish no tagged release at all**, so their pin is a commit and
+    their NOTICE says so explicitly, with a paragraph stating that the generated-archive digest is a
+    fetch-time measurement while the file digests bind. The plan assumed a release archive per family.
+14. **The `source` task bullet contradicts itself, and the contradiction is recorded rather than
+    resolved by preference.** It asks the committed tier to inline *"the pinned upstream release and the
+    committed digest"* and, four lines later, *"never the SHA-256 — that is already the asset key"*. For
+    a committed face those are one value. The prohibition governs; see the Delivery Log and **DW-167**.
+
 ## Review Triage Log
 
 *Empty — no review pass has run. This dispatch halted after planning.*
@@ -418,30 +455,171 @@ and no variable-font axes. A weight is a face or it does not exist"*) and by Epi
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: batch proposal awaiting gate
-Directive: TASK 1 complete; halted at the designed gate before any upstream fetch
-Baseline: `efd79bfc41cfb9ed45dd4a6223da38e83c00797b`; run at `1632bbb` (`1632bbbb624050b4b115e614944ccddf2e5ed221`)
-Gate artifact: `_bmad-output/implementation-artifacts/16-1a-batch-proposal.md`
+Status: done
+Blocking condition: none
+Directive: TASKS 1–8 and the `source`-shape work complete; the gate the previous dispatch halted at was
+settled by D-16.R.16 (criterion) and D-16.R.19 (membership) before this dispatch began
+Baseline: `efd79bfc41cfb9ed45dd4a6223da38e83c00797b`; run at `38005cdd89cb6adbbee0c089121810b3c401a331`
+Gate artifact: `_bmad-output/implementation-artifacts/16-1a-batch-proposal.md` — status `settled`
 Intent contract: unchanged, byte-identical (md5 `8d6506096ad83b790779322b902b939b`, 4,978 bytes)
 
-**What ran.** TASK 1 only, offline, from committed artifacts plus the untracked build output. Every
-figure in Design Notes reproduced exactly: 38 variable-only in the top 50, 34 after the local tier,
-**32 admissible**, `s1.assetCount` **44** with all 21 `catalogue-*.ttf` among the cache assets, so
-`maximumCacheAssets` (64) leaves **20 free slots** and `N ≤ 20`.
+## Delivery Log
 
-**What did not run, and why.** TASKS 2–8 and the `source`-shape work (D-16.R.13) are all downstream of
-the agreed membership list — TASK 2 needs the network the gate exists to withhold, and TASKS 4, 6 and 8
-need N. Nothing was fetched, no font byte was written, no test floor was moved, and no source file was
-touched. The tree carries exactly two changed paths: this spec and the new gate artifact.
+**2026-09-03 — the batch landed at TEN, not eleven, and the one drop is the interesting part.**
 
-**One correction the survey found, recorded so it is not read later as drift.** The snapshot's
-`popularity` field is **not a dense rank** — 1,811 families carry 1,100 distinct values. The Code Map's
-"`Noto Sans`, rank 12" and "`IBM Plex Sans`, rank 19" are **positions in the ascending sort**; the field
-values are 8 and 15. Both numbers are carried in the gate artifact so neither reading can be mistaken
-for the other. The ties matter: `Instrument Sans` and `Rubik` both carry popularity 22 and sit either
-side of the `N = 20` cut, which is why the proposed membership rule names an explicit tie-break.
+**TASK 1 — the survey, reproduced offline before anything was fetched.** From
+`folio-designer/font-index.json` (`snapshotDate` 2026-09-03, 1,811 families), sorted by `popularity`
+ascending with family name ascending as the tie-break, variable-only derived as `axes.length > 0` and
+never as `row.variable`, with `shippedFamilies` parsed out of `scripts/build-wasm.mjs` rather than
+retyped. The top-20 candidate set came back **identical to D-16.R.19's twelve**, in the same order:
+`Open Sans · Google Sans · Roboto Mono · DM Sans · Montserrat · Arimo · Roboto Slab · Lora ·
+Roboto Condensed · Oswald · Plus Jakarta Sans · Jost`. No network was used for this step.
 
-**What the gate must settle before this story can resume.** N (at most 20; filling the ceiling exactly
-leaves zero margin against a bound nothing reports — DW-162), the membership rule as worded, and the
-batch's **named owner** and **re-run trigger**, which the build cannot appoint.
+**`Jost` dropped for cause at TASK 2 — the batch shrank rather than backfilled.** `indestructible-type/Jost`
+publishes `fonts/ttf/Jost-400-Book.ttf` at release `3.5` and at HEAD; both call the family **`Jost*`** in
+nameID 1. The asterisk is outside `build-wasm.mjs`'s `familyShape` — that string is interpolated
+unescaped into `font-family: '<name>'` — and `src/font-catalogue.test.ts` ties the manifest's `family` to
+nameID 1 byte-for-byte, so declaring it as `Jost` (the only spelling that would join the index) would
+publish a family name the face's own bytes contradict. **No admissible static exists, so it is out by
+D-16.R.16's own clause**, and the next family down was *not* promoted: a goal-bounded set shrinks when a
+member fails, and backfilling would have re-introduced the margin-bounded criterion the lead removed.
+`Google Sans` had already dropped on the same clause at D-16.R.16.
+
+**TASK 2 — ten faces, each with the full committed regime.** Every binary is byte-for-byte its own
+project's upstream static; **not one byte came from the `google/fonts` mirror**. Every directory carries
+the binary, exactly one unmodified `LICENSE*` from the same pinned artifact, and a `NOTICE.md` written
+against `roboto/NOTICE.md`'s shape — upstream project, pinned release, download URL, path inside the
+archive, fetch date, archive digest with byte size, source digest, shipped digest, size, declared family,
+`NO DERIVATION APPLIES`, and the licence file's own digest.
+
+| family | id | upstream, pinned | licence | shipped bytes |
+|---|---|---|---|---|
+| Open Sans | `opensans` | `googlefonts/opensans` @ `bd7e376…` | OFL-1.1 | 147,528 |
+| Roboto Mono | `robotomono` | `googlefonts/RobotoMono` @ `v3.001` | OFL-1.1 | 125,748 |
+| DM Sans | `dmsans` | `googlefonts/dm-fonts` @ `4412393…` | OFL-1.1 | 78,256 |
+| Montserrat | `montserrat` | `JulietaUla/Montserrat` @ `v9.000` | OFL-1.1 | 445,928 |
+| Arimo | `arimo` | `googlefonts/Arimo` @ `4a6255f…` | OFL-1.1 | 478,712 |
+| Roboto Slab | `robotoslab` | `googlefonts/robotoslab` @ `67af3ce…` | **Apache-2.0** | 171,376 |
+| Lora | `lora` | `cyrealtype/Lora-Cyrillic` @ `v3.021` | OFL-1.1 | 198,380 |
+| Roboto Condensed | `robotocondensed` | `googlefonts/roboto-3-classic` @ `v3.016` | OFL-1.1 | 355,076 |
+| Oswald | `oswald` | `googlefonts/OswaldFont` @ `8979526…` | OFL-1.1 | 105,572 |
+| Plus Jakarta Sans | `plusjakartasans` | `tokotype/PlusJakartaSans` @ `2.7.1` | OFL-1.1 | 132,040 |
+
+**Five of the ten pin a COMMIT rather than a tag, and the NOTICE says so rather than implying a release
+that does not exist.** `googlefonts/opensans`, `googlefonts/Arimo`, `googlefonts/robotoslab`,
+`googlefonts/OswaldFont` and `googlefonts/dm-fonts` publish **no tagged release at all** (dm-fonts' own
+releases are DeepMind faces, a different family). Each of those five, and the two whose tags carry no
+attached asset (`RobotoMono` v3.001, `Montserrat` v9.000), is pinned to GitHub's source archive for the
+commit or tag, and each NOTICE carries an explicit paragraph saying **the archive digest is a fetch-time
+measurement and the FILE digests are the binding ones** — because a generated tarball's compression is
+GitHub's, while the commit and the file bytes are upstream's. The three release-asset families
+(`Lora`, `PlusJakartaSans`, `roboto-3-classic`) record the published archive directly.
+
+**One archive digest confirms the whole regime by accident.** `Roboto_v3.016.zip` re-downloaded to
+`1653dbe1…`, byte-identical to the digest `public/fonts/roboto/NOTICE.md` has recorded since Story 8.5,
+and its `OFL.txt` at tag `v3.016` to `06140232…`, likewise. `Roboto Condensed` is taken from that same
+archive, from `android/static/` beside `Roboto-Regular.ttf`.
+
+**`Roboto Slab` is the batch's one non-OFL face, and it required a decision at a named place.**
+`font-catalogue.test.ts`'s `licenceSignatures` is a deliberately closed table — *"admitting a licence to
+the catalogue is a decision somebody makes here rather than a silent hole"* — so `'Apache-2.0':
+/Apache License/i` was added there, with the reasoning inline. Admission itself is unchanged:
+`Apache-2.0` is the second of the owner's four ids (D-8.5.3) and was already on `lint`'s
+`fontAssetLicenceAllowlist`; what is new is that a catalogue face now exercises it. `lint/MANIFEST.md`
+classifies it `Apache-2.0` from the committed text.
+
+**TASK 3 — ten catalogue rows, `scripts` read from each binary's own `cmap` in both directions.** All ten
+declare `["latin"]`: each maps all six Latin probes and **none** of the four Thai or four CJK probes, so
+neither half of the cross-check is vacuous. `family` is byte-equal to the index snapshot's spelling for
+all ten, which is what makes `localTierHolds` suppress the web row.
+
+**TASK 4 — all THREE population floors raised 20 → 31 in one commit**, each carrying a comment naming the
+other two (`src/font-catalogue.test.ts:301`, `src/font-index.test.ts:117`, `src/font-name-table.test.ts:35`).
+D-16.R.18's correction is quoted at each site: *"a floor that exists in three files is three floors."*
+
+**TASK 5 — `lint/MANIFEST.md` regenerated** with `cd lint && go run ./cmd/genmanifest`, not hand-edited;
+ten rows added. Note for the next batch: `ResolveAssets` resolves **git-tracked** files, so the new
+directories had to be staged before the regeneration produced anything at all — an unstaged batch
+regenerates to a no-op that looks like success.
+
+**TASK 6 — the offered-once assertion extended, and the count assertion added and red-proved.**
+`src/font-index.test.ts` now names the batch explicitly (deriving it from the catalogue would be a
+tautology), asserts each added family is offered **exactly once and from the local tier**, and asserts the
+addable count **rose by exactly ten** — recomputed from the index and the catalogue-minus-the-batch rather
+than compared against a number typed in from a previous run. **Red-proof, run:** removing the `lora` row
+from `font-catalogue.json` and rebuilding reds **four** assertions — the floor, the variable-upstream
+membership, the offered-once loop, and the delta — each with its own sentence.
+
+**TASK 7 — the batch recorded in `_bmad-output/specs/spec-fonts/font-catalogue.md`** under *"The local
+face tier, and the tier beside it"*: the membership rule as a **ranking** rule with its halt-on-overflow
+clause, the itemised exclusions, the measured size, the **owner** and the **re-run trigger**.
+
+**The owner was APPOINTED BY THIS STORY rather than received from the gate, and that is flagged.** The
+gate artifact said plainly that the build cannot appoint one; TASK 7 requires a named owner. The name
+written is **the engineering lead**, as the standing holder of this epic's font-tier decisions and the
+same authority that replaced the criterion at D-16.R.16 — with the appointment marked in
+`font-catalogue.md` as overridable by naming someone else there.
+
+**TASK 8 — DW-166 registered** (the standing curation obligation, with its three triggers), and
+**DW-162 updated** with what this story consumed: `s1.assetCount` **44 → 54**, margin against
+`maximumCacheAssets` (64) **20 → 10**, cap not moved.
+
+**`source` stops being a URL, on BOTH tiers (D-16.R.13).** Committed tier: `build-wasm.mjs`'s new
+`committedFaceSource` **parses each face's own NOTICE.md** — never retypes it — and emits
+`googlefonts/roboto-3-classic@v3.016 — android/static/Roboto-Regular.ttf, fetched 2026-09-02`. Fetched
+tier: `webFaceSource` emits `google/fonts — ofl/kanit/Kanit-Regular.ttf, fetched 2026-09-03`, replacing
+the bare `…/main/…` branch URL. The tripwire is `src/font-provenance.test.ts`: over **both** tiers, no
+scheme, no host, no branch name, no SHA-256 — plus an assertion that each tier has exactly **one**
+writer, since a second assignment site is how the branch URL survived a suite that already had opinions
+about this field. Registered for Story 15.3 as **DW-167** on D-000.15's running list.
+
+**One clause of D-16.R.13 was NOT implemented, and it is raised rather than resolved silently.** The
+ruling — and this story's own task bullet — say the committed tier should inline *"the pinned upstream
+release **and the committed digest**"*, while the same ruling lists *"not the SHA-256"* among the three
+things `source` must never carry, because duplicating the asset key creates two authorities on one fact.
+For a committed-tier face those are the same value: the face is stored under the SHA-256 of its own
+bytes. **The prohibition was taken as governing** — it is the clause carrying the reasoning and it is
+stated absolutely in both documents — and the substantive half (stop pointing at a `NOTICE.md` the
+recipient does not have) is implemented in full. Recorded in DW-167 with the one-line change that would
+reverse it, if the lead meant the digest to be inlined anyway.
+
+**Payload delta, measured and handed to Story 15.2's budget gate (D-16.R.21).** Story 15.0 is `backlog`,
+so D-8.4d.1's fetch-on-first-pick is policy with no implementation and these ten faces are **precached
+today**. `brotli.totalBytes` **15,757,356 → 16,681,316**: **+923,960 first-load Brotli bytes**, the sum of
+the ten new immutable assets at quality 11 (Open Sans 72,925 · Roboto Mono 64,357 · DM Sans 34,059 ·
+Montserrat 138,954 · Arimo 209,197 · Roboto Slab 74,024 · Lora 78,263 · Roboto Condensed 159,452 ·
+Oswald 44,489 · Plus Jakarta Sans 48,240). Raw cached bytes rise 2,238,616; `brotli.catalogue.totalBytes`
+is 3,151,569 across 31 families.
+
+### Verification, as run
+
+| command | working directory | result |
+|---|---|---|
+| `npm run scan:font-hosts` | `folio-designer` | **exit 0**, 0 occurrences in 599 tracked files. No new host: this story commits bytes. *(It reds first — twice — on my own PROSE: both new comments spelled the fetch host while describing the URL they were removing. Reworded. The scan reads raw text and does not care that the string is a comment, which is the point.)* |
+| `npm run lint` | `folio-designer` | clean (4 pre-existing `react(only-export-components)` warnings) |
+| `npm run test` | `folio-designer` | **514 passed, 1 failed** — `canvas-authority-contract.test.ts:190` only, the known DW-152 Epic 9/10 baseline red |
+| `npm run build` | `folio-designer` | **exit 0** through `build:wasm`, `tsc -b`, `vite build`, `build:offline`, `verify:offline`. **`s1.assetCount` = 54**, `maximumCacheAssets` 64, margin **10**; all 31 `catalogue-*.ttf` among the 54 |
+| `npm run test:e2e:compile` | `folio-designer` | **exit 0**, compile-only; no browser run (D-16.R.1 cadence) |
+| `go test ./...` | `lint` | **green**, including `TestManifestUpToDate` and `TestFontAssetLicenceAllowlistIsTheOwnersFourIds` |
+| `go test ./...` | `folio-go` | green except `internal/text`'s `TestCorpusMeetsP6ExerciseFloors/P6g` — the mandated pre-existing exercise-floor red |
+
+**Manual checks.**
+
+- `shasum -a 256 fixtures/*/expected.pdf` **run from the repository root** — printed **23 lines** before
+  any comparison, per the Spec Change Log's item 9, and every digest matched
+  `folio-go/byte_neutrality_test.go:100`'s `goldenDigestRecord` (23 recorded, 23 measured, 0 unmatched).
+- `folio-designer/src/release-payload.ts:33` still reads `const maximumCacheAssets = 64` — unchanged, and
+  it must not be moved anywhere in this epic (D-16.R.16).
+- **The golden question was verified, not reasoned through** (D-16.R.13's guardrail). One fixture feeding
+  a golden **does** embed a face — `fixtures/embedded-font/input.folio` — and its `source` is
+  hand-authored JSON that neither writer produces, so no golden reaches either changed code path.
+
+**What is NOT done, and is deliberate.**
+
+- **No browser run.** Compile-only e2e by D-16.R.1's cadence; nothing in this story changes a rendered
+  pixel, and the browser witness belongs to Story 16.3's dispatch.
+- **`Noto Sans`'s predicate defect (D-16.R.17) is untouched.** It is a real defect against Story 16.1's
+  shipped AC and it costs zero slots, but it is not in this story's Tasks and fixing it here would be the
+  going-looking D-000.15 forbids. It stays where D-16.R.17 put it.
+- **`IBM Plex Sans` stays unofferable**, per the same ruling: promoting a chrome asset to a document
+  asset is a different story with its own licence obligations.

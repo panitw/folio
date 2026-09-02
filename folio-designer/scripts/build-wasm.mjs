@@ -279,6 +279,54 @@ const licenceTextOf = (face) => {
   return readFileSync(join(directory, licences[0]), 'utf8').trimEnd()
 }
 
+// THE COMMITTED TIER'S `source`, INLINED FROM THE NOTICE RATHER THAN POINTING
+// AT IT (D-16.R.13, DW-160).
+//
+// What was here until Story 16.1a:
+//
+//   `folio-designer/public/fonts/<dir>/<file> — see that directory's NOTICE.md
+//    for the pinned upstream release and digest`
+//
+// Honest, and incomplete in the one way that matters: **the recipient of a
+// `.folio` does not have that NOTICE.md.** The file travels alone (CAP-2), so a
+// `source` that points into this repository's tree names a fact its reader
+// cannot reach. The fetched tier had the mirror-image defect — a bare mutable
+// branch URL — and the two disagreed in KIND, so a reader could not tell which
+// tier a face came from. Both halves are corrected in one story because a field
+// whose two writers use different vocabularies is uninterpretable, not merely
+// inconsistent.
+//
+// The shape, on BOTH tiers: the **upstream project**, the **path within it**,
+// and the **fetch date**. No scheme, no host, no branch name — a
+// resolvable-looking string is a promise of fetchability, and a promise that
+// decays reads as broken provenance when the provenance is intact. And **no
+// SHA-256**: the face is stored under its digest as its asset key, and
+// restating it here would put two authorities on one fact.
+//
+// PARSED, NEVER RETYPED. Every value comes out of the face's own NOTICE.md —
+// the same rows `src/font-catalogue.test.ts` already holds each NOTICE to — so
+// a provenance record and the string a document publishes cannot drift apart.
+// An unparseable NOTICE throws here rather than emitting a vaguer string,
+// because a silently degraded provenance line is the failure this field's whole
+// correction is about.
+const committedFaceSource = (face) => {
+  const notice = join(designerRoot, 'public', 'fonts', face.directory, 'NOTICE.md')
+  const text = readFileSync(notice, 'utf8')
+  const row = (label, pattern) => {
+    const match = pattern.exec(text)
+    if (match === null) throw new Error(`public/fonts/${face.directory}/NOTICE.md records no ${label}, so the '${face.family}' face cannot state where it came from in the documents that embed it (D-16.R.13). Every catalogue NOTICE carries this row and src/font-catalogue.test.ts asserts it.`)
+    return match[1]
+  }
+  // The project is written `github.com/<owner>/<repo>` in every NOTICE; the
+  // host is dropped here, where the string becomes a document field, rather
+  // than in the record, where it is a true statement about where to look.
+  const project = row('upstream project', /^\| Upstream project \| `([^`]+)`/m).replace(/^github\.com\//, '')
+  const release = row('pinned upstream release', /^\| Upstream project \| .+release `([^`]+)` \|$/m)
+  const path = row('path inside the archive', /^\| Path inside the archive \| `(\S+)` \|$/m)
+  const fetched = row('fetch date', /^\| Fetched \| (\d{4}-\d{2}-\d{2}) \|$/m)
+  return `${project}@${release} — ${path}, fetched ${fetched}`
+}
+
 // THE TYPED CATALOGUE MODULE. `src` could not enumerate the catalogue at all
 // before this: `offline-assets.ts` exports the nine named slots and nothing
 // else, and the catalogue faces reached Vite only through the `url()` in the
@@ -299,7 +347,7 @@ writeFileSync(join(generatedDir, 'font-catalogue.ts'),
   + `// names them. A face's tail is the entries for the scripts it does NOT cover.\n`
   + `export const scriptFallbackFaces: ReadonlyArray<readonly [CatalogueScript, string]> = [${Object.entries(scriptFallbacks).map(([script, face]) => `[${JSON.stringify(script)}, ${JSON.stringify(face)}]`).join(', ')}]\n\n`
   + `export const catalogueFaces: ReadonlyArray<CatalogueFace> = [\n`
-  + catalogueFaces.map((face, index) => `  { id: ${JSON.stringify(face.id)}, family: ${JSON.stringify(face.family)}, style: "Regular", licence: ${JSON.stringify(face.licence)}, licenceText: ${JSON.stringify(licenceTextOf(face))}, copyright: ${JSON.stringify(faceCopyright(join(designerRoot, 'public', 'fonts', face.directory, face.file)))}, source: ${JSON.stringify(`folio-designer/public/fonts/${face.directory}/${face.file} — see that directory's NOTICE.md for the pinned upstream release and digest`)}, scripts: [${face.scripts.map((script) => JSON.stringify(script)).join(', ')}], url: catalogueUrl${index} },`).join('\n')
+  + catalogueFaces.map((face, index) => `  { id: ${JSON.stringify(face.id)}, family: ${JSON.stringify(face.family)}, style: "Regular", licence: ${JSON.stringify(face.licence)}, licenceText: ${JSON.stringify(licenceTextOf(face))}, copyright: ${JSON.stringify(faceCopyright(join(designerRoot, 'public', 'fonts', face.directory, face.file)))}, source: ${JSON.stringify(committedFaceSource(face))}, scripts: [${face.scripts.map((script) => JSON.stringify(script)).join(', ')}], url: catalogueUrl${index} },`).join('\n')
   + `\n]\n`)
 
 rmSync(wasmPath, { force: true })

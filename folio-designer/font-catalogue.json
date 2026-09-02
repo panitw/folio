@@ -1,5 +1,13 @@
 [
   {
+    "id": "arimo",
+    "directory": "arimo",
+    "file": "Arimo-Regular.ttf",
+    "family": "Arimo",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
     "id": "cascadiacode",
     "directory": "cascadiacode",
     "file": "CascadiaCode-Regular.ttf",
@@ -20,6 +28,14 @@
     "directory": "cousine",
     "file": "Cousine-Regular.ttf",
     "family": "Cousine",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "dmsans",
+    "directory": "dmsans",
+    "file": "DMSans-Regular.ttf",
+    "family": "DM Sans",
     "licence": "OFL-1.1",
     "scripts": ["latin"]
   },
@@ -88,6 +104,22 @@
     "scripts": ["latin"]
   },
   {
+    "id": "lora",
+    "directory": "lora",
+    "file": "Lora-Regular.ttf",
+    "family": "Lora",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "montserrat",
+    "directory": "montserrat",
+    "file": "Montserrat-Regular.ttf",
+    "family": "Montserrat",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
     "id": "notosansthailooped",
     "directory": "notosansthailooped",
     "file": "NotoSansThaiLooped-Regular.ttf",
@@ -112,11 +144,59 @@
     "scripts": ["thai"]
   },
   {
+    "id": "opensans",
+    "directory": "opensans",
+    "file": "OpenSans-Regular.ttf",
+    "family": "Open Sans",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "oswald",
+    "directory": "oswald",
+    "file": "Oswald-Regular.ttf",
+    "family": "Oswald",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "plusjakartasans",
+    "directory": "plusjakartasans",
+    "file": "PlusJakartaSans-Regular.ttf",
+    "family": "Plus Jakarta Sans",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
     "id": "roboto",
     "directory": "roboto",
     "file": "Roboto-Regular.ttf",
     "family": "Roboto",
     "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "robotocondensed",
+    "directory": "robotocondensed",
+    "file": "RobotoCondensed-Regular.ttf",
+    "family": "Roboto Condensed",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "robotomono",
+    "directory": "robotomono",
+    "file": "RobotoMono-Regular.ttf",
+    "family": "Roboto Mono",
+    "licence": "OFL-1.1",
+    "scripts": ["latin"]
+  },
+  {
+    "id": "robotoslab",
+    "directory": "robotoslab",
+    "file": "RobotoSlab-Regular.ttf",
+    "family": "Roboto Slab",
+    "licence": "Apache-2.0",
     "scripts": ["latin"]
   },
   {
