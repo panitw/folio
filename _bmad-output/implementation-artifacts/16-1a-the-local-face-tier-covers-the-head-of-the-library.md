@@ -2,10 +2,11 @@
 title: 'Story 16.1a: The local face tier covers the head of the library'
 type: 'feature'
 created: '2026-09-03'
-status: 'ready-for-dev'
+status: 'blocked'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'efd79bfc41cfb9ed45dd4a6223da38e83c00797b'
+baseline_revision: '1632bbbb624050b4b115e614944ccddf2e5ed221'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/specs/spec-fonts/font-catalogue.md'
@@ -397,9 +398,30 @@ and no variable-font axes. A weight is a face or it does not exist"*) and by Epi
 
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: none
-Directive: halt after planning
-Baseline: `efd79bfc41cfb9ed45dd4a6223da38e83c00797b` (tree clean at dispatch)
-Intent contract: preserved byte-identically from the prior draft (md5 `8d6506096ad83b790779322b902b939b`, 4,978 bytes)
-Note: TASK 1 is a designed halt. The build dispatch is expected to reach `blocked` / `batch proposal awaiting gate`, not `done`.
+Status: blocked
+Blocking condition: batch proposal awaiting gate
+Directive: TASK 1 complete; halted at the designed gate before any upstream fetch
+Baseline: `efd79bfc41cfb9ed45dd4a6223da38e83c00797b`; run at `1632bbb` (`1632bbbb624050b4b115e614944ccddf2e5ed221`)
+Gate artifact: `_bmad-output/implementation-artifacts/16-1a-batch-proposal.md`
+Intent contract: unchanged, byte-identical (md5 `8d6506096ad83b790779322b902b939b`, 4,978 bytes)
+
+**What ran.** TASK 1 only, offline, from committed artifacts plus the untracked build output. Every
+figure in Design Notes reproduced exactly: 38 variable-only in the top 50, 34 after the local tier,
+**32 admissible**, `s1.assetCount` **44** with all 21 `catalogue-*.ttf` among the cache assets, so
+`maximumCacheAssets` (64) leaves **20 free slots** and `N ≤ 20`.
+
+**What did not run, and why.** TASKS 2–8 and the `source`-shape work (D-16.R.13) are all downstream of
+the agreed membership list — TASK 2 needs the network the gate exists to withhold, and TASKS 4, 6 and 8
+need N. Nothing was fetched, no font byte was written, no test floor was moved, and no source file was
+touched. The tree carries exactly two changed paths: this spec and the new gate artifact.
+
+**One correction the survey found, recorded so it is not read later as drift.** The snapshot's
+`popularity` field is **not a dense rank** — 1,811 families carry 1,100 distinct values. The Code Map's
+"`Noto Sans`, rank 12" and "`IBM Plex Sans`, rank 19" are **positions in the ascending sort**; the field
+values are 8 and 15. Both numbers are carried in the gate artifact so neither reading can be mistaken
+for the other. The ties matter: `Instrument Sans` and `Rubik` both carry popularity 22 and sit either
+side of the `N = 20` cut, which is why the proposed membership rule names an explicit tie-break.
+
+**What the gate must settle before this story can resume.** N (at most 20; filling the ceiling exactly
+leaves zero margin against a bound nothing reports — DW-162), the membership rule as worded, and the
+batch's **named owner** and **re-run trigger**, which the build cannot appoint.
