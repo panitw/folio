@@ -690,3 +690,118 @@ for the same state."* Third instance in two stories.
 **Standing consequence.** Wherever a hold, a busy flag or a generation guard is added or repaired, its
 **release path is red-proved rather than asserted** — a test that fails when the release is removed. That
 is the reason D-16.R.14's guardrail demands it explicitly rather than trusting the implementation.
+
+### D-16.R.16 — RULING + MEASUREMENT: the batch is sized by GOAL, the squeeze dissolves, and the criterion with no budget term is replaced
+
+**Engineering lead ruling**, applied, with both demanded measurements taken by the orchestrator.
+Confidence: high on the criterion; part 1's outcome measured rather than assumed.
+
+**The lead declined to supply N and replaced the criterion instead.** *"The most popular N that fit"* is
+**a criterion with no budget term**: it says yes until the resource runs out, and will consume whatever
+margin exists on any run, in any epic, forever. That is the shape that cost this run the 8.4x series —
+34 commits and 3,567 lines against a criterion admitting every member of its class.
+
+**The criterion.** The batch is **the refused families within the top 20 by `popularity`**, minus CJK
+(standing non-goal), minus families already in the local tier, minus `shippedFamilies` collisions, minus
+anything with no obtainable static from its own project upstream. **Whatever that yields is the batch.**
+If it fits the margin, the reserve is a **residue and no allocation policy is needed**. **If it
+overflows: halt and return the overflow — do NOT truncate to fit**, because truncation-by-resource
+silently converts a goal-bounded set back into a margin-bounded one.
+
+**Measurement 1 — is the precache slot actually the binding cap? It is a SEQUENCING fact, not an
+engineering unknown.** The lead asked whether a face made fetch-on-first-pick by D-8.4d.1 still needs a
+**precache** slot. Measured: **`15-0-a-catalogue-face-arrives-when-it-is-picked` is `backlog`.** D-8.4d.1
+is a **policy** decision whose implementing story has not shipped, so catalogue faces **are** precached
+today, the 20-slot margin **is** real today, and it dissolves when 15.0 lands. Also confirmed:
+`maximumCacheAssets = 64` is **self-imposed** — `release-payload.ts:26-33` states it exists so *"a
+release over the bound can no longer be emitted in silence"*, and `static-host-contract.json` sets **no
+asset-count limit**. A device for forcing a decision, not a physical ceiling — which is why the owner
+may move it and the lead may not.
+
+**Measurement 2 — the goal-set is ELEVEN families, against twenty free slots.**
+
+> Open Sans · Montserrat · Lora · Roboto Condensed · Arimo · Roboto Mono · Oswald · DM Sans · Nunito ·
+> Raleway · Fraunces
+
+**Excluded, itemised so a later reader can see what was left out and why:** `Roboto` and `Inter` already
+in the local tier · `Poppins`, `Lato`, `Bebas Neue` static upstream and never refused · `Noto Sans JP`
+CJK · `IBM Plex Sans` the chrome collision · `Noto Sans` takes the predicate fix at zero slots ·
+`Google Sans` dropped on evidence (below).
+
+**11 into 20. The reserve is a residue and there is nothing to allocate.** No tie-break is needed
+either: the N = 20 cut that made `Instrument Sans` and `Rubik` straddle a boundary at `popularity` 22
+does not arise. **No owner question about raising the cap arises.**
+
+**`Google Sans` dropped on evidence, and the class it exposes is registered.** `isBrandFont: true`, and
+it **404s in all three licence directories** of `google/fonts` (`ofl/`, `apache/`, `ufl/`). No obtainable
+static, no fetchable licence text — it drops by D-16.R.2a's own mechanism. **The class matters more than
+the family:** the index lists **1,946 families and `google/fonts` does not carry all of them**, and
+nothing measures the difference. **`isBrandFont` is not the signal** — Roboto and every Noto carry it and
+are all present. So there is an **unmeasured population** the browser lists, filters as addable, and then
+fails at pick time when all four directory probes miss. Story 16.1's slug-and-confirm refuses that
+correctly, so it is not a correctness hole; it is registered as deferred work rather than sized now.
+
+**Correction carried, at the lead's own request.** D-16.R.2's *affordability* argument — that the
+payload is not the binding constraint because D-8.4d.1 moved faces to fetch-on-first-pick — is **true of
+`brotli.totalBytes` and false of slots**. Recorded as a correction to the argument, **not to the
+verdict**: the owner's choice to derive a bounded batch stands; what was wrong was the account of what
+bounds it.
+
+**Guardrails.** The ranking stays a ranking so popularity movement cannot silently change membership; the
+goal-set is stated in the story **with its exclusions itemised**; `maximumCacheAssets` is **not edited in
+this epic under any circumstance**.
+
+### D-16.R.17 — RULING: `Noto Sans` and `IBM Plex Sans` are two different problems sharing a symptom
+
+**Engineering lead ruling**, applied. Confidence: high. **`shippedFamilies` conflates two populations,
+which is why these looked like one bug.** Measured: `folio-go/fonts/fonts.go:59-61` — the engine's
+shipped set is **exactly** `Noto Sans`, `Noto Sans Thai`, `Noto Sans SC`. **IBM Plex is not in it**; it is
+the designer's own chrome typeface.
+
+**`Noto Sans` — a DEFECT against Story 16.1's own shipped acceptance criterion.** It is an **engine
+render face**: every document can already name it in a chain, and it needs no embedding because it ships
+with the renderer. It is not *"present and unofferable"* — it is **present and always available**. 16.1's
+AC reads: *"a row is refused because no static face is obtainable, never because upstream happens to be
+variable."* The browser is refusing `Noto Sans` on the `axes` field alone, which is exactly what that AC
+forbids.
+- **Fix the predicate, not the batch.** The availability check must ask *"is a static face obtainable for
+  this family"* — from the **engine's shipped set**, the local tier, or upstream — not *"does the index
+  say it has axes"*. Same authority ordering as D-16.R.1: **`axes` predicts, obtainability decides.**
+- **Zero slots**, and it recovers a top-20 family.
+- **No family name is special-cased**, and a test asserts a shipped-set family with upstream axes is
+  offered.
+
+**`IBM Plex Sans` — register it, do not build it.** It is designer **chrome**, absent from the engine's
+`FontSet`, so a document genuinely cannot use it. But *"the product has this font"* overstates it: the
+product has it **for its own interface**, which is a different relationship. Making it embeddable means
+promoting a chrome asset to a document asset — a new relationship carrying its own
+`licenceText`/`copyright` obligations, and a decision about whether the designer's UI typeface should
+travel inside users' documents at all. **A story, and off Epic 16's goal.** Same discipline as the
+second-door deferral: repair what is the goal, register the rest.
+- **Trigger:** an author asking for IBM Plex specifically, **or** Epic 11 touching `shippedFamilies` —
+  whichever comes first. Owner: whoever next changes that list.
+- **The register entry states the broader finding:** `shippedFamilies` **conflates engine render faces
+  with designer chrome faces, and the two have opposite availability semantics.** The two populations are
+  not merged or split in this epic, only documented.
+
+### D-16.R.18 — Two corrections the lead made to its own earlier rulings, recorded rather than absorbed
+
+**"One place" was wrong, and the lesson generalises.** D-16.R.12 said *"a floor left at 21 while the tier
+grows to 30"*. Measured: **there is no 21 anywhere** — the floor is `>= 20` in **three** files
+(`font-catalogue.test.ts:292`, `font-index.test.ts:107`, `font-name-table.test.ts:25`), two of which
+Story 16.1 added **after** that ruling was written. The substance held; the wording asserted a fact
+nobody had checked. All three are pinned by task. The lead's own generalisation is worth keeping:
+**"a floor that exists in three files is three floors, and a ruling that says *the floor* has already
+lost track of one of them."**
+
+**The `axes` trap, recorded because a wrong reading would have made this epic look unnecessary.**
+`font-index.json` stores **`axes`, not a synthesised `variable` flag** — 0 of 1,811 rows carry a
+`variable` key. Reading it the wrong way yields a confident *"0 of the top 50 are variable-only"*, which
+is the **dangerous** kind of wrong: it does not look like an error, it looks like the work is
+unnecessary. Written into Story 16.1a's Design Notes.
+
+**A tripwire nobody would expect:** a fourth `UPSTREAM` entry reds
+`folio-go/fontgen_matrix_test.go:117`, whose witness string hardcodes *"derived and compared 3 of 3
+faces"*. Under D-16.R.2a the batch takes upstream statics rather than deriving, so it **should not**
+bite — noted in the story anyway, because *"should not bite"* is how tripwires get discovered the
+expensive way.
