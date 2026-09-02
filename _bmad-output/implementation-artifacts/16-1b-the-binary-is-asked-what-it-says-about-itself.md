@@ -10,7 +10,7 @@ context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-16-decision-log.md'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
-warnings: []
+warnings: ['oversized']
 deferred: []
 ---
 
@@ -133,47 +133,175 @@ warning · deleting the build-time tie · a new error type in package `folio` ro
 
 ## Code Map
 
-- `folio-go/internal/fontset/variableface.go:69` — `RefuseVariableFace`, **the sibling to copy**: a
-  byte-taking door at rank 6, untyped `fmt.Errorf`, called from `component_commands.go:2414`. Its
-  `nil`-on-unparsable behaviour is **correct and is now the precedent this guard follows** (D-16.R.7
-  dissolved DW-150 on exactly that reading).
-- `folio-go/component_commands.go:2414` — where `RefuseVariableFace` is called from `embedFontFamily`.
-  **The new call goes beside it**, keeping `component_commands.go` a caller rather than a checker.
-- `folio-go/component_commands.go:2360-2466` — `embedFontFamily` in full, with `componentFields(raw, 12)`
-  and `embeddedFontRecord`. **Arity is frozen**: `copyright` is one of the twelve wire fields, which is
-  why the nameID 0 *reader* lives in the browser (Story 16.1) and this guard re-reads the bytes for its
-  own, different question.
-- `folio-go/component_commands.go:668` — the 6,288,384-byte face cap.
-- `folio-designer/src/font-catalogue.test.ts:197-200` — **the build-time signature table, two rows**, and
-  `:355-366` the tie itself with its stated rationale. This is the mirror the Go table must subsume, and
-  it is not weakened here.
+**Every anchor below was re-measured at `ceb5213`, the dispatch HEAD.** The spec's `baseline_commit`
+is `384c8ac`; the single commit between them (`ceb5213`) touches **only `_bmad-output/**` documents —
+no file under `folio-go/`, `folio-designer/` or `lint/` moved.** Verified with
+`git diff --stat 384c8ac..ceb5213`. All five anchors carried in the previous draft are therefore
+**correct as written**; the entries below add what the plan-gate investigation found beside them.
+
+### The siting (confirmed available)
+
+- `folio-go/internal/fontset/variableface.go:69` — `func RefuseVariableFace(name string, data []byte) error`.
+  **Anchor correct.** The sibling to copy: byte-taking, untyped `fmt.Errorf`, `nil` on unparsable.
+- `folio-go/component_commands.go:2414` — `if verr := fontset.RefuseVariableFace(name, decoded); verr != nil`.
+  **Anchor correct.** The new call goes beside it. `component_commands.go` (package `folio`) **already
+  imports `internal/fontset`**, so the import graph needs no change.
+- `folio-go/component_commands.go:2360-2466` — `embedFontFamily` in full (`func` at 2360, closing brace
+  at 2466). **Anchor correct.** `componentFields(raw, 12)` confirmed inside it — arity frozen at 12.
+- `folio-go/component_commands.go:668` — `const maxComponentAssetBytes = (engineProtocolMaxPayloadBytes
+  - maxComponentAssetPayloadOverheadBytes) * 3 / 4`. **Anchor correct**, and the value is
+  **6,288,384** — verified arithmetically from `:638` (`8 * 1024 * 1024`) and `:649` (`4 * 1024`).
+  Note `component_commands_test.go:2207` records that the literal `6288384` **appears nowhere in code**
+  and must not be introduced.
+- **No architecture test forbids the siting.** `TestFolioMethodNamesAreInjective`
+  (`folio-go/render_arch_test.go:461`) constrains package `folio` **root**; the new door and its error
+  are born in package `fontset`, so the constraint is satisfied by siting rather than by care. The
+  untyped-`fmt.Errorf` requirement stands anyway, per `variableface.go`.
+
+### The name-table reader — it does NOT need to be written from scratch
+
+This was an open question at dispatch. Answer: **a generic nameID reader already exists in the vendored
+package, and `internal/fontset` already has the in-package precedent for calling it.**
+
+- `github.com/boxesandglue/textshape@v0.0.15/ot/metrics.go:280` — **`func (n *Name) Get(nameID uint16) string`**.
+  A generic, arbitrary-nameID accessor over `Name.entries map[uint16]string`. **This is the reader.**
+  nameID 13 and nameID 0 are both reachable through it; nothing new must be parsed by hand.
+- `…/ot/metrics.go:213` — `func ParseName(data []byte) (*Name, error)`.
+- `folio-go/internal/fontset/fontset.go:502` — `readPostScriptName(font *ot.Font) (string, error)`: the
+  **in-package precedent**, and the shape to copy verbatim —
+  `font.HasTable(ot.TagName)` → `font.TableData(ot.TagName)` → `ot.ParseName(data)`. Its guard order is
+  what makes "absent" distinguishable from "unparseable".
+- **The vendor boundary permits this.** `folio-go/internal/fontset/vendorboundary_test.go:639`
+  (`TestFamilyNameHasNoCallSite`) is an **AST guard over one named accessor only** — `FamilyName`. It
+  does not close a census over all vendor accessors, so **`Get` has no call-site prohibition.**
+  `vendor-boundary.md` contains no row for `Get` (grep: no match).
+  **Do not call `(*ot.Name).FamilyName()` anywhere**, including in tests: the guard walks the whole
+  module, skips `testdata` by category, and matches selectors in call position.
+- `folio-go/shipped_faces_test.go:196` — `sfntNameRecords(...) map[uint16]string`, a direct
+  name-table parse (prefers platform 3) already in the repo, available as a **test-side** cross-check
+  independent of the vendor accessor.
+- `folio-designer/src/font-catalogue.test.ts:126` — `nameTableString(view, tables, 13)`, the TS side's
+  equivalent generic reader. Useful as a semantic reference for what "the same record" means.
+
+### The controls — both already exist as committed bytes (measured at this gate)
+
+The contract requires a positive control "under `folio-go/testdata/`". **It is already there, and no new
+font binary need be committed.** Measured at the plan gate by parsing the committed files directly
+(pure Python, read-only, nothing written to the repository; command, commit `ceb5213`, clean tree, cwd
+`/Users/panitw/Projects/folio`):
+
+| File | nameID 13 | nameID 0 |
+|---|---|---|
+| `folio-go/testdata/fonts/Roboto-Regular.ttf` | `Licensed under the Apache License, Version 2.0` | `Copyright 2011 Google Inc. All Rights Reserved.` |
+| `folio-go/testdata/fonts/notosansthai-variable-testonly/NotoSansThai-VF.ttf` | `This Font Software is licensed under the SIL Open Font License, Version 1.1…` | `Copyright 2022 The Noto Project Authors…` |
+
+- **POSITIVE CONTROL (contradiction), free:** `Roboto-Regular.ttf` is recorded as **`Apache-2.0`**
+  (`lint/internal/licence/licencecensus_test.go:97`) and its nameID 13 carries the **Apache** sentence.
+  Embedding it while **declaring `OFL-1.1`** is a genuine CONTRADICTION — the bytes match a *different
+  admitted licence's* signature than the one declared — and must be REFUSED. This is exactly the
+  fixture the ruling asks for, with no new binary, no new `LICENSE*`/`NOTICE*`, and no new row in the
+  licence census.
+- **CONFIRMATION control, free:** `NotoSansThai-VF.ttf` is recorded as `OFL-1.1`
+  (`licencecensus_test.go:98`) and its nameID 13 carries the SIL sentence → admit. It is also the
+  face `RefuseVariableFace` rejects, so **order matters**: assert the licence outcome through the new
+  door directly, not through `embedFontFamily`, where the `fvar` refusal fires first.
+- **Both minted regexes verified against these real strings at this gate:**
+  `/Apache License,?\s+Version 2\.0/i` matches Roboto's record; `/SIL Open Font License/i` matches
+  Noto's. Neither is speculative.
+- **If a synthetic fixture is nonetheless wanted**, the in-repo precedent is
+  `folio-go/internal/fontset/fontset_test.go:36` `patchUnitsPerEm` — copies the sfnt bytes and walks the
+  16-byte table directory to overwrite a field in place. **Caveat, and the reason the free control is
+  preferred:** `name` records are variable-length behind a string-storage pool, so only a *same-length*
+  substitution is as safe as `patchUnitsPerEm`; and any **new committed binary** is swept by
+  `lint/internal/manifest/manifest.go:259` (which special-cases `folio-go/testdata/fonts`) and by
+  `folio-designer/src/font-binary-identity.test.ts`, and would need its own licence-census row.
+
+### The mirror contract — constructible today, with precedent, and no shared artifact needed
+
+This was flagged at dispatch as possibly unimplementable. **It is implementable, and the repo has a
+line-for-line template.**
+
+- `folio-designer/src/font-catalogue.test.ts:197-200` — `const licenceSignatures: Readonly<Record<string, RegExp>>`
+  with exactly two rows, `'OFL-1.1'` and `'Ubuntu-font-1.0'`. **Anchor correct.** The file exports
+  **nothing**, so the table cannot be imported — but it does not need to be.
+- **Mechanism (the established idiom): a Go test reads the TypeScript source as text and regex-extracts
+  the keys.** Template: `folio-go/canvas_projection_wire_test.go:353-400`, which `os.ReadFile`s
+  `folio-designer/src/engine-protocol.ts` and pulls key lists out with package-level
+  `regexp.MustCompile` extractors **anchored on the TS declaration's own identifier**, then compares
+  sets. Two rules to copy exactly: **anchor the regex on `const licenceSignatures`**, and **`t.Fatal`
+  when the file or the anchor does not match — never skip** (`:376-379`).
+- Doctrine to cite: `folio-designer/src/engine-bounds-mirror.test.ts:6-40` states **D-7.4.5 / DW-25** —
+  any invariant duplicated across the Go/TS boundary moves in ONE commit, with a test that reads both
+  sides. Its `sites` regexes are the anti-vacuity trick: assert the mirrored key is *consumed*, not
+  merely declared.
+- **A shared generated artifact is NOT required and must not be introduced.** The only generated Go/TS
+  bridge, `folio-designer/src/generated/font-catalogue.ts`, is **gitignored** (`.gitignore:71`) and
+  TS-only. Reading source text needs no export and no build step.
+- **Subsumption holds today, so the test will pass on landing and is not vacuous:** TS declares
+  {`OFL-1.1`, `Ubuntu-font-1.0`}; Go will declare {`OFL-1.1`, `Ubuntu-font-1.0`, `Apache-2.0`}. TS ⊂ Go,
+  strictly. Red-prove it by deleting the `Apache-2.0` row's counterpart, or by adding a TS row with no
+  Go entry.
+
+### Read-only evidence and counts (confirmed, do not move)
+
+- `folio-designer/font-catalogue.json` — **21 faces**; distinct `licence` values are exactly two:
+  `OFL-1.1` (19) and `Ubuntu-font-1.0` (2). **Not read by Go at all** (`grep font-catalogue` over
+  `*.go`: no match) — so this story must not make Go depend on it.
+- `folio-designer/public/fonts/` holds **27** directories, not 21: the extra six are the hand-declared
+  chrome/engine families at `font-catalogue.test.ts:59`. **Never derive the guard's population by
+  walking that directory.**
+- `folio-go/byte_neutrality_test.go:100` — `goldenDigestRecord`, **23 entries**, with the length guard
+  at `:634` and `TestGoldenDigestAgreesAtEveryDeclaredSite` at `:649`. The "23 golden digests" the
+  contract requires unmoved.
+- `folio-go/internal/template/version.go:77` — `SupportedMajor = 2`.
+- `lint/internal/manifest/manifest.go:140` — `fontAssetLicenceAllowlist = []string{"OFL-1.1",
+  "Apache-2.0", "MIT", "Ubuntu-font-1.0"}` (D-8.5.3). The owner's four; the Go signature table covers
+  three of them by design (see Design Notes).
 - `folio-go/internal/template/fontasset.go` — `DecodeFontForRender`/`checkSfnt`, the step that refuses
-  genuinely unreadable bytes, which is why NO EVIDENCE is safe.
-- `folio-go/testdata/` — where the positive-control fixture lands.
+  genuinely unreadable bytes one later, which is what makes NO EVIDENCE safe.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- `folio-go/internal/fontset/` — a new byte-taking door beside `RefuseVariableFace`: parses the name
-  table, applies the refuse-signatures to every face, then the admit-signature for the declared id, and
-  returns contradiction / confirmation / no-evidence. Ordered slice, untyped error.
-- `folio-go/component_commands.go` — call it from `embedFontFamily` beside the `fvar` refusal, before
-  any byte reaches `t.doc.Assets`.
-- `folio-go/testdata/` — the **positive control**: a fixture face whose name table contradicts its
-  declared id, asserted refused. Plus the disequality control the build-time tie already uses.
-- Tests: each of the three outcomes; the copyleft refuse-signature firing against a face declaring
-  `OFL-1.1`; nameID 0 consulted only on absence; a face with a correct description still embedding
-  (so the guard cannot be over-broad); **red-prove by deleting the guard**, not by falsifying a
-  condition.
-- A test enforcing the **mirror contract** between the Go and TS tables.
-- **Re-run the 100-face sample** and report it: every refusal must be a contradiction and none a
-  silence.
-- `deferred-work.md` — **close DW-150 as reconciled**, recording that the lead's contract was what was
-  out of step, not `RefuseVariableFace`.
-- Record the narrowing on **D-000.15's running list** for Story 15.3 — this narrows an
-  exported-API-reachable command and is in the **before-the-tag set**.
+
+1. `folio-go/internal/fontset/` — a new byte-taking door beside `RefuseVariableFace` (new file, e.g.
+   `licencesignature.go`). It parses the name table exactly as `readPostScriptName` does
+   (`HasTable` → `TableData` → `ot.ParseName`), reads nameID 13 via `(*ot.Name).Get(13)`, falls back to
+   `Get(0)` **only when 13 is absent**, applies the **refuse-signatures to every face first**, then the
+   **admit-signature for the declared id**, and returns contradiction / confirmation / no-evidence.
+   **Ordered slice, never a map range** (AD-1). Untyped `fmt.Errorf`. Return `nil` (admit) on every
+   parse failure, per `RefuseVariableFace`'s precedent.
+2. **Define "present" explicitly in code**, because the whole nameID-0 door hangs on it: a record is
+   PRESENT when the parsed name table yields a **non-empty** string for it. Record the known fidelity
+   limit — see Design Notes.
+3. `folio-go/component_commands.go` — call it from `embedFontFamily` **beside the `fvar` refusal at
+   `:2414`**, before any byte reaches `t.doc.Assets`. Keep `component_commands.go` a caller, not a
+   checker.
+4. Tests in `internal/fontset`, using the **committed controls** rather than a new binary:
+   - CONTRADICTION: `testdata/fonts/Roboto-Regular.ttf` declared as `OFL-1.1` → refused, and the
+     message names **both** what was declared and what the bytes say.
+   - CONFIRMATION: `Roboto-Regular.ttf` declared as `Apache-2.0` → admitted (the guard is not
+     over-broad); `NotoSansThai-VF.ttf` declared as `OFL-1.1` → admitted.
+   - COPYLEFT: a face whose record names GPL/AGPL/SSPL/ShareAlike, declared `OFL-1.1` → refused.
+     Build it by same-length substitution per `patchUnitsPerEm`'s directory-walking method, in-test.
+   - NO EVIDENCE: name table stripped → admitted; record present but matching nothing → admitted.
+   - nameID 0 consulted on absence of 13; **not** consulted when 13 is present and mismatched.
+   - **Red-prove by DELETING the guard**, never by falsifying a condition — deletion is what proves the
+     call site is reached (a falsified condition only proves arm order).
+5. A Go test enforcing the **mirror contract** by reading `font-catalogue.test.ts` as source text,
+   anchored on `const licenceSignatures`, `t.Fatal` on a miss. Include the vacuity guard: fail if the
+   extracted key set is empty.
+6. **Re-run the 100-face sample** and report it with command, commit, tree state and working directory
+   (D-8.4j.8). Every refusal must be a CONTRADICTION and none a silence.
+7. `deferred-work.md` — **close DW-150 as reconciled**, recording that the lead's contract was what was
+   out of step, not `RefuseVariableFace`.
+8. Record the narrowing on **D-000.15's running list** for Story 15.3 (before-the-tag set).
+9. **Do not** add a row to `vendor-boundary.md` for `Get` unless the implementation finds a
+   substitution to declare; `Get` returns the zero value, which is observably absent, so there is
+   nothing to substitute. If a row is added, `TestVendorBoundaryDocumentExistsAndIsCited` must stay green.
 
 **Acceptance Criteria:**
+
 - Given a face whose name table contradicts its declared licence, when it is embedded, then the command
   refuses it, located, naming both what was declared and what the bytes say — and no byte reaches
   `Assets`.
@@ -204,11 +332,94 @@ arriving through a plausible-looking package. A declared-id-only check would let
 match, a face whose 13 says GPL could be laundered by a permissive 0. Absence is a different condition
 from disagreement, and only absence opens the second door.
 
+**A declared id with NO signature entry admits, and D-16.R.4 selects that reading rather than leaving it
+open.** D-16.R.5 had said "an SPDX id with no signature entry is a refusal, not a skip"; D-16.R.7's
+three-outcome table supersedes it — *no signature matches* is NO EVIDENCE, which admits. The
+reachable case decides it: D-8.5.3 admits **`MIT`**, and D-16.R.4 rules that **"MIT stays admissible and
+gets no table entry"** because `google/fonts` publishes no MIT token — *"absence, not narrowing."*
+Refusing an id with no entry would therefore refuse a licence the owner has explicitly admitted. The
+Go table covers three of the owner's four ids **by design**, and the fourth's absence is the ruling.
+
+**Known fidelity limit of the vendor reader, recorded rather than discovered in review.**
+`ot.ParseName` (`metrics.go:213`) keeps a record only when it decodes to a non-empty string, and it
+decodes only platform 0/3 (UTF-16BE) and platform 1 encoding 0 (Mac Roman); anything else is skipped,
+and `Get` returns `""` for both "no such record" and "record skipped". So a face stating its terms
+*only* under an exotic platform/encoding reads as **absent**, which opens the nameID 0 door one step
+early. This can only make the check **quieter**, never louder — it cannot produce a false refusal — and
+D-16.R.7's own "how we'd know it was wrong" accepts exactly that cost: *"a check quieter than intended,
+never a document publishing false terms."* Do not "fix" this by hand-parsing the name table; state it.
+
+**Why the controls are the committed faces and not a new binary.** A new committed `.ttf` under
+`folio-go/testdata/fonts` is swept by the manifest guard (`manifest.go:259`), the binary-identity guard,
+and the licence census, and would need its own `LICENSE*`/`NOTICE*` — for a file whose entire purpose is
+to carry a licence statement that is a lie about itself. The already-committed Apache-licensed Roboto
+supplies a *true* contradiction against an `OFL-1.1` declaration with none of that cost.
+
+**Order at the call site.** `RefuseVariableFace` runs first at `:2414`. `NotoSansThai-VF.ttf` is
+variable, so a licence assertion routed through `embedFontFamily` with that face would be masked by the
+`fvar` refusal. Assert the three outcomes against the new door directly; assert *reachability* from
+`embedFontFamily` with a static face.
+
 ## Verification
 
-- `cd folio-go && go test ./... && go vet ./... && gofmt -l folio-go`
-- `cd folio-designer && npm run test && npm run build`
-- The **positive control** reds when the guard is deleted; the guard admits a correct face.
-- The **re-run 100-face sample**, reported with command, commit, tree state and working directory.
-- The 23 golden digests unmoved; `SupportedMajor` still 2.
-- Heavy suites run at the end-of-run catch-up per D-16.R.1; e2e specs compile.
+Run from the repository root unless stated.
+
+- `cd folio-go && go test ./... && go vet ./... && gofmt -l .`
+  **Note the `gofmt` path is `.`, not `folio-go`** — the previous draft's `gofmt -l folio-go` names a
+  directory that does not exist from inside `folio-go` and would silently list nothing.
+- **Baseline reds, pre-declared so they are not attributed to this story.** Both were verified red at
+  baseline by Story 16.0's close; if either changes shape, that IS this story's problem:
+  - `folio-go/internal/text` — the two failures of the **mandated P6g exercise floor**
+    (`TestCorpusMeetsP6ExerciseFloors`). Permanent; never "fixed".
+  - `folio-designer` — `npm test` is red at `canvas-authority-contract.test.ts:190` over
+    `e2e/e9-5-border-no-ink.spec.ts`, **registered as DW-152** and owned by the Epic 9/10 lane.
+- `cd folio-designer && npm run test && npm run build` — expect exactly the DW-152 red above.
+- **The positive control reds when the guard is deleted** (deletion, not falsification), and the guard
+  admits `Roboto-Regular.ttf` declared `Apache-2.0`.
+- **The mirror-contract test** fails when a row is added to the TS table with no Go counterpart.
+- **The re-run 100-face sample**, reported with command, commit, tree state and working directory.
+- **The 23 golden digests unmoved** — `goldenDigestRecord` at `byte_neutrality_test.go:100`, its length
+  guard at `:634`, and `TestGoldenDigestAgreesAtEveryDeclaredSite`.
+- `SupportedMajor` still `2` at `folio-go/internal/template/version.go:77`.
+- `font-catalogue.test.ts:197-200` and `:355-366` unchanged — **both guards kept, or halt.**
+- Heavy suites at the **end-of-run catch-up** per D-16.R.1. **No in-story browser run**: this story has
+  no browser surface. e2e specs are **compile-only**.
+
+## Spec Change Log
+
+**2026-09-03 — plan-gate re-plan at `ceb5213` (halt after planning).**
+
+- The intent-contract block was **preserved byte-identically** (7,019 bytes, md5
+  `f1be40fb96e326f3c567909f1f66def6`, verified before and after). No scope amendment was supplied, so
+  step-02's preservation rule applies in full. Everything changed is outside the block.
+- Spec `status` was `ready-for-dev`, which step-01 routes straight to IMPLEMENT. Set to `draft` for the
+  dispatch and restored to `ready-for-dev` at this gate, so the dispatch could re-plan rather than build.
+- **All five Code Map anchors re-measured at the dispatch HEAD and found CORRECT.** The only commit
+  between `baseline_commit` `384c8ac` and `ceb5213` touches `_bmad-output/**` only.
+- Answered the three questions the plan gate was asked to settle, and recorded the evidence:
+  **the reader exists** (`(*ot.Name).Get`, plus the `readPostScriptName` precedent); **the siting is
+  available** (import already present, no arch test forbids it); **the mirror contract is
+  constructible** with an existing template and no shared generated artifact.
+- Replaced the assumed new `testdata` fixture with **two already-committed controls**, after measuring
+  their name tables at this gate. Removes a committed-binary change and its licence-census cost.
+- Corrected the `gofmt` invocation, which named a non-existent directory.
+- Pre-declared the two baseline reds (P6g floor; DW-152) so the implementer does not chase them.
+- Recorded the vendor reader's fidelity limit and the no-signature-entry resolution, both of which a
+  reviewer would otherwise raise as findings.
+- `warnings:` gained **`oversized`**. Honest accounting: the spec **grew** this dispatch, from ~3.7k to
+  ~7.6k tokens, because the investigation was drained into the Code Map as step-02 requires. It was
+  already over the 1,600-token threshold before that and could not have cleared it. For scale, Story
+  16.1 was ~14.5k tokens before the D-16.R.8 cut, so this remains roughly half its size. **Do not thin
+  the acceptance criteria to chase the flag.** If it must shrink, the lever is moving the Code Map's
+  three evidence subsections — the controls table, the mirror-contract mechanism, and the read-only
+  counts — into a companion artifact cited from `context:`.
+
+## Auto Run Result
+
+Status: ready-for-dev
+Blocking condition: none
+
+Plan-only dispatch at `ceb5213` (`Halt after planning.`). Spec re-planned; no code written, no commit
+created. The intent-contract block is byte-identical to the version at dispatch (7,019 bytes, md5
+`f1be40fb96e326f3c567909f1f66def6`). Warnings: `oversized` (~7.6k tokens against a 1,600 threshold).
+Verification commands were NOT run this dispatch — they are the build dispatch's cadence.

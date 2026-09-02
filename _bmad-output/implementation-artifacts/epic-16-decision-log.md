@@ -436,3 +436,67 @@ two stories — the split D-16.6 refused, for the same reason.
 **Guardrails.** 16.1b carries the before-the-tag record for Story 15.3 (D-000.15's running list); its
 `## Verification` includes the goldens unmoved **and** the positive control; and 16.1's `multiple-goals`
 warning is **re-evaluated after the cut rather than carried forward unread**.
+
+### D-16.R.9 — The positive control uses committed fixtures, and the refuse-signature half gets a control of its own
+
+**Orchestrator decision** at Story 16.1b's plan gate. Routine on its face, recorded because it departs
+from D-16.R.7's literal wording.
+
+**Verdict.** D-16.R.7 requires *"a fixture face under `folio-go/testdata/` whose nameID 13 contradicts
+its declared id"*. The builder measured that **no new binary is needed**:
+`testdata/fonts/Roboto-Regular.ttf` already carries nameID 13 = *"Licensed under the Apache License,
+Version 2.0"* and is recorded `Apache-2.0`. Declaring it `OFL-1.1` in a test is a **true** contradiction
+→ refuse; declaring it `Apache-2.0` is the not-over-broad confirmation; `NotoSansThai-VF.ttf` gives the
+OFL confirmation. **Accepted.**
+
+**Why this is better than the literal reading, not a dilution of it.** What the ruling wants proved is
+that the guard fires on a real contradiction. Committing a **new** font file whose sole purpose is to
+lie about its own licence would trip the manifest guard, the binary-identity walk and the licence
+census — three gates that exist to keep exactly that kind of file out of the repository — and would put
+a deliberately mislabelled binary into a product whose whole subject is licence honesty. The existing
+fixtures prove the same property with real bytes.
+
+**The addition the gate makes, because the builder's proposal leaves half the guard unproven.** The
+committed fixtures can demonstrate **contradiction-by-mismatched-admitted-signature**. They cannot
+demonstrate the **refuse-signature half** (GPL / LGPL / AGPL / SSPL / ShareAlike) — no committed face
+carries a copyleft statement, and none should. That half is the part D-16.R.7 added as *new*, and a new
+guard with no control is the vacuity the ruling exists to prevent. **It gets its own control by
+synthesising a name table in the test rather than committing a binary** — bytes built in-process, never
+a file in the tree.
+
+**Consequence.** Story 16.1b's acceptance now requires **two** positive controls: one contradiction by
+mismatched admitted signature, over a committed fixture; one refusal by refuse-signature, over
+synthesised bytes. Either missing and the guard has shipped half-observed.
+
+**Call-site ordering, noted at the same gate.** `RefuseVariableFace` fires first at
+`component_commands.go:2414`, and `NotoSansThai-VF.ttf` is variable — so a licence assertion routed
+through `embedFontFamily` with that face would be **masked** by the earlier refusal. Outcomes are
+asserted against the new door **directly**, and reachability from `embedFontFamily` is proved separately
+with a **static** face.
+
+### D-16.R.10 — A declared SPDX id with no signature entry is NO EVIDENCE, and admits
+
+**Orchestrator decision**, applied on the fast path rather than routed, because D-16.R.4 settles it
+unambiguously.
+
+**The contradiction.** D-16.R.5 said *"an SPDX id with no signature entry is a refusal, not a skip."*
+D-16.R.7's three-outcome table makes it **NO EVIDENCE → admit**, and does not name that clause as
+replaced. It is reachable: D-8.5.3 admits **MIT**, for which the Go table has no row.
+
+**Verdict: NO EVIDENCE, admits.** D-16.R.4 selects the reading in its own words — *"MIT stays
+admissible and gets no table entry… absence, not narrowing"* — so refusing would reject a licence **the
+owner has admitted**, which is the one thing a mechanism ruling may not do to a policy ruling.
+
+**Why this is safe rather than a hole, and the reasoning belongs in the record.** The reachable set of
+declared ids is already closed by D-16.R.4's token table: only `OFL-1.1`, `Apache-2.0` and
+`Ubuntu-font-1.0` can arrive from the mapping, `CC-BY-SA` is refused and an unmapped token is refused.
+**Every id that can actually reach the guard today has a signature row**, so the admit-on-absence arm is
+currently unreachable in production and exists for a future token. And the **refuse-signatures apply to
+every face regardless of what it declares**, so the copyleft floor does not depend on this arm at all.
+
+**Consequence.** If a future token maps to MIT, the guard admits MIT faces with no tie until a signature
+row is minted. That is a known, bounded gap rather than a surprise, and minting the row is the fix.
+
+**How we'd know it was wrong.** A token mapping to an SPDX id whose faces then travel with no tie at
+all — visible the moment the table gains a fifth admitted value without a matching signature row, which
+the mirror-contract test should be extended to catch.
