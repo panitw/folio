@@ -242,8 +242,8 @@ save-time subsetting · bold, italic or variable axes.
 | Local face with no index row | `Inter Display`, `Source Serif 4 Display` | Local-tier-only; offered from the family control, absent from the web browser's results | Correct behaviour, not a defect |
 | Token maps to a refused licence | `METADATA.pb` says `CC-BY-SA` | **Refused, named token, stated reason** — post-pick, because no licence is knowable before one | Refusal at the control |
 | Token not in the table | a fifth upstream directory appears | **Refused**, and the message says the token was **not recognised** — never that it is forbidden | Refusal, distinguishable from a policy decision |
-| nameID 13 disagrees with the token | `METADATA.pb` says `OFL`, the binary's description does not carry the SIL sentence | **Refused** before any byte reaches `Assets` | Located refusal naming the family |
-| nameID 13 absent or unparseable | face carries no licence description | **Refused, saying which of the two** | Located refusal |
+| Face contradicts its declared licence | fetched face whose name table names a different licence | **The engine refuses it** — Story 16.1b's guard, shipped at `f6953da`. This story surfaces that refusal at the control | Located refusal, necessarily post-pick |
+| Face states nothing readable about its licence | no signature matched, or the name table absent | **Admitted** (D-16.R.7: NO EVIDENCE admits). This story must not add a browser-side check that disagrees | No error |
 | `METADATA.pb` name mismatch | slug resolves a directory whose `name` is not the picked family | **Refused** — never a fallback to the next directory | Refusal |
 | Directory layout disagrees with the token | resolved at `ofl/x`, token says `APACHE2` | `METADATA.pb` wins; `Apache-2.0` admitted; divergence **recorded** | Not a refusal |
 | Unclassifiable licence | `METADATA.pb` names something outside the four | **Refused**, named, before any byte is embedded | Refusal at the control |
@@ -469,6 +469,16 @@ token table) · D-16.R.6 (slug-and-confirm) · D-16.R.7 / D-16.R.8 (the Go guard
   `folio-go/v0.1.0` with no migration owed**, and name the trigger: **adding a refuse-signature after
   the tag is itself the narrowing**. Without it the next reader closes the gap as a tidy-up and ships an
   unpriced narrowing.
+- `folio-designer/scripts/forbidden-font-hosts.mjs` — **grow the scan's SECOND HALF** (D-16.4).
+  `raw.githubusercontent.com` and `fonts.google.com` are permitted **only** on a line carrying both the
+  host and `folio:font-host-declaration` **as real code**; anywhere else under `SCANNED_ROOTS` fails the
+  build. The first half is untouched — `fonts.googleapis.com` and `fonts.gstatic.com` stay forbidden
+  outright, because D-16.3 measured them unusable and forbidding them keeps the `woff2`/subset trap shut.
+- `folio-designer/src/forbidden-font-hosts.test.ts` — extend the **positive control** and the
+  **population floor** to the new half, preserving the marker direction: the scan runs over **raw**
+  source while the exemption runs over **comment-blanked** source, so a marker in a comment declares
+  nothing. **The new half must red when `src/font-source.ts`'s declaration is removed** — red-prove by
+  deleting the half, never by falsifying a condition.
 - `_bmad-output/implementation-artifacts/deferred-work.md` — register (a) the local-tier **divergence**
   (no staleness check, no update prompt, no version compare in this epic) with its trigger, and (b) what
   moving the licence gate to runtime leaves unwatched at build time. **Do not register DW-150** — it is
@@ -512,6 +522,9 @@ token table) · D-16.R.6 (slug-and-confirm) · D-16.R.7 / D-16.R.8 (the Go guard
   listed and refused, and the browser's count is the **addable** count and says so.
 - Given a family directory, when it is resolved, then the slug rule produced it and `METADATA.pb`'s own
   `name` confirmed it, and the directory the probe found is **never** used as evidence of the licence.
+- Given the forbidden-host scan, when an allowed host appears in source outside the one module that
+  declares it, then the build fails; and when that declaring module is removed, the scan's new half
+  reds.
 - Given no network, when the author opens the browser, then it states that a family cannot be added
   right now and offers what the machine already holds — a degradation, never an error state.
 - Given `internal/template/parse.go`, when it is read, then a comment names the one-door asymmetry, says
@@ -556,6 +569,21 @@ to do it. Do not "fix" the filter by reaching for a client-side instancer; it is
 imported — one is a test, one is a build script — and the deliberate absence of a font-parsing dependency
 (`font-catalogue.test.ts:71`) means the third consumer cannot simply `npm install` its way out. Extract
 once, switch both, add nothing.
+
+**Why the second seam was declined (orchestrator, at the re-plan gate).** D-16.R.8 pre-authorised
+cutting the host-scan amendment *"if 16.1 is still `oversized` after the split"*. That condition is
+vacuously true — `oversized` fires at a 1,600-token threshold nothing in this programme has ever met —
+and the dispatch measured the cut as buying **~400 of ~15,900 tokens, about 3%**. Meanwhile
+**`multiple-goals` had already cleared** from the 16.1b split alone, and that is the warning a cut can
+actually act on. The authorisation's *purpose* was therefore already served, and taking the seam anyway
+would buy 3% at three costs: a whole story's dispatch overhead — plan, build, close — for one file and
+one test; a guard separated from the module that is its only subject; and, decisively, **the gate would
+land AFTER the population it polices**, the inverse of the ordering D-16.R.8 itself insisted on for
+16.1b on the reasoning that *"building the gate after the population it polices arrives is how D-8.6.5
+shipped green."* Applying that reasoning consistently keeps the scan amendment beside the fetch module
+it exists to police. The risk class here is repository hygiene rather than documents or bytes, so the
+argument is weaker than it was for 16.1b — but it points the same way, and 3% is not a reason to point
+the other way.
 
 ## Verification
 
@@ -746,7 +774,10 @@ records what the cut did to this spec.
   carried them. It is built: `fontset.RefuseContradictedLicence` at
   `internal/fontset/licencesignature.go:298`, called from `component_commands.go:2443`. This story must
   not reimplement it and must not grow a browser-side substitute.
-- **CUT 2 — the D-16.4 forbidden-host-scan amendment is delegated to a successor story**, taking the
+- **CUT 2 IS REVERSED BY THE PLAN GATE (orchestrator, 2026-09-03).** The forbidden-host-scan amendment
+  **stays in this story** — see `## Design Notes` → *"Why the second seam was declined"*. The paragraph
+  below is preserved as the dispatch proposed it, and is superseded.
+- ~~**CUT 2 — the D-16.4 forbidden-host-scan amendment is delegated to a successor story**, taking the~~
   seam D-16.R.8 pre-authorised. Removed: the
   `scripts/forbidden-font-hosts.mjs` + `src/forbidden-font-hosts.test.ts` task and its AC. What remains
   here is only the **declaration marker in the font-source module**, so the successor has a subject.
