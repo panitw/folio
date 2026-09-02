@@ -104,11 +104,41 @@ top 20: `Roboto` (popularity 2) and `Inter` (4) the tier already held · `Lato` 
 `Noto Sans` (8) and `IBM Plex Sans` (15) are `shippedFamilies` collisions that throw at
 `build-wasm.mjs`'s family guard (D-16.R.17: two different problems sharing a symptom, both registered
 rather than solved here) · **`Google Sans` (3) has no obtainable static** — `isBrandFont`, and absent
-from all four licence directories · **`Jost` (16) has no obtainable static under an admissible name**:
-`indestructible-type/Jost` publishes `Jost-400-Book.ttf`, whose own `name` table calls the family
-**`Jost*`**, and the asterisk is both outside the family-name shape the emitted stylesheet permits and
-unequal to the index's `Jost`, so the face cannot be declared without publishing a family name its own
-bytes contradict. **Twelve candidates, minus those two, is ten.**
+from all four licence directories · **`Jost` (position 20) has no obtainable static under an
+admissible name** — set out in full below. **Twelve candidates, minus those two, is ten.**
+
+**The boundary of the cut, itemised — because a set is only checkable against what sits just outside
+it.** Positions are the index snapshot's own order (`popularity` ascending, family name ascending as the
+tie-break), computed from the committed `folio-designer/font-index.json` (`snapshotDate` 2026-09-03,
+1,811 families) and from nothing live.
+
+| position | family | popularity | why it is not in the batch |
+|---|---|---|---|
+| **20** | **Jost** | 16 | **Inside the cut and admitted by the rule**, then dropped at TASK 2 on evidence — see below. The last family the top-20 cut reaches. |
+| 21 | Raleway | 17 | Outside the top-20 cut |
+| 22 | Share Tech | 17 | Outside the cut, and static upstream — never refused, so never a candidate |
+| 23 | Bebas Neue | 18 | Outside the cut, and static upstream |
+| 24 | Nunito | 18 | Outside the top-20 cut |
+| 25 | Fraunces | 19 | Outside the top-20 cut |
+| 26 | Heebo | 19 | Outside the top-20 cut |
+
+**`Raleway`, `Nunito` and `Fraunces` are named here deliberately.** They were the three families
+D-16.R.19 removed when it recomputed the set from the committed snapshot, and without this row they
+would appear in neither the batch nor the exclusions — vanishing silently, which is the exact failure
+D-16.R.16's *"exclusions itemised"* guardrail exists to prevent. They are out because they sit **outside
+the top-20 cut**, not on merit and not on the ceiling.
+
+**`Jost` (position 20) is the one member the rule admitted and TASK 2 dropped.** It is inside the cut,
+refused on the mirror, not local, not a `shippedFamilies` name — admissible on every stated criterion —
+and it fails the last one: *no obtainable static from its own project upstream.*
+`indestructible-type/Jost` publishes `fonts/ttf/Jost-400-Book.ttf` at release `3.5` and at HEAD; both
+call the family **`Jost*`** in nameID 1, with nameID 2 `Regular`. The asterisk is outside
+`build-wasm.mjs`'s `familyShape`, because that string is interpolated unescaped into
+`font-family: '<name>'`; and `src/font-catalogue.test.ts` ties the manifest's `family` to nameID 1
+byte-for-byte, on the stated ground that *"a family name is an assertion about bytes"*. Declaring it as
+`Jost` — the spelling the index uses and the only one that would join — would publish a family name the
+face's own bytes contradict. **No admissible static exists, so it is out, and nothing was promoted in
+its place.**
 
 **The size, measured, not chosen:** ten faces into **twenty** free precache slots
 (`s1.assetCount` 44 → **54**, `maximumCacheAssets` 64), leaving a margin of **10**. The cap was not

@@ -237,6 +237,27 @@ recorded with its evidence rather than derived silently:
 > as `Jost` — the spelling the index uses and the only one that would join — would publish a family name
 > the face's own bytes contradict. **There is no admissible static, so the family is out.**
 
+**The boundary of the cut, itemised — because a set is only checkable against what sits just outside
+it.** Positions are the index snapshot's own order (`popularity` ascending, family name ascending as the
+tie-break), computed from the committed `folio-designer/font-index.json` (`snapshotDate` 2026-09-03,
+1,811 families) and from nothing live.
+
+| position | family | popularity | why it is not in the batch |
+|---|---|---|---|
+| **20** | **Jost** | 16 | **Inside the cut and admitted by the rule**, then dropped at TASK 2 on the `Jost*` nameID-1 evidence recorded above. The last family the top-20 cut reaches. |
+| 21 | Raleway | 17 | Outside the top-20 cut |
+| 22 | Share Tech | 17 | Outside the cut, and static upstream — never refused, so never a candidate |
+| 23 | Bebas Neue | 18 | Outside the cut, and static upstream |
+| 24 | Nunito | 18 | Outside the top-20 cut |
+| 25 | Fraunces | 19 | Outside the top-20 cut |
+| 26 | Heebo | 19 | Outside the top-20 cut |
+
+**`Raleway`, `Nunito` and `Fraunces` are named here deliberately.** They were the three families
+D-16.R.19 removed when it recomputed the set from the committed snapshot, and without this row they
+would appear in neither the batch nor the exclusions — vanishing silently, which is the exact failure
+D-16.R.16's *"exclusions itemised"* guardrail exists to prevent. They are out because they sit **outside
+the top-20 cut**, not on merit and not on the ceiling.
+
 **Reproduced offline at implementation time**, from the same committed snapshot, before any byte was
 fetched: the twelve top-20 candidates came back identical to D-16.R.19's, in the same order.
 

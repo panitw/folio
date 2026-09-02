@@ -29,6 +29,18 @@ type censusVerdict struct {
 // the paragraph below gives — a new redistributed licence is exactly the
 // event that must not land unrecorded.
 //
+// AND BY 10 AT STORY 16.1a: the local face tier batch. Nine are OFL-1.1
+// and one — `robotoslab/LICENSE-APACHE.txt` — is the FIRST Apache-2.0
+// FONT ASSET this repository has ever carried, so it is the first row
+// that exercises the second of the owner's four ids (D-8.5.3) from the
+// asset side rather than from a dependency or a fixture.
+//
+// THIS TEST IS WHY `-count=1` IS NOT OPTIONAL. The census walks the
+// filesystem, so its verdict changes when FILES change and not when Go
+// code does; `go test ./...` will happily serve a cached PASS from
+// before a batch of licence texts landed. A batch that adds redistributed
+// licences and reads a cached green has measured nothing.
+//
 // THIS TABLE IS THE OBSERVATION. It replaces a differential that stopped
 // observing anything the moment ClassifyLicenceText's body became a call
 // to classifyByAllSignals: from that commit the census compared a
@@ -60,9 +72,16 @@ var pinnedCensus = []censusVerdict{
 	// to write until Story 8.5 lands a face under it"). Written out longhand,
 	// on D-8.4i.3's reasoning: an expectation derived from the thing it
 	// checks passes any edit to that thing.
+	// STORY 16.1a'S BATCH, TEN NEW COMMITTED LICENCE TEXTS, PINNED ONE BY
+	// ONE and kept in path order with the rest. Each is the unmodified
+	// upstream text fetched from the same pinned artifact as the binary
+	// beside it, never a hand-copy, so a row here is a verdict about bytes
+	// this repository actually redistributes (AD-26).
+	{"folio-designer/public/fonts/arimo/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/cascadiacode/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/cascadiamono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/cousine/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/dmsans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/firacode/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/geist/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/geistmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
@@ -74,13 +93,25 @@ var pinnedCensus = []censusVerdict{
 	{"folio-designer/public/fonts/interdisplay/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/jetbrainsmono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/literata/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/lora/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/montserrat/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosansthailooped/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notoserif/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notoserifthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/opensans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/oswald/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/plusjakartasans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/roboto/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/robotocondensed/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/robotomono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	// THE FIRST Apache-2.0 FONT ASSET IN THE REPOSITORY. `googlefonts/robotoslab`
+	// ships an Apache-2.0 LICENSE.txt and the binary's own nameID 13 reads
+	// "Licensed under the Apache License, Version 2.0" — the two agree, which is
+	// what font-catalogue.test.ts's licenceSignatures checks from the other side.
+	{"folio-designer/public/fonts/robotoslab/LICENSE-APACHE.txt", FamilyPermissive, "Apache-2.0"},
 	{"folio-designer/public/fonts/sourcecodepro/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/sourcesans3/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/sourceserif4/LICENSE-OFL.md", FamilyPermissive, "OFL-1.1"},

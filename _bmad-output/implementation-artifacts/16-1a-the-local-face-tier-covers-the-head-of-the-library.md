@@ -353,7 +353,8 @@ Spec Change Log.
 `8d6506096ad83b790779322b902b939b`, 4,978 bytes); every change below is outside it.**
 
 10. **THE BATCH IS TEN, NOT ELEVEN, and the Tasks section's *"Eleven, into twenty free slots"* is now a
-    statement of the set as it stood at plan time.** `Jost` was dropped at TASK 2 on evidence:
+    statement of the set as it stood at plan time.** `Jost` — **position 20, the last family inside the
+    top-20 cut** — was dropped at TASK 2 on evidence:
     `indestructible-type/Jost` publishes a static Regular whose own `name` table calls the family
     `Jost*`, which fails `build-wasm.mjs`'s `familyShape` and cannot be declared as `Jost` without
     publishing a name the bytes contradict. The other ten are exactly as listed. **No backfill from the
@@ -475,7 +476,18 @@ retyped. The top-20 candidate set came back **identical to D-16.R.19's twelve**,
 `Open Sans · Google Sans · Roboto Mono · DM Sans · Montserrat · Arimo · Roboto Slab · Lora ·
 Roboto Condensed · Oswald · Plus Jakarta Sans · Jost`. No network was used for this step.
 
-**`Jost` dropped for cause at TASK 2 — the batch shrank rather than backfilled.** `indestructible-type/Jost`
+**The boundary of the cut, itemised.** Positions are the committed snapshot's own order (`popularity`
+ascending, family name ascending as the tie-break), computed from `folio-designer/font-index.json` and
+from nothing live: **Jost 20** (pop 16) is the last family *inside* the cut; immediately outside sit
+**Raleway 21** (17), **Share Tech 22** (17, static upstream and never refused), **Bebas Neue 23** (18,
+static upstream), **Nunito 24** (18), **Fraunces 25** (19) and **Heebo 26** (19). `Raleway`, `Nunito`
+and `Fraunces` are named because they are the three D-16.R.19 removed when it recomputed from the
+committed snapshot — without this line they would appear in neither the batch nor the exclusions, which
+is precisely what D-16.R.16's *"exclusions itemised"* guardrail forbids. They are out for sitting
+**outside the top-20 cut**, not on merit and not on the ceiling.
+
+**`Jost` (position 20) dropped for cause at TASK 2 — the batch shrank rather than backfilled.** It is
+inside the cut and admissible on every other stated criterion. `indestructible-type/Jost`
 publishes `fonts/ttf/Jost-400-Book.ttf` at release `3.5` and at HEAD; both call the family **`Jost*`** in
 nameID 1. The asterisk is outside `build-wasm.mjs`'s `familyShape` — that string is interpolated
 unescaped into `font-family: '<name>'` — and `src/font-catalogue.test.ts` ties the manifest's `family` to
@@ -600,8 +612,28 @@ is 3,151,569 across 31 families.
 | `npm run test` | `folio-designer` | **514 passed, 1 failed** — `canvas-authority-contract.test.ts:190` only, the known DW-152 Epic 9/10 baseline red |
 | `npm run build` | `folio-designer` | **exit 0** through `build:wasm`, `tsc -b`, `vite build`, `build:offline`, `verify:offline`. **`s1.assetCount` = 54**, `maximumCacheAssets` 64, margin **10**; all 31 `catalogue-*.ttf` among the 54 |
 | `npm run test:e2e:compile` | `folio-designer` | **exit 0**, compile-only; no browser run (D-16.R.1 cadence) |
-| `go test ./...` | `lint` | **green**, including `TestManifestUpToDate` and `TestFontAssetLicenceAllowlistIsTheOwnersFourIds` |
-| `go test ./...` | `folio-go` | green except `internal/text`'s `TestCorpusMeetsP6ExerciseFloors/P6g` — the mandated pre-existing exercise-floor red |
+| `go test -count=1 ./...` | `lint` | **green**, including `TestManifestUpToDate`, `TestFontAssetLicenceAllowlistIsTheOwnersFourIds` and `TestLicenceSignalCensus` |
+| `go test -count=1 ./...` | `folio-go` | green except `internal/text`'s `TestCorpusMeetsP6ExerciseFloors/P6g` — the mandated pre-existing exercise-floor red |
+
+**`-count=1` IS NOT OPTIONAL HERE, AND THE FIRST RUN OF THIS STORY PROVED IT.** `cd lint && go test ./...`
+reported green on every package while `internal/licence` was in fact **red**: it printed `(cached)`,
+because Go caches on the package's own inputs and `TestLicenceSignalCensus` walks the **filesystem** for
+`LICENSE*` texts. Ten new licence texts landed, the test's verdict changed, and the cache served a PASS
+recorded before they existed. **A batch that adds redistributed licences and reads a cached green has
+measured nothing.** The stale report is corrected here rather than quietly overwritten, and the reason is
+written into the census table's own header comment so the next batch meets it before the trap does.
+
+**What the census actually required (AD-26).** All ten texts classify correctly and none was
+unclassifiable — the failure was that their verdicts were **not RECORDED**. Ten rows were added to
+`pinnedCensus` in path order: nine `LICENSE-OFL.txt` at `(permissive, "OFL-1.1")` and
+`robotoslab/LICENSE-APACHE.txt` at `(permissive, "Apache-2.0")`, **the first Apache-2.0 font asset this
+repository has ever carried** — the first row exercising the second of the owner's four ids from the
+asset side rather than from a dependency or a fixture. Nothing was deleted from the population and
+nothing was narrowed. Census after the fix: **67 licence texts measured (58 committed files + 9
+dependency licences), all matching their pinned verdicts** — the same 67 the failing run reported, since
+the population is read off disk and already held the ten; what changed is that all 58 committed files now
+have a written verdict. **Red-proved:** removing the `robotoslab/LICENSE-APACHE.txt` row reds
+`TestLicenceSignalCensus` naming that exact file, and restoring it greens.
 
 **Manual checks.**
 
