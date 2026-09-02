@@ -66,9 +66,19 @@ Each catalogue entry carries what the designer shows and what the document will 
    like any other chain (CAP-1), and nothing about it is privileged once it is in the document. A
    face covering every script the document renders proposes an empty tail, which is a chain of one
    embedded entry and is legal.
-4. Nothing is fetched. The bytes come from the bundle already on the machine — the face is one of
+4. ~~Nothing is fetched. The bytes come from the bundle already on the machine — the face is one of
    the release's own content-addressed, precached assets, read exactly as `runtimeAssetUrls` assets
-   are, so the pick works with the browser offline.
+   are, so the pick works with the browser offline.~~
+   **AMENDED 2026-09-02 by OWNER DECISION (D-8.4d.1), which reverses D-8.5.12; the original is
+   preserved above verbatim.** A catalogue face is **fetched from the release's own origin on first
+   pick** rather than precached at first load. It is still the release's own content-addressed
+   asset and still no third party — what changed is **when** the bytes arrive, not where from.
+   **Consequence, stated plainly because this file previously promised the opposite:** a family
+   whose bytes have not yet been fetched **cannot be picked while the browser is offline**. It
+   degrades to *"you cannot pick that family right now"*, **never to a document that will not
+   render** — the three shipped Noto faces remain the coverage, and a face already embedded in a
+   `.folio` travels inside the file. **Mechanism, caching and the offline path are the implementing
+   story's design; this record states the policy change only.**
 5. **Picking a family the document already carries stores nothing and declares nothing.** The
    content hash decides: the existing chain is what the author is offered, no second copy is
    stored, no second chain is declared, and — because the canonical bytes do not move — no history

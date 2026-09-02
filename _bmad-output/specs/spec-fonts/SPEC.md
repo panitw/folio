@@ -86,7 +86,21 @@ the faces a document uses are declared in it, chosen in the designer, and carrie
 
 - **No container format.** The zip-of-folders shape is explicitly out; revisit only if embedded
   document weight becomes the measured problem, with the CJK case as its trigger.
-- **No live font service.** No Google Fonts API, no arbitrary URL, no "download on first use".
+- ~~**No live font service.** No Google Fonts API, no arbitrary URL, no "download on first use".~~
+  **AMENDED 2026-09-02 by OWNER DECISION (D-8.4d.1), which reverses D-8.5.12.** The original wording
+  is preserved above verbatim. **What still holds:** no Google Fonts API and no arbitrary URL — the
+  catalogue remains the only source, and nothing is fetched from a third party. **What changed:** a
+  catalogue face is **fetched from the release's own origin on first pick** rather than precached at
+  first load, so *"no download on first use"* no longer states this project's policy. Taken on a
+  measurement: the first-load payload was **15,729,262 Brotli bytes, 1.75× the `~9 MB` recorded** —
+  and the catalogue was **14.16%** of it, so trimming it was refuted by its own arithmetic (the
+  engine wasm and the CJK face are **77.4%** on their own). **The accepted cost, with its mitigant,
+  because it reads worse without one:** a family not yet fetched **cannot be picked while offline**
+  — but **the catalogue is a palette, not coverage**; the three shipped Noto faces are the coverage,
+  so it degrades to *"you cannot pick that family right now"*, **never to a document that will not
+  render** — and a face already embedded travels **inside the `.folio`** (Story 8.6), so no existing
+  document regresses. **This clause records the POLICY only.** The fetch mechanism, its caching
+  behaviour and the offline degradation path are the implementing story's design, not this record's.
 - **No host fonts.** Faces installed on the authoring or rendering machine are never enumerated or
   read.
 - **No synthetic bold or oblique**, and no variable-font axes. A weight is a face or it does not
