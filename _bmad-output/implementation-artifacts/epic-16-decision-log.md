@@ -3974,3 +3974,45 @@ has now lost one to a 529 that no amount of method would have prevented.
 `font-embed-boundary` cause-change and the `familyIndexDisclosure` 31-vs-31-plus-stored divergence), the
 Spec Change Log's correction that the transcription undercounted its own edits, the browser measurements,
 and the gate baselines. **The re-run inherits those as inputs and re-derives only the findings.**
+
+## D-16.R.79 — Fourth death; the orchestrator red-proves the cap ruling by hand, and the pins were re-aimed rather than relaxed
+
+**A fourth agent died on 529 within seconds of launch.** Subagent spawns are failing while this session's own
+calls succeed, so I performed the one check that **could not be obtained by reading** — whether the two
+expected-by-design pins were **re-aimed or merely loosened into passing.** A relaxed pin and a re-aimed pin
+look identical in a green suite, which is the same indistinguishability this epic has been cataloguing all
+week.
+
+**FINDING 1 — the disk-font pin was RE-AIMED, and it says so in the code.** `App.test.tsx:1507` still uses
+an **exact whole-element `getByText`** and now pins *"Nothing in this template, on this machine, or in the
+list you can install matches \"Helvetica\"."* The old sentence named *"this document or the catalogue"* —
+**one of the three places the control searches, written when the catalogue was the whole offer.** Its
+comment states the reason: D-16.1 made the catalogue one source of three, **so the empty state was shipping
+a claim its own module refutes.** Strictness unchanged, target corrected, reasoning recorded — *"corrected
+with the change, not edited quietly"*, which is exactly the standard I set.
+
+**FINDING 2 — THE CAP RULING IS GENUINELY GUARDED, PROVED BY MUTATION AND NOT BY INSPECTION.** The
+implementation is right: `shownToInstall = toInstall.slice(0, renderedFamilyLimit)`, with `declared` and
+`onThisMachine` entering `matches` **uncapped** — partition-then-cap as ruled at D-16.R.74.
+
+**The proof, run to this epic's own standard:**
+- **Positive control first:** `App.test.tsx` at HEAD is **147 passed / 147, `rc=0`.** A mutation against a
+  file that is not green proves nothing.
+- **Mutation:** `onThisMachine` → `onThisMachine.slice(0, 10)`, reproducing a cap that eats installed rows.
+  **Asserted applied by diff — exactly one changed line, containing `slice(0, 10)`** (D-16.R.55: a mutation
+  that did not apply is a passing-looking non-measurement).
+- **Mutant: `rc=1`, 2 failed / 145 passed.**
+- **AND THE FAILURES LAND WHERE THEY MUST** — *"draws the three groups, disjoint and complete, on the
+  where-are-the-bytes axis"* and ***"renders the first two groups in full and caps only the third, whose
+  note counts the third."*** That second name is the ruling itself, asserted. **This is the where-does-the-
+  failure-land rule (D-16.R.76) applied to someone else's test rather than my own fix.**
+- **Restored by absolute path and re-diffed: byte-identical, `diff rc=0`, tree clean.**
+
+**So the highest-value claim in this story — the cap ruling that made the heading stop lying — is
+independently verified, by a party that did not author the code or the test.** That is the correct side of
+author/prover separation, and it is the one review activity a degraded API could not take away.
+
+**What this does NOT establish, stated because a green gate list means only the gates in that list:** no
+adversarial review layer has run against the current tree. The re-derived findings, the 12-row per-row
+matrix audit and the identifier sweep all remain outstanding. **Two pins verified is two pins, not a
+review.**
