@@ -538,6 +538,66 @@ describe('a fetched face stays on this machine', () => {
     expect(screen.getAllByRole('option', { name: /^Kanit\s*(—|$)/ })).toHaveLength(1)
   })
 
+  // AND THE TWO COMMANDS ARE TWO SEPARATELY UNDOABLE ENTRIES, WHICH IS THE HALF
+  // A COMMAND COUNT CANNOT SEE.
+  //
+  // The matrix row says "two commands, TWO UNDOS", and the contract's own Always
+  // bullet says the fork keeps its shape: two decisions, two undos, a fusion
+  // refused at 8.6 and refused again at 16.5. Every existing statement of that
+  // in this file is a COMMENT — measured, four `undo` mentions in this file and
+  // none of them an assertion — and a comment is not a measurement.
+  //
+  // DEPTH IS DRIVEN, NEVER READ. `App.tsx:147` exposes only the boolean
+  // `canUndo`, so "two entries" is the observation that Undo is STILL ENABLED
+  // after one press and disabled only after the second. The stub's depth is a
+  // counter over the commands the designer actually sends — not a hardcoded
+  // `canUndo: true`, which would pass over a fused single command.
+  it('leaves two separately undoable entries after one pick from AVAILABLE LOCALLY', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    let revision = 1
+    let undoDepth = 0
+    let declaredChains = ['body']
+    // ONE COMMAND, ONE UNDO ENTRY — the engine's own rule (`wasm/engine.go`'s
+    // single `pushUndo` per applied command), modelled here so the depth this
+    // test reads is a consequence of what the designer sent rather than a
+    // property of the stub.
+    const historySnapshot = () => ({ documentState: 'loaded' as const, revision, byteLength: 3, canUndo: undoDepth > 0, canRedo: false, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } })
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        revision += 1
+        undoDepth += 1
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        if (parsed['kind'] === 'embedFontFamily') declaredChains = ['body', 'Kanit']
+        return { snapshot: historySnapshot() }
+      }
+      if (operation === 'undo') { revision += 1; undoDepth -= 1; return { snapshot: historySnapshot() } }
+      return { snapshot: historySnapshot() }
+    })
+    mount(request)
+    const undo = () => screen.getByRole('button', { name: 'Undo' })
+
+    // INSTALL FIRST, AND IT PUSHES NOTHING. No command is sent, so there is
+    // nothing to undo — which is also the control for the two presses below.
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    expect(undo(), 'installing is not a document change and may not be undoable').toBeDisabled()
+
+    // FIRST USE — the embed, then the property.
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
+    await waitFor(() => expect(undo()).toBeEnabled())
+
+    // THE FIRST UNDO TAKES BACK ONE OF THEM, NOT BOTH.
+    fireEvent.click(undo())
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(1))
+    expect(undo(), 'one gesture left TWO entries: a fused command would leave nothing to undo here').toBeEnabled()
+
+    // AND THE SECOND EMPTIES THE HISTORY — exactly two, never three.
+    fireEvent.click(undo())
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(2))
+    await waitFor(() => expect(undo(), 'two entries, not three: the pick may not push anything else').toBeDisabled())
+  })
+
   // THE REGRESSION THE ORDER REPAIR AND THE PARTITION EXIST FOR, DRIVEN THROUGH
   // THE CONTROL RATHER THAN ASSERTED OVER `offeredFamilies`.
   //
