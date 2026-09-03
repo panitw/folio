@@ -8125,6 +8125,17 @@ person to doubt it has no move except to rebuild the environment and hope.
 the witness names itself — the run records which binary executed it rather than inheriting one from an
 exported variable that does not survive the session.
 
+**MEASURED UPDATE, 2026-09-03 (D-16.R.76), and it makes this entry actionable rather than merely open.**
+A working browser exists on this machine and is now named. Two agents concluded "unavailable" from the
+absence of `chromium_headless_shell-1208`; enumerating the population instead shows **seven** chromium
+directories, which `du -sh` separates decisively: `chromium-1208` is **428K** (the stub that produced this
+entry), while `chromium-1217` / `1223` / `1228` are **336M / 341M / 344M** and three headless shells are
+189–192M. **`chromium-1217` launches and self-reports `Chrome for Testing 147.0.7727.15`**, reached through
+`playwright.config.ts:11`'s `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, which is the sanctioned hatch. **A
+directory existing is not a browser, and one absent path is not a population.** The discharge condition is
+unchanged — pin it so the witness names itself — but the pin now has a known-good target rather than a
+search.
+
 **Registered late, and the lateness is the point.** The decision log has said "Registered as DW-180" since
 the 16.3 gate and cited it twice more, including in 16.5's spec, while no entry existed. Build-16.5 found
 it while filing its own deferrals and refused to write it, on the grounds that inventing a register entry

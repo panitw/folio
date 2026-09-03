@@ -3818,3 +3818,64 @@ that does not say so is making the wider claim by omission.*
 **Correctly not restated:** the implementer did **not** re-run the two Go suites or re-shasum the 23
 fixtures, because the commit adds one designer test file and touches no Go, no CSS and no production code.
 **Standing from a prior baseline is honest; restating them as fresh measurements would not be.**
+
+## D-16.R.76 — The browser was there the whole time, and a committed evidence file disagrees with the spec that generates it
+
+**MY ITEMS 2 AND 3 ARE WITHDRAWN: THE ACCESSIBILITY REPAIR IS WITNESSED IN A REAL ACCESSIBILITY TREE.** I
+ruled the browser run "attempt it, and if it cannot run, record an uncovered claim." **It ran.**
+
+**And the reason two agents had concluded otherwise is the epic's own defect, one layer down: an absent path
+was read as an absent population.** Both stopped at `chromium_headless_shell-1208` missing. Enumerating
+instead found **seven** chromium directories, separated decisively by `du -sh`: `chromium-1208` is **428K**,
+the stub that produced DW-180; `chromium-1217/1223/1228` are **336M/341M/344M**. **`chromium-1217` launches
+and self-reports `Chrome for Testing 147.0.7727.15`.** The builder's formulation is the rule: **"a directory
+existing is not a browser, and one absent path is not a population."** DW-180 is amended with the measured
+target, so the pin now aims at something known-good instead of at a search.
+
+**WHAT THE BROWSER ACTUALLY COMPUTED — item 4 answered in both halves, kept separate as required.**
+`direct_child_roles = ["group","group","group"]`, labelled `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` /
+`AVAILABLE TO INSTALL` · **`role="presentation"` children = 0**, all six gone **in the browser's tree, not
+jsdom's** · `listbox_contains_disclosure = 0`, with `aria-describedby` resolving to the real disclosure
+text · ariaSnapshot rendering `listbox "Fonts" > group "IN THIS TEMPLATE" > option "body" [selected]`.
+
+**And `options_reachable = 82`, which is `1 declared + 31 local + the 50-row cap` — so partition-then-cap is
+confirmed in a browser and not only in a unit test.** That is the D-16.R.74 cap ruling and the D-16.R.72
+partition measured together at the layer that can actually see them. **The jsdom assertions are evidence for
+the `role` ATTRIBUTES; the ariaSnapshot is evidence for the TREE.** Both stated, neither doing the other's
+work.
+
+**Shipped specs 4 passed / 1 failed.** `browser-native-roundtrip.spec.ts` — **the only cross-boundary
+authoring witness** — passes through the new structure, which is the result that most needed to exist. The
+one red is `font-embed-boundary.spec.ts:115`, **left untouched as ruled** (single owner, D-16.R.41).
+
+**The pre-existence claim was argued structurally rather than asserted, and labelled as such** — at
+`b8431c4` the disclosure was a `role="presentation"` child, and the spec reads `getByRole('option')`, so
+**a presentational child is never an option and the assertion could not have passed there either**, with
+`e2e/` byte-identical between the two commits. **Honest, and one step short of free:** a detached worktree
+at `b8431c4` was already open for the manifest check below, so running that one spec in it would have
+converted a structural argument into a measurement at near-zero cost. **Recorded as method for the closer,
+not as a defect** — the claim is sound and is correctly labelled as inference.
+
+## THE FINDING IT NEARLY MIS-ATTRIBUTED, AND DID NOT
+
+The browser run rewrote `evidence/story-6.7-roundtrip-manifest.json`, **adding a `fontFamily` command per
+component** — which reads exactly like a regression in the witness, and an extra engine command in that
+spec is far too serious to wave through. `choose()`'s fork is byte-identical across this story, so the diff
+could not explain it.
+
+**It ran the witness at `b8431c4` in a detached worktree and the manifest produced there is BYTE-IDENTICAL
+to the one this run produced (`diff rc=0`).** So this story changed nothing. **The committed manifest is
+stale by 182 insertions / 102 deletions against what its own spec generates**, last committed at `791ed00`
+and undisturbed **because nothing ever runs Playwright.**
+
+**That is a committed EVIDENCE artifact that disagrees with the spec that generates it — evidence which is
+not evidence — and it is invisible for exactly the reason DW-171 makes everything else invisible.** It is
+the same record-vs-reality class as DW-177/179/180/182, but a rung more serious: those are records
+describing the code, and this one is **a record the project would reach for to prove the code.** Reverted
+rather than carried, so 16.4 does not absorb 182 lines of unrelated drift; **registered at close with the
+byte-identical proof recorded, because that proof is what makes the attribution stick.**
+
+**Step-03: 14/14 tasks verified, matrix audit 12 rows / 12 results, row 3's PARTIAL closed.** Two task
+checks came back as counts of **1 that were comments** explaining the change, with zero occurrences in
+shipped code once comments were stripped **and a positive control confirmed the stripper worked** — the
+population rule and *a comment is not a measurement* (D-16.R.74) applied together, unprompted.

@@ -2,7 +2,7 @@
 title: 'Story 16.4: The family control names three sources'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'b8431c4e9d743cc2cde314c98688d393bfbbe828'
@@ -158,38 +158,38 @@ them is one file, `epic-16-decision-log.md`, +145 lines, touching nothing under 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/font-index.ts` — **repair `offeredFamilies` to return the order its own doc comment already documents.** Collect stored rows into their own list inside the `webFamilies` loop and return `[...local, ...stored, ...orphanedStored, ...web]`. **This is a defect fix with independent standing: the function contradicts its own documentation at `:148-150`, and the grouping ruling
+- [x] `src/font-index.ts` — **repair `offeredFamilies` to return the order its own doc comment already documents.** Collect stored rows into their own list inside the `webFamilies` loop and return `[...local, ...stored, ...orphanedStored, ...web]`. **This is a defect fix with independent standing: the function contradicts its own documentation at `:148-150`, and the grouping ruling
       was grounded on the half that lies.** After it, the control groups and labels the union and does
       not reorder it.
-- [ ] `src/font-index.test.ts` — **assert the union arrives as exactly TWO runs under `familyIsInstalled` (installed, then not), with a stored face planted at a deep web position.**
+- [x] `src/font-index.test.ts` — **assert the union arrives as exactly TWO runs under `familyIsInstalled` (installed, then not), with a stored face planted at a deep web position.**
       Assert the **run structure, not a row list** — a test naming families re-pins to the snapshot and
       rots at the next index bump. This test reds today.
-- [ ] `src/font-index.ts` — amend the comment at `:50-62`, which states the name means the `stored` arm
+- [x] `src/font-index.ts` — amend the comment at `:50-62`, which states the name means the `stored` arm
       and *"does NOT mean this arm plus the local arm"*. **A module that contradicts the shipped
       heading is worse than either reading.** The same claim is made in three further places and all
       four are amended together: `scripts/host-font-access.mjs:13` and `:183`, and `font-browser-model.ts:17`. **A defect that exists in four places is four.**
-- [ ] `src/App.tsx` — partition `matches` into the three groups, then render. **Groups 1 and 2 render in full; the cap becomes `webGroup.slice(0, renderedFamilyLimit)`.** The cap's own comment says
+- [x] `src/App.tsx` — partition `matches` into the three groups, then render. **Groups 1 and 2 render in full; the cap becomes `webGroup.slice(0, renderedFamilyLimit)`.** The cap's own comment says
       *"this bounds the DOM and never the claim"* — a cap applied before the partition breaks that.
       Move the "Showing N of M" line into group 3 and have it name the population it counts.
-- [ ] `src/App.tsx` — **group 2 is deliberately uncapped, with a NAMED revisit trigger written into the
+- [x] `src/App.tsx` — **group 2 is deliberately uncapped, with a NAMED revisit trigger written into the
       comment: revisit when a store can hold on the order of 200 entries.** A silent unboundedness is
       the thing this epic has spent the week correcting.
-- [ ] `src/App.tsx` — fix the listbox: **all six** `role="presentation"` children plus whatever the third heading adds. `role="group"` with `aria-label`, or the notes moved out of the `<ul>` and referenced by `aria-describedby`. **The heading interleave at `:2065-2070` is replaced by this
+- [x] `src/App.tsx` — fix the listbox: **all six** `role="presentation"` children plus whatever the third heading adds. `role="group"` with `aria-label`, or the notes moved out of the `<ul>` and referenced by `aria-describedby`. **The heading interleave at `:2065-2070` is replaced by this
       change, which is what keeps the keyboard walk order-agnostic.** Add the assertion that reds if
       non-option children return — nothing pins the presentation role today (0 assertions over 67
       test/spec files), so the fix is otherwise unguarded.
-- [ ] `src/App.tsx` — the three headings, `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` / `AVAILABLE TO INSTALL`; a heading suppressed only when its own group is empty after filtering. **Do not rewrite `familySourceNote` and do not duplicate it into the heading** — the heading names the
+- [x] `src/App.tsx` — the three headings, `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` / `AVAILABLE TO INSTALL`; a heading suppressed only when its own group is empty after filtering. **Do not rewrite `familySourceNote` and do not duplicate it into the heading** — the heading names the
       place, the per-row note names the act, and both already ship.
-- [ ] `src/App.tsx:1759` — **rename the store panel's label to `TYPEFACES THIS DESIGNER HAS DOWNLOADED`**, dropping the borrowed `AVAILABLE LOCALLY —` prefix. Measured: `AVAILABLE LOCALLY` occurs **exactly once across all six mockup files**, at `Font Browser.dc.html:219`, and it is the
+- [x] `src/App.tsx:1759` — **rename the store panel's label to `TYPEFACES THIS DESIGNER HAS DOWNLOADED`**, dropping the borrowed `AVAILABLE LOCALLY —` prefix. Measured: `AVAILABLE LOCALLY` occurs **exactly once across all six mockup files**, at `Font Browser.dc.html:219`, and it is the
       dropdown's group heading; **the design draws no machine-store panel at all.** The store panel
       borrowed a label from a control that did not yet exist. This removes a deviation rather than
       adding one.
-- [ ] `src/App.tsx:1938`, `src/font-store.ts:470` — follow the rename in the **removable branch only**. `lateEmbedRefusal`'s non-removable branch is already correct and **must not be touched**: a
+- [x] `src/App.tsx:1938`, `src/font-store.ts:470` — follow the rename in the **removable branch only**. `lateEmbedRefusal`'s non-removable branch is already correct and **must not be touched**: a
       local-tier face genuinely has nothing to remove.
-- [ ] `src/font-store.test.ts:284`, `src/App.font-store.test.tsx:665` — re-point the two `/AVAILABLE LOCALLY/` assertions. **Each must still assert a pointer to a removal control that
+- [x] `src/font-store.test.ts:284`, `src/App.font-store.test.tsx:665` — re-point the two `/AVAILABLE LOCALLY/` assertions. **Each must still assert a pointer to a removal control that
       actually exists, not merely that some string is present** — re-pointing a place-keyed guard
       relocates its blind spot unless the property it asserts is restated with it.
-- [ ] `src/App.tsx:2082` and its comment at `:2079-2081` — **re-derive the disk-font decline against
+- [x] `src/App.tsx:2082` and its comment at `:2079-2081` — **re-derive the disk-font decline against
       THREE premises and record the working in the code comment.** (1) REVERSED, D-16.1: the catalogue
       is no longer the only source. (2) STANDING, D-16.2: faces already on the authoring machine are
       never enumerated or read. (3) NEW, D-16.R.46 Q4: *"installing is only ever a precursor to
@@ -198,12 +198,12 @@ them is one file, `epic-16-decision-log.md`, +145 lines, touching nothing under 
       table, a file dragged off a desktop arrives with neither, so it cannot be embedded — and because
       installing exists only to lead to embedding, it cannot usefully be installed either. **It would
       be a dead end with a friendlier first click.**
-- [ ] `src/App.tsx:1479` — the status bar states the font count **and nothing else new**: *"N fonts in template"* off `families.length`, which is `IN THIS TEMPLATE`'s own predicate, so
+- [x] `src/App.tsx:1479` — the status bar states the font count **and nothing else new**: *"N fonts in template"* off `families.length`, which is `IN THIS TEMPLATE`'s own predicate, so
       both surfaces teach one model from one source. **No grid, no snap, no selection content.** The
       mockup's `s.added.length` binding is refused for D-16.R.72's reason, and its hardcoded `"3 fonts in template"` else-branch is placeholder data, not a spec. **If it needs more than the
       count, it splits and returns to the orchestrator.**
-- [ ] `src/App.css` — a treatment for the third group in the existing token vocabulary. **No new token, no colour literal, no `border-radius` that is not `var(--radius-*)`, no gradient, and no `@media`** — `canvas-authority-contract.test.ts:230` permits App.css exactly one, and it is `prefers-reduced-motion: reduce`. Leave `.property-options`' box-shadow alone (DW-178).
-- [ ] Tests — group membership disjoint and complete; a heading suppressed only on its own empty group;
+- [x] `src/App.css` — a treatment for the third group in the existing token vocabulary. **No new token, no colour literal, no `border-radius` that is not `var(--radius-*)`, no gradient, and no `@media`** — `canvas-authority-contract.test.ts:230` permits App.css exactly one, and it is `prefers-reduced-motion: reduce`. Leave `.property-options`' box-shadow alone (DW-178).
+- [x] Tests — group membership disjoint and complete; a heading suppressed only on its own empty group;
       picking from `AVAILABLE LOCALLY` embeds with no fetch and moves the row; picking from `AVAILABLE TO INSTALL` sends no engine command and no property commit; the keyboard walk crosses all three
       groups in one sequence; the six-child listbox regression reds.
 
@@ -276,7 +276,17 @@ known-failing term, and `npm test` exits 1 on DW-152.
 - `cd folio-designer && npm test` — expect **672 passed / 1 failed of 673 across 55 files**, `rc=1`. Match the red by NAME, not count: `canvas-authority-contract.test.ts:190`, received array exactly `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. **A matching count with a different
   name is a regression.** The count will rise as this story adds tests; the name set must not.
 - `cd folio-designer && npm run typecheck` — `rc=0`.
-- `cd folio-designer && npm run lint` — `rc=0`, **exactly 4** `only-export-components` warnings.
+- `cd folio-designer && npx oxlint` — `rc=0`, **exactly 4** `only-export-components` warnings.
+  **Take this one from the tool directly, not from `npm run lint`.** The gate pins the count and the
+  rule, never the line numbers (they moved to `App.tsx:2273,2280` in this story and the gate still
+  matches). `npm run lint` is the convenience spelling and `package.json:23` makes it a bare `oxlint`,
+  but a runner can be rewritten by a command hook that fails on the tool's non-JSON output and exits
+  **on its own behalf** — measured this story: the same command on the same tree returned `rc=0` in one
+  agent's context and `rc=1` in another's.
+- **AN EXIT CODE IS NOT PORTABLE BETWEEN AGENTS.** This run relays measurements implementer → builder
+  → closer → decision log, and a number that depends on who ran it cannot survive that chain, with
+  nothing in its appearance saying which context produced it. For any tool whose runner may be
+  rewritten, the **recorded** measurement is taken from the tool directly.
 - `cd folio-designer && npm run test:e2e:compile` — `rc=0`.
 - `cd folio-designer && npm run build` — `rc=0`.
 - `cd lint && go test -count=1 ./...` — four `ok`. **`-count=1` is mandatory** (DW-168): the rules package walks the directory and Go's cache does not track `ReadDir`, so a cached `ok` is no
@@ -314,4 +324,6 @@ divergence from the doc comment and is corrected with it — say so rather than 
   it** — it is assigned to the post-16.4 CI repair, and two owners is how a ruled deferral vanishes.
 - The 23 golden digests, unmoved (`shasum` from the repo root; they live at `<root>/fixtures/`).
 
-**NOT RUN HERE — deferred to the epic catch-up by this run's heavy-test cadence, which gates `epic-16: done`:** the matrix corpora, the four AD-21 legs, `TestCrossTargetByteIdentity`, and the Playwright browser specs. **Naming them is the point.** The commands above are unit, type, lint, build and compile only, so **nothing measured here may be reported as evidence that the heavy suites pass** — and with CI halted at step 2 (DW-171) there is no machine that would say otherwise. A green gate list in this story means the gates in this list, and a report that does not say so is making the wider claim by omission.
+**A BROWSER RUN WAS TAKEN, and it is what witnesses this story's accessibility repair.** Chromium `chromium-1217` (Chrome for Testing 147.0.7727.15, 336M) via `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` — the pinned `chromium-1208` is a 428K stub and `chromium_headless_shell-1208` is absent, which is DW-180 biting a third time; **a directory existing is not a browser, and `du -sh` is the ten-second check.** Measured in the real accessibility tree: the listbox's direct child roles are exactly `["group","group","group"]` labelled `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` / `AVAILABLE TO INSTALL`, **`role="presentation"` children = 0** (all six gone), 82 options reachable through the listbox (1 declared + 31 local + the 50-row cap = 82, so partition-then-cap holds in a browser too), and the disclosure is outside the list and reached by `aria-describedby`. `browser-native-roundtrip.spec.ts` — the only cross-boundary authoring witness — **passes**, resolving `getByRole('option', {exact: true})` through the new `div role="listbox" > div role="group" > div role="option"` structure.
+
+**STILL NOT RUN HERE — deferred to the epic catch-up that gates `epic-16: done`:** the matrix corpora, the four AD-21 legs, and `TestCrossTargetByteIdentity`. **Naming them is the point.** With CI halted at step 2 (DW-171) there is no machine that would say otherwise. A green gate list in this story means the gates in this list, and a report that does not say so is making the wider claim by omission.
