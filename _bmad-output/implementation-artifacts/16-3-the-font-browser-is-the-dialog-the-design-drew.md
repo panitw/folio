@@ -17,12 +17,24 @@ deferred: []
 
 *This section is background, not a requirement; the contract below governs.*
 
-Choosing a typeface from a list of names is guessing. This is the screen that stops it: every family
-is shown set in itself, in your own words, at the size you are going to print. Type a customer's name
-in Thai and you see which faces can actually set it before you commit to one.
+Choosing a typeface from a list of names is guessing. This is the screen that stops it, and it
+shipped: every family is shown set in itself, in your own words, at the size you will print, so you
+can see which faces can actually set a customer's name in Thai before committing to one. Around it
+sit a search, filters for writing system and category, a sort, two view shapes, and a way to line
+up several families and add them in one go.
 
-Around that: a search, filters for writing system and category, a sort, and a way to line up several
-families and add them in one go — with a footer that tells you what is about to go into your file.
+One thing a later reader should not mistake. This screen is for **choosing** families; what
+confirming does is **provisional**. Today it puts each chosen family into your file straight away.
+Story 16.5 changes that — the family gets installed on this machine and reaches the file only once
+something uses it. The footer was worded to survive that change, so it is not a settled promise
+about where a font ends up.
+
+The screen also differs from the drawing it was built from in several places: filter chips the real
+library justifies and the mockup's small sample did not, a keyboard shortcut ruled out rather than
+added, one colour no design token defined. Those are being collected for the owner to review
+together at the end of the epic, with the cost of reversing each.
+
+Two tests stay red, and neither is this story's; both were confirmed red before this work began.
 
 <intent-contract>
 
@@ -411,6 +423,106 @@ the door by its accessible name and assert the real dialog.
 file was never modified and the resulting green was a non-measurement rather than evidence. Re-targeted at
 the real site — the decline had moved into the seam behind a new `onDeclined` parameter — it reddened two
 tests. **A mutation that does not apply proves nothing, and its green looks exactly like a passing proof.**
+
+### 2026-09-03 — done (closer)
+
+Baseline `0e3a291`. Five code commits — `c4b6d1a` (the modal, the preview-face lifetime, the model),
+`0e9fa9a` (chips tied to the offered population, the footer's subsetting claim), `24b5d0d` (the matrix
+row whose witness was deleted), `7820118` (a guard that could never be the first failure), `e3f655b`
+(the row that waited for ever, and the App seam) — plus the builder's docs-only close-out `a3d2ac5`.
+Closed on `main`, nothing pushed.
+
+**Decisions applied.** D-16.R.33 (R2 `⌘G` ruled out with no hint glyph; R3 the *Most styles* arm and the
+designer search predicate dropped) · D-16.R.42 (the browser run scoped to carry DW-161's three cases and
+DW-176's fourth) · **D-16.R.46 Q2** (confirm's action marked PROVISIONAL inside the contract, pending
+16.5) · D-16.R.47 (the gate rulings, and the chip list shown to be a projection of the mockup's sample) ·
+D-16.R.49 (a principled deviation is still a deviation — the owner's list stays at seven rows) ·
+D-16.R.51 (the bold question belongs to Epic 11, so nothing was registered here) · D-16.R.53 (the false
+green the shell produced; DW-161's ordering honoured) · D-16.R.54 (one population confusion behind three
+defects; run the mutation *before* the fix).
+
+**Gates, re-measured by the closer at `52c50ed`, each its own command, no pipes, exit read bare.**
+
+| Gate | Invocation | Result |
+|---|---|---|
+| Designer unit | `cd folio-designer && npm run test` | **659 passed, 1 failed** of 660 across 54 files, **exit 1** |
+| e2e typecheck | `npm run test:e2e:compile` | exit 0 |
+| Build | `npm run build` | exit 0 |
+| Lint | `npm run lint` | exit 0 |
+| Go (lint) | `cd lint && go test -count=1 ./...` | exit 0, 4 packages |
+| Go (engine) | `cd folio-go && go test -count=1 ./...` | **exit 1**, 16 packages, 1 failure |
+
+`-count=1` was passed on both Go invocations and is recorded verbatim above (DW-168).
+
+**Not green, and not CI-verified.** The unit suite exits 1 and the engine suite exits 1. Nothing in this
+story is CI-verified: the designer job halts at step 2 on DW-152's standing red until the post-16.4
+repair (D-16.R.44). Unit tests alone are not this story's evidence — the browser run is.
+
+**Both reds are pre-existing, verified by NAME SET in an isolated worktree at `0e3a291`, not by totals.**
+Baseline measured **583 passed / 1 failed of 584** across 51 files; the single failing name is
+`canvas-authority-contract.test.ts > canvas projection authority contract > scans a non-vacuous
+production, unit-test, and e2e corpus for browser measurement authority` — character-for-character the
+name that fails at HEAD. `folio-go` fails only at `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)`,
+got 7 need >=20. That one is **stronger than pre-existing: it is mandated to stay unmet** by
+D-000.17/D-2.1.14, and `sprint-status.yaml` records Epic 2 as having closed over it deliberately.
+**This story changed 0 Go files** (verified over the whole `0e3a291..e3f655b` range).
+
+**Suites NOT run, and owed to the epic catch-up:** the 4-target × N-document **matrix corpora**, the
+**AD-21 legs**, and **`TestCrossTargetByteIdentity`**. The 23 golden digests were deliberately not run —
+nothing rendered changes in this story.
+
+**Five things confirmed present in the record.**
+
+1. **DW-176 — DISCHARGED.** The register entry carries the status and the observation: a stored face
+   survived a reload and was offered, specimen rendered from stored bytes, with the network disabled.
+2. **DW-161 — OPEN, and correctly so.** Its ordering clause binds it to DW-101 (*"discharge together or
+   not at all"*), and DW-101 is open until the post-16.4 CI repair (D-16.R.44) — which is stated as the
+   closure path, so the entry can close at the epic gate. Two of its three cases ran against the real
+   host; the licence case is recorded **impossible rather than skipped**, with the reason (no CC-BY-SA
+   family reachable) and the negative search that supports it (60 of 1,273 sampled, 60/60 resolved,
+   tokens `OFL` 58 / `APACHE2` 1 / `UFL` 1).
+3. **DW-177, DW-178, DW-179 — registered, and grepped back by SUBJECT rather than counted:** DW-177 the
+   offline `OFL.txt` read misreported as an upstream project publishing no licence file; DW-178 three
+   declared elevations against one implemented and five surfaces sharing it; DW-179 ten CRLF licence
+   texts in a tree `git status` calls clean.
+4. **The mockup deviations are recorded for the epic-gate table** (D-16.R.48), with the reversal-cost
+   column and the instruction to present them as a screen. **The count is seven unratified plus two
+   owner-ratified, marked as ratified — nine rows.** D-16.R.49 explicitly refused shortening it to six.
+5. **Both false-measurement findings are in the record:** the red-proof whose mutation regex matched
+   nothing, so the file was never modified and its green was a non-measurement (D-16.R.55); and F2's fix,
+   which appended to the wrong function, compiled cleanly, and was caught only because its red-proof came
+   back red with the fix supposedly in place (D-16.R.54).
+
+**Three disagreements the closer found in this story's own record, corrected here rather than upstream.**
+
+1. **The browser build is misnamed, in two places, two different ways, and neither is right.**
+   *Verification as run* says `chromium-1228`; the builder's Delivery Log and D-16.R.56 both say
+   `chromium-1217`. This repo's Playwright is **1.58.2**, whose `browsers.json` pins chromium revision
+   **1208** for both `chromium` and `chromium-headless-shell`, and `playwright install --dry-run`
+   resolves to *Chrome for Testing 145.0.7632.6 (playwright chromium v1208)*. Revisions 1217, 1223 and
+   1228 are present in the shared browser cache as leftovers from other Playwright versions, which is
+   how they came to be quoted. **The 6/6 result is not in question; the identifier attached to it is
+   wrong and could not have been re-derived later.**
+2. **The "unit tests went 641 → 659" delta is not a measurement of anything.** Totals, measured by
+   `vitest list` at each commit: `0e3a291` **584** → `c4b6d1a` **635** → `0e9fa9a` **639** → `24b5d0d`
+   **641** → `7820118` **642** → `e3f655b` **660**. So 641 is the total at the **third of five** commits,
+   and 659 is the **passing** count at the fifth — a total compared against a passing count across a span
+   that is not the one named. **No pair of measured points in this story differs by 18.** The real
+   figures: the review-patch phase added **+25** tests (635 → 660) and the story as a whole added **+76**
+   (584 → 660), with **0 tests removed or renamed** at either boundary.
+3. **The deviation count** is seven, not four — see item 4 above.
+
+**Accounted by name.** The +25 review-phase additions land as `font-browser-model.test.ts` 7,
+`FontBrowser.test.tsx` 5, `App.test.tsx` 4, `font-index.test.ts` 3, `App.font-store.test.tsx` 3,
+`preview-face-registry.test.ts` 2, `design-contract.test.ts` 1. The 7 across `App.test.tsx` and
+`App.font-store.test.tsx` match Group E's claim of "seven new cases" exactly. `canvas-font-stack.test.ts`
+gained 50 lines and **0 new test names** — its additions are assertions inside an existing census test,
+which is consistent with the "one anchored position and four near-miss red-proofs" it claims.
+
+**Deferred, with owners.** DW-161 → the post-16.4 CI repair, closing at the epic gate. DW-177, DW-178,
+DW-179 → registered, unowned by this story. The mockup deviation table → the epic gate, before the
+retrospective. The bold/italic realize-or-retire question → **Epic 11 (FR57)**, deliberately not
+registered here.
 
 ## Suggested Review Order
 
