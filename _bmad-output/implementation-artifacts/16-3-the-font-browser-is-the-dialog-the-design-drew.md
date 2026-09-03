@@ -2,10 +2,10 @@
 title: 'Story 16.3: The font browser is the dialog the design drew'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
-baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
+baseline_commit: '0e3a2913d96e1cac594fe76f743ea8eed8064592'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/DESIGN.md'
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html'
@@ -198,6 +198,19 @@ anchors had moved when Story 16.2 landed, which is why they were deliberately no
 stories early (D-16.R.28). `⌘G` ruled out with its reasoning (D-16.R.33 R2, owner-confirmed). The browser
 run scoped to discharge DW-161 and DW-176. `-count=1` written into the Go commands (DW-168).
 
+### 2026-09-03 — corrected at the build dispatch (builder)
+
+**`baseline_commit` corrected from `a40c34d` to `0e3a291`.** The recorded value was written when this
+spec was created (2026-09-02) and is **52 commits stale**: `a40c34d` is *"Close Epics 9 and 10 at a
+boundary gate"*, which **precedes the whole of Epic 16**. It therefore precedes this story's own
+`Block If` preconditions — 16.0, 16.1, 16.1b, 16.1a and 16.2 all closed after it — so a review diff
+taken from it would have swept 5,900 insertions of five other closed stories into this story's triage.
+Step-03's preserve rule is conditioned on `(resumed run)`; this spec never reached `in-progress`.
+`Block If` measured at this gate: all three named dependency stories are `done` in `sprint-status.yaml`.
+Code Map anchors re-verified at `0e3a291`: all three designer anchors still hold (`App.tsx:232-263`
+registration, `pickCatalogueFamily` `:778`, `FontFamilyProperty` `:1611`) — **none moved again** since
+the plan gate's `9c2fbe6` re-verification.
+
 ## Verification
 
 - `cd folio-designer && npm run test && npm run test:e2e:compile && npm run build`
@@ -218,3 +231,40 @@ run scoped to discharge DW-161 and DW-176. `-count=1` written into the Go comman
   **This is the first real-browser exercise of BOTH the web tier and the store**, which is how they are
   actually used together.
 - Token fidelity checked against `DESIGN.md`, in the form `review-token-fidelity.md` already uses.
+
+### Verification as run (builder, 2026-09-03)
+
+| Gate | Result |
+|---|---|
+| `npm run test` (vitest, 54 files) | **634 passed, 1 failed.** The failure is `canvas-authority-contract.test.ts` reporting `e2e/e9-5-border-no-ink.spec.ts: getComputedStyle` and is **PRE-EXISTING at `0e3a291`** — reproduced by stashing this story's whole diff and re-running. It is Story 9.5's browser-witness assertion (a `page.evaluate` reading what the canvas painted) caught by a scan whose e2e corpus has no carve-out for it. Not repaired here: amending a canvas-authority guard for an unrelated story is the drive-by shape that guard's own comments deprecate. **Raised for a ruling.** |
+| `npm run test:e2e:compile` | pass |
+| `npm run build` | pass (host scans, wasm, `tsc -b`, vite, offline bundle, offline verify) |
+| `cd lint && go test -count=1 ./...` | pass (4 packages) |
+| `cd folio-go && go test -count=1 ./...` | **1 failed:** `internal/text` `TestCorpusMeetsP6ExerciseFloors/P6g (opaque names)` — got 7, need >=20. **PRE-EXISTING at `0e3a291`**, reproduced the same way. This story touches no Go. **Raised for a ruling.** |
+
+**Real-browser run — PERFORMED, not skipped.** Chromium (Playwright, `chromium-1228`) against the
+built bundle on `127.0.0.1:4173`. The committed `e2e/font-browser.spec.ts` — 6 tests — **passed in
+the browser**, not only compile-checked, which discharges Story 16.0's compile-only finding for this
+story's own spec.
+
+A second, **temporary and uncommitted** witness spec then ran the cadence's six cases against the
+**real upstream host**. All six passed; the file was deleted afterwards.
+
+| # | Case | Outcome |
+|---|---|---|
+| 1 | Search, filter, sort, stage three (Kanit, Prompt, Mitr), confirm — network **up**, real hosts | Modal closed; document went from revision 2 to **revision 5** — one history entry per family — and all three appeared in the family control's own listbox. |
+| 2 | A pick with the network **up** (DW-161) | Covered by case 1: three real fetches, three embeds. |
+| 3 | One deliberate upstream failure inside a batch | Prompt's four `METADATA.pb` probes forced to 404. The other two embedded (revision 4), the modal stayed open, and the refusal was named **against Prompt** — *"Prompt is in this designer's snapshot of the family list but is no longer published upstream…"* — with only Prompt left staged. |
+| 4 | A pick whose licence is **outside the allowlist** (DW-161) | `METADATA.pb` served with `license: "CC-BY-SA"`. Refused, unembedded, revision unmoved: *"Kanit cannot be added: its licence is published as \"CC-BY-SA\", and ShareAlike is a copyleft term…"*. Simulated at the network boundary because **no CC-BY-SA family is reachable**: `cc-by-sa/` upstream now holds only `knowledge`, whose `METADATA.pb` 404s, and no such family is in the snapshot. |
+| 5 | A pick with the network **down** (DW-161) | `setOffline(true)` before the family was ever touched. Refused with the offline sentence and its second clause: *"…the faces this machine already holds are still offered."* |
+| 6 | **A stored face survives a reload and is offered with the network disabled** (DW-176) | Kanit added with the network up, page reloaded (document back to revision 1), network disabled, browser reopened: the row read **`downloaded to this machine`**, its **specimen rendered from the stored bytes with no network**, and confirming embedded it — revision 3 — with the network still down. **First real-browser witness of IndexedDB persistence and of the store and the web tier used together.** |
+
+**One finding raised by case 5, in Story 16.1's code and deliberately not repaired here.** On the
+first attempt, the offline pick was reported as *"Kanit declares OFL-1.1 but publishes no OFL.txt
+beside its face"* — because `METADATA.pb` came back from the browser's HTTP cache while `OFL.txt` did
+not, and `readText` distinguishes only a **stall** from a failure, never an offline failure from a
+missing file. That is precisely the "sends the reader upstream to look for a file that is sitting
+there" hazard `font-source.ts`'s own stall comment describes, one branch over. Reachable whenever the
+cache is partially warm. **Not fixed in this story** — it is `fetchWebFamily`'s, and repairing a
+refusal message in the fetch module from a browser story is how a fix lands without a test that
+would notice it regressing.

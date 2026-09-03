@@ -243,7 +243,32 @@ const assetKeyDerivedFamily = /^embeddedFaceFamily\([A-Za-z][A-Za-z0-9_]*\.asset
 // identifier waved it straight through while reading as a closed set.
 const shippedFaceDerivedFamily = /^shippedFaceFamily\(fragment\.face\)$/
 
-const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily] as const
+// AND THE THIRD, ADDED BY STORY 16.3 — AND IT IS NOT ABOUT THE CANVAS AT ALL.
+//
+// The font browser sets each specimen in its own family, which is the one thing
+// that makes the screen worth having: a name in a list is a guess, and a name
+// set in its own face is not. That needs a third `font-family` position in
+// designer source, and this census was previously a closed set of exactly two.
+//
+// WHY IT DOES NOT REOPEN WHAT THE OTHER TWO CLOSE. The two above are about the
+// CANVAS, where the rule is that a fragment's family may come only from the
+// ENGINE's identity for the face it measured with — never from a chain entry, a
+// chain name or the document's own vocabulary. This one names nothing a document
+// owns and nothing the canvas paints: `previewFaceFamily` is an injective hex
+// encoding of a snapshot family name behind a `folio-preview-` prefix, in a
+// namespace disjoint from the carried one, over a face registered only while a
+// modal row is on screen. A preview family reaching a canvas fragment would fail
+// the two patterns above exactly as any other unapproved value does.
+//
+// ANCHORED TO `row.family` AND TO THE BROWSER'S OWN SOURCE, both. The positions
+// list below is exact per file, so this derivation is admitted in
+// `FontBrowser.tsx` and nowhere else, and the near-miss it would otherwise wave
+// through — `previewFaceFamily(entry.family)` over a CHAIN entry, a document's
+// vocabulary wearing an approved call's spelling — is red by the same anchoring
+// that keeps `shippedFaceFamily(entry.face)` red.
+const previewDerivedFamily = /^previewFaceFamily\(row\.family\)$/
+
+const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily, previewDerivedFamily] as const
 
 function unapprovedFontFamilyDeclarations(source: string): ReadonlyArray<string> {
   return fontFamilyDeclarations(source).filter((value) => !approvedFontFamilyDerivations.some((approved) => approved.test(value)))
@@ -517,7 +542,17 @@ describe('the canvas paints with the faces the engine measured', () => {
     // that merely agree today are two derivations.
     const seam = fs.readFileSync(path.join(here, runtimeRegistrationSeam), 'utf8')
     const app = fs.readFileSync(path.join(here, 'App.tsx'), 'utf8')
-    expect(seam).toMatch(/new FontFace\(embeddedFaceFamily\(assetKey\), bytes\)/)
+    // STORY 16.3 SPLIT THIS ASSERTION IN TWO WITHOUT WEAKENING IT. The
+    // derivation became a PARAMETER of the seam so that the font browser's
+    // preview faces can land in a namespace of their own — see
+    // `preview-face-family.ts` for why they must — and the seam is still the
+    // ONLY module that may touch the page's font set, which is the property the
+    // exact list above guards. Both halves of the old single line are still
+    // pinned: the face is constructed from the derivation of the key, AND the
+    // derivation a caller gets when it asks for nothing is the DOCUMENT's.
+    expect(seam).toMatch(/const family = familyFor\(assetKey\)/)
+    expect(seam).toMatch(/new FontFace\(family, bytes\)/)
+    expect(seam).toMatch(/familyFor: \(assetKey: string\) => string \| undefined = embeddedFaceFamily/)
     expect(seam).toContain('from \'./embedded-face-family\'')
     expect(app).toContain('from \'./embedded-face-family\'')
 
@@ -848,6 +883,7 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(positions).toEqual([
       'App.tsx: embeddedFaceFamily(fragment.assetKey)',
       'App.tsx: shippedFaceFamily(fragment.face)',
+      'FontBrowser.tsx: previewFaceFamily(row.family)',
     ])
   })
 
@@ -876,10 +912,20 @@ describe('the canvas paints with the faces the engine measured', () => {
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(fragment.assetKey) }}')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(fragment.face) }}')).not.toEqual([])
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(entry.face) }}')).not.toEqual([])
+    // AND STORY 16.3'S OWN NEAR-MISSES. The preview derivation is admitted for a
+    // BROWSER ROW's family — a name out of the build-time snapshot — and for
+    // nothing else. A chain entry's family, a component's `fontFamily` and a
+    // fragment's attribution are all the document's or the engine's vocabulary,
+    // and none of them may be laundered through this call.
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: previewFaceFamily(entry.family) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: previewFaceFamily(component.fontFamily) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: previewFaceFamily(fragment.assetKey) }}')).not.toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(row.family) }}')).not.toEqual([])
 
     // THE APPROVED ONES, and only in their derived forms — two, and no more.
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: embeddedFaceFamily(fragment.assetKey) }}')).toEqual([])
     expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: shippedFaceFamily(fragment.face) }}')).toEqual([])
+    expect(unapprovedFontFamilyDeclarations('style={{ fontFamily: previewFaceFamily(row.family) }}')).toEqual([])
     // THE NEGATIVE CASES. A scan that only ever reddens has not been shown to
     // discriminate. Prose describing the forbidden route is not the route, and
     // the projection's `fontFamily` FIELD — a document's chain name — is read

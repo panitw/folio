@@ -12,6 +12,7 @@ import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/
 import { pageSetupCommand } from './page-setup-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
+import { FontBrowser } from './FontBrowser'
 import { FontChainEditor } from './FontChainEditor'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { embedFontFamilyCommand } from './font-chain-command'
@@ -182,6 +183,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // cannot act on.
   const [storedFaces, setStoredFaces] = useState<ReadonlyArray<StoredFace>>(NO_STORED_FACES)
   const [storeNote, setStoreNote] = useState<string>()
+  // STORY 16.3 — THE FONT BROWSER IS OPEN OR IT IS NOT, AND THAT IS ALL THE
+  // STATE IT HAS UP HERE. Everything the modal knows — the query, the chips,
+  // the sort, the staged families — lives inside it and dies with it, which is
+  // what keeps a Cancel/Apply pair from becoming a second document model
+  // (AD-15). The one thing App owns is whether it is on screen.
+  const [fontBrowserOpen, setFontBrowserOpen] = useState(false)
   const [machineFaces, setMachineFaces] = useState<ReadonlySet<string>>(NO_CARRIED_FACES)
   // THE HANDLE IS A PROMISE, NOT A RESOLVED VALUE, AND THAT IS A CORRECTNESS
   // POINT RATHER THAN A STYLE ONE. Opening a database is asynchronous, so a ref
@@ -357,6 +364,51 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (!removed.ok) { setStoreNote(`${face.family} could not be removed from this machine (${removed.reason}).`); return }
     setStoreNote(`${face.family} (${face.style}) was removed from this machine. Documents that already embed it are unchanged — a .folio carries its own faces.`)
     await refreshStoredFaces()
+  }
+
+  // STORY 16.3 — WHAT THE FONT BROWSER OFFERS, AND WHAT ITS SPECIMENS ARE SET IN.
+  //
+  // THE OFFERED LIST IS `offeredFamilies` WITH AN EMPTY QUERY, WHICH IS THE SAME
+  // FUNCTION THE FAMILY CONTROL ASKS. There is one answer to "which families may
+  // this author add", and a browser that computed its own would be a second one
+  // — with its own opinion about variable-only families and its own tier order.
+  // The browser filters and sorts what it is given; it never decides what it is
+  // given.
+  const browsableFamilies = useMemo(() => offeredFamilies('', storedFaces), [storedFaces])
+
+  // AND THE BYTES A SPECIMEN IS SET IN COME FROM THE SAME THREE TIERS A PICK
+  // RESOLVES FROM, THROUGH THE SAME THREE READS.
+  //
+  // NOTHING BUT BYTES TRAVELS. No licence record is kept, nothing is written to
+  // the machine store and no command is sent: a preview is a face for one
+  // `<span>` in one modal, and `preview-face-registry.ts` releases it when the
+  // row leaves the page.
+  //
+  // THE WEB TIER GOES THROUGH `fetchWebFamily` — THE FULL RESOLUTION, LICENCE
+  // CLASSIFICATION AND ALL — AND THAT IS NOT AN OVERSIGHT. A cheaper
+  // bytes-only fetch would be a SECOND fetch path in a designer whose whole
+  // host discipline rests on there being one, and it would let the browser set
+  // a specimen in a face the pick would then refuse on its terms: `+ Add`
+  // promising something the product declines. Reusing the pick's own resolution
+  // means a specimen appears exactly for the families that can actually be
+  // added. The cost is the pick's cost, bounded by `familiesPerPage`.
+  const browserSpecimenBytes = async (family: string): Promise<ArrayBuffer | undefined> => {
+    const source = browsableFamilies.find((entry) => entry.family === family)
+    if (source === undefined) return undefined
+    if (source.tier === 'local') {
+      try {
+        const response = await fetch(source.face.url)
+        return response.ok ? await response.arrayBuffer() : undefined
+      } catch {
+        return undefined
+      }
+    }
+    if (source.tier === 'stored') {
+      const read = await (await fontStore.current)?.get(source.record.key)
+      return read?.ok ? read.value?.bytes : undefined
+    }
+    const outcome = await fetchWebFamily(source.family)
+    return outcome.ok ? outcome.face.bytes : undefined
   }
 
   const installPreview = (next: PreviewRecord | undefined) => { previewRef.current = next; setPreview(next) }
@@ -709,10 +761,19 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // the flag across a wider window — see its own note — and calls the inner
   // half, so the guard is taken exactly once per pick rather than after the
   // network work it exists to serialise.
-  const sendFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
-    if (!engine) return
+  //
+  // STORY 16.3 GAVE IT A RETURN VALUE AND A SECOND ANNOUNCER, AND NEITHER
+  // CHANGES AN EXISTING CALLER. The font browser dispatches one command per
+  // staged family and has to name a refusal AGAINST THE FAMILY THAT EARNED IT —
+  // three refusals cannot all be the panel's one `fontChainError`, and the two
+  // that were overwritten would simply vanish. So the message is RETURNED, and
+  // `announce` says whether this call also writes it to the panel. Every caller
+  // that predates the browser passes nothing and gets the panel behaviour it
+  // always had, byte for byte.
+  const sendFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string, announce: 'panel' | 'caller' = 'panel'): Promise<string | undefined> => {
+    if (!engine) return undefined
     setCommitError(undefined)
-    setFontChainError(undefined)
+    if (announce === 'panel') setFontChainError(undefined)
     try {
       const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', payload)
@@ -720,8 +781,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       setHistoryAvailability(result.snapshot)
       if ((snapshotRef.current?.revision ?? -1) < result.snapshot.revision) setCurrentSnapshot(result.snapshot)
     } catch (error) {
-      if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) setFontChainError({ control, selectionKey, message: componentDiagnosticDetail(error).message })
+      const message = componentDiagnosticDetail(error).message
+      if (announce === 'panel' && documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) setFontChainError({ control, selectionKey, message })
+      return message
     }
+    return undefined
   }
 
   const applyFontChain = async (payload: ArrayBuffer, control: FontChainControl, responseGeneration: number, selectionKey: string) => {
@@ -775,25 +839,52 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // window would resolve concurrently and commit a second embed. So the flag is
   // taken HERE and released in the `finally`, and the command half is called
   // through `sendFontChain`, which does not take it again.
-  const pickCatalogueFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string) => {
-    if (!engine || fileBusy || fontChainBusyRef.current) return
+  //
+  // STORY 16.3 — THIS IS THE SINGLE NAMED SEAM THROUGH WHICH A FAMILY ENTERS A
+  // DOCUMENT, AND ITS ACTION IS PROVISIONAL (D-16.R.46 Q2).
+  //
+  // TODAY IT EMBEDS, exactly as Story 8.6 built it: the bytes travel into the
+  // document and the `.folio` carries them. STORY 16.5 CHANGES THE ACTION TO
+  // INSTALL, moving the embed to first use. It is one function rather than a
+  // state machine precisely so that 16.5 swaps a BODY — the two callers, the
+  // family control's pick and the font browser's confirm, are unchanged by that
+  // swap because neither of them names the mechanism.
+  //
+  // ONE CALL IS ONE HISTORY ENTRY. The browser's confirm calls it once per
+  // staged family, in order and sequentially — see `FontBrowser.tsx` for why
+  // racing them would be wrong twice over.
+  const addFamilyToDocument = async (source: FamilySource, responseGeneration: number, selectionKey: string, announce: 'panel' | 'caller' = 'panel'): Promise<string | undefined> => {
+    if (!engine) return 'This designer has no engine to send the change to.'
+    if (fileBusy || fontChainBusyRef.current) return `${source.family} was not added: the designer was busy with another change. Try it again.`
     holdFontChain(true)
     try {
-      await resolveAndEmbedFamily(source, responseGeneration, selectionKey)
+      return await resolveAndEmbedFamily(source, responseGeneration, selectionKey, announce)
     } finally {
       if (documentGeneration.current === responseGeneration) holdFontChain(false)
     }
   }
 
-  const resolveAndEmbedFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string) => {
+  const pickCatalogueFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string) => {
+    if (!engine || fileBusy || fontChainBusyRef.current) return
+    await addFamilyToDocument(source, responseGeneration, selectionKey)
+  }
+
+  const resolveAndEmbedFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string, announce: 'panel' | 'caller' = 'panel'): Promise<string | undefined> => {
     // A refusal that resolves after the selection or the document moved on is
     // dropped rather than shown against a control the author is no longer
     // looking at — applyFontChain's own rule, applied to the half of the flow
     // that happens before it is called.
-    const refuse = (message: string) => {
-      if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) {
+    // A REFUSAL THAT RESOLVES AFTER THE SELECTION OR THE DOCUMENT MOVED ON IS
+    // NOT SHOWN IN THE PANEL — applyFontChain's own rule, applied to the half of
+    // the flow that happens before it is called. It is still RETURNED, because
+    // the browser's caller is a modal that is still open and still owns a row
+    // for this family: "the panel is looking at something else now" is a reason
+    // not to paint an error on the panel, never a reason to swallow one.
+    const refuse = (message: string): string => {
+      if (announce === 'panel' && documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) {
         setFontChainError({ control: { action: 'embed' }, selectionKey, message })
       }
+      return message
     }
     let embedded: { family: string; style: string; licence: string; licenceText: string; copyright: string; source: string; mediaType: string; bytes: ArrayBuffer; scripts: ReadonlyArray<string> }
     // Set when the bytes arrived over the network and are therefore worth
@@ -818,7 +909,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         embedded = { family: held.family, style: held.style, licence: held.licence, licenceText: held.licenceText, copyright: held.copyright, source: held.source, mediaType: held.mediaType, bytes: held.bytes, scripts: held.scripts }
       } else {
         const outcome = await fetchWebFamily(source.family)
-        if (!outcome.ok) { refuse(outcome.reason); return }
+        if (!outcome.ok) return refuse(outcome.reason)
         if (outcome.face.layoutDivergence !== undefined) console.info(outcome.face.layoutDivergence)
         embedded = { ...outcome.face, scripts: source.record.scripts }
         fetched = true
@@ -831,13 +922,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         if (!response.ok) throw new Error(`the bundled face responded ${response.status}`)
         bytes = await response.arrayBuffer()
       } catch (error) {
-        refuse(`${face.family} could not be read from the offline bundle: ${error instanceof Error ? error.message : String(error)}`)
-        return
+        return refuse(`${face.family} could not be read from the offline bundle: ${error instanceof Error ? error.message : String(error)}`)
       }
       embedded = { family: face.family, style: face.style, licence: face.licence, licenceText: face.licenceText, copyright: face.copyright, source: face.source, mediaType: 'font/ttf', bytes, scripts: face.scripts }
     } else {
       const outcome = await fetchWebFamily(source.family)
-      if (!outcome.ok) { refuse(outcome.reason); return }
+      if (!outcome.ok) return refuse(outcome.reason)
       // LAYOUT DIVERGENCE IS AN OBSERVATION, AND AN OBSERVATION NEEDS A READER.
       // `fetchWebFamily` records when the directory a family was resolved in
       // disagrees with the licence its own metadata declares — never a refusal
@@ -852,7 +942,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       fetched = true
     }
     const tail = scriptFallbackFaces.filter(([script]) => !embedded.scripts.includes(script)).map(([, shipped]) => shipped)
-    await sendFontChain(embedFontFamilyCommand({ chain: embedded.family, family: embedded.family, style: embedded.style, licence: embedded.licence, licenceText: embedded.licenceText, copyright: embedded.copyright, source: embedded.source, mediaType: embedded.mediaType, bytes: embedded.bytes, tail }), { action: 'embed' }, responseGeneration, selectionKey)
+    const rejected = await sendFontChain(embedFontFamilyCommand({ chain: embedded.family, family: embedded.family, style: embedded.style, licence: embedded.licence, licenceText: embedded.licenceText, copyright: embedded.copyright, source: embedded.source, mediaType: embedded.mediaType, bytes: embedded.bytes, tail }), { action: 'embed' }, responseGeneration, selectionKey, announce)
+    // A REJECTED COMMAND IS STILL RETURNED — AT THE END, AFTER THE STORE WRITE,
+    // AND THE ORDER IS DELIBERATE. Story 16.2 put the store write after the
+    // embed so a quota refusal could not decide whether an author gets their
+    // font; returning early here would put an ENGINE refusal in exactly that
+    // position instead, and the bytes and their terms are worth keeping either
+    // way — the next pick of that family then needs no network whatever the
+    // engine said about this document.
     // THE STORE IS WRITTEN AFTER THE EMBED, AND THAT ORDER IS THE MATRIX ROW.
     // A quota refusal must leave the fetch and the embed intact: the document
     // has the face, and what failed is keeping a copy for next time. Writing
@@ -863,6 +960,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // the machine store would spend the origin's quota on bytes that are
     // already origin-local and carry a stronger, build-time-gated record.
     if (fetched) await keepOnThisMachine(embedded)
+    return rejected
   }
 
   /**
@@ -1169,11 +1267,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} storedFaces={storedFaces} storeNote={storeNote} onRemoveStoredFace={(face) => void removeStoredFace(face)} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} storedFaces={storedFaces} storeNote={storeNote} onRemoveStoredFace={(face) => void removeStoredFace(face)} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
     {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} />}
+    {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} onClose={() => setFontBrowserOpen(false)} />}
     <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
 }
@@ -1378,7 +1477,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, storedFaces, storeNote, onRemoveStoredFace, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; storedFaces: ReadonlyArray<StoredFace>; storeNote?: string; onRemoveStoredFace: (face: StoredFace) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, onOpenFontBrowser, storedFaces, storeNote, onRemoveStoredFace, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; onOpenFontBrowser: () => void; storedFaces: ReadonlyArray<StoredFace>; storeNote?: string; onRemoveStoredFace: (face: StoredFace) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -1411,7 +1510,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<MachineFontStore faces={storedFaces} note={storeNote} onRemove={onRemoveStoredFace} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} onOpenFontBrowser={onOpenFontBrowser} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<MachineFontStore faces={storedFaces} note={storeNote} onRemove={onRemoveStoredFace} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1608,7 +1707,7 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
 // the DOM and never the claim.
 const renderedFamilyLimit = 50
 
-function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
+function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, onOpenFontBrowser, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; onOpenFontBrowser: () => void; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))
   const uniform = values.every((value) => value === values[0])
   const committed = uniform ? values[0] ?? '' : ''
@@ -1699,6 +1798,24 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
           do I add my own font file?" is written where the question is asked. */}
       <li className="property-option property-option-empty" role="presentation">Fonts come from this catalogue. A typeface on your own disk cannot be embedded.</li>
     </ul>}
+    {/* STORY 16.3 — THE DOOR TO THE BROWSER, WHERE THE DESIGN PUTS IT: the last
+        row of the open family dropdown. It is a real button OUTSIDE the
+        `role="listbox"` rather than a fourth `role="presentation"` child inside
+        it, because a listbox's children are options and this is not one — the
+        keyboard walk over `matches` above must not land on it.
+
+        NO KEYBOARD SHORTCUT AND NO HINT GLYPH, AND THE OMISSION IS RULED RATHER
+        THAN FORGOTTEN (D-16.R.33 R2, owner-confirmed). The mockup prints `⌘G`
+        beside this row; `⌘G` is the browser's own Find Next, and this
+        application's convention puts conventional document actions on Command
+        (⌘S, ⌘Z) and app-specific ones on Option (⌥P, ⌥S). `⌥F` is named as the
+        eventual shape and is not bound in this epic — so no glyph is drawn,
+        because a `⌘G` label beside a key that does nothing is a false UI
+        string. `src/shortcuts.ts` is untouched. */}
+    {open && <button type="button" className="property-add-fonts" aria-label="Add fonts…" disabled={pending || pickBusy} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); onOpenFontBrowser() }}>
+      <span className="property-add-fonts-label">Add fonts…</span>
+      <span className="property-add-fonts-note">Browse and embed web fonts</span>
+    </button>}
     {pickError && <p role="alert" className="property-error">{pickError.message}</p>}
     {error && <p id={errorId} role="alert" className="property-error">{error.message}</p>}
   </div>

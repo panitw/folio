@@ -51,7 +51,29 @@ type PageFontSet = Readonly<{ add: (face: FontFace) => unknown; delete: (face: F
 // exactly those keys — never for a key whose bytes did not arrive — so a
 // failed fetch degrades to the stylesheet's declared stack instead of asking
 // for a family nothing declares.
-export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceBytes: CarriedFaceBytes, onRegistered: (registered: ReadonlySet<string>) => void): () => void {
+//
+// STORY 16.3 — THE DERIVATION IS A PARAMETER, AND ITS DEFAULT IS THE DOCUMENT'S.
+//
+// The font browser sets each specimen in its own family, which means a face has
+// to reach `document.fonts` for a family NOTHING OWNS YET — not carried by the
+// open document, not shipped by the build. That is a third lifetime, and
+// `preview-face-family.ts` argues it.
+//
+// IT COULD NOT BE DONE BY PASSING PREVIEW KEYS TO THE OLD SIGNATURE, and the
+// reason is the whole hazard this module was written around: the family was
+// derived HERE, from `embeddedFaceFamily`, so a preview registration would have
+// landed under the very names the canvas asks for and a modal's scroll position
+// would have decided what the page paints. Handing the derivation in is what
+// keeps the two populations in disjoint namespaces while leaving ONE seam that
+// may touch the page's font set — the property `canvas-font-stack.test.ts`
+// asserts by exact list, and which a second registration module would have
+// broken.
+//
+// A DERIVATION MAY DECLINE. `previewFaceFamily` returns `undefined` for a name
+// it will not encode, and that key is then simply not registered — the same
+// degrade a fetch returning no bytes already takes, for the same reason: a face
+// the browser cannot name is not a session fault.
+export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceBytes: CarriedFaceBytes, onRegistered: (registered: ReadonlySet<string>) => void, familyFor: (assetKey: string) => string | undefined = embeddedFaceFamily): () => void {
   let active = true
   const added: FontFace[] = []
   const registered = new Set<string>()
@@ -68,7 +90,9 @@ export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceB
           // asset may be absent, unreadable, or not a font at all, and every
           // one of those is a fragment that keeps the declared stack.
           if (!active || bytes === undefined || bytes.byteLength === 0) return undefined
-          const face = new FontFace(embeddedFaceFamily(assetKey), bytes)
+          const family = familyFor(assetKey)
+          if (family === undefined) return undefined
+          const face = new FontFace(family, bytes)
           return face.load().then((loaded) => {
             // The document may have been replaced while the bytes were in
             // flight. Adding here would put a superseded document's face into

@@ -1,4 +1,4 @@
-import { catalogueFaces, type CatalogueFace } from './generated/font-catalogue'
+import { catalogueFaces, type CatalogueFace, type CatalogueScript } from './generated/font-catalogue'
 import { familyIndex, familyIndexExcludedCjkFamilies, familyIndexPublishedFamilies, familyIndexSnapshotDate, type IndexFamily } from './generated/font-index'
 import type { StoredFace } from './font-store'
 
@@ -284,3 +284,56 @@ export function familyIndexDisclosure(): string {
     + `The list itself is a snapshot taken on ${indexSnapshotDate} and ships with this designer, so it changes only when the designer is released; the typefaces are fetched at the moment you pick one. `
     + `Families published only as a single variable file are not shown, because this product embeds one static weight.`
 }
+
+/**
+ * THE SNAPSHOT ROW FOR A FAMILY, WHATEVER TIER OFFERS IT (Story 16.3).
+ *
+ * `webFamilies` above is the ADDABLE-FROM-THE-WEB list: it has already dropped
+ * the variable-only rows and every family the local tier holds. That is the
+ * right list to OFFER from and the wrong one to DESCRIBE from, because the
+ * facts a browser prints beside a family — its category, how popular it is,
+ * which scripts it covers — are properties of the family and are carried by the
+ * snapshot for local-tier families too.
+ *
+ * SO THIS READS THE WHOLE `familyIndex`, INCLUDING ROWS `webFamilies` REMOVED,
+ * AND THAT IS NOT A HOLE IN THE FILTER. A row reachable here can never become a
+ * pick: `offeredFamilies` is the only source of a `FamilySource`, nothing here
+ * produces one, and a local-tier family is offered from the local tier whatever
+ * the snapshot's `variable` flag says about the mirror's build of it (D-16.R.2a).
+ * This function answers "what does the snapshot say about this name", never
+ * "may the author add it".
+ *
+ * A FAMILY WITH NO ROW IS `undefined` AND THE CALLER MUST SAY SO IN WORDS. Two
+ * of the local-tier families have no index row at all — the join note above
+ * names them — so "no category" is a real and permanent state, not a loading
+ * one, and printing a guessed category for those two would be the browser
+ * inventing a fact about a typeface.
+ */
+const indexByFamily: ReadonlyMap<string, IndexFamily> = new Map(familyIndex.map((row) => [row.family, row]))
+
+export function indexRowFor(family: string): IndexFamily | undefined {
+  return indexByFamily.get(family)
+}
+
+/**
+ * THE CATEGORY VOCABULARY, READ OFF THE SNAPSHOT RATHER THAN TYPED OUT.
+ *
+ * `Font Browser.dc.html` draws four category chips — Sans Serif, Serif, Display,
+ * Monospace — over fourteen placeholder families. The snapshot carries FIVE
+ * categories, and the fifth (Handwriting) is the third largest of them. A hand
+ * copy of the mockup's four would hide 337 families behind chips that look
+ * exhaustive, which is the failure mode a derived vocabulary cannot have.
+ */
+export const indexCategories: ReadonlyArray<string> = [...new Set(familyIndex.map((row) => row.category))].sort()
+
+/**
+ * AND THE WRITING-SYSTEM VOCABULARY, ON THE SAME GROUND.
+ *
+ * The mockup also draws Cyrillic and Greek chips. This snapshot records no such
+ * coverage for any family — `CatalogueScript` is `latin`, `thai` and `cjk`, and
+ * CJK is excluded from the snapshot by SPEC-fonts' own non-goal — so those two
+ * chips would filter every result away every time they were pressed. A control
+ * that can only ever empty the list is a false affordance, so the chips are the
+ * scripts the snapshot and the local tier actually name.
+ */
+export const indexScripts: ReadonlyArray<CatalogueScript> = [...new Set([...familyIndex.flatMap((row) => row.scripts), ...catalogueFaces.flatMap((face) => face.scripts)])].sort()

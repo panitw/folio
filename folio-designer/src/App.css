@@ -342,3 +342,113 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .preview-failure-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .diagnostic-locate:focus-visible, .diagnostic-dismiss:focus-visible, .preview-failure button:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .load-progress span { transition: none; } }
+
+/* THE ADD-FONTS DOOR, at the foot of the open family dropdown (Story 16.3).
+   `--color-select-tint` is the design's cyan wash and the one surface in the
+   ramp that says "this row does something different from the rows above it"
+   without inventing a sixth chrome step. The mockup paints this row and its
+   hover in two colours DESIGN.md names nowhere; both are recorded in
+   `review-token-fidelity-font-browser.md` rather than pasted in here. */
+.property-add-fonts { display: grid; gap: 1px; width: 100%; padding: var(--space-3); border: var(--hairline) solid var(--color-select-edge); border-radius: var(--radius-default); background: var(--color-select-tint); text-align: left; cursor: pointer; }
+.property-add-fonts-label { color: var(--color-select-bright); font: var(--type-body-em); font-weight: 500; }
+.property-add-fonts-note { color: var(--color-ink-low); font: var(--type-body); }
+.property-add-fonts:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+
+/* THE FONT BROWSER (Story 16.3), drawn from `Font Browser.dc.html`.
+
+   EVERY COLOUR IS A TOKEN AND SEVERAL OF THE MOCKUP'S ARE NOT, so the
+   substitutions are recorded in `review-token-fidelity-font-browser.md` beside
+   DESIGN.md rather than pasted in as literals. The three that matter:
+
+     THE MODAL'S HEADER, RAIL AND FOOTER TAKE A SIXTH CHROME SURFACE STEP IN
+     THE MOCKUP, one notch between `panel` and `raised`. DESIGN.md refuses a
+     sixth step in those words and says what to use instead — "an interface that
+     needs one is expressing hierarchy that a hairline should carry instead" —
+     so the regions are one surface separated by `--color-line` rules.
+
+     THE SCRIM IS AN UNNAMED WASH IN THE MOCKUP and `--tint-scrim` here, which
+     is the one alpha ladder DESIGN.md admits.
+
+     THE SHADOW IS A FOURTH SHADOW IN THE MOCKUP, over a list DESIGN.md closes
+     at three. This takes the page's, which is the only shadow token the
+     stylesheet has. */
+.font-browser-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
+.font-browser { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(1180px, calc(100vw - 44px)); height: min(748px, calc(100vh - 44px)); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-page); }
+
+.font-browser-header { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-bottom: var(--hairline) solid var(--color-line); }
+.font-browser-header-row { display: flex; align-items: center; gap: var(--space-6); }
+.font-browser-title { margin: 0; color: var(--color-ink-high); font: var(--type-title); }
+.font-browser-search { display: flex; align-items: center; gap: var(--space-2); flex: 1; max-width: 460px; padding: var(--space-1) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); }
+.font-browser-search input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--color-ink-high); font: var(--type-body-em); outline: none; }
+/* THE DISCLOSURE IS `familyIndexDisclosure()` AND IT WRAPS. The mockup's header
+   is a fixed 46px carrying one short false sentence; the true sentence is three
+   clauses long, so the region grows rather than the sentence shrinking. */
+.font-browser-disclosure { margin: 0; max-width: 96ch; color: var(--color-ink-low); font: var(--type-mono); }
+.font-browser-toggles { display: flex; align-items: center; gap: var(--space-2); }
+.font-browser-toggle-label { color: var(--color-ink-low); }
+.font-browser-sort { padding: 0 0 2px; border: none; border-bottom: var(--hairline) solid transparent; background: none; color: var(--color-ink-low); font: var(--type-body); cursor: pointer; }
+.font-browser-sort-active { border-bottom-color: var(--color-select); color: var(--color-ink-high); }
+.font-browser-segmented { display: flex; border: var(--hairline) solid var(--color-line-strong); }
+.font-browser-view { padding: var(--space-1) var(--space-4); border: none; border-radius: var(--radius-default); background: none; color: var(--color-ink-low); font: var(--type-body); letter-spacing: 0.04em; cursor: pointer; }
+.font-browser-view-active { background: var(--color-active); color: var(--color-ink-high); }
+.font-browser-inline-action { padding: 0 var(--space-2); border: none; background: none; color: var(--color-ink); font: var(--type-body-em); line-height: 1; cursor: pointer; }
+
+.font-browser-body { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 0; }
+.font-browser-rail { overflow-y: auto; padding-bottom: var(--space-6); border-right: var(--hairline) solid var(--color-line); }
+.font-browser-rail .section-label { margin: var(--space-5) var(--space-panel-x) var(--space-1); }
+.font-browser-rail-group { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-panel-x) var(--space-5); }
+.font-browser-rail-group input[type="text"] { padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body-em); outline: none; }
+.font-browser-size { display: flex; align-items: center; gap: var(--space-3); margin: 0; }
+.font-browser-size input[type="range"] { flex: 1; min-width: 0; accent-color: var(--color-select); }
+.font-browser-size-value { width: 34px; color: var(--color-ink-high); font: var(--type-mono); }
+.font-browser-switch { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-row-y) var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink); font: var(--type-body); cursor: pointer; }
+.font-browser-switch span:first-child { flex: 1; text-align: left; }
+.font-browser-switch-dot { width: 22px; height: 12px; flex: none; background: var(--color-edge); box-shadow: inset 10px 0 0 var(--color-panel); }
+.font-browser-switch-on { color: var(--color-ink-high); }
+.font-browser-switch-on .font-browser-switch-dot { background: var(--color-select); box-shadow: inset -10px 0 0 var(--color-panel); }
+.font-browser-chips { flex-direction: row; flex-wrap: wrap; }
+.font-browser-chip { padding: 3px var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink); font: var(--type-body); cursor: pointer; }
+.font-browser-chip-active { border-color: var(--color-select); background: var(--tint-select-fill-soft); color: var(--color-select-bright); }
+
+.font-browser-results { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+.font-browser-result-line { display: flex; align-items: center; gap: var(--space-4); height: 32px; padding: 0 var(--space-sheet-x); border-bottom: var(--hairline) solid var(--color-line); color: var(--color-ink-low); font: var(--type-mono); }
+.font-browser-spacer { flex: 1; }
+.font-browser-link { padding: 0; border: none; background: none; color: var(--color-select); font: var(--type-mono); cursor: pointer; }
+.font-browser-link:disabled { color: var(--color-ink-disabled); cursor: default; }
+.font-browser-scroll { overflow-y: auto; min-height: 0; }
+.font-browser-rows { margin: 0; padding: 0; list-style: none; }
+.font-browser-row { padding: var(--space-6) var(--space-sheet-x); border-bottom: var(--hairline) solid var(--color-line-subtle); }
+.font-browser-row-head, .font-browser-row-foot { display: flex; align-items: center; gap: var(--space-4); }
+.font-browser-family { color: var(--color-ink-high); font: var(--type-title); }
+.font-browser-meta { color: var(--color-ink-low); font: var(--type-body); }
+.font-browser-badge { padding: 1px var(--space-2); border: var(--hairline) solid var(--color-line-strong); color: var(--color-ink-low); font: var(--type-label); letter-spacing: 0; }
+.font-browser-badge-thai { border-color: var(--color-bind-edge); color: var(--color-bind); }
+.font-browser-add { flex: none; padding: 3px var(--space-3); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body); cursor: pointer; }
+.font-browser-add-staged { border-color: var(--color-select); background: var(--tint-select-fill-soft); color: var(--color-select-bright); }
+.font-browser-add-in-template { color: var(--color-ink-ghost); cursor: default; }
+/* THE SPECIMEN, AND ITS TWO HONEST ABSENCES. `.font-browser-specimen` is only
+   ever drawn with an inline family the row's own face is registered under; a row
+   whose face has not arrived — or cannot — draws `-absent` instead, which says
+   which of the two it is in words. Nothing renders the sample in the panel's
+   typeface while implying it is the family. */
+.font-browser-specimen { margin: var(--space-4) 0 0; overflow: hidden; color: var(--color-ink-high); line-height: 1.25; }
+.font-browser-rows .font-browser-specimen { white-space: nowrap; text-overflow: ellipsis; }
+.font-browser-specimen-absent { margin: var(--space-4) 0 0; color: var(--color-ink-low); font: var(--type-body); }
+.font-browser-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); margin: 0; padding: var(--space-sheet-x); list-style: none; }
+.font-browser-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--space-4); min-height: 150px; padding: var(--space-5); border: var(--hairline) solid var(--color-line); background: var(--color-raised); }
+.font-browser-card .font-browser-specimen { margin: 0; max-height: 76px; }
+.font-browser-card .font-browser-family { font: var(--type-body-em); font-weight: 500; }
+.font-browser-empty { display: grid; gap: var(--space-2); padding: 60px var(--space-sheet-x); text-align: center; }
+.font-browser-empty-heading { margin: 0; color: var(--color-ink-high); font: var(--type-title); }
+.font-browser-empty p { margin: 0; color: var(--color-ink-low); }
+
+.font-browser-footer { display: flex; align-items: center; gap: var(--space-5); min-height: 50px; padding: 0 var(--space-6); border-top: var(--hairline) solid var(--color-line); }
+.font-browser-dot { width: 6px; height: 6px; flex: none; border-radius: var(--radius-dot); background: var(--color-edge); }
+.font-browser-dot-active { background: var(--color-select); }
+.font-browser-pending { margin: 0; color: var(--color-ink); font: var(--type-body-em); }
+.font-browser-weight { color: var(--color-ink-ghost); font: var(--type-mono); }
+.font-browser-cancel { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
+.font-browser-confirm { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-select); border-radius: var(--radius-default); background: var(--color-select); color: var(--color-ground); font: var(--type-body-em); font-weight: 500; cursor: pointer; }
+.font-browser-confirm:disabled { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-ghost); cursor: default; }
+.font-browser-refusals { display: grid; gap: var(--space-1); margin: 0; padding: 0 var(--space-6) var(--space-4); list-style: none; }
+.font-browser :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
