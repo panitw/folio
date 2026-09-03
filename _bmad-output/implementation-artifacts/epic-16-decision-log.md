@@ -3130,3 +3130,47 @@ triggers doubt was absent and the report read as a clean measurement.
 > COMMAND** — an echo, a summary line or a cleanup step each silently become the status. And `##
 > Verification` records **the invocation**, not only the verdict, so a reader can see whose status is being
 > quoted.
+
+### D-16.R.60 — ADDENDUM to D-16.R.59: the carriers were filled, and the rule extends one artifact further down
+
+**Sequencing correction first, so nobody is blamed by the record.** D-16.R.59 reports the two guardrails
+absent from 16.5's spec. **That was true when the lead claimed them carried, and true when the orchestrator
+grepped** — the builder's own collision check independently found zero occurrences of any of the guardrail
+vocabulary and reported it. **The builder then filled all four; the orchestrator's grep raced that write.**
+Both measurements were correct; only message ordering makes them look contradictory. **D-16.R.59's finding
+stands unchanged** — the lead named carriers and did not fill them, and the rule as adopted verifies
+neither.
+
+**Verified by location AND by position, which is stronger than the rule required.** The builder checked each
+clause sits inside its **named** carrier rather than merely somewhere in the file, position-tested against
+the Acceptance Criteria boundary at line 263. Confirmed independently by the orchestrator:
+
+| clause | line | carrier |
+|---|---|---|
+| the retained arm must be TESTED | 255 | Tasks & Acceptance → **Execution** |
+| the degradation NAMES THE COUNT | 278 | Tasks & Acceptance → **Acceptance Criteria** |
+| in-memory `FontStore` rejected, with reason | 408 | **Design Notes** |
+| wrapper-status rule (fifth false green) | 438 | **Verification** |
+
+**"Present in the file" and "present in the named carrier" are different claims**, and the second is the one
+the rule actually asks for — a Tests bullet living in Design Notes satisfies a grep and reaches nobody.
+
+**THE EXTENSION, and it is the builder's, unprompted:**
+
+> **If the carrier rule can fail between a lead and a spec, it can fail between a spec and a test.**
+
+So before 16.5 leaves step-03 the same locate-the-text discipline runs **one artifact further down**: for
+each ruled item, **find the assertion in the test file, not the claim in the report.** That closes the last
+hop — and it is the hop that matters most, because a ruling that reaches the spec and not the test produces
+**a story whose Delivery Log truthfully says the clause was specified while nothing proves it was built.**
+
+**The chain is now checked end to end at every hop:** lead → spec (locate the clause in its carrier), spec →
+implementation (locate the assertion in the test), and implementation → report (the red-proof, which asserts
+its own mutation applied, D-16.R.55). **Three hops, three location checks, no step trusted on report.**
+
+**And the builder investigated an unexplained HEAD move before doing anything else**, on its own initiative
+and before the announcement arrived: `e80f607` → `7a3aa2f`, one commit, decision-log only, **0 files under
+`folio-go/`, `folio-designer/`, `lint/` or `scripts/`**, its spec not among them. Benign — **but its reason
+for checking is the right one and worth preserving verbatim: *"'HEAD moved' is the one signal I will never
+take on trust."*** D-16.R.52 made announcing the move my obligation; this is the other half, and it does not
+depend on me remembering.
