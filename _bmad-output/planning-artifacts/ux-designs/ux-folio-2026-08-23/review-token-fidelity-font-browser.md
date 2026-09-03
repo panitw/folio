@@ -89,5 +89,10 @@ certainly a typo for `select-bright`, so probably a mockup fix rather than a tok
 `#262c33`, which `review-token-fidelity.md` already raised as U2 and which now appears on a sixth
 artboard.
 
+**One note on the guard itself, earned the hard way during this review.** `design-contract.test.ts`'s
+colour-literal scan reads **raw** text and does not blank comments, so an explanation that *quotes* the
+hex values it is explaining fails the check. That is correct behaviour and not a rough edge: **a literal
+in a comment is still one somebody can copy.** The CSS comment recording this decision names no hex.
+
 **Everything else is the mockup reaching past the ramp**, and `DESIGN.md` wins where the two
 disagree — which is what its own header says it does.

@@ -8057,3 +8057,52 @@ dropdown carrying a shadow the taxonomy does not cover — so either the dropdow
 already says it**. Transcribe a declared value; refuse an undeclared one. The sheet shadow was declared, so
 it was minted. The mockup's confirm-hover and scrim values were **not** declared, so they were refused in
 favour of `--color-select-hover` and `--tint-scrim`, and the deltas go on the owner's deviation list.
+
+---
+
+### DW-179 — ten licence texts carry CRLF in the working tree while `git status` reports clean, and the generated catalogue follows the tree
+
+- source_spec: `_bmad-output/implementation-artifacts/16-3-the-font-browser-is-the-dialog-the-design-drew.md`
+- **Deferred by:** Story 16.3's review (2026-09-03), found while diagnosing a red-proof worktree that
+  failed a test the main tree passed. **Not this story's code, and not any story's code** — it is the
+  state of a working tree.
+- **Owner:** the post-16.4 infrastructure item, alongside DW-101's CI repair. **Severity:** LOW today,
+  MEDIUM on the trigger. **Status:** OPEN. **Do not normalise the files ad hoc** — it wants a deliberate
+  rebuild and a manifest diff, not a mid-review edit.
+
+**The state, measured.** `.gitattributes` declares `* text=auto eol=lf`, and its own header calls a
+checkout that rewrites line endings *"a correctness hazard, not a cosmetic one"*. The committed blobs are
+LF. **Ten tracked files carry CRLF in the working tree anyway, and `git status` reports the tree clean**
+(the eol filter normalises on read, so no diff is shown). All ten are licence texts under
+`folio-designer/public/fonts/`:
+
+`cascadiacode`, `cascadiamono`, `dmsans`, `ibmplexmono`, `ibmplexsans`, `ibmplexsansthai`, `oswald`,
+`spacegrotesk` (`LICENSE-OFL.txt`), and `sourcecodepro`, `sourcesans3` (`LICENSE-OFL.md`).
+
+**The mechanism, confirmed at the source and not merely at the symptom.** `licenceTextOf`
+(`scripts/build-wasm.mjs:283`) reads those files straight into the generated catalogue's `licenceText`
+field (`:361`). So the catalogue's bytes follow whichever tree built it, and any document embedding one of
+those ten families carries that text onward.
+
+**How it presented, which is the part worth remembering.** A red-proof worktree reported a *second*
+pre-existing suite failure the main tree did not have (`font-catalogue.test.ts`, licence-text whitespace)
+— a failure indistinguishable in shape from a real standing red. It was neither a real failure nor a
+stale generated file (`cmp` showed the generated catalogues byte-identical): it was a **hybrid** — a
+catalogue built in a CRLF tree paired with LF sources. **A consistent tree of either kind passes; only a
+mixed one fails.** Proved by rebuilding in the worktree and re-running: 6/6 pass. The suite baseline is
+**634 passed / 1 failed**, one standing red (DW-152), and this was never a second one.
+
+**No committed artifact is currently affected.** Exactly one committed `.folio` fixture embeds a licence,
+`fixtures/embedded-font/input.folio`, and it is LF-clean (0 CR bytes) and embeds a **Noto** face, which is
+not among the ten. No file under `folio-go/testdata` carries CRLF.
+
+**The trigger, and why it is worth an entry rather than a shrug:** any story embedding one of those ten
+families into a committed fixture, or any digest comparison over the generated catalogue. In either case
+a CRLF tree and a clean checkout produce different bytes in a repository whose stated value proposition is
+byte-identical output. `TestCrossTargetByteIdentity` is deferred to the epic catch-up, so if it reaches
+any of the ten this surfaces there — at the point where a failure spans the whole epic and is most
+expensive to attribute to a working tree rather than to code.
+
+**What discharges it:** normalising the ten files to LF in a deliberate commit, with a rebuild and a
+`dist/offline-release-manifest.json` diff showing what moved — and, if it is cheap, a guard that fails
+when a tracked text file's working-tree bytes disagree with its blob, since `git status` will not say so.

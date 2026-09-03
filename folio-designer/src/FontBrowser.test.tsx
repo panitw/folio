@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FontBrowser } from './FontBrowser'
 import { familiesPerPage } from './font-browser-model'
 import { addableFamilyCount, offeredFamilies, type FamilySource } from './font-index'
+import type { StoredFace } from './font-store'
 import { previewFaceFamily } from './preview-face-family'
 
 // THE MODAL THE DESIGN DREW (Story 16.3), ASSERTED THROUGH THE NAMES A KEYBOARD
@@ -296,5 +297,59 @@ describe('staging and confirming', () => {
     release?.()
     expect(await screen.findByText(/added 1 of 2/)).toBeInTheDocument()
     release?.()
+  })
+})
+
+// THE MATRIX'S `Offline` ROW, WHICH HAD NO COMMITTED TEST.
+//
+// The browser run exercised it, but that witness was a temporary spec that was
+// deleted afterwards — so nothing re-runnable covered this row, which is the
+// same state as a test that exists and never runs. Both halves of the row are
+// asserted here: the web tier SAYS SO in words, and the machine store keeps
+// working while it does.
+//
+// The second half is the one worth having. `browserSpecimenBytes` resolves a
+// stored family out of IndexedDB and a web family through `fetchWebFamily`, so a
+// face this machine already holds needs no network at all — and the whole point
+// of Story 16.2 is that this stays true when the network is gone.
+describe('with no network the browser says so, and the faces this machine holds still work', () => {
+  const stored: FamilySource = {
+    tier: 'stored',
+    family: 'Kanit',
+    record: {
+      key: 'b'.repeat(64), family: 'Kanit', style: 'Regular', licence: 'OFL-1.1', licenceText: 'terms',
+      copyright: 'c', source: 'google/fonts — ofl/kanit/Kanit-Regular.ttf, fetched 2026-09-03',
+      mediaType: 'font/ttf', scripts: ['latin', 'thai'], fetchedAt: '2026-09-03', byteLength: 4,
+    } satisfies StoredFace,
+  }
+
+  it('states the web rows it cannot fetch, and still sets the stored family in itself', async () => {
+    installed = installStubFontSet()
+    // Offline: every web family fails to resolve; the stored one is on this
+    // machine and resolves without a network.
+    const offlineBytes = async (family: string) => family === 'Kanit' ? bytes() : undefined
+    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={offlineBytes} onAddFamily={vi.fn(async () => undefined)} onClose={vi.fn()} />)
+
+    // THE STORED FAMILY IS SET IN ITSELF, and that is the half that proves the
+    // store is read rather than merely present.
+    await waitFor(() => expect(installed?.live()).toContain(previewFaceFamily('Kanit')))
+    // AND THE WEB ROWS SAY WHY THEY ARE NOT, in words, rather than rendering the
+    // sample in the panel's own typeface.
+    await waitFor(() => expect(screen.getByText(/Sarabun cannot be shown set in itself/)).toBeTruthy())
+    // NO WEB FAMILY MAY HAVE REACHED THE FONT SET.
+    for (const family of ['Sarabun', 'Lora', 'Chonburi', 'Zilla Slab']) {
+      expect(installed?.live()).not.toContain(previewFaceFamily(family))
+    }
+  })
+
+  it('still lets the stored family be staged and added while every web fetch fails', async () => {
+    installed = installStubFontSet()
+    const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; return undefined })
+    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={async (family) => family === 'Kanit' ? bytes() : undefined} onAddFamily={onAddFamily} onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByLabelText(/Kanit/i, { selector: 'button.font-browser-add' }))
+    fireEvent.click(screen.getByRole('button', { name: /Add 1 to template/i }))
+    await waitFor(() => expect(onAddFamily).toHaveBeenCalledTimes(1))
+    expect(onAddFamily.mock.calls[0][0]).toMatchObject({ tier: 'stored', family: 'Kanit' })
   })
 })
