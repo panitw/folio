@@ -2641,3 +2641,123 @@ prohibition.**
 **And the builder is why this is a footnote rather than an incident.** It noticed, verified rather than
 assumed, built the mechanism that made the ambiguity survivable, and reported it as an observation instead
 of an accusation.
+
+### D-16.R.53 — Story 16.3's review: a false green produced by the shell, DW-161's ordering honoured, and a design system with one of its three elevations implemented
+
+**Six items from 16.3's build and review. Three are corrections to rulings in this log — one the lead's, two
+the orchestrator's — and one is a tooling fault that produced a green over a failing suite.**
+
+**1. `PIPESTATUS` IN ZSH PRODUCED A FALSE GREEN, AND THE ORCHESTRATOR MADE THE SAME ERROR IN THIS RUN.**
+
+The 16.3 builder reported, against itself, that its first gate capture used `${PIPESTATUS[0]}` — **a bash
+construct, in zsh** — so a piped `tail` reported *"exit code 0"* over a suite that had **failed**. It
+re-ran every gate without pipes and got the true picture.
+
+**The orchestrator did exactly this earlier in the same run.** The command was
+`npm run scan:font-hosts 2>&1 | tail -20; echo "SCAN EXIT: ${PIPESTATUS[0]}"`, and the output read
+`SCAN EXIT:` with **nothing after it**. It went unnoticed because the scan **printed its own success
+line**, which was read instead. **The right answer arrived by a broken route and the route's brokenness was
+invisible in the result.**
+
+**This is the third tooling fault in this epic that yields a confidently wrong measurement rather than an
+error**, after `grep -c` silently returning `0` on a listing of 40+ files, and a `0/0` glob that proved
+nothing. All three share a shape: **the tool answers, the answer looks like every other answer, and nothing
+in the output distinguishes "measured" from "failed to measure".**
+
+**Standing rule, effective immediately: NO EXIT CODE IS TAKEN THROUGH A PIPE.** Run the command bare and
+read `$?`, or capture to a file and check separately. **And any gate whose green was previously reported via
+a piped exit code is re-measured before it is quoted** — including the orchestrator's own. Together with
+D-16.R.51's zero-denominator rule this now forms a small discipline: **state the population beside every
+zero, and never read a status through a pipe.**
+
+**2. DW-161 STAYS OPEN. The lead corrected ITS OWN RULING rather than the register entry.**
+
+DW-161 carries an ordering constraint: *"this entry and DW-101 discharge together or not at all"*. DW-101 —
+*"the specs exist and CI never runs them"* — is **open**. D-16.R.42 nonetheless asserted that 16.3's browser
+run *"discharges DW-161"*, **without reading the entry's discharge conditions to the end** — the exact
+failure D-16.R.26 named as a standing consequence, committed by the lead who cited it.
+
+**The reasoning for which side to correct is the entry's most reusable sentence:**
+
+> *Amending a registered entry's ordering clause so that my ruling becomes retroactively true would be
+> **fixing the record to match the claim rather than the claim to match the record**. That is the worst
+> available reason to amend anything, and it is the one on offer here.*
+
+**D-16.R.42's text takes the correction; DW-161 is untouched.** And the clause is independently sound:
+closing it on a hand-run execution while CI runs only `test:e2e:compile` would **reproduce D-000.4 inside
+the entry that exists to prevent it**. There are three states, not two — no specs; specs plus one recorded
+manual execution; specs executed by CI — and this run moved from the first to the second. **That is
+progress, recorded as progress rather than as closure.**
+
+**The consequence that makes honouring it cheap, and it goes IN the entry:** the owner has already scheduled
+the designer CI repair for after 16.4 (D-16.R.44), which is DW-101's subject. **So DW-161's ordering
+condition becomes satisfiable inside this epic.** A deferral whose ordering partner is unscheduled reads as
+permanent; this one has a date.
+
+**And the count was the orchestrator's error: DW-161 names THREE cases, not four.** Two exercised against
+the real host (network down is genuinely offline, no host involved); **one simulated**. It is recorded
+**IMPOSSIBLE, not skipped** — `cc-by-sa/` upstream holds only `knowledge`, whose `METADATA.pb` 404s, and no
+CC-BY-SA family is in the snapshot, so there is **no real host to run it against**. A floor reported unmet
+because it cannot be met is a different object from one quietly filled. Trigger: *a CC-BY-SA family becoming
+reachable or offered.* **DW-176 is discharged** — no ordering clause, and case 6 passed in a real browser.
+
+**3. `--shadow-sheet` IS MINTED IN 16.3, AND THE ORCHESTRATOR'S PREMISE WAS WRONG IN OUR FAVOUR.**
+
+The orchestrator ruled that minting the token was *"a `DESIGN.md` + `tokens.css` change, not a story's to
+make"*. **`DESIGN.md:474-480` already declares all three elevations WITH THEIR VALUES**, including the sheet
+at `0 18px 60px rgba(0,0,0,0.6)`. **Nothing is being designed.** Transcribing a declared elevation into the
+file that implements declarations leaves the count at three and leaves *"no fourth may be added"* untouched.
+
+> **An elevation is added when it is DECLARED, not when it is implemented.**
+
+**AND THE GAP IS FOUR TIMES FB11's SIZE.** FB11 reported one instance; the lead found two; **the
+orchestrator measured five.** `tokens.css:14` carries **exactly one** shadow, `--shadow-page`, applied in
+`App.css` to:
+
+| line | surface | declared elevation |
+|---|---|---|
+| 91 | `.page-surface` | **1 — correct** |
+| 330 | `.pdf-preview-scroll canvas` | **2 — mis-elevated** |
+| 292 | `.table-editor` | **3 — mis-elevated** |
+| 376 | `.font-browser` | **3 — 16.3's own; fixed here** |
+| 210 | `.property-options` | **none — not in the taxonomy at all** |
+
+**One of three declared elevations is implemented; one token does the work of three; and a fifth surface is
+outside the taxonomy entirely.** A design built on three deliberate depth steps renders all of them
+identically. **16.3 fixes only its own surface**; the two mis-elevations are registered, and
+`.property-options` is registered as an **open question** — either a dropdown should carry no shadow, or the
+"three shadows" taxonomy is already incomplete. **Not resolved by this story.**
+
+**4. FB9 GOES THE OTHER WAY, AND THE CONTRAST IS THE RULE.** `tints.scrim` is **declared**
+(`DESIGN.md:79`) **and implemented** (`--tint-scrim`). The mockup's `rgba(8,10,12,0.68)` differs in both
+colour and alpha — undeclared drift, and adopting it would create a **second alpha ladder**.
+
+> **The discriminator is not severity. It is whether `DESIGN.md` already says it: transcribe a declared
+> value, refuse an undeclared one.**
+
+FB11 is a declared value missing from the token file — mint it. FB9 is a mockup value with no declaration —
+use the token and put the delta on the owner's deviation list. **Second `DESIGN.md` constraint discovered
+mid-story rather than at a gate; it will not be the last.**
+
+**5. `#6bb4d0` WITHDRAWN — the orchestrator's Q4 token-gap call was wrong.** `--color-select-hover` **is**
+`#7CC0DA`, the semantic token for a hover on a select-coloured button, so the mockup value sits **between**
+two real tokens and was never a gap. **The real defect was that no hover was drawn at all** — an
+interaction regression against a design that draws one. Restored with the existing token. **Noted because it
+is the third time in this story an unresolvable design value nearly became a deletion**; that instinct needs
+watching.
+
+**6. The chip vocabularies derived from the WRONG POPULATION, and the fix is required rather than optional.**
+The implementer independently reached the ruled synthesis — derived, bound to `readonly CatalogueScript[]`,
+with the false-affordance reasoning — but derived from `familyIndex` (**1,811** rows) while the chips filter
+the **offered** population (1,273 web + 31 local = 1,304). **Today the two coincide exactly — measured, 0
+categories and 0 scripts present in the index but absent from the offered set — so no dead chip ships.**
+
+**That coincidence is a measurement, not a guarantee.** `addableFromTheWeb` drops **537** rows, so one
+snapshot adding a category or script present only among variable-only families **reintroduces precisely the
+always-empty chip Q1 removed**. Its comment consequently reads *"337 families"* for Handwriting where the
+browser offers **259** — **wrong denominator, 30% over**, the same class as `646 KB`, `37 of the top 50` and
+`48 committed`. **The instance count is now the evidence that the standing rule is load-bearing.**
+
+**Also fixed: `weightLine` shipped the false claim *"whole file, not subset"*.** The product **does** subset,
+at PDF render, over the glyphs the document uses — **the same wrong intuition the builder had corrected in
+itself earlier in this story, reaching the UI as a shipped string.** Q3(b) drops the subset clause entirely.
