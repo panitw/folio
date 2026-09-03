@@ -2761,3 +2761,57 @@ browser offers **259** — **wrong denominator, 30% over**, the same class as `6
 **Also fixed: `weightLine` shipped the false claim *"whole file, not subset"*.** The product **does** subset,
 at PDF render, over the glyphs the document uses — **the same wrong intuition the builder had corrected in
 itself earlier in this story, reaching the UI as a shipped string.** Q3(b) drops the subset clause entirely.
+
+### D-16.R.54 — One population confusion produced three defects in a single story, and a red-proof caught a fix that had landed in the wrong function
+
+**Two corrections from 16.3's patch pass, both made by the implementer against premises it had been handed.**
+
+**1. THE INDEX IS NOT THE OFFERED POPULATION, AND THAT DISTINCTION BIT THREE TIMES IN ONE STORY.**
+
+`familyIndex` holds **1,811** rows. The browser offers **1,304** — 1,273 web families **plus the 31 local
+tier faces**. Those are different sets in **both** directions: the index contains 537 variable-only rows the
+browser never offers, and the local tier contains faces that are **not in the index at all**. Three defects
+in 16.3 are the same confusion wearing different clothes:
+
+| # | where | the error |
+|---|---|---|
+| 1 | chip vocabularies | derived from `familyIndex` while the chips filter the offered set |
+| 2 | a shipped comment | *"337 families"* for Handwriting where the browser offers **259** — 30% over |
+| 3 | the `Thai + Latin` badge | **the orchestrator's** *"0 of 1,811 rows are thai-without-latin, so it cannot lie today"* |
+
+**The third is mine and it was wrong in the direction that matters.** The measurement was correct **about
+the index** and irrelevant **about the browser**: a local-tier row's coverage comes off the committed face,
+and `Noto Sans Thai Looped` and `Noto Serif Thai` both record `scripts: ["thai"]` — verified. **So the
+browser was printing `Thai + Latin` beside two shipped faces whose own record claims no Latin.** I relayed
+it to the builder as *"unreachable today, patch it anyway as a matter of shape"*, which downgraded a live
+user-visible defect to a stylistic tidy. The implementer refused the premise and asserted both by name.
+
+**The lesson is not "check the denominator" — this run has said that four times and it keeps happening.** It
+is more specific: **when two populations differ by a filter, every claim about one of them is silent about
+the other, and the silence is invisible at the point of use.** `familyIndex` and the offered set differ by
+`addableFromTheWeb` *and* by the local tier's separate provenance. **A measurement over either is not
+evidence about the other, however close the numbers look** — and here they were close enough that the chip
+sets coincided exactly, which is what made defect 1 look safe.
+
+**2. A RED-PROOF CAUGHT A FIX THAT HAD LANDED IN THE WRONG FUNCTION, AND NOTHING ELSE WOULD HAVE.**
+
+The F2 patch — resetting `fontBrowserOpen` when the document is replaced — **appended to the first matching
+pair in the file and landed in `closeTableEditor` instead of `clearDocumentInteraction`.** It **compiled
+cleanly**. And the red-proof came back **red with the fix "in place"**, which is the only reason it was
+caught: the implementer was running the mutation *before* the fix rather than after, so the proof that was
+supposed to confirm the repair instead revealed the repair was not where it was believed to be.
+
+**That is the "make it fail first" discipline paying out in a way no review could substitute for.** A
+reviewer reading the diff sees a correct-looking hunk; a test suite sees green; the only signal is a proof
+that refuses to change colour when the fix is applied. **Recorded because this run has spent heavily on
+red-proofs and this is the clearest evidence yet that the cost is buying something specific** — not "the
+test is real" but "the fix is where you think it is".
+
+**Also closed beyond the patch list, all found by the implementer:** the new App tests leaked in-flight modal
+fetches into unrelated tests (10 calls where one was expected); `preview-face-registry.test.ts`'s `settle()`
+was a hand-counted microtask flush **one tick short for the reject path**, which had made a real defect look
+untestable; and the Grid cap had two spellings, so the rail printed a size nothing was set at.
+
+**Gates after the patch pass, measured locally with no pipes: 659 passed / 1 failed** (up from 641 passing),
+the single failure being DW-152, pre-existing and unchanged; `test:e2e:compile`, `build` and `lint` all
+clean; **the committed e2e spec re-run in a real Chromium with strengthened per-row assertions, 6/6.**
