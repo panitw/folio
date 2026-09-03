@@ -2,7 +2,7 @@
 title: 'Story 16.4: The family control names three sources'
 type: 'feature'
 created: '2026-09-02'
-status: 'ready-for-dev'
+status: 'draft'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
@@ -173,6 +173,17 @@ cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `
 `e2e/component-properties.spec.ts:35-60` were checked and are still correct.
 
 **Ruled changes to apply at the gate (D-16.R.33):**
+
+0. **ITS MIDDLE GROUP IS NOW FALSE, AND THIS SPEC WAS RE-OPENED FOR IT.** `status:` was
+   `ready-for-dev`, which routes a dispatch **straight to implementation, skipping the plan gate**. Reset
+   to `draft` on 2026-09-03 so the next dispatch re-plans instead (D-16.R.58). The reason: this spec
+   defines `ADDED FROM WEB FONTS` as *"what this session fetched **into the file**"*, and OWNER DECISION
+   D-16.R.46 separates installing from embedding — **so adding from web fonts INSTALLS, and that
+   definition is false.** The mockup's three groups survive; the middle one is redefined as *installed
+   this session* or collapsed into `AVAILABLE LOCALLY`. **That fork is ruled at this story's gate, once
+   16.5 has shown what it actually builds.** A `ready-for-dev` spec asserting a superseded mechanism is a
+   loaded gun for the next dispatch, and it was found by 16.5's builder rather than by anything watching
+   this file.
 
 1. **The registered listbox defect is SIX, not four — and the AC as written is unsatisfiable.** This
    spec names `role="presentation"` children at `:1355`, `:1361`, `:1363` and `:1366`. Measured at
