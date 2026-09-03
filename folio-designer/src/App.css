@@ -239,6 +239,19 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
 .font-chain-entry > .property-error { grid-column: 1 / -1; }
 .font-chain-entry-face { min-width: 0; overflow: hidden; color: var(--color-ink-high); font: var(--type-mono); text-overflow: ellipsis; }
 .font-chain-editor .property-inline-action:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+/* STORY 16.2 — the typefaces this machine has downloaded, and the one control
+   that lets one go. It borrows the chain editor's shape on purpose: it sits in
+   the same TYPOGRAPHY section, it is a list of things the author owns, and a
+   second visual language for a second list in one panel would read as a second
+   kind of thing. */
+.machine-font-store { display: grid; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-3); border-top: var(--hairline) solid var(--color-line); }
+.machine-font-store > .section-label { margin: 0; }
+.machine-font-store > .honest-note { margin: 0; }
+.machine-font-list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.machine-font-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; }
+.machine-font-name { min-width: 0; overflow: hidden; color: var(--color-ink-high); font: var(--type-body); text-overflow: ellipsis; white-space: nowrap; }
+.machine-font-meta { color: var(--color-ink-low); font: var(--type-body); }
+.machine-font-store .property-inline-action:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 /* The fx marker: a field the engine reads as an expression carries it, in the
    same accent the canvas paints a placeholder run with, and it brightens once
    the field actually holds one. */

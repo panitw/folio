@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { familyDirectorySlug, fetchWebFamily, fontHostDeclarations, parseFamilyMetadata, probeDirectories, regularFilename } from './font-source'
+import { familyDirectorySlug, fetchTimeoutMs, fetchWebFamily, fontHostDeclarations, parseFamilyMetadata, probeDirectories, regularFilename, timedFetcher } from './font-source'
 import { admittedByTheTokenTable } from './font-licence'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { assertProvenanceShape } from './test/provenance-shape'
@@ -454,5 +454,213 @@ describe('the declared hosts', () => {
     for (const forbidden of ['css2', 'woff2', 'unicode-range', 'googleapis', 'gstatic']) {
       expect(code, `font-source.ts must not reach for ${forbidden}`).not.toMatch(new RegExp(forbidden, 'i'))
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORY 16.2 — THE FETCH TIMEOUT (D-16.R.14, D-16.R.42; discharges DW-165).
+//
+// A fetch that REJECTS degrades with a stated message and releases the pick's
+// hold. A fetch that STALLS never settles, so the hold is never released and
+// the font control is dead for the rest of the session with no message at all.
+// That is the worst member of the failure class this module's matrix covers and
+// the one it did not cover.
+describe('a fetch that stalls rather than rejecting', () => {
+  const timeoutError = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+
+  /** A fetcher that serves `files` until call index `abortAt`, where it aborts instead. */
+  function stubAbortingAt(files: Readonly<Record<string, StubFile>>, abortAt: number) {
+    const inner = stub(files)
+    const asked: string[] = []
+    const fetcher = async (url: string) => {
+      asked.push(url)
+      if (asked.length - 1 === abortAt) throw timeoutError()
+      return inner.fetcher(url)
+    }
+    return { fetcher, asked }
+  }
+
+  // THE NUMBER, AND THE ARITHMETIC BEHIND IT. A timeout is a number and a
+  // number needs a basis; a constant whose stated reason its own arithmetic
+  // contradicts is the defect D-16.R.25 names. Both halves are pinned: the
+  // value, and the derivation written beside it.
+  it('is 30 seconds, and the constant carries the arithmetic rather than prose', () => {
+    expect(fetchTimeoutMs).toBe(30_000)
+    const source = fs.readFileSync(path.join(here, 'font-source.ts'), 'utf8')
+    // The measured maximum, the factor, the product, and the bound it clears.
+    expect(source, 'the constant must carry the measured maximum it was sized against').toContain('2,097 ms')
+    expect(source, 'the constant must carry its arithmetic, not a claim about it').toContain('2,097 x 10 = 20,970 <= 30,000')
+    // The largest offerable face, which is what makes 646 KB the wrong
+    // denominator: the budget serves the FETCHABLE population, not the
+    // committed one.
+    expect(source).toContain('24,271,604')
+    // AND THE SAMPLE'S OWN LIMIT, which is the honest reason the factor is x10
+    // and not x2.
+    expect(source.replace(/\n\s*\*\s*/g, ' ')).toMatch(/One connection, one day, five repetitions/)
+  })
+
+  // THE SIGNAL GOES INTO `fetch()` ITSELF, so the abort reaches the BODY
+  // stream. The bytes are read by `response.arrayBuffer()` AFTER the fetcher
+  // returns, so a timeout armed around the fetcher alone would leave the worst
+  // real stall — a 24 MB body that stops arriving — completely uncovered.
+  it('passes an abort signal into fetch, rather than arming a timer around it', async () => {
+    const seen: Array<RequestInit | undefined> = []
+    const restore = globalThis.fetch
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => { seen.push(init); return { ok: false, status: 404, text: async () => '' } as unknown as Response }) as never
+    try {
+      await fetchWebFamily('Kanit')
+      expect(seen.length, 'the default fetcher must have been used').toBeGreaterThan(0)
+      for (const init of seen) {
+        expect(init?.signal, 'every request must carry the abort signal, so the abort reaches the body stream').toBeInstanceOf(AbortSignal)
+        expect(init?.signal?.aborted, 'the signal must still be live at the moment of the request').toBe(false)
+      }
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // AND THE TIMEOUT REALLY FIRES — the whole mechanism, end to end, at a real
+  // short budget. `AbortSignal.timeout` runs on the platform's own timer, which
+  // a fake clock does not reach, so this is the only honest shape for this
+  // claim: a never-settling `fetch` that resolves only when the signal aborts.
+  //
+  // THERE IS NO DISARM PATH, which is why `AbortSignal.timeout` is chosen over
+  // a hand-armed setTimeout/clearTimeout: nothing can clear it when the headers
+  // arrive, so it still covers the body.
+  it('fires on its own, with no disarm, and the abort reaches the caller as a refusal', async () => {
+    const restore = globalThis.fetch
+    globalThis.fetch = ((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason ?? timeoutError()))
+    })) as never
+    try {
+      const outcome = await fetchWebFamily('Kanit', timedFetcher(5))
+      expect(outcome.ok).toBe(false)
+      if (outcome.ok) return
+      expect(outcome.reason).toMatch(/stopped responding/)
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // THE STALL'S SENTENCE IS ITS OWN, AND IT DELIBERATELY DOES NOT BORROW THE
+  // OFFLINE ONE. "You cannot add a family without a network connection" is
+  // FALSE when the network is up and the host is hanging, and it sends the
+  // author to check their wifi over a problem that is not theirs.
+  it('states a stall as a stall, never as the offline refusal', async () => {
+    const { fetcher } = stubAbortingAt(kanitUpstream(), 0)
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toContain('Kanit')
+    expect(outcome.reason).toMatch(/waited 30 seconds/)
+    expect(outcome.reason, 'a stall must not be reported as being offline').not.toMatch(/without a network connection/)
+    // AND IT SAYS NOTHING WAS RETRIED. A retry over a deterministic stall hides
+    // it, so this designer does not retry — and says so, because "it gave up
+    // after 30 seconds" reads as not trying hard enough unless the decision is
+    // visible.
+    expect(outcome.reason).toMatch(/nothing was retried automatically/)
+    // AND WHAT STILL WORKS. A degradation the author cannot act on is an error
+    // message wearing a friendlier coat.
+    expect(outcome.reason).toMatch(/faces this machine already holds are still offered/)
+  })
+
+  // THE STALL DURING `arrayBuffer()`, WHICH IS THE ONE THAT MATTERS MOST. This
+  // is the case a header-only timeout would miss entirely: the request answers,
+  // and then the 24 MB body stops arriving.
+  it('states the same degradation when the stall is in the body rather than the request', async () => {
+    const asked: string[] = []
+    const fetcher = async (url: string) => {
+      asked.push(url)
+      if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => kanitMetadata } as unknown as Response
+      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => 'SIL Open Font License' } as unknown as Response
+      // THE HEADERS ARRIVE. The body never does.
+      return { ok: true, status: 200, arrayBuffer: async () => { throw timeoutError() } } as unknown as Response
+    }
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toMatch(/stopped responding while sending the Kanit-Regular\.ttf face itself/)
+    expect(outcome.reason).not.toMatch(/without a network connection/)
+    expect(asked).toHaveLength(3)
+  })
+
+  // A STALL READING THE LICENCE IS A STALL, NOT A MISSING LICENCE FILE. Before
+  // the timeout existed that catch could only mean "not there"; reporting a
+  // stall as "publishes no OFL.txt" would send the author upstream to look for
+  // a file that is sitting there.
+  it('does not report a stalled licence read as a family that publishes no licence file', async () => {
+    const { fetcher } = stubAbortingAt(kanitUpstream(), 1)
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toMatch(/stopped responding while sending the text of its licence/)
+    expect(outcome.reason).not.toMatch(/publishes no OFL\.txt/)
+  })
+
+  // THE CHAIN TERMINATES ON THE FIRST ABORT, ASSERTED RATHER THAN ASSUMED.
+  //
+  // A deferral with a trigger would be the wrong instrument for a property that
+  // can simply be asserted: a note ages, an assertion reds. The worst-case hold
+  // is therefore T plus the requests that already completed — NOT the six-times-T
+  // an unterminated chain would produce.
+  //
+  // RED-PROOF: change any one of the three catches to `continue` (or to fall
+  // through rather than return) and the matching row reds on its call count.
+  it('ends the whole chain at the first abort, wherever in it the abort lands', async () => {
+    // THE EXPECTED COUNTS ARE LITERALS, never computed from the code path that
+    // drives the fetches — a count derived from the implementation would agree
+    // with any implementation.
+    const rows: ReadonlyArray<readonly [string, string, Readonly<Record<string, StubFile>>, number, number]> = [
+      ['the first probe', 'Kanit', kanitUpstream(), 0, 1],
+      ['the licence read', 'Kanit', kanitUpstream(), 1, 2],
+      ['the byte read', 'Kanit', kanitUpstream(), 2, 3],
+    ]
+    for (const [where, family, files, abortAt, expectedCalls] of rows) {
+      const { fetcher, asked } = stubAbortingAt(files, abortAt)
+      const outcome = await fetchWebFamily(family, fetcher)
+      expect(outcome.ok, where).toBe(false)
+      if (!outcome.ok) expect(outcome.reason, where).toMatch(/stopped responding/)
+      // NOT ONE REQUEST MORE. A chain that continued past the abort would show
+      // up here as a larger number, and a silent retry would show up as the
+      // aborted URL appearing twice.
+      expect(asked, `${where}: the chain must stop at the abort and make no further request`).toHaveLength(expectedCalls)
+      expect(new Set(asked).size, `${where}: no request may be retried`).toBe(asked.length)
+    }
+  })
+
+  // AND A 404 IS THE ONE THING THE PROBE LOOP CONTINUES PAST — which an abort
+  // never produces. This row is what makes the claim above about the LOOP and
+  // not merely about its first iteration.
+  it('continues past a 404 and still ends at the first abort inside the loop', async () => {
+    const apacheMetadata = kanitMetadata.replace('license: "OFL"', 'license: "APACHE2"')
+    const files = {
+      [`${base}/apache/kanit/METADATA.pb`]: { body: apacheMetadata },
+      [`${base}/apache/kanit/LICENSE.txt`]: { body: 'Apache License, Version 2.0' },
+      [`${base}/apache/kanit/Kanit-Regular.ttf`]: { body: face },
+    }
+    // Call 0 is the `ofl` probe, which 404s and is continued past. Call 1 is
+    // the `apache` probe, which aborts.
+    const { fetcher, asked } = stubAbortingAt(files, 1)
+    const outcome = await fetchWebFamily('Kanit', fetcher)
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.reason).toMatch(/stopped responding while looking for its upstream metadata/)
+    expect(asked).toHaveLength(2)
+    expect(asked[0]).toContain('/ofl/kanit/METADATA.pb')
+    expect(asked[1]).toContain('/apache/kanit/METADATA.pb')
+  })
+
+  // NO SILENT RETRY, WITH THE COUNT AS A LITERAL. A retry over a deterministic
+  // stall hides it, which is Story 16.0's `Never:` clause and the same reason.
+  it('makes exactly one request per step and never repeats the one that stalled', async () => {
+    const { fetcher, asked } = stubAbortingAt(kanitUpstream(), 2)
+    await fetchWebFamily('Kanit', fetcher)
+    expect(asked).toHaveLength(3)
+    expect(asked.filter((url) => url.endsWith('Kanit-Regular.ttf'))).toHaveLength(1)
+    // And a successful chain is three requests too, so the number above is a
+    // property of the chain rather than of the failure.
+    const clean = stub(kanitUpstream())
+    const outcome = await fetchWebFamily('Kanit', clean.fetcher)
+    expect(outcome.ok).toBe(true)
+    expect(clean.asked).toHaveLength(3)
   })
 })

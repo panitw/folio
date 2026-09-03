@@ -7510,7 +7510,37 @@ order, or alphabetical order chosen deliberately rather than inherited from the 
 - **Owner:** the engineering lead, at the first review of Epic 16's pick path; naturally discharged by
   Story 16.2 or 16.3, which both touch this flow.
 - **Severity:** LOW-MEDIUM.
-- **Status:** OPEN.
+- **Status:** **CLOSED by Story 16.2 (2026-09-03), with the number recorded rather than merely marked
+  done.**
+
+**What discharged it, and the number it discharged it with.** `AbortSignal.timeout(30_000)` is passed
+**into `fetch()`** in `font-source.ts`'s default fetcher, so the abort reaches the **body** stream —
+the bytes are read by `response.arrayBuffer()` after the fetcher returns, and a header-only timeout
+would have left the worst real stall uncovered. `AbortSignal.timeout` rather than a hand-armed
+`setTimeout`/`clearTimeout` precisely because it has **no disarm path**: nothing can clear it when the
+headers arrive.
+
+**T = 30,000 ms, and the arithmetic is in the constant's own comment.** Sized against the **fetchable**
+population, not the committed one: of 1,811 index rows, 1,273 are addable, 1,218 publish a
+`<slug>-Regular.ttf`, median 107,440 B, p90 420,092 B, p99 1,715,888 B, **max 24,271,604 B**
+(`Noto Color Emoji`, `variable: false`, offerable today). Measured maximum for that face against the
+real repository host: **2,097 ms** at the build gate, **805 ms** on the build's own re-run — the larger
+is used, because a ceiling sized on the faster sample is the wronger one. `2,097 x 10 = 20,970 <=
+30,000`; the x10 factor is the honest price of a sample that is one connection, one day, five
+repetitions. 20,000 was rejected on its own arithmetic (D-16.R.42): it puts the largest offerable face
+**outside** the budget the factor exists to cover.
+
+**The worst-case hold is T + the requests that already completed — roughly T + 3 s, not 6 x T.** The
+chain terminates on the **first** abort: the probe catch, the byte catch and `readText`'s catch each
+return a refusal, and the probe loop's only `continue` is on a 404, which an abort never produces. That
+is **asserted**, table-driven, with the fetcher call count written as a literal — a deferral with a
+trigger would have been the wrong instrument for a property that can simply be asserted, because a note
+ages and an assertion reds. Red-proved by changing one catch to `continue`: four tests red.
+
+**The stall states its own degradation** — deliberately not the offline wording, which is false while
+the network is up and the host is hanging — and **nothing is silently retried**, asserted on an exact
+call count. The release of the hold is red-proved twice: by deleting the release, and by clearing only
+the state copy of the two-carrier flag on the document-reset path (D-16.R.15's actual defect shape).
 
 **What changed underneath the rejection.** Before the patch, the re-entry hold was taken only around the
 engine command; a stalled fetch left the control **enabled**, so an author could retry (at the cost of the

@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { catalogueFaces } from './generated/font-catalogue'
 import { familyIndex, familyIndexPublishedFamilies, familyIndexSnapshotDate } from './generated/font-index'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
-import { addableFamilyCount, familyIndexDisclosure, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
+import { addableFamilyCount, familyIndexDisclosure, familySourceNote, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
+import type { StoredFace } from './font-store'
 
 // STORY 16.1 — THE TWO TIERS AND THE JOIN BETWEEN THEM (D-16.R.3, D-16.R.2).
 
@@ -262,5 +263,88 @@ describe('what the browser shows and what it says about it', () => {
     const firstWeb = all.findIndex((source) => source.tier === 'web')
     const lastLocal = all.map((source) => source.tier).lastIndexOf('local')
     expect(lastLocal).toBeLessThan(firstWeb)
+  })
+})
+
+// STORY 16.2 — THE THIRD TIER: THE FACES THIS MACHINE ALREADY HOLDS.
+//
+// The store's listing joins `FamilySource` as a third `'stored'` arm
+// (D-16.R.33 R1). 16.2 builds the SEAM; 16.4 adds the headings that group it.
+// The seam is what makes the hand-off a mechanism rather than a sentence: an
+// exhaustive switch over the union stops compiling if an arm is unhandled.
+describe('the faces this machine already holds', () => {
+  const stored = (family: string, key: string): StoredFace => ({
+    key,
+    family,
+    style: 'Regular',
+    licence: 'OFL-1.1',
+    licenceText: 'SIL Open Font License',
+    copyright: 'Copyright',
+    source: `google/fonts — ofl/${family.toLowerCase()}/x.ttf, fetched 2026-09-03`,
+    mediaType: 'font/ttf',
+    scripts: ['latin'],
+    fetchedAt: '2026-09-03',
+    byteLength: 1024,
+  })
+
+  // A FAMILY THE STORE HOLDS IS OFFERED FROM THE STORE, NOT FROM THE WEB. One
+  // family, one row, from the cheapest tier that can serve it — the same rule
+  // the local tier already gets. Two rows for one family, one saying "already
+  // here" and one saying "will be downloaded", would make the author choose
+  // between two spellings of one thing.
+  it('offers a stored family from the store instead of from the snapshot', () => {
+    const snapshotOnly = webFamilies.find((row) => !localTierHolds(row.family))
+    expect(snapshotOnly, 'the snapshot must contain at least one family the local tier does not hold').toBeDefined()
+    const family = snapshotOnly!.family
+    const withoutStore = offeredFamilies(family).filter((source) => source.family === family)
+    expect(withoutStore.map((source) => source.tier)).toEqual(['web'])
+    const withStore = offeredFamilies(family, [stored(family, 'a'.repeat(64))]).filter((source) => source.family === family)
+    expect(withStore.map((source) => source.tier), 'a stored family replaces its web row rather than sitting beside it').toEqual(['stored'])
+  })
+
+  // THE LOCAL TIER IS NOT DISPLACED BY THE STORE. Those committed faces carry a
+  // reviewed licence identifier, the upstream licence file committed beside the
+  // binary and a build-time gate over all of it — a stronger record than any
+  // fetch can produce, including the fetch that filled the store. And they need
+  // no network either, so there is nothing to win by preferring a fetched copy.
+  it('never displaces a local-tier family with a stored copy of the same name', () => {
+    const local = catalogueFaces[0]!.family
+    const offered = offeredFamilies(local, [stored(local, 'b'.repeat(64))]).filter((source) => source.family === local)
+    expect(offered.map((source) => source.tier)).toEqual(['local'])
+  })
+
+  // A STORED FAMILY THE SNAPSHOT NO LONGER LISTS IS STILL OFFERED. The index is
+  // a build-time snapshot that ages, so a family fetched under one release can
+  // be withdrawn or renamed upstream before the next. Its bytes are here and
+  // its licence record is here; refusing to offer it because a dated list no
+  // longer mentions it would be the store failing at the one job it exists for.
+  it('still offers a stored family the snapshot has since stopped listing', () => {
+    const withdrawn = 'A Family Upstream Withdrew'
+    expect(webFamilies.some((row) => row.family === withdrawn)).toBe(false)
+    const offered = offeredFamilies(withdrawn, [stored(withdrawn, 'c'.repeat(64))])
+    expect(offered.map((source) => [source.tier, source.family])).toEqual([['stored', withdrawn]])
+  })
+
+  it('filters the stored tier by the same search the other two use', () => {
+    const offered = offeredFamilies('zzzznothingmatchesthis', [stored('Kanit', 'd'.repeat(64))])
+    expect(offered).toEqual([])
+  })
+
+  // THE SEAM ITSELF. Every arm of the union has a sentence, and the switch that
+  // produces it is exhaustive — so a fourth tier added without being handled
+  // stops compiling rather than silently rendering nothing.
+  it('describes every tier of the union, and says which rows need no download', () => {
+    const family = webFamilies.find((row) => !localTierHolds(row.family))!.family
+    const web = offeredFamilies(family).find((source) => source.family === family)!
+    const fromStore = offeredFamilies(family, [stored(family, 'e'.repeat(64))]).find((source) => source.family === family)!
+    const local = offeredFamilies(catalogueFaces[0]!.family).find((source) => source.tier === 'local')!
+    expect(familySourceNote(local)).toBe(' — add to document, already on this machine')
+    expect(familySourceNote(fromStore)).toBe(' — add to document, already downloaded to this machine')
+    expect(familySourceNote(web)).toBe(' — add to document')
+    // The two tiers that need no network say so; the one that does, does not
+    // claim otherwise.
+    expect(familySourceNote(local)).toMatch(/this machine/)
+    expect(familySourceNote(fromStore)).toMatch(/this machine/)
+    expect(familySourceNote(web)).not.toMatch(/this machine/)
   })
 })

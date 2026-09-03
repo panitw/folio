@@ -258,6 +258,79 @@ Each catalogue entry carries what the designer shows and what the document will 
    with no licence identifier, no licence text and no copyright the designer can record, and a
    `2.0` document embedding a face without them is refused at load.
 
+## The machine store — a fetched face stays on this machine
+
+**Added 2026-09-03 by Story 16.2, under D-16.2 and D-16.R.33 R1.**
+
+A face fetched from the web tier is **kept**, in an **origin-scoped IndexedDB store** keyed by the
+**SHA-256 of the face bytes** — the same content address `.folio`'s `assets` map uses and the same
+one Go derives at `embedFontFamily`. The store's read goes **in front of** the fetch, so picking a
+family this designer has fetched before sends **no request at all**, and therefore works with the
+network down. A stored family joins the family control's offered list as a third `FamilySource`
+tier, `'stored'`, between the local tier and the web tier.
+
+**What travels into the store, and why it is not negotiable.** Bytes, media type, family, style,
+licence identifier, licence text, copyright, `source`, scripts and the date fetched. A face offered
+from the store must be embeddable **without a network**, and `embedFontFamily` refuses without the
+licence identifier, the licence text and the copyright — so a store that kept the bytes and dropped
+the terms would put a document its own parser refuses one step away.
+
+**Three things it deliberately is NOT.**
+
+- **Not a list of the fonts installed on your computer.** The designer never enumerates, reads or
+  feature-detects a host-installed face: SPEC-fonts' *"No host fonts"* Non-goal is the one clause
+  D-16.1 left standing, and it is untouched. The dropdown group called **AVAILABLE LOCALLY** means
+  *"typefaces this designer has fetched before, plus the ones it ships with"*. A source scan over
+  the whole designer (`scripts/host-font-access.mjs`) fails on any spelling of the Local Font Access
+  API, and it is red-proved by deleting the guard rather than by falsifying a condition.
+- **Not a second copy of a document's fonts.** A `.folio` carries its own faces (CAP-2). The store
+  shortens a fetch; it never stands in for what a file contains, and **removing an entry never
+  changes a saved document**. It is a cache and a source, never an authority — which is why the
+  `source` provenance string is carried back **byte-identically** and asserted, at retrieval,
+  through the same tripwire both writers are held to.
+- **Not a render-time input.** FR33 is untouched: nothing is fetched or read from the machine at
+  render. This store serves **authoring** only, and it consumes no release cache slot —
+  `maximumCacheAssets` does not move.
+
+**Why IndexedDB and not `localStorage`, on arithmetic.** `localStorage` is a ~5 MB per-origin
+**string** quota, so bytes must be base64 at **+33%**: a measured `Sarabun-Regular.ttf` of 90,220
+bytes costs ~120 KB stored, and the largest face this designer can legitimately offer — `Noto Color
+Emoji`, 24,271,604 bytes — is ~32 MB base64 and does not fit at all in an empty origin. Its
+`QuotaExceededError` is thrown synchronously from the assignment with no partial-write path, so a
+store built on it cannot degrade; it can only fail. The reasoning is written into
+`src/font-store.ts` so it is not "simplified" back.
+
+**Why the content hash and never the family name.** The store answers *"do I already have these
+bytes"*. Keying by name would make it answer *"do I have something called Sarabun"* — and the day
+upstream changes the face, the store would hand over the old bytes under the new name and the
+document would carry a face nobody chose. Under AD-8 a family that changed upstream is a **different
+key**, not a newer one.
+
+**What "on this machine" honestly means.** This browser, this profile, this origin. Not the
+operating system, not synced, not shared with another browser on the same machine. The UI does not
+imply more than that.
+
+**Every failure is a stated degradation, never a failed pick.**
+
+| What happened | What the author gets |
+|---|---|
+| The store cannot be opened (private window, cleared site data, storage blocked) | An empty group, a working designer, and one message — stated **once**, not per pick |
+| A write is refused (quota) | The fetch and the embed still succeed; the message names the family and says the **caching** is what failed |
+| A stored entry is unreadable, has lost its bytes, or no longer hashes to its own key | Treated as absent, dropped, and refetched on the next pick — self-healing, and logged honestly |
+| A family is neither stored nor reachable | *"You cannot add a family right now"* — never a document that will not render |
+| A fetch **stalls** rather than failing | After 30 seconds the attempt is stopped, the hold on the control is released, and the degradation is stated in its **own** words — never the offline wording, which would be false while the network is up. Nothing is retried automatically. |
+
+**The removal affordance.** The panel lists what this machine holds — family, style, size, and the
+day it was downloaded — with one control per row that names what it removes. Removing is a
+**machine** action: no command is sent, no revision moves, no undo entry is pushed, and the panel
+says so, because an author who has to guess whether a delete button reaches their saved work will
+never press it.
+
+**Not yet proven in a real browser.** Every claim above is asserted against an independent IndexedDB
+implementation in the test environment, because jsdom provides none. The browser witness — *a stored
+face survives a reload and is offered with the network disabled* — is routed to Story 16.3's browser
+run as a fourth case beside DW-161's three.
+
 ## Removing a family
 
 Removing the last chain entry that names a font asset leaves the asset unreferenced, and **the
@@ -283,3 +356,10 @@ The typography panel's family control (already a search-and-select over the engi
 of declared chains) gains the catalogue as a second, clearly separated group. The engine remains
 the authority on what `fontFamily` may name: the designer never invents a family name, and a
 catalogue pick becomes a chain through a command like every other document change.
+
+**Since Story 16.2 the offered rows come from three tiers, and each row says which.** The committed
+local faces read *"already on this machine"*; a face this designer has fetched before reads
+*"already downloaded to this machine"*; a family from the build-time snapshot carries the plain
+note, because picking it fetches. Story 16.4 groups these under headings; 16.2 builds the seam the
+grouping hangs on, as a third arm of the `FamilySource` union that every exhaustive switch must
+handle.

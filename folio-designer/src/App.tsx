@@ -1,5 +1,5 @@
 import './App.css'
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
@@ -16,8 +16,9 @@ import { FontChainEditor } from './FontChainEditor'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { embedFontFamilyCommand } from './font-chain-command'
 import { scriptFallbackFaces } from './generated/font-catalogue'
-import { familyIndexDisclosure, offeredFamilies, type FamilySource } from './font-index'
+import { familyIndexDisclosure, familySourceNote, offeredFamilies, type FamilySource } from './font-index'
 import { fetchWebFamily } from './font-source'
+import { openFontStore, storeWriteDegradation, storedFaceKey, type FontStore, type StoredFace } from './font-store'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
 import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
@@ -88,6 +89,10 @@ type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampl
 // the value that says so. A stable reference, so resetting it between
 // documents is not itself a state change React has to re-render for.
 const NO_CARRIED_FACES: ReadonlySet<string> = new Set()
+// The same trick for the machine store's listing: an empty store and a store
+// that could not be opened both render nothing, and neither should re-render
+// the tree for the privilege.
+const NO_STORED_FACES: ReadonlyArray<StoredFace> = []
 type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
@@ -170,6 +175,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // move it off the stylesheet's declared stack onto a family nothing
   // declares. See the registration effect below.
   const [carriedFaces, setCarriedFaces] = useState<ReadonlySet<string>>(NO_CARRIED_FACES)
+  // STORY 16.2 — THE MACHINE FONT STORE. Three values, and the third one is the
+  // degradation, which is state rather than a thrown error on purpose: a
+  // private window, cleared site data or a quota refusal must leave a WORKING
+  // designer with an empty group and a sentence, never an error the author
+  // cannot act on.
+  const [storedFaces, setStoredFaces] = useState<ReadonlyArray<StoredFace>>(NO_STORED_FACES)
+  const [storeNote, setStoreNote] = useState<string>()
+  const [machineFaces, setMachineFaces] = useState<ReadonlySet<string>>(NO_CARRIED_FACES)
+  // THE HANDLE IS A PROMISE, NOT A RESOLVED VALUE, AND THAT IS A CORRECTNESS
+  // POINT RATHER THAN A STYLE ONE. Opening a database is asynchronous, so a ref
+  // holding the OPENED store is empty for the first moments of the session — and
+  // a pick in that window would silently skip the store, keeping nothing, with
+  // no failure anywhere to show it. Holding the OPENING lets every caller await
+  // the same one open, whenever it asks.
+  const fontStore = useRef<Promise<FontStore | undefined> | undefined>(undefined)
   const selectedRef = useRef(selected)
   const previewToken = useRef(0)
   const previewAbort = useRef<AbortController | undefined>(undefined)
@@ -241,6 +261,104 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     return registerCarriedFaces(carriedFaceListing.split('\u0000'), async (assetKey) => (await engine.request('asset', assetBytesRequest(assetKey))).bytes, setCarriedFaces)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, documentGenerationValue, carriedFaceListing])
+
+  // STORY 16.2 — THE MACHINE STORE IS OPENED ONCE, FOR THE SESSION.
+  //
+  // THE LIFETIME IS THE THIRD ONE IN THIS FILE AND IT IS ARGUED, NOT ASSUMED,
+  // because the effect above is the precedent for exactly that obligation.
+  // `registerCarriedFaces` is DOCUMENT-scoped: it is re-run when the document
+  // is replaced and when the set of carried entries changes, and its release
+  // removes what it added. This one is MACHINE-scoped — strictly, the browser
+  // profile's origin — and is deliberately NOT keyed on
+  // `documentGenerationValue`: the whole property of the store is that it
+  // survives the document, so re-opening it per document would be re-asking a
+  // question whose answer cannot have changed, and clearing it per document
+  // would delete the feature.
+  //
+  // AN OPEN FAILURE IS STATED ONCE, NOT PER PICK. A browser with storage
+  // blocked is a standing condition, and reporting it on every pick would turn
+  // one fact the author can act on into a stream of noise they cannot.
+  useEffect(() => {
+    let live = true
+    const opening = openFontStore().then((opened) => {
+      if (opened.ok) return opened.value
+      if (live) setStoreNote(opened.reason)
+      return undefined
+    })
+    fontStore.current = opening
+    void (async () => {
+      const store = await opening
+      if (!live || !store) return
+      const listed = await store.list()
+      if (!live) return
+      if (!listed.ok) { setStoreNote(`The typefaces this designer keeps on this machine could not be read (${listed.reason}). Picking a family still fetches it.`); return }
+      setStoredFaces(listed.value)
+    })()
+    return () => { live = false }
+  }, [])
+
+  // AND THE FACES THIS MACHINE HOLDS ARE REGISTERED FOR PREVIEW, ALONGSIDE THE
+  // DOCUMENT'S OWN, WITHOUT DISTURBING THE EFFECT ABOVE.
+  //
+  // Two separate registrations rather than one merged list, and the separation
+  // is the point: the document effect's key is `documentGenerationValue` plus
+  // the carried listing, and folding a machine-scoped input into it would make
+  // a store write re-register every carried face in the open document. They
+  // meet only at the canvas, in the union below.
+  //
+  // THE FAMILY NAME IS THE SAME ON BOTH SIDES BECAUSE THE KEY IS. A stored face
+  // and a carried face of the same bytes share a content address, so they share
+  // the family `embedded-face-family.ts` derives, and `document.fonts` — a
+  // global, name-keyed registry — simply holds one name over two identical
+  // faces. That is a duplicate, not a conflict: either release removes only the
+  // `FontFace` object it added, and the surviving one draws the same glyphs.
+  //
+  // THE COST, STATED: this reads every stored face's bytes once per session.
+  // The store grows by one face per pick of a new family, so that is a handful
+  // of megabytes for an author who has picked a handful of families, and it
+  // buys a preview that does not wait for a network the store exists to avoid.
+  const machineFaceListing = storedFaces.map((face) => face.key).sort().join(' ')
+  useEffect(() => {
+    setMachineFaces(NO_CARRIED_FACES)
+    if (machineFaceListing === '') return
+    return registerCarriedFaces(machineFaceListing.split(' '), async (key) => {
+      const read = await (await fontStore.current)?.get(key)
+      return read?.ok ? read.value?.bytes : undefined
+    }, setMachineFaces)
+  }, [machineFaceListing])
+
+  // The canvas asks one question — "is there a face registered under this asset
+  // key" — and both registrations can answer it.
+  const paintableFaces = useMemo(() => machineFaces.size === 0 ? carriedFaces : new Set([...carriedFaces, ...machineFaces]), [carriedFaces, machineFaces])
+
+  // The listing is re-read from the store rather than patched in memory, so the
+  // store stays the single authority on what this machine holds. A refresh that
+  // fails leaves the previous listing standing and says what is degraded: a
+  // stale listing still picks correctly, because every pick re-reads the bytes.
+  const refreshStoredFaces = async () => {
+    const store = await fontStore.current
+    if (!store) return
+    const listed = await store.list()
+    if (listed.ok) setStoredFaces(listed.value)
+    else setStoreNote(`The typefaces this designer keeps on this machine could not be re-read (${listed.reason}).`)
+  }
+
+  // REMOVING AN ENTRY IS A MACHINE ACTION, NEVER A DOCUMENT ONE.
+  //
+  // No command is sent, no revision moves, no undo entry is pushed and no
+  // snapshot changes. A `.folio` that already embeds this face carries the
+  // bytes inside it (CAP-2), so removing the copy kept here cannot reach it —
+  // which is exactly why the affordance has to SAY so rather than leave the
+  // author to guess whether they are about to break a document.
+  const removeStoredFace = async (face: StoredFace) => {
+    const store = await fontStore.current
+    if (!store) return
+    const removed = await store.remove(face.key)
+    if (!removed.ok) { setStoreNote(`${face.family} could not be removed from this machine (${removed.reason}).`); return }
+    setStoreNote(`${face.family} (${face.style}) was removed from this machine. Documents that already embed it are unchanged — a .folio carries its own faces.`)
+    await refreshStoredFaces()
+  }
+
   const installPreview = (next: PreviewRecord | undefined) => { previewRef.current = next; setPreview(next) }
   const cancelPreviewWork = () => {
     previewToken.current++
@@ -678,7 +796,34 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       }
     }
     let embedded: { family: string; style: string; licence: string; licenceText: string; copyright: string; source: string; mediaType: string; bytes: ArrayBuffer; scripts: ReadonlyArray<string> }
-    if (source.tier === 'local') {
+    // Set when the bytes arrived over the network and are therefore worth
+    // keeping. A face read back OUT of the store is deliberately not re-written
+    // to it: the record is already there, byte for byte, and rewriting it would
+    // be the store editing its own carried provenance for no reason.
+    let fetched = false
+    // STORY 16.2 — THE STORE'S READ GOES IN FRONT OF THE FETCH, and a hit means
+    // no request leaves the machine at all. That is what makes a re-pick work
+    // with the network down, and it is the whole feature.
+    //
+    // A MISS FALLS THROUGH TO THE FETCH RATHER THAN REFUSING. The entry may
+    // have been dropped as corrupt between the listing and this read (the store
+    // self-heals by dropping, and says so), or removed in another tab. Neither
+    // is a reason to refuse a pick the author can otherwise have: the fetch
+    // path is right there, and if there is no network it states its own
+    // degradation.
+    if (source.tier === 'stored') {
+      const read = await (await fontStore.current)?.get(source.record.key)
+      if (read?.ok && read.value !== undefined) {
+        const held = read.value
+        embedded = { family: held.family, style: held.style, licence: held.licence, licenceText: held.licenceText, copyright: held.copyright, source: held.source, mediaType: held.mediaType, bytes: held.bytes, scripts: held.scripts }
+      } else {
+        const outcome = await fetchWebFamily(source.family)
+        if (!outcome.ok) { refuse(outcome.reason); return }
+        if (outcome.face.layoutDivergence !== undefined) console.info(outcome.face.layoutDivergence)
+        embedded = { ...outcome.face, scripts: source.record.scripts }
+        fetched = true
+      }
+    } else if (source.tier === 'local') {
       const face = source.face
       let bytes: ArrayBuffer
       try {
@@ -704,9 +849,50 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // author has no decision to make about it.
       if (outcome.face.layoutDivergence !== undefined) console.info(outcome.face.layoutDivergence)
       embedded = { ...outcome.face, scripts: source.row.scripts }
+      fetched = true
     }
     const tail = scriptFallbackFaces.filter(([script]) => !embedded.scripts.includes(script)).map(([, shipped]) => shipped)
     await sendFontChain(embedFontFamilyCommand({ chain: embedded.family, family: embedded.family, style: embedded.style, licence: embedded.licence, licenceText: embedded.licenceText, copyright: embedded.copyright, source: embedded.source, mediaType: embedded.mediaType, bytes: embedded.bytes, tail }), { action: 'embed' }, responseGeneration, selectionKey)
+    // THE STORE IS WRITTEN AFTER THE EMBED, AND THAT ORDER IS THE MATRIX ROW.
+    // A quota refusal must leave the fetch and the embed intact: the document
+    // has the face, and what failed is keeping a copy for next time. Writing
+    // first would let a full origin decide whether an author gets their font.
+    //
+    // THE LOCAL TIER IS NOT STORED. Those 31 faces are already on this machine,
+    // in the release bundle behind the service worker, and copying them into
+    // the machine store would spend the origin's quota on bytes that are
+    // already origin-local and carry a stronger, build-time-gated record.
+    if (fetched) await keepOnThisMachine(embedded)
+  }
+
+  /**
+   * KEEPING THE FACE, AND FAILING TO KEEP IT IS A DEGRADATION RATHER THAN AN
+   * ERROR.
+   *
+   * Everything `embedFontFamily` requires travels into the store WITH the bytes
+   * — licence identifier, licence text and copyright — because a face offered
+   * from the store must be embeddable without a network, and the command
+   * refuses without all three. A store that kept the bytes and dropped the
+   * terms would put a document its own parser refuses one step away.
+   *
+   * The key is computed HERE, from the bytes, by `crypto.subtle`. It is the
+   * store's own address and it agrees with the one Go derives for the same
+   * bytes — `src/font-store.test.ts` asserts that agreement against a digest Go
+   * itself produced, so the two addressings cannot drift.
+   */
+  const keepOnThisMachine = async (face: { family: string; style: string; licence: string; licenceText: string; copyright: string; source: string; mediaType: string; bytes: ArrayBuffer; scripts: ReadonlyArray<string> }) => {
+    const store = await fontStore.current
+    if (!store) return
+    let key: string
+    try {
+      key = await storedFaceKey(face.bytes)
+    } catch (error) {
+      setStoreNote(storeWriteDegradation(face.family, componentDiagnostic(error)))
+      return
+    }
+    const written = await store.put({ ...face, key, byteLength: face.bytes.byteLength, fetchedAt: new Date().toISOString().slice(0, 10), bytes: face.bytes })
+    if (!written.ok) { setStoreNote(storeWriteDegradation(face.family, written.reason)); return }
+    await refreshStoredFaces()
   }
 
   // Story 5.13: choosing a local image is a two-step boundary crossing — the
@@ -951,8 +1137,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={carriedFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
-          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={carriedFaces} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // A band holding a drag in progress stops clipping for the duration.
         // The dragged component's rendered position already tracks the
         // pointer down the whole stack, so clipping it to one window would
@@ -983,7 +1169,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} storedFaces={storedFaces} storeNote={storeNote} onRemoveStoredFace={(face) => void removeStoredFace(face)} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -1192,7 +1378,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, storedFaces, storeNote, onRemoveStoredFace, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; storedFaces: ReadonlyArray<StoredFace>; storeNote?: string; onRemoveStoredFace: (face: StoredFace) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -1225,7 +1411,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<MachineFontStore faces={storedFaces} note={storeNote} onRemove={onRemoveStoredFace} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1241,6 +1427,46 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
 // colour alone — and the control is a plain, visibly-labelled button, so
 // both the accessible name and keyboard/focus behaviour come from the same
 // existing button pattern every other file/pick control in this panel uses.
+// STORY 16.2 — THE TYPEFACES THIS MACHINE HOLDS, AND THE AFFORDANCE THAT LETS
+// AN AUTHOR LET ONE GO.
+//
+// IT SAYS WHAT IT IS AND WHAT IT IS NOT, IN THE PLACE THE QUESTION IS ASKED.
+// Two misreadings are available and both are worth pre-empting rather than
+// leaving to be discovered:
+//
+//   "These are the fonts on my computer." They are not. This designer never
+//   enumerates, reads or feature-detects host-installed fonts — SPEC-fonts'
+//   *"No host fonts"* Non-goal — and this list is only what the designer itself
+//   has downloaded.
+//
+//   "If I remove one, my documents break." They do not. A `.folio` carries its
+//   own faces (CAP-2), so what is removed here is a copy kept to save a
+//   download. The sentence is written down rather than implied, because an
+//   author who has to GUESS whether a delete button reaches their saved work
+//   will simply never press it.
+//
+// THE SIZE AND THE DATE ARE SHOWN because they are the two facts an author
+// needs to decide which one to let go of, and both are already in the record.
+// Neither is read from the bytes: the listing carries them, which is why
+// rendering this list does not deserialize a single face.
+function MachineFontStore({ faces, note, onRemove }: { faces: ReadonlyArray<StoredFace>; note?: string; onRemove: (face: StoredFace) => void }) {
+  // A NAMED GROUP, so the list and its one status line can be found — by a
+  // screen reader and by a test — without either of them having to guess which
+  // of the panel's several live regions this one is.
+  return <div className="machine-font-store" role="group" aria-label="Typefaces downloaded to this machine">
+    <p className="section-label">AVAILABLE LOCALLY — TYPEFACES THIS DESIGNER HAS DOWNLOADED</p>
+    {faces.length === 0
+      ? <p className="honest-note">No typefaces have been downloaded to this machine yet. Picking a family downloads it once and keeps it here, so the next document offers it with no download and no network.</p>
+      : <ul className="machine-font-list">{faces.map((face) => <li key={face.key} className="machine-font-row">
+        <span className="machine-font-name">{face.family}</span>
+        <span className="machine-font-meta">{face.style} · {Math.max(1, Math.round(face.byteLength / 1024))} KB · downloaded {face.fetchedAt}</span>
+        <button type="button" className="property-inline-action" aria-label={`Remove ${face.family} (${face.style}) from this machine`} title={`Remove ${face.family} from this machine`} onClick={() => onRemove(face)}>×</button>
+      </li>)}</ul>}
+    <p className="honest-note">These are typefaces this designer downloaded, kept in this browser on this machine — not the fonts installed on your computer, which this designer never looks at. Removing one frees the space and means the next pick downloads it again; documents that already embed it are unchanged, because a .folio carries its own faces.</p>
+    {note && <p className="honest-note" role="status">{note}</p>}
+  </div>
+}
+
 function ImageSection({ component, onPick, available, busy, error }: { component: PanelComponent; onPick: (id: string) => void; available: boolean; busy: boolean; error?: string }) {
   const image = component.image
   return <PropertySection title="IMAGE">
@@ -1382,7 +1608,7 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
 // the DOM and never the claim.
 const renderedFamilyLimit = 50
 
-function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
+function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))
   const uniform = values.every((value) => value === values[0])
   const committed = uniform ? values[0] ?? '' : ''
@@ -1405,7 +1631,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
   // `offeredFamilies` owns the join and the filter; this control owns only the
   // one exclusion that is about THIS DOCUMENT: a family the document already
   // declares a chain for has moved into the first group and is not offered twice.
-  const addable = offeredFamilies(query).filter((source) => !families.includes(source.family))
+  const addable = offeredFamilies(query, storedFaces).filter((source) => !families.includes(source.family))
   // AND THE RENDERED LIST IS CAPPED WHILE THE COUNT IS NOT. A combobox that
   // paints eighteen hundred rows is not a list anybody reads, and the arrow-key
   // walk below is linear over whatever is painted. The DISCLOSURE states the
@@ -1454,7 +1680,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
     </div>
     {open && <ul className="property-options" id={listId} role="listbox" aria-label="Fonts">
       {declared.length > 0 && <li className="property-option property-option-empty" role="presentation">In this document</li>}
-      {matches.map((match, index) => <li key={`${match.source ? 'catalogue' : 'declared'}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}>{match.name}{match.source && <span className="property-option-note">{match.source.tier === 'local' ? ' — add to document, already on this machine' : ' — add to document'}</span>}
+      {matches.map((match, index) => <li key={`${match.source ? 'catalogue' : 'declared'}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}>{match.name}{match.source && <span className="property-option-note">{familySourceNote(match.source)}</span>}
         {/* THE GROUP HEADING SITS BEFORE THE FIRST CATALOGUE ENTRY rather than
             between two lists, because the options are one flat list for the
             keyboard's sake (see `matches`) and splitting the markup would

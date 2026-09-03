@@ -1,5 +1,6 @@
 import { catalogueFaces, type CatalogueFace } from './generated/font-catalogue'
 import { familyIndex, familyIndexExcludedCjkFamilies, familyIndexPublishedFamilies, familyIndexSnapshotDate, type IndexFamily } from './generated/font-index'
+import type { StoredFace } from './font-store'
 
 // THE TWO TIERS, AND THE JOIN BETWEEN THEM (D-16.R.3).
 //
@@ -26,9 +27,37 @@ import { familyIndex, familyIndexExcludedCjkFamilies, familyIndexPublishedFamili
 // prompt and no version compare in this epic; the deferral is registered in
 // `deferred-work.md` with its trigger.
 
+// AND A THIRD TIER SINCE STORY 16.2 (D-16.R.33 R1): THE MACHINE STORE.
+//
+// A face this designer has fetched BEFORE, kept in origin-scoped browser storage
+// under the SHA-256 of its bytes. It is a source exactly as the other two are:
+// picking it fetches nothing, works with the network down, and embeds the same
+// three-part licence record the fetch would have produced — because the store
+// keeps that record beside the bytes.
+//
+// IT SITS BETWEEN THE TWO, AND THE ORDER IS THE HONEST ONE. The local tier
+// wins over it: those 31 faces carry a REVIEWED licence identifier, the
+// upstream licence file committed beside the binary, and a build-time gate over
+// all of it — a stronger record than any fetch can produce, including the fetch
+// that filled this store. The store wins over the web tier for the plain reason
+// that it is the same bytes without the round-trip.
+//
+// THE SEAM IS BUILT HERE, NOT LEFT TO STORY 16.4. 16.4 adds the headings that
+// GROUP these three; it does not reshape the union. Every exhaustive switch
+// over `FamilySource` reds until the new arm is handled, which is what makes
+// the hand-off a mechanism rather than a sentence in a spec.
+//
+// `AVAILABLE LOCALLY` MEANS THIS ARM AND THE LOCAL ARM — TYPEFACES THIS
+// DESIGNER HAS FETCHED OR SHIPS WITH. It never means "the fonts installed on
+// this computer". SPEC-fonts' *"No host fonts"* Non-goal is the one clause
+// D-16.1 left standing and it is untouched: the Local Font Access API is not
+// used, referenced or feature-detected anywhere in this designer, and
+// `src/host-font-access.test.ts` is the tripwire.
 export type FamilySource =
   /** A face this machine already holds. Picking it fetches nothing. */
   | Readonly<{ tier: 'local'; family: string; face: CatalogueFace }>
+  /** A face this designer fetched before and kept. Picking it fetches nothing. */
+  | Readonly<{ tier: 'stored'; family: string; record: StoredFace }>
   /** A family from the build-time index snapshot. Picking it fetches. */
   | Readonly<{ tier: 'web'; family: string; row: IndexFamily }>
 
@@ -104,18 +133,82 @@ export const webFamilies: ReadonlyArray<IndexFamily> = familyIndex.filter((row) 
 export const addableFamilyCount = webFamilies.length + catalogueFaces.length
 
 /**
- * ONE ORDERED LIST OF EVERY FAMILY THE AUTHOR MAY PICK, local tier first.
+ * ONE ORDERED LIST OF EVERY FAMILY THE AUTHOR MAY PICK, local tier first, then
+ * the faces this machine already holds, then the rest of the snapshot.
  *
  * Local first is the honest order rather than a preference: those rows need no
  * network, and the join above has already removed their web duplicates, so a
  * family present in both appears once, from the tier that can serve it offline.
+ * The stored tier extends exactly that reasoning to a face the author fetched
+ * last week.
+ *
+ * A STORED FAMILY REPLACES ITS WEB ROW; IT DOES NOT SIT BESIDE IT. One family,
+ * one row, from the cheapest tier that can serve it — which is the same rule
+ * `webFamilies` already applies to the local tier. A row offered twice, once as
+ * "already here" and once as "will be downloaded", would make the author choose
+ * between two spellings of one thing.
+ *
+ * A STORED FAMILY WITH NO WEB ROW IS STILL OFFERED. The index is a build-time
+ * snapshot that ages, so a family fetched under one release can be withdrawn or
+ * renamed upstream before the next. Its bytes are here, its licence record is
+ * here, and refusing to offer it because a dated list no longer mentions it
+ * would be the store failing at the one job it exists for.
+ *
+ * THE STORE'S LISTING IS PASSED IN, NEVER READ FROM HERE. The store's reads are
+ * asynchronous and this function is called on every keystroke of a combobox.
+ * The caller owns the read, its lifetime and its degradation; this module
+ * remains a pure join over three inputs, which is also what keeps it testable
+ * without a database.
  */
-export function offeredFamilies(query: string): ReadonlyArray<FamilySource> {
+export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace> = []): ReadonlyArray<FamilySource> {
   const needle = query.trim().toLowerCase()
   const hit = (family: string) => needle === '' || family.toLowerCase().includes(needle)
+  // THE LOCAL TIER IS NOT DISPLACED BY THE STORE. Its record is the stronger
+  // one (see the note on `FamilySource`), and it needs no network either, so
+  // there is nothing to win by preferring a fetched copy of the same family.
+  const storedByFamily = new Map(stored.filter((record) => !localTierHolds(record.family)).map((record) => [record.family, record]))
   const local: ReadonlyArray<FamilySource> = catalogueFaces.filter((face) => hit(face.family)).map((face) => ({ tier: 'local', family: face.family, face }))
-  const web: ReadonlyArray<FamilySource> = webFamilies.filter((row) => hit(row.family)).map((row) => ({ tier: 'web', family: row.family, row }))
-  return [...local, ...web]
+  const web: FamilySource[] = []
+  const offeredFromStore = new Set<string>()
+  for (const row of webFamilies) {
+    if (!hit(row.family)) continue
+    const record = storedByFamily.get(row.family)
+    if (record === undefined) { web.push({ tier: 'web', family: row.family, row }); continue }
+    offeredFromStore.add(row.family)
+    web.push({ tier: 'stored', family: row.family, record })
+  }
+  const orphaned: ReadonlyArray<FamilySource> = [...storedByFamily.values()]
+    .filter((record) => !offeredFromStore.has(record.family) && hit(record.family))
+    .map((record) => ({ tier: 'stored', family: record.family, record }))
+  // Stored-but-unlisted families come first among the non-local rows for the
+  // same reason the local tier does: they are here, and the rows after them are
+  // not.
+  return [...local, ...orphaned, ...web]
+}
+
+/**
+ * THE TIER A ROW IS OFFERED FROM, IN THE AUTHOR'S OWN TERMS — one exhaustive
+ * switch over `FamilySource`, so the union cannot gain an arm that nothing
+ * describes.
+ *
+ * This is the seam D-16.R.33 R1 asked to be built here rather than left to
+ * Story 16.4: adding a fourth tier without handling it stops compiling at the
+ * `never`, which is what makes the hand-off enforceable.
+ */
+export function familySourceNote(source: FamilySource): string {
+  switch (source.tier) {
+    case 'local': return ' — add to document, already on this machine'
+    case 'stored': return ' — add to document, already downloaded to this machine'
+    case 'web': return ' — add to document'
+    default: {
+      const unhandled: never = source
+      // NO `JSON.stringify` HERE. `engine-ownership-contract.test.ts` keeps
+      // JSON out of every module but the protocol envelopes and the three
+      // command factories, and it is right to: this module joins three lists
+      // and has no business serialising anything.
+      throw new Error(`a FamilySource tier nothing describes reached the family control: ${String((unhandled as FamilySource).tier)}`)
+    }
+  }
 }
 
 /**

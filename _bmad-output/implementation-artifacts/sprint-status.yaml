@@ -596,7 +596,7 @@ development_status:
   # inert. Set `done` 2026-09-03 by the closer at `efa9b75`, which re-ran every gate itself per
   # D-16.R.30. Gates, deferrals and the still-flagged follow-up review: the story's Delivery Log.
   16-1a-the-local-face-tier-covers-the-head-of-the-library: done
-  16-2-a-fetched-face-stays-on-this-machine: backlog
+  16-2-a-fetched-face-stays-on-this-machine: review
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and
   # a synchronous QuotaExceededError with no partial-write path. The design's AVAILABLE LOCALLY group

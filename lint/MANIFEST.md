@@ -194,6 +194,7 @@ exists to prevent.
 | escalade | 3.2.0 | MIT | folio-designer | build-time-only |
 | estree-walker | 3.0.3 | MIT | folio-designer | build-time-only |
 | expect-type | 1.4.0 | Apache-2.0 | folio-designer | build-time-only |
+| fake-indexeddb | 6.2.5 | Apache-2.0 | folio-designer | build-time-only |
 | fdir | 6.5.0 | MIT | folio-designer | build-time-only |
 | fsevents | 2.3.2 | MIT | folio-designer | build-time-only |
 | fsevents | 2.3.3 | MIT | folio-designer | build-time-only |

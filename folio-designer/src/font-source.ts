@@ -260,6 +260,118 @@ export type FetchOutcome =
 
 type Fetcher = (url: string) => Promise<Response>
 
+/**
+ * THE FETCH TIMEOUT — 30 SECONDS, AND THE CONSTANT CARRIES ITS OWN ARITHMETIC
+ * (D-16.R.14, D-16.R.42; discharges DW-165).
+ *
+ * WHAT IT IS FOR. A fetch that REJECTS degrades with a stated message. A fetch
+ * that STALLS never settles, so the pick's `finally` never runs and the font
+ * family control stays disabled FOR THE REST OF THE SESSION with no message and
+ * no way back. That is the worst member of the fetch-failure class and the one
+ * the story's own matrix did not cover. A stall is reachable today: a captive
+ * portal, a hung proxy, a half-open connection.
+ *
+ * THE MEASUREMENT THE NUMBER COMES FROM. Timed fetches against the real
+ * repository host, five repetitions each, over both shapes in this chain:
+ *
+ *   `METADATA.pb`                        4,957 B        max   359 ms
+ *   `OFL.txt`                            4,383 B        max   275 ms
+ *   `Kanit-Regular.ttf`                175,148 B        max    58 ms
+ *   `NotoColorEmoji-Regular.ttf`    24,271,604 B        max   805 ms   (this build)
+ *   `NotoColorEmoji-Regular.ttf`    24,271,604 B        max 2,097 ms   (the build gate)
+ *
+ * THE MAXIMUM, NEVER THE MEAN OR THE MEDIAN: this is a ceiling on patience, not
+ * an estimate of typical latency. The sizing figure is the build gate's
+ * 2,097 ms — the larger of the two independent samples of the same face, kept
+ * because a ceiling sized on the faster sample would be the tighter and
+ * therefore the wronger one.
+ *
+ * WHY THAT FACE IS THE TARGET. The budget serves the FETCHABLE population, not
+ * the committed one. Of 1,811 index rows, 1,273 are addable after removing
+ * variable-only rows and the 31 local-tier families; 1,218 of those publish a
+ * `<slug>-Regular.ttf` upstream, and their sizes are median 107,440 B, p90
+ * 420,092 B, p99 1,715,888 B, max 24,271,604 B — `Noto Color Emoji`, which sits
+ * in the snapshot as `variable: false` and is therefore offerable TODAY. Sizing
+ * against the 646 KB the committed faces reach would be a denominator error:
+ * that is the wrong population by ~37x at the tail.
+ *
+ * THE FACTOR IS x10, AND THE REASON IS THE SAMPLE'S OWN LIMIT. One connection,
+ * one day, five repetitions. That sample cannot speak for a connection ten
+ * times slower, and x10 is the margin bought instead of pretending it can. The
+ * arithmetic, in full:
+ *
+ *   2,097 x 10 = 20,970 <= 30,000
+ *
+ * WHY 30,000 AND NOT 20,000. `2,097 x 10 = 20,970`, so a 20 s budget puts the
+ * single largest offerable face OUTSIDE the budget the x10 factor was chosen to
+ * cover — by 5%, on the one case the factor exists for — and the constant would
+ * ship carrying arithmetic that contradicts its own stated reason. Cost
+ * asymmetry settles the direction: too short WRONGLY REFUSES A LEGITIMATE PICK
+ * OF A REAL FONT, loudly and repeatably; too long only lengthens an
+ * already-bounded hold on a genuine stall.
+ */
+export const fetchTimeoutMs = 30_000
+
+/**
+ * `AbortSignal.timeout`, NOT A HAND-ARMED `setTimeout` + `clearTimeout`, AND
+ * THE SIGNAL GOES INTO `fetch()` ITSELF.
+ *
+ * Both halves are deliberate and both are about the SAME failure:
+ *
+ *   THE SIGNAL REACHES THE BODY STREAM. The bytes are read by
+ *   `response.arrayBuffer()` AFTER this fetcher has returned. A timeout that
+ *   only covered the headers would leave the worst real stall — headers arrive,
+ *   then a 24 MB body trickles or stops — completely uncovered. Passing the
+ *   signal into `fetch()` makes the abort reach the body.
+ *
+ *   THERE IS NO DISARM PATH. `AbortSignal.timeout` cannot be cleared, which is
+ *   exactly why it is chosen: a hand-armed timer invites a `clearTimeout` when
+ *   the headers arrive, and that clear is precisely the line that would stop it
+ *   covering `arrayBuffer()`.
+ *
+ * THE TIMEOUT IS SITED HERE, IN THE DEFAULT FETCHER, and not at the six call
+ * sites — one place covers every round-trip in the chain, and a seventh
+ * round-trip added later is covered without anyone remembering to cover it.
+ *
+ * IT TAKES ITS BUDGET AS AN ARGUMENT SO THE TIMEOUT ITSELF CAN BE PROVEN TO
+ * FIRE. `AbortSignal.timeout` runs on the platform's own timer, which a fake
+ * clock does not reach, so a test of the real mechanism has to be a test at a
+ * real, short budget. That is a production factory used with its default
+ * everywhere in the product — not a test-only hook — and `fetchTimeoutMs` is
+ * asserted separately so a shortened default could never pass unnoticed.
+ */
+export const timedFetcher = (timeoutMs: number = fetchTimeoutMs): Fetcher => (url) => fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+
+/**
+ * AN ABORT IS ITS OWN DEGRADATION AND MUST NOT BORROW THE OFFLINE ONE.
+ *
+ * `AbortSignal.timeout` rejects with a `TimeoutError`; an explicitly aborted
+ * controller rejects with an `AbortError`. Both are recognised, because both
+ * mean the same thing to the author: the request was stopped from this side,
+ * having never answered.
+ */
+const isAbort = (error: unknown): boolean => {
+  const name = typeof error === 'object' && error !== null && 'name' in error ? (error as { name: unknown }).name : undefined
+  return name === 'TimeoutError' || name === 'AbortError'
+}
+
+/**
+ * THE STALL'S OWN SENTENCE, AND IT DELIBERATELY DOES NOT REUSE THE OFFLINE
+ * WORDING.
+ *
+ * "You cannot add a family without a network connection" is FALSE when the
+ * network is up and the host is hanging — it sends the author to check their
+ * wifi over a problem that is not theirs. Located at the control the author
+ * acted on, exactly as the offline refusal is.
+ *
+ * IT ALSO STATES THAT NOTHING WAS RETRIED. A silent retry over a deterministic
+ * stall hides it (Story 16.0's `Never:` clause), so this designer does not
+ * retry — and says so, because "it took 30 seconds and gave up" reads as a
+ * failure to try hard enough unless the decision is visible.
+ */
+const stalledRefusal = (family: string, stage: string): string =>
+  `${family} stopped responding while ${stage}: the designer waited ${fetchTimeoutMs / 1000} seconds and then stopped. Your network is reachable — the font host is not answering — and nothing was retried automatically, because retrying over a stall that repeats only hides it. Try the pick again if you like; the faces this machine already holds are still offered.`
+
 const refuse = (reason: string, classification?: LicenceClassification): FetchOutcome => ({ ok: false, reason, classification })
 
 /**
@@ -267,7 +379,7 @@ const refuse = (reason: string, classification?: LicenceClassification): FetchOu
  * never on a keystroke: four probes across 1,946 families must not become a
  * browsing cost.
  */
-export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) => fetch(url), today: string = new Date().toISOString().slice(0, 10)): Promise<FetchOutcome> {
+export async function fetchWebFamily(family: string, fetcher: Fetcher = timedFetcher(), today: string = new Date().toISOString().slice(0, 10)): Promise<FetchOutcome> {
   const slug = familyDirectorySlug(family)
   if (slug === '') return refuse(`${family} has no directory this designer can derive from its name`)
 
@@ -279,6 +391,9 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
     try {
       response = await fetcher(`${fontsRepositoryBase}/${candidate}/${slug}/METADATA.pb`)
     } catch (error) {
+      // A STALL AND AN OFFLINE REFUSAL ARE TWO DIFFERENT FAILURES WITH TWO
+      // DIFFERENT RIGHT ANSWERS, so they get two sentences.
+      if (isAbort(error)) return refuse(stalledRefusal(family, 'looking for its upstream metadata'))
       return refuse(`${family} could not be reached right now (${error instanceof Error ? error.message : String(error)}). You cannot add a family without a network connection; the faces this machine already holds are still offered.`)
     }
     if (response.status === 404) continue
@@ -326,10 +441,16 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
     return refuse(`${family} declares ${classification.spdx}, which this designer admits but has no licence file name for, so its terms cannot be fetched to travel with it`, classification)
   }
   const licenceFile = licenceFileFor[classification.spdx]
-  const licenceText = await readText(fetcher, `${fontsRepositoryBase}/${directory}/${slug}/${licenceFile}`)
-  if (licenceText === undefined || licenceText.trim() === '') {
+  const read = await readText(fetcher, `${fontsRepositoryBase}/${directory}/${slug}/${licenceFile}`)
+  // A STALL READING THE LICENCE IS A STALL, NOT A MISSING LICENCE FILE. Before
+  // the timeout existed this catch could only mean "not there"; now it can also
+  // mean "never answered", and reporting a stall as "publishes no OFL.txt"
+  // would send the author upstream to look for a file that is sitting there.
+  if (!read.ok && read.stalled) return refuse(stalledRefusal(family, 'sending the text of its licence'))
+  if (!read.ok || read.text.trim() === '') {
     return refuse(`${family} declares ${classification.spdx} but publishes no ${licenceFile} beside its face, so its terms cannot travel with it. A document may not carry a face without the text of its licence.`)
   }
+  const licenceText = read.text
 
   let bytes: ArrayBuffer
   try {
@@ -337,6 +458,11 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
     if (!response.ok) return refuse(`${family}'s face ${filename} responded ${response.status}`)
     bytes = await response.arrayBuffer()
   } catch (error) {
+    // THIS CATCH SPANS `arrayBuffer()` AS WELL AS THE REQUEST, and that is the
+    // whole reason the signal is passed into `fetch()` rather than armed around
+    // it: the largest offerable face is 24 MB, so the body is where a real
+    // stall lives.
+    if (isAbort(error)) return refuse(stalledRefusal(family, `sending the ${filename} face itself`))
     return refuse(`${family} could not be fetched right now (${error instanceof Error ? error.message : String(error)}). You cannot add a family without a network connection; the faces this machine already holds are still offered.`)
   }
 
@@ -373,12 +499,23 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = (url) =>
   }
 }
 
-async function readText(fetcher: Fetcher, url: string): Promise<string | undefined> {
+/**
+ * THE OUTCOME IS A UNION AND NOT `string | undefined`, because "there is no
+ * such file" and "the host never answered" are two different failures and only
+ * one of them is the author's problem to act on.
+ */
+type TextOutcome = Readonly<{ ok: true; text: string }> | Readonly<{ ok: false; stalled: boolean }>
+
+async function readText(fetcher: Fetcher, url: string): Promise<TextOutcome> {
   try {
     const response = await fetcher(url)
-    if (!response.ok) return undefined
-    return await response.text()
-  } catch {
-    return undefined
+    if (!response.ok) return { ok: false, stalled: false }
+    return { ok: true, text: await response.text() }
+  } catch (error) {
+    // AND THIS CATCH `return`s A FAILURE RATHER THAN CONTINUING, which is one
+    // of the three points at which the chain terminates on the first abort.
+    // `src/font-source.test.ts` asserts that termination table-driven, with the
+    // fetcher call count written as a literal.
+    return { ok: false, stalled: isAbort(error) }
   }
 }
