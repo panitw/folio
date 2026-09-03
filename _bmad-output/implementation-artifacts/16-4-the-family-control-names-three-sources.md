@@ -180,10 +180,68 @@ cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `
    defines `ADDED FROM WEB FONTS` as *"what this session fetched **into the file**"*, and OWNER DECISION
    D-16.R.46 separates installing from embedding — **so adding from web fonts INSTALLS, and that
    definition is false.** The mockup's three groups survive; the middle one is redefined as *installed
-   this session* or collapsed into `AVAILABLE LOCALLY`. **That fork is ruled at this story's gate, once
-   16.5 has shown what it actually builds.** A `ready-for-dev` spec asserting a superseded mechanism is a
+   this session* or collapsed into `AVAILABLE LOCALLY`. A `ready-for-dev` spec asserting a superseded mechanism is a
    loaded gun for the next dispatch, and it was found by 16.5's builder rather than by anything watching
    this file.
+
+   **RULED 2026-09-03 (D-16.R.72) — NEITHER ARM. The three groups are re-derived onto the axis the code
+   already forks on.** Both candidate answers left the `web` tier — the largest population of rows the
+   control offers — under no heading at all, which is why the fork looked binary and was not. Paste-ready
+   contract text, replacing Boundaries → Always bullet 1 in full:
+
+   > 1. `IN THIS TEMPLATE` — the document's declared chains (`families.includes(name)`). **The bytes are
+   >    in the file.**
+   > 2. `AVAILABLE LOCALLY` — `familyIsInstalled(source)` is true: the `local` **and** `stored` arms.
+   >    **On this machine, not in this file.** Picking embeds and commits the property in one gesture,
+   >    two commands, no network.
+   > 3. `AVAILABLE TO INSTALL` — the `web` arm. **Not on this machine.** Picking installs; nothing enters
+   >    the file.
+
+   **The axis is *where are the bytes*, never *when did it arrive*.** A row's group is a pure function of
+   (declared?, `familyIsInstalled`?) — never of a session-scoped set. This story's own `Never:` clause
+   (*"a group whose membership changes without an author action"*) refuses the recency reading in the
+   spec's own words, and the degraded store confirms the partition rather than straining it: when the
+   store cannot be opened, `installFamily` embeds immediately and says so, so a row jumps 3 → 1 and every
+   heading stays true.
+
+   **Three carriers tell the author where the bytes are, and two already ship.** The HEADING names the
+   place (in the file / on this machine / neither) — the install-vs-embed distinction said as a location
+   instead of a verb. The PER-ROW NOTE names the act: `familySourceNote` (`src/font-index.ts:283-297`)
+   already returns *"— use it, already on this machine"* / *"— use it, already downloaded to this
+   machine"* / *"— install on this machine"*. **Do not rewrite it, do not duplicate it into the
+   heading.** The MOVE is the confirmation: 8.6's *"nothing says 'added', the entry simply moves"* becomes
+   load-bearing **only** under this partition — install moves a row 3 → 2, first use moves it 2 → 1, each
+   caused by an author action and nothing else. That is why a healthy install returning silently is
+   correct rather than a gap.
+
+   **The `local`/`stored` split stays invisible in the grouping.** It is a provenance difference with no
+   consequence at the moment of choosing — both embed with no fetch, both carry a licence record — and
+   surfacing it would be the fourth group this spec forbids.
+
+   **WHY THIS IS A RULING AND NOT AN OWNER ESCALATION, stated because it widens an OWNER decision's
+   words.** D-16.2 (OWNER) says *"`AVAILABLE LOCALLY` is fetched faces, never host fonts"*, and this
+   heading will contain 31 faces nobody fetched. The clause's load-bearing half is **never the OS font
+   list**, and `src/host-font-access.test.ts` remains its tripwire, untouched: the 31 are committed to
+   this repository, machine-local, and are not host fonts. **Decisively, 16.2 delegated this exact
+   question rather than settling it** — `src/font-index.ts:57-63` reads *"WHAT THE DROPDOWN GROUP OF THAT
+   NAME ENDS UP CONTAINING IS STORY 16.4'S TO DECIDE … whether the 31 shipped local-tier faces are shown
+   under that heading, under their own, or under neither."* The chosen arm is one of the three it names.
+   **The tension is real and is disclosed to the owner at the epic gate as deviation row ten; it is not
+   hidden inside an implementation.**
+
+6. **`src/font-index.ts:50-56` MUST be amended in the same change.** It currently states the name means
+   the stored arm and *"does NOT mean this arm plus the local arm"* — the exact reading this ruling
+   adopts. **A module that contradicts the shipped heading is worse than either reading**, and leaving it
+   is the record-vs-reality drift this epic has found five times (DW-171, 177, 179, 180, 182).
+
+7. **Matrix row *"Open with an empty store"* is FALSE as written.** The `local` tier is 31 committed faces
+   that are always present, so a fresh machine shows `IN THIS TEMPLATE` plus a **populated**
+   `AVAILABLE LOCALLY` plus `AVAILABLE TO INSTALL`. **A heading is suppressed only when its own group is
+   empty after filtering.**
+
+8. **Matrix GAINS a row:** pick from `AVAILABLE TO INSTALL` → face installed, **no engine command, no
+   property commit**, row moves to `AVAILABLE LOCALLY`. Store-unavailable degradation embeds instead, the
+   row moves to `IN THIS TEMPLATE`, and `storeUnavailableEmbedNote` says so.
 
 1. **The registered listbox defect is SIX, not four — and the AC as written is unsatisfiable.** This
    spec names `role="presentation"` children at `:1355`, `:1361`, `:1363` and `:1366`. Measured at
@@ -191,9 +249,12 @@ cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `
    them (the index disclosure and the "Showing N of M" line) **after** Story 8.6 registered the finding.
    The fix must sweep all six plus whatever the three groups, the filter field and the footer add — not
    the four this spec enumerates. Same shape as D-16.R.18: a defect that exists in six places is six.
-2. **R1 — the `AVAILABLE LOCALLY` group's membership is inherited, not invented.** Add: *"The group's
-   membership comes from Story 16.2's `FamilySource` `'stored'` arm; this story groups and labels it
-   and does not reshape the union."* 16.2 builds the union arm so every exhaustive switch reds until
+2. **R1 — SUPERSEDED IN PART 2026-09-03 by D-16.R.72, corrected here in place rather than left to read
+   as current.** The membership is **`familyIsInstalled(source)` — the `local` and `stored` arms
+   together** — not the `'stored'` arm alone. **The half of R1 that still stands is unchanged and is
+   exactly what the ruling does:** *"this story groups and labels the union and does not reshape it."*
+   Original text, retained so this correction is legible: *"The group's membership comes from Story 16.2's
+   `FamilySource` `'stored'` arm; this story groups and labels it and does not reshape the union."* 16.2 builds the union arm so every exhaustive switch reds until
    this story handles it — the tier cannot be silently dropped.
 3. **R2 — the footer row carries `Add fonts…` only.** Replace *"`Add fonts…` and `⌘G` open the browser;
    `src/shortcuts.ts` if the shortcut lands"*: the browser is Story 16.3's and this story's footer opens

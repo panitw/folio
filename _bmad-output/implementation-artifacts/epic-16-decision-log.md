@@ -60,6 +60,45 @@ Only the line numbers are stale. Recorded because D-16.R.28 corrected a genuine 
 The near-miss is the point: two readers looked at the same anchor and one of them saw a defect in a
 notation.
 
+### 2026-09-03 (later) — second refresh, on resuming with 16.4 the only story left
+
+The second lead did not survive its session either. A third was grounded **from this log** — the Lead
+Grounding section above, then the rulings — and re-derived nothing from the ADRs, per the same resumption
+rule. Verified at `8a9e297`, tree clean, `16.4` still `status: draft`.
+
+**What changed since the refresh above, and it is the whole of what changed.** 16.2, 16.3, 16.5 and the
+16.1a reopen all closed (`f4d401c` → `f60ef7c`). Seven of the epic's eight stories are `done`; 16.4 is the
+last. The refresh above was written when 16.2/16.3/16.4 were outstanding and 16.5 did not exist as a story.
+
+**Re-measured rather than inherited, because 16.5 moved every one of them.** `FamilySource` is now a
+**three**-arm union — `local` (31 committed faces), `stored` (IndexedDB), `web` (index snapshot) —
+`folio-designer/src/font-index.ts:68-75`. `familyIsInstalled` is `source.tier !== 'web'`
+(`font-index.ts:264`) and is **the single predicate `choose()` forks on** (`App.tsx:2041-2046`).
+`familySourceNote` is an exhaustive switch that already says the action per row — *"use it, already on this
+machine"* / *"use it, already downloaded to this machine"* / *"install on this machine"*
+(`font-index.ts:283-297`). `installFamily` at `App.tsx:964` dispatches **no engine command** on the healthy
+path; `embedInstalledFamily` at `:1066` is where bytes reach the document. `FontFamilyProperty` begins at
+`App.tsx:1941` (the amendment block's `:1385` is now stale by 556 lines — re-measure at the gate, as it
+says). `renderedFamilyLimit = 50` (`App.tsx:1911`); `offeredFamilies` orders local → stored → web, so the
+three tiers are **contiguous runs** in the flat `matches` list.
+
+**One fact the previous grounding could not have carried, and it bears on 16.4's whole shape.** The
+mockup's third group binds `dropdownSystemFonts` and its rows are drawn in dimmed `#aab2bb` against the
+other groups' `#e6e9ec`; the middle group is wrapped in `<sc-if value="{{ hasAddedFonts }}"
+hint-placeholder-val="{{ false }}">` — **absent in the drawn default state**
+(`mockups/Font Browser.dc.html:203-224`). So the axis the design grouped on was *author-supplied vs
+ambient*, and D-16.2 already deleted the ambient half. Recorded here because it is a measurement about the
+mockup, not about our code, and D-16.R.49's chip finding is the same kind of evidence.
+
+**The invariants this lead rules from** are unchanged from the refresh above, plus: AD-15 (every committed
+mutation is a command), AD-8/CAP-2 (the font travels inside the file), D-16.R.46 (install ≠ embed; two
+commands, two undos, never fused), D-16.2 (`AVAILABLE LOCALLY` is never the OS font list), and 16.4's own
+`Never:` clause — *a group whose membership changes without an author action*.
+
+**Open and carried forward, not resolved by this refresh:** DW-171 (the designer CI job halts at step 2, so
+nothing in Epic 16 is CI-verified; repair scheduled after 16.4 by D-16.R.44) and the consolidated mockup
+deviation table owed at the epic gate (D-16.R.48/49), standing at nine rows before this story.
+
 ## Standing decisions
 
 ### D-16.R.1 — The run's standing decisions, set by the owner at the terminal
@@ -3531,3 +3570,56 @@ files. **A debris sweep that deletes by category rather than by evidence would h
 Delivery Log states there were none **explicitly**, so a later reader cannot read the absence as an
 omission. Triage stands at **10 patched / 0 deferred / 0 rejected**, plus 4 story deferrals in frontmatter.
 **16.4 confirmed still `status: draft`** and untouched.
+
+## D-16.R.72 — The fork was dissolved rather than answered, because both arms left the largest group unlabelled
+
+**ACCEPTED IN FULL.** I framed 16.4's middle group as a binary — redefine as *"installed this session"* or
+collapse into `AVAILABLE LOCALLY` — and **the lead refused both, on a defect neither arm survives: they
+leave the `web` tier under no heading at all.** The control has offered all three `FamilySource` arms since
+16.1, and 16.5's `choose()` routes a `web` row to `installFamily`. **My framing inherited the spec's own
+blind spot** — the edge-case matrix never mentions the web tier because it was planned before that tier
+reached the dropdown, **and that silence is what made the fork look binary.** Fourth time this epic that a
+question was wrong rather than hard (D-16.R.36, .50, and the owner's own rejection at D-16.R.46).
+
+**RULED: three groups, projected onto the axis the code already forks on — *where are the bytes*, never
+*when did it arrive*.** `IN THIS TEMPLATE` (declared; bytes in the file) · `AVAILABLE LOCALLY`
+(`familyIsInstalled`, i.e. `local` **and** `stored`; on this machine, not in this file) · `AVAILABLE TO
+INSTALL` (the `web` arm; not on this machine). Two labels are the mockup's own strings unchanged; the third
+parallels its `AVAILABLE …` stem.
+
+**VERIFIED BY ME BEFORE ACCEPTING, by location rather than by re-reading the claim** (D-16.R.59/60):
+`familyIsInstalled = source.tier !== 'web'` at `font-index.ts:264`, the single predicate `choose()` forks
+on at `App.tsx:2043` · `familySourceNote`'s three arms at `:283-297`, already saying *"install on this
+machine"* · this spec's `Never:` clause at `:74`, *"a group whose membership changes without an author
+action"*, **which refuses the recency arm in the spec's own words rather than on anyone's preference** ·
+the mockup's middle group drawn **absent by default** (`hint-placeholder-val="{{ false }}"`) with its third
+bound to `dropdownSystemFonts`.
+
+**THAT LAST MEASUREMENT IS WHY THIS IS A RE-DERIVATION AND NOT A DEVIATION OF TASTE.** The design grouped
+on *author-supplied vs ambient*, and **the owner's own two decisions deleted both halves of that axis**:
+D-16.2 removed the ambient OS list the third group was drawn from, and D-16.R.46 made installing and
+embedding different acts, so *"added"* stopped naming a place a font can be. **The drawn axis has no
+referent left in this product.** Same evidence class as D-16.R.49's chip finding — read the mockup's
+bindings, not its labels.
+
+**THE ONE PLACE IT WIDENS AN OWNER'S WORDS, DISCLOSED RATHER THAN BURIED.** D-16.2 (OWNER) says
+*"`AVAILABLE LOCALLY` is fetched faces, never host fonts"*, and this heading will contain **31 faces nobody
+fetched.** It is a ruling and not an override for one decisive reason: **16.2 delegated this exact question
+rather than settling it.** `font-index.ts:57-63` reads *"WHAT THE DROPDOWN GROUP OF THAT NAME ENDS UP
+CONTAINING IS STORY 16.4'S TO DECIDE … whether the 31 shipped local-tier faces are shown under that
+heading, under their own, or under neither"* — **and the chosen arm is one of the three it names.** The
+clause's load-bearing half is *never the OS font list*; `host-font-access.test.ts` stays its tripwire,
+untouched. **Deviation row ten, owner-visible at the epic gate.** Reversal cost: three heading literals,
+one boolean projection, and the tests written against them — **no stored data, no `.folio` bytes, no engine
+command, no e2e accessible name.** It costs the same to reverse after the epic as during it, which is
+D-16.R.48's stated test for gate-disclosure rather than escalation. **One row, not three**, deliberately:
+splitting it into label-dropped / label-added / membership-widened would ask the owner to audit three edits
+instead of decide one question.
+
+**And it forced four corrections the spec would otherwise have shipped against its own gate ruling**, all
+now written in as paste-ready carrier text and **located at lines 197–252, clear of the contract closing at
+90**: R1 corrected **in place** rather than left to read as current · `font-index.ts:50-56` amended in the
+same change, because **a module that contradicts the shipped heading is worse than either reading** · the
+*"Open with an empty store"* matrix row is **false** (the 31 local faces are always present, so a heading is
+suppressed only when its own group is empty after filtering) · and a **new matrix row** for the install
+pick: no engine command, no property commit, row moves 3 → 2.
