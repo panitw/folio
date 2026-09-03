@@ -214,7 +214,15 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
 .property-option { padding: var(--space-2) var(--space-3); color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .property-option-active { background: var(--color-active); color: var(--color-ink-high); }
 .property-option[aria-selected="true"] { color: var(--color-select); }
-.property-option-empty { color: var(--color-ink-low); font: var(--type-body); cursor: default; }
+/* `margin: 0` IS LOAD-BEARING AND NOTHING IN THIS REPOSITORY CAN SEE IT.
+   Story 16.4 moved these notes out of the `<ul>`, so they became `<p>` and
+   picked up the user agent's `margin-block: 1em` — roughly 10px above the
+   disclosure and between every note, inside a 168px scroller, with
+   `.property-option-notes`' `border-top` blocking the collapse. jsdom does no
+   layout and `getComputedStyle` is banned outside the canvas, so no test in
+   this project can red on it; the rule is written explicitly for that reason
+   rather than inherited from the element it used to be. */
+.property-option-empty { margin: 0; color: var(--color-ink-low); font: var(--type-body); cursor: default; }
 /* THE THREE GROUPS (Story 16.4), IN THE TOKENS THE PANEL ALREADY SPEAKS.
    `Font Browser.dc.html` separates its dropdown groups with a hairline in the
    colour `--color-line` carries and sets each heading in the panel's own label

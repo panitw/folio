@@ -632,7 +632,7 @@ describe('a fetched face stays on this machine', () => {
     // THE CAPPED GROUP'S NOTE COUNTS THE CAPPED GROUP. Group 2 and group 3
     // together are the whole addable union, so naming the union would be
     // counting rows the cap never touched.
-    const counted = /Showing (\d+) of (\d+) families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
+    const counted = /Showing (\d+) of (\d+) matching families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
     expect(counted).not.toBeNull()
     expect(Number(counted![2])).not.toBe(addableFamilyCount)
     expect(Number(counted![2]) + local.length).toBe(addableFamilyCount)
@@ -706,16 +706,21 @@ describe('a fetched face stays on this machine', () => {
     expect(within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option'), 'the third group keeps its own bound').toHaveLength(50)
   })
 
-  // THE OTHER HALF OF BOTH RE-POINTED REFUSALS (Story 16.4).
+  // THE REGION BOTH RE-POINTED REFUSALS NAME REALLY CARRIES THE CONTROL (Story
+  // 16.4).
   //
   // `storeWriteRefusal` and `lateEmbedRefusal` both tell the author to go to a
   // named panel and press a remove control. Their guards were keyed on the
   // PLACE NAME — `/AVAILABLE LOCALLY/` — which the rename invalidated, and a
   // re-pointed place-keyed guard relocates its blind spot unless the property it
-  // asserts is restated with it. The property is this: the region those
-  // sentences name is really on the screen, and it is really the region that
-  // carries a per-face remove control.
-  it('points both refusals at the one region that actually carries a remove control', async () => {
+  // asserts is restated with it.
+  //
+  // THIS TEST OWNS THE PANEL HALF: the named region is on the screen and it is
+  // the region that carries a per-face remove control, with `storeWriteRefusal`
+  // matched against it. The SENTENCE half of `lateEmbedRefusal` is asserted
+  // where that alert is actually raised, above — this test cannot raise it, and
+  // an earlier title claiming both refusals overstated what it measures.
+  it('draws the region both refusals name, and puts the remove control inside it', async () => {
     globalThis.fetch = upstreamFetch() as never
     mount(commandRequest())
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
@@ -881,6 +886,24 @@ describe('a fetched face stays on this machine', () => {
     const pointer = /remove it with the “(.+?)” control/.exec(alert.textContent ?? '')
     expect(pointer, `the refusal must point at a named control: ${alert.textContent}`).not.toBeNull()
     expect(screen.getByRole('button', { name: pointer![1] })).toBeInTheDocument()
+
+    // AND THE REGION IT SENDS THEM TO IS A REGION THE PRODUCT DRAWS (Story
+    // 16.4). The regex above extracts only the quoted CONTROL name, so the
+    // words after `control in …` were covered by nothing — demonstrated, not
+    // suspected: reverting this sentence to name `AVAILABLE LOCALLY`, a heading
+    // the store panel gave back, left the whole suite at 688 passed / 1 failed
+    // with the standing red as its only failure. That is exactly the blind spot
+    // the re-pointing task warned a place-keyed guard relocates, still open on
+    // the second of the two refusals.
+    //
+    // So the region is READ OFF THE RENDERED PANEL and matched against the
+    // sentence, the way the quota alert's assertion already does. `getByText`
+    // throws if the panel stops drawing the heading; `toContain` fails if the
+    // sentence stops naming it. Neither half can drift alone.
+    const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
+    const heading = within(panel).getByText(storePanelHeading)
+    expect(alert.textContent, 'the refusal must name the region that holds the control, not a heading nothing draws').toContain(heading.textContent)
+    expect(alert.textContent, 'and where to find that region, because a panel name alone is not a location').toMatch(/under TYPOGRAPHY/)
 
     // THE PROPERTY COMMAND WAS NOT SENT. `canvas.fontFamilies` never gained the
     // chain, so committing `style.fontFamily` would have been refused anyway —

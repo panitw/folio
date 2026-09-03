@@ -27,6 +27,45 @@ deferred:
       legibility, not a bound. Re-measured: fetchTimeoutMs = 30_000 armed PER REQUEST in timedFetcher
       (font-source.ts:313,343) across up to six call sites, so 16.5's recorded 30 s is the stall half.
       Owner: NOT Story 16.4 - the post-16.4 infrastructure item, or whoever next opens fetchWebFamily.
+  - summary: >-
+      Story 16.4 changed WHY e2e/font-embed-boundary.spec.ts:128 fails, and the entry that defers it
+      does not say so, so its assignee will debug the wrong defect.
+    evidence: >-
+      It reads the index disclosure out of getByRole(listbox).getByRole(option). Before 16.4 the
+      disclosure was a role=presentation child INSIDE the listbox; after 16.4 it is outside the listbox
+      entirely, behind aria-describedby. Unreachable both ways, so the verdict never moved and the red is
+      genuinely pre-existing - but restoring a working browser alone will now never turn it green, the
+      locator itself has to change. Left untouched by ruling. Owner stays the post-16.4 CI repair.
+  - summary: >-
+      familyIndexDisclosure says 31 already on this machine while AVAILABLE LOCALLY now shows 31 plus
+      every stored face, so the two disagree the moment one family is installed.
+    evidence: >-
+      The disclosure counts catalogueFaces only. D-16.R.72 widened the heading to local plus stored and
+      ruled the disclosure is not rewritten by this story, so the divergence is in scope for nobody yet.
+      Owner: whoever next opens familyIndexDisclosure.
+  - summary: >-
+      The committed story-6.7 roundtrip evidence manifest disagrees with the spec that generates it by
+      182 insertions and 102 deletions, and has since 791ed00.
+    evidence: >-
+      PROVED NOT CAUSED BY THIS STORY, and the proof is the load-bearing part because the first instinct
+      is that a font story changed the roundtrip. Running browser-native-roundtrip.spec.ts at baseline
+      b8431c4 in a detached worktree produced a manifest BYTE-IDENTICAL to the one produced at HEAD
+      (diff rc=0). So the committed artifact is simply stale. This is a record the project would reach
+      for to PROVE the code, invisible for the same reason DW-171 makes everything invisible. Reverted
+      rather than carried into 16.4. Owner is not 16.4; cross-reference DW-171 as the cause.
+  - summary: >-
+      Nothing scrolls the keyboard-active option into view, and the walk now crosses about 82 rows inside
+      a 168px scroller.
+    evidence: >-
+      move() advances active and aria-activedescendant only. Pre-existing, worsened by the three groups;
+      the new keyboard test asserts which group owns the active descendant, never that it is visible.
+  - summary: >-
+      When a query matches nothing the listbox renders empty and its explanation sits outside it.
+    evidence: >-
+      The Nothing matches sentence moved into the notes block with the other prose. Not a regression -
+      it was a role=presentation child before and equally unannounced - but a disabled option inside the
+      list would be announced, and App.test.tsx:1464 asserts no options on an empty search, so the two
+      readings need settling together rather than separately.
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -237,6 +276,24 @@ them is one file, `epic-16-decision-log.md`, +145 lines, touching nothing under 
   text falsified by a later story, recorded here rather than corrected silently · a new matrix row for
   the install pick · `⌘G` struck from the `Add fonts…` row (D-16.R.33 R2) · a new Always clause and a
   new Block If for the heading-truth rule that Q2's measurement forced.
+- **CORRECTION, appended after the step-04 review: the "six contract edits" entry above UNDERCOUNTS
+  what the transcription changed, and a review layer caught it.** The pre-edit md5 records the slab but
+  not what left it, so these are named here rather than left to a hash nobody can invert. Three further
+  changes, each defensible and none previously written down:
+  1. **The protected accessible-name list was NARROWED**, from `"Font family"` / `"Edit font chains"` /
+     `"Show fonts"`/`"Hide fonts"` / `"Clear Font family"` to `"Font family"` / `"Edit font chains"` /
+     the listbox's own name `"Fonts"`. Measured basis: `"Show fonts"`, `"Hide fonts"` and
+     `"Clear Font family"` have **zero** assertions across the 67 test and spec files, while `"Fonts"`
+     is asserted at 4 sites and was **absent** from the old list. So the list was not shortened, it was
+     **re-aimed at the names something actually holds** — but a narrowing recorded nowhere is how a
+     protection quietly lapses, which is this epic's own recurring defect.
+  2. **The Block If *"Stories 16.2 and 16.3 are not closed"* was deleted** — discharged, both are `done`
+     in `sprint-status.yaml`, along with 16.5. A condition that can no longer fire is noise in a gate.
+  3. **An `Ask First` section was added** where the contract had none, carrying the two changes that
+     would reopen a ruling: fusing the two commands, and any fourth group or alternative grouping key.
+  The Intent's Problem and Approach paragraphs were also rewritten to name the ordering defect, which
+  did not exist in the record when the contract was first written.
+
 - **Two premises in the record were measured false at this gate.** `font-index.ts:148-150` documents an order `offeredFamilies` does not produce, and D-16.R.33 R1's *"16.4 adds headings rather than
   plumbing"* rested on it. The repair is now a task with independent standing. Separately, the
   amendment block's own line anchors were stale as it predicted; all were re-measured.

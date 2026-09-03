@@ -2063,7 +2063,12 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
       // THE COUNT NAMES THIS GROUP'S OWN POPULATION, NOT THE UNION'S. The cap
       // applies to this group alone now, so a sentence counting everything
       // addable would be counting rows the cap never touched.
-      note: toInstall.length > shownToInstall.length ? `Showing ${shownToInstall.length} of ${toInstall.length} families you can install — keep typing to narrow them.` : undefined,
+      // AND THE COUNT IS A COUNT OF MATCHES, WHICH THE WORD `matching` IS
+      // CARRYING. Under a query `toInstall.length` is the FILTERED population,
+      // so dropping the qualifier would let the sentence read as the whole
+      // install list when it is a slice of it. The line this replaced said
+      // "matching families" and was right to.
+      note: toInstall.length > shownToInstall.length ? `Showing ${shownToInstall.length} of ${toInstall.length} matching families you can install — keep typing to narrow them.` : undefined,
     },
   ]
   const close = () => { setOpen(false); setQuery(''); setActive(0) }
@@ -2126,7 +2131,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
   const errorId = error ? 'property-error-fontFamily' : undefined
   return <div className="property-editor property-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close() }}>
     <div className="property-field">
-      <input ref={field} className="property-value property-value-prose" role="combobox" aria-label="Font family" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={open && matches.length > 0 ? `${listId}-${active}` : undefined} aria-description={uniform ? undefined : 'Mixed value'} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} disabled={pending || pickBusy} value={open ? query : committed} placeholder={!uniform ? 'Mixed' : open ? 'Search fonts or the catalogue' : 'Choose a font'} onFocus={() => setOpen(true)} onChange={(event) => { setOpen(true); setQuery(event.target.value); setActive(0) }} onKeyDown={(event) => {
+      <input ref={field} className="property-value property-value-prose" role="combobox" aria-label="Font family" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={open && matches.length > 0 ? `${listId}-${active}` : undefined} aria-description={uniform ? undefined : 'Mixed value'} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} disabled={pending || pickBusy} value={open ? query : committed} placeholder={!uniform ? 'Mixed' : open ? 'Search fonts' : 'Choose a font'} onFocus={() => setOpen(true)} onChange={(event) => { setOpen(true); setQuery(event.target.value); setActive(0) }} onKeyDown={(event) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); move(event.key === 'ArrowDown' ? 1 : -1); return }
         if (event.key === 'Enter') { event.preventDefault(); const match = matches[active]; if (open && match) choose(match); return }
         if (event.key === 'Escape') { event.preventDefault(); close() }
@@ -2160,7 +2165,12 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
         indexes the one flat `matches` array, and the groups are drawn over
         contiguous slices of it. */}
     {open && <div className="property-options">
-      <div className="property-option-groups" id={listId} role="listbox" aria-label="Fonts" aria-describedby={`${listId}-notes`}>
+      {/* NO CLASS ON THIS ELEMENT, DELIBERATELY. It carried
+          `property-option-groups`, which `App.css` styled in zero places — a
+          name that looks like a styling hook and is not one costs a reader the
+          search. The shell above owns every box property, so the list needs no
+          rule of its own; it is addressable by its role and its id. */}
+      <div id={listId} role="listbox" aria-label="Fonts" aria-describedby={`${listId}-notes`}>
         {groups.filter((group) => group.rows.length > 0).map((group) => <div key={group.key} className={`property-option-group property-option-group-${group.key}`} role="group" aria-label={group.label} aria-describedby={group.note ? `${listId}-${group.key}-note` : undefined}>
           <p className="property-option-heading" aria-hidden="true">{group.label}</p>
           {group.rows.map((match, offset) => {
@@ -2174,7 +2184,14 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
         </div>)}
       </div>
       <div id={`${listId}-notes`} className="property-option-notes">
-        {matches.length === 0 && <p className="property-option property-option-empty">{`Nothing in this document or the catalogue matches "${query.trim()}".`}</p>}
+        {/* THE EMPTY STATE NAMES THE THREE PLACES IT LOOKED, because those are
+            the three groups above it and because the sentence it replaced named
+            only one of them. "Nothing in this document or the catalogue" was
+            written when the catalogue WAS the offer; D-16.1 made it one source
+            of three, and the re-derivation two notes down argues that premise
+            false in this same file. A control may not ship a sentence its own
+            comment refutes. */}
+        {matches.length === 0 && <p className="property-option property-option-empty">{`Nothing in this template, on this machine, or in the list you can install matches "${query.trim()}".`}</p>}
         {/* THE COUNT IS THE ADDABLE COUNT AND IT SAYS SO, and the word "live" is
             qualified where it would otherwise be read into the control: the LIST
             is a dated build-time snapshot, because the endpoint that publishes it

@@ -3879,3 +3879,55 @@ byte-identical proof recorded, because that proof is what makes the attribution 
 checks came back as counts of **1 that were comments** explaining the change, with zero occurrences in
 shipped code once comments were stripped **and a positive control confirmed the stripper worked** — the
 population rule and *a comment is not a measurement* (D-16.R.74) applied together, unprompted.
+
+## D-16.R.77 — Both 16.4 agents died mid-patch-round; the tree was measured, not assumed, before anything touched it
+
+**The builder (HTTP 500) and its implementer (HTTP 529) both terminated on server errors within moments of
+each other**, the implementer mid-instruction — its last words to itself were *"Now update the tests that
+pin the strings I changed."* **Nothing was lost, and nothing was guessed.**
+
+**MEASURED STATE, before any action:** no stray worktrees · `HEAD` `96aa0e8` · five modified files, **125
+insertions / 13 deletions**, touching **0 of `e2e/`, `folio-go/`, `lint/`** · `vitest` **688 passed / 1
+failed of 689 across 55 files**, the red matched **by name** as `canvas-authority-contract.test.ts:190`
+(DW-152) · `typecheck` `rc=0` · **`npx oxlint` `rc=0` with exactly 4 warnings, taken from the tool
+directly per D-16.R.75.** So the interrupted tree is **coherent and at its expected baseline**, not
+half-broken.
+
+**The story's real history, established rather than inferred:** `eb5082c` carries the **main
+implementation** (10 files, 745 insertions — the three groups, the listbox, the rename, and
+`font-index.ts:275`'s repaired `[...local, ...stored, ...orphanedStored, ...web]`); `0bfc72a` the undo
+test; **the uncommitted 125 lines are the patch round in flight.** My first reading — that the production
+work itself was uncommitted — was wrong, and the diffstat's *absence* of `font-index.ts` is what corrected
+it. **A 125-line diff could not contain this story's subject, and that mismatch was the discriminator.**
+
+**COMMITTED BY ME, WITH ATTRIBUTION AND A STATED LIMIT.** D-16.R.70's rule is that a pass commits the
+entries it wrote — **and this pass's author is gone.** The purpose of that rule is to stop one pass
+laundering another's work, so the honest handling is not to abstain (the next dispatch hard-stops on a
+dirty tree) but to commit it **saying exactly what it is**: in-flight patch work from a crashed
+implementer, gates measured green at baseline, **review round NOT complete and not claimed to be.** The
+diff was also backed up to the scratchpad before anything ran.
+
+**WHAT THE RESCUED SPEC EDIT REVEALS, AND IT IS AGAINST ME.** The step-04 review caught that the
+transcription's *"six contract edits"* **undercounted**, and the first of the three unrecorded changes is
+that **the protected accessible-name list was NARROWED** — `"Show fonts"`, `"Hide fonts"` and
+`"Clear Font family"` dropped, the listbox's own `"Fonts"` added. The narrowing is **defensible on
+measurement**: the three dropped names have **zero** assertions across 67 test and spec files while
+`"Fonts"` is asserted at **4** sites and was absent from the old list, so the list was **re-aimed at names
+something actually holds** rather than shortened.
+
+**But I approved that contract at CHECKPOINT 1 and read that very clause aloud, and I did not notice the
+protection had moved.** The narrowed list was already in the text when I read it, so **the gate confirmed a
+change it could not see, and a review layer found it afterwards.** *A narrowing recorded nowhere is how a
+protection quietly lapses* — the epic's own recurring defect, committed inside the gate built to catch it.
+**Consequence for the epic gate: a transcribed contract's changes are enumerated in prose, because a
+pre-edit md5 records the slab and cannot be inverted to say what left it.**
+
+**Five deferrals the review round produced, all correctly owned away from 16.4**, and one is a genuine
+sharpening: `e2e/font-embed-boundary.spec.ts:128`'s red is **still pre-existing, but its CAUSE changed** —
+the disclosure was a presentational child inside the listbox and is now outside it behind
+`aria-describedby`, unreachable both ways, **so restoring a working browser will no longer turn it green
+and the locator itself must change.** The deferral that did not say so *"would send its assignee to debug
+the wrong defect."* Also registered: `familyIndexDisclosure` counts `catalogueFaces` only and so says *31
+on this machine* while the widened heading shows 31 **plus every stored face** — **the two disagree the
+moment one family is installed**, and D-16.R.72 ruled the disclosure not rewritten here, so it is in scope
+for nobody yet.

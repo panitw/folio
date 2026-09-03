@@ -1497,7 +1497,14 @@ describe('typography controls over the engine-projected closed sets', () => {
     fireEvent.focus(combobox)
     fireEvent.change(combobox, { target: { value: 'Helvetica' } })
     expect(screen.queryByRole('option')).not.toBeInTheDocument()
-    expect(screen.getByText('Nothing in this document or the catalogue matches "Helvetica".')).toBeInTheDocument()
+    // CORRECTED WITH THE CHANGE, NOT EDITED QUIETLY (Story 16.4). This pinned
+    // `Nothing in this document or the catalogue matches …` — a sentence naming
+    // ONE of the three places the control searches, written when the catalogue
+    // was the whole offer. D-16.1 made it one source of three, and the
+    // disk-font re-derivation in `App.tsx` argues that premise false in the same
+    // file, so the empty state was shipping a claim its own module refutes. The
+    // sentence now names the three groups drawn above it.
+    expect(screen.getByText('Nothing in this template, on this machine, or in the list you can install matches "Helvetica".')).toBeInTheDocument()
   })
 
   // STORY 16.4 — THREE GROUPS, ON THE AXIS THE CODE ALREADY FORKS ON.
@@ -1543,7 +1550,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     expect(groupRows('AVAILABLE LOCALLY')).toHaveLength(catalogueFaces.length)
     const install = groupRows('AVAILABLE TO INSTALL')
     expect(install, 'the web tier is the only group with a bound').toHaveLength(50)
-    const counted = /Showing (\d+) of (\d+) families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
+    const counted = /Showing (\d+) of (\d+) matching families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
     expect(counted, 'the capped group must say how much of itself it painted').not.toBeNull()
     expect(Number(counted![1])).toBe(install.length)
     // THE POPULATION IT NAMES IS ITS OWN. Group 2 plus group 3 is the whole
