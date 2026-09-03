@@ -16,10 +16,13 @@ import { FontBrowser } from './FontBrowser'
 import { FontChainEditor } from './FontChainEditor'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { embedFontFamilyCommand } from './font-chain-command'
-import { scriptFallbackFaces } from './generated/font-catalogue'
-import { familyIsInstalled, familySourceNote, offeredFamilies, type FamilySource } from './font-index'
+import { catalogueFaces, scriptFallbackFaces } from './generated/font-catalogue'
+import { familyIsInstalled, familySourceNote, indexRowFor, offeredFamilies, type FamilySource } from './font-index'
+import { browserRows } from './font-browser-model'
 import { fetchWebFamily } from './font-source'
 import { openFontStore, storeWriteRefusal, storedFaceKey, type FontStore, type StoredFace } from './font-store'
+import { previewFaceFamily } from './preview-face-family'
+import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
 import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
@@ -403,6 +406,35 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     }
     const outcome = await fetchWebFamily(source.family)
     return outcome.ok ? outcome.face.bytes : undefined
+  }
+
+  // THE FAMILY CONTROL'S OWN READER (Story 16.7) — deliberately a SEPARATE
+  // function from `browserSpecimenBytes` above, so that this story's own
+  // divergence never has to edit the browser's (Ask First on that one is a
+  // boundary of this story, not an invitation to fork a shared branch inside
+  // it).
+  //
+  // LOCAL AND STORED READ EXACTLY AS THE BROWSER'S DO — no network for a face
+  // this machine already holds, a store read for one it fetched before. `web`
+  // IS WHERE THIS READER DIVERGES, ON PURPOSE: the dropdown's third group is
+  // ~1,273 rows nobody has acted on yet, and fetching to draw a specimen for
+  // all of them is the thing Design Note (1) refuses — a pick already blocks
+  // up to 30s on a stall and 180s against a slow host, and a MENU must never
+  // cost that. So a `web` row resolves to `undefined` with NO CALL TO
+  // `fetchWebFamily` AT ALL, and its row stays note-only.
+  const familyControlSpecimenBytes = async (family: string): Promise<ArrayBuffer | undefined> => {
+    const source = browsableFamilies.find((entry) => entry.family === family)
+    if (source === undefined || source.tier === 'web') return undefined
+    if (source.tier === 'local') {
+      try {
+        const response = await fetch(source.face.url)
+        return response.ok ? await response.arrayBuffer() : undefined
+      } catch {
+        return undefined
+      }
+    }
+    const read = await (await fontStore.current)?.get(source.record.key)
+    return read?.ok ? read.value?.bytes : undefined
   }
 
   const installPreview = (next: PreviewRecord | undefined) => { previewRef.current = next; setPreview(next) }
@@ -1444,7 +1476,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -1666,7 +1698,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, carriedFaces, specimenBytes, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -1699,7 +1731,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1905,7 +1937,59 @@ const renderedFamilyLimit = 50
 const lateEmbedRefusal = (family: string, engineMessage: string): string =>
   `${family} is installed on this machine and cannot be embedded in this document: ${engineMessage} Nothing was written to the document, and the face is still on this machine.`
 
-function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
+// THE FAMILY CONTROL'S OWN SAMPLE TEXT (Story 16.7), SHORT ON PURPOSE AND
+// DELIBERATELY NOT `font-browser-model.ts`'s `latinSample`/`thaiSample`.
+// The design draws "a few letters set in that typeface" beside the name —
+// `Aa Bb 123`, `กขค Aa` — never the browser's full sentence, which measured
+// true in a real dropdown: at the panel's width it left three or four
+// characters of the NAME before the specimen's ellipsis took over, on every
+// row, which is the opposite of a control whose job is to show a name AND a
+// face. Reusing the mechanism (the registry, the honesty rule, `lang="th"`)
+// is Story 16.7's contract; reusing the browser's own sample sentence is not
+// part of it, and the mockup never drew that sentence here to begin with.
+const familyControlLatinSample = 'Aa Bb 123'
+const familyControlThaiSample = 'กขค Aa'
+
+// STORY 16.7 — RESOLVING A DECLARED CHAIN TO THE FACE IT PAINTS WITH, THE SAME
+// WAY `TextPaint` RESOLVES A FRAGMENT (below, in this file): a carried entry
+// counts only once its asset key is actually in `carriedFaces` (the paintable
+// set built at the top of this component from `carriedFaceKeys`), and a
+// shipped entry counts by its own engine name. ONLY THE CHAIN'S FIRST ENTRY IS
+// CONSULTED. The engine alone decides, per glyph, which entry a real paragraph
+// actually falls back to — that decision is AD-17's, and re-deriving it here
+// against a fixed sample string is exactly the browser-side measurement AD-17
+// forbids. The first entry is the chain's own declared primary, so a specimen
+// set in it is an honest answer to "what face is this" even where a longer
+// paragraph might fall through to the second.
+//
+// RETURNED AS `declaredEntry`, DELIBERATELY NOT `entry`. `canvas-font-stack.
+// test.ts`'s authority census anchors its shipped-face pattern to the literal
+// identifier `fragment` and poisons `entry.face` by name, because a document's
+// declared chain entry is not the engine's attribution for a PAINTED fragment
+// and must never stand in for one in the canvas's own paint path — the
+// hazard argued at `TextPaint`, below. This value never reaches that path: it
+// sets one `aria-hidden` specimen `<span>` with FIXED sample text, nothing is
+// measured, and there is no sibling fragment for a mismatched entry to
+// collide with. `declaredEntry` names that difference rather than hiding it.
+function declaredChainEntry(name: string, chains: CanvasProjection['fontChains']): CanvasProjection['fontChains'][number]['entries'][number] | undefined {
+  return chains.find((chain) => chain.name === name)?.entries[0]
+}
+
+/**
+ * BEST-EFFORT SCRIPT COVERAGE FOR A DECLARED ROW'S SAMPLE TEXT. A chain
+ * entry's own `family` is DISPLAY identity — the name a pick recorded, e.g.
+ * `Inter` — so it is looked up the same two places every other row's coverage
+ * comes from (`font-index.ts`'s local tier, then the snapshot), never
+ * invented. A miss here — the two committed faces with no index row, or a
+ * built-in engine name like `Noto Sans Thai` that names no offered family at
+ * all — costs only which SAMPLE prints, never which face the row is set in.
+ */
+function scriptsForFamilyName(family: string): ReadonlyArray<string> {
+  if (family === '') return []
+  return catalogueFaces.find((face) => face.family === family)?.scripts ?? indexRowFor(family)?.scripts ?? []
+}
+
+function FontFamilyProperty({ families, fontChains, carriedFaces, specimenBytes, components, ids, onCommit, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))
   const uniform = values.every((value) => value === values[0])
   const committed = uniform ? values[0] ?? '' : ''
@@ -1931,6 +2015,34 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
     if (browserWasOpen.current && !browserOpen) field.current?.focus()
     browserWasOpen.current = browserOpen
   }, [browserOpen])
+  // STORY 16.7 — THIS CONTROL'S OWN PREVIEW-FACE REGISTRY, ITS OWN INSTANCE.
+  //
+  // OPENED ON MOUNT AND CLOSED ON UNMOUNT, the same shape `FontBrowser.tsx`
+  // opens its own in — this component just stays mounted across many opens and
+  // closes of the DROPDOWN, where the modal only ever exists for one. "A face
+  // is registered only while the dropdown is open, and released when it
+  // closes" is enforced by the SHOW effect below rather than by tearing the
+  // registry down every time: `show([])` releases every family it holds, so a
+  // closed dropdown holds exactly zero preview faces on `document.fonts` —
+  // observably identical to a torn-down registry — without re-losing every
+  // in-flight fetch (and re-declining every failed one) on each reopen.
+  //
+  // THE RESOLVER IS READ THROUGH A REF for the same reason `FontBrowser` reads
+  // its own through one: a caller re-creating the closure every render must
+  // not tear the registry down and re-fetch everything on every keystroke.
+  const specimenBytesRef = useRef(specimenBytes)
+  useEffect(() => { specimenBytesRef.current = specimenBytes })
+  const [specimenTick, setSpecimenTick] = useState(0)
+  const [registry, setRegistry] = useState<PreviewFaceRegistry>()
+  useEffect(() => {
+    const opened = openPreviewFaceRegistry((family) => specimenBytesRef.current(family), () => setSpecimenTick((tick) => tick + 1))
+    setRegistry(opened)
+    return () => opened.close()
+  }, [])
+  const specimenStatus = (family: string): PreviewFaceStatus => {
+    void specimenTick
+    return registry?.statusOf(family) ?? 'preparing'
+  }
   const needle = query.trim().toLowerCase()
   const hit = (name: string) => needle === '' || name.toLowerCase().includes(needle)
   const declared = families.filter(hit)
@@ -1951,6 +2063,19 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
   // browser's row state so the two surfaces cannot disagree.
   const onThisMachine = addable.filter((source) => familyIsInstalled(source))
   const toInstall = addable.filter((source) => !familyIsInstalled(source))
+  // THE REGISTRY HOLDS EXACTLY THE FAMILIES THIS RENDER CAN SHOW A SPECIMEN
+  // FOR — `onThisMachine`, and never `shownToInstall`. Design Note (1) is why
+  // the web tier is never handed to `show`: it can then never be fetched by
+  // ANY trigger, scroll included, because it is never registered to begin
+  // with. NUL-JOINED for the reason `FontBrowser.tsx`'s own key is: family
+  // names contain spaces. EMPTY WHENEVER THE DROPDOWN IS CLOSED, so a stale
+  // key from the last time it was open cannot re-open the registry's `show`.
+  const installedFamilyKey = open ? onThisMachine.map((source) => source.family).join(' ') : ''
+  useEffect(() => { registry?.show(installedFamilyKey === '' ? [] : installedFamilyKey.split(' ')) }, [registry, installedFamilyKey])
+  // THE SCRIPT COVERAGE FOR EVERY `AVAILABLE LOCALLY` ROW, FROM THE SAME
+  // DERIVATION THE FONT BROWSER'S OWN ROWS USE, so the two surfaces cannot
+  // describe one family's coverage two different ways.
+  const installedRowByFamily = new Map(browserRows(onThisMachine).map((row) => [row.family, row]))
   // GROUP 2 IS DELIBERATELY UNCAPPED, AND THE REVISIT TRIGGER IS NAMED RATHER
   // THAN LEFT TO BE NOTICED. Its population is the 31 committed faces plus
   // whatever this designer has downloaded, so it is tens of rows and not
@@ -2051,6 +2176,56 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
     void commit({ field: 'fontFamily', operation: 'set', value: match.name })
   }
   const move = (step: number) => { if (matches.length > 0) setActive((current) => (current + step + matches.length) % matches.length) }
+  // THE SPECIMEN, DRAWN FOR EXACTLY TWO OF THE THREE GROUPS (Design Note 2 of
+  // Story 16.7). `AVAILABLE TO INSTALL` keeps its per-row note instead — drawn
+  // in the option below, never here — because its bytes are not on this
+  // machine and this story does not fetch them to paint a menu.
+  //
+  // OMITTED ENTIRELY UNLESS THE FACE IS READY OR ALREADY ON THE PAGE. A row
+  // whose face is still preparing, or that never resolves to one at all, shows
+  // no specimen and never a sample set in a substitute face — the honesty rule
+  // `FontBrowser.tsx:195-201` states in words, restated here as an omission
+  // because a dropdown row has no room for the sentence.
+  const specimenNode = (match: { name: string; source?: FamilySource }) => {
+    if (match.source) {
+      // ONLY A FACE THIS MACHINE ALREADY HOLDS EVER GETS ONE. `AVAILABLE TO
+      // INSTALL` rows are `web`-tier and are never handed to the registry
+      // above, so `installedRowByFamily` never has an entry for one either —
+      // this check is the honesty rule's belt to that mechanism's braces.
+      if (!familyIsInstalled(match.source)) return undefined
+      const row = installedRowByFamily.get(match.source.family)
+      if (row === undefined || specimenStatus(row.family) !== 'ready' || previewFaceFamily(row.family) === undefined) return undefined
+      return <span className="property-option-specimen" aria-hidden="true" lang={row.scripts.includes('thai') ? 'th' : undefined} style={{ fontFamily: previewFaceFamily(row.family) } as CSSProperties}>{row.scripts.includes('thai') ? familyControlThaiSample : familyControlLatinSample}</span>
+    }
+    // A DECLARED CHAIN SHOWS THE FACE IT PAINTS WITH (Design Note 3), resolved
+    // the way `TextPaint` resolves a fragment: a carried entry counts only
+    // once its asset key is actually in `carriedFaces`, a shipped entry counts
+    // by its own engine name — and NEITHER GOES THROUGH THIS CONTROL'S OWN
+    // REGISTRY AT ALL, because the face is already on `document.fonts`,
+    // registered for the open document or shipped with the build. Only the
+    // chain's first entry is consulted; the engine alone decides per glyph
+    // which entry a real paragraph actually uses (AD-17), and re-deriving
+    // that here from a fixed sample string is the measurement AD-17 forbids.
+    //
+    // THE TWO BRANCHES ARE WRITTEN OUT RATHER THAN FUNNELLED THROUGH A SHARED
+    // "resolve to a family" HELPER, so that each `fontFamily:` position in
+    // this file names the exact approved derivation it uses in the clear —
+    // `canvas-font-stack.test.ts`'s authority census reads designer source as
+    // text, and a helper that returned a plain string would read as an
+    // unapproved `css` at the one place that census actually looks.
+    const declaredEntry = declaredChainEntry(match.name, fontChains)
+    if (declaredEntry === undefined) return undefined
+    const scripts = scriptsForFamilyName(declaredEntry.family)
+    const lang = scripts.includes('thai') ? 'th' : undefined
+    const sample = scripts.includes('thai') ? familyControlThaiSample : familyControlLatinSample
+    if (isCarriedFaceAssetKey(declaredEntry.assetKey) && carriedFaces.has(declaredEntry.assetKey)) {
+      return <span className="property-option-specimen" aria-hidden="true" lang={lang} style={{ fontFamily: embeddedFaceFamily(declaredEntry.assetKey) } as CSSProperties}>{sample}</span>
+    }
+    if (isShippedFaceName(declaredEntry.face)) {
+      return <span className="property-option-specimen" aria-hidden="true" lang={lang} style={{ fontFamily: shippedFaceFamily(declaredEntry.face) } as CSSProperties}>{sample}</span>
+    }
+    return undefined
+  }
   const errorId = error ? 'property-error-fontFamily' : undefined
   return <div className="property-editor property-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close() }}>
     <div className="property-field">
@@ -2098,7 +2273,13 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
           <p className="property-option-heading" aria-hidden="true">{group.label}</p>
           {group.rows.map((match, offset) => {
             const index = group.from + offset
-            return <div key={`${group.key}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}>{match.name}{match.source && <span className="property-option-note">{familySourceNote(match.source)}</span>}</div>
+            // THE SPECIMEN REPLACES THE PER-ROW NOTE IN THE FIRST TWO GROUPS
+            // (Design Note 2): a family this machine already holds, or a chain
+            // the document already declares, draws a specimen instead of
+            // restating what its own group heading already says. The note
+            // survives on `AVAILABLE TO INSTALL` alone, where it still does
+            // the most work — that group's bytes are not on this machine.
+            return <div key={`${group.key}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}><span className="property-option-name">{match.name}</span>{specimenNode(match)}{match.source && !familyIsInstalled(match.source) && <span className="property-option-note">{familySourceNote(match.source)}</span>}</div>
           })}
           {/* THE CAP NOTE IS THIS GROUP'S DESCRIPTION, not a row in it: hidden
               from the tree where it would be a non-option child, and named by

@@ -155,7 +155,29 @@ const bytes = new Uint8Array([1, 2, 3]).buffer
 // family this machine does not hold, or USE one it does — and the one phrase all
 // three arms still share is the machine. `font-index.test.ts` is where the three
 // sentences themselves are pinned; this only needs the partition.
-const declaredOptions = () => within(screen.getByRole('listbox', { name: 'Fonts' })).queryAllByRole('option').filter((option) => !(option.textContent ?? '').includes('this machine'))
+// STORY 16.7 GAVE EVERY OPTION AN ARIA-HIDDEN SPECIMEN, so raw `textContent`
+// now carries a sample the row's accessible name deliberately excludes (the
+// honesty rule requires it: the specimen is decorative to assistive
+// technology). `optionText` reads what a screen reader would — the row's name
+// and its note, if it still has one — by dropping every `aria-hidden`
+// descendant before reading text, so these assertions stay about what the row
+// SAYS rather than about whether its specimen happened to finish loading.
+const optionText = (option: Element): string => {
+  const clone = option.cloneNode(true) as Element
+  clone.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove())
+  return clone.textContent ?? ''
+}
+// AND `declaredOptions` NOW SCOPES BY GROUP MEMBERSHIP RATHER THAN BY TEXT.
+// The "this machine" substring used to be true of every non-declared row and
+// false of every declared one; Story 16.7 (D-16.R.72, narrowed) removed the
+// per-row note from `AVAILABLE LOCALLY` too, so that heuristic would now let a
+// local-tier row through as though it were declared. `IN THIS TEMPLATE` is the
+// group's own accessible name and the one fact this control never overloads.
+const declaredOptions = () => {
+  const listbox = screen.getByRole('listbox', { name: 'Fonts' })
+  const group = within(listbox).queryByRole('group', { name: 'IN THIS TEMPLATE' })
+  return group ? within(group).queryAllByRole('option') : []
+}
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
@@ -1503,7 +1525,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     // a catalogue entry is not a chain the document declares, and folding the
     // two together would make "the document's declared chains" mean "every
     // family that exists".
-    const listed = () => declaredOptions().map((option) => option.textContent)
+    const listed = () => declaredOptions().map(optionText)
     expect(listed()).toEqual(['body', 'heading'])
     fireEvent.change(combobox, { target: { value: 'head' } })
     expect(listed()).toEqual(['heading'])
@@ -1537,7 +1559,7 @@ describe('typography controls over the engine-projected closed sets', () => {
   // than against a class name, which would pass on a control that grouped
   // alphabetically.
   const dropdown = () => screen.getByRole('listbox', { name: 'Fonts' })
-  const groupRows = (label: string) => within(screen.getByRole('group', { name: label })).getAllByRole('option').map((option) => option.textContent ?? '')
+  const groupRows = (label: string) => within(screen.getByRole('group', { name: label })).getAllByRole('option').map(optionText)
 
   it('draws the three groups, disjoint and complete, on the where-are-the-bytes axis', () => {
     select()
@@ -1554,7 +1576,12 @@ describe('typography controls over the engine-projected closed sets', () => {
     expect(new Set(names).size).toBe(names.length)
     // AND EACH HEADING TELLS THE TRUTH ABOUT ITS OWN ROWS.
     expect(template).toEqual(['body', 'heading'])
-    expect(local.every((text) => /already (on|downloaded to) this machine/.test(text)), `every AVAILABLE LOCALLY row must be one that needs no download: ${local.slice(0, 3).join(' / ')}`).toBe(true)
+    // STORY 16.7 (Design Note 2, narrowing D-16.R.72): the per-row note that
+    // used to restate "needs no download" is now the specimen instead, so the
+    // truthful claim left to make about AVAILABLE LOCALLY's OWN ROWS is that
+    // none of them still carries any note at all — the heading is the one
+    // carrier now, and the install group is the only row that still needs one.
+    expect(local.every((text) => !text.includes(' — ')), `no AVAILABLE LOCALLY row may still carry a per-row note: ${local.slice(0, 3).join(' / ')}`).toBe(true)
     expect(install.every((text) => /install on this machine/.test(text)), `every AVAILABLE TO INSTALL row must be one that is not here yet: ${install.slice(0, 3).join(' / ')}`).toBe(true)
     // THE SECOND GROUP IS POPULATED ON A FRESH MACHINE, which is the half of
     // D-16.R.72 a store-shaped reading of the heading would have got wrong: the
@@ -1699,7 +1726,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     // one of the 21 committed faces — the LOCAL FACE TIER — so its row states
     // that nothing is downloaded. A family that exists only in the build-time
     // index snapshot carries the plain note, because picking it fetches.
-    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*use it, already on this machine$/ })
+    const inter = screen.getByRole('option', { name: /^Inter$/ })
     expect(inter).toBeInTheDocument()
     // STORY 16.4: THREE HEADINGS, ON THE AXIS `WHERE ARE THE BYTES`. The two
     // 8.6 shipped — `In this document` and `Catalogue — not yet in this
@@ -1728,7 +1755,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     // no answer in the UI. Recorded here rather than left to be rediscovered.
     // The declared group never carries the addition note: picking one of those
     // sets a property, and it is already in the file.
-    expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])
+    expect(declaredOptions().map(optionText)).toEqual(['body', 'heading'])
     // AND A SNAPSHOT-ONLY FAMILY IS REACHED BY TYPING, because the painted list
     // is capped while the count is not: `Kanit` is in the published library and
     // not among the 21, its row carries the PLAIN note because picking it
@@ -1765,7 +1792,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       const request = select()
       const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
       fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*use it, already on this machine$/ }))
+      fireEvent.click(screen.getByRole('option', { name: /^Inter$/ }))
       await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
       // THE BYTES CAME FROM THE BUNDLE, not from a host. The URL is one of the
       // release's own content-addressed assets, which is what makes the pick
@@ -1866,7 +1893,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       // moves from the install note to the already-downloaded one has a record
       // the store accepted rather than bytes dropped on the floor.
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      expect(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /^Kanit$/ })).toBeInTheDocument()
     } finally {
       globalThis.fetch = restore
       restoreStore()
@@ -2009,7 +2036,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ }))
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit$/ }))
       await waitFor(() => expect(embeds()).toBeGreaterThan(before))
     } finally {
       globalThis.fetch = restore
@@ -3074,7 +3101,7 @@ describe('the font chain editor, where fonts are chosen', () => {
     expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(1)
     expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem')).toHaveLength(2)
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-    expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])
+    expect(declaredOptions().map(optionText)).toEqual(['body', 'heading'])
   })
 
   // The reorder row's ERROR cell. `fontChainIndex` refuses an out-of-range

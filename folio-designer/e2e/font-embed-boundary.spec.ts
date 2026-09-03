@@ -109,22 +109,34 @@ async function currentRevision(page: import('@playwright/test').Page): Promise<n
 // is INSTALLED and reaches no document at all. The local tier is the first case,
 // which is why this file's every-family-embedded measurement below survives the
 // split intact.
-const LOCAL_NOTE = ' — use it, already on this machine'
+//
+// STORY 16.7 REMOVED `LOCAL_NOTE` FROM THE ROW (Design Note 2): a specimen
+// replaced it, so a local-tier row's own text is now just its family name.
+// `WEB_NOTE` survives untouched — that group keeps its note — but the LOCAL
+// half of this measurement now has to find its rows by GROUP MEMBERSHIP and
+// read each one's name off `.property-option-name`, never off a note this
+// group no longer carries.
 const WEB_NOTE = ' — install on this machine'
 
 test('the designer offers the whole local face tier, marked as needing no download', async ({ page }) => {
   await placeAndSelectText(page)
   await page.getByRole('combobox', { name: 'Font family' }).click()
-  const options = await page.getByRole('listbox', { name: 'Fonts' }).getByRole('option').allTextContents()
-  const local = options.filter((text) => text.includes(LOCAL_NOTE)).map((text) => text.replace(LOCAL_NOTE, '').trim())
+  const local = (await page.getByRole('group', { name: 'AVAILABLE LOCALLY' }).getByRole('option').locator('.property-option-name').allTextContents()).map((text) => text.trim())
   expect([...local].sort()).toEqual([...families].sort())
   // AND THE SECOND TIER IS REALLY THERE, distinct from the first: rows that
   // carry the install note are families whose bytes are not on this machine.
-  const web = options.filter((text) => text.includes(WEB_NOTE) && !text.includes(LOCAL_NOTE))
+  const options = await page.getByRole('listbox', { name: 'Fonts' }).getByRole('option').allTextContents()
+  const web = options.filter((text) => text.includes(WEB_NOTE))
   expect(web.length, 'the snapshot tier must contribute rows of its own').toBeGreaterThan(0)
   // AND THE COUNT IS THE ADDABLE COUNT, WITH THE LIST'S STALENESS STATED. The
   // family list is a build-time snapshot — its endpoint sends no CORS header —
   // and only the typeface is fetched.
+  //
+  // RETIRED, PRE-EXISTING (OWNER, 2026-09-03): the standing disclosure above
+  // `Add fonts…` was cut before this story started (baseline `cd7e683`), so
+  // this assertion was already false when Story 16.7 opened. It is a defect
+  // this story found rather than caused, and is left exactly as it was found
+  // rather than repaired as a drive-by — see the story's Delivery Log.
   const disclosure = options.find((text) => text.includes('families you can add'))
   expect(disclosure, 'the control must state how many families can be added').toBeTruthy()
   expect(disclosure).toMatch(/snapshot taken on \d{4}-\d{2}-\d{2}/)
@@ -164,7 +176,7 @@ test('every catalogue family embeds, and no pick is answered by a boundary sente
     const combobox = page.getByRole('combobox', { name: 'Font family' })
     await combobox.click()
     await combobox.fill(family)
-    await page.getByRole('option', { name: `${family}${LOCAL_NOTE}` }).click()
+    await page.getByRole('option', { name: family, exact: true }).click()
     let outcome = 'TIMED OUT with no engine answer'
     try {
       await expect

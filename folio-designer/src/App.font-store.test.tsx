@@ -12,6 +12,14 @@ import { previewFaceFamily } from './preview-face-family'
 import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
 import { addableFamilyCount, webFamilies } from './font-index'
 import { catalogueFaces } from './generated/font-catalogue'
+import { shippedFaceFamily } from './shipped-face-family'
+
+// STORY 16.7'S OWN SHORT SAMPLE TEXT, deliberately NOT `font-browser-model.
+// ts`'s `latinSample`/`thaiSample` — see `App.tsx`'s own comment on
+// `familyControlLatinSample` for why the dropdown draws different text than
+// the font browser's full sentence.
+const familyControlLatinSample = 'Aa Bb 123'
+const familyControlThaiSample = 'กขค Aa'
 
 // STORY 16.2 AT THE BROWSER BOUNDARY — A FETCHED FACE STAYS ON THIS MACHINE.
 //
@@ -171,6 +179,16 @@ const mount = (request: unknown, chains = canvas.fontChains) => {
 }
 
 const commandRequest = () => vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }))
+
+// STORY 16.7 GAVE EVERY OPTION AN ARIA-HIDDEN SPECIMEN, so raw `textContent`
+// now carries a sample the row's accessible name deliberately excludes. This
+// reads what a screen reader would — the row's name and its note, if it still
+// has one — by dropping every `aria-hidden` descendant first.
+const optionText = (option: Element): string => {
+  const clone = option.cloneNode(true) as Element
+  clone.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove())
+  return clone.textContent ?? ''
+}
 
 /** Drives the family control the way an author does. Returns false when the row is not offered. */
 const pick = (query: string, name: RegExp) => {
@@ -368,7 +386,7 @@ describe('a fetched face stays on this machine', () => {
     // is what this asserts.
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /^Kanit$/ })).toBeInTheDocument()
   })
 
   // AC2 AND AC3 TOGETHER, WHICH IS THE WHOLE POINT OF THE STORE, RE-ANCHORED BY
@@ -402,7 +420,7 @@ describe('a fetched face stays on this machine', () => {
     globalThis.fetch = offline as never
     fireEvent.click(screen.getByLabelText('text component e1'))
     const before = embedPayloads(first).length
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the stored family must still be offered offline').toBe(true)
+    expect(pick('Kanit', /^Kanit$/), 'the stored family must still be offered offline').toBe(true)
     await waitFor(() => expect(embedPayloads(first).length).toBeGreaterThan(before))
     expect(offline, 'a stored pick must not reach the network at all').not.toHaveBeenCalled()
 
@@ -492,7 +510,7 @@ describe('a fetched face stays on this machine', () => {
     // fails, so an embed that completes can only have read the machine's copy.
     const refuse = vi.fn(async () => { throw new TypeError('a face already on this machine must not be fetched') })
     globalThis.fetch = refuse as never
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit$/)).toBe(true)
     // TWO COMMANDS AND TWO UNDO ENTRIES, in the order the engine forces.
     await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
     expect(refuse, 'a pick from AVAILABLE LOCALLY must not touch the network').not.toHaveBeenCalled()
@@ -548,7 +566,7 @@ describe('a fetched face stays on this machine', () => {
     expect(undo(), 'installing is not a document change and may not be undoable').toBeDisabled()
 
     // FIRST USE — the embed, then the property.
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit$/)).toBe(true)
     await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
     await waitFor(() => expect(undo()).toBeEnabled())
 
@@ -587,7 +605,7 @@ describe('a fetched face stays on this machine', () => {
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
     const install = within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option')
     // IT IS UNDER THE HEADING THAT SAYS THE BYTES ARE HERE, AND IT SAYS SO.
-    expect(local.map((option) => option.textContent)).toContain('Philosopher — use it, already downloaded to this machine')
+    expect(local.map(optionText)).toContain('Philosopher')
     // AND THE GROUP IS DRAWN IN FULL — 31 committed faces plus this one against
     // a 50-row cap that used to be applied to the union before the split.
     expect(local, 'every installed row renders; the cap belongs to the other group').toHaveLength(catalogueFaces.length + 1)
@@ -733,7 +751,7 @@ describe('a fetched face stays on this machine', () => {
     // FIRST USE STILL WORKS. A refusal here would be the permanent local failure
     // the ruling refused: the author would have to find and press a removal
     // control on a row whose face is already gone.
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the stale listing must still offer the family').toBe(true)
+    expect(pick('Kanit', /^Kanit$/), 'the stale listing must still offer the family').toBe(true)
     await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
     expect(screen.queryByRole('alert'), 'a self-healing path states no refusal').not.toBeInTheDocument()
 
@@ -826,7 +844,7 @@ describe('a fetched face stays on this machine', () => {
     expect(sent, 'the install must not have sent anything for the engine to refuse').toEqual([])
 
     // FIRST USE — and this is where the refusal arrives.
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit$/)).toBe(true)
     const alert = await screen.findByRole('alert')
 
     // THE THREE THINGS THE ENGINE'S OWN SENTENCE CANNOT SAY, AND NO FOURTH.
@@ -911,7 +929,7 @@ describe('a fetched face stays on this machine', () => {
     const original = FakeIndexedDBObjectStore.prototype.put
     FakeIndexedDBObjectStore.prototype.put = function refuse(): never { throw new DOMException('the origin has no room left for this face', 'QuotaExceededError') }
     try {
-      expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+      expect(pick('Kanit', /^Kanit$/)).toBe(true)
       await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
     } finally {
       FakeIndexedDBObjectStore.prototype.put = original
@@ -952,7 +970,7 @@ describe('a fetched face stays on this machine', () => {
       return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
     })
     mount(request)
-    expect(pick('Inter', /^Inter\s*—\s*use it, already on this machine$/), 'a committed local-tier family must be offered for use').toBe(true)
+    expect(pick('Inter', /^Inter$/), 'a committed local-tier family must be offered for use').toBe(true)
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe(`Inter is installed on this machine and cannot be embedded in this document: ${contradiction} Nothing was written to the document, and the face is still on this machine.`)
     expect(alert.textContent, 'no remedy remains to offer').not.toMatch(/remove/i)
@@ -987,7 +1005,7 @@ describe('a fetched face stays on this machine', () => {
     await waitForStoredFamily('Kanit')
 
     holdTheEmbed = true
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit$/)).toBe(true)
     await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
 
     // THE DOCUMENT IS REPLACED WHILE THE EMBED IS STILL IN FLIGHT.
@@ -1213,7 +1231,7 @@ describe('a fetched face stays on this machine', () => {
     // discoverability, because `AVAILABLE LOCALLY` is the family control's own
     // list and was never the deleted panel's to begin with.
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
-    for (const family of fixtures) expect(local.map((option) => option.textContent)).toContain(`${family} — use it, already downloaded to this machine`)
+    for (const family of fixtures) expect(local.map(optionText)).toContain(family)
   })
 })
 
@@ -1328,5 +1346,225 @@ describe('a pick that stalls rather than failing', () => {
     // rather than of when the assertion happened to run.
     await Promise.resolve()
     expect(fetchStub).toHaveBeenCalledTimes(1)
+  })
+})
+
+// STORY 16.7 — EVERY ROW SHOWS THE TYPEFACE IT NAMES, ONE TEST PER MATRIX ROW.
+//
+// Driven through the mounted designer, never through a unit resolver: the
+// claim is that the FAMILY CONTROL's own dropdown draws a specimen, which is a
+// fact about `App.tsx` wiring three modules together (the registry, the
+// bytes reader, and the declared-chain resolution) and not a fact any one of
+// them can prove alone. `getByRole`'s accessible-name matching is used
+// throughout precisely because it is what excludes the `aria-hidden`
+// specimen — the same computation a screen reader performs.
+describe('Story 16.7 — every row shows the typeface it names', () => {
+  it('matrix: local-tier row — sets Arimo\'s specimen in Arimo itself, right of the name', async () => {
+    const arimo = catalogueFaces.find((entry) => entry.family === 'Arimo')
+    if (!arimo) throw new Error('Arimo is missing from the local-tier fixture')
+    const bytes = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    const fontSet = installStubFontSet()
+    globalThis.fetch = vi.fn(async (url: string) => url === arimo.url ? { ok: true, arrayBuffer: async () => bytes } : { ok: false, status: 404, text: async () => '' }) as never
+    try {
+      mount(commandRequest())
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      const option = await screen.findByRole('option', { name: 'Arimo' })
+      await waitFor(() => expect(option.querySelector('.property-option-specimen')).not.toBeNull())
+      const specimen = option.querySelector('.property-option-specimen') as HTMLElement
+      expect(specimen.getAttribute('aria-hidden')).toBe('true')
+      expect(specimen.style.fontFamily).toBe(previewFaceFamily('Arimo'))
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('matrix: Thai-covering row — the sample is Thai and lang is th, for a face whose scripts include thai', async () => {
+    const family = 'Noto Sans Thai Looped'
+    const thaiFace = catalogueFaces.find((entry) => entry.family === family)
+    if (!thaiFace) throw new Error(`${family} is missing from the local-tier fixture`)
+    expect(thaiFace.scripts, 'the fixture must really cover Thai, or this measures nothing').toContain('thai')
+    const bytes = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    const fontSet = installStubFontSet()
+    globalThis.fetch = vi.fn(async (url: string) => url === thaiFace.url ? { ok: true, arrayBuffer: async () => bytes } : { ok: false, status: 404, text: async () => '' }) as never
+    try {
+      mount(commandRequest())
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: family } })
+      const option = await screen.findByRole('option', { name: family })
+      await waitFor(() => expect(option.querySelector('.property-option-specimen')).not.toBeNull())
+      const specimen = option.querySelector('.property-option-specimen') as HTMLElement
+      expect(specimen.getAttribute('lang')).toBe('th')
+      expect(specimen.textContent).toBe(familyControlThaiSample)
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('matrix: stored row — the specimen is set from the store, with no network at all', async () => {
+    const family = 'A Stored Specimen Face'
+    const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: `Copyright 2026 ${family}` }])
+    const key = await storedFaceKey(bytes)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, bytes), family })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+    const fontSet = installStubFontSet()
+    const fetchSpy = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    globalThis.fetch = fetchSpy as never
+    try {
+      mount(commandRequest())
+      await waitForStoredFamily(family)
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      // NARROWED IN THE SAME EVENT THE DROPDOWN OPENS WITH, never focused
+      // first: an empty-query open would also show every `AVAILABLE LOCALLY`
+      // row, each costing a real fetch of its own local URL that has nothing
+      // to do with the one claim this test makes.
+      fireEvent.change(combobox, { target: { value: family } })
+      const option = await screen.findByRole('option', { name: family })
+      await waitFor(() => expect(option.querySelector('.property-option-specimen')).not.toBeNull())
+      const specimen = option.querySelector('.property-option-specimen') as HTMLElement
+      expect(specimen.style.fontFamily).toBe(previewFaceFamily(family))
+      expect(fetchSpy, 'a stored face must cost no network at all').not.toHaveBeenCalled()
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('matrix: web-tier row — no specimen, and the row is never fetched to draw one', async () => {
+    const family = webFamilies[0]?.family
+    if (family === undefined) throw new Error('the web tier fixture is empty')
+    const fetchSpy = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    globalThis.fetch = fetchSpy as never
+    const fontSet = installStubFontSet()
+    try {
+      mount(commandRequest())
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      // THE QUERY IS TYPED IN ONE EVENT, NEVER FOCUSED FIRST. Opening with an
+      // empty query would show every `AVAILABLE LOCALLY` row too — a true
+      // fact about THOSE rows this test is not about — and each would cost a
+      // real fetch of its own local URL, swamping the one assertion this test
+      // makes. `onChange` opens the dropdown and narrows the query in the
+      // same event, so the only row this control ever shows is the web-tier
+      // one under test.
+      fireEvent.change(combobox, { target: { value: family } })
+      // THE ACCESSIBLE NAME COLLAPSES THE NOTE'S LEADING SPACE — the pattern
+      // this file's other tests already match with, `\s*` and all.
+      const option = await screen.findByRole('option', { name: new RegExp(`^${family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*—\\s*install on this machine$`) })
+      expect(option.querySelector('.property-option-specimen')).toBeNull()
+      expect(fetchSpy, 'a web-tier row must never be fetched to draw a menu').not.toHaveBeenCalled()
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('matrix: bytes unreadable — no specimen, never a substitute face, and the row stays pickable', async () => {
+    const family = 'An Unreadable Stored Face'
+    const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: `Copyright 2026 ${family}` }])
+    const key = await storedFaceKey(bytes)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, bytes), family })
+    expect(written.ok, 'the fixture face must really be in the store before the read is broken').toBe(true)
+    const fontSet = installStubFontSet()
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+    const originalGet = FakeIndexedDBObjectStore.prototype.get
+    FakeIndexedDBObjectStore.prototype.get = function refuse(): never { throw new DOMException('the store cannot be read', 'UnknownError') }
+    try {
+      mount(commandRequest())
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: family } })
+      const option = await screen.findByRole('option', { name: family })
+      // NEVER A SUBSTITUTE: give the declined read every chance to settle
+      // before asserting the negative.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(option.querySelector('.property-option-specimen')).toBeNull()
+      // AND STILL PICKABLE — a face this control cannot preview is not a face
+      // it refuses to let the author choose.
+      fireEvent.click(option)
+      expect(screen.queryByRole('listbox', { name: 'Fonts' }), 'the pick must have gone through, closing the dropdown').not.toBeInTheDocument()
+    } finally {
+      FakeIndexedDBObjectStore.prototype.get = originalGet
+      fontSet.restore()
+    }
+  })
+
+  it('matrix: declared chain row — the specimen is set in the face it resolves to', () => {
+    mount(commandRequest())
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    const templateGroup = screen.getByRole('group', { name: 'IN THIS TEMPLATE' })
+    const bodyOption = within(templateGroup).getByRole('option', { name: 'body' })
+    const specimen = bodyOption.querySelector('.property-option-specimen') as HTMLElement | null
+    // THE FIXTURE'S `body` CHAIN IS `entries: [face('Noto Sans')]` — a shipped
+    // entry, present without embedding anything — so this is the "declared
+    // chain paints a shipped face" half of the matrix row.
+    expect(specimen, 'a chain resolving to a shipped face must draw a specimen').not.toBeNull()
+    expect(specimen!.getAttribute('aria-hidden')).toBe('true')
+    // jsdom's own CSSOM reserializes a quoted family list with double quotes
+    // on the way back out of `.style.fontFamily`; the quote CHARACTER is a
+    // jsdom detail, never this control's claim, so both sides are compared
+    // with their quoting normalised away.
+    expect(specimen!.style.fontFamily.replace(/['"]/g, '')).toBe(shippedFaceFamily('Noto Sans')!.replace(/['"]/g, ''))
+    expect(specimen!.textContent).toBe(familyControlLatinSample)
+  })
+
+  it('matrix: declared chain row — none when the chain resolves to no carried or shipped face', () => {
+    // AN ENTRY THAT IS NEITHER: `assetKey` is not a carried key and `face` is
+    // empty, so it fails both `isCarriedFaceAssetKey` and `isShippedFaceName`.
+    mount(commandRequest(), [{ name: 'body', entries: [{ face: '', assetKey: '', family: '', style: '' }] }])
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    const templateGroup = screen.getByRole('group', { name: 'IN THIS TEMPLATE' })
+    const bodyOption = within(templateGroup).getByRole('option', { name: 'body' })
+    expect(bodyOption.querySelector('.property-option-specimen')).toBeNull()
+  })
+
+  it('matrix: dropdown closed — every face this control registered is released', async () => {
+    const arimo = catalogueFaces.find((entry) => entry.family === 'Arimo')
+    if (!arimo) throw new Error('Arimo is missing from the local-tier fixture')
+    const bytes = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    // A STUB THAT TRACKS REMOVAL, unlike this file's own `installStubFontSet`
+    // (whose `added` array only ever grows). Releasing on close is exactly
+    // the fact under test, so this test needs to see a face LEAVE the set.
+    class StubFace {
+      readonly family: string
+      constructor(family: string) { this.family = family }
+      load(): Promise<StubFace> { return Promise.resolve(this) }
+    }
+    const live: StubFace[] = []
+    Object.defineProperty(globalThis, 'FontFace', { value: StubFace, configurable: true, writable: true })
+    Object.defineProperty(document, 'fonts', { value: { add: (loaded: StubFace) => { live.push(loaded) }, delete: (loaded: StubFace) => { const at = live.indexOf(loaded); if (at >= 0) live.splice(at, 1) } }, configurable: true, writable: true })
+    globalThis.fetch = vi.fn(async (url: string) => url === arimo.url ? { ok: true, arrayBuffer: async () => bytes } : { ok: false, status: 404, text: async () => '' }) as never
+    try {
+      mount(commandRequest())
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      await waitFor(() => expect(live.length).toBeGreaterThan(0))
+      fireEvent.keyDown(combobox, { key: 'Escape' })
+      expect(screen.queryByRole('listbox', { name: 'Fonts' })).not.toBeInTheDocument()
+      expect(live, 'closing the dropdown must release every face it registered').toEqual([])
+    } finally {
+      Reflect.deleteProperty(globalThis, 'FontFace')
+      Reflect.deleteProperty(document, 'fonts')
+    }
+  })
+
+  it('matrix: screen reader on any row — the accessible name is the family alone, with the specimen absent from it', async () => {
+    const arimo = catalogueFaces.find((entry) => entry.family === 'Arimo')
+    if (!arimo) throw new Error('Arimo is missing from the local-tier fixture')
+    const bytes = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    const fontSet = installStubFontSet()
+    globalThis.fetch = vi.fn(async (url: string) => url === arimo.url ? { ok: true, arrayBuffer: async () => bytes } : { ok: false, status: 404, text: async () => '' }) as never
+    try {
+      mount(commandRequest())
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      const option = await screen.findByRole('option', { name: 'Arimo' })
+      await waitFor(() => expect(option.querySelector('.property-option-specimen')).not.toBeNull())
+      // STILL EXACTLY "Arimo": the specimen that just appeared inside this
+      // very row is `aria-hidden` and never enters its accessible name.
+      expect(screen.getByRole('option', { name: 'Arimo' })).toBe(option)
+    } finally {
+      fontSet.restore()
+    }
   })
 })

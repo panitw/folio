@@ -260,15 +260,43 @@ const shippedFaceDerivedFamily = /^shippedFaceFamily\(fragment\.face\)$/
 // modal row is on screen. A preview family reaching a canvas fragment would fail
 // the two patterns above exactly as any other unapproved value does.
 //
-// ANCHORED TO `row.family` AND TO THE BROWSER'S OWN SOURCE, both. The positions
-// list below is exact per file, so this derivation is admitted in
-// `FontBrowser.tsx` and nowhere else, and the near-miss it would otherwise wave
-// through — `previewFaceFamily(entry.family)` over a CHAIN entry, a document's
-// vocabulary wearing an approved call's spelling — is red by the same anchoring
-// that keeps `shippedFaceFamily(entry.face)` red.
+// ANCHORED TO `row.family`, never to a bare identifier. The near-miss it
+// would otherwise wave through — `previewFaceFamily(entry.family)` over a
+// CHAIN entry, a document's own vocabulary wearing an approved call's
+// spelling — is red by the same anchoring that keeps `shippedFaceFamily(
+// entry.face)` red. STORY 16.7 ADMITS IT IN A SECOND FILE: the family
+// control's own `AVAILABLE LOCALLY` rows are described by `browserRows` —
+// the exact function `FontBrowser.tsx`'s rows already come from — so their
+// `row.family` is the same offered-catalogue vocabulary, never a document's.
 const previewDerivedFamily = /^previewFaceFamily\(row\.family\)$/
 
-const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily, previewDerivedFamily] as const
+// AND THE FOURTH, ADDED BY STORY 16.7, FOR A SURFACE THAT IS NOT THE CANVAS
+// EITHER — a declared chain's OWN specimen, drawn on the family control's
+// dropdown row.
+//
+// WHY THIS DOES NOT REOPEN THE HAZARD `shippedFaceDerivedFamily` GUARDS. That
+// pattern is anchored to `fragment` because a chain entry has not been
+// attributed by the engine to any PAINTED text, and letting one stand in for
+// `fragment.face` would let a fallback the engine never chose for THIS
+// glyph run collide, at the pixel, with widths the engine measured under a
+// different face (the whole reason `TextPaint` trusts only its own
+// fragment). `declaredEntry.face` below never reaches that path: it names
+// the CSS family of one `aria-hidden` `<span>` holding FIXED sample text,
+// nothing about it is measured, and there is no sibling fragment position
+// for a mismatched entry to disagree with. It is the chain's own declared
+// primary — Design Note 3 of Story 16.7 is that the menu and the canvas
+// should agree on what a chain paints with, not a claim about a specific
+// glyph run.
+//
+// ANCHORED TO `declaredEntry`, A NAME THIS CENSUS HAS NEVER SEEN BEFORE, and
+// deliberately not to `entry` — the identifier `shippedFaceDerivedFamily`
+// above poisons by name for exactly the canvas hazard this derivation does
+// not carry. Two different provenances get two different names rather than
+// one name doing double duty; `entry.face` stays red, unapproved, exactly as
+// it did before this story.
+const declaredChainShippedFamily = /^shippedFaceFamily\(declaredEntry\.face\)$/
+
+const approvedFontFamilyDerivations = [assetKeyDerivedFamily, shippedFaceDerivedFamily, previewDerivedFamily, declaredChainShippedFamily] as const
 
 function unapprovedFontFamilyDeclarations(source: string): ReadonlyArray<string> {
   return fontFamilyDeclarations(source).filter((value) => !approvedFontFamilyDerivations.some((approved) => approved.test(value)))
@@ -857,30 +885,39 @@ describe('the canvas paints with the faces the engine measured', () => {
   // CHAIN ENTRY in a font-family position — a tripwire on one obvious route,
   // which an asset-key-derived family would have walked straight past, green,
   // by simply not being spelled `chain.entries[0]`. It now says the opposite
-  // way round, which is the strictly stronger claim: a font-family position
-  // may name ONE thing, the family derived from the asset key the engine
-  // attributed, and every other spelling — a chain entry, a chain name, an
-  // asset's `font.family`, the projected `fontFamily` field, a literal — is a
-  // violation.
+  // way round, which is the strictly stronger claim: in the canvas's own
+  // paint path a font-family position may name ONE thing, the family derived
+  // from the asset key the engine attributed, and every other spelling — a
+  // chain entry, a chain name, an asset's `font.family`, the projected
+  // `fontFamily` field, a literal — is a violation. (Story 16.7 widened the
+  // census to two further surfaces that are not the canvas's paint path at
+  // all, each admitted by its own narrowly-anchored pattern below — never by
+  // loosening this one.)
   //
   // AND IT NO LONGER TAXES PROSE. The old form scanned raw file text, so a
   // COMMENT explaining what not to write reddened it; the two directions are
   // both proved in the test below this one.
-  it('permits only a family derived from one of the engine\'s two attribution identities in a font-family position, in every designer source', () => {
+  it('permits only a closed set of approved family derivations in a font-family position, in every designer source', () => {
     const sources = designerSources()
     expect(sources.length).toBeGreaterThan(10)
     const positions = sources.flatMap(([name, source]) => fontFamilyDeclarations(source).map((value) => `${name}: ${value}`))
-    // NON-VACUITY AND THE WHOLE CLAIM IN ONE LIST: there are exactly TWO CSS
-    // font-family positions in the designer's TypeScript, both are the canvas
-    // fragment's, and each names the family derived from one of the engine's
-    // two identities for the face it measured with — the carried face's asset
-    // key and the shipped face's `FontSet` name. A CLOSED SET, never a
-    // containment: the fragment's family moved out of the stylesheet and into
-    // an inline style for the shipped population too, and an inline family
-    // string escapes an `App.css`-only scan without anyone editing a guard.
-    // This list is what notices. `App.css`'s own literal stack is a stylesheet
-    // constant and is guarded separately, above and below.
+    // NON-VACUITY AND THE WHOLE CLAIM IN ONE LIST, EXACT PER FILE AND IN
+    // SOURCE ORDER. Two of these five are the canvas fragment's — the ONLY
+    // two names that may ever paint a real glyph run, each one of the
+    // engine's two attribution identities for the face it measured with. The
+    // other three are not about the canvas at all: `FontFamilyProperty`'s own
+    // two (Story 16.7) set one `aria-hidden` specimen `<span>` each — a face
+    // already on `document.fonts` for the DECLARED-chain row, and a
+    // registered preview face for the AVAILABLE LOCALLY row — and
+    // `FontBrowser.tsx`'s is the same preview mechanism for its own rows. A
+    // CLOSED SET, never a containment: an inline family string escapes an
+    // `App.css`-only scan without anyone editing a guard, which is what this
+    // list notices. `App.css`'s own literal stack is a stylesheet constant
+    // and is guarded separately, above and below.
     expect(positions).toEqual([
+      'App.tsx: previewFaceFamily(row.family)',
+      'App.tsx: embeddedFaceFamily(declaredEntry.assetKey)',
+      'App.tsx: shippedFaceFamily(declaredEntry.face)',
       'App.tsx: embeddedFaceFamily(fragment.assetKey)',
       'App.tsx: shippedFaceFamily(fragment.face)',
       'FontBrowser.tsx: previewFaceFamily(row.family)',

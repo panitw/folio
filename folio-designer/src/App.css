@@ -220,6 +220,21 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
 .property-option { padding: var(--space-2) var(--space-3); color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .property-option-active { background: var(--color-active); color: var(--color-ink-high); }
 .property-option[aria-selected="true"] { color: var(--color-select); }
+/* STORY 16.7 — NAME LEFT, SPECIMEN RIGHT, ON ONE LINE. `:not(.property-option-
+   empty)` scopes this to an actual OPTION: `.property-option-empty` is the cap
+   note and the no-match sentences, which are `<p>` elements sharing this class
+   for their own reasons and keep their block layout, wrapping across as many
+   lines as the sentence needs. An option never grows past one line: both
+   children clip with an ellipsis rather than wrap, which is what keeps this
+   change from moving the 168px scroller's row count. */
+.property-option:not(.property-option-empty) { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.property-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* THE SPECIMEN IS SET IN THE FACE IT NAMES, deliberately never in this
+   control's own body type — that would be the sample text in a substitute
+   face, which is the one thing this row's version of the honesty rule
+   forbids. `aria-hidden` in the markup is what keeps it out of the row's
+   accessible name; this rule only ever governs how it looks. */
+.property-option-specimen { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: var(--color-ink-low); }
 /* `margin: 0` IS LOAD-BEARING AND NOTHING IN THIS REPOSITORY CAN SEE IT.
    Story 16.4 moved these notes out of the `<ul>`, so they became `<p>` and
    picked up the user agent's `margin-block: 1em` — roughly 10px above the
@@ -255,7 +270,11 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
    who scrolled past the heading. */
 .property-option-catalogue { color: var(--color-ink-low); font: var(--type-body); }
 .property-option-catalogue.property-option-active { color: var(--color-ink-high); }
-.property-option-note { color: var(--color-ink-low); font: var(--type-body); }
+/* min-width/overflow/ellipsis match `.property-option-specimen`'s, now that
+   the row is a flex line the note shares with the name (Story 16.7): without
+   them the note could wrap onto a second line under a narrow panel, which is
+   exactly the row-height growth that rule is written to avoid. */
+.property-option-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink-low); font: var(--type-body); }
 /* THE CHAIN EDITOR, revealed inline under the family row it edits. It is a
    disclosed section of the TYPOGRAPHY panel and not a dialog (AC1), so it
    takes the panel's own vocabulary — the property row's field chrome, the

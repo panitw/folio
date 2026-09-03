@@ -557,4 +557,13 @@ development_status:
   # now be none. Sequenced AFTER 16.4 closes: 16.4 is in review with a frozen contract that does
   # not cover deleting a panel, and folding this in would invalidate the review just completed.
   16-6-the-machine-store-panel-goes-away: in-progress
+  # 16.7 added 2026-09-03 by OWNER, from the design: each row shows the typeface it names -- name
+  # left, specimen right, script-aware. The font browser already does this correctly and the menu
+  # inherits its mechanism AND its rule that a sample is never set in a substitute face. Three
+  # defaults are the owner's to overturn at the plan gate: the web group gets NO specimen (fetching
+  # 1,273 families to draw a menu is what this epic keeps refusing), the specimen replaces the
+  # per-row note in the first two groups (narrowing D-16.R.72's three carriers to two there), and a
+  # declared chain shows the face it paints with. Needs a browser run: no test here can see whether
+  # a specimen rendered in its own face.
+  16-7-every-row-shows-the-typeface-it-names: in-progress
   epic-16-retrospective: optional

@@ -65,7 +65,20 @@ export type PreviewFaceRegistry = Readonly<{
   /** Register faces for exactly these families, releasing every other one held. */
   show: (families: ReadonlyArray<string>) => void
   statusOf: (family: string) => PreviewFaceStatus
-  /** Release everything. The modal closing is the only caller. */
+  /**
+   * Release everything.
+   *
+   * THE MODAL IS NO LONGER THE ONLY CALLER (Story 16.7). The family control
+   * opens its own instance of this registry — never the modal's, which is the
+   * whole point of `show` releasing every family it is not given — and calls
+   * `close()` on ITS OWN unmount, exactly as the modal calls it on its own.
+   * The two callers differ in what "the dropdown is open" maps to: the modal
+   * IS the open state, so its one open/close is this one `close()`; the
+   * family control stays mounted across many opens and closes of its own
+   * dropdown, so within one mount those are `show([])` calls, and `close()`
+   * only runs when the control itself goes away. Two lifetimes, over the same
+   * two operations this module already had.
+   */
   close: () => void
 }>
 
