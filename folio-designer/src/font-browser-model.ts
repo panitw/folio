@@ -143,7 +143,7 @@ export function rowTierNote(source: FamilySource): string {
   switch (source.tier) {
     case 'local': return 'on this machine'
     case 'stored': return 'downloaded to this machine'
-    case 'web': return 'downloaded when you add it'
+    case 'web': return 'downloaded when you install it'
     default: {
       const unhandled: never = source
       throw new Error(`a FamilySource tier nothing describes reached the font browser: ${String((unhandled as FamilySource).tier)}`)
@@ -243,22 +243,74 @@ export function scriptBadge(row: BrowserRow): string {
   return row.scripts.map((script) => script === 'cjk' ? 'CJK' : `${script.slice(0, 1).toUpperCase()}${script.slice(1)}`).join(' + ')
 }
 
-export type RowState = 'in-template' | 'staged' | 'addable'
+/**
+ * THE MOCKUP DREW THREE STATES AND STORY 16.5 MAKES IT FOUR, because the model
+ * now has a relationship the mockup's had no name for: a face that is ON THIS
+ * MACHINE and NOT IN THE DOCUMENT.
+ *
+ * Under Story 16.3 that state did not exist — confirming a family embedded it,
+ * so a family was either in the template or addable to it. Under embed-on-use
+ * the browser's action is INSTALL, and a family this machine already holds has
+ * nothing left for this dialog to do: installing it again would fetch bytes the
+ * store already carries and write them back over themselves.
+ *
+ * THE STATE IS ADDED RATHER THAN CARVED OUT OF `'addable'` IN PLACE. Leaving
+ * three values and simply disabling some of them would have compiled everywhere
+ * and left the screen's own vocabulary saying `+ Add` beside a face that is
+ * already here.
+ */
+export type RowState = 'in-template' | 'staged' | 'installed' | 'addable'
 
-/** The mockup's three button states, in its own order of precedence. */
-export function rowState(family: string, inTemplate: ReadonlyArray<string>, staged: ReadonlyArray<string>): RowState {
+/**
+ * The mockup's three button states plus 16.5's fourth, in order of precedence.
+ *
+ * `installed` sits BELOW `staged` and above `addable`: a staged family is one
+ * the author has just acted on in this dialog, and reporting it back as merely
+ * "on this machine" would lose their own action. In practice the two cannot
+ * both hold — an installed row cannot be staged — and the order says which
+ * wins if they ever do rather than leaving it to `includes` call order.
+ *
+ * `installed` IS SUPPLIED, NOT DERIVED FROM THE FAMILY NAME. The caller reads
+ * it off each row's own `FamilySource` through `familyIsInstalled`, which is the
+ * same predicate the family control's fork consults, so the dialog and the
+ * dropdown cannot come to different conclusions about the same face.
+ *
+ * IT IS REQUIRED, NOT DEFAULTED. It began life as `= []`, which meant a caller
+ * that forgot it compiled and quietly reported `addable` — drawing `+ Install`
+ * over a face this machine already holds. The `never` bindings below protect the
+ * ARMS; nothing protects the INPUT except making it impossible to omit.
+ */
+export function rowState(family: string, inTemplate: ReadonlyArray<string>, staged: ReadonlyArray<string>, installed: ReadonlyArray<string>): RowState {
   if (inTemplate.includes(family)) return 'in-template'
-  return staged.includes(family) ? 'staged' : 'addable'
+  if (staged.includes(family)) return 'staged'
+  return installed.includes(family) ? 'installed' : 'addable'
 }
 
 export function buttonLabel(state: RowState): string {
-  return state === 'in-template' ? 'In template' : state === 'staged' ? '✓ Added' : '+ Add'
+  switch (state) {
+    case 'in-template': return 'In template'
+    case 'staged': return '✓ Added'
+    case 'installed': return 'On this machine'
+    case 'addable': return '+ Install'
+    default: {
+      const unhandled: never = state
+      throw new Error(`a row state nothing labels reached the font browser: ${String(unhandled as RowState)}`)
+    }
+  }
 }
 
 /** The accessible name for the same control, which the label alone cannot carry. */
 export function buttonName(family: string, state: RowState): string {
-  if (state === 'in-template') return `${family} is in this template`
-  return state === 'staged' ? `Remove ${family} from the families to add` : `Add ${family} to this template`
+  switch (state) {
+    case 'in-template': return `${family} is in this template`
+    case 'staged': return `Remove ${family} from the families to install`
+    case 'installed': return `${family} is already on this machine`
+    case 'addable': return `Install ${family} on this machine`
+    default: {
+      const unhandled: never = state
+      throw new Error(`a row state nothing names reached the font browser: ${String(unhandled as RowState)}`)
+    }
+  }
 }
 
 /** The mockup's `resultLine`, over the addable population rather than fourteen placeholders. */
@@ -272,10 +324,17 @@ export function filtersActive(filters: BrowserFilters): boolean {
   return filters.query.trim() !== '' || filters.script !== undefined || filters.categories.length > 0
 }
 
-/** The mockup's `pendingLine`. */
+/**
+ * The mockup's `pendingLine`, saying what confirm will actually do (Story 16.5).
+ *
+ * "ready to embed" was true under Story 16.3 and is false now: confirm keeps the
+ * face on this machine and writes nothing into the document. `weightLine`
+ * anticipated this and deliberately holds no destination language, so the two
+ * sentences beside each other still make one claim between them.
+ */
 export function pendingLine(staged: number): string {
-  if (staged === 0) return 'Select families to add to this template'
-  return `${staged} ${staged === 1 ? 'family' : 'families'} ready to embed`
+  if (staged === 0) return 'Select families to install on this machine'
+  return `${staged} ${staged === 1 ? 'family' : 'families'} ready to install`
 }
 
 /**
@@ -303,10 +362,11 @@ export function pendingLine(staged: number): string {
  *   file size. ONE FACT PER SLOT.
  *
  * WHAT IS LEFT IS A FACT ABOUT WHAT A FACE IS, NOT ABOUT WHERE IT GOES, and that
- * is deliberate: Story 16.5 inverts the destination (confirm will install rather
- * than embed), so destination language written here is language 16.5 must
- * invert. It stays in `confirmLabel` and `pendingLine`, which 16.5 revises in one
- * place. "One upright Regular, no bold or italic" is true under both models.
+ * is deliberate: Story 16.5 HAS NOW inverted the destination — confirm installs
+ * rather than embeds — and this line needed no edit for it, because destination
+ * language was kept out of it. The inversion landed in `confirmLabel` and
+ * `pendingLine`, which is where it was written down that it would.
+ * "One upright Regular, no bold or italic" is true under both models.
  *
  * THE SLOT IS CONDITIONAL AND THAT IS WHY IT EARNS ITS PLACE: it is empty until
  * families are staged, so it appears exactly when the author is deciding whether
@@ -318,9 +378,46 @@ export function weightLine(staged: number): string {
   return `${staged} ${staged === 1 ? 'face' : 'faces'} · one upright Regular each, no bold or italic`
 }
 
-/** The mockup's `confirmLabel`. */
+/**
+ * The mockup's `confirmLabel`. STORY 16.5 INVERTED THE DESTINATION: the button
+ * puts faces on this machine, and a font reaches the template when something in
+ * the template is set in it.
+ */
 export function confirmLabel(staged: number): string {
-  return staged === 0 ? 'Add to template' : `Add ${staged} to template`
+  return staged === 0 ? 'Install on this machine' : `Install ${staged} on this machine`
+}
+
+/**
+ * THE CONFIRM AFFORDANCE'S ACCESSIBLE NAME, WHICH IN DEGRADED MODE IS NOT THE
+ * LABEL (Story 16.5, lead guardrail 2026-09-03).
+ *
+ * A browser that cannot keep typefaces gets the pre-16.5 model: a pick embeds
+ * directly. In this dialog that means **confirming five staged families embeds
+ * five faces into the document** — the exact outcome the owner's reversal was
+ * made to prevent. It is acceptable as a STATED degradation of a rare path and
+ * unacceptable unstated, so the count travels in the name of the control that
+ * does it, at the moment the author is deciding whether to press it.
+ *
+ * IT NAMES THE COUNT RATHER THAN WARNING IN THE ABSTRACT. "This may add fonts to
+ * your document" is a sentence an author skims; "confirming adds 5 families to
+ * this document" is a number they can check against what they staged.
+ */
+export function confirmName(staged: number, storeKeepsFaces: boolean): string {
+  if (storeKeepsFaces) return confirmLabel(staged)
+  // THE ACCESSIBLE NAME CONTAINS THE VISIBLE LABEL, IT DOES NOT REPLACE IT
+  // (WCAG 2.5.3, Label in Name). A name sharing no words with the text on the
+  // button is unspeakable: a speech-input author says what they can see, and
+  // "Install 2 on this machine" would match nothing. So the label leads and the
+  // warning follows it.
+  const warning = staged === 0
+    ? 'this browser will not keep fonts, so confirming adds families straight to this document'
+    : `this browser will not keep fonts, so confirming adds ${staged} ${staged === 1 ? 'family' : 'families'} to this document`
+  return `${confirmLabel(staged)} — ${warning}`
+}
+
+/** The same fact for a sighted reader, in the footer beside the button. Empty when the store works. */
+export function degradedFooterNote(storeKeepsFaces: boolean): string {
+  return storeKeepsFaces ? '' : 'This browser will not keep typefaces, so these go straight into the document rather than onto this machine.'
 }
 
 /** The design's empty state, naming the query. */

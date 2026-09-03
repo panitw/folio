@@ -9,6 +9,33 @@ import type { CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { sfntWithNames } from './test/sfnt-fixture'
+import { openFontStore } from './font-store'
+import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
+
+// STORY 16.5 — SOME OF THESE TESTS NEED A MACHINE THAT CAN KEEP A FACE.
+//
+// Installing IS the store write: there is no command behind it to succeed, so
+// an install into a browser that will not keep anything is a REFUSED install
+// (`App.font-store.test.tsx` asserts that refusal in its own right). jsdom 28.1.0
+// provides no IndexedDB at all, so the web-tier tests below install a FRESH fake
+// factory for their own duration and put back whatever was there. It is scoped
+// per test rather than to the file, because the other hundred-odd tests here are
+// about a designer with no font store and must stay that way.
+// `select`'s shared engine mock is declared with no parameters, so TypeScript
+// sees its recorded calls as empty tuples. The arguments are read back through
+// one widened view rather than by changing that signature, which every test in
+// this file is written against — the same idiom the `sent` locals already use.
+const commandsSentBy = (request: { mock: { calls: unknown[][] } }): ReadonlyArray<readonly [string, ArrayBuffer]> =>
+  (request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>).filter((call) => call[0] === 'command')
+
+const withMachineStore = (): (() => void) => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB')
+  Object.defineProperty(globalThis, 'indexedDB', { value: new FakeIndexedDBFactory(), configurable: true, writable: true })
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'indexedDB', previous)
+    else Reflect.deleteProperty(globalThis, 'indexedDB')
+  }
+}
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
@@ -95,10 +122,16 @@ vi.mock('./preview/pdf-viewer', () => ({
 const bytes = new Uint8Array([1, 2, 3]).buffer
 // The family combobox lists TWO groups since Story 8.6 — the chains the
 // document declares, and the bundled catalogue it does not. Only a catalogue
-// entry carries the "add to document" note, so that is what separates them
-// here: the note is what the entry DOES, not how it looks, and a control that
-// stopped distinguishing the two would fail this rather than restyle past it.
-const declaredOptions = () => within(screen.getByRole('listbox', { name: 'Fonts' })).queryAllByRole('option').filter((option) => !(option.textContent ?? '').includes('add to document'))
+// entry carries a source note, so that is what separates them here: the note is
+// what the entry DOES, not how it looks, and a control that stopped
+// distinguishing the two would fail this rather than restyle past it.
+//
+// MECHANICAL (Story 16.5): the note used to be the literal `add to document` on
+// every catalogue arm. It now says which of two things a pick does — INSTALL a
+// family this machine does not hold, or USE one it does — and the one phrase all
+// three arms still share is the machine. `font-index.test.ts` is where the three
+// sentences themselves are pinned; this only needs the partition.
+const declaredOptions = () => within(screen.getByRole('listbox', { name: 'Fonts' })).queryAllByRole('option').filter((option) => !(option.textContent ?? '').includes('this machine'))
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
@@ -1359,6 +1392,12 @@ describe('the font browser opens from the family control', () => {
 
   it('carries the DOCUMENT\'s declared chains into the modal as `In template`', async () => {
     const restore = installStubFontSet()
+    // A STORE IS SUPPLIED SO THE DIALOG IS IN ITS ORDINARY MODE. jsdom provides
+    // no IndexedDB, and a browser that cannot keep typefaces puts the confirm
+    // control into Story 16.5's degraded model, where it names the count instead
+    // of the action — which is asserted in `FontBrowser.test.tsx`, and is not
+    // what this test is about.
+    const restoreStore = withMachineStore()
     try {
       openDoor()
       fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Arimo' } })
@@ -1366,9 +1405,10 @@ describe('the font browser opens from the family control', () => {
       // already declares cannot be staged again.
       const inTemplate = await screen.findByRole('button', { name: 'Arimo is in this template' })
       expect(inTemplate).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Add to template' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
     } finally {
       restore.restore()
+      restoreStore()
     }
   })
 
@@ -1443,7 +1483,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     // one of the 21 committed faces — the LOCAL FACE TIER — so its row states
     // that nothing is downloaded. A family that exists only in the build-time
     // index snapshot carries the plain note, because picking it fetches.
-    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*add to document, already on this machine$/ })
+    const inter = screen.getByRole('option', { name: /^Inter\s*—\s*use it, already on this machine$/ })
     expect(inter).toBeInTheDocument()
     expect(screen.getByText('In this document')).toBeInTheDocument()
     expect(screen.getByText('Catalogue — not yet in this document')).toBeInTheDocument()
@@ -1470,15 +1510,25 @@ describe('typography controls over the engine-projected closed sets', () => {
     // not among the 21, its row carries the PLAIN note because picking it
     // fetches, and the cap notice states how much of the match set is painted.
     fireEvent.change(combobox, { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }), 'a snapshot-only family is offered, and its row does not claim to be on this machine').toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }), 'a snapshot-only family is offered, and its row does not claim to be on this machine').toBeInTheDocument()
   })
 
-  // STORY 8.6, AC1/AC3 AT THE BROWSER BOUNDARY. Picking a catalogue entry
-  // sends the embed command — with the face's bytes and its terms — rather
-  // than committing `fontFamily`. That fork is the whole difference between
-  // the two groups, and asserting it on the WIRE is what makes it a claim
+  // STORY 8.6's AC1/AC3 AT THE BROWSER BOUNDARY, BEHAVIOUR-CHANGED BY STORY 16.5
+  // INTO THE THIRD ARM'S WITNESS.
+  //
+  // `Inter` is a LOCAL-TIER face: it ships inside the release, so this machine
+  // already holds it and there is nothing to install. Picking it is therefore
+  // FIRST USE, and first use is two commands — `embedFontFamily` and then
+  // `updateComponentProperties` — with two undo entries. The order is forced by
+  // the engine (`canvas.fontFamilies` is the closed set `style.fontFamily` may
+  // name), and asserting it ON THE WIRE, in order, is what makes this a claim
   // about behaviour rather than about a class name.
-  it('sends the embed command, with the face and its terms, when a catalogue entry is picked', async () => {
+  //
+  // What changed is the SECOND command. Under Story 8.6 a catalogue pick
+  // deliberately did not set `fontFamily`; under embed-on-use, setting a
+  // component's family to a face this machine holds IS the author asking for
+  // both, so both happen — as two commands, never fused into one.
+  it('embeds and then commits the property, as two commands, when a family this machine holds is picked', async () => {
     const face = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
     const fetchStub = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => face }))
     const restore = globalThis.fetch
@@ -1491,7 +1541,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       const request = select()
       const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
       fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*add to document, already on this machine$/ }))
+      fireEvent.click(screen.getByRole('option', { name: /^Inter\s*—\s*use it, already on this machine$/ }))
       await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
       // THE BYTES CAME FROM THE BUNDLE, not from a host. The URL is one of the
       // release's own content-addressed assets, which is what makes the pick
@@ -1506,7 +1556,14 @@ describe('typography controls over the engine-projected closed sets', () => {
       // consulted for a family the local tier holds.
       expect(fetchStub).toHaveBeenCalledTimes(1)
       expect(String(fetchStub.mock.calls[0][0])).not.toMatch(/^https?:/)
-      expect(sent).toHaveLength(1)
+      // TWO COMMANDS, IN THIS ORDER. Not one fused command, and not the embed
+      // alone: the property is committed only after the chain is declared,
+      // because the engine refuses it otherwise.
+      await waitFor(() => expect(sent).toHaveLength(2))
+      const kinds = sent.map(([, buffer]) => (JSON.parse(new TextDecoder().decode(buffer)) as Record<string, unknown>)['kind'])
+      expect(kinds).toEqual(['embedFontFamily', 'updateComponentProperties'])
+      const property = JSON.parse(new TextDecoder().decode(sent[1][1])) as Record<string, unknown>
+      expect(property['changes']).toEqual({ fontFamily: { op: 'set', value: 'Inter' } })
       expect(sent[0][0]).toBe('command')
       const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
       expect(payload['kind']).toBe('embedFontFamily')
@@ -1528,14 +1585,22 @@ describe('typography controls over the engine-projected closed sets', () => {
     }
   })
 
-  // STORY 16.1, THE WEB TIER, END TO END AT THE BROWSER BOUNDARY. A row in the
-  // designer's BUILD-TIME snapshot of the published library becomes a command
-  // payload — and the three fields the engine refuses a document without come
-  // from three DIFFERENT authorities, none of them invented here: `licence`
-  // from the family's own METADATA.pb token mapped through the closed table,
-  // `licenceText` from the upstream licence file fetched beside the face, and
-  // `copyright` from nameID 0 of the bytes themselves.
-  it('resolves a snapshot family through METADATA.pb into one embed command carrying its terms', async () => {
+  // STORY 16.1, THE WEB TIER, END TO END AT THE BROWSER BOUNDARY, BEHAVIOUR-
+  // CHANGED BY STORY 16.5: a snapshot family resolves into an INSTALL, not into
+  // a command.
+  //
+  // WHAT MOVED, AND WHERE IT MOVED TO. The twelve-field payload built from three
+  // different authorities — `licence` from METADATA.pb through the closed table,
+  // `licenceText` from the upstream licence file, `copyright` from nameID 0 of
+  // the bytes — is no longer produced at the pick, because the pick sends no
+  // command. It is produced at FIRST USE, out of the store, and that is asserted
+  // in `App.font-store.test.tsx`'s *"embeds a stored family in a second document
+  // with no network at all"*, which has a real store to read back from.
+  //
+  // WHAT STAYS HERE IS WHAT ONLY THIS TEST CAN SAY: the resolution really made
+  // its three round-trips, against the ONE DECLARED REPOSITORY HOST and never a
+  // stylesheet endpoint, and it committed NOTHING to the document while doing it.
+  it('resolves a snapshot family through METADATA.pb into an install, and commits nothing', async () => {
     const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
     const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
     const licence = 'This Font Software is licensed under the SIL Open Font License, Version 1.1.'
@@ -1546,42 +1611,41 @@ describe('typography controls over the engine-projected closed sets', () => {
       return { ok: false, status: 404, text: async () => '' }
     })
     const restore = globalThis.fetch
+    const restoreStore = withMachineStore()
     globalThis.fetch = fetchStub as never
     try {
       const request = select()
-      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
-      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
-      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
-      expect(payload['kind']).toBe('embedFontFamily')
-      // TWELVE FIELDS, UNCHANGED. componentFields(raw, 12) counts every
-      // top-level key and refuses anything else; this story changed the SOURCE
-      // of the values and not the arity.
-      expect(Object.keys(payload)).toHaveLength(12)
-      expect(payload['family']).toBe('Kanit')
-      // THE SPDX ID, NEVER THE UPSTREAM `OFL` TOKEN.
-      expect(payload['licence']).toBe('OFL-1.1')
-      expect(payload['licenceText']).toBe(licence)
-      expect(payload['copyright']).toBe('Copyright 2020 The Kanit Project Authors')
-      expect(payload['mediaType']).toBe('font/ttf')
-      expect(String(payload['source'])).toContain('ofl/kanit/Kanit-Regular.ttf')
-      // Kanit covers Latin and Thai, so the proposed tail is the shipped face
-      // for the one script it does not cover.
-      expect(payload['tail']).toEqual(['Noto Sans SC'])
-      // THE BYTES CAME FROM THE DECLARED REPOSITORY HOST AND NEVER FROM A
-      // STYLESHEET ENDPOINT: css2 serves woff2, which the engine refuses by
-      // design, split by unicode-range into per-script subsets. The host is
-      // spelled below with the scanner's marker, in code, on its own line —
-      // see scripts/forbidden-font-hosts.mjs.
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
+      // THE SETTLE CONDITION IS THE FACE ARRIVING ON THIS MACHINE. There is no
+      // command to wait on, and waiting on the absence of one would settle
+      // before the resolution had even started.
+      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      // AND THE DOCUMENT DID NOT MOVE. No command means no revision, no history
+      // entry and no undo — the whole of what "installing is not embedding" buys.
+      expect(commandsSentBy(request)).toEqual([])
+      expect(screen.queryByRole('alert'), 'a successful install states nothing at the control').not.toBeInTheDocument()
+      // THREE ROUND-TRIPS, IN THIS ORDER, and every one of them to the DECLARED
+      // REPOSITORY HOST AND NEVER TO A STYLESHEET ENDPOINT: css2 serves woff2,
+      // which the engine refuses by design, split by unicode-range into
+      // per-script subsets. The host is spelled below with the scanner's marker,
+      // in code, on its own line — see scripts/forbidden-font-hosts.mjs.
       const urls = fetchStub.mock.calls.map((call) => String(call[0]))
       const repositoryHost = { host: 'raw.githubusercontent.com', declaration: 'folio:font-host-declaration' }.host
-      expect(urls.some((url) => url.includes(repositoryHost))).toBe(true)
+      expect(urls.filter((url) => url.endsWith('METADATA.pb') || url.endsWith('OFL.txt') || url.endsWith('Kanit-Regular.ttf')).map((url) => url.split('/').pop())).toEqual(['METADATA.pb', 'OFL.txt', 'Kanit-Regular.ttf'])
+      expect(urls.every((url) => url.includes(repositoryHost))).toBe(true)
       expect(urls.some((url) => /css2|woff2|googleapis|gstatic/.test(url))).toBe(false)
+      // THE ROW IT IS OFFERED AS AFTERWARDS IS THE PROOF THE RECORD LANDED
+      // WHOLE: `offeredFamilies` reads the store's own listing, so a family that
+      // moves from the install note to the already-downloaded one has a record
+      // the store accepted rather than bytes dropped on the floor.
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      expect(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ })).toBeInTheDocument()
     } finally {
       globalThis.fetch = restore
+      restoreStore()
     }
   })
 
@@ -1591,7 +1655,14 @@ describe('typography controls over the engine-projected closed sets', () => {
   // the bytes — so a second pick during that window used to pass the re-entry
   // guard, resolve concurrently, and commit a SECOND embed of the same family.
   // The guard is now taken before the fetch and held until the command returns.
-  it('holds one pick at a time across the whole web-tier resolution, so two overlapping picks embed once', async () => {
+  //
+  // RE-ANCHORED BY STORY 16.5 (MECHANICAL). The witness for "it happened once"
+  // used to be one embed command; a pick installs now, so the witness is one
+  // RESOLUTION — a single `METADATA.pb` probe, which this test already counted —
+  // plus one store row. The re-entry guard, its window and the claim are
+  // unchanged; only what proves the guard held has moved to what the guarded
+  // path now produces.
+  it('holds one pick at a time across the whole web-tier resolution, so two overlapping picks install once', async () => {
     const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
     const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
     // THE FIRST ROUND-TRIP IS HELD OPEN, which is what makes the second pick
@@ -1605,6 +1676,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       return { ok: false, status: 404, text: async () => '' }
     })
     const restore = globalThis.fetch
+    const restoreStore = withMachineStore()
     globalThis.fetch = fetchStub as never
     try {
       const request = select()
@@ -1612,24 +1684,28 @@ describe('typography controls over the engine-projected closed sets', () => {
         const combobox = screen.getByRole('combobox', { name: 'Font family' })
         fireEvent.focus(combobox)
         fireEvent.change(combobox, { target: { value: 'Kanit' } })
-        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*add to document$/ })
+        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })
         if (option) fireEvent.click(option)
         return option !== null
       }
       expect(pick(), 'the first pick must be offered').toBe(true)
       await waitFor(() => expect(fetchStub).toHaveBeenCalled())
       // THE CONTROL SAYS SO WHILE IT IS WORKING: the combobox is disabled for
-      // the whole resolution, not only for the command at the end of it.
+      // the whole resolution, not only for the store write at the end of it.
       expect(screen.getByRole('combobox', { name: 'Font family' })).toBeDisabled()
       // A second pick inside the window, driven the same way the author would.
       pick()
       release()
-      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
-      // EXACTLY ONE EMBED COMMAND, and exactly one resolution behind it.
-      expect(request).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      // EXACTLY ONE RESOLUTION, ONE STORED ROW, AND NO COMMAND AT ALL. Two
+      // resolutions would have written the same content-addressed record twice
+      // and, before 16.5, embedded the family twice.
       expect(fetchStub.mock.calls.filter((call) => String(call[0]).endsWith('METADATA.pb'))).toHaveLength(1)
+      expect(screen.getAllByText(/Kanit/, { selector: '.machine-font-name' })).toHaveLength(1)
+      expect(commandsSentBy(request)).toEqual([])
     } finally {
       globalThis.fetch = restore
+      restoreStore()
     }
   })
 
@@ -1644,7 +1720,14 @@ describe('typography controls over the engine-projected closed sets', () => {
   // with the control looking perfectly enabled, and EVERY later pick would
   // silently do nothing. Clearing one of two copies of a flag is the same
   // defect class the ref was introduced to fix.
-  it('releases the pick hold when the document is replaced mid-resolution, so later picks still commit', async () => {
+  //
+  // RE-ANCHORED BY STORY 16.5, AND THE RE-ANCHORING MADE IT A BETTER TEST. The
+  // first pick's resolution finishes after the document was replaced, so Kanit
+  // is now ON THIS MACHINE — which means the second pick is FIRST USE and does
+  // commit, through the fork's third arm. The witness is therefore still a
+  // command, and the row the second pick is offered under is itself a claim: the
+  // note has to have moved from "install" to "already downloaded".
+  it('releases the pick hold when the document is replaced mid-resolution, so a later pick still commits', async () => {
     const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
     const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
     let release: () => void = () => {}
@@ -1657,6 +1740,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       return { ok: false, status: 404, text: async () => '' }
     })
     const restore = globalThis.fetch
+    const restoreStore = withMachineStore()
     globalThis.fetch = fetchStub as never
     try {
       const componentCanvas = { ...canvas, components: [textComponent] }
@@ -1667,7 +1751,7 @@ describe('typography controls over the engine-projected closed sets', () => {
         const combobox = screen.getByRole('combobox', { name: 'Font family' })
         fireEvent.focus(combobox)
         fireEvent.change(combobox, { target: { value: 'Kanit' } })
-        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*add to document$/ })
+        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })
         if (option) fireEvent.click(option)
         return option !== null
       }
@@ -1680,16 +1764,28 @@ describe('typography controls over the engine-projected closed sets', () => {
       release()
       await waitFor(() => expect(fetchStub.mock.calls.some((call) => String(call[0]).endsWith('Kanit-Regular.ttf'))).toBe(true))
 
-      // AND THE CONTROL IS STILL A CONTROL. A pick in the new document must
-      // reach the engine; a hold left behind by the replaced one would make this
-      // return silently with nothing to show the author why.
+      // THE FIRST RESOLUTION LANDED ON THIS MACHINE even though its document had
+      // gone: installing is a machine action and has no document to be dropped
+      // against. The panel that lists it is only rendered while something is
+      // selected, and replacing the document cleared the selection, so the
+      // component is re-selected before the row is looked for.
       fireEvent.click(screen.getByLabelText('text component e1'))
-      const embeds = () => request.mock.calls.filter((call) => call[0] === 'command').length
+      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+
+      // AND THE CONTROL IS STILL A CONTROL. A hold left behind by the replaced
+      // document would make this return silently with nothing to show the author
+      // why. The family is now installed, so this pick is FIRST USE and commits.
+      const embeds = () => commandsSentBy(request).length
       const before = embeds()
-      expect(pick(), 'the second pick must still be offered').toBe(true)
+      expect(before, 'installing must not have committed anything').toBe(0)
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ }))
       await waitFor(() => expect(embeds()).toBeGreaterThan(before))
     } finally {
       globalThis.fetch = restore
+      restoreStore()
     }
   })
 
@@ -1699,7 +1795,12 @@ describe('typography controls over the engine-projected closed sets', () => {
   // (D-16.R.6). Recording it into a value nobody reads would make the record a
   // claim about the code rather than something a person can see, so it reaches
   // the browser's log.
-  it('reports a directory that disagrees with the declared token, and embeds it anyway', async () => {
+  //
+  // MECHANICAL (Story 16.5): the pick installs rather than embeds, so the
+  // settle condition is the face reaching this machine. The claim — an
+  // observation is logged, the pick is NOT refused, and the SPDX id that
+  // travels with the face is the one METADATA.pb declared — is unchanged.
+  it('reports a directory that disagrees with the declared token, and installs it anyway', async () => {
     const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
     const metadata = 'name: "Kanit"\nlicense: "APACHE2"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
     const fetchStub = vi.fn(async (url: string) => {
@@ -1709,27 +1810,36 @@ describe('typography controls over the engine-projected closed sets', () => {
       return { ok: false, status: 404, text: async () => '' }
     })
     const restore = globalThis.fetch
+    const restoreStore = withMachineStore()
     const noted = vi.spyOn(console, 'info').mockImplementation(() => {})
     globalThis.fetch = fetchStub as never
     try {
       const request = select()
-      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
-      await waitFor(() => expect(request).toHaveBeenCalledWith('command', expect.anything()))
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
+      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
       const observed = noted.mock.calls.map((call) => String(call[0])).join('\n')
       expect(observed).toContain('ofl/')
       expect(observed).toContain('APACHE2')
       expect(observed).toContain('the metadata is the authority on the terms')
-      // NOT A REFUSAL: the document carries the id METADATA.pb declared.
+      // NOT A REFUSAL: the face is on this machine, carrying the id METADATA.pb
+      // declared, and nothing was said at the control.
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
-      expect(payload['licence']).toBe('Apache-2.0')
+      expect(commandsSentBy(request)).toEqual([])
+      // THE ID THAT TRAVELS WITH IT IS THE DECLARED ONE, read back out of the
+      // store the install wrote — which is where it now has to be checked,
+      // because there is no command payload at a pick any more.
+      const opened = await openFontStore(globalThis.indexedDB)
+      expect(opened.ok, 'the fake store must have opened, or this asserts nothing').toBe(true)
+      const held = opened.ok ? await opened.value.list() : undefined
+      expect(held?.ok).toBe(true)
+      expect(held?.ok === true ? held.value.find((entry) => entry.family === 'Kanit')?.licence : undefined).toBe('Apache-2.0')
     } finally {
       globalThis.fetch = restore
       noted.mockRestore()
+      restoreStore()
     }
   })
 
@@ -1737,7 +1847,20 @@ describe('typography controls over the engine-projected closed sets', () => {
   // THE AUTHOR ACTED ON. No network means no NEW family; it never means a
   // document that will not render — the three shipped Noto faces are the
   // coverage and an embedded face travels inside the `.folio`.
-  it('states that a family cannot be added right now when the network is down, and commits nothing', async () => {
+  // NEUTRALISED VACUOUS SURVIVOR (Story 16.5). The last line used to be
+  // `expect(request).not.toHaveBeenCalled()`, which was a real claim while a
+  // pick embedded and became TRIVIALLY TRUE the moment a pick stopped sending
+  // commands at all: an install sends none whether it succeeds or fails, so a
+  // designer that had lost the ability to send any command whatsoever would
+  // have passed this line unchanged. Observing that the suite is green proves
+  // nothing here — a tautology is green too.
+  //
+  // THE CLAIM IS MADE FALSIFIABLE BY PROVING THE OBSERVER WORKS. The same spy,
+  // in the same mounted designer, immediately afterwards, MUST record the
+  // property command a declared chain commits. So `not.toHaveBeenCalled()` above
+  // now means "this control can send commands and this one did not", which is
+  // the thing the test was always trying to say.
+  it('states that a family cannot be installed right now when the network is down, and commits nothing', async () => {
     const fetchStub = vi.fn(async () => { throw new TypeError('Failed to fetch') })
     const restore = globalThis.fetch
     globalThis.fetch = fetchStub as never
@@ -1746,11 +1869,20 @@ describe('typography controls over the engine-projected closed sets', () => {
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document$/ }))
+      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
       const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toMatch(/You cannot add a family without a network connection/)
+      expect(alert.textContent).toMatch(/You cannot install a family without a network connection/)
       expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
       expect(request).not.toHaveBeenCalled()
+      // THE OBSERVER IS ALIVE. `body` is a chain this document declares, so
+      // picking it is a property commit and nothing else — the one arm of the
+      // fork that never depended on a network or a store.
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'body' } })
+      fireEvent.click(screen.getByRole('option', { name: 'body' }))
+      await waitFor(() => expect(commandsSentBy(request)).toHaveLength(1))
+      const committed = JSON.parse(new TextDecoder().decode((request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>)[0][1])) as Record<string, unknown>
+      expect(committed['kind'], 'the spy must be able to see a command, or the assertion above is a tautology').toBe('updateComponentProperties')
     } finally {
       globalThis.fetch = restore
     }
@@ -2494,7 +2626,7 @@ describe('the font chain editor, where fonts are chosen', () => {
   type Chains = typeof canvas.fontChains
   const chainSnapshot = (revision: number, chains: Chains) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: { ...canvas, fontFamilies: chains.map((chain) => chain.name), fontChains: chains, components: [textComponent] } })
   const declared: Chains = canvas.fontChains
-  const commands = (request: { mock: { calls: unknown[][] } }) => request.mock.calls.filter((call) => call[0] === 'command').map((call) => new TextDecoder().decode(call[1] as ArrayBuffer))
+  const commands = (request: { mock: { calls: unknown[][] } }) => commandsSentBy(request).map((call) => new TextDecoder().decode(call[1] as ArrayBuffer))
   const open = (request: ReturnType<typeof vi.fn>, chains: Chains = declared) => {
     render(<App engine={engine(request as never)} initialSnapshot={chainSnapshot(1, chains)} />)
     fireEvent.click(screen.getByLabelText('text component e1'))
@@ -2866,7 +2998,7 @@ describe('the font chain editor, where fonts are chosen', () => {
     await screen.findByRole('alert')
     refuse = false
     fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
-    await waitFor(() => expect(request.mock.calls.filter((call) => call[0] === 'command')).toHaveLength(2))
+    await waitFor(() => expect(commandsSentBy(request)).toHaveLength(2))
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Delete font chain 1' })).not.toHaveAttribute('aria-invalid')
   })

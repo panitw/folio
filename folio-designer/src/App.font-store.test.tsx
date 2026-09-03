@@ -1,6 +1,9 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
+import { IDBFactory as FakeIndexedDBFactory, IDBObjectStore as FakeIndexedDBObjectStore } from 'fake-indexeddb'
 import App from './App'
 import type { EngineClient } from './engine-client'
 import { sfntWithNames } from './test/sfnt-fixture'
@@ -44,6 +47,43 @@ const upstreamFetch = () => vi.fn(async (url: string) => {
 })
 
 const timeoutError = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+
+// THE VARIABLE FACE THE INSTALL MUST REFUSE, AND IT IS THE FILE GO EMBEDS.
+//
+// `folio-go/testfont_embed_test.go:34` reaches this exact path by `//go:embed`,
+// so the bytes the designer refuses at install are the same bytes
+// `fontset.RefuseVariableFace` refuses at the command. A synthesised `fvar`
+// would test the predicate against a fixture of our own making; this tests it
+// against the one the authority is held to. `src/font-variable-face-tie.test.ts`
+// carries the predicate-level tie and its over-broadness control; what is
+// asserted HERE is the different claim the matrix row actually makes — that the
+// INSTALL PATH refuses, names the family, and keeps nothing.
+const variableFaceFixture = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'folio-go', 'testdata', 'fonts', 'notosansthai-variable-testonly', 'NotoSansThai-VF.ttf')
+
+/** Fails, never skips, if the shared fixture moves — a tie that cannot read its fixture is broken, not absent. */
+const variableFaceBytes = (): ArrayBuffer => {
+  expect(fs.existsSync(variableFaceFixture), `the shared fixture ${variableFaceFixture} is not there; Go embeds it by this exact path`).toBe(true)
+  const held = fs.readFileSync(variableFaceFixture)
+  return held.buffer.slice(held.byteOffset, held.byteOffset + held.byteLength) as ArrayBuffer
+}
+
+/** The Kanit upstream, but the face it serves is the variable one. Everything before the bytes still admits. */
+const upstreamServingAVariableFace = (bytes: ArrayBuffer) => vi.fn(async (url: string) => {
+  if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => kanitMetadata }
+  if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => kanitLicence }
+  if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => bytes }
+  return { ok: false, status: 404, text: async () => '' }
+})
+
+/** Everything the store holds right now, read past the designer rather than through its own list. */
+const faceRecordsOnThisMachine = async (): Promise<ReadonlyArray<Readonly<{ family: string }>>> => {
+  const opened = await openFontStore(globalThis.indexedDB)
+  expect(opened.ok, 'the fake store must open, or reading it back asserts nothing').toBe(true)
+  if (!opened.ok) return []
+  const listed = await opened.value.list()
+  expect(listed.ok).toBe(true)
+  return listed.ok ? listed.value : []
+}
 
 // The page font set jsdom does not implement, installed for the one test that
 // needs to watch a face reach it. Written the way `App.test.tsx` writes it —
@@ -181,7 +221,7 @@ describe('the font browser sets a stored family\'s specimen from the store', () 
       // resolver that happens to succeed for everything.
       fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
       expect(await within(dialog).findByText(/Kanit cannot be shown set in itself/)).toBeInTheDocument()
-      expect(within(dialog).getByText('downloaded when you add it')).toBeInTheDocument()
+      expect(within(dialog).getByText('downloaded when you install it')).toBeInTheDocument()
     } finally {
       fontSet.restore()
     }
@@ -214,19 +254,41 @@ describe('the font browser names a refusal the seam returned', () => {
       const dialog = screen.getByRole('dialog', { name: 'Font browser' })
 
       fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
-      fireEvent.click(await within(dialog).findByRole('button', { name: 'Add Kanit to this template' }))
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Add 1 to template' }))
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Install Kanit on this machine' }))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Install 1 on this machine' }))
 
       // THE ENGINE'S OWN SENTENCE, INSIDE THE DIALOG, AGAINST THE FAMILY.
       expect(await within(dialog).findByText(/Kanit: Kanit is in this designer's snapshot of the family list but is no longer published upstream/)).toBeInTheDocument()
       // AND THE MODAL IS STILL THERE, with Kanit still staged, so the author
       // can read the refusal and retry without finding the family again.
       expect(screen.getByRole('dialog', { name: 'Font browser' })).toBeInTheDocument()
-      expect(within(dialog).getByRole('button', { name: 'Remove Kanit from the families to add' })).toBeInTheDocument()
-      // NOTHING REACHED THE DOCUMENT. A refusal that closed the modal would have
-      // been indistinguishable from a success from the outside; this is the
-      // half that says so from the inside.
+      expect(within(dialog).getByRole('button', { name: 'Remove Kanit from the families to install' })).toBeInTheDocument()
+      // NEUTRALISED VACUOUS SURVIVOR (Story 16.5). This line was
+      // `expect(embedPayloads(request)).toEqual([])` — "nothing reached the
+      // document" — which was a real claim while confirming embedded and is
+      // TRIVIALLY TRUE now that confirming never sends a command at all. It is
+      // kept, because a confirm that started sending commands would still be a
+      // defect, but it can no longer carry the test on its own.
+      //
+      // THE CLAIM THAT CAN STILL FAIL IS ABOUT THE MACHINE, WHICH IS WHERE A
+      // CONFIRM NOW ACTS. A refused install must leave NOTHING on this machine:
+      // no store row, no listing entry, and the family still offered as one to
+      // install rather than one already downloaded. An install that wrote a
+      // partial record before failing — bytes without terms, which is the
+      // record shape the engine refuses a document over — passes the line
+      // above and fails every line below it.
       expect(embedPayloads(request)).toEqual([])
+      expect(screen.getByText(/No typefaces have been downloaded to this machine yet/), 'a refused install must keep nothing').toBeInTheDocument()
+      expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
+      // AND THE FAMILY CONTROL STILL OFFERS IT AS AN INSTALL. `offeredFamilies`
+      // reads the store's own listing, so a row that had moved to the
+      // already-downloaded note would mean a record survived the refusal.
+      fireEvent.keyDown(dialog, { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull())
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })).toBeInTheDocument()
     } finally {
       fontSet.restore()
     }
@@ -241,8 +303,8 @@ describe('the font browser names a refusal the seam returned', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
       const dialog = screen.getByRole('dialog', { name: 'Font browser' })
       fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
-      fireEvent.click(await within(dialog).findByRole('button', { name: 'Add Kanit to this template' }))
-      expect(within(dialog).getByText(/^1 family ready to embed/)).toBeInTheDocument()
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Install Kanit on this machine' }))
+      expect(within(dialog).getByText(/^1 family ready to install/)).toBeInTheDocument()
 
       // REPLACING THE DOCUMENT IS THE END OF THIS MODAL, not a pause in it. The
       // open flag lived outside `clearDocumentInteraction`, so the modal
@@ -257,7 +319,7 @@ describe('the font browser names a refusal the seam returned', () => {
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull())
       // And it does not come back. The new document has a canvas of its own, so
       // the render guard alone never hid the modal for more than an instant.
-      await waitFor(() => expect(screen.queryByText(/family ready to embed/)).toBeNull())
+      await waitFor(() => expect(screen.queryByText(/family ready to install/)).toBeNull())
       expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull()
     } finally {
       fontSet.restore()
@@ -266,14 +328,22 @@ describe('the font browser names a refusal the seam returned', () => {
 })
 
 describe('a fetched face stays on this machine', () => {
-  // AC1. The pick fetches, embeds, and KEEPS the face — under the SHA-256 of
-  // its bytes, with everything the embed command requires beside it.
-  it('keeps a fetched face, with its licence record, and offers it back as already downloaded', async () => {
+  // AC1, BEHAVIOUR-CHANGED BY STORY 16.5 IN ITS SECOND HALF. The pick fetches
+  // and KEEPS the face — under the SHA-256 of its bytes, with everything the
+  // embed command requires beside it — AND IT NO LONGER EMBEDS. Installing is
+  // a machine action: no command, no revision, no history entry, no undo.
+  it('keeps a fetched face with its licence record, sends no command for it, and offers it back as already downloaded', async () => {
     const fetchStub = upstreamFetch()
     globalThis.fetch = fetchStub as never
-    mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/), 'a snapshot family must be offered before it is stored').toBe(true)
+    const request = commandRequest()
+    mount(request)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'a snapshot family must be offered before it is stored').toBe(true)
     await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    // THE DOCUMENT DID NOT MOVE. The store row above is the positive settle
+    // condition — the install really finished — so this is a claim about a
+    // completed install and not about an assertion that ran too early.
+    expect(embedPayloads(request), 'installing a family sends no engine command at all').toEqual([])
+    expect(request.mock.calls.filter((call) => call[0] === 'command'), 'no command means no revision, no history entry and no undo').toEqual([])
     // THE ROW SAYS WHAT IT IS: the family, the style, its size and the day it
     // was downloaded — the two facts an author needs to decide which to let go.
     expect(screen.getByText(/Regular · \d+ KB · downloaded \d{4}-\d{2}-\d{2}/)).toBeInTheDocument()
@@ -283,21 +353,31 @@ describe('a fetched face stays on this machine', () => {
     // is what this asserts.
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*add to document, already downloaded to this machine$/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*use it, already downloaded to this machine$/ })).toBeInTheDocument()
   })
 
-  // AC2 AND AC3 TOGETHER, WHICH IS THE WHOLE POINT OF THE STORE. A second
-  // document picks the same family with the NETWORK REMOVED ENTIRELY: every
-  // fetch throws. The pick must still embed, from the stored bytes, with the
-  // same licence record.
+  // AC2 AND AC3 TOGETHER, WHICH IS THE WHOLE POINT OF THE STORE, RE-ANCHORED BY
+  // STORY 16.5 ONTO THE MOMENT THAT NOW CARRIES THE EMBED.
+  //
+  // BEHAVIOUR-CHANGED. The first pick used to embed AND keep, so the reference
+  // payload this test compared against was the first document's own command.
+  // Installing sends no command, so that reference no longer exists — the
+  // comparison is now against THE FIXTURE BYTES THEMSELVES, which is a stronger
+  // anchor anyway: it cannot agree with a payload the designer produced twice
+  // from the same defect.
+  //
+  // The claim is unchanged and is the one Story 16.2 exists for: a second
+  // document, with THE NETWORK REMOVED ENTIRELY, still gets the face and its
+  // terms out of the store. Only the trigger moved, from the pick to first use.
   it('embeds a stored family in a second document with no network at all, fetching nothing', async () => {
     globalThis.fetch = upstreamFetch() as never
     const first = commandRequest()
     mount(first)
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    // THE SETTLE CONDITION IS THE STORE ROW, and it has to be: there is no
+    // command to wait on any more, so waiting on one would wait for ever.
     await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
-    const fetched = embedPayloads(first)
-    expect(fetched).toHaveLength(1)
+    expect(embedPayloads(first), 'the install must not have embedded anything').toEqual([])
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
 
@@ -307,31 +387,40 @@ describe('a fetched face stays on this machine', () => {
     globalThis.fetch = offline as never
     fireEvent.click(screen.getByLabelText('text component e1'))
     const before = embedPayloads(first).length
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document, already downloaded to this machine$/), 'the stored family must still be offered offline').toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the stored family must still be offered offline').toBe(true)
     await waitFor(() => expect(embedPayloads(first).length).toBeGreaterThan(before))
     expect(offline, 'a stored pick must not reach the network at all').not.toHaveBeenCalled()
 
-    // AND IT IS THE SAME DOCUMENT CONTENT, not a degraded one: the same bytes,
-    // the same three fields the engine refuses a document without, and the same
-    // provenance string.
-    const stored = embedPayloads(first).at(-1)!
-    expect(stored['kind']).toBe('embedFontFamily')
-    expect(stored['data']).toBe(fetched[0]['data'])
-    expect(stored['licence']).toBe(fetched[0]['licence'])
-    expect(stored['licenceText']).toBe(fetched[0]['licenceText'])
-    expect(stored['copyright']).toBe(fetched[0]['copyright'])
-    expect(stored['source']).toBe(fetched[0]['source'])
+    // AND IT IS THE SAME DOCUMENT CONTENT, not a degraded one: the same bytes
+    // the upstream served, the three fields the engine refuses a document
+    // without, and the same twelve-field arity.
+    const stored = embedPayloads(first).find((payload) => payload['kind'] === 'embedFontFamily')!
+    expect(stored, 'first use of a stored family must send the embed command').toBeDefined()
+    expect(stored['data']).toBe(btoa(String.fromCharCode(...new Uint8Array(kanitFace))))
+    expect(stored['licence']).toBe('OFL-1.1')
+    expect(stored['licenceText']).toBe(kanitLicence)
+    expect(stored['copyright']).toBe('Copyright 2020 The Kanit Project Authors')
+    expect(String(stored['source'])).toContain('ofl/kanit/Kanit-Regular.ttf')
     expect(Object.keys(stored)).toHaveLength(12)
+
+    // TWO COMMANDS, IN THIS ORDER, AND TWO UNDO ENTRIES. `canvas.fontFamilies`
+    // is the closed set `style.fontFamily` may name, so the property command is
+    // refused until the chain is declared — the engine forces the order and
+    // nothing in the designer chooses it.
+    await waitFor(() => expect(embedPayloads(first).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
+    const property = embedPayloads(first).at(-1)!
+    expect(property['changes']).toEqual({ fontFamily: { op: 'set', value: 'Kanit' } })
+    expect(property['ids']).toEqual(['e1'])
   })
 
   // A FAMILY THIS MACHINE DOES NOT HOLD, WITH NO NETWORK, IS A STATED
   // DEGRADATION — never a document that will not render, and never a silence.
-  it('states that a family cannot be added right now when it is neither stored nor reachable', async () => {
+  it('states that a family cannot be installed right now when it is neither stored nor reachable', async () => {
     globalThis.fetch = (vi.fn(async () => { throw new TypeError('Failed to fetch') })) as never
     mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/without a network connection/)
+    expect(alert.textContent).toMatch(/You cannot install a family without a network connection/)
     expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
   })
 
@@ -339,16 +428,37 @@ describe('a fetched face stays on this machine', () => {
   // panel, not in a decision log — that documents are unaffected. An author who
   // has to GUESS whether a delete button reaches their saved work will simply
   // never press it.
+  // NEUTRALISED VACUOUS SURVIVOR (Story 16.5), AND THE FIX IS TO MAKE THE
+  // DOCUMENT ACTUALLY CARRY THE FACE FIRST.
+  //
+  // `expect(embedPayloads(request)).toHaveLength(embedsBefore)` was a real claim
+  // while a pick embedded: `embedsBefore` was 1, the document had the face, and
+  // the line said removing the machine copy did not reach it. A pick installs
+  // now, so `embedsBefore` is 0 and the line reads "0 commands before, 0 after"
+  // — TRUE OF A DESIGNER THAT CANNOT SEND COMMANDS AT ALL.
+  //
+  // So the test now does what its own name has always claimed: it puts the face
+  // IN THE DOCUMENT — by using it, which is two commands — and only then removes
+  // the machine copy. `embedsBefore` is 2, the count must still be 2 afterwards,
+  // and the sentence about documents being unchanged is finally being asserted
+  // over a document that has something to be unchanged about.
   it('removes a face by name, and says documents that embed it are unchanged', async () => {
     globalThis.fetch = upstreamFetch() as never
     const request = commandRequest()
     mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
     // The standing note is present before anything is removed, because it is
     // what the list IS, not a consequence of pressing the button.
     expect(screen.getByText(/not the fonts installed on your computer, which this designer never looks at/)).toBeInTheDocument()
+
+    // FIRST USE, so the document really carries the face: the embed and then the
+    // property commit, two commands and two undo entries.
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the installed family must be offered for use').toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
     const embedsBefore = embedPayloads(request).length
+    expect(embedsBefore, 'the count this test guards must be non-zero, or guarding it says nothing').toBe(2)
+
     fireEvent.click(screen.getByRole('button', { name: 'Remove Kanit (Regular) from this machine' }))
     await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit \(Regular\) was removed from this machine/))
     expect(storeNote().textContent).toMatch(/Documents that already embed it are unchanged/)
@@ -359,22 +469,411 @@ describe('a fetched face stays on this machine', () => {
     expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
   })
 
-  // STORAGE THAT CANNOT BE OPENED LEAVES A WORKING DESIGNER. A private window
-  // or blocked site data is a standing condition, not an error the author can
-  // act on — so the group is empty, picks still fetch, and the message states
-  // which of those two things is true.
-  it('still designs, and still picks, when the store cannot be opened at all', async () => {
+  // STORY 16.2's SELF-HEALING CONTRACT, WHICH STORY 16.5 BRIEFLY BROKE AND THEN
+  // RESTORED — AND WHICH NOTHING HAD EVER ASSERTED.
+  //
+  // 16.2's matrix: *"Stored bytes fail to decode later | Corrupt entry | Entry
+  // treated as absent and dropped; refetch on next pick | Self-healing, logged
+  // honestly."* This story's first pass replaced that fallback with a refusal,
+  // and the suite stayed green — because no test covered it. That is the same
+  // gap the matrix audit found on two other rows, so the restored behaviour gets
+  // a test rather than a comment.
+  //
+  // THE ENTRY IS DELETED BEHIND THE DESIGNER'S BACK, which is the real shape of
+  // this: another tab removed it, or the store dropped it as unsound between the
+  // listing and the read. The designer still believes it is installed — that is
+  // the state the fallback exists for.
+  //
+  // BOTH HALVES ARE ASSERTED. The refetch must happen (a refusal would red the
+  // embed assertion) AND the store must be healed (a fetch with no write back
+  // would leave the next use fetching again for ever).
+  it('refetches and heals when a stored entry has gone missing, rather than refusing first use', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    const request = commandRequest()
+    mount(request)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    const installed = await faceRecordsOnThisMachine()
+    expect(installed.map((record) => record.family)).toEqual(['Kanit'])
+
+    // THE ENTRY VANISHES WITHOUT THE DESIGNER BEING TOLD. Its own listing still
+    // has the row, so the family is still offered as one to use.
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    await opened.value.remove((installed[0] as unknown as { key: string }).key)
+    expect(await faceRecordsOnThisMachine(), 'the fixture must really have emptied the store').toEqual([])
+
+    // FIRST USE STILL WORKS. A refusal here would be the permanent local failure
+    // the ruling refused: the author would have to find and press a removal
+    // control on a row whose face is already gone.
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the stale listing must still offer the family').toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
+    expect(screen.queryByRole('alert'), 'a self-healing path states no refusal').not.toBeInTheDocument()
+
+    // AND THE STORE IS HEALED, not merely bypassed.
+    await waitFor(async () => expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toEqual(['Kanit']))
+  })
+
+  // MATRIX ROW: "Install a variable face | Fetched bytes carry an `fvar` table |
+  // REFUSED AT INSTALL, NAMED, NOTHING STORED".
+  //
+  // THE SECOND HALF IS THE HALF WITH TEETH. A refusal that had already written
+  // the record would satisfy every message assertion and leave a variable face
+  // sitting in AVAILABLE LOCALLY, offered for a first use that Go would then
+  // refuse — the exact dead end D-16.R.46 Q4 forbids. So the store is read back
+  // PAST the designer, through `openFontStore`, and must be empty.
+  //
+  // NOTHING BEFORE THE BYTES REFUSES THIS PICK, which is what makes it a claim
+  // about the `fvar` filter and not about some earlier guard: METADATA.pb
+  // resolves, the licence token classifies, the OFL.txt is served, and all three
+  // requests are made. Only then are the bytes looked at.
+  it('refuses a variable face at install, names it, and keeps nothing on this machine', async () => {
+    const bytes = variableFaceBytes()
+    const fetchStub = upstreamServingAVariableFace(bytes)
+    globalThis.fetch = fetchStub as never
+    const request = commandRequest()
+    mount(request)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+
+    // NAMED, AND THE CAUSE NAMED WITH IT. An author who is told only "could not
+    // be added" has nothing to act on.
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/^Kanit cannot be installed/)
+    expect(alert.textContent).toMatch(/VARIABLE font/)
+    expect(alert.textContent).toMatch(/`fvar` table/)
+    expect(alert.textContent, 'the refusal must say the machine was left alone').toMatch(/Nothing was kept on this machine/)
+
+    // THE WHOLE RESOLUTION RAN. Three round-trips: if the pick had been refused
+    // by the licence table or the metadata probe this would be fewer, and the
+    // assertions above would be about a different guard.
+    expect(fetchStub.mock.calls.map((call) => String(call[0]).split('/').pop())).toEqual(['METADATA.pb', 'OFL.txt', 'Kanit-Regular.ttf'])
+
+    // NOTHING STORED — read out of the store itself, not off the screen.
+    expect(await faceRecordsOnThisMachine()).toEqual([])
+    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
+    // AND NOTHING REACHED THE DOCUMENT EITHER.
+    expect(embedPayloads(request)).toEqual([])
+    // AND THE ROW STILL SAYS "INSTALL", because nothing was installed. A row
+    // that had moved to the already-downloaded note would mean a record survived.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Kanit' } })
+    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })).toBeInTheDocument()
+  })
+
+  // MATRIX ROW: "First use, licence contradiction | Go's nameID-13 tie refuses at
+  // embed | Refusal states the face IS INSTALLED ON THIS MACHINE AND CANNOT BE
+  // EMBEDDED, and points at the removal control | Property command not sent;
+  // face stays installed and removable".
+  //
+  // THIS IS THE ONE ADMISSION CHECK THAT COULD NOT MOVE TO INSTALL, and the
+  // whole reason the story is allowed to leave it in Go is that the residue is
+  // DISCLOSED rather than left to surprise the author. An undisclosed dead end
+  // is what D-16.R.46 Q4 forbids; a dead end the author can see and clear is a
+  // stated limit. So the disclosure is the deliverable, and it is asserted here.
+  //
+  // THE POINTER IS CHECKED AGAINST A CONTROL THAT REALLY EXISTS. Naming a button
+  // in prose is worth nothing if the button is called something else — so the
+  // sentence's own words are handed to `getByRole` as an accessible name. That
+  // is what stops this from being a spelling assertion.
+  //
+  // The engine's refusal is stubbed rather than provoked with a mislabelled
+  // binary: the tie itself is Go's, proven in
+  // `folio-go/internal/fontset/licencesignature_test.go` over committed bytes.
+  // What is unproven anywhere else — and what this owns — is what the DESIGNER
+  // does with a refusal that arrives at first use.
+  it('says an installed face cannot be embedded, points at the removal control, and leaves it installed', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    const sent: Record<string, unknown>[] = []
+    const contradiction = 'fonts: font "Kanit": the face\'s own name table records it under the SIL Open Font License while this document declares Apache-2.0'
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        // THE ENGINE REFUSES THE EMBED, exactly as the nameID-13 tie does: a
+        // rejection carrying a located message, through the ordinary
+        // command/diagnostic path.
+        if (parsed['kind'] === 'embedFontFamily') throw { dataPath: 'fonts.Kanit', message: contradiction }
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
+    })
+    mount(request)
+
+    // INSTALLED FIRST, and the install is unaffected: this face passes every
+    // check that CAN run at install.
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    expect(sent, 'the install must not have sent anything for the engine to refuse').toEqual([])
+
+    // FIRST USE — and this is where the refusal arrives.
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    const alert = await screen.findByRole('alert')
+
+    // THE THREE THINGS THE ENGINE'S OWN SENTENCE CANNOT SAY.
+    expect(alert.textContent, 'the author must be told the face IS here').toMatch(/Kanit is installed on this machine and cannot be embedded in this document/)
+    expect(alert.textContent, "the engine's own reason must survive, not be replaced by a friendlier one").toContain(contradiction)
+    expect(alert.textContent, 'the author must be told their file did not move').toMatch(/Nothing was written to the document/)
+
+    // AND THE POINTER NAMES A CONTROL THAT IS REALLY ON THE SCREEN. The
+    // sentence's own words are used as the accessible name, so a renamed or
+    // missing affordance reds this rather than leaving prose pointing at nothing.
+    const pointer = /remove it with the “(.+?)” control/.exec(alert.textContent ?? '')
+    expect(pointer, `the refusal must point at a named control: ${alert.textContent}`).not.toBeNull()
+    expect(screen.getByRole('button', { name: pointer![1] })).toBeInTheDocument()
+
+    // THE PROPERTY COMMAND WAS NOT SENT. `canvas.fontFamilies` never gained the
+    // chain, so committing `style.fontFamily` would have been refused anyway —
+    // and sending it would put a second, unrelated refusal in front of the
+    // author on top of this one.
+    expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily'])
+
+    // AND THE FACE IS STILL INSTALLED AND STILL REMOVABLE, which is what makes
+    // the pointer above actionable rather than decorative.
+    expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument()
+    expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toEqual(['Kanit'])
+    fireEvent.click(screen.getByRole('button', { name: pointer![1] }))
+    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit \(Regular\) was removed from this machine/))
+    expect(await faceRecordsOnThisMachine(), 'the control the refusal points at must actually clear the dead end').toEqual([])
+  })
+
+  // MATRIX ROW 7: "Store write fails at install | Origin quota refuses the `put` |
+  // THE INSTALL FAILS AND SAYS SO | Refusal, not a silent success".
+  //
+  // THE ONLY ASSERTION THAT EXISTED FOR THIS ROW CALLED `storeWriteRefusal`
+  // DIRECTLY and checked the string — the module-level defect Row 5's own task
+  // forbids. Nothing drove a failing `put` through `installFamily` in a mounted
+  // designer, so `if (kept !== undefined) return refuse(...)` could be changed to
+  // `return undefined` and the whole suite stayed green while the install
+  // reported success and kept nothing.
+  //
+  // THE REFUSAL IS INJECTED INTO THE REAL PLUMBING at the exact place a browser
+  // raises it — `font-store.test.ts`'s own technique — so the transaction, the
+  // request and the store's error path are all genuinely exercised.
+  it('refuses the install when the origin will not take the face, and says so at the control', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    const request = commandRequest()
+    mount(request)
+    const original = FakeIndexedDBObjectStore.prototype.put
+    FakeIndexedDBObjectStore.prototype.put = function refuse(): never { throw new DOMException('the origin has no room left for this face', 'QuotaExceededError') }
+    try {
+      expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+      // IT SAYS SO, AT THE CONTROL THE AUTHOR ACTED ON — not in a log, not
+      // nowhere. A silent success is what this row exists to forbid.
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toMatch(/Kanit was not installed on this machine/)
+      expect(alert.textContent).toMatch(/no room left/)
+      expect(alert.textContent, 'nothing may claim a document changed: no command is sent at install').toMatch(/no document was changed/)
+      expect(alert.textContent, 'the author needs an action, and the removal control is the one that frees space').toMatch(/AVAILABLE LOCALLY/)
+    } finally {
+      FakeIndexedDBObjectStore.prototype.put = original
+    }
+    // AND NOTHING WAS KEPT AND NOTHING WAS SENT.
+    expect(await faceRecordsOnThisMachine()).toEqual([])
+    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
+    expect(embedPayloads(request)).toEqual([])
+  })
+
+  // THE FAILED HEAL DISCLOSES, AND IT IS A DEGRADATION RATHER THAN A REFUSAL.
+  //
+  // `storeWriteDegradation` has exactly one live path left: the write-back after
+  // a refetch at first use. Deleting that `setStoreNote` made a failed heal
+  // completely silent with the suite green — the author's document gets the face
+  // and their machine quietly does not, for ever, with no way to tell.
+  //
+  // AND THE SENTENCE MUST NOT BE THE REFUSAL'S. The document HAS the face here,
+  // so a message saying "no document was changed" would be false; this is the
+  // one place Story 16.2's original distinction still holds.
+  it('states a failed heal as a degradation, not a refusal, when the document already has the face', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    const request = commandRequest()
+    mount(request)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    const installed = await faceRecordsOnThisMachine()
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    await opened.value.remove((installed[0] as unknown as { key: string }).key)
+
+    // THE REFETCH SUCCEEDS AND THE HEAL DOES NOT.
+    const original = FakeIndexedDBObjectStore.prototype.put
+    FakeIndexedDBObjectStore.prototype.put = function refuse(): never { throw new DOMException('the origin has no room left for this face', 'QuotaExceededError') }
+    try {
+      expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+      await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
+      await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit is in this document, but it could not be kept on this machine/))
+    } finally {
+      FakeIndexedDBObjectStore.prototype.put = original
+    }
+    expect(storeNote().textContent).toMatch(/no room left/)
+    // THE DISTINCTION, ASSERTED IN BOTH DIRECTIONS. This is not the install
+    // refusal's sentence, and it must never claim the document was left alone.
+    expect(storeNote().textContent).not.toMatch(/was not installed on this machine/)
+    expect(storeNote().textContent).not.toMatch(/no document was changed/)
+    expect(screen.queryByRole('alert'), 'a degradation is not a refusal and does not alert at the control').not.toBeInTheDocument()
+  })
+
+  // THE LOCAL-TIER ARM OF THE LATE REFUSAL, which the Row 5 test cannot reach.
+  //
+  // `lateEmbedRefusal` takes a `removable` flag and Row 5 drives only the STORED
+  // tier, so hoisting that flag to `true` passed every assertion there while a
+  // local-tier refusal pointed the author at a "Remove …" control that is not on
+  // the screen — the exact "prose naming a control that is not there" failure
+  // that test exists to catch, one tier over.
+  //
+  // A bundled face ships inside the release rather than in the machine store, so
+  // there is nothing to remove and the sentence says that instead of naming a
+  // button the author will hunt for and not find.
+  it('does not point at a removal control for a bundled face, which has none', async () => {
+    const bundled = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Inter Project Authors' }])
+    // The local tier reads its bytes from the release's own content-addressed
+    // assets — a relative URL, never a host.
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (/^https?:/.test(String(url))) throw new TypeError('no third party may be contacted for a bundled face')
+      return { ok: true, status: 200, arrayBuffer: async () => bundled }
+    }) as never
+    const contradiction = 'fonts: font "Inter": the face declares a licence its own name table contradicts'
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        if (parsed['kind'] === 'embedFontFamily') throw { dataPath: 'fonts.Inter', message: contradiction }
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
+    })
+    mount(request)
+    expect(pick('Inter', /^Inter\s*—\s*use it, already on this machine$/), 'a committed local-tier family must be offered for use').toBe(true)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/Inter is installed on this machine and cannot be embedded in this document/)
+    expect(alert.textContent).toContain(contradiction)
+    // THE TAIL IS THE OTHER ARM: it says why there is nothing to remove.
+    expect(alert.textContent).toMatch(/ships inside this designer rather than in the machine store, so there is nothing to remove/)
+    // AND IT NAMES NO CONTROL, because none exists — the store list is empty.
+    expect(alert.textContent, 'a bundled face has no removal control to point at').not.toMatch(/remove it with the/)
+    expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
+  })
+
+  // THE DOCUMENT MAY BE REPLACED WHILE THE EMBED IS IN FLIGHT, AND THE PROPERTY
+  // COMMIT MUST NOT FOLLOW IT INTO THE NEW ONE.
+  //
+  // Every other async commit in `App.tsx` guards this way and there are tests
+  // named for it; the third arm is a NEW async path and did not inherit it. It
+  // matters because `applyProperties` SENDS FIRST AND GUARDS AFTER — it
+  // dispatches the command unconditionally and only declines to install the
+  // RESULT — so a stale commit is not a dropped response, it is
+  // `updateComponentProperties` reaching the engine carrying the PREVIOUS
+  // document's element ids.
+  it('does not commit the property when the document is replaced while the embed is in flight', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const sent: Record<string, unknown>[] = []
+    let holdTheEmbed = false
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        if (holdTheEmbed && parsed['kind'] === 'embedFontFamily') await held
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
+    })
+    mount(request)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+
+    holdTheEmbed = true
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
+
+    // THE DOCUMENT IS REPLACED WHILE THE EMBED IS STILL IN FLIGHT.
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
+    release()
+
+    // AND THE PROPERTY NEVER FOLLOWS IT. Settled twice over — once through the
+    // event loop and once through a fresh selection round-trip — so this is a
+    // claim about the guard and not about when the assertion happened to run.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.map((payload) => payload['kind']), 'the property commit belongs to a document that is no longer open').toEqual(['embedFontFamily'])
+    // AND NOTHING IS SHOWN AGAINST A CONTROL THE AUTHOR IS NO LONGER LOOKING AT.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  // THE DEGRADED CONFIRM WARNING, ASSERTED AGAINST THE CODE THAT DECIDES IT AND
+  // NOT THE CODE THAT DISPLAYS IT.
+  //
+  // `FontBrowser.test.tsx` proves the dialog renders the warning when it is
+  // HANDED `storeKeepsFaces={false}`. That proves a component renders what it is
+  // told and nothing about what it is told: hardcode `storeKeepsFaces={true}` at
+  // the `App.tsx` call site and that test stays green while a private-window
+  // author sees `Install 5 on this machine` on a button that writes five faces
+  // into their document. The clause would exist, a test would assert it, and the
+  // alibi would still hold.
+  //
+  // SO THIS DRIVES THE WHOLE DESIGNER WITH NO STORE AT ALL and reads the name off
+  // the real control, which is the only version of the claim the acceptance
+  // criterion actually makes.
+  it('computes the degraded confirm warning from a store it really could not open', async () => {
+    Reflect.deleteProperty(globalThis, 'indexedDB')
+    const fontSet = installStubFontSet()
+    try {
+      globalThis.fetch = upstreamFetch() as never
+      mount(commandRequest())
+      await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
+
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
+      const dialog = screen.getByRole('dialog', { name: 'Font browser' })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Install Kanit on this machine' }))
+
+      // THE COUNT TRAVELS IN THE NAME OF THE CONTROL THAT DOES IT, and the name
+      // CONTAINS the visible label rather than replacing it (WCAG 2.5.3), so a
+      // speech-input author can still say what they can see.
+      const confirm = within(dialog).getByRole('button', { name: 'Install 1 on this machine — this browser will not keep fonts, so confirming adds 1 family to this document' })
+      expect(confirm.textContent).toBe('Install 1 on this machine')
+      expect(within(dialog).getByText(/This browser will not keep typefaces, so these go straight into the document/)).toBeInTheDocument()
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  // STORAGE THAT CANNOT BE OPENED LEAVES A WORKING DESIGNER — STORY 16.2's
+  // CONTRACT, KEPT, BY DEGRADING TO THE PRE-16.5 MODEL (orchestrator ruling,
+  // 2026-09-03).
+  //
+  // BEHAVIOUR-CHANGED, THEN CORRECTED, AND THE CORRECTION IS THE INTERESTING
+  // PART. This story first made an unopenable store REFUSE the install, on the
+  // ground that installing IS the store write. That was refused in review: it
+  // contradicts 16.2's locked *"still works and says what is degraded"*, and it
+  // would mean a private window could add no font at all. But 16.2's degradation
+  // taken literally fails too — "install anyway, keep nothing" leaves a face that
+  // can never be used, the dead end D-16.R.46 Q4 forbids. The third option is
+  // what is asserted here: this browser gets the OLD MODEL, the pick embeds
+  // directly, and the note SAYS THAT IS WHAT HAPPENED.
+  //
+  // TWO CLAIMS, AND BOTH ARE LOAD-BEARING. A degradation that embedded silently
+  // would leave the author unable to tell why this browser behaves unlike the
+  // last one; a message with no embed behind it would be a lie.
+  it('still designs and still adds fonts when the store cannot be opened at all, by embedding directly and saying so', async () => {
     Reflect.deleteProperty(globalThis, 'indexedDB')
     const fetchStub = upstreamFetch()
     globalThis.fetch = fetchStub as never
     const request = commandRequest()
     mount(request)
     await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
-    expect(storeNote().textContent).toMatch(/picking a family still fetches it/i)
-    // AND THE PICK STILL WORKS. The store is a cache and a source, never a
-    // precondition.
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
-    await waitFor(() => expect(embedPayloads(request)).toHaveLength(1))
+    // THE PICK STILL PUTS THE FONT IN THE DOCUMENT. IndexedDB is a convenience
+    // here and never a dependency.
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
+    expect(embedPayloads(request)[0]!['family']).toBe('Kanit')
+    // AND THE PROPERTY IS STILL NOT COMMITTED: this is the fork's SECOND arm
+    // running in its old shape, not the third. The degradation may not quietly
+    // fuse the two decisions Story 8.6 kept apart.
+    expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily'])
+    // AND THE AUTHOR IS TOLD WHICH MODEL THEY ARE IN, in the product's own terms.
+    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit went straight into this document/))
+    expect(storeNote().textContent).toMatch(/nowhere to keep it there is nothing to install/)
+    expect(storeNote().textContent, 'the author must be told their document is still self-contained').toMatch(/carries its own copy/)
     expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
   })
 
@@ -461,7 +960,7 @@ describe('a pick that stalls rather than failing', () => {
     })
     globalThis.fetch = fetchStub as never
     mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitFor(() => expect(stall).toBeDefined())
     // THE CONTROL IS HELD WHILE THE FETCH IS IN FLIGHT — which is the state
     // that, without a timeout, would never end.
@@ -487,7 +986,14 @@ describe('a pick that stalls rather than failing', () => {
   // stuck `true` for the session, with the control looking perfectly enabled
   // while every later pick silently did nothing. Proving (a) alone re-proves a
   // shape that was already fixed; this is the one that can regress.
-  it('is clear after the document is replaced mid-stall, so a later pick still commits', async () => {
+  //
+  // RE-ANCHORED BY STORY 16.5 (MECHANICAL). The witness for "the later pick
+  // really happened" used to be an embed command, because a pick embedded. A
+  // pick now INSTALLS, so the witness is the store row appearing — the same
+  // observable the install path actually produces. The claim is unchanged: a
+  // hold left behind by the replaced document would make the later pick do
+  // NOTHING, and doing nothing is exactly what a witness must be able to see.
+  it('is clear after the document is replaced mid-stall, so a later pick still installs', async () => {
     let stall: (() => void) | undefined
     let first = true
     const fetchStub = vi.fn(async (url: string) => {
@@ -502,7 +1008,7 @@ describe('a pick that stalls rather than failing', () => {
     globalThis.fetch = fetchStub as never
     const request = commandRequest()
     mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitFor(() => expect(stall).toBeDefined())
 
     // THE DOCUMENT IS REPLACED WHILE THE PICK IS STILL STALLED.
@@ -511,9 +1017,12 @@ describe('a pick that stalls rather than failing', () => {
     stall!()
 
     fireEvent.click(screen.getByLabelText('text component e1'))
-    const before = embedPayloads(request).length
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/), 'the pick must still be offered in the new document').toBe(true)
-    await waitFor(() => expect(embedPayloads(request).length).toBeGreaterThan(before))
+    const probesBefore = fetchStub.mock.calls.length
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'the pick must still be offered in the new document').toBe(true)
+    // THE FACE REACHES THE MACHINE. A stuck hold returns before the fetch, so
+    // neither of these can be satisfied by a pick that silently did nothing.
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    expect(fetchStub.mock.calls.length).toBeGreaterThan(probesBefore)
   })
 
   // (c) NO SILENT RETRY, WITH THE COUNT AS A LITERAL. A retry over a
@@ -528,7 +1037,7 @@ describe('a pick that stalls rather than failing', () => {
     })
     globalThis.fetch = fetchStub as never
     mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*add to document$/)).toBe(true)
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitFor(() => expect(stall).toBeDefined())
     stall!()
     await screen.findByRole('alert')

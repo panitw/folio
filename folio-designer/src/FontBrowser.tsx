@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { familyIndexDisclosure, indexCategories, indexScripts, type FamilySource } from './font-index'
-import { browserRows, browserSorts, browserViews, buttonLabel, buttonName, confirmLabel, defaultSpecimenSize, emptyStateHeading, emptyStateHint, filterRows, filtersActive, maxSpecimenSize, minSpecimenSize, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, weightLine, type BrowserFilters, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
+import { familyIndexDisclosure, familyIsInstalled, indexCategories, indexScripts, type FamilySource } from './font-index'
+import { browserRows, browserSorts, browserViews, buttonLabel, buttonName, confirmLabel, confirmName, degradedFooterNote, defaultSpecimenSize, emptyStateHeading, emptyStateHint, filterRows, filtersActive, maxSpecimenSize, minSpecimenSize, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, weightLine, type BrowserFilters, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
 import { previewFaceFamily } from './preview-face-family'
 import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
 
@@ -34,12 +34,19 @@ type Props = Readonly<{
   previewBytes: PreviewFaceBytes
   /** THE SEAM. One call per staged family; resolves to a refusal sentence, or `undefined` when the family went in. */
   onAddFamily: (source: FamilySource) => Promise<string | undefined>
+  /**
+   * Whether this browser can keep typefaces on the machine at all. `false` puts
+   * the dialog in the pre-16.5 degraded model, where confirming EMBEDS — which
+   * the footer and the confirm control both say, because a confirm that adds five
+   * faces to a document must not look like one that adds five to a machine.
+   */
+  storeKeepsFaces: boolean
   onClose: () => void
 }>
 
 type Refusal = Readonly<{ family: string; message: string }>
 
-export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, onClose }: Props) {
+export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, storeKeepsFaces, onClose }: Props) {
   const [filters, setFilters] = useState<BrowserFilters>(noFilters)
   const [sort, setSort] = useState<BrowserSort>('Trending')
   const [view, setView] = useState<BrowserView>('Row')
@@ -66,6 +73,12 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
   const shown = pageOf(matching, page)
   const pages = pageCount(matching.length)
   const byFamily = useMemo(() => new Map(rows.map((row) => [row.family, row])), [rows])
+  // WHICH FAMILIES THIS MACHINE ALREADY HOLDS (Story 16.5), read off each row's
+  // own `FamilySource` through the one predicate the family control's fork also
+  // reads. It is derived from `rows` — the UNFILTERED set — for the same reason
+  // `byFamily` is: filtering, sorting and paging must not change what a family's
+  // relationship to this machine IS.
+  const installedFamilies = useMemo(() => rows.filter((row) => familyIsInstalled(row.source)).map((row) => row.family), [rows])
 
   // THE REGISTRY'S LIFETIME IS THIS COMPONENT'S. It opens once, on mount, and
   // its release runs on unmount — so closing the modal removes every preview
@@ -193,9 +206,16 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
     return <p className="font-browser-specimen" lang={row.scripts.includes('thai') && thaiSample && previewText.trim() === '' ? 'th' : undefined} style={{ fontFamily: previewFaceFamily(row.family), fontSize: `${pixels}px` } as CSSProperties}>{specimenFor(row, previewText, thaiSample)}</p>
   }
 
+  // THE ADD CONTROL, AND STORY 16.5 GAVE IT A SECOND INERT STATE. `in-template`
+  // was already disabled because the action was meaningless there; `installed`
+  // joins it for the same reason and not a weaker one — this dialog's action is
+  // now INSTALL, and a face the store already holds has nothing to install. The
+  // row still says which of the two it is, in the control's own accessible name,
+  // because a disabled button with no explanation is the thing this screen's
+  // contract forbids.
   const addButton = (row: BrowserRow) => {
-    const state = rowState(row.family, inTemplate, staged)
-    return <button type="button" className={`font-browser-add font-browser-add-${state}`} aria-pressed={state === 'staged'} aria-label={buttonName(row.family, state)} disabled={busy || state === 'in-template'} onClick={() => toggleStaged(row.family)}>{buttonLabel(state)}</button>
+    const state = rowState(row.family, inTemplate, staged, installedFamilies)
+    return <button type="button" className={`font-browser-add font-browser-add-${state}`} aria-pressed={state === 'staged'} aria-label={buttonName(row.family, state)} disabled={busy || state === 'in-template' || state === 'installed'} onClick={() => toggleStaged(row.family)}>{buttonLabel(state)}</button>
   }
 
   // THE TWO VIEWS ARE AN EXHAUSTIVE SWITCH, NOT A TERNARY. As `view === 'Row' ?
@@ -317,9 +337,14 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
         <span className={`font-browser-dot${staged.length > 0 ? ' font-browser-dot-active' : ''}`} aria-hidden="true" />
         <p className="font-browser-pending" role="status">{pendingLine(staged.length)}{progress === undefined ? '' : ` — added ${progress.done} of ${progress.total}`}</p>
         <span className="font-browser-weight">{weightLine(staged.length)}</span>
+        {/* THE DEGRADED MODEL SAYS SO IN THE FOOTER FOR A SIGHTED READER, and in
+            the confirm control's own accessible name for everybody else — an
+            `aria-label` REPLACES the contents, so the visible label alone would
+            be inaudible and the note alone would be unreachable. */}
+        {!storeKeepsFaces && <span className="font-browser-degraded" role="status">{degradedFooterNote(storeKeepsFaces)}</span>}
         <span className="font-browser-spacer" />
         <button type="button" className="font-browser-cancel" disabled={busy} onClick={onClose}>Cancel</button>
-        <button type="button" className="font-browser-confirm" disabled={busy || staged.length === 0} onClick={() => void confirm()}>{confirmLabel(staged.length)}</button>
+        <button type="button" className="font-browser-confirm" aria-label={confirmName(staged.length, storeKeepsFaces)} disabled={busy || staged.length === 0} onClick={() => void confirm()}>{confirmLabel(staged.length)}</button>
       </div>
       {refusals.length > 0 && <ul className="font-browser-refusals" aria-label="Families that could not be added">
         {refusals.map((refusal) => <li key={refusal.family} role="alert" className="property-error">{refusal.family}: {refusal.message}</li>)}

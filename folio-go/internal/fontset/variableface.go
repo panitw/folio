@@ -29,6 +29,30 @@ import (
 // the loader is not the only door, so `New` still calls this before it builds
 // a shaper. fontset_test.go's TestNewRejectsVariableFace passes unchanged.
 //
+// THE PROHIBITION ABOVE BINDS COPIES WHOSE PASS ADMITS — that is, any second
+// `fvar` test sited AT OR BEHIND the embed command, in either language, whose
+// verdict decides what enters a document. Story 16.5 adds a designer-side
+// `fvar` test that CAN ONLY REFUSE (folio-designer/src/font-name-table.ts,
+// faceIsVariable), used to decline an INSTALL before any command exists; that
+// is permitted, and this paragraph is the carve-out written into the document
+// it deviates from rather than left to be re-litigated or silently generalised.
+//
+// THE REASON IS THE DRIFT ASYMMETRY, and it is what separates the two cases
+// rather than a judgement about who wrote which file. A command-side copy that
+// drifts permissive ADMITS a variable face into a `.folio` that fails at
+// render — D-16.6's original defect, reproduced. An install-time filter that
+// drifts permissive installs the face and lets this function refuse it at first
+// use, which is exactly today's behaviour; drifting strict, it fails an install
+// loudly, at the moment the author acted. NONE of an install-time filter's
+// drift outcomes writes a document, and that is the whole of the licence it has.
+//
+// THE TEST THAT TIES THEM is folio-designer/src/font-variable-face-tie.test.ts,
+// which reads THE SAME TWO FIXTURE FILES this module's own tests reach by
+// //go:embed (folio-go/testdata/fonts/notosansthai-variable-testonly/NotoSansThai-VF.ttf
+// and folio-go/testdata/fonts/Roboto-Regular.ttf) and asserts both arms over
+// them, mirroring TestVariableFaceIsRefusedAtTheCommandAndAtIngestionOverTheSameBytes
+// and its over-broadness control TestStaticFaceIsStillEmbeddedAtBothDoors.
+//
 // variableFaceError owns both the test and the sentence. It is unexported and
 // takes the already-parsed face, because New has one in hand and reparsing
 // there would be waste.

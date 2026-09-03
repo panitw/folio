@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory as FakeIndexedDBFactory, IDBObjectStore as FakeIndexedDBObjectStore } from 'fake-indexeddb'
-import { openFontStore, storedFaceKey, storeWriteDegradation, type FontStore, type StoredFaceRecord } from './font-store'
+import { openFontStore, storedFaceKey, storeUnavailableEmbedNote, storeWriteDegradation, storeWriteRefusal, type FontStore, type StoredFaceRecord } from './font-store'
 import { isCarriedFaceAssetKey } from './embedded-face-family'
 import { sfntWithCopyright } from './test/sfnt-fixture'
 import { assertProvenanceShape } from './test/provenance-shape'
@@ -267,12 +267,59 @@ describe('storage that cannot be opened or written', () => {
     }
   })
 
-  it('states a caching failure as a caching failure, naming the family and what still happened', () => {
-    const stated = storeWriteDegradation('Kanit', 'the origin is out of space')
+  // BEHAVIOUR-CHANGED (Story 16.5). This asserted the sentence claimed the family
+  // "was added to this document", which was TRUE under Story 16.2 — the store
+  // write came after the embed, so a quota refusal was a caching failure with a
+  // succeeded pick behind it. Under embed-on-use the write IS the install and
+  // nothing follows it, so the same failure now means the author got nothing.
+  // The old claim is asserted ABSENT rather than merely replaced, because the
+  // one way this can regress is a sentence that keeps saying a document moved.
+  it('states a refused install as a refused install, naming the family and what did not happen', () => {
+    const stated = storeWriteRefusal('Kanit', 'the origin is out of space')
     expect(stated).toContain('Kanit')
-    expect(stated).toContain('was added to this document')
+    expect(stated).toContain('was not installed on this machine')
     expect(stated).toContain('the origin is out of space')
-    expect(stated).toMatch(/will fetch it again/)
+    expect(stated, 'nothing may claim a document changed: no command is sent at install').not.toContain('added to this document')
+    expect(stated).toMatch(/no document was changed/)
+    expect(stated, 'the recovery is the removal control the store panel already ships').toMatch(/AVAILABLE LOCALLY/)
+  })
+
+  // THE THREE SENTENCES ARE THREE DIFFERENT EVENTS, AND THE DISTINCTION IS THE
+  // ASSERTION (Story 16.5).
+  //
+  // `storeWriteDegradation` lost its only test when 16.5 repurposed it into the
+  // refusal's, and it kept a live path: the write-back after a refetch at first
+  // use, where the document ALREADY HAS the face. Saying "no document was
+  // changed" there would be false, and saying "was not installed" would be
+  // false in the other direction — which is exactly why the two are pinned
+  // against each other rather than each on its own.
+  it('keeps the refusal, the degradation and the no-store note as three distinct sentences', () => {
+    const refusal = storeWriteRefusal('Kanit', 'the origin is out of space')
+    const degradation = storeWriteDegradation('Kanit', 'the origin is out of space')
+    const noStore = storeUnavailableEmbedNote('Kanit')
+
+    // THE DEGRADATION: the document has it, the machine does not, and the
+    // author's only decision is whether to free space.
+    expect(degradation).toContain('Kanit is in this document')
+    expect(degradation).toContain('could not be kept on this machine')
+    expect(degradation).toContain('the origin is out of space')
+    expect(degradation, 'the document DID change here, so the refusal\'s wording would be false').not.toContain('no document was changed')
+    expect(degradation).not.toContain('was not installed on this machine')
+
+    // THE REFUSAL: nothing happened at all.
+    expect(refusal, 'the install failed, so the degradation\'s wording would be false').not.toContain('is in this document')
+
+    // THE NO-STORE NOTE: a different MODEL, not a failed step. It says the font
+    // went into the document and why, and it never reports a failure.
+    expect(noStore).toContain('Kanit went straight into this document')
+    expect(noStore).toContain('nothing to install')
+    expect(noStore).toContain('carries its own copy')
+    expect(noStore).not.toContain('could not')
+    expect(noStore).not.toContain('was not installed')
+
+    // AND NO TWO OF THEM ARE THE SAME STRING, which is the cheapest guard
+    // against a later edit collapsing three events back into one sentence.
+    expect(new Set([refusal, degradation, noStore]).size).toBe(3)
   })
 })
 

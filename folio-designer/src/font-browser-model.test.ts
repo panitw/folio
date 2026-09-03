@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addableFamilyCount, indexCategories, indexScripts, offeredFamilies, type FamilySource } from './font-index'
-import { browserRows, buttonLabel, buttonName, confirmLabel, emptyStateHeading, familiesPerPage, filterRows, filtersActive, gridSpecimenCap, latinSample, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, thaiSample, weightLine, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
+import { browserRows, buttonLabel, buttonName, confirmLabel, emptyStateHeading, familiesPerPage, filterRows, filtersActive, gridSpecimenCap, latinSample, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, thaiSample, weightLine, type BrowserRow, type BrowserSort, type BrowserView, type RowState } from './font-browser-model'
 import type { StoredFace } from './font-store'
 
 // THE FONT BROWSER'S LOGIC, ASSERTED AGAINST THE DESIGN IT WAS PORTED FROM
@@ -38,7 +38,9 @@ describe('the font browser describes the families it is given', () => {
   })
 
   it('names every tier a row can come from, and cannot gain a fourth silently', () => {
-    expect(rowTierNote(webRow('Kanit', 'Sans Serif', ['latin', 'thai'], 8))).toBe('downloaded when you add it')
+    // MECHANICAL (Story 16.5): the web arm's verb follows the action the
+    // dialog now performs. The tier and the arm count are unchanged.
+    expect(rowTierNote(webRow('Kanit', 'Sans Serif', ['latin', 'thai'], 8))).toBe('downloaded when you install it')
     expect(rowTierNote({ tier: 'stored', family: 'Kanit', record: storedRecord('Kanit', ['latin']) })).toBe('downloaded to this machine')
     // THE LOCAL ARM, OVER A REAL COMMITTED FACE. It is the arm the other two are
     // measured against — the 31 faces that need no network at all — and it was
@@ -167,18 +169,37 @@ describe('the specimen, the badge and the row button', () => {
     }
   })
 
-  it('carries the mockup\'s three button states in its own order of precedence', () => {
-    expect(rowState('Lora', ['Lora'], ['Lora'])).toBe('in-template')
-    expect(rowState('Lora', [], ['Lora'])).toBe('staged')
-    expect(rowState('Lora', [], [])).toBe('addable')
+  // BEHAVIOUR-CHANGED (Story 16.5). The mockup drew three states; the model now
+  // has four, because a face can be ON THIS MACHINE and NOT IN THE DOCUMENT — a
+  // relationship that did not exist while confirming embedded. Every arm is
+  // asserted, including the new one, and the ORDER is asserted rather than left
+  // to `includes` call order.
+  it('carries the mockup\'s three button states plus 16.5\'s installed state, in order of precedence', () => {
+    expect(rowState('Lora', ['Lora'], ['Lora'], ['Lora'])).toBe('in-template')
+    expect(rowState('Lora', [], ['Lora'], ['Lora'])).toBe('staged')
+    expect(rowState('Lora', [], [], ['Lora'])).toBe('installed')
+    expect(rowState('Lora', [], [], [])).toBe('addable')
+    // AND THE INSTALLED SET CANNOT BE OMITTED. It used to default to `[]`, so a
+    // caller that forgot it compiled and reported `addable` over a face this
+    // machine holds; the argument is required now, and this line is what a
+    // reader checks that against.
+    // @ts-expect-error the installed set is required: omitting it must not compile
+    expect(() => rowState('Lora', [], [])).toBeTypeOf('function')
     expect(buttonLabel('in-template')).toBe('In template')
     expect(buttonLabel('staged')).toBe('✓ Added')
-    expect(buttonLabel('addable')).toBe('+ Add')
+    expect(buttonLabel('installed')).toBe('On this machine')
+    expect(buttonLabel('addable')).toBe('+ Install')
     // The visible label is the design's; the accessible name has to name the
-    // family, because a screen reader hears twelve buttons all called `+ Add`.
-    expect(buttonName('Lora', 'addable')).toBe('Add Lora to this template')
-    expect(buttonName('Lora', 'staged')).toBe('Remove Lora from the families to add')
+    // family, because a screen reader hears twelve buttons all called `+ Install`.
+    expect(buttonName('Lora', 'addable')).toBe('Install Lora on this machine')
+    expect(buttonName('Lora', 'staged')).toBe('Remove Lora from the families to install')
+    expect(buttonName('Lora', 'installed')).toBe('Lora is already on this machine')
     expect(buttonName('Lora', 'in-template')).toBe('Lora is in this template')
+    // AND NEITHER CAN GAIN A FIFTH SILENTLY. Both switches carry a `never`
+    // binding, which is the only thing standing between a new state and a
+    // button drawn with no label at all.
+    expect(() => buttonLabel('borrowed' as RowState)).toThrow(/borrowed/)
+    expect(() => buttonName('Lora', 'borrowed' as RowState)).toThrow(/borrowed/)
   })
 })
 
@@ -199,13 +220,21 @@ describe('the rail states the size the screen is actually using', () => {
   })
 })
 
-describe('the footer states what is about to go into the file', () => {
-  it('carries the mockup\'s pending line and confirm label', () => {
-    expect(pendingLine(0)).toBe('Select families to add to this template')
-    expect(pendingLine(1)).toBe('1 family ready to embed')
-    expect(pendingLine(3)).toBe('3 families ready to embed')
-    expect(confirmLabel(0)).toBe('Add to template')
-    expect(confirmLabel(3)).toBe('Add 3 to template')
+describe('the footer states what confirming will actually do', () => {
+  // BEHAVIOUR-CHANGED (Story 16.5). "ready to embed" and "Add N to template"
+  // were true under Story 16.3 and are false now: confirm keeps the faces on
+  // this machine and writes nothing into the document. The claim is asserted
+  // BOTH ways — the new words present, the old destination absent — because the
+  // regression this can suffer is a footer that goes on promising the file.
+  it('carries the mockup\'s pending line and confirm label, inverted to the install', () => {
+    expect(pendingLine(0)).toBe('Select families to install on this machine')
+    expect(pendingLine(1)).toBe('1 family ready to install')
+    expect(pendingLine(3)).toBe('3 families ready to install')
+    expect(confirmLabel(0)).toBe('Install on this machine')
+    expect(confirmLabel(3)).toBe('Install 3 on this machine')
+    for (const line of [pendingLine(0), pendingLine(3), confirmLabel(0), confirmLabel(3)]) {
+      expect(line, 'the footer may not claim the template moves: confirm sends no command').not.toMatch(/template|embed/i)
+    }
   })
 
   it('corrects the mockup\'s weight line to what this product embeds', () => {

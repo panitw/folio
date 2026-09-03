@@ -450,13 +450,54 @@ function fontStoreOver(database: IDBDatabase): FontStore {
 }
 
 /**
- * THE SENTENCE THE DESIGNER SAYS ABOUT A CACHING FAILURE, so the two callers
- * that can hit one say the same thing.
+ * THE SENTENCE THE DESIGNER SAYS WHEN THE STORE WILL NOT TAKE A FACE, so the
+ * two callers that can hit one say the same thing.
  *
- * A quota refusal is not a failed pick: the face was fetched, the terms were
- * admitted and the document has it. What failed is keeping a copy for next
- * time, and the author's only decision — free some space, or accept a refetch
- * — needs the distinction stated.
+ * STORY 16.5 INVERTED THIS RULING, AND THE OLD ONE IS RECORDED HERE RATHER THAN
+ * DELETED, because it was right about the model it was written for. Story 16.2
+ * put the store write AFTER the embed and said, correctly, that a quota refusal
+ * was *"not a failed pick: the face was fetched, the terms were admitted and the
+ * document has it"* — a degradation with something left to degrade FROM.
+ *
+ * UNDER EMBED-ON-USE THERE IS NOTHING LEFT TO DEGRADE FROM. Installing IS the
+ * store write; no command follows it and no document has the face. So a refusal
+ * here now decides whether the author gets the font at all, and calling that a
+ * caching failure would report a failed install as a success with a footnote.
+ * It is stated as the refusal it is, and it says what did NOT happen so the
+ * author is not left wondering which of their two files moved.
+ */
+export const storeWriteRefusal = (family: string, reason: string): string =>
+  `${family} was not installed on this machine (${reason}). Nothing was kept and no document was changed. Free some space — the AVAILABLE LOCALLY list has a remove control on every face — and try again.`
+
+/**
+ * AND THE OLD SENTENCE SURVIVES, FOR THE ONE PATH THAT STILL HAS SOMETHING TO
+ * DEGRADE FROM.
+ *
+ * Story 16.2's reasoning is untouched wherever the face is ALREADY IN THE
+ * DOCUMENT when the write fails — which under embed-on-use is exactly one path:
+ * a stored entry that has gone missing, refetched at first use, embedded, and
+ * then written back to heal the store. There the document has it and what failed
+ * is keeping a copy for next time, so calling that a failed pick would be as
+ * wrong as calling a failed install a caching hiccup.
+ *
+ * TWO SENTENCES BECAUSE THERE ARE TWO EVENTS, not because the wording was
+ * hedged. `storeWriteRefusal` is for the write that WAS the whole act; this is
+ * for the write that followed one.
  */
 export const storeWriteDegradation = (family: string, reason: string): string =>
-  `${family} was added to this document, but it could not be kept on this machine for next time (${reason}). Picking it again in another document will fetch it again.`
+  `${family} is in this document, but it could not be kept on this machine for next time (${reason}). Using it in another document will fetch it again.`
+
+/**
+ * THE DEGRADATION WHEN THE STORE CANNOT BE OPENED AT ALL, and it describes a
+ * DIFFERENT MODEL rather than a failed step (Story 16.5, orchestrator ruling
+ * 2026-09-03).
+ *
+ * With nowhere to put an installed face, installing has no meaning: a face that
+ * cannot be kept cannot later be used, which is the dead end D-16.R.46 Q4
+ * forbids. So this browser gets the PRE-16.5 MODEL — the pick puts the font
+ * straight into the document — and the author is told that is what happened, in
+ * those terms, rather than being left to infer why one browser behaves unlike
+ * another. IndexedDB stays a convenience; it never becomes a dependency.
+ */
+export const storeUnavailableEmbedNote = (family: string): string =>
+  `${family} went straight into this document, because this browser is not letting the designer keep typefaces on this machine. With nowhere to keep it there is nothing to install, so the font is added to the file at the moment you pick it — which is how this designer worked before typefaces could be kept here at all. The document carries its own copy either way.`

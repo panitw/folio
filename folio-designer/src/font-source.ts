@@ -1,5 +1,5 @@
 import { classifyLicenceToken, type LicenceClassification } from './font-licence.ts'
-import { faceCopyright } from './font-name-table.ts'
+import { faceCopyright, faceIsVariable } from './font-name-table.ts'
 
 // THE FONT SOURCE — THE ONE MODULE IN THIS REPOSITORY THAT NAMES A FONT HOST.
 //
@@ -359,7 +359,7 @@ const isAbort = (error: unknown): boolean => {
  * THE STALL'S OWN SENTENCE, AND IT DELIBERATELY DOES NOT REUSE THE OFFLINE
  * WORDING.
  *
- * "You cannot add a family without a network connection" is FALSE when the
+ * "You cannot install a family without a network connection" is FALSE when the
  * network is up and the host is hanging — it sends the author to check their
  * wifi over a problem that is not theirs. Located at the control the author
  * acted on, exactly as the offline refusal is.
@@ -388,6 +388,11 @@ const isAbort = (error: unknown): boolean => {
 const stalledRefusal = (family: string, stage: string): string =>
   `${family} stopped responding while ${stage}: the designer waited ${fetchTimeoutMs / 1000} seconds for a reply that never finished arriving, and then stopped. The request was made and did not complete in time — from here this designer cannot tell whether the font host is hanging, whether something between here and it is, or whether the connection is simply too slow for this face — and nothing was retried automatically, because retrying over a stall that repeats only hides it. Try the pick again if you like; the faces this machine already holds are still offered.`
 
+// STORY 16.5 MIGRATED THE VERB IN EVERY SENTENCE THIS MODULE PRODUCES, from
+// "added" to "installed". This resolver runs on exactly one path now — the
+// INSTALL — and a refusal that said a family "cannot be added" while nothing was
+// ever going to be added to a document was the same class of false UI string
+// this epic has ruled against four times. The word "add" survives nowhere here.
 const refuse = (reason: string, classification?: LicenceClassification): FetchOutcome => ({ ok: false, reason, classification })
 
 /**
@@ -410,7 +415,7 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = timedFet
       // A STALL AND AN OFFLINE REFUSAL ARE TWO DIFFERENT FAILURES WITH TWO
       // DIFFERENT RIGHT ANSWERS, so they get two sentences.
       if (isAbort(error)) return refuse(stalledRefusal(family, 'looking for its upstream metadata'))
-      return refuse(`${family} could not be reached right now (${error instanceof Error ? error.message : String(error)}). You cannot add a family without a network connection; the faces this machine already holds are still offered.`)
+      return refuse(`${family} could not be reached right now (${error instanceof Error ? error.message : String(error)}). You cannot install a family without a network connection; the faces this machine already holds are still offered, and using one of those needs no network at all.`)
     }
     if (response.status === 404) continue
     if (!response.ok) return refuse(`${family}'s upstream metadata responded ${response.status}`)
@@ -438,7 +443,7 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = timedFet
   // admitted, and no byte reaches the document before its licence and copyright
   // are in hand.
   const classification = classifyLicenceToken(metadata.licence)
-  if (classification.state !== 'admitted') return refuse(`${family} cannot be added: ${classification.reason}`, classification)
+  if (classification.state !== 'admitted') return refuse(`${family} cannot be installed: ${classification.reason}`, classification)
 
   const filename = regularFilename(metadata)
   if (filename === undefined) {
@@ -479,17 +484,38 @@ export async function fetchWebFamily(family: string, fetcher: Fetcher = timedFet
     // it: the largest offerable face is 24 MB, so the body is where a real
     // stall lives.
     if (isAbort(error)) return refuse(stalledRefusal(family, `sending the ${filename} face itself`))
-    return refuse(`${family} could not be fetched right now (${error instanceof Error ? error.message : String(error)}). You cannot add a family without a network connection; the faces this machine already holds are still offered.`)
+    return refuse(`${family} could not be fetched right now (${error instanceof Error ? error.message : String(error)}). You cannot install a family without a network connection; the faces this machine already holds are still offered, and using one of those needs no network at all.`)
   }
 
-  // nameID 0, FROM THE BYTES THAT ARE ABOUT TO BE EMBEDDED. Absent is a refusal,
-  // because the engine refuses to load a document that embeds a face with no
-  // copyright, so admitting one here would write a file this product cannot open.
+  // TWO READS OF THE SAME BYTES, IN THIS ORDER, INSIDE ONE GUARD.
+  //
+  // THE `fvar` FILTER IS FIRST AND IT MAY ONLY REFUSE (Story 16.5). Under
+  // install/embed separation the engine's own variable-face refusal no longer
+  // reaches the author at the moment they acted — it reaches them at first USE,
+  // which is a worse moment — so the refusal is ALSO made here, over the bytes
+  // in hand, at the moment the author asked for the family. It is a filter and
+  // not an authority: `fontset.RefuseVariableFace` still decides what enters a
+  // document, and nothing here admits anything. See `faceIsVariable`'s own doc
+  // for why a refuse-only copy is permitted at install and forbidden at the
+  // command.
+  //
+  // AND AN UNPARSABLE FACE IS REFUSED BEFORE EITHER LOOKUP, by the container
+  // guard both readers share: a 200 carrying an error page throws out of
+  // `requireStaticTrueTypeTables` and is stated in those words. Go answers
+  // `nil` for the same bytes. That divergence is deliberate and is asserted on
+  // purpose in `src/font-variable-face-tie.test.ts`.
+  //
+  // nameID 0 IS SECOND. Absent is a refusal, because the engine refuses to load
+  // a document that embeds a face with no copyright, so admitting one here would
+  // put a file this product cannot open one step away.
   let copyright: string
   try {
+    if (faceIsVariable(bytes)) {
+      return refuse(`${family} cannot be installed: the face published upstream as ${filename} is a VARIABLE font (it carries an \`fvar\` table), and a document may only carry a single static face — PDF 1.7 cannot express a variable font, and this designer will not pick an instance on your behalf. Nothing was kept on this machine.`)
+    }
     copyright = faceCopyright(bytes)
   } catch (error) {
-    return refuse(`${family} cannot be added: ${error instanceof Error ? error.message : String(error)}`)
+    return refuse(`${family} cannot be installed: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   // LAYOUT DISAGREEMENT IS AN OBSERVATION, NOT A REFUSAL. Recorded because

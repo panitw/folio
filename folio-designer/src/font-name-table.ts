@@ -154,3 +154,47 @@ export function faceCopyright(bytes: ArrayBuffer | ArrayBufferView): string {
   if (!copyright) throw new Error('this face declares no copyright in its own `name` table (nameID 0); a face embedded into a document must state whose it is, and the engine refuses to load a document that does not')
   return copyright
 }
+
+/**
+ * `fvar` — A FILTER THAT MAY ONLY REFUSE, AND GO REMAINS THE AUTHORITY.
+ *
+ * Story 16.5 separates INSTALLING a face from EMBEDDING it, which moves every
+ * refusal the embed command makes to a later moment than the one the author
+ * acted in. `fontset.RefuseVariableFace` (`folio-go/internal/fontset/variableface.go`)
+ * IS STILL THE ONLY THING THAT DECIDES WHAT ENTERS A DOCUMENT. This predicate
+ * decides only what is worth keeping on this machine, and it is written so that
+ * it can never do more than that:
+ *
+ *   IT MAY ONLY REFUSE, NEVER ADMIT. A caller uses it to decline an install; no
+ *   caller may use a `false` from it as permission to embed. Every way this can
+ *   drift is therefore either today's behaviour or a loud failure at the moment
+ *   the author acted: drift permissive and the face installs and Go refuses it
+ *   at first use — exactly what happens today; drift strict and a legitimate
+ *   face fails to install, loudly, in front of the person who asked for it.
+ *   NEITHER OUTCOME WRITES A DOCUMENT. That asymmetry is the whole reason a
+ *   second `fvar` test is permitted here and forbidden at or behind the command.
+ *
+ *   IT IS AN UPGRADE TO A FILTER THAT ALREADY SHIPS, NOT A NEW DOOR.
+ *   `font-index.ts` already hides variable-only rows on the strength of the
+ *   build-time snapshot's `axes` field, and says of itself that a hidden row is
+ *   a presentation choice and that the authority stays Go. This reads the same
+ *   property off THE BYTES IN HAND instead of off a field that ages between
+ *   releases.
+ *
+ * SHAPED EXACTLY LIKE `faceCopyright` ABOVE, and for the same reason: it builds
+ * the view and the table directory internally and returns a plain value, so no
+ * caller has to hold a `DataView` or a directory to ask the question. That costs
+ * one extra table-directory walk per fetched face — the twelve-byte header plus
+ * sixteen bytes per record, no glyph parsing, no new dependency.
+ *
+ * THE CONTAINER GUARD RUNS FIRST, AND THE DIVERGENCE FROM GO IS DELIBERATE.
+ * `requireStaticTrueTypeTables` THROWS for a 200 that is not a font, so an
+ * unparsable face never reaches the `fvar` lookup at all; Go's
+ * `RefuseVariableFace` returns `nil` for those same bytes, because it answers
+ * exactly one question and an unparsable face is not a variable one. The two
+ * sides deliberately answer differently there, `src/font-variable-face-tie.test.ts`
+ * asserts that on purpose, and neither is to be widened to match the other.
+ */
+export function faceIsVariable(bytes: ArrayBuffer | ArrayBufferView): boolean {
+  return 'fvar' in requireStaticTrueTypeTables(fontView(bytes))
+}

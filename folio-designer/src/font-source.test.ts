@@ -400,11 +400,15 @@ describe('fetching a family from the web tier', () => {
 
   // OFFLINE DEGRADES, NEVER BREAKS. No network means no NEW family; it never
   // means a document that will not render.
-  it('states that a family cannot be added right now when the network is down', async () => {
+  // MECHANICAL (Story 16.5, finding 10): the verb follows the action. This
+  // resolver runs on the INSTALL path only, so "cannot be added" described a
+  // step that no longer happens here.
+  it('states that a family cannot be installed right now when the network is down', async () => {
     const outcome = await fetchWebFamily('Kanit', async () => { throw new TypeError('Failed to fetch') })
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
-    expect(outcome.reason).toMatch(/You cannot add a family without a network connection/)
+    expect(outcome.reason).toMatch(/You cannot install a family without a network connection/)
+    expect(outcome.reason, 'the machine tier is still offered, and using one needs no network').toMatch(/needs no network at all/)
     expect(outcome.reason).toMatch(/faces this machine already holds are still offered/)
   })
 
@@ -543,7 +547,7 @@ describe('a fetch that stalls rather than rejecting', () => {
   })
 
   // THE STALL'S SENTENCE IS ITS OWN, AND IT DELIBERATELY DOES NOT BORROW THE
-  // OFFLINE ONE. "You cannot add a family without a network connection" is
+  // OFFLINE ONE. "You cannot install a family without a network connection" is
   // FALSE when the network is up and the host is hanging, and it sends the
   // author to check their wifi over a problem that is not theirs.
   //

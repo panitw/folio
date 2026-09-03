@@ -540,6 +540,6 @@ development_status:
   # 16.5 added 2026-09-03 by OWNER DECISION D-16.R.46: install and embed are separated. It runs BETWEEN
   # 16.3 and 16.4 despite its number -- 16.4's three groups mean what 16.5 defines, so building 16.4
   # first would build the control twice. Embed-on-use, designer-side only; prune-on-save was refused.
-  16-5-installing-a-face-is-not-embedding-it: backlog
+  16-5-installing-a-face-is-not-embedding-it: review
   16-4-the-family-control-names-three-sources: backlog
   epic-16-retrospective: optional

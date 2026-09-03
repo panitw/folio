@@ -246,6 +246,24 @@ export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace>
 }
 
 /**
+ * WHETHER THIS MACHINE ALREADY HOLDS THE FACE — THE ONE DEFINITION OF
+ * "INSTALLED", read by the family control's fork and by the browser's row state
+ * so the two cannot disagree (Story 16.5).
+ *
+ * TWO TIERS ARE INSTALLED AND ONE IS NOT, AND THE LINE IS "CAN THESE BYTES BE
+ * HAD WITH NO NETWORK". The local tier ships inside the release behind the
+ * service worker; the stored tier is what this designer fetched and kept. Only
+ * a `web` row needs a download, so only a `web` row has anything to install.
+ *
+ * IT IS DELIBERATELY NOT A FOURTH TIER. A tier says where a face's BYTES come
+ * from, and install/embed separation did not add a byte source — it split what a
+ * pick does. Reinterpreting `'stored'` to mean "installed" would have compiled
+ * everywhere and changed nothing, which is exactly why the new state is stated
+ * here and in `rowState` instead.
+ */
+export const familyIsInstalled = (source: FamilySource): boolean => source.tier !== 'web'
+
+/**
  * THE TIER A ROW IS OFFERED FROM, IN THE AUTHOR'S OWN TERMS — one exhaustive
  * switch over `FamilySource`, so the union cannot gain an arm that nothing
  * describes.
@@ -253,12 +271,20 @@ export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace>
  * This is the seam D-16.R.33 R1 asked to be built here rather than left to
  * Story 16.4: adding a fourth tier without handling it stops compiling at the
  * `never`, which is what makes the hand-off enforceable.
+ *
+ * STORY 16.5 REWROTE WHAT EVERY ARM SAYS, BECAUSE PICKING NO LONGER MEANS ONE
+ * THING FOR ALL THREE. A row this machine already holds is USED when it is
+ * picked — the face is embedded and the property committed. A row it does not
+ * hold is INSTALLED when it is picked, and nothing reaches the document until
+ * something in the template is actually set in it. The note is the only place
+ * an author is told which of those two a row will do, so it says so rather than
+ * describing the tier for its own sake.
  */
 export function familySourceNote(source: FamilySource): string {
   switch (source.tier) {
-    case 'local': return ' — add to document, already on this machine'
-    case 'stored': return ' — add to document, already downloaded to this machine'
-    case 'web': return ' — add to document'
+    case 'local': return ' — use it, already on this machine'
+    case 'stored': return ' — use it, already downloaded to this machine'
+    case 'web': return ' — install on this machine'
     default: {
       const unhandled: never = source
       // NO `JSON.stringify` HERE. `engine-ownership-contract.test.ts` keeps

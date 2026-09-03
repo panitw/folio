@@ -53,7 +53,7 @@ test('the browser opens from the family control as the design\'s five-region mod
   await expect(browser.getByRole('group', { name: 'Sort' })).toBeVisible()
   await expect(browser.getByRole('group', { name: 'Results view' })).toBeVisible()
   await expect(browser.getByRole('list', { name: 'Font families' })).toBeVisible()
-  await expect(browser.getByRole('button', { name: 'Add to template' })).toBeDisabled()
+  await expect(browser.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
 
   // THE COUNT IS THE ADDABLE ONE AND IT NAMES THE SNAPSHOT. The mockup's
   // "web font library · 1,946 families" claims a live library over a published
@@ -99,26 +99,33 @@ test('the Grid view draws the same families as cards', async ({ page }) => {
   await expect(browser.getByRole('list', { name: 'Font families' }).getByRole('listitem')).toHaveCount(rows)
 })
 
-test('staging several families states what is about to be embedded, and Escape discards it', async ({ page }) => {
+// BEHAVIOUR-CHANGED (Story 16.5): the dialog's action is now INSTALL, and its
+// footer says so. A row this machine already holds — every local-tier family —
+// reports `On this machine` and is not stageable at all, because installing it
+// again would fetch bytes the store already carries; so the staging locator is
+// narrowed to the rows that CAN be staged rather than to every row on the page.
+test('staging several families states what is about to be installed, and Escape discards it', async ({ page }) => {
   const browser = await openBrowser(page)
   const list = browser.getByRole('list', { name: 'Font families' })
-  const add = list.getByRole('button', { name: /^Add .* to this template$/ })
+  const add = list.getByRole('button', { name: /^Install .* on this machine$/ })
   await add.nth(0).click()
   await add.nth(0).click()
-  await expect(browser.getByText(/^2 families ready to embed/)).toBeVisible()
+  await expect(browser.getByText(/^2 families ready to install/)).toBeVisible()
   // THE FOOTER STATES ONE FACT ABOUT WHAT A FACE IS — one upright Regular per
-  // family, no bold and no italic — and deliberately NOT where it goes, because
-  // Story 16.5 inverts the destination. It also says nothing about subsetting in
-  // either direction: this product DOES subset, at PDF render over the glyphs the
-  // document uses, so "whole file, not subset" was as false as the mockup's
-  // "subset latin+thai" and shipped briefly before review caught it.
+  // family, no bold and no italic — and deliberately NOT where it goes. Story
+  // 16.5 HAS NOW inverted the destination, and this line needed no edit for it,
+  // which is what keeping destination language out of it bought. It also says
+  // nothing about subsetting in either direction: this product DOES subset, at
+  // PDF render over the glyphs the document uses, so "whole file, not subset"
+  // was as false as the mockup's "subset latin+thai" and shipped briefly before
+  // review caught it.
   //
   // THIS ASSERTION IS WHY THE BROWSER RUN IS NOT OPTIONAL. When the string was
   // corrected in `font-browser-model.ts`, this line still matched the old one —
   // and `test:e2e:compile` is `tsc --noEmit`, which cannot see inside a regex.
   // Only executing it in a browser failed.
   await expect(browser.getByText(/2 faces · one upright Regular each, no bold or italic/)).toBeVisible()
-  await expect(browser.getByRole('button', { name: 'Add 2 to template' })).toBeEnabled()
+  await expect(browser.getByRole('button', { name: 'Install 2 on this machine' })).toBeEnabled()
 
   // ESCAPE DISCARDS THE STAGED SET AND LEAVES THE DOCUMENT UNTOUCHED. Nothing
   // was sent, so the revision has not moved off the one the placement produced.
@@ -149,9 +156,13 @@ test('every family the browser lists has a specimen state it states in words', a
   for (let index = 0; index < count; index++) {
     const row = rows.nth(index)
     const name = await row.getByRole('button').first().getAttribute('aria-label') ?? ''
-    const family = /^(?:Add (.+) to this template|Remove (.+) from the families to add|(.+) is in this template)$/.exec(name)
+    // FOUR STATES SINCE STORY 16.5, and every one of them must still NAME THE
+    // FAMILY: a screen reader hearing twelve buttons all called `+ Install`
+    // learns nothing, and the fourth state (`On this machine`) is the one most
+    // likely to be added without an accessible name because it is inert.
+    const family = /^(?:Install (.+) on this machine|Remove (.+) from the families to install|(.+) is in this template|(.+) is already on this machine)$/.exec(name)
     expect(family, `row ${index} must carry a family-named add control, not "${name}"`).not.toBeNull()
-    const spoken = family?.[1] ?? family?.[2] ?? family?.[3] ?? ''
+    const spoken = family?.[1] ?? family?.[2] ?? family?.[3] ?? family?.[4] ?? ''
     const text = await row.innerText()
     const states = text.includes(sample)
       || text.includes('ทุกคนมีสิทธิในเสรีภาพแห่งความคิด')

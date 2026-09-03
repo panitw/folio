@@ -94,7 +94,7 @@ async function currentRevision(page: import('@playwright/test').Page): Promise<n
 // STORY 16.1 SPLIT THE SECOND GROUP IN TWO, AND THIS TEST NOW ASSERTS THE
 // TIER RATHER THAN THE WHOLE LIST.
 //
-// The control used to offer exactly the 21 committed families and nothing else.
+// The control used to offer exactly the committed families and nothing else.
 // It now offers those PLUS families from the build-time index snapshot, whose
 // bytes are fetched at the moment of a pick — and the painted list is capped
 // while the count is not. So "exactly the families the catalogue declares" is
@@ -102,8 +102,15 @@ async function currentRevision(page: import('@playwright/test').Page): Promise<n
 // it is the one the ruling actually cares about: THE LOCAL FACE TIER IS OFFERED
 // IN FULL, IT SAYS THAT IT NEEDS NO DOWNLOAD, AND NOTHING IS MISSING FROM IT.
 // A twenty-second committed family still cannot escape this harness.
-const LOCAL_NOTE = ' — add to document, already on this machine'
-const WEB_NOTE = ' — add to document'
+//
+// STORY 16.5 CHANGED WHAT THE NOTES SAY, BECAUSE IT CHANGED WHAT A PICK DOES. A
+// family this machine already holds is USED when it is picked — the face is
+// embedded and the property committed, two commands — while one it does not hold
+// is INSTALLED and reaches no document at all. The local tier is the first case,
+// which is why this file's every-family-embedded measurement below survives the
+// split intact.
+const LOCAL_NOTE = ' — use it, already on this machine'
+const WEB_NOTE = ' — install on this machine'
 
 test('the designer offers the whole local face tier, marked as needing no download', async ({ page }) => {
   await placeAndSelectText(page)
@@ -112,7 +119,7 @@ test('the designer offers the whole local face tier, marked as needing no downlo
   const local = options.filter((text) => text.includes(LOCAL_NOTE)).map((text) => text.replace(LOCAL_NOTE, '').trim())
   expect([...local].sort()).toEqual([...families].sort())
   // AND THE SECOND TIER IS REALLY THERE, distinct from the first: rows that
-  // carry the plain note are families whose bytes are not on this machine.
+  // carry the install note are families whose bytes are not on this machine.
   const web = options.filter((text) => text.includes(WEB_NOTE) && !text.includes(LOCAL_NOTE))
   expect(web.length, 'the snapshot tier must contribute rows of its own').toBeGreaterThan(0)
   // AND THE COUNT IS THE ADDABLE COUNT, WITH THE LIST'S STALENESS STATED. The
@@ -124,11 +131,31 @@ test('the designer offers the whole local face tier, marked as needing no downlo
   expect(disclosure).toMatch(/changes only when the designer is released/)
 })
 
+// STORY 16.5: THIS MEASUREMENT IS UNCHANGED, AND THAT IS THE POINT OF STATING IT.
+//
+// Install/embed separation moves WHEN a face enters a document for a family this
+// machine does not hold. The committed catalogue families are the LOCAL FACE TIER
+// — they ship inside the release, so this machine already holds them — and picking
+// one is FIRST USE, which embeds. So the after-state is still every one of them
+// EMBEDDED and nothing less, over whatever `families` currently holds — the
+// assertion below reads the list rather than a numeral, which is why it cannot
+// rot into a floor the way the counts in the comments below had.
+//
+// WHAT THE REVISION POLL NOW WATCHES IS TWO COMMANDS RATHER THAN ONE: the embed
+// and then the `fontFamily` commit. `> before` is satisfied by either, and it is
+// deliberately not tightened to `+2` here — this file's subject is the WASM
+// boundary answering at all, and the two-command order is asserted on the wire in
+// `src/App.test.tsx` and `src/App.font-store.test.tsx` where a payload can be read.
 test('every catalogue family embeds, and no pick is answered by a boundary sentence', async ({ page }) => {
-  // 21 families, each on its OWN blank document: a shared document would let
-  // one pick's document state (twenty-one embedded assets, twenty-one chains)
-  // confound the next pick's result, and the report would no longer be one
-  // measurement per family.
+  // ONE FAMILY PER BLANK DOCUMENT: a shared document would let one pick's
+  // document state (every earlier family's asset and chain) confound the next
+  // pick's result, and the report would no longer be one measurement per family.
+  //
+  // STALE NUMERAL CORRECTED (Story 16.5, D-16.R.35's rule). This said "21
+  // families" in three places; Story 16.1a grew the local face tier and
+  // `font-catalogue.json` has carried more than 21 entries since. The count is
+  // deliberately not restated as a new numeral — `families` is the list and
+  // every assertion below is written against it.
   test.setTimeout(900_000)
   const rows: Row[] = []
   for (const family of families) {
@@ -171,12 +198,13 @@ test('every catalogue family embeds, and no pick is answered by a boundary sente
   expect(silent.map((row) => row.family)).toEqual([])
 
   // Second: THE OVER-BROADNESS CONTROL. Everything above is satisfied by a
-  // regression that refuses all 21 families with tidy located reasons — the
+  // regression that refuses every family with a tidy located reason — the
   // browser half had no answer to that, while the Go half has had one since
   // TestStaticFaceIsStillEmbeddedAtBothDoors. Every catalogue face is static
   // by construction (each public/fonts/*/NOTICE.md asserts no `fvar`, and
   // scripts/build-wasm.mjs validates it at build time), so the measured
-  // after-state of this story is 21 of 21 EMBEDDED and nothing less will do.
+  // after-state of this story is EVERY committed family EMBEDDED, and nothing
+  // less will do.
   expect(rows.filter((row) => row.outcome !== 'EMBEDDED').map((row) => `${row.family}: ${row.outcome}`)).toEqual([])
   expect(rows).toHaveLength(families.length)
 })

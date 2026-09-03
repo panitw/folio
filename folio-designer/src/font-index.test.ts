@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { catalogueFaces } from './generated/font-catalogue'
 import { familyIndex, familyIndexPublishedFamilies, familyIndexSnapshotDate } from './generated/font-index'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
-import { addableFamilyCount, familyIndexDisclosure, familySourceNote, indexCategories, indexRowFor, indexScripts, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
+import { addableFamilyCount, familyIndexDisclosure, familyIsInstalled, familySourceNote, indexCategories, indexRowFor, indexScripts, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
 import type { StoredFace } from './font-store'
 
 // STORY 16.1 — THE TWO TIERS AND THE JOIN BETWEEN THEM (D-16.R.3, D-16.R.2).
@@ -379,19 +379,37 @@ describe('the faces this machine already holds', () => {
   // THE SEAM ITSELF. Every arm of the union has a sentence, and the switch that
   // produces it is exhaustive — so a fourth tier added without being handled
   // stops compiling rather than silently rendering nothing.
-  it('describes every tier of the union, and says which rows need no download', () => {
+  //
+  // BEHAVIOUR-CHANGED (Story 16.5). All three sentences said `add to document`,
+  // and for two of the three tiers that is now false in the opposite direction
+  // from the third: picking a family this machine does not hold INSTALLS it and
+  // sends no command at all, while picking one it does hold embeds the face and
+  // sets the property. The note is the only place an author is told which of
+  // those two a row will do, so the assertion is about that and not about a
+  // spelling.
+  it('describes every tier of the union, and says which rows install and which are used', () => {
     const family = webFamilies.find((row) => !localTierHolds(row.family))!.family
     const web = offeredFamilies(family).find((source) => source.family === family)!
     const fromStore = offeredFamilies(family, [stored(family, 'e'.repeat(64))]).find((source) => source.family === family)!
     const local = offeredFamilies(catalogueFaces[0]!.family).find((source) => source.tier === 'local')!
-    expect(familySourceNote(local)).toBe(' — add to document, already on this machine')
-    expect(familySourceNote(fromStore)).toBe(' — add to document, already downloaded to this machine')
-    expect(familySourceNote(web)).toBe(' — add to document')
+    expect(familySourceNote(local)).toBe(' — use it, already on this machine')
+    expect(familySourceNote(fromStore)).toBe(' — use it, already downloaded to this machine')
+    expect(familySourceNote(web)).toBe(' — install on this machine')
     // The two tiers that need no network say so; the one that does, does not
     // claim otherwise.
-    expect(familySourceNote(local)).toMatch(/this machine/)
-    expect(familySourceNote(fromStore)).toMatch(/this machine/)
-    expect(familySourceNote(web)).not.toMatch(/this machine/)
+    expect(familySourceNote(local)).toMatch(/already/)
+    expect(familySourceNote(fromStore)).toMatch(/already/)
+    expect(familySourceNote(web)).not.toMatch(/already/)
+    // AND NO ARM MAY CLAIM A PICK REACHES THE DOCUMENT ANY MORE. Two of the
+    // three do embed, but not because they were "added to the document" — the
+    // property commit that follows is the author's own act on their selection.
+    for (const source of [local, fromStore, web]) expect(familySourceNote(source)).not.toMatch(/add to document/)
+    // THE TIE BETWEEN THIS SENTENCE AND THE FORK IT DESCRIBES. `familyIsInstalled`
+    // is what the family control switches on, so a note that said "use it" over a
+    // row the control would install is caught here rather than in a screenshot.
+    expect(familyIsInstalled(local)).toBe(true)
+    expect(familyIsInstalled(fromStore)).toBe(true)
+    expect(familyIsInstalled(web)).toBe(false)
   })
 })
 

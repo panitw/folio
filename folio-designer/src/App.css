@@ -453,6 +453,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .font-browser-dot-active { background: var(--color-select); }
 .font-browser-pending { margin: 0; color: var(--color-ink); font: var(--type-body-em); }
 .font-browser-weight { color: var(--color-ink-ghost); font: var(--type-mono); }
+/* The degraded-model note sits beside the confirm control, in the panel's own
+   warning ink, because it changes what pressing that control does. */
+.font-browser-degraded { color: var(--color-ink); font: var(--type-mono); max-width: 34rem; }
 .font-browser-cancel { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .font-browser-confirm { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-select); border-radius: var(--radius-default); background: var(--color-select); color: var(--color-ground); font: var(--type-body-em); font-weight: 500; cursor: pointer; }
 .font-browser-confirm:disabled { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-ghost); cursor: default; }

@@ -53,7 +53,7 @@ type Overrides = Partial<Parameters<typeof FontBrowser>[0]>
 function open(overrides: Overrides = {}) {
   const onClose = vi.fn()
   const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; return undefined })
-  const result = render(<FontBrowser sources={sources} inTemplate={[]} previewBytes={async () => bytes()} onAddFamily={onAddFamily} onClose={onClose} {...overrides} />)
+  const result = render(<FontBrowser sources={sources} inTemplate={[]} previewBytes={async () => bytes()} onAddFamily={onAddFamily} storeKeepsFaces onClose={onClose} {...overrides} />)
   return { ...result, onClose, onAddFamily }
 }
 
@@ -73,7 +73,7 @@ describe('the font browser is the design\'s modal', () => {
     expect(screen.getByRole('slider', { name: 'Preview size in pixels' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Thai sample text' })).toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Font families' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add to template' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
   })
 
   it('names the snapshot rather than claiming a live library, and reuses the one sentence that says so', () => {
@@ -90,8 +90,8 @@ describe('the font browser is the design\'s modal', () => {
   it('closes on Escape and on Cancel, discarding whatever was staged', async () => {
     installed = installStubFontSet()
     const { onClose, onAddFamily } = open()
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    expect(screen.getByRole('button', { name: 'Add 1 to template' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    expect(screen.getByRole('button', { name: 'Install 1 on this machine' })).toBeEnabled()
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Font browser' }), { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -245,12 +245,12 @@ describe('staging and confirming', () => {
   it('stages several families and dispatches one command each, in order', async () => {
     installed = installStubFontSet()
     const { onAddFamily, onClose } = open()
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Chonburi to this template' }))
-    expect(screen.getByText(/^3 families ready to embed/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Chonburi on this machine' }))
+    expect(screen.getByText(/^3 families ready to install/)).toBeInTheDocument()
     expect(screen.getByText(/3 faces · one upright Regular each/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Add 3 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 3 on this machine' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(onAddFamily.mock.calls.map(([source]) => source.family)).toEqual(['Sarabun', 'Lora', 'Chonburi'])
   })
@@ -259,21 +259,21 @@ describe('staging and confirming', () => {
     installed = installStubFontSet()
     open({ inTemplate: ['Lora'] })
     expect(screen.getByRole('button', { name: 'Lora is in this template' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    expect(screen.getByText(/^1 family ready to embed/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Sarabun from the families to add' }))
-    expect(screen.getByText(/^Select families to add to this template/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add to template' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    expect(screen.getByText(/^1 family ready to install/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Sarabun from the families to install' }))
+    expect(screen.getByText(/^Select families to install on this machine/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
   })
 
   it('names one family\'s refusal, adds the rest, and leaves only the refused one staged', async () => {
     installed = installStubFontSet()
     const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => source.family === 'Lora' ? 'Lora could not be reached right now.' : undefined)
     const { onClose } = open({ onAddFamily })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Chonburi to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add 3 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Chonburi on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 3 on this machine' }))
 
     // ONE FAMILY FAILING DOES NOT ABANDON THE OTHERS: all three were dispatched.
     await waitFor(() => expect(onAddFamily).toHaveBeenCalledTimes(3))
@@ -281,8 +281,8 @@ describe('staging and confirming', () => {
     // The modal stays open so the refusal can be read, and only Lora is left
     // staged so it can be retried without being found again.
     expect(onClose).not.toHaveBeenCalled()
-    await waitFor(() => expect(screen.getByText(/^1 family ready to embed/)).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'Remove Lora from the families to add' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/^1 family ready to install/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Remove Lora from the families to install' })).toBeInTheDocument()
   })
 
   it('turns a seam that REJECTS into a named refusal, and never leaves the modal stuck busy', async () => {
@@ -292,9 +292,9 @@ describe('staging and confirming', () => {
       return undefined
     })
     const { onClose } = open({ onAddFamily })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add 2 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 2 on this machine' }))
     // The throw is the seam failing in a way it did not anticipate. Before this
     // was caught, `setBusy(false)` never ran: every control stayed disabled for
     // the life of the modal with Escape the only way out.
@@ -309,14 +309,14 @@ describe('staging and confirming', () => {
     installed = installStubFontSet()
     const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => source.family === 'Lora' ? 'Lora could not be reached.' : undefined)
     open({ onAddFamily })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add 2 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 2 on this machine' }))
     await screen.findByText(/Lora could not be reached\./)
     // ASSERTED AS AN ABSENCE, because the footer's own line is prefix-anchored
     // elsewhere and a stale suffix slips straight past a prefix match.
     await waitFor(() => expect(screen.queryByText(/added 2 of 2/)).toBeNull())
-    expect(screen.getByText('1 family ready to embed')).toBeInTheDocument()
+    expect(screen.getByText('1 family ready to install')).toBeInTheDocument()
   })
 
   it('does not let Escape dismiss the modal while a batch is running', async () => {
@@ -324,8 +324,8 @@ describe('staging and confirming', () => {
     let release: (() => void) | undefined
     const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; await new Promise<void>((resolve) => { release = resolve }); return undefined })
     const { onClose } = open({ onAddFamily })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 1 on this machine' }))
     await screen.findByText(/added 0 of 1/)
     // Every other control is disabled here. Escape was the one route to a
     // half-dismissed modal with dispatches still in flight.
@@ -340,9 +340,9 @@ describe('staging and confirming', () => {
     let release: (() => void) | undefined
     const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; await new Promise<void>((resolve) => { release = resolve }); return undefined })
     open({ onAddFamily })
-    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add 2 to template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install 2 on this machine' }))
     expect(await screen.findByText(/added 0 of 2/)).toBeInTheDocument()
     release?.()
     expect(await screen.findByText(/added 1 of 2/)).toBeInTheDocument()
@@ -362,6 +362,49 @@ describe('staging and confirming', () => {
 // stored family out of IndexedDB and a web family through `fetchWebFamily`, so a
 // face this machine already holds needs no network at all — and the whole point
 // of Story 16.2 is that this stays true when the network is gone.
+// STORY 16.5, LEAD GUARDRAIL — IN DEGRADED MODE THE CONFIRM CONTROL NAMES THE
+// COUNT, BECAUSE IT NO LONGER DOES WHAT ITS LABEL SAYS.
+//
+// A browser that cannot keep typefaces gets the pre-16.5 model: a pick embeds.
+// In this dialog that means confirming five staged families writes FIVE FACES
+// into the document — the exact outcome the owner's reversal was made to
+// prevent. It is acceptable as a stated degradation of a rare path and
+// unacceptable unstated, so the number travels in the name of the control that
+// does it, at the moment the author is deciding whether to press it.
+describe('a browser that cannot keep typefaces says what confirming will do instead', () => {
+  it('names the count in the confirm control and says so in the footer, and stops when the store works', () => {
+    installed = installStubFontSet()
+    const { rerender } = open({ storeKeepsFaces: false })
+
+    // WITH NOTHING STAGED THE WARNING IS ALREADY THERE, because the author is
+    // deciding whether to stage at all, not only whether to confirm.
+    expect(screen.getByRole('button', { name: 'Install on this machine — this browser will not keep fonts, so confirming adds families straight to this document' })).toBeDisabled()
+    expect(screen.getByText(/This browser will not keep typefaces, so these go straight into the document/)).toBeInTheDocument()
+
+    // AND THE COUNT IS THE STAGED COUNT, not a fixed sentence. A warning that
+    // did not move with the number would be one an author skims.
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    expect(screen.getByRole('button', { name: 'Install 1 on this machine — this browser will not keep fonts, so confirming adds 1 family to this document' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Install Lora on this machine' }))
+    const confirm = screen.getByRole('button', { name: 'Install 2 on this machine — this browser will not keep fonts, so confirming adds 2 families to this document' })
+    expect(confirm).toBeEnabled()
+    // THE VISIBLE LABEL IS STILL THE DESIGN'S, AND THE ACCESSIBLE NAME CONTAINS
+    // IT (WCAG 2.5.3, Label in Name). A name sharing no words with the button's
+    // own text is unspeakable — a speech-input author says what they can see —
+    // so the label leads and the warning follows it. The footer note is the half
+    // that reaches a sighted reader.
+    expect(confirm.textContent).toBe('Install 2 on this machine')
+    expect(confirm.getAttribute('aria-label')).toContain(confirm.textContent)
+
+    // THE OVER-BROADNESS CONTROL: with a working store none of it appears. A
+    // dialog that warned unconditionally would pass every line above.
+    rerender(<FontBrowser sources={sources} inTemplate={[]} previewBytes={async () => bytes()} onAddFamily={vi.fn(async () => undefined)} storeKeepsFaces onClose={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Install 2 on this machine' })).toBeInTheDocument()
+    expect(screen.queryByText(/go straight into the document/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /will not keep fonts/ })).toBeNull()
+  })
+})
+
 describe('with no network the browser says so, and the faces this machine holds still work', () => {
   const stored: FamilySource = {
     tier: 'stored',
@@ -378,7 +421,7 @@ describe('with no network the browser says so, and the faces this machine holds 
     // Offline: every web family fails to resolve; the stored one is on this
     // machine and resolves without a network.
     const offlineBytes = async (family: string) => family === 'Kanit' ? bytes() : undefined
-    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={offlineBytes} onAddFamily={vi.fn(async () => undefined)} onClose={vi.fn()} />)
+    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={offlineBytes} onAddFamily={vi.fn(async () => undefined)} storeKeepsFaces onClose={vi.fn()} />)
 
     // THE STORED FAMILY IS SET IN ITSELF, and that is the half that proves the
     // store is read rather than merely present.
@@ -392,14 +435,35 @@ describe('with no network the browser says so, and the faces this machine holds 
     }
   })
 
-  it('still lets the stored family be staged and added while every web fetch fails', async () => {
+  // BEHAVIOUR-CHANGED (Story 16.5), AND THE CHANGE IS THE POINT OF THE STORY.
+  //
+  // This used to stage the stored family and confirm it, because confirming
+  // EMBEDDED and a stored family had a document to be embedded into. The dialog's
+  // action is now INSTALL, and a face the store already holds has nothing to
+  // install — so the row reports that it is here and is not stageable, while the
+  // web rows beside it, on the same screen with the same dead network, still are.
+  //
+  // THE CLAIM IT STILL CARRIES IS THE ONE WORTH HAVING: the store is READ. A
+  // browser that ignored `familyIsInstalled` would show `+ Install` over a face
+  // this machine holds and would dispatch a pointless fetch for it, and both
+  // halves of that are asserted below. Embedding a stored family is now first
+  // use, and it is covered where it happens — `App.test.tsx`'s third-arm case.
+  it('reports the stored family as already here rather than offering to install it, while web rows stay stageable', async () => {
     installed = installStubFontSet()
     const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; return undefined })
-    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={async (family) => family === 'Kanit' ? bytes() : undefined} onAddFamily={onAddFamily} onClose={vi.fn()} />)
+    render(<FontBrowser sources={[stored, ...sources]} inTemplate={[]} previewBytes={async (family) => family === 'Kanit' ? bytes() : undefined} onAddFamily={onAddFamily} storeKeepsFaces onClose={vi.fn()} />)
 
-    fireEvent.click(screen.getByLabelText(/Kanit/i, { selector: 'button.font-browser-add' }))
-    fireEvent.click(screen.getByRole('button', { name: /Add 1 to template/i }))
+    const kanit = screen.getByLabelText(/Kanit/i, { selector: 'button.font-browser-add' })
+    expect(kanit).toHaveAccessibleName('Kanit is already on this machine')
+    expect(kanit, 'installing a face the store already holds would fetch bytes it already has').toBeDisabled()
+    fireEvent.click(kanit)
+    expect(screen.getByText('Select families to install on this machine')).toBeInTheDocument()
+
+    // THE OVER-BROADNESS CONTROL, on the same screen and the same dead network:
+    // a filter that reported every row as installed would pass everything above.
+    fireEvent.click(screen.getByRole('button', { name: 'Install Sarabun on this machine' }))
+    fireEvent.click(screen.getByRole('button', { name: /Install 1 on this machine/i }))
     await waitFor(() => expect(onAddFamily).toHaveBeenCalledTimes(1))
-    expect(onAddFamily.mock.calls[0][0]).toMatchObject({ tier: 'stored', family: 'Kanit' })
+    expect(onAddFamily.mock.calls[0][0]).toMatchObject({ tier: 'web', family: 'Sarabun' })
   })
 })
