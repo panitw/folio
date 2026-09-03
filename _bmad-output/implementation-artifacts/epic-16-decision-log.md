@@ -3623,3 +3623,67 @@ same change, because **a module that contradicts the shipped heading is worse th
 *"Open with an empty store"* matrix row is **false** (the 31 local faces are always present, so a heading is
 suppressed only when its own group is empty after filtering) · and a **new matrix row** for the install
 pick: no engine command, no property commit, row moves 3 → 2.
+
+## D-16.R.73 — 16.4's plan gate: two rulings, a 6× correction to a registered figure, and a guard that turned out to permit its own rationale
+
+**Q3 — RE-DEFER, new owner.** The builder's distinction is the entry: *"the ruling made the pick legible,
+not bounded; those are different claims."* Recording D-16.R.72 as a discharge would be **D-16.R.36's defect
+— a true statement laundering a false one.** A heading and *"— install on this machine"* tell the author
+what the click **means**, never what it will **cost**. The deferral names its own foreclosure (16.5's stated
+remedy — narrow the control, route web browsing to 16.3's modal — is dead, because D-16.R.72 kept the web
+arm in the control), names what is unbounded, and takes an owner that **is not 16.4**.
+
+**AND IT CORRECTED 16.5'S OWN REGISTERED FIGURE BY 6×, BY RE-MEASURING RATHER THAN CITING.**
+`fetchTimeoutMs = 30_000` (`font-source.ts:313`) is armed **per request** via `AbortSignal.timeout`
+(`:343`), and the probe loop's only `continue` is on a 404 (`:420`) — **which an abort never produces.** So
+a **stall** returns after one timeout, **30 s**, which is the number 16.5 registered; a **slow-but-alive
+host** answering just inside the budget each time is bounded by **6 × 30 s = 180 s**, combobox disabled
+throughout. **The registered figure was the stall half stated as the whole**, and both bounds now ship in
+the deferral.
+
+**This is corroboration, not a new finding, and that is what makes it worth the line.** The same asymmetry
+was reached earlier from the opposite direction — reading that the catches at `:281-283`, `:339-341` and
+`:381` each `return refuse(...)`, *which is why the stall hold is T and not 6×T*. **Two agents, two
+methods, one answer** (D-16.R.43.2), against an epic in which concurrence by one method has twice been
+mistaken for confirmation (D-16.R.38).
+
+**Q4 — IN, FENCED TO THE COUNT, overriding the builder's lean to defer.** Its region argument was sound;
+what settles it is that **deferring closes Epic 16 with its own AC6 unmet, which is an owner-visible scope
+reduction and not mine to take silently at the epic's last story.** Scope: *"N fonts in template"* off
+`families.length` — **`IN THIS TEMPLATE`'s own predicate reused, so the status bar and the dropdown teach
+one model from one source.** No grid, no snap, no selection content. The mockup's `s.added.length` binding
+is refused for D-16.R.72's reason, and its hardcoded `"3 fonts in template"` is a placeholder, not a spec.
+**If it needs more than the number it splits and returns to me.**
+
+**THE PROSE GUARD DOES NOT FORBID STATING ITS OWN RATIONALE — SETTLED BY MEASUREMENT AND A POSITIVE
+CONTROL, WHICH IS THE RIGHT WAY TO ANSWER A "CAN I EVEN SAY THIS" QUESTION.** All four needles
+(`scripts/host-font-access.mjs:54-57`) are **API spellings**, not natural-language phrases, so the concept
+is freely sayable. **Proof by shipped positive control: `App.tsx:1767` already states it in prose** —
+*"not the fonts installed on your computer, which this designer never looks at"* — with the guard green
+over 129 files. The drafted three-premise comment hit **0 of 6 patterns** across both guards, while a
+deliberate control string fired **two**, *so the check is live rather than vacuous*. **A zero with a firing
+control beside it is a measurement; a zero alone is the epic's eighth false one.** Two traps recorded for
+whoever writes the final wording: `local-fonts` reds **only when quoted**, and `asScanned` blanks comments
+**only** for `font-store.ts`, so App.tsx comments are scanned raw.
+
+**Amendment 4's re-derivation checked at the gate rather than at review, and the third premise strengthens
+the conclusion rather than threatening it.** D-16.1 reversed premise one; D-16.2's *"no host fonts"*
+stands; D-16.R.46 Q4 adds that **embedding is the gated step and installing exists only to lead to it.**
+Therefore: a fetched face arrives with its `OFL.txt` and its name table, **a file dragged off a desktop
+arrives with neither**, so a typeface with no terms attached cannot be embedded — and therefore cannot
+usefully be installed either. **It would be a dead end with a friendlier first click.** The decline holds,
+and *"probably"* is now *"because"*.
+
+**Registration timing accepted as the builder proposed: `epics.md` drift is carried in `deferred:`
+frontmatter and minted at close, where every Epic 16 DW so far was minted.** Its reason is better than my
+instinct to file immediately — **a number minted mid-plan and then abandoned is its own record defect**,
+and the harvest at step-04/05 is what has actually been filing these. The substance is unchanged: **Story
+16.5 has no entry in `epics.md` at all**, the file ends mid-Epic-16, and 16.4's AC1/AC2/AC5 still describe
+`ADDED FROM WEB FONTS` and embed-on-pick.
+
+**Also confirmed at the gate: a closed story's FROZEN contract text is false.** 16.4's contract calls an
+`AVAILABLE LOCALLY` pick *"one command and one undo"*; under 16.5 it is **two** — `commitFirstUse`
+(`App.tsx:2011-2024`) runs `embedFontFamily`, then `updateComponentProperties` only if the embed returned
+no refusal. It gets its own Spec Change Log entry rather than a place in a list of six, with the pre-edit
+md5 `88c7de19c0dcf8a0a8292cab82152574` over lines 29–90 recorded. **`font-embed-boundary.spec.ts:128` left
+untouched and said so** — single owner, per D-16.R.41.
