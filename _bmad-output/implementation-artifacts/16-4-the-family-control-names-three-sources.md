@@ -2,7 +2,7 @@
 title: 'Story 16.4: The family control names three sources'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: 'b8431c4e9d743cc2cde314c98688d393bfbbe828'
@@ -87,9 +87,9 @@ deferred:
 
 *This section is background, not a requirement; the contract below governs.*
 
-The font menu has to answer a question it currently cannot: where is this typeface, and what happens to
-my file if I pick it? Three answers, so three groups — already in this file; on this machine but not in
-this file; not on this machine at all. A font moves between them because you did something, never on
+The font menu now answers a question it could not: where is this typeface, and what happens to my file
+if I pick it? Three answers, so three groups — already in this file; on this machine but not in this
+file; not on this machine at all. A font moves between them because you did something, never on
 its own.
 
 Two things underneath it turn out to be broken. The list that feeds the menu says in its own
@@ -399,3 +399,81 @@ divergence from the doc comment and is corrected with it — say so rather than 
 **A BROWSER RUN WAS TAKEN, and it is what witnesses this story's accessibility repair.** Chromium `chromium-1217` (Chrome for Testing 147.0.7727.15, 336M) via `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` — the pinned `chromium-1208` is a 428K stub and `chromium_headless_shell-1208` is absent, which is DW-180 biting a third time; **a directory existing is not a browser, and `du -sh` is the ten-second check.** Measured in the real accessibility tree: the listbox's direct child roles are exactly `["group","group","group"]` labelled `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` / `AVAILABLE TO INSTALL`, **`role="presentation"` children = 0** (all six gone), 82 options reachable through the listbox (1 declared + 31 local + the 50-row cap = 82, so partition-then-cap holds in a browser too), and the disclosure is outside the list and reached by `aria-describedby`. `browser-native-roundtrip.spec.ts` — the only cross-boundary authoring witness — **passes**, resolving `getByRole('option', {exact: true})` through the new `div role="listbox" > div role="group" > div role="option"` structure.
 
 **STILL NOT RUN HERE — deferred to the epic catch-up that gates `epic-16: done`:** the matrix corpora, the four AD-21 legs, and `TestCrossTargetByteIdentity`. **Naming them is the point.** With CI halted at step 2 (DW-171) there is no machine that would say otherwise. A green gate list in this story means the gates in this list, and a report that does not say so is making the wider claim by omission.
+
+## Delivery Log
+
+**Closed 2026-09-03.** Commits `eb5082c` (the change), `0bfc72a` (the undo-depth test), `24b3a75` (an
+interrupted patch round, committed by the orchestrator because its author was gone), `fb7891a` (a
+precondition patch).
+
+**What shipped.** The control draws the design's three groups on the axis the code already forks on —
+*where are the bytes* — and never on *when did it arrive*. A row's group is a pure function of
+(declared?, `familyIsInstalled`?). Underneath it, two defects that made a heading capable of lying were
+repaired: `offeredFamilies` now returns the union in the order its own documentation had always claimed,
+and the 50-row cap moved from the whole union onto the web group alone, so a face the author downloaded
+can no longer be silently absent from a group headed *on this machine*. The listbox's six
+`role="presentation"` children are gone, the notes now sit outside the list behind `aria-describedby`,
+the store panel gave back the label it had borrowed, and the disk-font decline was re-derived against
+three premises rather than carried forward unread.
+
+**THE MATRIX AUDIT'S OWN RULE EXISTS BECAUSE AN EARLIER AUDIT FAILED.** A per-row audit reports **N rows,
+N results**, never a single verdict, and a row whose only assertion calls a production function directly
+rather than driving the path is **failed, not passed**. This story's audit is **12 rows, 12 results, all
+driven, no partials.**
+
+**AGAINST THE PLAN GATE, AND IT IS THE ITEM THIS STORY SHOULD BE REMEMBERED FOR.** The contract
+transcription recorded *"six contract edits"* and **undercounted**. Three further changes went unwritten,
+the first being that **the protected accessible-name list was NARROWED** — `"Show fonts"`, `"Hide fonts"`
+and `"Clear Font family"` dropped, the listbox's own `"Fonts"` added. **The narrowing is defensible on
+measurement**: the three dropped names have **zero** assertions across 67 test and spec files, while
+`"Fonts"` is asserted at **4** sites and was absent from the old list — so the list was re-aimed at names
+something actually holds rather than shortened. **But the orchestrator approved that contract, quoted that
+clause, and did not notice the protection had moved.** A pre-edit md5 records the slab and **cannot be
+inverted to say what left it**, so **a transcribed contract enumerates its changes in prose.**
+
+**THE REVIEW WAS RUN TWICE, BECAUSE THE FIRST ONE WAS LOST.** Six agents died on server errors. The
+step-04 triage existed only in a dead transcript — no `## Review Triage Log`, no severity record anywhere
+— while the tree carried a green suite, 14/14 tasks and a spec that looked finished. **The round was
+re-run rather than resumed: a green suite is not evidence that a lost round's patches landed, and that
+inference is this epic's signature defect.** Registered against the infrastructure item: **step-04 should
+append findings as it triages them**, because a review that survives only in a transcript is not a record.
+
+**What the re-run found.** Three short read-only hunts, on a different model, after the heavy dispatch
+failed six times — **changing the shape of the work rather than repeating it is what got through.** Two
+hunts **independently** reached the missing `scrollIntoView`, which is why that one is trustworthy. A
+guard-integrity hunt found nothing and **stated its own limit: it executed nothing**, so its verdict is
+*"I could not see how these would pass while the behaviour broke"*, not *"I made them fail."*
+
+**A CORRECTION THE STORY MUST CARRY, BECAUSE THE CODE WAS RIGHT AND THE STORY TOLD ABOUT IT WAS NOT.** Two
+tests assert `group 3 count + group 2 rows === addableFamilyCount`. That equality is not general:
+`addableFamilyCount` never counts `orphanedStored`, so **the sum is in EXCESS by the orphan count, and
+`addableFamilyCount` is the short quantity.** `App.test.tsx` already stated its precondition; the
+font-store test inherited it from its fixture's choice of family name, and now measures it. **The
+orchestrator wrote both that patch and the proof of it, and stated the direction backwards in the commit
+message while the shipped assertion said it correctly.** An independent verifier caught the reversal.
+**When separation is unavailable, the fix ships and the PROOF gets an independent reader.**
+
+**And that verifier found what the patch walked past, filed elsewhere on purpose:** `resultLine` names
+`addableFamilyCount` as its total while counting rows that include orphaned stored families, so the font
+browser can read *"1274 matching families, out of 1273"*. Reachable by design and untested — 0 `orphan`
+hits across the three relevant suites, against 67 test/spec files and a 77-file positive control.
+**Owner: the 16.3 browser surface, explicitly not this story.**
+
+**Deferrals carried out of this story, none owned by it:** the `font-embed-boundary` locator (its red is
+still pre-existing, but **its cause changed** — the disclosure moved outside the listbox, so restoring a
+browser alone will never turn it green); the `familyIndexDisclosure` count divergence; the browser
+result-count contradiction above; the missing `scrollIntoView` scroll-follow; the unannounced empty-search
+explanation; the 30 s / 180 s dropdown block; and `epics.md`'s contradiction of five shipped stories.
+
+**Nothing in Epic 16 is CI-verified.** The designer job halts at step 2 (DW-171). Every gate here was a
+local measurement with no machine watching, and the Verification section names what was **not** run.
+
+## Suggested Review Order
+
+1. `folio-designer/src/App.tsx` — `FontFamilyProperty`: the partition, the cap on group 3 alone, heading
+   suppression, and the flat `matches` array the keyboard walks.
+2. `folio-designer/src/font-index.ts` — `offeredFamilies`' repaired order, and its doc comment.
+3. `folio-designer/src/App.tsx` — the store panel's given-back label and the two refusal sentences.
+4. `folio-designer/src/App.test.tsx` and `App.font-store.test.tsx` — the group, cap, keyboard and
+   precondition assertions.
+5. `folio-designer/src/App.css` — the group and scroller rules.
