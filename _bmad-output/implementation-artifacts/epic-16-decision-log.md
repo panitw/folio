@@ -1216,3 +1216,40 @@ was the same defect as P1, and the agent's words were *"I broke D-16.R.18's rule
 it."* Four sites now say four. And P3 was worse than its brief described — `split(' — ')` returns the
 **whole string** when the separator is absent, so a separator-free `source` passed a non-empty check
 while naming neither project nor path.
+
+### D-16.R.31 — Story 16.1a closes with its follow-up review deliberately OUTSTANDING
+
+**The decision, recorded here because the closer correctly refused to give it a D-number itself.** It
+wrote the call into 16.1a's Delivery Log as instructed and then flagged that it had written nothing into
+this log — the number is the orchestrator's to assign, and an unnumbered decision is one nobody can cite.
+
+**Decision:** `followup_review_recommended: true` stays **true** on 16.1a. No second review pass was run.
+The story is `done`; the obligation is **open**, inherited by whoever resumes Epic 16.
+
+**Reasons:** the flag fired mechanically on *"two or more mediums"*, not on evidence of a defect — the
+triage was 0 high / 4 medium / 8 low, all twelve patched with red-proofs, and the nine deferrals are
+registered rather than dropped. The owner stopped the run at this story, and a fresh review pass is new
+work beyond it. **Reversible by construction:** the flag is left set, so resuming the epic surfaces it.
+
+**What the closer found by not trusting the report — the reason this phase exists.**
+
+1. **The teeth are seven, not four.** Re-proving the batch's tripwire by removing the `lora` row and
+   running the *whole module* gives **8 failed / 508 passed across 5 files**: four population floors, the
+   variable-upstream list, the offered-once loop, and the delta assertion. The build's "four" was a
+   **narrower command scope**, not a smaller guard. Same shape as D-16.R.27 — a count true of the scope it
+   was measured in, reported as a property of the guard.
+2. **DW-168 overstated its own class, and the correction cuts the other way.** The register claimed
+   `-count=1` is *"written into no script, Makefile target or CI config"* and the class *"fully live"*.
+   **False for CI:** `.github/workflows/ci.yml` already runs every Go invocation with `-count=1` across all
+   four modules, on every push and PR, attributed to D-000.11 and carrying this story's own rediscovered
+   sentence verbatim. **CI would have caught the census failure on first push.** DW-168 is narrowed to its
+   real residue — the local by-hand path — rather than deleted.
+
+   The closer also reported *how* it nearly missed this: its first grep ended in `head -20` and truncated
+   the evidence away. **A search whose output is truncated is a search whose negative result means
+   nothing**, and "I grepped and found none" is the most quietly load-bearing claim in this whole epic.
+
+**Outstanding at the stop, stated so nothing reads as finished that is not:** the follow-up review pass on
+`4aca77f..99ac74c`; the heavy-test catch-up (matrix corpora, four AD-21 legs, `TestCrossTargetByteIdentity`,
+browser specs) due before Epic 16 closes; DW-168's narrowed discharge; DW-162, whose margin is now **halved
+to 10** and watched by nothing; and DW-166's tripwire, named but not built.
