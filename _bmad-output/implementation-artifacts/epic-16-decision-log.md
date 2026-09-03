@@ -2174,3 +2174,117 @@ same commit, no separate slot.
   D-16.1.* Half of that tracker note is DW-141; this half is not registered anywhere and 16.4 has no
   Delivery Log to receive it. **Folded into 16.4's `## PENDING GATE AMENDMENTS` section** rather than left
   in a tracker comment.
+
+### D-16.R.46 — OWNER DECISION: install and embed are separated. Epic 16 gains Story 16.5, and I over-quoted the owner
+
+**Owner decision** taken at the terminal 2026-09-03, with the lead's scoping rulings. **The decision is
+the owner's and is not re-opened here; only its landing was ruled.**
+
+**How it arose, and it is the best kind of entry this log gets.** DW-163 was put to the owner as three
+framed options for what the browser should do with 66 addable families carrying neither Latin nor Thai.
+**They rejected the premise instead of choosing:** *"The browser can show anything, user can select only
+some to be installed at the IndexedDB, then what goes to the folio file would only be the one really used
+in the template, so many items in the font browser shouldn't have any problem."*
+
+**The orchestrator verified the load-bearing clause before acting on it, and it was false.**
+`assetKeyReferenced` (`folio-go/component_commands.go:774-800`) scopes orphan collection to *"exactly the
+one key this command just repointed away from, **never a document-wide sweep** — a document may legally
+carry an asset no element references (RP-11's positive control)."* So today a pick **fetches, stores and
+embeds in one action**, and an embedded-but-unused face stays in the `.folio` permanently. The owner's
+third clause described a product that does not exist. Put back to them with that correction and three
+options, they chose **build the model**.
+
+**THE COST CORRECTION, and it runs opposite to the worry.** The orchestrator told the owner this was
+*"a new story, likely its own epic."* **That is true of prune-on-save and false of the mechanism the
+direction actually implies.** Under embed-on-use it is **one story**. The owner was **over-quoted, not
+under-informed** — and an inflated price mis-calibrates a decision exactly as an understated one does. If
+we now spend a story and report "that was the epic we warned about", every later estimate is untrustworthy.
+**Corrected to the owner in the same breath as reporting it.**
+
+**The framing that makes it tellable, and it is a genuine distinction rather than a softening.** Story
+8.6's **title** reverses — *"picking a family puts it in the file"* is no longer the mechanism. Its
+**guarantee** does not: CAP-2/AD-8, *"send the file to a colleague and the pages come out identical"*, is
+untouched. A font still travels inside the template. **Only the moment it starts travelling moves.** That
+is the difference between reversing a shipped story and moving a trigger, and the second is what is
+happening.
+
+**Q3 RULING — EMBED-ON-USE. Prune-on-save is refused, and the designer-only scope follows from it.**
+
+Three grounds, ascending:
+
+1. **AD-15.** *"Every committed mutation is sent as a command."* Prune-on-save mutates the document at
+   serialization with no command, no history entry and no undo, and breaks round-trip
+   (`open(save(d)) ≠ d`) against AD-9's canonical byte form.
+2. **`assetKeyReferenced`'s narrow scope is deliberate and defended** by D-5.13.3 and RP-11's positive
+   control. Prune-on-save requires precisely the document-wide sweep that refusal names.
+3. **And the decisive one: the reference walk is KNOWN INCOMPLETE by its own comment, and prune-on-save
+   is what makes that lethal.** It walks three top-level band lists with **images in table cells
+   explicitly out of scope**, there is no shared element-enumeration helper, and the comment states
+   *"under-reporting a reference here deletes a live asset with no compile error to announce it."*
+   **Today that incompleteness is harmless** because the sweep only ever considers the one key the command
+   just orphaned. **Under prune-on-save, any face referenced only from an unenumerated location is
+   silently deleted at save.** This function has already shipped a version that *"answered FALSE for every
+   font asset in every document"*. **We would be converting a documented latent hazard into a live one to
+   buy a feature that has an additive path.**
+
+**The clincher: embed-on-use delivers the owner's stated outcome with ZERO engine change.** If a face is
+written at the moment the document first refers to it, an installed-but-unused face **is never in the file
+to be pruned**, and the existing one-key orphan drop already covers "was used, then repointed away". The
+sweep buys nothing the trigger move does not already give. `embedFontFamily`, the nameID-13 tie, the
+licence tables, `assetKeyReferenced`, AD-8/CAP-2 and the `.folio` format are all **untouched**.
+
+**One consequence to design for rather than discover:** today a licence or `fvar` refusal reaches the
+author **at the pick**; under embed-on-use it would reach them at first **use**, which is a worse moment.
+**Install must run the same admission checks and refuse there** — not a second guard, the same one at the
+earlier of the two moments. An installed face must be one that is known to be embeddable.
+
+**Q1 RULING — Story 16.5, sequenced AFTER 16.3 and BEFORE 16.4.** Epic 16 goes to eight stories.
+
+A story and not an epic because the substance is one designer-side path (`installFamily` = fetch →
+classify → store, no engine command), a third arm in `choose()`, and semantic edits to two specs. What is
+genuinely large is **test churn** — 8.6's, 16.1's and 16.2's suites assert pick→embed — and test churn is
+not an epic. Inside Epic 16 rather than after it because the epic's stated goal is *"a font arrives from
+the web, and stays on this machine"*, and **the owner has just told us that "stays on this machine" and
+"goes into the file" are two different things** — which is not a new goal but the existing goal read
+correctly for the first time. Closing the epic on a mechanism its owner has said is wrong is the one case
+where "already-touching" plainly applies.
+
+**Between 16.3 and 16.4** because 16.5 depends only on 16.2 (done) while **16.4 depends on 16.5** — its
+three groups' meanings are exactly what 16.5 defines, so building 16.4 first means building the control
+twice. **Not folded into 16.4**, which would carry `multiple-goals` across two different blast radii (a
+control, versus what a document contains) — the same split D-16.R.8 made for 16.1/16.1b.
+
+**Flagged now so it is not discovered at 16.4's gate:** 16.4's middle group `ADDED FROM WEB FONTS` is
+defined as *"what this session fetched **into the file**"*, which the new model makes **false**. The
+mockup's three groups survive; the middle one is redefined as *installed this session* or collapsed into
+`AVAILABLE LOCALLY`. That fork is ruled at 16.4's gate, since it depends on what 16.5 builds.
+
+**Q2 RULING — 16.3 dispatches NOW**, with two amendments: confirm dispatches through **one named seam** so
+16.5 swaps a function body rather than a state machine, and the spec marks its confirm semantics
+**PROVISIONAL pending 16.5** in both Tasks and beside the AC.
+
+**The lead recorded an argument it made and then rejected, which is why this entry can be trusted.** Its
+first instinct was that 16.3 would ship user-visible strings asserting the wrong model (*"Add N to
+template"*, *"In template"*), and that this epic has ruled four times against UI strings claiming
+something untrue. **It does not apply:** those strings are **true under 16.3's own mechanism**, and there
+is no external user between 16.3 and 16.5 to mislead. The disclosure rulings were about claims made to an
+author on shipped software, not about text revised two stories later.
+
+**Q4 RULING — Story 8.6's disk-font decline STANDS, and gains a third premise to answer.** D-8.6.1
+declined disk fonts because a file off the author's disk supplies no licence text and no copyright.
+Install/embed separation changes **when** a face enters a document, not **what** a document may carry —
+the moment a disk font is used it must be embedded, and it still has no terms.
+
+**But the new model provokes a question the old one could not.** For the first time there is a legitimate
+category of face living on this machine **outside any document** — which is exactly what a disk font is.
+So a reader will now ask *"if a face can be installed without being embedded, why can a disk font not be
+installed?"* **The answer, which must be written down rather than left as an obvious-looking gap:
+installing is only ever a precursor to embedding, and embedding is the step the licence requirement gates.
+A face that can never be embedded can only be installed into a dead end** — offering the author a font they
+can select and never use is worse than not offering it. **16.4's re-derivation is now against THREE
+premises**, not two (D-16.R.45).
+
+**Confidence, stated because it bounds the plan.** High throughout except *"a story, not an epic"*, which
+is **medium**: if `choose()`'s third arm needs a **compound command** (embed + property commit as one
+undo) rather than two, that reopens 8.6's deliberately-refused fusion, and it returns to the lead before
+being designed around.

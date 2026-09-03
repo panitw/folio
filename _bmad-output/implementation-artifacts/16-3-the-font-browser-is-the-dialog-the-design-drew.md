@@ -28,7 +28,7 @@ families and add them in one go — with a footer that tells you what is about t
 
 ## Intent
 
-**Problem:** With D-16.1 the author can reach ~1,946 families, and the family combobox — a flat list
+**Problem:** With D-16.1 the author can reach every addable family in the snapshot, and the family combobox — a flat list
 of names in the panel's own typeface — is not a way to choose among them. `Font Browser.dc.html` draws
 the screen that is; the product has no equivalent of it.
 
@@ -46,14 +46,20 @@ and Grid views, staged multi-select, and a footer that states what will be embed
 - **Preview registration must not create a second authority on what a document contains.** A face
   registered for preview is not embedded, is not in `fontFamilies`, and must never appear as if it
   were.
-- **The header's family count is the SNAPSHOT's count and says so.** D-16.3: the index is a build-time
-  snapshot. The design's *"web font library · 1,946 families"* becomes a line that does not claim to
-  be live.
-- **Specimen rendering is bounded.** ~1,946 rows, each wanting a face, is a fetch storm and a memory
-  problem. Register on demand — what is on screen — and say in code what the bound is.
+- **The header's family count REUSES `familyIndexDisclosure()`, which already ships the correct
+  sentence.** D-16.3: the index is a build-time snapshot, and D-16.R.2's consequence is that the
+  browser's count is the **addable** count, not the published one. Story 16.1 already shipped
+  `familyIndexDisclosure()` (`font-index.ts:282`) stating all of it in one sentence, derived from
+  `addableFamilyCount`. **Do not mint a second sentence and do not hardcode a number** — two
+  authorities on one count is the defect D-16.R.13 refused on `source` and D-16.R.6 refused on licence.
+  The design's *"web font library · 1,946 families"* becomes that derived line.
+- **Specimen rendering is bounded.** Over a thousand rows, each wanting a face, is a fetch storm and a
+  memory problem. Register on demand — what is on screen — and say in code what the bound is.
 - **The staged set is UI state and nothing else.** No partial document, no uncommitted buffer, no
-  second document model (AD-15). Confirm dispatches the same one-command-per-family embed Story 8.6
-  built, each its own history entry.
+  second document model (AD-15). Confirm dispatches one command per staged family through a **single
+  named seam**, each its own history entry. **The seam's ACTION is provisional (D-16.R.46 Q2):** today it
+  embeds, as Story 8.6 built; Story 16.5 changes it to install, moving the embed to first use. Build the
+  seam as one function so 16.5 swaps a body rather than a state machine.
 - **Every refusal is per family and named.** One family failing to fetch does not abandon the others.
 - **Keyboard and assistive technology are contract, not polish** (UX-DR25): focus trapped, Escape
   closes, every chip and toggle a real named control, staged state announced.
@@ -77,11 +83,11 @@ implying it is the family · blocking the UI on a fetch.
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |---|---|---|---|
 | Open from `Add fonts…` | Dropdown open | Modal, focus trapped, search focused | — |
-| Type in search | `sara` | Snapshot filtered by family and designer, as the mockup's own predicate does | — |
+| Type in search | `sara` | Snapshot filtered by **family and category only** — the committed snapshot carries no designer field (D-16.R.33 R3) | — |
 | Script + category chips | Thai + Serif | Intersection; `reset filters` visible exactly while a filter is active | — |
-| Sort | Trending / A–Z / Most styles | Ordered from snapshot fields | — |
+| Sort | Trending / A–Z | Ordered from snapshot fields — `popularity` and `family`. **No "Most styles" arm** (D-16.R.33 R3): this product embeds exactly one face per family (the upright Regular at weight 400, `font-source.ts:197`; `:314` refuses a family publishing none), so style count is not a difference the author can act on | — |
 | Preview text and size | Thai text, 34px | Every specimen re-set; the Thai toggle switches the default sample | — |
-| Stage several, confirm | 3 staged | 3 embeds, 3 history entries, progress stated | Per-family failure named; others proceed |
+| Stage several, confirm | 3 staged | 3 dispatches through the named seam, 3 history entries, progress stated. **Provisional per D-16.R.46 Q2** — 16.5 changes the seam's action to install | Per-family failure named; others proceed |
 | A family fails to fetch | Upstream 404 | That row reports it; the rest are added | Named refusal |
 | No results | Query matches nothing | The design's empty state, naming the query | — |
 | Grid view | Toggle | The design's 3-column cards | — |
@@ -102,8 +108,8 @@ implying it is the family · blocking the UI on a fetch.
 - `.../DESIGN.md` — the token file fidelity is judged against.
 
 **Designer (`folio-designer/`)**
-- `src/App.tsx:1296-1380` — `FontFamilyProperty`, and its `openBrowser` seam in Story 16.4.
-- `src/App.tsx:186-224` — the document-scoped face registration, with its explicit reasoning about
+- `src/App.tsx:1611` — `FontFamilyProperty`, and its `openBrowser` seam in Story 16.4. **Re-verified at `9c2fbe6`.**
+- `src/App.tsx:232-263` — the document-scoped face registration (**re-verified at `9c2fbe6`**), with its explicit reasoning about
   lifetimes. **The preview registration is a sibling of this, not a change to it.**
 - `src/embedded-face-registry.ts` — `document.fonts` registration; **name-keyed and global**, which is
   why a preview lifetime must not collide with the document one.
@@ -125,7 +131,12 @@ implying it is the family · blocking the UI on a fetch.
   re-invented, so the design and the product agree on edge cases.
 - `src/` — confirm: dispatch one embed per staged family through Story 16.1's path, reporting progress
   and per-family refusals.
-- `src/App.tsx` — `Add fonts…` opens it; `⌘G` opens it, or the omission is ruled and recorded.
+- `src/App.tsx` — `Add fonts…` opens the browser from the existing family control. **No keyboard
+  shortcut in this epic — the omission is hereby RULED and recorded** (D-16.R.33 R2, owner-confirmed):
+  `⌘G` is the browser's Find Next, and this application's convention puts conventional document actions
+  on Command (`⌘S`, `⌘Z`) and **app-specific actions on Option** (`⌥P`, `⌥S`). **No hint glyph is
+  rendered**, because a `⌘G` label beside a key that does nothing is a false UI string. `⌥F` is named as
+  its eventual shape; `src/shortcuts.ts` is untouched.
 - `src/App.css` — styles in the existing token vocabulary; any mockup colour without a token is raised.
 - Tests: filter/sort/staging as units; the modal's accessible names; focus trap and Escape; a staged
   confirm producing N history entries; one failing family not abandoning the rest.
@@ -160,56 +171,32 @@ dozen edge cases — what the button says when a family is in the template versu
 footer says at zero, which sample text a Thai family gets. Re-deriving those from the screenshot is how
 a product drifts from its design while everyone believes it matches.
 
-## PENDING GATE AMENDMENTS — read before implementing (added 2026-09-03 by the orchestrator)
+## Spec Change Log
 
-*Non-normative. These are RULED changes to this spec, recorded here so they are not lost, but NOT yet
-applied. They are applied at this story's own plan gate, not now — see the reason below.*
+### 2026-09-03 — applied at the plan gate (orchestrator)
 
-**Why they are not applied yet.** This spec was planned at `baseline_commit: a40c34d` and approved
-before 16.0, 16.1, 16.1b and 16.1a landed. Its `## Code Map` line anchors are therefore stale by
-construction (D-16.R.28), and Story 16.2 lands before this one, which will rot them again. Re-verifying
-them now would be work done twice and trusted once. Anchors are re-verified at this story's gate,
-against the tree as it stands then.
+**Contract amendments.** This spec was approved at a previous session's CHECKPOINT 1, so
+`<intent-contract>` was locked. It is reopened deliberately here and the amendments recorded rather than
+edited in silently:
 
-**Anchors known stale at `8a9e297`** (indicative, re-measure at the gate — do not trust these numbers
-either): the document-scoped face registration cited as `:186-224` is at `:232-243`; `pickCatalogueFamily`
-cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `:1284-1380` begins at
-`:1385`; the disk-font decline cited as `:1366` is at `:1474`. `App.css:210-223` and
-`e2e/component-properties.spec.ts:35-60` were checked and are still correct.
+1. **The *Most styles* sort arm is dropped** and the search predicate narrowed to family + category
+   (D-16.R.33 R3). Measured: this product embeds exactly one face per family, so style count sorts on a
+   difference the product erases; and `designer` exists in neither the generated module nor the raw
+   snapshot, and obtaining it means a regeneration that breaks the `d6d51f1` pin and re-opens 16.1a's
+   batch. The payload cost of adding a style count was **measured first** (+1,326 brotli bytes, ~0.008%
+   of first load) so the record shows an **affordable decline made on the criterion**, not a budget one.
+2. **The family count reuses `familyIndexDisclosure()`** instead of the three `~1,946` statements
+   (D-16.R.2's consequence). The published figure is not the addable one, and Story 16.1 already ships
+   the correct derived sentence.
+3. **Confirm's action is marked PROVISIONAL** pending Story 16.5 (D-16.R.46 Q2). Recorded inside the
+   contract because the Matrix row and the Boundary both asserted the embed mechanism, and shipping an
+   AC that restates a mechanism under revision is how a provisional decision gets cited later as settled
+   direction.
 
-**Ruled changes to apply at the gate (D-16.R.33):**
-
-1. **R3 — drop the *Most styles* sort arm, and drop `designer` from the search predicate.** This
-   product embeds **exactly one face per family** (the upright Regular at weight 400 —
-   `font-source.ts:197`, and `:314` refuses a family that publishes none), so style count is not a
-   difference the author can act on; a family with eighteen styles and one with a single style deliver
-   the identical thing. And `designer` is not a field addition but a **snapshot regeneration**: the
-   committed `font-index.json` carries no designer field, obtaining it means re-running
-   `refresh:font-index`, and that breaks the `d6d51f1` pin (D-16.R.23), fires DW-166 trigger 1, and per
-   D-16.R.26 inverts Story 16.1a's landed batch on exactly the axis this epic has already litigated
-   twice. **The payload was measured first so this is a priced decline, not a budget one:** `+1,326`
-   brotli bytes for a style count, ~0.008% of a 15,729,262-byte first load. **Affordable, and declined
-   on the criterion.** Do not reverse it when 15.0 frees room.
-2. **R3 — the header's family count reuses `familyIndexDisclosure()`, which already ships the correct
-   sentence.** This spec still says *"~1,946 families"* in three places; D-16.R.2's own consequence is
-   that the browser's count is the **addable** count. Measured at `8a9e297`: 1,811 snapshot rows
-   (1,946 published, 135 CJK excluded), 1,273 web-addable, 31 local — **1,304**. Two authorities on one
-   count is the defect D-16.R.13 refused on `source` and D-16.R.6 refused on licence.
-3. **R2 — `Add fonts…` is this story's entry point, and there is NO keyboard shortcut in this epic.**
-   The spec's *"`⌘G` opens it, or the omission is ruled and recorded"* is hereby the omission, ruled:
-   `⌘G` is the browser's Find Next, and this application's own convention (`src/shortcuts.ts`) puts
-   conventional document actions on Command and **app-specific actions on Option** (`⌥P`, `⌥S`). No
-   hint glyph is rendered, because a `⌘G` label beside a key that does nothing is the false-UI-string
-   class this epic has ruled against three times. Registered deferred with `⌥F` named as its shape.
-4. **The browser run also discharges DW-161** — a pick with the network up, a pick with it down, and a
-   pick whose licence is outside the allowlist, against the real hosts. The container is already being
-   paid for by this story's own override; scoping it wider costs almost nothing and converts the
-   epic's largest evidence gap from a note into a measurement.
-
-**Items 1 and 2 are CONTRACT AMENDMENTS.** This spec's `<intent-contract>` spans lines 27-91, and the
-Sort row (`:82`) and the `~1,946` statements (`:31`, `:50`, `:52`) are **inside** it, on a spec already
-at `ready-for-dev`. They are reopened deliberately at the gate and recorded as amendments in a
-`## Spec Change Log`, not edited in silently. Item 3 touches Tasks only; item 4 touches Verification only.
+**Outside the contract.** Code Map anchors re-verified at `9c2fbe6` and corrected — all three designer
+anchors had moved when Story 16.2 landed, which is why they were deliberately not corrected three
+stories early (D-16.R.28). `⌘G` ruled out with its reasoning (D-16.R.33 R2, owner-confirmed). The browser
+run scoped to discharge DW-161 and DW-176. `-count=1` written into the Go commands (DW-168).
 
 ## Verification
 
@@ -220,4 +207,14 @@ at `ready-for-dev`. They are reopened deliberately at the gate and recorded as a
   live residue is exactly this by-hand path — and this story touches no Go, the condition under which a
   filesystem-walking Go test replays a stale green.
 - A browser run: search, filter, sort, stage three, confirm, and one deliberate upstream failure.
+  **This run also discharges DW-161 and DW-176** (D-16.R.42), because the container is already being
+  paid for by this story's own cadence override. Four extra cases, each cheap:
+  1. a pick with the network **up**, against the real hosts;
+  2. a pick with the network **down**;
+  3. a pick whose licence is **outside the allowlist**;
+  4. **a stored face survives a reload and is offered with the network disabled** — the browser-witness
+     residual 16.2 created (DW-176). This run already reloads to exercise the offline path, so this
+     costs a assertion rather than a setup.
+  **This is the first real-browser exercise of BOTH the web tier and the store**, which is how they are
+  actually used together.
 - Token fidelity checked against `DESIGN.md`, in the form `review-token-fidelity.md` already uses.
