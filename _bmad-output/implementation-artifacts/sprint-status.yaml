@@ -526,87 +526,19 @@ development_status:
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional
 
-  # Epic 16 added 2026-09-02 by OWNER DECISION D-16.1, taken at the terminal against a design
-  # imported that day from the owner's Claude Design project 8a9e2266 and filed at
-  # planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html.
-  # D-16.1 REVERSES the SPEC-fonts Non-goal "No live font service. No Google Fonts API, no
-  # arbitrary URL" -- the SECOND reversal of that clause on 2026-09-02, after D-8.4d.1 struck its
-  # third phrase. Under D-000.8 one reversal is the system working; two in a day is named here
-  # rather than absorbed. D-8.4d.1's surviving sentence ("the catalogue remains the only source,
-  # and nothing is fetched from a third party") does NOT survive D-16.1 and must be amended in the
-  # same edit, in SPEC.md AND font-catalogue.md together, or the record contradicts itself twice.
-  # The owner was offered a bundled-catalogue reading that satisfied the design, the machine-local
-  # requirement and the invariant together, and declined it in favour of the live source.
-  # PLACED AFTER EPIC 15 and NOT inside it: this is feature work with a network dependency and a
-  # runtime licence check, and 15.3 cuts folio-go/v0.1.0. Whether v0.1.0 waits for it is the
-  # owner's call, not this file's assumption.
-  # SHAPE, and it is a hybrid rather than "live" (D-16.3, MEASURED 2026-09-02 at a40c34d):
-  # fonts.google.com/metadata/fonts returns 1,946 families (34 Thai) and NO access-control-allow-
-  # origin, so the browser cannot read it and the INDEX IS A BUILD-TIME SNAPSHOT that ages between
-  # releases exactly as font-catalogue.json did. What is live is the FACE: bytes, OFL.txt and
-  # METADATA.pb from raw.githubusercontent.com/google/fonts, ACAO *. fonts.googleapis.com/css2 is
-  # unusable twice over -- woff2, which decodeRecognisedFont refuses by design, and unicode-range
-  # subsets that would embed partial coverage. Both those hosts STAY FORBIDDEN in the scan (D-16.4).
-  # THE REAL RISK IS NOT THE NETWORK. The licence admission D-8.5.2/D-8.5.3 made a BUILD GATE moves
-  # to RUNTIME, in the browser, over bytes nobody reviewed -- and D-8.6.5 is the precedent: 17 of 21
-  # catalogue faces shipped under another project's licence, green, until review caught it. Story
-  # 16.1 owes that check a named home and a test.
+  # Epic 16 added 2026-09-02 by OWNER DECISION D-16.1; its rulings, measurements and
+  # reversals are in epic-16-decision-log.md, and each story states its own in its spec.
   epic-16: in-progress
-  # 16.0 is the epic's PRECONDITION, not a nicety. Owner reported 2026-09-02 at a40c34d, with a
-  # screenshot: "The engine returned an invalid response" under the family control after a pick.
-  # That string exists ONCE, at engine.worker.ts:82, reached only from execute's bare catch -- so it
-  # is a WASM-boundary throw and NEVER an engine refusal. The Go layer is already CLEARED by
-  # measurement (go test ./wasm over a probe applying embedFontFamily to every shipped face, wd
-  # folio-go, tree clean at a40c34d): 21 of 21 catalogue faces pass; the only failure was notosanssc
-  # at 10,595,932 bytes, refused correctly and located, and it is not in the catalogue. Every
-  # acceptance in this epic ends in an embed through that boundary, so the epic is unevaluable while
-  # it throws -- placed first for the same reason 15.1 was pulled forward as story zero of the 7-8 run.
-  # 16.0 also carries a SECOND goal and therefore warnings: ['multiple-goals'], accepted with its
-  # reason recorded in D-16.6 rather than waived. MEASURED at a9ec59c: embedFontFamily ACCEPTS a
-  # variable face (Anuphan[wght].ttf, 231,712 bytes) because its only structural check is checkSfnt,
-  # which does not look at fvar -- while fontset.New REFUSES it at internal/fontset/fontset.go:228. So
-  # a pick can today write a .folio that saves cleanly and fails at render, the one outcome D-8.4d.1
-  # and D-16.1 both promise cannot happen, reachable without any of Epic 16. The command gains the
-  # check; the renderer KEEPS its own, because a .folio can be hand-written and the loader is not the
-  # only door. Same boundary, same probe harness, one guard -- which is why it is not a separate story.
   16-0-the-embed-boundary-stops-throwing: done
-  # 16.1 was blocked on D-16.5; RULED 2026-09-02 by the owner and now unblocked. The ruling: refuse
-  # variable-only families (558 of 1,946, 28.7%) and SAY they are refused; DERIVE the ones worth having
-  # ahead of the build with tools/fontgen, which is how two of the six affected Thai families -- Noto
-  # Sans Thai and Noto Serif Thai -- are already available, so the browser never refuses a family
-  # already in the author's font menu; and NEVER instance in the browser, which would make the embedded
-  # face a function of the author's runtime (AD-22's drift class at the asset layer, and folio has no
-  # backend to do it anywhere else). The 28.7% is the priced cost of "the same template renders the
-  # same PDF everywhere". Option (b) -- admit the variable file as-is -- was not weighed; it was
-  # REMOVED by measurement (D-16.6): it produces a document that will not render.
-  # 16.1b added 2026-09-03 by D-16.R.8, splitting the Go guard out of an oversized 16.1. It RUNS
-  # BEFORE 16.1 despite its number (D-000.3; 16.0 is the precedent): it needs no browser and tests
-  # against committed faces, while 16.1 is the first story that puts a FETCHED face into a document,
-  # and building the gate after its population arrives is how D-8.6.5 shipped green. In the
-  # before-the-tag set -- lands in this epic or not at all.
   16-1b-the-binary-is-asked-what-it-says-about-itself: done
   16-1-a-font-arrives-from-the-web-with-its-terms-attached: done
-  # 16.1a added 2026-09-03 by OWNER DECISION D-16.R.2, corrected by D-16.R.2a. The batch is NOT a
-  # tools/fontgen derivation queue -- instance_faces.py drives three ENGINE faces and none of the 21
-  # catalogue faces is derived. It is "add an upstream static to the local face tier", the mechanism
-  # already executed 21 times. Roboto and Inter are already in the tier and appear refused only because
-  # the google/fonts MIRROR carries VF-only builds of them.
-  # HISTORY, now closed: 16.1a was set `done`, REOPENED once for a review pass, and REOPENED again
-  # 2026-09-03 (D-16.R.35) for a bounded remediation pass after its provenance tripwire was measured
-  # inert. Set `done` 2026-09-03 by the closer at `efa9b75`, which re-ran every gate itself per
-  # D-16.R.30. Gates, deferrals and the still-flagged follow-up review: the story's Delivery Log.
   16-1a-the-local-face-tier-covers-the-head-of-the-library: done
-  16-2-a-fetched-face-stays-on-this-machine: review
-  # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
-  # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and
-  # a synchronous QuotaExceededError with no partial-write path. The design's AVAILABLE LOCALLY group
-  # is FETCHED FACES, never the OS font list: "no host fonts" is the one Non-goal clause D-16.1 leaves
-  # standing.
+  16-2-a-fetched-face-stays-on-this-machine: done
   16-3-the-font-browser-is-the-dialog-the-design-drew: backlog
-  16-4-the-family-control-names-three-sources: backlog
   # 16.4 also discharges the listbox finding Story 8.6 registered as deferred (four role="presentation"
   # children inside role="listbox"): three groups would take it from four to seven, so it is fixed
   # there rather than multiplied. It also re-derives 8.6's disk-font decline against D-16.1 -- the
   # premise moved, the conclusion probably did not, and that is exactly the case where a sentence gets
   # carried forward unread.
+  16-4-the-family-control-names-three-sources: backlog
   epic-16-retrospective: optional

@@ -21,26 +21,28 @@ deferred:
 
 ## In plain terms (read this first if you just want the gist)
 
-*This section is background, not a requirement; the contract below governs.*
+*This section is background, not a requirement; the contract below governs. Rewritten after delivery to
+describe what shipped.*
 
-A typeface you download once is now kept. The next statement you build on this machine offers it
-immediately, with no download and no wait — and offers it even with the network down, because the bytes
-are already here. The typography panel gained a short list of what this machine holds, showing each
-typeface's size and the day it arrived, with a button to let one go; letting one go frees the space and
-nothing else, because a document that already uses that typeface carries its own copy inside it.
+A typeface you download once is now kept on this machine. The next statement you build here offers it
+straight away, with no download and no wait, and offers it with the network down. The typography panel
+gained a short list of what this machine holds — each typeface's size and the day it arrived — and a way
+to let one go, which frees the space and nothing else: a document already using that typeface carries
+its own copy.
 
-Two things this deliberately is not. It is not a list of the fonts installed on your computer: the
-designer never looks at those, and the group in the font menu called *available locally* means
-"typefaces this designer has downloaded before", not "typefaces Windows has". And it is not a second
-copy of your document's fonts — a template still carries its own typefaces inside it, so a file you
-send to someone else is unaffected by anything stored here.
+Two fences, easy to misread. This is not a list of the fonts installed on your computer; the designer
+never looks at those, and the menu group naming what is available here means typefaces this designer
+downloaded before. And it does not change what a document carries: a file you send elsewhere is
+unaffected by anything kept here.
 
-One more thing changed while this was being built, and it fixes a way the font control could quietly
-die. A download that FAILS has always told you so. A download that simply hangs — a hotel wifi login
-page, a stuck proxy — used to leave the font control greyed out for the rest of your session, with no
-message and no way back. It now gives up after thirty seconds, says what happened in its own words
-(not "you have no network", which would be a lie while your network is fine), and hands the control
-back. It does not retry on its own, because retrying a hang just hides it.
+A download that simply hangs — hotel wifi, a stuck proxy — used to leave the font control dead for the
+session with no message. It now gives up after thirty seconds and hands the control back, saying only
+that the request did not come back in time. It does not guess why: a hang, a blocked link and a very
+slow one look the same from inside. Nor does it retry, which would hide the hang.
+
+Two things not to read as breakage. One long-standing failing test in the designer suite belongs to
+other work and is tracked. None of this has run in a real browser yet; that check is booked into the
+next story.
 
 <intent-contract>
 
@@ -763,6 +765,137 @@ with the measurement-order trap that produced them.
 **Still deliberately not run, and still never reported as passing:** the browser e2e specs, the matrix
 corpora, the AD-21 legs and `TestCrossTargetByteIdentity`. Real browser IndexedDB is proven by nothing
 here either.
+
+### 2026-09-03 — closed
+
+Baseline `3c45993` (the pre-implementation suites were measured there; the frontmatter's
+`baseline_commit` remains the planning-time `a40c34d` under the workflow's preserve rule, and the build
+entry above records `227befe` as the commit the work was actually built on — three different commits
+appear as "baseline" in this file, all correctly, and that is worth knowing before reading any of them).
+Three commits, all local on `main`, nothing pushed, no branch: `2a0c92a` (implementation), `dbbafc2`
+(fifteen review patches), `33cbbcc` (review trail). Closed by the closer, which **re-ran every gate
+itself** per D-16.R.30 rather than relaying the build's figures.
+
+**What shipped.** The machine store over IndexedDB keyed by the SHA-256 of the face bytes, its read
+placed in front of the existing fetch; the `'stored'` arm on `FamilySource` and the listing behind it;
+the machine-scoped preview registration; the removal affordance; the thirty-second fetch timeout with
+its measured basis and its hold-release proof; and the whole-designer host-font source scan, now wired
+into `build`. Decisions applied: **D-16.R.33 R1** (16.2 owns the store and the read-before-fetch, 16.4
+owns the group in the control, and the `FamilySource` union is the seam that enforces the hand-off),
+**D-16.R.33 R4** (the timeout is sited in the injected fetcher default and must carry its basis, not a
+constant), **D-16.R.42** (the timeout overruled by its own arithmetic, and `fake-indexeddb` admitted by
+the AD-26 procedure rather than by preference), and **D-16.R.43** (the two standing rules this
+checkpoint earned, including deferral verification by subject rather than by count).
+
+**Triage:** 15 findings patched in `dbbafc2`, 6 deferred and registered as DW-171 through DW-176. **No
+rejected or dismissed count is recorded** anywhere in this story file or in `deferred-work.md`, so the
+population the four review layers actually raised cannot be reconciled from the record. Stated as a gap
+rather than reconstructed.
+
+**What the review caught that the implementer had reported green.** Both are recorded above; both are
+repeated here because they are the reason this story's own numbers cannot be taken on trust:
+
+1. **This story's own AC4 host-font guard shipped RED against its own test file.** The red-proof at
+   `src/host-font-access.test.ts:89` spelled `queryLocalFonts` **whole** in an expected value, while
+   lines 82 and 85 of that same file split the spelling deliberately; the whole-tree scan reads raw
+   source and does read its own test file, so it found it. The story's central red-provable assertion
+   was shipped failing and reported passing. It was fixed by splitting the spelling — **not** by
+   excluding the test file from the walk — and a new case now asserts the scanned population contains
+   that file and the scanner beside it.
+2. **Its recorded "0 occurrences in 123 files" was measured over a smaller repository than the one
+   being shipped.** The scan enumerates via `git ls-files`, and the figure was taken while this story's
+   own six new files were still untracked. The real population is **129**, which I re-measured today.
+
+**Gates, as measured by the closer today, each command run on its own.**
+
+| Command | Measured |
+|---|---|
+| `cd folio-designer && npm test` | 51 files (1 failed, 50 passed) / **584 tests, 583 pass, exactly 1 fail**, exit 1. The single failure is the pre-existing DW-152 red at `src/canvas-authority-contract.test.ts:190`, received array exactly `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. Not this story's. |
+| `cd folio-designer && npm run build` | **Exit 0**, run as its own command. `scan:font-hosts`, `scan:host-fonts`, `build:wasm`, `tsc -b`, `vite build`, `build:offline` and `verify:offline` all ran. |
+| `cd folio-designer && npm run typecheck` | Exit 0. |
+| `cd folio-designer && npm run lint` | Exit 0, **exactly 4** `only-export-components` warnings — `src/preview/pdf-viewer.tsx` x2, `src/App.tsx` x2. |
+| `cd folio-designer && npm run scan:font-hosts` | Exit 0. 0 occurrences in **607** tracked source files (floor 400). |
+| `cd folio-designer && npm run scan:host-fonts` | Exit 0. 0 occurrences of 4 spellings in **129** files (floor 86). |
+| `cd folio-designer && npm run test:e2e:compile` | Exit 0. |
+| `cd lint && go run ./cmd/genmanifest` then `cd lint && go test -count=1 ./...` | Regenerated; `MANIFEST.md` unchanged (tree stayed clean). All 4 packages green, exit 0. |
+| `cd folio-go && go test -count=1 ./...` | Exit 1. Verbose re-run: **1912 PASS / 2 FAIL / 5 SKIP**. The two are exactly the mandated permanent reds — `TestCorpusMeetsP6ExerciseFloors` and its subtest `P6g_(opaque_names)`, `got 7, need >=20`. 13 packages ok, 4 with no test files. **`-count=1` was passed and the invocation is recorded here** per DW-168 as narrowed by D-16.R.31. |
+
+**Block If, verified.** `maximumCacheAssets` is still `64` at `src/release-payload.ts:33`. The measured
+`s1.assetCount` is **54**, read from the built `dist/offline-release-manifest.json` and not from a build
+log line — margin 10 of 64, exactly where DW-162 left it. All 54 `cacheAssets` entries were enumerated
+and **none is store-shaped**: the store consumes no cache slot, which is the assertion half of the
+Block If. The 23 golden digests are unmoved (`git status` clean under `fixtures/`) and were deliberately
+**not** re-run, since nothing rendered changes.
+
+**The dependency, verified.** `fake-indexeddb` is in `devDependencies` and not in `dependencies`;
+`dependencies` is still exactly `pdfjs-dist`, `react`, `react-dom`; and no shipping module under `src/`
+imports it. **One deviation found:** it is declared as `^6.2.5`, a caret range, and it is the **only one
+of the thirteen devDependencies not pinned exact** — every other is a bare version. The lockfile pins it
+today, so nothing is wrong now, but the declaration permits a future `npm install` to move the
+independent IndexedDB implementation this story's entire store proof rests on. Filed for the lead
+rather than changed here, since pinning it is a dependency decision and not a closing edit.
+
+**Two figures in the entries above that the closer re-measured and found stale.**
+
+- **`scan:font-hosts` is 607 today, not the 606 the re-measured table records.** The review commit
+  `dbbafc2` added `folio-go/stored_face_key_tie_test.go`, which is a `.go` file under `folio-go` — one
+  of the scanner's `SCANNED_ROOTS` — so it joins that population. The scanner-eligible tracked file
+  count is 727 at `3c45993`, 733 at `2a0c92a`, 734 at `dbbafc2` and 734 at `33cbbcc`, and the one file
+  added between the last two states is exactly that test. The 606 was therefore taken **before the
+  review's own new Go file was staged** — the identical measurement-order trap this entry documents at
+  length one row above, repeated one number over. The trap's own lesson did not survive contact with
+  the number that came next.
+- **The pre-implementation baseline of 529 is correct, and reproducing it takes a caveat.** Re-run in a
+  detached worktree at `3c45993`, `npm test` reports 48 files / **513** tests, with a second failed
+  *suite* — `src/canvas-font-stack.test.ts`, 0 tests collected, `Error: Denied ID
+  .../pdfjs-dist/build/pdf.worker.mjs?url`. That is an artifact of symlinking `node_modules` from the
+  main checkout into the worktree (Vite refuses a path outside the project root); it is **not** a
+  baseline red. That file is byte-identical between `3c45993` and `HEAD` and carries **16** tests, so
+  the true baseline is 513 + 16 = **529 / 48 files / 1 failing**, as recorded.
+
+**The +55 test delta, accounted for by name and not by sum.** 584 - 529 = 55, and running the six
+touched test files gives **100** tests at `HEAD` against **45** for the three of them that existed at
+baseline — a delta of exactly 55, with nothing unexplained:
+
+| Test file | Baseline | HEAD | Delta |
+|---|---|---|---|
+| `src/font-store.test.ts` (new) | — | 21 | +21 |
+| `src/App.font-store.test.tsx` (new) | — | 9 | +9 |
+| `src/host-font-access.test.ts` (new) | — | 7 | +7 |
+| `src/font-source.test.ts` | \ | 36 | \ |
+| `src/font-index.test.ts` | 45 combined | 23 | +18 combined |
+| `src/file/file-access-contract.test.ts` | / | 4 | / |
+| **Total** | **45** | **100** | **+55** |
+
+The three new files also account for the file delta, 48 to 51. No other test file changed between
+`3c45993` and `33cbbcc`.
+
+**Deferrals verified by subject, not by count** (D-16.R.43.1). All six are present in
+`deferred-work.md`: **DW-171** the designer CI job stopping at `npm run test` so six later steps have
+never run; **DW-172** the local-tier pick fetching inside the pick hold with no timeout; **DW-173** the
+store never closing its connection and answering no `onversionchange`; **DW-174** `get()` re-hashing
+every face and the preview registration re-reading all stored faces per store mutation; **DW-175** bytes
+outliving the face record that names them; and **DW-176** the browser-witness residual. DW-176's routing
+was checked specifically and is correct: it is owned by **Story 16.3's browser run as its fourth case**,
+registered by ruling under D-16.R.42, and is explicitly **not** routed to the epic catch-up.
+
+**Suites deliberately NOT run, and never to be reported as passing.** The browser e2e specs, the matrix
+corpora, the AD-21 legs and `TestCrossTargetByteIdentity` are all deferred by the run's `end-of-run`
+heavy-test cadence (D-16.R.1) and come due at the **epic-16 catch-up run**. Separately, this story's own
+browser leg — *fetch a family; reload; confirm it is offered with the network disabled; remove it;
+confirm a document that embedded it still renders* — is routed to **Story 16.3's browser run**, not to
+the catch-up, and is carried as DW-176. **This story is green on unit, type, lint, scan, compile and
+build gates only.** Real browser IndexedDB, real origin quota, real private-window refusal and real
+cross-reload persistence are proven by nothing here; every store claim rests on an independent
+implementation in a test environment, which is a genuine independent witness and is not a browser.
+
+**Tracker and tree.** `sprint-status.yaml` set to `16-2-a-fetched-face-stays-on-this-machine: done` by
+the closer, the only writer of that value (D-16.R.30); `epic-16` left `in-progress` for the
+orchestrator to close after the catch-up run; 16.3 and 16.4 untouched at `backlog`. The narrative
+paragraph that had accumulated under this story's key was removed — it restated D-16.2, which is where
+it belongs. All three commits were checked with `git show --stat`: each contains only this story's
+files, and **none touches `epic-16-decision-log.md`**. Each carries the project's required
+`Co-Authored-By:` trailer. Tree left clean.
 
 ## Suggested Review Order
 
