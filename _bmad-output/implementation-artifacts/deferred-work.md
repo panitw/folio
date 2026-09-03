@@ -7715,3 +7715,36 @@ change how the tests are written for a benefit only the invocation can guarantee
 
 ---
 
+
+### DW-169 — a comment in `build-wasm.mjs` says "six slots" of an object holding nine, and both readings are defensible
+
+- **Deferred by:** **Story 16.1a's remediation pass** (2026-09-03), surfaced by the F4 comment sweep
+  and disposed by the orchestrator rather than fixed, because resolving it means picking a reading.
+- **Owner:** **whoever next edits the `assets` object** in `folio-designer/scripts/build-wasm.mjs`.
+- **Severity:** low. Nothing mechanical depends on either reading.
+- **Status:** OPEN.
+
+**The finding is the AMBIGUITY, not a stale number.** `build-wasm.mjs:110` opens with *"The six slots
+above are HARDCODED BY NAME"*. Measured at `a378acd`: the `assets` object it points at holds **nine**
+keys — `wasmExec`, `wasm`, `starter`, `sans`, `sansCjk`, `sansThai`, `mono`, `plexSans`,
+`plexSansThai` — of which exactly **six** are font slots. And `:341` in the same file says
+`offline-assets.ts` *"exports the nine named slots"*, so the file uses both counts for the same object
+within 230 lines.
+
+**Both readings survive scrutiny, which is why this is not a sweep.** "Six" is correct if the sentence
+means the six FONT slots, and the rest of that same sentence supports it — it ends on
+`font-binary-identity.test.ts` pinning *"the six-family join family by family"*. "Nine" is correct if
+"the slots above" means the object, and the sentence's other reason (`main.tsx` and
+`engine.worker.ts` importing them out of `runtimeAssetUrls`) applies to all nine.
+
+**Why it was NOT folded into the F4 sweep, which corrected four stale counts in this same comment
+block.** D-16.R.35's stale-comment rule sorts a comment by whether acting on it fails silently or
+loudly, and it does not reach an ambiguous one: there is no single true sentence being contradicted,
+so there is nothing to correct toward. Picking the likelier reading would be **inventing an answer**,
+which is the one move this pipeline forbids everywhere else. The remediation pass that fixed a
+tripwire asserting nothing is the worst possible place to start guessing at intent.
+
+**What discharges it:** the next edit to that object states which population the sentence means — and,
+if it means the six font slots, says so in words rather than a digit, so the count cannot rot when a
+tenth slot lands. The F4 sweep's own treatment of `:118` is the model: that line said "Twenty-seven
+hardcoded keys" and was rewritten to carry **no count at all**, describing the shape instead.

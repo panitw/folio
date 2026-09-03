@@ -115,9 +115,10 @@ const assets = {
 //
 // THE CATALOGUE IS A LIST, and so it is driven by one. `font-catalogue.json` is
 // the single place a face is declared; adding one is a directory, a NOTICE and
-// a row there, never an edit in three places (Design Note 4). Twenty-seven
-// hardcoded keys emitting a twenty-seven-line CSS string is the shape this
-// deliberately does not take.
+// a row there, never an edit in three places (Design Note 4). One hardcoded key
+// per face, emitting one hand-written CSS rule per face — a list retyped in
+// this script every time the catalogue grows — is the shape this deliberately
+// does not take.
 //
 // THE EMITTED CSS SHAPE IS IDENTICAL to the six rules below it — one static
 // Regular per family, `format('truetype')`, `font-display: swap`, and NO
@@ -233,13 +234,19 @@ const catalogueFaces = catalogue.map((entry) => {
 //
 //   copyright — nameID 0 of the face's OWN `name` table, which is the one
 //   statement of a face's provenance that cannot be edited from outside the
-//   binary. Measured, not assumed: all 21 committed faces carry it.
+//   binary. Measured, not assumed: all 31 committed faces carry it, and a face
+//   carrying none throws out of `faceCopyright` below rather than emitting an
+//   empty string, so this stays measured as the catalogue grows.
 //
-// This is ~4 KB of licence text per DISTINCT LICENCE, not per face: the texts
-// are keyed by SPDX identifier and the faces reference them, so 21 faces over
-// two licences emit two copies here. (The DOCUMENT still carries one copy per
-// embedded face — deliberately, because an asset passed on alone must carry its
-// own terms — but there is no reason for the BUNDLE to pay for that.)
+// This is ~4 KB of licence text PER FACE, NOT per distinct licence:
+// `licenceTextOf` below reads the `LICENSE*` file committed beside THAT face's
+// own binary, and every catalogue row inlines its own copy — so today's 31
+// faces emit 31 texts even though only three SPDX identifiers classify them.
+// That is deliberate, and the block below is why: keying these by identifier is
+// exactly what published another project's terms. (The DOCUMENT likewise
+// carries one copy per embedded face — deliberately, because an asset passed on
+// alone must carry its own terms — so the bundle and the document now state a
+// face's terms the same way.)
 // THE COPYRIGHT READER IS NOW SHARED (Story 16.1). `sfntTableDirectory`,
 // `nameTableString` and `faceCopyright` used to be written out here, by hand,
 // beside a byte-identical second copy in `src/font-catalogue.test.ts`. Both are
@@ -254,23 +261,25 @@ const faceCopyright = (file) => {
   }
 }
 
-// PER FACE, NEVER PER IDENTIFIER. This was keyed by SPDX id and filled from
-// whichever face reached that id first, which gave 17 of 21 faces ANOTHER
-// PROJECT'S licence text — every OFL-1.1 face emitted cascadiacode's LICENSE,
-// "with Reserved Font Name Cascadia Code" and all. That inverts the whole point
-// of the story: a document embedding Inter would have travelled stating terms
-// naming Microsoft's font.
+// PER FACE, NEVER PER IDENTIFIER. This USED TO BE keyed by SPDX id and filled
+// from whichever face reached that id first, which — measured when the
+// catalogue held 21 faces — gave 17 of those 21 ANOTHER PROJECT'S licence text:
+// every OFL-1.1 face emitted cascadiacode's LICENSE, "with Reserved Font Name
+// Cascadia Code" and all. That inverts the whole point of the story: a document
+// embedding Inter would have travelled stating terms naming Microsoft's font.
 //
 // "The OFL is the OFL" is FALSE OF THE FILES, and that is the trap. The SIL OFL
 // carries a per-project preamble — a copyright line and a Reserved Font Name —
 // so two OFL-1.1 faces ship two DIFFERENT texts, and the identifier is a
 // classification of the terms, never a substitute for them.
 //
-// It costs bundle bytes: 21 texts of ~4 KB rather than 2. That is the correct
-// trade and it is stated rather than left to be rediscovered — a smaller bundle
-// is not a reason to publish the wrong terms. The `?url` imports below are
-// unaffected, so no build ASSET is added and the release cache does not grow
-// by one slot on account of this module (it is 54 since Story 16.1a's batch).
+// It costs bundle bytes: one ~4 KB text per face — 31 of them today — where
+// keying by identifier would emit one per DISTINCT licence, which is 3 across
+// that same catalogue. That is the correct trade and it is stated rather than
+// left to be rediscovered — a smaller bundle is not a reason to publish the
+// wrong terms. The `?url` imports below are unaffected, so no build ASSET is
+// added and the release cache does not grow by one slot on account of this
+// module (it is 54 since Story 16.1a's batch).
 const licenceTextOf = (face) => {
   const directory = join(designerRoot, 'public', 'fonts', face.directory)
   const licences = readdirSync(directory).filter((name) => name.startsWith('LICENSE'))

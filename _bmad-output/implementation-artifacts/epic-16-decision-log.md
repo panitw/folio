@@ -1482,3 +1482,302 @@ Three of the twelve red-proofs were independently re-run and all three genuinely
 dirty in its baseline and attributed it to D-16.R.31. It was the orchestrator's — the grounding refresh
 and D-16.R.32, written while the review ran. Recorded because an unexamined "pre-existing" label is
 exactly the claim this pipeline is supposed to verify rather than accept.
+
+### D-16.R.35 — Story 16.1a is reopened for a bounded remediation pass, and stale comments get a rule
+
+**Lead ruling**, requested by the orchestrator after D-16.R.34's findings and applied in full. Six findings
+in, one registered, nothing folded into 16.2.
+
+**Verdict.** Reopen 16.1a for **one** remediation pass over F1, F2, F3, F4, F6 and F7, bounded to four
+files. Register F5. No new story. `status: in-review`, sprint-status `in-progress` — moved **with** the
+reopen per D-16.R.30, and returning to `done` only when the closer verifies the gates itself.
+
+**The discriminator, and it settled all seven at once: causation.** For each finding the lead asked *did
+16.1a's own change make this false or leave it unproven?* — and every one answers yes. It wrote the helper
+D-16.R.13 demanded (F1, F6, F7), wrote those regexes (F2), took the committed licence population from 48
+to 58 (F3), corrected 44 to 54 and left the siblings (F4), and added the first Apache catalogue face (F5).
+**16.1a is the toucher, so this is not going looking.** D-16.R.11 cuts *for* the reopen rather than
+against it: what that ruling forbids is dragging a story's findings into a **later** story's dispatch,
+which is precisely what is being refused for 16.2.
+
+**Why F1 is not discretionary.** D-16.R.13's guardrail said it in terms: *"A test asserts `source` contains
+no scheme and no host on either tier — **that is the tripwire, and the convention alone will not hold**."*
+A tripwire that reports 33 passed / 0 failed with five of its seven assertions replaced by never-match is
+not the tripwire that ruling required. **An unmet ruling guardrail is the strongest category the lead
+has.** It is also the second time this one file has looked asserted while asserting nothing — D-16.R.30
+recorded 16.1a's own P3 as *"worse than its brief described"*.
+
+**F2 lands BEFORE F1, and the ordering is load-bearing rather than stylistic.** If the negative-case table
+is written first, it encodes `google/fonts — ofl/dev/Dev-Regular.ttf` as *must throw* and **pins the false
+positive as intended behaviour**. The next batch carrying a `github.io` upstream then reds the
+committed-tier loop for the whole catalogue, and the cheapest-looking repair at that point is to weaken
+the guard. Narrow first; write the table against the narrowed predicates.
+
+**The anti-softening control, because "narrowing a guard" is exactly what a regression looks like.**
+Narrowing to the correct operand is a correctness fix: a repository whose *name* contains a TLD is not a
+host reference, and a directory literally named `dev` is not a moving ref. What makes that checkable
+rather than assertable is that the original defect must still trip both prohibitions afterwards —
+`raw.githubusercontent.com/google/fonts/main/ofl/kanit/Kanit-Regular.ttf`, confirmed today to trip both.
+The property is pinned and the mechanism is left to the implementer: **a host or ref prohibition must be
+evaluated where a host or ref would actually appear, not as a substring scan over the whole field.**
+
+**THE RULE ON STALE COMMENTS, which is the entry's reusable half.** This epic has hit stale-comment
+findings four times and been deciding each by hand.
+
+> **A stale comment is a FIX when acting on it fails SILENTLY, and a DEFERRAL when acting on it fails
+> LOUDLY.** Ask: if the next engineer believes this sentence and acts on it, does a test go red, or does
+> the system quietly accept the wrong thing?
+>
+> **Override: a comment that contradicts another comment in the same file is always a fix**, whichever
+> way it fails. Once two paragraphs disagree about the mechanism, a reader cannot tell which half is
+> current, so **neither half is evidence any more.** The fault is not the wrong sentence; it is that the
+> file's whole comment layer has stopped being usable.
+
+**And the rule's first draft was wrong, which is worth more than the rule.** The lead's initial version was
+*"stale reason vs stale fact"* — and **F5 refuted it within the hour.** F5's sentence is grammatically a
+justification (*"it never needed one — no committed catalogue face is Apache-licensed"*), so the draft rule
+would have called it a fix. But the lead verified rather than classified: both the runtime and the
+build-time Apache rows **exist and are correct**, and the strict `.toBeDefined()` assertion means the worst
+action the false sentence licenses — deleting the TS Apache row — reds immediately. **Grammar was the wrong
+axis; failure mode is the right one.** A rule that had been adopted from its own plausibility would have
+sent a loud-failing comment to the fix pile and, worse, would have been carried forward as settled.
+
+**F3's floor is DERIVED, not raised.** `if len(committed) < 20` becomes a floor computed from
+`pinnedCensus`'s own non-`dep` row count. **A literal is the thing that just rotted** — 20 was written
+against a population that has since nearly tripled, so it passes while the walk finds a third of the tree,
+and replacing it with 58 re-arms the identical failure on a longer fuse. The two sides are independently
+produced (one walks the tree, one is typed by a person), so this is not circular, and the floor becomes
+self-maintaining — which is what D-16.R.12's guardrail asked for when it said *"a floor left at 21 while
+the tier grows to 30 is a floor that stops measuring the thing it was built to measure."* Its job is
+**vacuity detection**, and the message must say so: fail early and legibly when the walk itself breaks,
+rather than emit 58 per-row errors.
+
+**DW-168 collides with this on purpose.** `TestLicenceSignalCensus` is that entry's **worked instance** —
+the filesystem-walking test served a cached PASS while ten new licence texts sat unrecorded. So the pass
+must run `cd lint && go test -count=1 ./...` and **record the invocation, not merely the verdict**; by
+DW-168's own text a green taken without `-count=1` on this test is not evidence. This discharges the
+entry's narrowed residue on the path where it actually bit.
+
+**What 16.2 owes, and what it does not.** F1 stays 16.1a's: **16.2 becomes a third *carrier* of `source`,
+not a third *writer*** — the store persists a string the fetched or committed tier minted, and asserting
+the provenance shape of a value you copied verbatim proves nothing about the copier. 16.2 gains one line
+instead: a round-trip assertion at the **retrieval** side, which makes its existing contract Boundary
+(*"the store never becomes an authority on a document"*) checkable rather than adding scope — and gives
+the shared helper a **third real call site**, the absence of which is what let F1 hide in the first place.
+The coupling is a reason to order the pass first, not to merge them: if the pass slips, 16.2's line still
+lands and is simply weaker until F1 arrives. It never blocks.
+
+**Scope, stated so nobody re-derives it.** Four files, no product behaviour change — every fix is a test
+predicate or a comment — so the before-the-tag set is untouched and **D-000.15 is not engaged**. The 23
+goldens are not consulted because nothing rendered changes.
+
+**A negative result, recorded because it is worth as much as a finding.** The lead went looking for an
+eighth defect: whether the build-time Apache row 16.1a added at `font-catalogue.test.ts:203` is vulnerable
+to D-16.R.12's standing rule 1 (a test that admits because nothing matched). It is **not** — that table
+asserts `.toMatch(signature)` against real bytes and `robotoslab`'s nameID 13 genuinely reads the Apache
+sentence, so "admits because it matched" and "admits because nothing matched" are distinguishable and a
+broken regex reds. There is no eighth finding.
+
+**How we'd know this was wrong.** The remediation pass finding that a fix cannot be red-proved — that would
+mean the defect is in the shape of the helper rather than in its predicates, and the repair is a redesign
+rather than a table.
+
+### D-16.R.36 — ADDENDUM to D-16.R.35's stale-comment rule: a correct fact can launder a wrong one
+
+**Reported by an implementation subagent during the remediation pass, unprompted, as an aside to a
+question it had been asked about something else.** It is a real refinement to the rule recorded one entry
+earlier, so it gets a number rather than living in a Delivery Log.
+
+**The rule as recorded** sorts a stale comment by whether acting on it fails loudly or silently. The
+subagent was asked which side a particular sentence fell on — one naming both a filename and a count — and
+answered: **both, in the worst possible mix.**
+
+**The mechanism.** The stale *filename* fails loudly: grep it, find nothing, look again. The stale *count*
+fails silently, because a number is not greppable — a reader simply carries it away. What makes the pair
+worse than either alone is that they **share one sentence**, and one of the two filenames it names is
+real. So a reader who spot-checks the sentence finds one name valid and one missing, corrects the missing
+one, and treats the number sitting beside the **verified** name as checked-by-association.
+
+**In simple terms.** A sentence says *"see `manifest.go` and `licencegraph.go` — there are 12 of them."*
+You check the first name: it exists. You check the second: it doesn't, so you fix it. You never check the
+12, because the sentence has just demonstrated that it can be verified and you did verify it. The half
+that survived your check vouches for the half you never checked. **The correct filename launders the wrong
+number.**
+
+**Consequence, added to D-16.R.35's rule rather than replacing it:** *when one sentence carries both a
+loud-failing claim and a silent-failing one, it is a **fix**, and the loud half is the reason — not the
+mitigation.* A partially-verifiable sentence is more dangerous than a wholly stale one, because a wholly
+stale one fails every spot-check it meets. This is the same family as everything else this epic has
+catalogued, in yet another medium: **confidence earned in one scope, spent in another.**
+
+**How we'd know it was wrong.** If the mixed sentences we leave standing under this rule turn out never to
+mislead anyone — i.e. readers do re-check the numeric half — then the laundering is theoretical and the
+rule can go back to sorting by failure mode alone.
+
+### D-16.R.37 — The remediation pass's two checkpoints: a guard whose reach a formatter decides, and a rule confirmed by independent convergence
+
+**Orchestrator decisions**, both answered without the lead because both were settled by rulings already on
+this log. Recorded because one of them extends a fix beyond its literal brief and that should never be
+silent.
+
+**Q1 — F7's fetched side is exhaustive only by FORMATTING. Fixed, not deferred.**
+
+The dispatched fix was *"make the committed side exhaustive"*. Done — and the independent red-prover then
+attacked the **fetched** side of the same test and found it scrapes `font-source.ts` with a **line-anchored,
+comma-terminated** pattern. Measured, with two spellings of the same second writer: `source:` starting its
+own line **reds**; the identical code reflowed onto one line **stays green, 46 passed / 0 failed**. The
+evading writer emitted the exact original defect — a bare `main` branch URL.
+
+**In simple terms.** The alarm is wired to the door frame rather than the door. Come through the same
+doorway with your shoulder turned and it never sounds. Nothing about the intrusion changed; only its
+formatting did.
+
+**Why this is completing F7 rather than opening F8, which is the whole question the builder raised against
+itself.** The builder argued fairly that a literal reading of its brief puts this out of scope, and asked
+rather than deciding — correctly. But the ruling's own words were that the two halves *"are **asymmetric**"*
+and its reason was that the helper exists *"because the defect this tripwire guards is the two tiers
+drifting apart."* **An assertion permissive on one tier and exhaustive on the other IS that drift, inside
+the guard** — so swapping which tier is permissive relocates the defect instead of discharging it. "Make the
+committed side exhaustive" named the measured instance, not the boundary of the fix.
+
+**Three things settled it.** (1) It is a **false negative on the property the test's own name claims**, and
+the frontmatter deferral that already exists covers the **opposite** direction — it registered the regex
+going *red* on a reflow; this is the reflow making the guard *silently admit*. A deferral pointing one way
+is not coverage for the other. (2) It is **F1's shape recurring inside F1's own remediation**: F1 was a
+guard that looked asserted and asserted nothing, and a guard whose reach a formatter decides is the same
+defect in a different mechanism — closing the pass that fixed an inert tripwire while shipping an evadable
+one. (3) **D-16.R.35's override applies literally**: the file's newly written comment condemns what would
+have been left standing, so two paragraphs in one file would disagree about whether the guard is symmetric,
+and neither would be evidence any more.
+
+**Red-proof required in all three spellings**, not the first: the second writer reds on its own line, reds
+reflowed onto one line, and a `source:` inside a `//` comment stays green as the stated exclusion requires.
+
+**Q2 — the third stale claim in `licencecensus_test.go`. Fixed, counts DROPPED rather than retyped.**
+
+*"ClassifyLicenceText is shared between the ASSET path (`manifest.go`, 12 files) and the DEPENDENCY path
+(`licencegraph.go`, 9 files)."* Measured: `manifest.go` exists, `licencegraph.go` does not (the package has
+`graph.go`), the `9` is right and the `12` is the same rotted figure F3 was told to stop repeating.
+
+**This is D-16.R.36 arriving a second time, from a different agent, in the same sentence — and that
+convergence is the entry's real content.** D-16.R.36 was recorded roughly ninety minutes earlier from an
+unrelated subagent's unprompted aside. The remediation pass's red-prover reached *"the correct name
+launders the wrong number"* independently, without having seen it. **Two independent readers converging on
+the same mechanism is the strongest evidence available that a rule is real rather than a plausible
+story** — which matters because D-16.R.35's first draft was plausible and wrong. The rule is now applied
+rather than proposed: a sentence carrying both a loud-failing and a silent-failing claim is a **fix**, and
+the loud half is the reason, not the mitigation.
+
+**The counts are dropped, not refreshed.** Retyping is how this rotted twice, and `~43` describes a
+population **no longer defined in that package**, so a fresh number there would be born stale. Where scale
+matters, name where the population is defined instead of how big it is — the same principle as F3's derived
+floor: **stop writing down numbers that nothing maintains.**
+
+**Three disposals, recorded so they are not re-derived.**
+
+- **`build-wasm.mjs` ~109, "six slots" of an object holding nine — NOT fixed, registered as a deferral
+  stating the AMBIGUITY as the finding.** It is defensible as meaning the six font slots and nothing
+  mechanical depends on either reading. **An ambiguous comment is not a stale one and D-16.R.35's rule does
+  not cover it**; picking the likelier reading would be inventing an answer, which is the one thing this
+  pipeline forbids everywhere else. It needs whoever next edits that object to say which it intends.
+- **The fifth stale site swept at ~118** ("Twenty-seven hardcoded keys" → no count at all) was not on the
+  F4 list. Kept, and **said so in the Implementation Notes** — a sweep that silently exceeds its brief is
+  indistinguishable from scope creep unless it declares itself.
+- **S6's three bounds on the derived floor** (catches under-collection only; counts entries not distinct
+  files; the `dep ` discriminator is sound by observation of today's paths rather than by construction) are
+  **stated in comments rather than guarded**. That is the correct application of this file's own subject: a
+  comment claiming a safety it does not have is exactly what was being fixed. No guards built for them here.
+
+**And the pass broke a guard with its own remediation, which is worth recording as a success of the gates
+rather than a defect.** The first drafts spelled real font hosts in test values and comments;
+`npm run scan:font-hosts` went red with **9 occurrences**, two of them `fonts.gstatic.com`, forbidden
+outright by D-16.3. The repair composes the host rows from the exported `fontsRepositoryHost` constant
+rather than spelling them — **strictly better than a literal because it is rename-proof** — and refuses the
+obvious alternative of substituting a fictional host, on the grounds that *the tripwire is stated against
+the declared hosts by identity, and a fictional host would make it prove less.* Same reasoning as F2's
+operand narrowing: repair at the right level, never retreat to something weaker that looks equivalent. The
+original-defect row's trip set was re-confirmed unchanged at `['host','ref','date','separator','project',
+'path']`.
+
+**How we'd know Q1 was wrong.** The unanchored scrape producing a false **positive** — reddening on a
+legitimate `source:` occurrence the anchors were excluding on purpose. The stated exclusion (a `source:`
+inside a `//` comment stays green) is the specific case that would show it, which is why it is red-proved
+rather than assumed.
+
+### D-16.R.38 — CORRECTION to D-16.R.36 and D-16.R.37: the filename was never wrong, and "two independent readers" were one method failing twice
+
+**Orchestrator error, caught by a subagent that refused the instruction rather than executing it.** The
+originals stay above, unedited, per this log's standing practice — never rewrite history, append the
+reversal.
+
+**What I ruled, and what was true.** In D-16.R.37 (Q2) I instructed: *correct `licencegraph.go` →
+`graph.go`, and drop both counts.* The implementation subagent did the counts half, **refused the rename**,
+and returned the measurement. Verified independently by me before accepting it:
+
+- `lint/internal/rules/licencegraph.go` **exists**, is git-tracked since `5dddbea`, and line 44 calls
+  `licence.ClassifyLicenceText` — it **is** the dependency path.
+- `lint/internal/licence/graph.go` holds `ResolveGraph` and `ReadLicenceText` and **never touches the
+  classifier**.
+- The two non-test callers of `ClassifyLicenceText` are exactly `internal/manifest/manifest.go` (asset
+  path) and `internal/rules/licencegraph.go` (dependency path).
+
+**Both filenames in the sentence were correct, and precisely chosen — one per path.** My rename would have
+put a false statement into the file whose named subject (D-8.0.1) is *comments claiming things that are not
+so*. That is the worst available outcome for this particular fix, and the pass would have shipped it on my
+authority.
+
+**How the premise failed, and this is the part with teeth.** Grepping for `licencegraph` **inside**
+`internal/licence` returns nothing, because the caller is in a **sibling package**. The follow-up reviewer
+did that search, the remediation builder's red-prover did that search, and I accepted the result without
+running a wider one. In D-16.R.37 I then wrote that *"two independent readers converging on the same
+mechanism is the strongest evidence available that a rule is real."*
+
+**They were not independent.** The subagent's words, which are the correction:
+
+> *Two agents reaching the same wrong answer via the same too-narrow search isn't corroboration — it's one
+> method failing twice.*
+
+**Convergence is only evidence when the methods differ.** Two readers running the same scoped grep are one
+measurement reported twice, and counting it as two is how a shared blind spot acquires the authority of
+replication. I made exactly the error this log has catalogued a dozen times, in its most embarrassing
+medium: **a claim true in the scope where it was produced** — `licencegraph.go` is absent *from
+`internal/licence`* — **applied in a scope where it is false** — absent *from the repository*. And I made it
+while writing the entry that named that pattern.
+
+**The mechanism survives and is STRENGTHENED, which is why D-16.R.36 is corrected rather than withdrawn.**
+D-16.R.36 said a correct filename launders a wrong number beside it. With **both** filenames correct, the
+two rotted counts were laundered by **two** verifiable names rather than one. The rule stands; only the
+worked example's details were wrong. What must be struck from D-16.R.37 is the *independent-convergence*
+argument I used to promote the rule from proposed to applied — the rule is well-founded on its mechanism,
+not on a replication that never happened.
+
+**The real defect, which survives the bad ruling.** The paths were **unqualified**. A bare `manifest.go` /
+`licencegraph.go`, read from inside `internal/licence`, is unfindable — which is precisely why it read as
+rot to three separate readers. The fix applied: both names written as **full repository paths** so the next
+reader's grep succeeds; **both counts dropped** (the correct `9` as well as the rotted `12`, since a bare
+number beside a now-findable path is still a number nothing maintains); one line recording that an earlier
+draft named them bare, **so the next agent who greps locally and finds nothing reads why before concluding
+rot**. That last line is the durable part: it inoculates the next reader against the specific error three
+readers just made.
+
+**Consequences, standing from here.**
+1. **A "file does not exist" claim is repo-scoped or it is not a claim.** Verify absence with a
+   repo-rooted search (`git ls-files`, or a `find` from the root) before acting on it. A package-scoped
+   grep establishes absence *from that package* and nothing more.
+2. **Convergence counts only across differing methods.** Two agents, one method, is one datum. When citing
+   agreement as evidence, state the methods; if they are the same, say so and discount it.
+3. **Comment references to code in another package carry their full path.** A bare filename is only
+   findable from the directory that holds it, and a reference that cannot be resolved from where it is read
+   will eventually be *corrected* into a falsehood by someone acting in good faith — which is exactly what
+   nearly happened here.
+
+**The part worth more than the correction.** The subagent was given a direct instruction by the
+orchestrator, through the builder, and **declined it on measurement** rather than complying and letting a
+false statement land under someone else's authority. Then it reported the refusal with its evidence and
+flagged that an entry in this log needed amending. **That is the behaviour this pipeline's every checkpoint
+exists to produce**, and it worked at the lowest level of the stack, against the highest. Recorded so it is
+visibly rewarded rather than merely absorbed.
+
+**How we'd know THIS is wrong.** `internal/rules/licencegraph.go` ceasing to call `ClassifyLicenceText` —
+at which point the sentence names a file that no longer belongs to the dependency path, and the right fix is
+to re-derive both callers rather than edit one name.

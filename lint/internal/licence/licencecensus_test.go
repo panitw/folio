@@ -20,8 +20,19 @@ type censusVerdict struct {
 }
 
 // pinnedCensus is the WHOLE licence population of this repository with
-// its verdict written down — 48 committed LICENSE*/COPYING files plus
-// the 9 dependency licences the three Go module graphs resolve to.
+// its verdict written down — 67 rows: 58 committed LICENSE*/COPYING
+// files (every row whose `where` is a repository-relative path) plus the
+// 9 dependency licences the three Go module graphs resolve to (every row
+// whose `where` begins "dep ").
+//
+// THOSE COUNTS ARE PROPERTIES OF THE ROWS BELOW, not a second source of
+// truth, and this sentence is the ONLY place either is typed by hand.
+// Prose rots: this header read "48 committed" for the whole life of the
+// ten rows Story 16.1a announced three paragraphs down, so the addition
+// and the total it invalidated sat in the same comment, disagreeing.
+// Where the test needs the committed count it therefore DERIVES it from
+// the rows (committedPinCount, below) rather than reading a number a
+// person typed.
 //
 // IT GREW BY 22 AT STORY 8.5: the catalogue's 21 faces, and the compound
 // fixture D-8.4j.2 requires. That is the largest single addition this
@@ -156,6 +167,39 @@ var pinnedCensus = []censusVerdict{
 	{"dep lint -> golang.org/x/tools", FamilyPermissive, "BSD-3-Clause"},
 }
 
+// committedPinCount is how many pinnedCensus rows pin a COMMITTED licence
+// file rather than a dependency licence. The dependency half is the half
+// with a synthetic `where`: TestLicenceSignalCensus builds it as
+// "dep "+module+" -> "+path, so the prefix is what tells the two halves
+// apart, and everything without it is a repository-relative path that
+// `git ls-files` can produce.
+//
+// THAT DISCRIMINATOR IS SOUND BY OBSERVATION, NOT BY CONSTRUCTION.
+// Nothing stops a committed path from beginning "dep ". A pin at
+// `dep-vendor-dir/LICENSE` is counted as committed and raises the floor
+// to 59; the same name with a SPACE, `dep vendor-dir/LICENSE`, is filed
+// as a dependency instead and lowers the floor by one — silently, and in
+// the direction that LOOSENS it. `git ls-files` prints such a path
+// unquoted, so it would reach `where` verbatim. Today zero tracked paths
+// begin "dep" and exactly one contains a space, so this is latent rather
+// than live; it is written down because the failure would not announce
+// itself.
+//
+// This exists so the vacuity floor below is derived from the table
+// instead of being a second hand-typed number. It is NOT a derivation
+// that weakens the test: the count it produces bounds a population walked
+// off the filesystem, and D-8.4i.3's objection is to an expectation
+// derived from the THING IT CHECKS — which this is not.
+func committedPinCount() int {
+	n := 0
+	for _, v := range pinnedCensus {
+		if !strings.HasPrefix(v.where, "dep ") {
+			n++
+		}
+	}
+	return n
+}
+
 // TestLicenceSignalCensus is Story 8.4i's task 1 — D-8.4i.1's
 // population census, and D-8.4i.6's hard constraint that the gate must
 // not become fatal in the same commit that first measures the
@@ -177,9 +221,19 @@ var pinnedCensus = []censusVerdict{
 // entry has silently lost its file.
 //
 // WHY THE CENSUS EXISTS AT ALL. ClassifyLicenceText is shared between
-// the ASSET path (manifest.go, 12 files, visible) and the DEPENDENCY
-// path (licencegraph.go, 9 files, not visible in this repository at
-// all). If a change reds something legitimate here, the answer is to
+// the ASSET path (lint/internal/manifest/manifest.go, whose files are
+// visible in this repository) and the DEPENDENCY path
+// (lint/internal/rules/licencegraph.go, whose files are not visible here
+// at all). NEITHER CALLER LIVES IN THIS PACKAGE, which is why both are
+// written as full paths: an earlier draft named them bare, as
+// "manifest.go" and "licencegraph.go", and a reader who greps for those
+// inside internal/licence finds nothing and concludes the sentence has
+// rotted. It has not — but the population SIZES it used to quote had,
+// twice over, so they are deliberately not restated. This names WHERE
+// each population is defined, not HOW BIG it is; a reader who wants a
+// count should go to those two files and take one, against something
+// that maintains itself. If a change reds something legitimate here, the
+// answer is to
 // HALT and route it to the engineering lead — never to weaken the rule,
 // narrow the population or exempt a file. Moving the bar to fit the
 // instrument (D-8.5.10) is the failure this whole thread exists to stop.
@@ -220,15 +274,57 @@ func TestLicenceSignalCensus(t *testing.T) {
 
 	// --- population A: every committed LICENSE*/COPYING* file ---
 	//
-	// Deliberately a SUPERSET of the 12 asset files the font/wordlist
-	// gate classifies and the 8 lint fixtures: a census that enumerated
-	// only the files it expected to find would not be a census. The
-	// third-party notice texts and the repository's own LICENSE are
-	// carried too, at no cost.
+	// Deliberately a SUPERSET of the files the font/wordlist asset gate
+	// classifies and of the fixtures under lint/testdata/licence: a census
+	// that enumerated only the files it expected to find would not be a
+	// census. The third-party notice texts and the repository's own LICENSE
+	// are carried too, at no cost. Those sub-populations are named and not
+	// counted here on purpose — the counts this paragraph used to give
+	// ("the 12 asset files, the 8 lint fixtures") were both wrong by the
+	// time anyone read them again.
+	//
+	// THE FLOOR BELOW IS VACUITY DETECTION, AND IT CATCHES EXACTLY ONE
+	// DIRECTION: UNDER-COLLECTION. It fails once, early and legibly, when
+	// the walk returns FEWER files than the table records — a `git ls-files`
+	// that returns nothing, a root that lands on a smaller tree, a basename
+	// regex that stops matching — instead of letting a collapsed walk emit
+	// one "was NOT found in the population" error per pinned row.
+	//
+	// IT IS BLIND TO THE OPPOSITE BREAK. That is a bound to state, not a
+	// gap to guard here. MEASURED: broaden the basename regex to also match
+	// README and Makefile — a walk broken toward collecting TOO MUCH — and
+	// this floor stays silent while the cross-check below prints a 32-line
+	// wall of "is NOT in pinnedCensus", the exact wall the floor exists to
+	// pre-empt. A root resolving HIGHER behaves the same way, for the same
+	// reason: more files, not fewer. Over-collection belongs to the
+	// cross-check, which names each file; `<` does not duplicate it.
+	//
+	// IT COUNTS ENTRIES, NOT DISTINCT FILES, and its zero slack today is a
+	// coincidence of today's numbers. MEASURED: replace ten walked paths
+	// with duplicates of an eleventh — len(committed) stays 58, the floor
+	// passes, and ten real licence files go unmeasured with only the
+	// cross-check to say so. `git ls-files` does not emit duplicates, so
+	// that shape is not the live risk; the general one is. Population A is
+	// a DESIGNED SUPERSET of the pins, so the day someone commits N licence
+	// files without pinning them, the walk sits N above the table and a
+	// walk that then loses N files clears this floor again. That is the
+	// same fuse the literal 20 lit, only shorter: deriving caps it at N and
+	// holds it at zero whenever the test is green, which is the most a
+	// cheap early bail can honestly promise.
+	//
+	// WHY DERIVED AT ALL. The literal it replaces (20) was written against
+	// a population this table has since nearly tripled, so it went on
+	// passing while bounding nothing; a literal 58 would only re-arm that
+	// on a longer fuse. Deriving is honest here because the two sides are
+	// produced INDEPENDENTLY: one side WALKS THE FILESYSTEM, the other is
+	// TYPED BY A PERSON.
 	committed := committedLicenceFiles(t, root)
-	if len(committed) < 20 {
-		t.Fatalf("census found only %d committed licence files — expected the 12 asset files, the 8 lint "+
-			"fixtures and more besides; this measurement would be vacuous", len(committed))
+	if pinned := committedPinCount(); len(committed) < pinned {
+		t.Fatalf("census walked up only %d committed licence files, but pinnedCensus records %d of them — "+
+			"the walk itself looks broken (repository root, git ls-files, or the basename regex), and this "+
+			"measurement would be vacuous. This is the vacuity check, NOT the completeness check: if the "+
+			"walk is sound and a pinned file was genuinely removed, the per-file cross-check at the end of "+
+			"this test names it and says what to do about it.", len(committed), pinned)
 	}
 	for _, rel := range committed {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))

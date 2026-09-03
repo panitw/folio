@@ -538,6 +538,75 @@ measured.
   - `[low]` `[reject]` The gate artifact's `status: settled` is not in the spec-status vocabulary; it is a gate artifact, not a spec.
   - `[low]` `[reject]` The "PINNED TO THE SNAPSHOT COMMIT" paragraph appears in three documents; the duplication is deliberate so each record stands alone.
 
+### 2026-09-03 — Remediation pass (reopen, D-16.R.35)
+
+**The story was reopened after a follow-up review found six defects in its own delivered work.** The
+review layer for this iteration was that follow-up review — its findings arrived already triaged, so
+this pass ran Classify and the `patch` route rather than re-running blind reviewers over the same
+diff. **Every finding was re-measured here before a fix was dispatched; none was taken on trust.**
+Scope was four files and no product behaviour changed — every fix is a test predicate or a comment,
+so the before-the-tag set is untouched and D-000.15 is not engaged. The 23 golden digests were **not**
+consulted, deliberately: nothing rendered changes.
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 1, medium 5, low 2)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 0
+
+**F1 IS THE ONE THAT MATTERED, AND IT WAS RE-MEASURED BEFORE IT WAS FIXED.** Replacing `hostShaped`,
+`schemeShaped`, `digestShaped` and `branchShaped` with `/(?!)/` and `projectShaped` with `/[\s\S]*/`
+gave **33 passed / 0 failed** across the helper's complete call scope — its only two importers. Five
+neutered predicates, not one red test. After the fix the identical mutation gives **8 failed / 38
+passed with 8 named failures**, re-run independently and restored to digest `96f4e67b`.
+
+**EVERY FIX CARRIES A RED-PROOF WHOSE MUTATION WAS NAMED BY A DIFFERENT SUBAGENT THAN THE ONE THAT
+WROTE THE FIX** — the whole finding here is that these assertions had never been proven able to fail,
+so a fix asserted to work without a demonstrated red would be the defect recurring. Mutation was by
+**deletion** wherever a site could be deleted: falsifying a condition proves only that an arm is
+ordered ahead of another, while deleting it proves it is reached.
+
+- addressed_findings:
+  - `[high]` `[patch]` **F1** — the tripwire's whole prohibition half was asserted by nothing, an unmet guardrail from D-16.R.13 (*"that is the tripwire, and the convention alone will not hold"*). A table-driven suite now drives `assertProvenanceShape` directly: 9 rejected rows, 3 accepted rows, and a count-plus-coverage test. Each row pins **which** prohibition rejects it, because the helper short-circuits and a row asserting only "this throws" passes for the wrong reason the moment an unrelated assertion fires first. Red-proved by deleting each of the nine assertions in turn — **all nine red at least one named test; zero stayed green.**
+  - `[medium]` `[patch]` **F2** — `hostShaped` matched `notofonts/notofonts.github.io@v2.0` on the `io` TLD and `branchShaped` matched any path segment named `dev`. Both prohibitions now read the **slots where a host or a ref can actually stand** rather than scanning the whole field: a host at the head of either half, a ref in the `@release` slot or past `<owner>/<repo>`. **Landed before F1**, so the table was written against the narrowed predicates rather than pinning the false positives as intended behaviour. Anti-softening control red-proved in both directions: reverting either narrowing reds exactly the one accepted row it was about, and over-narrowing reds the rejected rows.
+  - `[medium]` `[patch]` **F2a, found by the red-prover and not in the brief** — the first narrowing **dropped a bound**. Checking only the project half let a host pasted into the PATH half through (`google/fonts — <host>/s/kanit/…`), which `schemeShaped` does not cover either. Restored at the correct operand — one more head segment, not the whole field — and pinned by its own named row.
+  - `[medium]` `[patch]` **F3** — `pinnedCensus`'s header called the population "48 committed files plus the 9 dependency licences"; measured, it is **67 rows, 9 `dep`, 58 committed**. Header corrected, and the vacuity floor at `:229` changed from the literal `< 20` to a floor **derived** from `pinnedCensus`'s own non-`dep` row count. Not circular: one side walks the filesystem, the other is typed by a person. Red-proved three ways — it fires naming the derived number; adding one committed pin moves it to 59 while a `dep ` pin moves it not at all; and **a walk truncated to 25 files fires the derived floor but sails past the old literal 20**, producing 33 per-row errors instead of one legible line.
+  - `[medium]` `[patch]` **F6** — `assertProvenanceShape`'s comment promised "a project, a path within it, and a fetch date" while the path half was asserted by nothing: `owner/repo@v1 — , fetched 2026-09-03` passed all seven assertions. A path-half assertion was added and is red-proved by deletion against its own named row.
+  - `[medium]` `[patch]` **F7** — "exactly one writer per tier" was exhaustive on the fetched tier and a bare `toContain` on the committed one. **Both tiers now go through one `sourceMentions` scrape with one exclusion rule and one `toEqual` guarantee.** The committed side's red-proof: a second emission reds, a rename reds, and `source:` inside a `//` comment stays green.
+  - `[medium]` `[patch]` **F7a, found by the red-prover and ruled in by the orchestrator** — making only the committed side exhaustive **relocated the asymmetry rather than discharging it**. The fetched side's scrape was line-anchored and comma-terminated, so the same second writer reds when written on its own line and **passes when reflowed onto one** — a guard whose reach a formatter decides, emitting the exact original `main` branch-URL defect. Note the direction: the deferral already on record registers that regex going *red* on a reflow; this is the opposite, a silent admission. All three arms now proved — own line reds, reflowed reds, comment stays green.
+  - `[low]` `[patch]` **F4** — `build-wasm.mjs`'s comment layer had a paragraph describing licence texts keyed by SPDX identifier three lines above a block stating in capitals that keying was replaced by per-face. Swept in one edit: 21 → 31 faces, "two licences" → 3 identifiers, and the contradicting paragraph rewritten to the mechanism the code actually runs. The historical "17 of 21" measurement was **kept** and its framing hardened so it cannot read as current. A fifth site not on the brief (`:118`, "Twenty-seven hardcoded keys") was corrected in the same sweep and is named here because a sweep that silently exceeds its brief is indistinguishable from scope creep.
+  - `[low]` `[defer]` **DW-169** — `build-wasm.mjs:110` says "six slots" of an object holding nine, six of which are font slots. **Both readings are defensible**, so D-16.R.35's stale-comment rule does not reach it: there is no single true sentence being contradicted, and picking the likelier reading would be inventing an answer.
+
+**F4 CARRIES NO RED-PROOF AND NONE IS CLAIMED.** Comments cannot be red-proved, and asserting one
+would be the exact vacuity this pass exists to remove. The evidence instead is a `diff -r` over the
+whole `src/generated` tree before and after: **byte-identical**, which is what shows the change is
+genuinely comment-only.
+
+**A REGRESSION THIS PASS CAUSED AND CAUGHT.** The first drafts spelled real font hosts in test values
+and comments, and `npm run scan:font-hosts` red with **9 occurrences** — two of them
+`fonts.gstatic.com`, which is forbidden outright by D-16.3, introduced by a row where the host's
+identity did no work at all. Corrected by **composing** all three host rows from the exported
+`fontsRepositoryHost` constant instead of spelling them, which is strictly better than a literal
+because it is rename-proof — the same identity-over-spelling argument the neighbouring test already
+makes — and by naming hosts generically in prose per the house style already in the file. The
+original-defect row keeps the real host through composition, and its trip set was re-confirmed
+unchanged.
+
+**A RULING PREMISE THAT DID NOT SURVIVE MEASUREMENT, recorded because it is worth more than the fix
+it nearly produced.** This pass proposed correcting `licencegraph.go` to `graph.go` in
+`licencecensus_test.go`, on the evidence that no such file exists. **It does** —
+`lint/internal/rules/licencegraph.go`, and it is the sole non-test dependency-path caller of
+`ClassifyLicenceText`, while `internal/licence/graph.go` never calls the classifier at all. The
+rename would have replaced a **correct** filename with a wrong one, in the file whose named subject
+(D-8.0.1) is comments claiming things that are not so. Three readers reached the same wrong answer by
+running the same too-narrow search — a grep confined to `internal/licence`, where the callers do not
+live. **Two agents agreeing via one failing method is not corroboration.** The real defect was that
+the paths were written **unqualified** and so were unfindable from inside the package; both are now
+full paths, with a line recording why. The counts half of that finding was correct and was applied:
+both the stale `12` and the still-true `9` were **dropped rather than retyped**, because retyping is
+how the sentence rotted twice, and the comment now names **where** each population is defined rather
+than how big it is — the same principle as F3's derived floor.
+
 ## Design Notes
 
 **The arithmetic, measured this dispatch at `efd79bf` (working directory `folio-designer`, tree
@@ -1063,3 +1132,63 @@ pass, and I am saying plainly which is which.
   outright, now half as far away.
 - **DW-166**'s re-run trigger still relies on a human noticing that the index snapshot was regenerated;
   the cheap tripwire was named in the deferral and not built.
+
+## Suggested Review Order
+
+*Trail for the **remediation pass** (D-16.R.35), not the original delivery — the original work's trail
+is the Delivery Log above. Four files, no product behaviour change.*
+
+**Start here — the operand fix, because everything else is written against it**
+
+- Read this first: the field has a grammar, and two prohibitions are POSITIONAL.
+  [`provenance-shape.ts:221`](../../folio-designer/src/test/provenance-shape.ts#L221)
+
+- A host can only sit at the head of a half; anchored to one whole segment, not a substring scan.
+  [`provenance-shape.ts:161`](../../folio-designer/src/test/provenance-shape.ts#L161)
+
+- A ref can only sit in the release slot or past `<owner>/<repo>`; the path half is deliberately not one.
+  [`provenance-shape.ts:192`](../../folio-designer/src/test/provenance-shape.ts#L192)
+
+- Both regexes now match a SEGMENT, not a substring — that change of meaning is the fix.
+  [`provenance-shape.ts:63`](../../folio-designer/src/test/provenance-shape.ts#L63)
+
+**The tripwire being given something to catch (F1, F6)**
+
+- Why this suite exists: five neutered predicates once gave 33 passed, 0 failed.
+  [`font-provenance.test.ts:307`](../../folio-designer/src/font-provenance.test.ts#L307)
+
+- The accepted rows are the anti-softening control, and matter as much as the rejected ones.
+  [`font-provenance.test.ts:394`](../../folio-designer/src/font-provenance.test.ts#L394)
+
+- Short-circuiting hides the second prohibition; the helper's `expect` seam is what reveals it.
+  [`font-provenance.test.ts:285`](../../folio-designer/src/font-provenance.test.ts#L285)
+
+- Anti-vacuity: counts plus coverage, because `it.each([])` still reports green.
+  [`font-provenance.test.ts:430`](../../folio-designer/src/font-provenance.test.ts#L430)
+
+**Both tiers scraped the same way (F7)**
+
+- One scrape, one exclusion rule, one `toEqual` — the asymmetry was the drift inside the guard.
+  [`font-provenance.test.ts:156`](../../folio-designer/src/font-provenance.test.ts#L156)
+
+**The census floor stops being a literal (F3)**
+
+- Derived from the hand-typed table to bound a filesystem walk; independent sides, so not circular.
+  [`licencecensus_test.go:193`](../../lint/internal/licence/licencecensus_test.go#L193)
+
+- Vacuity detection, not completeness — one legible line instead of 58 per-row errors.
+  [`licencecensus_test.go:322`](../../lint/internal/licence/licencecensus_test.go#L322)
+
+- The header total, and why the count is derived where the test needs it.
+  [`licencecensus_test.go:23`](../../lint/internal/licence/licencecensus_test.go#L23)
+
+- Both callers now written as full paths; neither lives in this package.
+  [`licencecensus_test.go:223`](../../lint/internal/licence/licencecensus_test.go#L223)
+
+**Comments that contradicted the code beneath them (F4)**
+
+- The paragraph that described a mechanism the block below says was replaced.
+  [`build-wasm.mjs:241`](../../folio-designer/scripts/build-wasm.mjs#L241)
+
+- The bundle cost, restated per face over 3 identifiers rather than per identifier over 2.
+  [`build-wasm.mjs:276`](../../folio-designer/scripts/build-wasm.mjs#L276)
