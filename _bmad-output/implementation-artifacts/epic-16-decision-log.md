@@ -2421,3 +2421,107 @@ owner is being asked to audit rather than to decide. **Include the two already-r
 ratified**, so the list is the whole diff and not the subset we are least sure about. **Presented as a
 screen rather than as prose** if that is cheap: this is a visual artefact, and seven textual deltas do not
 add up to what the thing looks like.
+
+### D-16.R.49 — ADDENDUM to D-16.R.47/48: a principled deviation is still a deviation, and "derive from the type" is not derivation
+
+**Correction to an inference the orchestrator drew**, refused by the lead. The rulings in D-16.R.47 and
+D-16.R.48 stand; what changes is a conclusion drawn from them.
+
+**THE REFUSED INFERENCE.** When the builder's reframing dissolved Q2 — `Handwriting` appears because it is
+in the snapshot, so nobody *decides* to add it — the orchestrator concluded that Q2 therefore **leaves** the
+owner's consolidated deviation list, taking it from seven rows to six. **The lead refused this, and the
+reasoning is the most useful thing in the exchange:**
+
+> *The owner opens the screen and sees two fewer script chips and one more category chip than the mockup
+> they approved. That is true whatever derivation produced it. A change being principled does not make it
+> invisible.*
+
+**The failure mode, named precisely.** If *"we found a principled derivation for it"* removes a row, the
+list becomes **the deviations we were least confident about** — curated by our own certainty, which is the
+one criterion that makes such a list useless. **The most defensible deviation is exactly the one most likely
+to be dropped, and it is the one whose presence proves the list is complete.** A series of
+individually-correct narrow rulings shortening the record of itself is the same shape as the de facto
+redesign D-16.R.48 exists to prevent, applied to the disclosure rather than to the screen.
+
+**Q2 stays, with the honest row:** *design drew four category chips (its 14 sample families' categories) and
+five script chips (two for scripts the product has never supported); shipped derives both from the real
+population — five category chips, three script chips.* **That row is not embarrassing; it is the single best
+illustration of what happened to this screen.**
+
+**A BETTER PROOF THAN SET EQUALITY, and it is the finding.** The lead measured both chip axes and they
+**err in opposite directions**:
+- **Categories UNDER-reach** — omitting `Handwriting` (259 families, 20.3%) while including `Monospace`
+  (24 families, **1.9%**).
+- **Scripts OVER-reach** — drawing Cyrillic and Greek, which the product has **never** supported in any
+  vocabulary.
+
+**A curator who deliberately excluded Handwriting would not simultaneously include Cyrillic. No single
+curation intent produces both.** Hand-typing plausible font-browser chips against a fourteen-row sample
+produces exactly both. **So the mockup's chip arrays are not design statements about this library — they are
+what a designer types when there is no library in front of them yet.** That is a stronger claim than the
+set-equality argument it replaces, because it rules out the alternative explanation rather than merely
+fitting the data.
+
+**THE Q1 DEFECT GETS A NAME, because it is subtle and it will recur: DERIVING FROM A TYPE IS NOT DERIVING
+FROM DATA.** Requiring the vocabulary be *"derived from `CatalogueScript`"* **looks like** derivation and is
+not. The type over-declares because it is a **rendering** vocabulary — `scriptFallbackFaces` genuinely
+carries `["cjk", "Noto Sans SC"]` and the engine genuinely renders CJK — while the chips need an
+**addability** vocabulary. Two sets differing by exactly one arm, **real in one sense and empty in the
+other**. Moving a value out of a typed literal and into a type **inherits whatever that type over-declares**.
+**The only derivation that cannot ship a dead control is derivation from the data the control filters.**
+
+**THE ANSWER TO "DOES THIS READ AS US OVERRIDING THE DESIGN?" — and it is checkable rather than a matter of
+opinion.** Apply one test to every row: *does it trace to a measurement or to a preference?*
+
+| row | measurement |
+|---|---|
+| `⌘G` | the browser's Find Next; a hint beside a dead key is a false string |
+| Most-styles sort | exactly one face embedded per family (`font-source.ts:197`, `:314`) |
+| designer search | field absent from snapshot and module; obtaining it breaks the `d6d51f1` pin |
+| script chips | Cyrillic and Greek match **0 of 1,305** offerable families |
+| category chips | `Handwriting` is **20.3%** of them |
+| `weightLine` | both halves false — one by our own payload ruling, one by measurement |
+| colours | nine within 10 channel steps of a real token; one at 39 raised as a gap |
+
+**Seven rows, seven measurements, zero taste disagreements. Not one says "we preferred a different
+design."**
+
+**WITH ONE HONEST EXCEPTION, which goes in front of the owner rather than being left for them to find.** The
+`⌘G` reasoning included a **convention** argument — that this app puts app-specific actions on Option and
+reserves Command for conventional document actions. **That half is a preference, not a measurement.** The
+measured half (Find Next; both-or-neither) stands alone, but **the owner must be told that `⌘G` is the one
+row where our reasoning included taste**, so they can push back on precisely that row. **A list with one
+flagged soft row is more credible than seven rows all claiming to be forced.**
+
+**THE HEADLINE FOR THE OWNER IS NOT "DEVIATIONS".** It is: ***"the design was drawn against fourteen sample
+families; here is what changed when it met eighteen hundred real ones."*** Accurate, neither a confession
+nor a defence, and it makes the list read as **the design working** rather than as us working around it.
+Shown **as the screen beside the mockup**, not as prose — seven textual deltas do not add up to what the
+thing looks like.
+
+### D-16.R.50 — A builder that returns a corrected premise instead of a delivery is the pipeline working, and it has a measurable payoff
+
+**Recorded as evidence, because this run keeps spending real money on verification and this is the thing
+that lets it stop.**
+
+**Story 16.3's builder corrected TWO premises in one story, both volunteered, both against its own
+convenience:**
+1. **That the product does no subsetting** — it measured `folio-go/internal/fontset` and found it **does**,
+   usage-driven at PDF render. This made its own job *harder*: the convenient version supported the
+   conclusion it was already heading toward.
+2. **That the CJK chip would be dead** — unpicking a mechanism the orchestrator had **handed it as a
+   requirement**, and which would have reintroduced the exact defect the ruling removed.
+
+**The decision-relevant consequence is concrete, not sentimental: it materially raises confidence in that
+agent's UNVERIFIED reports** — which is the only currency that lets this pipeline stop re-measuring
+everything. An agent that corrects its own premises against its own interest is an agent whose uncorrected
+claims mean something.
+
+**It is also the same control that saved the `licencegraph.go` ruling** (D-16.R.38): an implementing agent
+**refusing on evidence rather than deferring upward**, against three concurring seniors including the
+orchestrator. Twice now, the lowest level of the stack has been the thing that caught the highest.
+
+**Consequence: when a builder returns a corrected premise instead of a delivery, that is the pipeline
+working at its best and it is recorded as such — never read as a delay.** The incentive is fragile and worth
+protecting explicitly: an agent that learns a correction costs it standing will stop volunteering them, and
+the failure mode of that is invisible.
