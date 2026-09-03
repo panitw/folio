@@ -188,7 +188,15 @@ cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `
    `src/shortcuts.ts` if the shortcut lands"*: the browser is Story 16.3's and this story's footer opens
    it. **No hint glyph is rendered**, the mockup's `⌘G` label is not carried, and `src/shortcuts.ts` is
    untouched. See 16.3's note for the reasoning.
-4. **The disk-font decline sentence is pinned by an exact-string test** at `App.test.tsx:1353`, against
+4. **RE-DERIVE Story 8.6's disk-font decline against D-16.1 — an obligation registered NOWHERE else.**
+   The tracker note that carried it has been stripped; half of it was DW-141, and this half had no home
+   (D-16.R.45). 8.6 declined disk fonts under a premise D-16.1 has since **reversed** — the catalogue is no
+   longer the only source. The conclusion probably still holds, because D-16.2 leaves *"No host fonts"*
+   standing as the one Non-goal clause D-16.1 does not touch. **But "probably" is the state a sentence is
+   in when nobody has re-read it**, and this is exactly the case where a premise moves and the sentence
+   built on it gets carried forward unexamined. Re-derive it explicitly and record the reasoning in the
+   code comment, which is where 8.6 put the last one.
+5. **The disk-font decline sentence is pinned by an exact-string test** at `App.test.tsx:1353`, against
    `App.tsx:1474`. Restating or lifting that sentence **will red that test by design** — which is
    correct behaviour, and is written here so it is expected rather than discovered mid-implementation.
 

@@ -2052,3 +2052,125 @@ evidence rather than deferring to concurring seniors. In the `licencegraph.go` c
 orchestrator ruling. In this checkpoint's case the builder declined to add a dependency on a constraint it
 believed existed, and asking rather than complying is what caused three people to look and discover the
 constraint was never written down.
+
+### D-16.R.44 — OWNER DECISION: the designer's CI job is repaired after 16.4, before the epic closes
+
+**Owner decision**, taken at the terminal 2026-09-03, on an OWNER-DECISION-NEEDED the lead escalated
+rather than ruling. Recorded with the ruling that binds regardless of timing.
+
+**Verdict.** The `folio-designer` CI job is repaired as **one small item after Story 16.4 and before Epic 16
+closes** — specifically before the end-of-run heavy-test catch-up. Not now, not deferred behind the epic.
+
+**The defect.** `.github/workflows/ci.yml` runs the designer's eight steps **sequentially** with no
+`continue-on-error` and no `if:`. Step 2 is the unit suite, which carries DW-152, a deliberate known red.
+GitHub Actions halts a job at its first failing step. **So steps 3-8 — typecheck, lint, the production
+build (which is where Epic 16's own `scan:font-hosts` guard lives), the offline red controls, the wasm
+witness and `test:e2e:compile` — have not executed in CI since DW-152 went red.**
+
+**And it is worse than "truncated", in a way the lead found by reading DW-152's own text.** DW-152 is a
+**source scan** (`canvas-authority-contract.test.ts:190` greps a spec file for `getComputedStyle`), so it is
+environment-independent and fails in CI exactly as locally. **The job has therefore been red on every push
+and every PR since then** — which means a genuinely new designer break would have changed *nothing
+observable*. DW-152's register entry states the mechanism in its own words: *"a second file adopting
+`getComputedStyle` would change the failure's contents and not its status, and no gate reads contents."*
+**That sentence is true verbatim of the whole job.** DW-171 is not a second defect beside DW-152; it is
+DW-152's mechanism escalated from one test to an entire job.
+
+**The asymmetry that makes this sting.** `folio-go` is deliberately inoculated: a green job running
+`go test -count=1 -skip "$KNOWN_RED_TEST" ./...` that must be green, plus a separate `folio-go-known-red`
+job that runs the sanctioned red and is expected to fail — carrying the comment *"the green job asks ONE
+question — is anything NEW broken? … No continue-on-error on this job, ever: that would make EVERY failure
+here non-fatal, which is the mechanism that grows."* **Someone wrote the diagnosis of the designer job's
+disease in the job directly above it.**
+
+**The finding that shrank the item and changed the lead's own recommendation.** Both the lead and I assumed
+this entangled DW-152, and therefore the Epic 9/10 lane. **It does not.** `folio-go` never fixed its P6g
+red — it **quarantined** it into a named job and left the floor reported unmet in three places. The designer
+fix is the same motion: DW-152 stays open, stays owned by its lane, and is **disclosed by a job name**
+instead of **masking a job**. No cross-lane dependency, no product code, one file.
+
+**Why after 16.4 rather than now (the owner's choice, and the lead's recommendation).** Doing it now inserts
+infrastructure work immediately before the largest story left — the font browser and its browser run — for
+work advancing none of the epic's goal. Deferring behind the epic queues it behind DW-152, whose owning lane
+has no scheduled return, so that option's honest name is *indefinitely*. **The decisive argument is
+placement, not cost: the end-of-run catch-up is this epic's single largest evidence event** — the first
+execution of the matrix corpora, the AD-21 legs, `TestCrossTargetByteIdentity` and the browser specs — and
+that is precisely the moment to have a witness the run did not write itself.
+
+**RULING (lead), binding whenever the fix lands.**
+1. **Mirror `folio-go`'s split.** `continue-on-error` and `if: always()` are **forbidden outright** — both
+   make *every* failure in the job non-fatal, the mechanism `ci.yml:81-82` names and refuses. Two greens and
+   one red whose name explains itself is honest; three greens is not.
+2. **Exclude by the narrowest selector that excludes the sanctioned red and nothing else** — vitest's
+   `--testNamePattern` mirrors `go test -skip` at test granularity. **Excluding the whole
+   `canvas-authority-contract.test.ts` file is laundering and is refused**: that file carries other
+   assertions, and silencing them to quarantine one is how a green stops meaning anything.
+3. **The fix does NOT require fixing DW-152.** Quarantine, do not repair another lane's work.
+
+**TWO DISCLOSURES OWED NOW, costing nothing.**
+- **Nothing in Epic 16 may be described as CI-verified.** Every story's Delivery Log and the retrospective
+  state that the designer job halts at step 2. This run's per-story evidence is **unaffected** — every gate
+  was run and recorded by hand — and that must be said in the same breath. But **"measured on our machines"
+  and "watched by CI" are different claims**, and this epic has ruled four times that they must not be
+  collapsed.
+- **The retrospective writes the sentence I said I would rather not write:** *"Epic 16 added seven gates;
+  the project's only automated gate has not executed the designer's build-time guards since DW-152 went
+  red."* Not writing it is worse than writing it, and **spending a story to avoid having to write it would
+  be spending to protect a sentence rather than a system.**
+
+**How we'd know this was wrong.** The item slipping at the epic gate — the last slot in a run being where
+tired work gets dropped is the lead's own stated cost of this option, and it is the failure mode to watch.
+
+### D-16.R.45 — Story 16.2's close, and the measurement-order trap repeated one number later
+
+**Closer findings**, verified by re-running every gate rather than relaying. Story 16.2 `done` at `1522d82`.
+
+**Gates as measured:** designer 51 files / **584 tests, 583 pass, 1 fail** (DW-152 only); `folio-go`
+**1912 pass / 2 fail / 5 skip** (the mandated P6g red only); lint 4 packages green; build exit 0 standalone;
+typecheck, `scan:host-fonts` (129 files), `test:e2e:compile` all exit 0; `maximumCacheAssets` unmoved at 64
+with `s1.assetCount` **54 read from the built manifest** and **all 54 entries enumerated — zero
+store-shaped**, so the store consumed no cache slot, measured rather than inferred. The **+55 test delta was
+accounted by name**: six touched files give 100 at HEAD against 45 at baseline, exactly 55, nothing
+unexplained.
+
+**DISAGREEMENT 1 — `scan:font-hosts` is 607 files, not the 606 the review recorded.** Commit `dbbafc2`
+added `folio-go/stored_face_key_tie_test.go`, a `.go` file under one of the scanner's roots. Eligible
+tracked files went 727 → 733 → **734**, and `comm` names that test as the only addition. **So 606 was taken
+before the review's own new file was staged — the identical measurement-order trap the story's own entry
+documents at length one row above, repeated on the very next number.** The scan enumerates via
+`git ls-files`; an untracked file is invisible to it. Corrected to 607 with the derivation recorded.
+
+**In simple terms.** The story wrote down, carefully, that it had once counted its files before adding
+them — and then counted the next number before adding a file. Knowing the trap by name did not prevent
+walking into it, because the check happens at the moment of measuring and the knowledge lives in a
+paragraph.
+
+**DISAGREEMENT 2 — `fake-indexeddb` is declared `^6.2.5`, the ONLY one of thirteen devDependencies not
+pinned exact.** Placement is correct (devDependencies; `dependencies` still exactly `pdfjs-dist`, `react`,
+`react-dom`; no shipping module imports it). But **a caret lets the independent implementation this story's
+entire store proof rests on move under a future install** — and its independence from our code is the whole
+reason D-16.R.42 ruled it in over a hand-rolled fake. **Orchestrator ruling, on the convention: pin it
+exact.** Twelve of thirteen siblings are pinned exact, so this is the house rule applied, not a new one.
+Registered **DW-177**, fix folded into the post-16.4 infrastructure item alongside DW-171 — same file class,
+same commit, no separate slot.
+
+**Other closer findings, recorded rather than acted on.**
+- **No rejected/dismissed count exists** anywhere for 16.2's review population. The build reported 11
+  rejected; the story file and register carry no such figure. **Recorded as a gap, not reconstructed** —
+  correct handling, since a count reconstructed after the fact by someone who did not do the triage is a
+  fabricated agreement (same reasoning as D-16.R.41's triage-header finding).
+- **Three different commits appear as "baseline" in the spec**, all correctly: frontmatter `a40c34d`
+  (planning-time, preserved by rule), `227befe` (built on), `3c45993` (suites measured). Noted rather than
+  "fixed" — a spec that names one baseline for three different purposes would be less true, not more.
+- **All four existing `epic-N-context.md` caches are stale** against an `epics.md` modified 2026-09-03.
+  **The missing `epic-16-context.md` is therefore safer than the alternative**, since Epic 16 dispatches
+  from per-story specs and this log and reads no cache. Left alone.
+- **~80 lines of spent narrative stripped** from the epic-16 tracker region, each block's substance verified
+  recoverable elsewhere first (D-16.2 ×3 in this log, 16.0's measurement in its own story file, 16.1a's
+  reopen history ×8 there, D-16.R.8 ×4). ~357 comment lines across epics 1-15 **left alone** — outside this
+  story's attribution range, and a sweep that size is an orchestrator ruling rather than a side effect of a
+  close. Correct restraint.
+- **16.4 carries an obligation registered nowhere:** *re-derive Story 8.6's disk-font decline against
+  D-16.1.* Half of that tracker note is DW-141; this half is not registered anywhere and 16.4 has no
+  Delivery Log to receive it. **Folded into 16.4's `## PENDING GATE AMENDMENTS` section** rather than left
+  in a tracker comment.
