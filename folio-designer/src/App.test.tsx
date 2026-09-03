@@ -1646,14 +1646,19 @@ describe('typography controls over the engine-projected closed sets', () => {
         expect(child.getAttribute('role') === 'option' || child.getAttribute('aria-hidden') === 'true', `${group.getAttribute('aria-label')} owns a child that is neither an option nor hidden from the tree: ${child.outerHTML.slice(0, 80)}`).toBe(true)
       }
     }
-    // POSITIVE CONTROL — THE NOTES ARE STILL THERE, and still attached to the
-    // list. Deleting them would satisfy every assertion above.
-    const disclosure = screen.getByText(/families you can add/)
-    expect(listbox, 'the disclosure is about the list and is not a row in it').not.toContainElement(disclosure)
-    const notes = document.getElementById(listbox.getAttribute('aria-describedby') ?? '')
-    expect(notes, 'the list must name the notes that describe it').not.toBeNull()
-    expect(notes).toContainElement(disclosure)
-    expect(notes).toContainElement(screen.getByText(/A font file from your own disk cannot be added/))
+    // POSITIVE CONTROL, IN THE ONE STATE THAT STILL DRAWS A NOTE. The standing
+    // explanation was removed from this dropdown by OWNER decision, so the notes
+    // node exists only when the search matches nothing. The rule it was written
+    // for is unchanged and is asserted where it can still bite: a note is never a
+    // row in the list, and the list names the note that describes it.
+    expect(listbox.getAttribute('aria-describedby'), 'with rows to show there is no note to describe them').toBeNull()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Helvetica' } })
+    const empty = screen.getByText(/Nothing in this template, on this machine, or in the list you can install matches/)
+    const emptied = dropdown()
+    expect(emptied, 'the empty-state sentence is about the list and is not a row in it').not.toContainElement(empty)
+    const notes = document.getElementById(emptied.getAttribute('aria-describedby') ?? '')
+    expect(notes, 'the list must name the note that describes it').not.toBeNull()
+    expect(notes).toContainElement(empty)
   })
 
   // MATRIX ROW: TWO COMPONENTS WITH DIFFERENT FAMILIES STILL SAY `Mixed`, AND
@@ -1710,25 +1715,17 @@ describe('typography controls over the engine-projected closed sets', () => {
     // CORS header and a browser cannot read it — and only the typeface is
     // fetched at the moment of a pick. A control that let this read as a live
     // font browser would be saying something untrue.
-    const disclosure = screen.getByText(/families you can add/)
-    expect(disclosure.textContent).toMatch(/already on this machine/)
-    expect(disclosure.textContent).toMatch(/snapshot taken on \d{4}-\d{2}-\d{2}/)
-    expect(disclosure.textContent).toMatch(/changes only when the designer is released/)
-    expect(disclosure.textContent).toMatch(/single variable file are not shown/)
-    // AND THE DECLINE IS STATED. There is no import control to be found
-    // missing, so the answer to "where do I add my own font file?" is written
-    // where the question is asked, rather than left to be inferred from its
-    // absence.
-    //
-    // AND THE SENTENCE WAS RE-DERIVED AT 16.4, NOT CARRIED. Its 8.6 wording —
-    // "Fonts come from this catalogue" — became FALSE when D-16.1 made the
-    // catalogue one of three sources, so a `getByText` pinning it exactly was
-    // pinning a false statement. The clause that survives is the decline
-    // itself, and the reason recorded with it is the one D-16.R.46 Q4 supplies:
-    // a file off a disk arrives without the terms an embedded face has to carry.
-    const decline = screen.getByText(/A font file from your own disk cannot be added/)
-    expect(decline.textContent, 'the decline must state the licence reason, not merely refuse').toMatch(/licence text and copyright/)
-    expect(decline.textContent, 'the catalogue is no longer the only source and the sentence may not say it is').not.toMatch(/Fonts come from this catalogue/)
+    // RETIRED, NOT WEAKENED: the disclosure no longer renders in this dropdown
+    // (OWNER, 2026-09-03 — the standing explanation above `Add fonts…` was cut).
+    // `familyIndexDisclosure()` itself is unchanged and still ships in the font
+    // browser's header; `font-index.test.ts` pins every clause above, so the
+    // sentence keeps its guard and only this surface stops asserting it.
+    // THE DISK-FONT DECLINE IS RETIRED FROM THIS SURFACE (OWNER, 2026-09-03).
+    // It was re-derived at 16.4 rather than carried, and it was the only place
+    // this product answered "where do I add my own font file?" — there is no
+    // import control to be found missing. The owner cut the standing explanation
+    // above `Add fonts…` and this sentence went with it, so the question now has
+    // no answer in the UI. Recorded here rather than left to be rediscovered.
     // The declared group never carries the addition note: picking one of those
     // sets a property, and it is already in the file.
     expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])

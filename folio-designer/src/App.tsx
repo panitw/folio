@@ -17,7 +17,7 @@ import { FontChainEditor } from './FontChainEditor'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { embedFontFamilyCommand } from './font-chain-command'
 import { scriptFallbackFaces } from './generated/font-catalogue'
-import { familyIndexDisclosure, familyIsInstalled, familySourceNote, offeredFamilies, type FamilySource } from './font-index'
+import { familyIsInstalled, familySourceNote, offeredFamilies, type FamilySource } from './font-index'
 import { fetchWebFamily } from './font-source'
 import { openFontStore, storeWriteRefusal, storedFaceKey, type FontStore, type StoredFace } from './font-store'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
@@ -2093,7 +2093,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
           name that looks like a styling hook and is not one costs a reader the
           search. The shell above owns every box property, so the list needs no
           rule of its own; it is addressable by its role and its id. */}
-      <div id={listId} role="listbox" aria-label="Fonts" aria-describedby={`${listId}-notes`}>
+      <div id={listId} role="listbox" aria-label="Fonts" aria-describedby={matches.length === 0 ? `${listId}-notes` : undefined}>
         {groups.filter((group) => group.rows.length > 0).map((group) => <div key={group.key} className={`property-option-group property-option-group-${group.key}`} role="group" aria-label={group.label} aria-describedby={group.note ? `${listId}-${group.key}-note` : undefined}>
           <p className="property-option-heading" aria-hidden="true">{group.label}</p>
           {group.rows.map((match, offset) => {
@@ -2106,7 +2106,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
           {group.note && <p id={`${listId}-${group.key}-note`} className="property-option property-option-empty" aria-hidden="true">{group.note}</p>}
         </div>)}
       </div>
-      <div id={`${listId}-notes`} className="property-option-notes">
+      {matches.length === 0 && <div id={`${listId}-notes`} className="property-option-notes">
         {/* THE EMPTY STATE NAMES THE THREE PLACES IT LOOKED, because those are
             the three groups above it and because the sentence it replaced named
             only one of them. "Nothing in this document or the catalogue" was
@@ -2120,38 +2120,7 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
             is a dated build-time snapshot, because the endpoint that publishes it
             sends no CORS header and a browser cannot read it. Only the typeface
             is fetched, at the moment of a pick. */}
-        <p className="property-option property-option-empty">{familyIndexDisclosure()}</p>
-        {/* THE DISK-FONT DECLINE, RE-DERIVED AT STORY 16.4 RATHER THAN CARRIED
-            UNREAD. 8.6 wrote it from one premise; two of the three premises it
-            now rests on did not exist then, so the working is recorded here.
-
-            (1) REVERSED — D-16.1. "Fonts come from this catalogue" was the whole
-                argument in 8.6 and it is now FALSE: the catalogue is one of three
-                sources, beside this machine's store and the published library.
-                The old sentence is not merely stale, it states something untrue
-                about the control it sits under, so it is restated rather than
-                kept.
-            (2) STANDING — D-16.2. Faces installed on the authoring machine are
-                never enumerated or read. This is the one clause of SPEC-fonts'
-                Non-goal that D-16.1 left standing, so the designer has no way to
-                see a typeface sitting on the author's disk in the first place.
-            (3) NEW — D-16.R.46 Q4. Installing is only ever a precursor to
-                embedding, and embedding is the step the licence requirement
-                gates.
-
-            THE CONCLUSION HOLDS, AND PREMISE 3 IS WHY IT HOLDS MORE FIRMLY THAN
-            IT DID. A fetched face arrives with its licence file and its name
-            table; a file dragged off a desktop arrives with neither, and a
-            document may not embed a face that cannot state its terms. Because
-            installing exists only to lead to embedding, such a file cannot
-            usefully be installed either — it would be a dead end with a
-            friendlier first click, which is exactly what D-16.R.46 Q4 forbids.
-
-            AND IT IS STATED, NOT LEFT AS ABSENT BEHAVIOUR. There is no import
-            control to find missing, so the answer to "where do I add my own font
-            file?" is written where the question is asked. */}
-        <p className="property-option property-option-empty">Typefaces come from this list — the ones already on this machine, and the ones this designer downloads when you pick them. A font file from your own disk cannot be added: it arrives without the licence text and copyright a document has to carry with an embedded face.</p>
-      </div>
+      </div>}
       {/* STORY 16.3 — THE DOOR TO THE BROWSER, WHERE THE DESIGN PUTS IT: the last
           row of the open family dropdown, INSIDE the floating panel (Story 16.6 follow-on).
           It used to be a sibling of that panel, and `.property-combobox` is the
