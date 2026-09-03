@@ -37,6 +37,21 @@ deferred:
       genuinely pre-existing - but restoring a working browser alone will now never turn it green, the
       locator itself has to change. Left untouched by ruling. Owner stays the post-16.4 CI repair.
   - summary: >-
+      The font browser can report "1274 matching families, out of 1273" -- resultLine names
+      addableFamilyCount as the total while the rows it counts include orphaned stored families.
+    evidence: >-
+      Found by an independent verifier of Story 16.4's own precondition patch, and MEASURED. Group 2 +
+      group 3 = addableFamilyCount + orphanCount, so addableFamilyCount UNDERCOUNTS the offered
+      population; the sum is in excess, not short. font-browser-model.ts:319-320 prints
+      "out of ${addableFamilyCount}" while matching comes from browserRows(offeredFamilies('',
+      storedFaces)), which maps every source 1:1 with no tier filtering (font-browser-model.ts:156),
+      so an orphaned stored family makes the sentence contradict itself on screen. Reachable by design
+      -- font-index.ts:186-190 states orphaning is expected across releases. UNTESTED: 'orphan' has 0
+      hits in font-index.test.ts, FontBrowser.test.tsx and font-browser-model.test.ts, against a
+      population of 67 tracked test/spec files and a positive control of 77 files matching 'stored'.
+      Owner: NOT Story 16.4 -- this is the 16.3 browser surface. The fix is resultLine taking its
+      total as an argument rather than reading a build-time constant.
+  - summary: >-
       familyIndexDisclosure says 31 already on this machine while AVAILABLE LOCALLY now shows 31 plus
       every stored face, so the two disagree the moment one family is installed.
     evidence: >-

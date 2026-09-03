@@ -4197,3 +4197,48 @@ Contained.
 is `in-review` with a frozen contract that does not cover deleting a panel section, and **its adversarial
 review has just run against the current tree — folding this in would invalidate the one round that six
 dead agents finally delivered.** A capability removal is its own deliverable and gets its own record.
+
+## D-16.R.83 — The independent verifier reversed my arithmetic and found a live defect my patch walked past
+
+**I authored the precondition patch AND wrote the proof it worked** — the separation this run has enforced
+on every other agent. So I sent it to an independent verifier and told it to distrust my summary. **It
+confirmed five of six claims and refuted the sixth, which was mine.**
+
+### THE DIRECTION WAS BACKWARDS, AND I STATED IT WRONG TWICE
+
+Let `W = webFamilies`, `C = catalogueFaces`, `S = storedByFamily`. Group 2 is `|C| + |S|`; group 3 is
+`|W| − |S∩W|`. **Sum = `|C| + |W| + |S∖W| = addableFamilyCount + orphanCount`.**
+
+**So the SUM is in EXCESS, and `addableFamilyCount` is the quantity that is short.** I wrote the reverse in
+the commit message (*"the sum … short by exactly one of an orphaned one"*) and repeated the reverse to the
+owner. **The assertion message I actually shipped in the test is correct** — *"an orphaned one makes
+`addableFamilyCount` short by one"* — so **the code says the right thing and my narration said the opposite
+of it.** Verified by deriving it myself rather than accepting either account.
+
+**This is the exact failure this epic keeps finding, in its last available medium: the artifact was right
+and the story told about the artifact was wrong.** It is also precisely why author/prover separation
+exists, and I had broken it — **the error survived my own proof because my proof tested the assertion, not
+the sentence describing it.**
+
+### AND THE PATCH WALKED PAST A LIVE, USER-VISIBLE DEFECT
+
+**`resultLine` (`font-browser-model.ts:319-320`) prints `"${shown} of ${matching} matching families, out of
+${addableFamilyCount}"`.** `matching` derives from `browserRows(offeredFamilies('', storedFaces))`, which
+maps **every** source 1:1 with **no tier filtering** (`:156`), fed by `App.tsx:382`'s full population. **So
+with one orphaned stored family the browser reads `1274 matching families, out of 1273` — a sentence that
+contradicts itself on screen.**
+
+**Reachable by design, not hypothetical:** `font-index.ts:186-190` states orphaning is expected across
+releases. **Untested, measured with a control: `orphan` has 0 hits in `font-index.test.ts`,
+`FontBrowser.test.tsx` and `font-browser-model.test.ts`, against a population of 67 tracked test/spec
+files and a positive control of 77 files matching `stored`.**
+
+**The verifier's verdict on my patch is right and I am recording it undiluted: correct, non-vacuous, and
+NOT the right fix for the underlying defect** — *"cosmetic relative to the actual product-facing gap."* The
+patch does what it claims (converts an inherited assumption into a measured precondition) and **that claim
+was too small to be the whole story.** Filed against the **16.3 browser surface, owner explicitly not
+16.4**; the fix is `resultLine` taking its total as an argument instead of reading a build-time constant.
+
+**Kept as a standing rule: when separation is unavailable, the fix ships and the PROOF gets an independent
+reader.** Doing both halves myself produced a correct patch wrapped in a false explanation, and only an
+outside reader could see the wrapper.
