@@ -38,8 +38,33 @@ function installStubFontSet(): Readonly<{ restore: () => void; live: () => Reado
   }
 }
 
+// THE SAME PAGE FONT SET, BUT EVERY FACE REFUSES TO PARSE. `face.load()`
+// rejecting is the outcome a real corrupt or truncated font produces, and it
+// used to be swallowed with no trace — the row waited on it for ever.
+function installRefusingFontSet(): Readonly<{ restore: () => void; live: () => ReadonlyArray<string> }> {
+  class RefusingFace {
+    readonly family: string
+    constructor(family: string) { this.family = family }
+    load(): Promise<RefusingFace> { return Promise.reject(new Error('these bytes are not a font')) }
+  }
+  const live: RefusingFace[] = []
+  const set = { add: (loaded: RefusingFace) => { live.push(loaded); return undefined }, delete: () => undefined }
+  Object.defineProperty(globalThis, 'FontFace', { value: RefusingFace, configurable: true, writable: true })
+  Object.defineProperty(document, 'fonts', { value: set, configurable: true, writable: true })
+  return {
+    restore: () => { Reflect.deleteProperty(globalThis, 'FontFace'); Reflect.deleteProperty(document, 'fonts') },
+    live: () => live.map((face) => face.family),
+  }
+}
+
 const bytes = () => new Uint8Array([0, 1, 2, 3]).buffer
-const settle = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
+// A MACROTASK, NOT A COUNTED NUMBER OF MICROTASK TICKS. The registration chain
+// is `readBytes` -> `then` -> `face.load()` -> `then`/`catch`, and a promise
+// RETURNED from a `then` costs extra adoption ticks; a hand-counted flush passed
+// for the resolve path and was one tick short for the reject path, which made a
+// real defect look like a test that could not see it. A timer drains whatever
+// the queue holds.
+const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 0)) }
 
 let installed: Readonly<{ restore: () => void; live: () => ReadonlyArray<string> }> | undefined
 afterEach(() => { installed?.restore(); installed = undefined })
@@ -168,6 +193,34 @@ describe('the registry holds exactly the families on screen', () => {
     release?.(bytes())
     await settle()
     expect(registry.statusOf('Slow')).toBe('ready')
+    registry.close()
+  })
+
+  it('reports a face whose bytes will not parse as unavailable, never as still fetching', async () => {
+    installed = installRefusingFontSet()
+    const registry = openPreviewFaceRegistry(async () => bytes(), () => undefined)
+    registry.show(['Corrupt'])
+    await settle()
+    // The bytes arrived and the face was constructed; it is the PARSE that
+    // failed. Before the seam reported declines this row read `preparing` for
+    // the life of the modal.
+    expect(registry.statusOf('Corrupt')).toBe('unavailable')
+    expect(installed.live()).toEqual([])
+    registry.close()
+  })
+
+  it('never fetches for a family whose name the derivation declines, and states it as unavailable', async () => {
+    installed = installStubFontSet()
+    const read = vi.fn(async (family: string) => { void family; return bytes() })
+    const registry = openPreviewFaceRegistry(read, () => undefined)
+    // `previewFaceFamily` declines the empty name and anything past its length
+    // bound. The row must say so, and no upstream resolution may be spent on it.
+    registry.show(['', 'x'.repeat(129), 'Lora'])
+    await settle()
+    expect(registry.statusOf('')).toBe('unavailable')
+    expect(registry.statusOf('x'.repeat(129))).toBe('unavailable')
+    expect(registry.statusOf('Lora')).toBe('ready')
+    expect(read.mock.calls.map(([family]) => family)).toEqual(['Lora'])
     registry.close()
   })
 

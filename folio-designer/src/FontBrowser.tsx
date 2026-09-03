@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { familyIndexDisclosure, indexCategories, indexScripts, type FamilySource } from './font-index'
-import { browserRows, browserSorts, browserViews, buttonLabel, buttonName, confirmLabel, defaultSpecimenSize, emptyStateHeading, emptyStateHint, filterRows, filtersActive, maxSpecimenSize, minSpecimenSize, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sortRows, specimenFor, weightLine, type BrowserFilters, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
+import { browserRows, browserSorts, browserViews, buttonLabel, buttonName, confirmLabel, defaultSpecimenSize, emptyStateHeading, emptyStateHint, filterRows, filtersActive, maxSpecimenSize, minSpecimenSize, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, weightLine, type BrowserFilters, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
 import { previewFaceFamily } from './preview-face-family'
 import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
 
@@ -105,7 +105,14 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
   // shape is `TableEditor`'s, deliberately: this designer has one way of
   // trapping a dialog and a second one would be a second answer.
   const trap = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
+    // ESCAPE IS GATED ON `busy` BECAUSE EVERY OTHER CONTROL IS. Cancel, the ×,
+    // the chips, the search field and confirm are all `disabled={busy}` while a
+    // batch runs; leaving Escape live made the keyboard the one route to a
+    // half-dismissed modal, with the remaining dispatches still running against
+    // an unmounted component and their per-family refusals landing nowhere. The
+    // batch is short, bounded and already announced — waiting for it is the
+    // behaviour the rest of the footer promises.
+    if (event.key === 'Escape') { event.preventDefault(); if (!busy) onClose(); return }
     if (event.key !== 'Tab') return
     const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? []).filter((element) => element.tabIndex >= 0)
     if (focusable.length === 0) return
@@ -134,18 +141,37 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
     setProgress({ done: 0, total: staged.length })
     const failed: Refusal[] = []
     let handled = 0
-    for (const family of staged) {
-      const row = byFamily.get(family)
-      if (row === undefined) continue
-      const refusal = await onAddFamily(row.source)
-      handled += 1
-      if (refusal !== undefined) { failed.push({ family, message: refusal }); setRefusals([...failed]) }
-      setProgress({ done: handled, total: staged.length })
+    try {
+      for (const family of staged) {
+        const row = byFamily.get(family)
+        // UNREACHABLE TODAY, AND NAMED RATHER THAN SKIPPED. `byFamily` is built
+        // from the UNFILTERED row set, so a family that could be staged is
+        // always in it — filtering, sorting and paging never remove it. It used
+        // to `continue`, which would have dropped the family from the staged set
+        // with no refusal, no progress and nothing said. If the two sets ever
+        // stop agreeing, this says so against the family it happened to.
+        const refusal = row === undefined
+          ? `${family} is no longer among the families this designer offers.`
+          // A REJECTION IS A REFUSAL, NOT A DEAD MODAL. The seam resolves to a
+          // sentence for every failure it anticipates; anything it does NOT
+          // anticipate arrives here as a throw, and letting it escape the loop
+          // left `busy` true for ever — every control disabled, with no way out.
+          : await onAddFamily(row.source).catch((error: unknown) => `${family} could not be added: ${error instanceof Error ? error.message : String(error)}`)
+        handled += 1
+        if (refusal !== undefined) { failed.push({ family, message: refusal }); setRefusals([...failed]) }
+        setProgress({ done: handled, total: staged.length })
+      }
+      // The families that went in are gone from the staged set; the ones that
+      // were refused stay staged, so the author can retry them without
+      // re-finding them.
+      setStaged(failed.map((entry) => entry.family))
+    } finally {
+      // THE BATCH IS OVER, SO ITS COUNT STOPS BEING TRUE OF ANYTHING. Left
+      // standing, "added 3 of 3" sat beside "1 family ready to embed" until the
+      // next confirm — two numbers about two different moments, in one line.
+      setProgress(undefined)
+      setBusy(false)
     }
-    // The families that went in are gone from the staged set; the ones that were
-    // refused stay staged, so the author can retry them without re-finding them.
-    setStaged(failed.map((entry) => entry.family))
-    setBusy(false)
     if (failed.length === 0) onClose()
   }
 
@@ -170,6 +196,51 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
   const addButton = (row: BrowserRow) => {
     const state = rowState(row.family, inTemplate, staged)
     return <button type="button" className={`font-browser-add font-browser-add-${state}`} aria-pressed={state === 'staged'} aria-label={buttonName(row.family, state)} disabled={busy || state === 'in-template'} onClick={() => toggleStaged(row.family)}>{buttonLabel(state)}</button>
+  }
+
+  // THE TWO VIEWS ARE AN EXHAUSTIVE SWITCH, NOT A TERNARY. As `view === 'Row' ?
+  // … : …` a third view added later would silently render as Grid — the wrong
+  // screen, drawn without complaint. This is `rowTierNote`'s idiom, applied to
+  // the other closed set this file walks.
+  const results = () => {
+    switch (view) {
+      case 'Row':
+        return <ul className="font-browser-rows" aria-label="Font families">
+          {shown.map((row) => <li key={row.family} className="font-browser-row">
+            <div className="font-browser-row-head">
+              <span className="font-browser-family">{row.family}</span>
+              <span className="font-browser-meta">{row.category ?? 'category not stated'}</span>
+              <span className="font-browser-meta">·</span>
+              <span className="font-browser-meta">{rowTierNote(row.source)}</span>
+              {badge(row)}
+              <span className="font-browser-spacer" />
+              {addButton(row)}
+            </div>
+            {specimen(row, specimenSize(view, size))}
+          </li>)}
+        </ul>
+      case 'Grid':
+        return <ul className="font-browser-grid" aria-label="Font families">
+          {shown.map((row) => <li key={row.family} className="font-browser-card">
+            <div className="font-browser-row-head">
+              <span className="font-browser-family">{row.family}</span>
+              <span className="font-browser-spacer" />
+              {addButton(row)}
+            </div>
+            {specimen(row, specimenSize(view, size))}
+            <div className="font-browser-row-foot">
+              <span className="font-browser-meta">{row.category ?? 'category not stated'}</span>
+              <span className="font-browser-meta">·</span>
+              <span className="font-browser-meta">{rowTierNote(row.source)}</span>
+              {badge(row)}
+            </div>
+          </li>)}
+        </ul>
+      default: {
+        const unhandled: never = view
+        throw new Error(`a results view nothing draws reached the font browser: ${String(unhandled as BrowserView)}`)
+      }
+    }
   }
 
   const badge = (row: BrowserRow) => <span className={`font-browser-badge${row.scripts.includes('thai') ? ' font-browser-badge-thai' : ''}`}>{scriptBadge(row)}</span>
@@ -202,7 +273,7 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
           <div className="font-browser-rail-group">
             <input type="text" aria-label="Preview text" placeholder="Type something" value={previewText} disabled={busy} onChange={(event) => setPreviewText(event.target.value)} />
             <label className="font-browser-size">
-              <span className="font-browser-size-value">{size}px</span>
+              <span className="font-browser-size-value">{sizeReadout(view, size)}</span>
               <input type="range" aria-label="Preview size in pixels" min={minSpecimenSize} max={maxSpecimenSize} value={size} disabled={busy} onChange={(event) => setSize(Number(event.target.value))} />
             </label>
             <button type="button" className={`font-browser-switch${thaiSample ? ' font-browser-switch-on' : ''}`} aria-pressed={thaiSample} aria-label="Thai sample text" disabled={busy} onClick={() => setThaiSample((on) => !on)}>
@@ -237,37 +308,7 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, on
           <div className="font-browser-scroll">
             {matching.length === 0
               ? <div className="font-browser-empty"><p className="font-browser-empty-heading">{emptyStateHeading(filters.query)}</p><p>{emptyStateHint}</p></div>
-              : view === 'Row'
-                ? <ul className="font-browser-rows" aria-label="Font families">
-                  {shown.map((row) => <li key={row.family} className="font-browser-row">
-                    <div className="font-browser-row-head">
-                      <span className="font-browser-family">{row.family}</span>
-                      <span className="font-browser-meta">{row.category ?? 'category not stated'}</span>
-                      <span className="font-browser-meta">·</span>
-                      <span className="font-browser-meta">{rowTierNote(row.source)}</span>
-                      {badge(row)}
-                      <span className="font-browser-spacer" />
-                      {addButton(row)}
-                    </div>
-                    {specimen(row, size)}
-                  </li>)}
-                </ul>
-                : <ul className="font-browser-grid" aria-label="Font families">
-                  {shown.map((row) => <li key={row.family} className="font-browser-card">
-                    <div className="font-browser-row-head">
-                      <span className="font-browser-family">{row.family}</span>
-                      <span className="font-browser-spacer" />
-                      {addButton(row)}
-                    </div>
-                    {specimen(row, Math.min(size, 26))}
-                    <div className="font-browser-row-foot">
-                      <span className="font-browser-meta">{row.category ?? 'category not stated'}</span>
-                      <span className="font-browser-meta">·</span>
-                      <span className="font-browser-meta">{rowTierNote(row.source)}</span>
-                      {badge(row)}
-                    </div>
-                  </li>)}
-                </ul>}
+              : results()}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addableFamilyCount, indexCategories, indexScripts, offeredFamilies, type FamilySource } from './font-index'
-import { browserRows, buttonLabel, buttonName, confirmLabel, emptyStateHeading, familiesPerPage, filterRows, filtersActive, latinSample, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sortRows, specimenFor, thaiSample, weightLine, type BrowserRow } from './font-browser-model'
+import { browserRows, buttonLabel, buttonName, confirmLabel, emptyStateHeading, familiesPerPage, filterRows, filtersActive, gridSpecimenCap, latinSample, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, thaiSample, weightLine, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
 import type { StoredFace } from './font-store'
 
 // THE FONT BROWSER'S LOGIC, ASSERTED AGAINST THE DESIGN IT WAS PORTED FROM
@@ -40,7 +40,32 @@ describe('the font browser describes the families it is given', () => {
   it('names every tier a row can come from, and cannot gain a fourth silently', () => {
     expect(rowTierNote(webRow('Kanit', 'Sans Serif', ['latin', 'thai'], 8))).toBe('downloaded when you add it')
     expect(rowTierNote({ tier: 'stored', family: 'Kanit', record: storedRecord('Kanit', ['latin']) })).toBe('downloaded to this machine')
+    // THE LOCAL ARM, OVER A REAL COMMITTED FACE. It is the arm the other two are
+    // measured against — the 31 faces that need no network at all — and it was
+    // the one arm nothing exercised.
+    const local = offeredFamilies('Arimo').find((source) => source.tier === 'local')
+    expect(local, 'Arimo is a committed local-tier face').toBeDefined()
+    expect(rowTierNote(local as FamilySource)).toBe('on this machine')
     expect(() => rowTierNote({ tier: 'gossip' } as unknown as FamilySource)).toThrow(/gossip/)
+  })
+
+  it('reads a local-tier row\'s coverage off the committed face, not off the snapshot', () => {
+    const local = offeredFamilies('').filter((source) => source.tier === 'local')
+    expect(local.length).toBeGreaterThan(20)
+    const rows = browserRows(local)
+    for (const row of rows) {
+      const face = local.find((source) => source.family === row.family)
+      expect(face?.tier).toBe('local')
+      // The branch the two index-less local families depend on: their scripts
+      // come from the face this machine holds, because no snapshot row exists to
+      // read them from.
+      expect(row.scripts).toEqual(face?.tier === 'local' ? face.face.scripts : [])
+    }
+    // AND THOSE TWO ARE REALLY THERE, so this is not a vacuous loop over rows
+    // that all happen to have an index row behind them.
+    const unlisted = rows.filter((row) => row.category === undefined)
+    expect(unlisted.length).toBeGreaterThan(0)
+    for (const row of unlisted) expect(row.scripts.length).toBeGreaterThan(0)
   })
 
   it('derives its chip vocabularies from the snapshot rather than from the mockup', () => {
@@ -95,6 +120,12 @@ describe('the two sort arms, and the one the port dropped', () => {
   it('orders A – Z by family name', () => {
     expect(sortRows(rows, 'A – Z').map((entry) => entry.family)).toEqual(['Alpha', 'Unranked', 'Zed'])
   })
+
+  it('cannot gain a third arm that silently orders as Trending', () => {
+    // Written as a ternary this returned the Trending order for any unknown
+    // arm — a list in the wrong order, with nothing anywhere saying so.
+    expect(() => sortRows(rows, 'Most styles' as BrowserSort)).toThrow(/Most styles/)
+  })
 })
 
 describe('the specimen, the badge and the row button', () => {
@@ -118,6 +149,24 @@ describe('the specimen, the badge and the row button', () => {
     expect(scriptBadge(row('Allkin', 'Display', []))).toBe('script not stated')
   })
 
+  it('does not claim Latin coverage for a family that records only Thai', () => {
+    expect(scriptBadge(row('Thai Only', 'Display', ['thai']))).toBe('Thai')
+  })
+
+  it('finds thai-without-latin among the COMMITTED faces, so the badge fix is not hypothetical', () => {
+    // The review priced this as unreachable at 0 of 1,811 INDEX rows, and over
+    // the index that is right. A local-tier row's coverage comes off the
+    // committed face instead, and two of those record `thai` alone — so the
+    // browser really was printing `Thai + Latin` beside two shipped faces whose
+    // own record claims no Latin.
+    const thaiOnly = browserRows(offeredFamilies('')).filter((entry) => entry.scripts.includes('thai') && !entry.scripts.includes('latin'))
+    expect(thaiOnly.map((entry) => entry.family).sort()).toEqual(['Noto Sans Thai Looped', 'Noto Serif Thai'])
+    for (const entry of thaiOnly) {
+      expect(entry.source.tier).toBe('local')
+      expect(scriptBadge(entry)).toBe('Thai')
+    }
+  })
+
   it('carries the mockup\'s three button states in its own order of precedence', () => {
     expect(rowState('Lora', ['Lora'], ['Lora'])).toBe('in-template')
     expect(rowState('Lora', [], ['Lora'])).toBe('staged')
@@ -130,6 +179,23 @@ describe('the specimen, the badge and the row button', () => {
     expect(buttonName('Lora', 'addable')).toBe('Add Lora to this template')
     expect(buttonName('Lora', 'staged')).toBe('Remove Lora from the families to add')
     expect(buttonName('Lora', 'in-template')).toBe('Lora is in this template')
+  })
+})
+
+describe('the rail states the size the screen is actually using', () => {
+  it('caps a card\'s specimen and says so, rather than printing a size nothing is set at', () => {
+    expect(specimenSize('Row', 56)).toBe(56)
+    expect(specimenSize('Grid', 56)).toBe(gridSpecimenCap)
+    expect(specimenSize('Grid', 20)).toBe(20)
+    expect(sizeReadout('Row', 56)).toBe('56px')
+    expect(sizeReadout('Grid', 20)).toBe('20px')
+    // The readout names BOTH numbers when they differ: what the cards are set
+    // at, and where the author left the slider.
+    expect(sizeReadout('Grid', 56)).toBe('26px of 56')
+  })
+
+  it('cannot gain a third view that silently takes the Grid cap', () => {
+    expect(() => specimenSize('Carousel' as BrowserView, 56)).toThrow(/Carousel/)
   })
 })
 

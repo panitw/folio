@@ -5,6 +5,7 @@ import App from './App'
 import type { EngineClient } from './engine-client'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { embeddedFaceFamily } from './embedded-face-family'
+import { previewFaceFamily } from './preview-face-family'
 import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
 
 // STORY 16.2 AT THE BROWSER BOUNDARY — A FETCHED FACE STAYS ON THIS MACHINE.
@@ -132,6 +133,137 @@ const storeNote = () => within(screen.getByRole('group', { name: 'Typefaces down
 const embedPayloads = (request: { mock: { calls: unknown[][] } }) => request.mock.calls
   .filter((call) => call[0] === 'command')
   .map((call) => JSON.parse(new TextDecoder().decode(call[1] as ArrayBuffer)) as Record<string, unknown>)
+
+// STORY 16.3 — THE FONT BROWSER'S SPECIMEN BYTES COME FROM THE SAME THREE TIERS
+// A PICK DOES, AND THE STORED TIER IS THE ONE THAT MUST NEED NO NETWORK.
+//
+// `App.tsx`'s `browserSpecimenBytes` is never executed by `FontBrowser.test.tsx`,
+// which supplies its own resolver on every render. A review demonstrated the
+// gap two ways — letting the `stored` branch fall through to `fetchWebFamily`,
+// and reading `source.family` where it should read `source.record.key` — and in
+// both the whole suite stayed green while every face this machine already holds
+// would have needed the network. That is precisely the DW-176 property this
+// story claims to have witnessed, so it is asserted here, where a fake store and
+// a stub page font set already stand up.
+describe('the font browser sets a stored family\'s specimen from the store', () => {
+  it('reads a stored specimen with every fetch rejecting, and says a web row cannot be shown', async () => {
+    const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2026 A Face Only This Machine Has' }])
+    const key = await storedFaceKey(bytes)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put(storedOnly(key, bytes))
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
+    const fontSet = installStubFontSet()
+    try {
+      // THE NETWORK IS GONE. Every request fails, so a specimen that renders can
+      // only have come from the store.
+      const offline = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+      globalThis.fetch = offline as never
+      mount(commandRequest())
+      await waitFor(() => expect(screen.getByText(/A Machine Face/, { selector: '.machine-font-name' })).toBeInTheDocument())
+
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
+      const dialog = screen.getByRole('dialog', { name: 'Font browser' })
+
+      // THE STORED ROW. Searched by name because a family the snapshot does not
+      // rank sorts last, which is the correct order and the wrong page.
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'A Machine Face' } })
+      expect(within(dialog).getByText('downloaded to this machine')).toBeInTheDocument()
+      const specimen = await within(dialog).findByText('Everyone has the right to freedom of thought')
+      expect(specimen.style.fontFamily, 'a family this machine already holds must be set in itself with no network').toBe(previewFaceFamily('A Machine Face'))
+      expect(fontSet.added).toContain(previewFaceFamily('A Machine Face'))
+
+      // AND A WEB ROW, ON THE SAME SCREEN, WITH THE SAME NETWORK. It says it
+      // cannot be shown rather than borrowing the panel's typeface — which is
+      // also what makes the line above a claim about the STORE and not about a
+      // resolver that happens to succeed for everything.
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
+      expect(await within(dialog).findByText(/Kanit cannot be shown set in itself/)).toBeInTheDocument()
+      expect(within(dialog).getByText('downloaded when you add it')).toBeInTheDocument()
+    } finally {
+      fontSet.restore()
+    }
+  })
+})
+
+// STORY 16.3 — A REFUSAL REACHED THROUGH THE `'caller'` ANNOUNCER IS RETURNED,
+// AND THE MODAL IS WHERE IT LANDS.
+//
+// The seam has two announcers: the family control's pick writes a refusal to the
+// panel, and the browser's confirm gets it BACK so it can name it against the
+// row that earned it. Nothing asserted the return value on the App side, and a
+// review demonstrated what that costs: restore `refuse(reason); return` in place
+// of `return refuse(reason)` and every family reports success — `confirm` clears
+// the staged set and closes the modal, so a licence refusal or an upstream 404
+// dismisses the browser with the author believing everything was embedded, and
+// the `'caller'` path paints no panel alert either. The suite stayed green.
+describe('the font browser names a refusal the seam returned', () => {
+  it('keeps the modal open, names the family, and sends no command', async () => {
+    const fontSet = installStubFontSet()
+    try {
+      // Nothing is published upstream: every probe 404s, which is the refusal
+      // `fetchWebFamily` states in its own words.
+      const gone = vi.fn(async () => ({ ok: false, status: 404, text: async () => '' }))
+      globalThis.fetch = gone as never
+      const request = commandRequest()
+      mount(request)
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
+      const dialog = screen.getByRole('dialog', { name: 'Font browser' })
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Add Kanit to this template' }))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Add 1 to template' }))
+
+      // THE ENGINE'S OWN SENTENCE, INSIDE THE DIALOG, AGAINST THE FAMILY.
+      expect(await within(dialog).findByText(/Kanit: Kanit is in this designer's snapshot of the family list but is no longer published upstream/)).toBeInTheDocument()
+      // AND THE MODAL IS STILL THERE, with Kanit still staged, so the author
+      // can read the refusal and retry without finding the family again.
+      expect(screen.getByRole('dialog', { name: 'Font browser' })).toBeInTheDocument()
+      expect(within(dialog).getByRole('button', { name: 'Remove Kanit from the families to add' })).toBeInTheDocument()
+      // NOTHING REACHED THE DOCUMENT. A refusal that closed the modal would have
+      // been indistinguishable from a success from the outside; this is the
+      // half that says so from the inside.
+      expect(embedPayloads(request)).toEqual([])
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('does not re-materialise over a replaced document carrying the previous one\'s staged set', async () => {
+    const fontSet = installStubFontSet()
+    try {
+      globalThis.fetch = upstreamFetch() as never
+      mount(commandRequest())
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
+      const dialog = screen.getByRole('dialog', { name: 'Font browser' })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Kanit' } })
+      fireEvent.click(await within(dialog).findByRole('button', { name: 'Add Kanit to this template' }))
+      expect(within(dialog).getByText(/^1 family ready to embed/)).toBeInTheDocument()
+
+      // REPLACING THE DOCUMENT IS THE END OF THIS MODAL, not a pause in it. The
+      // open flag lived outside `clearDocumentInteraction`, so the modal
+      // vanished only while `canvas` was momentarily undefined and then came
+      // BACK over the new document — still carrying a staged set assembled
+      // against the old one.
+      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      await screen.findByText('Started an unnamed local template')
+      // The settle condition is the modal GOING, not the document name — which
+      // starts out as `Untitled template` and would have made this pass before
+      // the replacement had happened at all.
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull())
+      // And it does not come back. The new document has a canvas of its own, so
+      // the render guard alone never hid the modal for more than an instant.
+      await waitFor(() => expect(screen.queryByText(/family ready to embed/)).toBeNull())
+      expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull()
+    } finally {
+      fontSet.restore()
+    }
+  })
+})
 
 describe('a fetched face stays on this machine', () => {
   // AC1. The pick fetches, embeds, and KEEPS the face — under the SHA-256 of

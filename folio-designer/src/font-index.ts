@@ -316,16 +316,6 @@ export function indexRowFor(family: string): IndexFamily | undefined {
 }
 
 /**
- * THE CATEGORY VOCABULARY, READ OFF THE SNAPSHOT RATHER THAN TYPED OUT.
- *
- * `Font Browser.dc.html` draws four category chips — Sans Serif, Serif, Display,
- * Monospace — over fourteen placeholder families. The snapshot carries FIVE
- * categories, and the fifth (Handwriting) is the third largest of them. A hand
- * copy of the mockup's four would hide 259 OFFERED families behind chips that
- * look exhaustive (337 is the figure over the whole index; the browser offers
- * 259 of them, and the denominator is the offered population, not the snapshot), which is the failure mode a derived vocabulary cannot have.
- */
-/**
  * THE POPULATION A CHIP VOCABULARY MUST BE DERIVED FROM IS THE ONE THE CHIPS
  * FILTER, AND THAT IS NOT `familyIndex`.
  *
@@ -347,6 +337,19 @@ const offeredIndexRows: ReadonlyArray<IndexFamily> = [
   ...catalogueFaces.map((face) => indexByFamily.get(face.family)).filter((row): row is IndexFamily => row !== undefined),
 ]
 
+/**
+ * THE CATEGORY VOCABULARY, READ OFF THE OFFERED POPULATION RATHER THAN TYPED OUT.
+ *
+ * `Font Browser.dc.html` draws four category chips — Sans Serif, Serif, Display,
+ * Monospace — over fourteen placeholder families. The real vocabulary has FIVE
+ * categories, and the fifth (Handwriting) is the third largest of them. A hand
+ * copy of the mockup's four would hide 259 offered families behind chips that
+ * look exhaustive — which is the failure mode a derived vocabulary cannot have.
+ *
+ * THE DENOMINATOR IS THE OFFERED POPULATION, NOT THE INDEX. 337 is Handwriting's
+ * count over the whole snapshot; the browser offers 259 of them, and 259 is the
+ * number a chip in this control actually reveals.
+ */
 export const indexCategories: ReadonlyArray<string> = [...new Set(offeredIndexRows.map((row) => row.category))].sort()
 
 /**

@@ -47,6 +47,36 @@ export type BrowserView = 'Row' | 'Grid'
 export const browserViews: ReadonlyArray<BrowserView> = ['Row', 'Grid']
 
 /**
+ * A CARD'S SPECIMEN IS CAPPED, AND THE READOUT HAS TO SAY THE SAME NUMBER THE
+ * SCREEN IS USING.
+ *
+ * The design draws Grid cards 150 px tall, so it caps their specimen at 26 px
+ * however far the slider is pushed. That is right; what was wrong was the rail
+ * printing the slider's value beside a card set at the cap — one region stating
+ * something the region beside it contradicts, which is the same defect the
+ * footer's weight line was corrected for. The cap lives here, with one
+ * exhaustive answer for both readers.
+ */
+export const gridSpecimenCap = 26
+
+export function specimenSize(view: BrowserView, size: number): number {
+  switch (view) {
+    case 'Row': return size
+    case 'Grid': return Math.min(size, gridSpecimenCap)
+    default: {
+      const unhandled: never = view
+      throw new Error(`a results view nothing sizes reached the font browser: ${String(unhandled as BrowserView)}`)
+    }
+  }
+}
+
+/** What the rail prints: the size in use, and the slider's own value when the cap has moved it. */
+export function sizeReadout(view: BrowserView, size: number): string {
+  const effective = specimenSize(view, size)
+  return effective === size ? `${effective}px` : `${effective}px of ${size}`
+}
+
+/**
  * HOW MANY FAMILIES MAY BE ON SCREEN — AND THEREFORE HOW MANY FACES MAY BE
  * REGISTERED FOR PREVIEW — AT ONCE. THE BOUND IS WRITTEN DOWN HERE.
  *
@@ -167,8 +197,21 @@ export function filterRows(rows: ReadonlyArray<BrowserRow>, filters: BrowserFilt
  */
 export function sortRows(rows: ReadonlyArray<BrowserRow>, sort: BrowserSort): ReadonlyArray<BrowserRow> {
   const ordered = [...rows]
-  if (sort === 'A – Z') return ordered.sort((left, right) => left.family.localeCompare(right.family))
-  return ordered.sort((left, right) => (left.popularity ?? Number.MAX_SAFE_INTEGER) - (right.popularity ?? Number.MAX_SAFE_INTEGER) || left.family.localeCompare(right.family))
+  // AN EXHAUSTIVE SWITCH, NOT A TERNARY WITH A FALL-THROUGH — the house idiom
+  // `rowTierNote` already uses. Written as `if A–Z … else Trending`, a third arm
+  // added later would silently take the Trending branch and produce a list that
+  // is merely in the wrong order: no compile error, no runtime error, and
+  // nothing in the UI that looks wrong enough to investigate.
+  switch (sort) {
+    case 'A – Z':
+      return ordered.sort((left, right) => left.family.localeCompare(right.family))
+    case 'Trending':
+      return ordered.sort((left, right) => (left.popularity ?? Number.MAX_SAFE_INTEGER) - (right.popularity ?? Number.MAX_SAFE_INTEGER) || left.family.localeCompare(right.family))
+    default: {
+      const unhandled: never = sort
+      throw new Error(`a sort arm nothing orders reached the font browser: ${String(unhandled as BrowserSort)}`)
+    }
+  }
 }
 
 /** The mockup's `specimenFor`: the author's own words, else the sample the family's coverage earns. */
@@ -178,9 +221,24 @@ export function specimenFor(row: BrowserRow, previewText: string, useThaiSample:
   return useThaiSample && row.scripts.includes('thai') ? thaiSample : latinSample
 }
 
-/** The mockup's `scriptBadge`, over the coverage this snapshot actually records. */
+/**
+ * The mockup's `scriptBadge`, over the coverage this snapshot actually records.
+ *
+ * `Thai + Latin` IS ONLY CLAIMED WHEN BOTH ARE RECORDED, AND THAT IS A LIVE
+ * CORRECTION RATHER THAN A PRECAUTION.
+ *
+ * The mockup prints `Thai + Latin` for any Thai-covering family, and this ported
+ * it. Measured over the INDEX that is harmless — 0 of 1,811 snapshot rows are
+ * thai-without-latin. But a LOCAL-tier row's coverage is read off the committed
+ * face and not off the snapshot (see `browserRows`), and two of the committed
+ * faces record `thai` alone: `Noto Sans Thai Looped` and `Noto Serif Thai`. The
+ * browser was therefore printing `Thai + Latin` beside two shipped faces whose
+ * own record claims no Latin at all — a badge asserting a coverage nothing
+ * recorded, which is the same defect as a specimen set in a fallback and the one
+ * this screen exists to remove.
+ */
 export function scriptBadge(row: BrowserRow): string {
-  if (row.scripts.includes('thai')) return 'Thai + Latin'
+  if (row.scripts.includes('thai')) return row.scripts.includes('latin') ? 'Thai + Latin' : 'Thai'
   if (row.scripts.length === 0) return 'script not stated'
   return row.scripts.map((script) => script === 'cjk' ? 'CJK' : `${script.slice(0, 1).toUpperCase()}${script.slice(1)}`).join(' + ')
 }

@@ -86,22 +86,20 @@ export function openPreviewFaceRegistry(readBytes: PreviewFaceBytes, onChange: (
   // what keeps the memory bound the page rather than the session.
   const refused = new Set<string>()
 
+  const decline = (family: string) => {
+    if (refused.has(family)) return
+    refused.add(family)
+    if (open) onChange()
+  }
+
   const registerOne = (family: string): Held => {
     let ready = false
-    const release = registerCarriedFaces([family], async (name) => {
-      let bytes: ArrayBuffer | undefined
-      try {
-        bytes = await readBytes(name)
-      } catch {
-        bytes = undefined
-      }
-      // The seam treats "no bytes" as a degrade and says nothing further about
-      // it, which is right for a canvas fragment and wrong for a row that has
-      // to tell the author why it is not showing them the typeface. So the
-      // refusal is recorded HERE, on the way past.
-      if (bytes === undefined || bytes.byteLength === 0) { refused.add(name); if (open) onChange() }
-      return bytes
-    }, () => { ready = true; if (open) onChange() }, previewFaceFamily)
+    // `async` so that a resolver throwing SYNCHRONOUSLY becomes a rejection the
+    // seam's own catch can see, rather than an exception thrown out of its loop.
+    // Every other outcome — no bytes, a name the derivation declines, a face
+    // that will not parse — reaches `decline` through the seam's `onDeclined`,
+    // which is the single path now that there is one.
+    const release = registerCarriedFaces([family], async (name) => readBytes(name), () => { ready = true; if (open) onChange() }, previewFaceFamily, decline)
     return { release, ready: () => ready }
   }
 
@@ -116,6 +114,14 @@ export function openPreviewFaceRegistry(readBytes: PreviewFaceBytes, onChange: (
       }
       for (const family of wanted) {
         if (held.has(family) || refused.has(family)) continue
+        // THE DERIVATION IS CHECKED BEFORE A BYTE IS FETCHED, and both halves of
+        // that matter. A name `previewFaceFamily` will not encode can never be
+        // registered, so fetching for it spends a full upstream resolution —
+        // four metadata probes, a licence file and the face itself, for the web
+        // tier — on a specimen that could not have been drawn. And the row must
+        // reach `unavailable` rather than sitting on `preparing` for ever, which
+        // is what happened while this decision was made after the fetch.
+        if (previewFaceFamily(family) === undefined) { decline(family); continue }
         held.set(family, registerOne(family))
       }
     },

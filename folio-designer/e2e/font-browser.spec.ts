@@ -131,11 +131,32 @@ test('every family the browser lists has a specimen state it states in words', a
   const browser = await openBrowser(page)
   const rows = browser.getByRole('list', { name: 'Font families' }).getByRole('listitem')
   await expect(rows.first()).toBeVisible()
-  // A ROW EITHER SHOWS THE SAMPLE SET IN ITS OWN FACE OR SAYS WHY IT IS NOT.
+  // A ROW EITHER SHOWS THE SAMPLE SET IN ITS OWN FACE OR SAYS WHY IT IS NOT, AND
+  // THE CLAIM IS ABOUT EVERY ROW. This addressed the specimen by CSS CLASS under
+  // a header that says the names are the contract, and then asserted only the
+  // first row — so eleven rows could have gone silent, or rendered the sample in
+  // the panel's own typeface, with this green. Both halves are fixed: the states
+  // are read as TEXT, which is what the author actually sees, and the loop is
+  // over the whole page.
+  //
   // In a harness with no route upstream every web-tier row takes the second
-  // branch, which is exactly the assertion worth making here: the browser never
-  // renders the sample in the panel's typeface while implying it is the family.
-  const first = rows.first()
-  const specimen = first.locator('.font-browser-specimen, .font-browser-specimen-absent')
-  await expect(specimen).toHaveCount(1)
+  // branch. That is the point rather than a limitation: the one thing the
+  // contract forbids outright is a specimen drawn in a fallback while implying
+  // it is the family, and this is the run where that would happen.
+  const sample = 'Everyone has the right to freedom of thought'
+  const count = await rows.count()
+  expect(count).toBeGreaterThan(1)
+  for (let index = 0; index < count; index++) {
+    const row = rows.nth(index)
+    const name = await row.getByRole('button').first().getAttribute('aria-label') ?? ''
+    const family = /^(?:Add (.+) to this template|Remove (.+) from the families to add|(.+) is in this template)$/.exec(name)
+    expect(family, `row ${index} must carry a family-named add control, not "${name}"`).not.toBeNull()
+    const spoken = family?.[1] ?? family?.[2] ?? family?.[3] ?? ''
+    const text = await row.innerText()
+    const states = text.includes(sample)
+      || text.includes('ทุกคนมีสิทธิในเสรีภาพแห่งความคิด')
+      || text.includes(`${spoken} cannot be shown set in itself`)
+      || text.includes(`Fetching ${spoken} to set this specimen in it`)
+    expect(states, `${spoken} states no specimen state at all: ${text}`).toBe(true)
+  }
 })

@@ -1,5 +1,5 @@
 import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint } from './App'
 import { shortcutHintsFor } from './shortcuts'
 import { embeddedFaceFamily } from './embedded-face-family'
@@ -1274,6 +1274,117 @@ describe('application shell', () => {
     fireEvent.click(screen.getByLabelText('table component e2'))
     expect(screen.queryByRole('textbox', { name: 'Width (pt)' })).not.toBeInTheDocument()
     expect(screen.getByText('Table binding: transactions[] (display only)')).toBeInTheDocument()
+  })
+})
+
+// STORY 16.3 — THE FONT BROWSER AT THE APP SEAM.
+//
+// WHAT THESE COVER THAT `FontBrowser.test.tsx` CANNOT. That file renders the
+// modal directly and supplies its own `sources`, `inTemplate` and
+// `previewBytes`, so every wire between App and the modal is stubbed out. A
+// review demonstrated the gap by DROPPING the second argument from
+// `offeredFamilies(query, stored)` in `browsableFamilies`: it type-checks,
+// because the parameter defaults to `[]`, and every face this machine already
+// holds silently vanishes from the browser — with the whole suite green. These
+// tests render the real `App` and address the modal through the door.
+describe('the font browser opens from the family control', () => {
+  // THE MODAL FETCHES THE MOMENT IT OPENS, and those fetches must not outlive
+  // the test that started them. Every row on the first page asks
+  // `browserSpecimenBytes` for a face, and for the web tier that is
+  // `fetchWebFamily` — up to four probes each. Left to the real global `fetch`
+  // they were still in flight when the test ended, and the next test's own stub
+  // then counted them as its own: a measured 10 calls where one was expected,
+  // in a test about a completely different control.
+  //
+  // A REJECTING FETCH IS THE FIX RATHER THAN A MUTE ONE, because
+  // `fetchWebFamily` STOPS at the first probe that throws. There is no second
+  // probe to leak, and every row settles on "cannot be shown set in itself" —
+  // which is the correct rendering for a machine with no route upstream and the
+  // state these tests read anyway.
+  let restoreFetch: typeof globalThis.fetch
+  beforeEach(() => {
+    restoreFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+  })
+  afterEach(async () => {
+    // Drain whatever the rejections queued before handing the global back.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    globalThis.fetch = restoreFetch
+  })
+
+  const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
+  // `Arimo` is a COMMITTED local-tier face, so it is in the offered population
+  // with no network at all, and declaring a chain of that name puts the same
+  // family on both sides of the `In template` question.
+  const withArimoDeclared = { ...canvas, components: [textComponent], fontFamilies: ['body', 'Arimo'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'Arimo', entries: [face('Noto Sans')] }] }
+
+  const openDoor = (projection = withArimoDeclared) => {
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
+    return request
+  }
+
+  it('mounts the dialog from the last row of the open dropdown', () => {
+    const restore = installStubFontSet()
+    try {
+      openDoor()
+      const dialog = screen.getByRole('dialog', { name: 'Font browser' })
+      expect(dialog).toHaveAttribute('aria-modal', 'true')
+      // The door closed the dropdown on its way out, so the listbox is gone and
+      // the modal is what has focus.
+      expect(screen.queryByRole('listbox', { name: 'Fonts' })).toBeNull()
+    } finally {
+      restore.restore()
+    }
+  })
+
+  it('names the sub-label in the door\'s accessible name, not only on screen', () => {
+    const restore = installStubFontSet()
+    try {
+      const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }))
+      render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: withArimoDeclared }} />)
+      fireEvent.click(screen.getByLabelText('text component e1'))
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      // An `aria-label` REPLACES the contents, so a bare "Add fonts…" deleted
+      // the one sentence saying what the row does for everybody who cannot see
+      // it.
+      expect(screen.getByRole('button', { name: 'Add fonts… Browse and embed web fonts' })).toBeInTheDocument()
+    } finally {
+      restore.restore()
+    }
+  })
+
+  it('carries the DOCUMENT\'s declared chains into the modal as `In template`', async () => {
+    const restore = installStubFontSet()
+    try {
+      openDoor()
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search fonts' }), { target: { value: 'Arimo' } })
+      // `canvas.fontFamilies` reached the modal: the family the document
+      // already declares cannot be staged again.
+      const inTemplate = await screen.findByRole('button', { name: 'Arimo is in this template' })
+      expect(inTemplate).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Add to template' })).toBeDisabled()
+    } finally {
+      restore.restore()
+    }
+  })
+
+  it('returns focus to the family control when the modal closes', async () => {
+    const restore = installStubFontSet()
+    try {
+      openDoor()
+      fireEvent.keyDown(screen.getByRole('dialog', { name: 'Font browser' }), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull())
+      // The door unmounted with the dropdown, so without this focus would be on
+      // `<body>` and a keyboard-only author would tab in from the top of the
+      // page after every Escape (UX-DR25).
+      await waitFor(() => expect(screen.getByRole('combobox', { name: 'Font family' })).toHaveFocus())
+    } finally {
+      restore.restore()
+    }
   })
 })
 

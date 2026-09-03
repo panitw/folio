@@ -2,7 +2,7 @@
 title: 'Story 16.3: The font browser is the dialog the design drew'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: '0e3a2913d96e1cac594fe76f743ea8eed8064592'
@@ -291,3 +291,41 @@ there" hazard `font-source.ts`'s own stall comment describes, one branch over. R
 cache is partially warm. **Not fixed in this story** — it is `fetchWebFamily`'s, and repairing a
 refusal message in the fetch module from a browser story is how a fix lands without a test that
 would notice it regressing.
+
+### Review patches applied (builder, 2026-09-03)
+
+Step-04's three review layers returned no `intent_gap` and no `bad_spec`, so no loopback. All
+findings were applied as patches. **Each fix was red-proofed** — reverted, watched fail, restored —
+because a guard nobody has seen red is a guard nobody has tested. Unit tests went 641 → 659.
+
+**Two of the review's own premises turned out to be wrong, and both are corrected rather than
+carried:**
+
+1. **D3 was priced as unreachable and is a live defect.** The review measured 0 of 1,811 *index*
+   rows as thai-without-latin, which is right about the index and wrong about the browser: a
+   **local-tier** row's coverage is read off the committed face, not off the snapshot, and two
+   committed faces record `thai` alone — `Noto Sans Thai Looped` and `Noto Serif Thai`. The browser
+   was printing **`Thai + Latin` beside two shipped faces whose own record claims no Latin**. Both
+   are now asserted by name.
+2. **F2's fix silently landed in the wrong function.** `setFontBrowserOpen(false)` was appended to
+   the first `setTableEditor(undefined); setTableEditorError(undefined)` pair in the file — which is
+   `closeTableEditor`, not `clearDocumentInteraction`. It compiled, and the red-proof was *also* red
+   with the fix "in place", which is the only reason it was caught. Moved, and red-proofed again
+   from the correct site.
+
+**One defect the patches introduced and closed.** The new `App.test.tsx` cases open the real modal,
+which starts up to four upstream probes per row. Left on the global `fetch` they outlived their own
+test, and the next test's stub counted them as its own — 10 calls where one was expected, in a test
+about an unrelated control. The describe now installs a **rejecting** fetch (which stops
+`fetchWebFamily` at the first probe, so there is no second one to leak) and drains before restoring.
+
+| Group | What changed |
+|---|---|
+| **A** | Stale prose corrected in three places: `App.css`'s shadow comment (the sheet elevation is DESIGN.md's third, transcribed, so the count stays three), the fidelity review's Recommendation (the token was minted; what remains is DW-178), and `font-index.ts`'s orphaned doc block. |
+| **B** | The preview registry could strand a row on `Fetching…` for ever, and a comment claimed otherwise. The seam now reports **declines** as well as registrations (`onDeclined`), the derivation is checked **before** any fetch is started, and a `face.load()` rejection reaches the row instead of being swallowed. The comment that claimed a safety the code did not have is rewritten to describe what happens. |
+| **C** | `confirm()` gained a `try`/`finally` and a per-family `catch` (a seam that *rejects* is now a named refusal, not a permanently disabled modal), clears the batch count when the batch ends, gates Escape on `!busy` like every other control, and names the unreachable missing-row branch instead of skipping it silently. |
+| **D** | The elevation guard now asserts the minted token is **used**, not merely defined. `never` guards added to the sort arms and the results view. `scriptBadge` no longer claims Latin it cannot see. |
+| **E** | The App seam had no coverage at all. Seven new cases across `App.test.tsx` and `App.font-store.test.tsx`: the door mounts the dialog, the document's chains reach it as `In template`, focus returns to the family control, a **stored** family's specimen renders with every fetch rejecting while a web row says it cannot be shown, and a refusal returned through the `'caller'` announcer is named inside the dialog with the dialog still open and no command sent. Each was red-proofed against the exact mutation the review named — including the dropped `offeredFamilies` second argument. |
+| **F** | The Grid cap and the rail's readout now have one authority (`specimenSize` / `sizeReadout`), so the number printed is the number in use; the modal closes with the document; the door's sub-label is in its accessible name; focus returns to the family combobox on close; and the e2e specimen test addresses rows by name and asserts **every** row rather than the first. |
+
+**Gates, run as separate commands.** `npm run test`: 659 passed, **1 failed** — `canvas-authority-contract.test.ts`, the pre-existing DW-152 red, unchanged. `npm run test:e2e:compile`: exit 0. `npm run build`: exit 0. `npm run lint`: clean. The committed e2e spec was re-run **in a real browser** (Chromium 1228) with the strengthened assertions: **6 passed**.

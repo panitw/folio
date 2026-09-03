@@ -369,9 +369,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
      THE SCRIM IS AN UNNAMED WASH IN THE MOCKUP and `--tint-scrim` here, which
      is the one alpha ladder DESIGN.md admits.
 
-     THE SHADOW IS A FOURTH SHADOW IN THE MOCKUP, over a list DESIGN.md closes
-     at three. This takes the page's, which is the only shadow token the
-     stylesheet has. */
+     THE ELEVATION IS DESIGN.md'S THIRD DECLARED ONE, `components.sheet.shadow`,
+     TRANSCRIBED INTO `--shadow-sheet` RATHER THAN INVENTED HERE. The mockup
+     draws a shadow that is on no declared list at all; taking it would have
+     been the fourth DESIGN.md refuses. Implementing a shadow the design system
+     already declares does not add one — it was added when it was declared — so
+     the count is still three, and `design-contract.test.ts` reads the value out
+     of DESIGN.md rather than trusting this file. */
 .font-browser-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
 .font-browser { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(1180px, calc(100vw - 44px)); height: min(748px, calc(100vh - 44px)); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-sheet); }
 
@@ -400,7 +404,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .font-browser-rail-group input[type="text"] { padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body-em); outline: none; }
 .font-browser-size { display: flex; align-items: center; gap: var(--space-3); margin: 0; }
 .font-browser-size input[type="range"] { flex: 1; min-width: 0; accent-color: var(--color-select); }
-.font-browser-size-value { width: 34px; color: var(--color-ink-high); font: var(--type-mono); }
+/* `min-width` rather than `width`: the readout says `26px of 56` when the Grid
+   cap has moved the size the screen is using away from the slider's own value. */
+.font-browser-size-value { min-width: 34px; color: var(--color-ink-high); font: var(--type-mono); }
 .font-browser-switch { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-row-y) var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink); font: var(--type-body); cursor: pointer; }
 .font-browser-switch span:first-child { flex: 1; text-align: left; }
 .font-browser-switch-dot { width: 22px; height: 12px; flex: none; background: var(--color-edge); box-shadow: inset 10px 0 0 var(--color-panel); }

@@ -69,11 +69,29 @@ type PageFontSet = Readonly<{ add: (face: FontFace) => unknown; delete: (face: F
 // asserts by exact list, and which a second registration module would have
 // broken.
 //
-// A DERIVATION MAY DECLINE. `previewFaceFamily` returns `undefined` for a name
-// it will not encode, and that key is then simply not registered — the same
-// degrade a fetch returning no bytes already takes, for the same reason: a face
-// the browser cannot name is not a session fault.
-export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceBytes: CarriedFaceBytes, onRegistered: (registered: ReadonlySet<string>) => void, familyFor: (assetKey: string) => string | undefined = embeddedFaceFamily): () => void {
+// A DERIVATION MAY DECLINE, AND `onDeclined` IS HOW A CALLER HEARS ABOUT IT.
+//
+// THE COMMENT THAT STOOD HERE CLAIMED A SAFETY THIS CODE DID NOT HAVE, which is
+// this repository's own named subject. It said a declined key "takes the same
+// degrade a fetch returning no bytes already takes". For the CANVAS that was
+// true — a fragment with no registered face keeps the stylesheet's declared
+// stack either way — but for the font browser it was not: the browser has to
+// tell the author WHY a specimen is not set in its own family, and this seam
+// reported only the keys that SUCCEEDED. A key that produced no bytes, a
+// derivation that declined a name, and a face whose bytes will not parse were
+// all indistinguishable from a fetch still in flight, so the row read
+// "Fetching X…" for the life of the modal and never reached the sentence the
+// contract requires.
+//
+// SO THE SEAM NOW REPORTS BOTH OUTCOMES. `onRegistered` grows with the keys that
+// reached the font set; `onDeclined` names a key that never will. A caller that
+// wants neither passes neither, and the canvas is exactly that caller.
+//
+// A RELEASE IS NOT A DECLINE. Every `!active` path returns without calling
+// either: the document was replaced or the row left the page, and reporting that
+// as a refusal would tell an author their typeface was rejected when what
+// happened is that they closed the thing showing it to them.
+export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceBytes: CarriedFaceBytes, onRegistered: (registered: ReadonlySet<string>) => void, familyFor: (assetKey: string) => string | undefined = embeddedFaceFamily, onDeclined: (assetKey: string) => void = () => undefined): () => void {
   let active = true
   const added: FontFace[] = []
   const registered = new Set<string>()
@@ -89,9 +107,16 @@ export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceB
           // No bytes is the engine declining, not an exception to swallow: the
           // asset may be absent, unreadable, or not a font at all, and every
           // one of those is a fragment that keeps the declared stack.
-          if (!active || bytes === undefined || bytes.byteLength === 0) return undefined
+          if (!active) return undefined
+          if (bytes === undefined || bytes.byteLength === 0) { onDeclined(assetKey); return undefined }
+          // THE DERIVATION IS CONSULTED BEFORE THE BYTES ARE USED, but it cannot
+          // be consulted before they are FETCHED without changing what this seam
+          // is: the caller that knows a name will be declined is the caller that
+          // owns the derivation, and `preview-face-registry.ts` checks there so
+          // no fetch is started at all. This is the backstop for every other
+          // caller.
           const family = familyFor(assetKey)
-          if (family === undefined) return undefined
+          if (family === undefined) { onDeclined(assetKey); return undefined }
           const face = new FontFace(family, bytes)
           return face.load().then((loaded) => {
             // The document may have been replaced while the bytes were in
@@ -108,6 +133,12 @@ export function registerCarriedFaces(assetKeys: ReadonlyArray<string>, readFaceB
           // A face that will not parse is a document fact, not a session
           // fault. It must never reach the engine's failure channel: the
           // canvas keeps painting and the worker keeps running.
+          //
+          // IT IS STILL AN OUTCOME, AND SILENCE WAS THE BUG. `face.load()`
+          // rejecting on unparseable bytes landed here and went no further, so a
+          // browser row waiting on that face waited for ever. Swallowing the
+          // ERROR is right; swallowing the FACT is not.
+          if (active) onDeclined(assetKey)
           return undefined
         })
     }

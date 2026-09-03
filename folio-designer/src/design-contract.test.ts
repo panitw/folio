@@ -58,6 +58,14 @@ describe('DESIGN.md token contract', () => {
     expect(pageShadow, 'DESIGN.md declares components.page-surface.shadow').toBeTruthy()
     expect(css).toContain(`--shadow-sheet: ${sheetShadow}`)
     expect(css).toContain(`--shadow-page: ${pageShadow}`)
+    // AND THE MINTED TOKEN IS USED, NOT MERELY DEFINED. Asserting only the
+    // definition leaves the story's actual fix unguarded: reverting
+    // `.font-browser`'s `box-shadow` to `var(--shadow-page)` puts the modal back
+    // on the page's elevation while every assertion above stays green, because
+    // an unused token is still a defined one. A token nothing reaches for is
+    // indistinguishable from its own absence.
+    const shellCss = fs.readFileSync(appCssPath, 'utf8')
+    expect(shellCss, 'the floating sheet surface must take the sheet elevation, not the page\'s').toContain('box-shadow: var(--shadow-sheet)')
   })
 
   it('pins package, lockfile, and strict compiler metadata independently', () => {

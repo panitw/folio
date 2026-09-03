@@ -285,6 +285,56 @@ describe('staging and confirming', () => {
     expect(screen.getByRole('button', { name: 'Remove Lora from the families to add' })).toBeInTheDocument()
   })
 
+  it('turns a seam that REJECTS into a named refusal, and never leaves the modal stuck busy', async () => {
+    installed = installStubFontSet()
+    const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => {
+      if (source.family === 'Lora') throw new Error('the worker went away')
+      return undefined
+    })
+    const { onClose } = open({ onAddFamily })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 to template' }))
+    // The throw is the seam failing in a way it did not anticipate. Before this
+    // was caught, `setBusy(false)` never ran: every control stayed disabled for
+    // the life of the modal with Escape the only way out.
+    expect(await screen.findByText(/Lora could not be added: the worker went away/)).toBeInTheDocument()
+    expect(onAddFamily).toHaveBeenCalledTimes(2)
+    expect(onClose).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled())
+    expect(screen.getByRole('textbox', { name: 'Search fonts' })).toBeEnabled()
+  })
+
+  it('clears the batch count when the batch ends, so two moments are not reported as one line', async () => {
+    installed = installStubFontSet()
+    const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => source.family === 'Lora' ? 'Lora could not be reached.' : undefined)
+    open({ onAddFamily })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Lora to this template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 to template' }))
+    await screen.findByText(/Lora could not be reached\./)
+    // ASSERTED AS AN ABSENCE, because the footer's own line is prefix-anchored
+    // elsewhere and a stale suffix slips straight past a prefix match.
+    await waitFor(() => expect(screen.queryByText(/added 2 of 2/)).toBeNull())
+    expect(screen.getByText('1 family ready to embed')).toBeInTheDocument()
+  })
+
+  it('does not let Escape dismiss the modal while a batch is running', async () => {
+    installed = installStubFontSet()
+    let release: (() => void) | undefined
+    const onAddFamily = vi.fn(async (source: FamilySource): Promise<string | undefined> => { void source; await new Promise<void>((resolve) => { release = resolve }); return undefined })
+    const { onClose } = open({ onAddFamily })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Sarabun to this template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to template' }))
+    await screen.findByText(/added 0 of 1/)
+    // Every other control is disabled here. Escape was the one route to a
+    // half-dismissed modal with dispatches still in flight.
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Font browser' }), { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    release?.()
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+  })
+
   it('states progress while the batch runs', async () => {
     installed = installStubFontSet()
     let release: (() => void) | undefined

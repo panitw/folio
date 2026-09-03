@@ -80,9 +80,19 @@ what the design specifies instead of recording a disagreement.
 
 ## Recommendation
 
-**One token to add, and it is not this story's to add:** a `sheet` shadow in `tokens.css` matching
-`components.sheet.shadow`, so a floating surface has a shadow of its own rather than borrowing the
-page's (FB11). Both the table editor and this modal currently borrow it.
+**The token this review first asked for has been minted (FB11).** `--shadow-sheet` now carries
+`components.sheet.shadow`'s declared value, `.font-browser` uses it, and `design-contract.test.ts`
+reads both implemented elevations out of `DESIGN.md`'s own text so neither can drift from the
+declaration. The first version of this paragraph said the mint "is not this story's to make"; that was
+wrong, and it is left corrected rather than deleted — transcribing an elevation the design system
+already declares is implementation, not design.
+
+**What remains is the wider taxonomy, registered as DW-178 and not this story's to settle:**
+`.table-editor` and `.pdf-preview-scroll canvas` still borrow `--shadow-page` where the sheet
+elevation is the one they mean, and `.property-options` — a dropdown, which is neither a page nor a
+sheet — sits outside the three declared elevations altogether. Three surfaces, one question: which
+elevation does a transient overlay have, and does `DESIGN.md` need to declare a fourth or say that a
+dropdown carries none.
 
 **Two values worth naming in `colors:`** if a third screen wants them: FB2's `#8fd0e6` (almost
 certainly a typo for `select-bright`, so probably a mockup fix rather than a token) and FB7's
