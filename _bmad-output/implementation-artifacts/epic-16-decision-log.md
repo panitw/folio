@@ -1781,3 +1781,131 @@ visibly rewarded rather than merely absorbed.
 **How we'd know THIS is wrong.** `internal/rules/licencegraph.go` ceasing to call `ClassifyLicenceText` —
 at which point the sentence names a file that no longer belongs to the dependency path, and the right fix is
 to re-derive both callers rather than edit one name.
+
+### D-16.R.39 — The collision of D-16.R.29 ran in reverse, and "stage explicit paths" turns out not to be the whole rule
+
+**Observed, not decided.** Commit `efa9b75` carries eight files: the four in the remediation pass's scope,
+plus the story spec, `deferred-work.md`, `sprint-status.yaml` and **299 lines of this decision log** —
+D-16.R.35 through D-16.R.38, all four written by the orchestrator while the pass was running.
+
+**This is D-16.R.29 exactly, with the parties swapped.** There, *I* swept the implementation agent's
+in-flight working tree into my commit with `git add -A` under a path. Here the builder swept **my** in-flight
+writing into its commit. It staged **explicitly**, named all eight files, declined to leave a 99-line ruling
+out of history, and said in the commit message which parts are mine — so it did everything D-16.R.29's
+standing consequence asks for, and the collision happened anyway.
+
+**So the rule was incomplete.** D-16.R.29 concluded *"stage explicit paths, never `-A`, not even under a
+path."* That prevents sweeping files you never looked at. It does not prevent staging a file you looked at,
+that is genuinely dirty, that you did not write. **The missing half: name the paths you OWN, not the paths
+that are dirty.** In a tree with concurrent writers, "explicit" and "mine" are different sets, and only the
+second one is safe.
+
+**Outcome is benign, again, and for the same reason as last time: nothing was lost, only misattributed.**
+The tree is clean, every line is in `HEAD`, and this log's own text records who wrote what. Not rewriting
+history — the branch is local, nothing is missing, and a rewrite to repair a bookkeeping fault risks real
+work. **`efa9b75` contains four orchestrator decision-log entries that are not part of Story 16.1a's
+remediation.**
+
+**The near-miss is the same one, too.** D-16.R.29 noted that had the commit landed ninety seconds earlier it
+would have captured a half-written spec. Here, D-16.R.38 — the entry correcting the builder's own false
+premise — was finished minutes before the commit. Had it not been, the commit would have preserved
+D-16.R.36 and D-16.R.37 stating a falsehood, with the correction landing in a later commit that reads as a
+reversal rather than as what it was: an error caught before it shipped.
+
+**Standing consequence, amending D-16.R.29's:** *while a dispatch is running, the orchestrator does not
+commit and the builder stages only files it wrote.* If the orchestrator's records must be committed, that
+happens **after** the dispatch reports, in its own commit. The cheap version of this rule, which would have
+prevented both instances: **whoever commits, commits only what they touched, and checks `git status` for
+files that appeared without them.**
+
+### D-16.R.40 — What this pass demonstrated about the author/prover separation, recorded as evidence rather than as principle
+
+**The remediation pass introduced TWO regressions and caught BOTH before commit — each by someone other
+than whoever introduced it.**
+
+1. **Nine forbidden-host occurrences**, two of them a host forbidden outright by D-16.3, introduced by the
+   fix-writing agents spelling real hosts in test values and prose. Caught by the gate, repaired by
+   composing from the exported constant.
+2. **The `licencegraph.go` false premise**, introduced by the reviewer, propagated by the builder,
+   **ratified by me in a ruling**, and refused at the last possible moment by the implementing agent — the
+   lowest level of the stack declining a direct instruction from the highest, on evidence.
+
+**Neither was caught by its author.** In both cases the person who introduced the error had already checked
+their own work and been satisfied. The F1 finding that started this whole pass has the same shape one level
+up: an assertion that its author believed was proving something, which proved nothing, and which no amount
+of that author re-reading it would have revealed — it took a different agent deleting the assertions one at
+a time to establish that not one of them could fail.
+
+**This is why the separation is mandatory rather than advisory**, and it is worth stating as measured
+evidence because the cost is real: every red-proof in this pass cost a second agent, and the pass ran to a
+hundred tool calls. The return on that spend, this pass, was two regressions caught and one inert guard
+armed. **A pass that had trusted its authors would have shipped all three.**
+
+**The generalisation, since this epic is keeping a list.** Every error catalogued in this run — the
+37-vs-38, the live-index eleven, "only three families moved", "four floors" that were three files, the gate
+against a superseded table, the narrower-scope tripwire count, and now a package-scoped grep read as a
+repository-scoped absence — was **produced by someone with every reason to believe they had checked.** The
+discipline that catches them is not more care by the author. It is a second party with a different method,
+and the second half of that sentence is the load-bearing one: **a second party using the SAME method is not
+a second party** (D-16.R.38).
+
+### D-16.R.41 — A ruled deferral vanished and the COUNT reconciled, because a different finding filled its slot
+
+**Found by the closer**, by checking a ruling's disposition against the artifact rather than against the
+build's own tally. Story 16.1a's remediation pass is closed `done` at `efa9b75` + `5a3745f`; this is the
+one thing that did not survive it intact.
+
+**What happened.** D-16.R.35 ruled seven findings: six FIX, and **F5 REGISTER** — the eight stale
+population claims in `folio-go`, with a named trigger and owner. The pass reported `defer: 1`. That one
+deferral is **DW-169**, the `build-wasm.mjs` "six slots" ambiguity — a finding the pass discovered *itself*,
+during its F4 sweep, and which I disposed of separately in D-16.R.37. **F5 appears nowhere**: not in
+`deferred-work.md`, not in the spec's frontmatter `deferred:` list, under no number.
+
+**In simple terms.** The order was "fix six things and file a report about a seventh." Six things were
+fixed, and *a* report was filed — about something else discovered along the way. The tally read "6 fixed, 1
+filed", matched the order exactly, and the thing actually ordered to be filed was never written down.
+Counting the outputs verified the arithmetic and not the assignment.
+
+**Why the count is the trap, and this is the fourth distinct instance in this epic.** `defer: 1` was
+*true*. Every enumerated finding was correctly recorded. The failure is only visible if you ask **"is the
+specific thing that was ruled present?"** rather than **"does the number of deferrals match?"** — and a
+reconciling total is precisely what stops anyone asking. Same family as D-16.R.27's scope-travels-with-the-
+claim: a true statement (`defer: 1`) standing in for a different one (`F5 is registered`).
+
+**Consequence, and it is checkable rather than exhortative:** **a ruling's disposition is verified by
+locating the artifact it names, never by matching a count.** For a REGISTER disposition that means grepping
+`deferred-work.md` for the finding's own subject, not counting its entries. The closer did exactly this and
+it is why the loss was caught before the story closed.
+
+**Resolution.** Filed as **DW-170**, with two of the eight claims verified fresh by the closer rather than
+carried over from the review:
+- `folio-go/internal/fontset/licencesignature.go:80-81` still justifies the absent build-time Apache row
+  with *"no committed catalogue face is Apache-licensed"* — `robotoslab` ships `LICENSE-APACHE.txt` and the
+  census classifies it `Apache-2.0`.
+- `licencesignature_test.go:266`/`:292` still say *"the OFL row covers 19 of the 21 catalogue faces"*
+  against a measured **28 OFL / 1 Apache / 2 UFL over 31**.
+
+The closer verified two and **deliberately did not enumerate the other six**, correctly declining to widen
+the lead's four-file bound or to restate a count it had not measured. **Behaviour, not defect** — and the
+right call under D-16.R.27, whose whole subject is claims asserted beyond their measured scope.
+
+**Three smaller findings from the same close, recorded so they are not rediscovered.**
+
+1. **The spec's frontmatter already read `status: 'done'` at `efa9b75`**, written by the pass, while
+   `sprint-status.yaml` correctly sat at `review`. D-16.R.30 established that the closer is the only writer
+   of `done` — that reservation held for the tracker and **not** for the spec's own frontmatter, which the
+   build writes itself at step-05. The two records are written by different hands and only one of them is
+   under D-16.R.30's rule. The gates now verify it, so it is left standing; noted so the next reader does
+   not read the agreement as corroboration.
+2. **The triage header's severity split contradicts its own enumeration** — it reads `patch: 8 (high 1,
+   medium 5, low 2)` while the eight enumerated findings are high 1, **medium 6, low 1**, because F2a and
+   F7a were appended mid-pass and the header was not re-derived. Total right, per-finding record right,
+   summary stale. The closer **reported rather than silently rewrote it**, which is correct: a summary
+   corrected after the fact by someone who did not do the triage is a fabricated agreement.
+3. **There is no `epic-16-context.md` cache**, where epics 6, 7, 8 and 15 all have one. Nothing stale to
+   flag — but if `bmad-build` expects one, this epic has been running without it, and that is worth knowing
+   before three more dispatches rather than after.
+
+**How we'd know this consequence is wrong.** If verifying dispositions by artifact turns up nothing over the
+remaining stories while costing a grep per ruling, it is over-engineered for a one-off. One instance is not
+a pattern — but it is the *fourth* count-that-reconciled in this epic, and that is a pattern.
