@@ -4152,3 +4152,48 @@ required against relocating a place-keyed blind spot.
 **Its limit, which it stated itself: it executed nothing.** Its verdict is inferred from source, so a clean
 guard-integrity report is *"I could not see how these would pass while the behaviour broke"*, **not** *"I
 made them fail."* Recorded as such rather than as a measurement.
+
+## D-16.R.82 — OWNER: the machine font store panel is deleted, and removal goes with it
+
+**The owner looked at the shipped panel and said the section is not necessary.** Shown three arms — hide
+when empty · move `×` onto the dropdown's stored rows · **delete it and drop removal** — they chose
+**delete and drop**, knowing the capability is lost. **That is the decision; what follows is scope, not
+reconsideration.**
+
+**THE DIAGNOSIS IS CORRECT AND THE CODE AGREES WITH IT.** When the store is empty the section renders
+**three paragraphs and zero controls**, and the long explanatory paragraph is **unconditional** — it shows
+whether or not anything is stored. In a properties panel where every other control is one line, that is
+what the owner was looking at.
+
+**AND THE DESIGN NEVER DREW IT. Measured, population stated: 0 of the 6 mockup files mention this panel**
+(positive control: `TYPOGRAPHY` hits 2). The panel is a Story 16.2 invention. **So deleting it moves the
+shipped screen TOWARD the design rather than away from it** — the same measurement that decided Fork B at
+D-16.R.74, now cutting one step further in the same direction.
+
+**A COST OF THE DECISION ARRIVING AFTER THE WORK, STATED PLAINLY: 16.4's rename of this section becomes
+dead work.** Fork B chose arm (c) — rename the panel, let the dropdown keep `AVAILABLE LOCALLY` — precisely
+because renaming was cheap. **Deleting the panel reaches that ruling's outcome more completely**: the name
+collision does not need resolving because one of the two claimants ceases to exist. The rename was correct
+when made and is now moot. **That is a sequencing cost, not an error, and it is the ordinary price of an
+owner seeing the thing running.**
+
+**Blast radius, measured before scoping:** production is **3 files** — `App.tsx` (the `MachineFontStore`
+component, its call site, and the `storeNote` / `onRemoveStoredFace` plumbing), `App.css` (**8 rules**),
+`font-store.ts` — plus roughly **10 assertions across 3 test files** and the `storePanelHeading` constant.
+Contained.
+
+**TWO CONSEQUENCES THE STORY MUST CARRY, NOT DISCOVER:**
+1. **Both refusal sentences stop naming a removal control** — `lateEmbedRefusal` (`App.tsx:1982`) and
+   `storeWriteRefusal` (`font-store.ts:470`). Each currently offers a remedy; each must stop offering one
+   rather than point at a section that no longer exists. **The guard-integrity hunt confirmed both are
+   asserted by cross-checks against the rendered heading, so those tests must be retired with the sentences
+   they guard, deliberately and in the record.**
+2. **DW-175 becomes PERMANENT rather than pending.** Its owner is *"the first story that adds store
+   maintenance"* — and there will now be none. **Bytes outliving the face record that names them, with
+   nothing able to free them, stops being deferred work and becomes the shipped behaviour.** Registered
+   against 16.6 so the register does not keep an entry waiting for a story that will never come.
+
+**SEQUENCED AFTER 16.4 CLOSES, and registered as `16-6-the-machine-store-panel-goes-away: backlog`.** 16.4
+is `in-review` with a frozen contract that does not cover deleting a panel section, and **its adversarial
+review has just run against the current tree — folding this in would invalidate the one round that six
+dead agents finally delivered.** A capability removal is its own deliverable and gets its own record.

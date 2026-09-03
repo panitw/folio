@@ -546,4 +546,15 @@ development_status:
   # first would build the control twice. Embed-on-use, designer-side only; prune-on-save was refused.
   16-5-installing-a-face-is-not-embedding-it: done
   16-4-the-family-control-names-three-sources: in-progress
+  # 16.6 added 2026-09-03 by OWNER DECISION (D-16.R.82), looking at the shipped panel: the machine
+  # font store section is not necessary. It is DELETED, and per-face removal goes with it -- the
+  # owner's choice among three arms, made knowing the capability is lost. Supporting measurement:
+  # 0 of the 6 mockup files draw this panel at all, so deleting it moves the screen TOWARD the
+  # design. Consequences the story must carry: both refusal sentences stop naming a removal
+  # control (App.tsx lateEmbedRefusal, font-store.ts storeWriteRefusal), and DW-175 -- bytes
+  # outliving their face record with nothing able to free them -- becomes PERMANENT rather than
+  # pending, because its owner was 'the first story that adds store maintenance' and there will
+  # now be none. Sequenced AFTER 16.4 closes: 16.4 is in review with a frozen contract that does
+  # not cover deleting a panel, and folding this in would invalidate the review just completed.
+  16-6-the-machine-store-panel-goes-away: backlog
   epic-16-retrospective: optional
