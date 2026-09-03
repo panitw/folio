@@ -325,6 +325,52 @@ describe('the faces this machine already holds', () => {
     expect(offered.map((source) => [source.tier, source.family])).toEqual([['stored', withdrawn]])
   })
 
+  // TWO STORED FACES OF ONE FAMILY, AND WHICH ONE IS OFFERED IS A RULE.
+  //
+  // The store is keyed by the SHA-256 of the bytes, so one family can honestly
+  // have two entries — upstream re-cut the face, or the author holds a Regular
+  // and an Italic. `offeredFamilies` gives one row per family, so one of them
+  // is chosen, and it used to be whichever arrived LAST: the store's
+  // family-then-key sort, which is the hash order, which is arbitrary. Handing
+  // the author one of two faces on the strength of a digest ordering is exactly
+  // the silent substitution the content-address key exists to refuse.
+  //
+  // (Presenting BOTH — a group with two styles in it — is Story 16.4's, which
+  // owns the grouping. What 16.2 owes is a choice that is deterministic and
+  // written down.)
+  it('offers the most recently fetched of two stored faces of one family, whichever order they arrive in', () => {
+    const family = webFamilies.find((row) => !localTierHolds(row.family))!.family
+    const older = { ...stored(family, '1'.repeat(64)), fetchedAt: '2026-01-05' }
+    const newer = { ...stored(family, '0'.repeat(64)), fetchedAt: '2026-09-03' }
+    // THE NEWER ONE WINS, and the KEYS ARE ORDERED AGAINST THE DATES ON PURPOSE:
+    // the newer face carries the lexicographically SMALLER key, so a rule that
+    // was really sorting by key would pick the other one and red here.
+    for (const listing of [[older, newer], [newer, older]]) {
+      const offered = offeredFamilies(family, listing).filter((source) => source.family === family)
+      expect(offered.map((source) => source.tier), 'one family is still one row').toEqual(['stored'])
+      const only = offered[0]!
+      if (only.tier !== 'stored') throw new Error('the stored family was not offered from the store')
+      expect(only.record.key, 'the most recently fetched face is the one offered, in either arrival order').toBe(newer.key)
+    }
+  })
+
+  // AND THE TIE IS BROKEN ON SOMETHING STABLE, not on arrival order. Two faces
+  // fetched on the same day is the ordinary case — a Regular and an Italic
+  // within one session — so the common case must not be the arbitrary one.
+  // The smaller key wins, which is also the face `font-store.ts`'s `list()`
+  // sorts first within a family, so the menu and the listing agree.
+  it('breaks a same-day tie on the key rather than on arrival order', () => {
+    const family = webFamilies.find((row) => !localTierHolds(row.family))!.family
+    const first = { ...stored(family, 'a'.repeat(64)), fetchedAt: '2026-09-03' }
+    const second = { ...stored(family, 'f'.repeat(64)), fetchedAt: '2026-09-03' }
+    for (const listing of [[first, second], [second, first]]) {
+      const offered = offeredFamilies(family, listing).filter((source) => source.family === family)
+      const only = offered[0]!
+      if (only.tier !== 'stored') throw new Error('the stored family was not offered from the store')
+      expect(only.record.key).toBe(first.key)
+    }
+  })
+
   it('filters the stored tier by the same search the other two use', () => {
     const offered = offeredFamilies('zzzznothingmatchesthis', [stored('Kanit', 'd'.repeat(64))])
     expect(offered).toEqual([])

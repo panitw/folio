@@ -7825,3 +7825,127 @@ Apache justification is rewritten to state the *mechanism* rather than a claim a
 contents — the same treatment F3 and F4 gave their own rotted counts in this story, where a literal was
 replaced by a derived figure or by no figure at all. The other six of D-16.R.34's eight should be
 enumerated at that point, by re-running its measurement rather than by trusting its count.
+
+---
+
+### DW-171 — the designer CI job stops at `npm run test`, so six later steps have never run
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2's review (2026-09-03). **Pre-existing, not caused by 16.2** — but 16.2 is
+  the story that made the consequence expensive, because every gate it adds lands behind the stop.
+- **Owner:** the engineering lead. **Severity:** MEDIUM-HIGH. **Status:** OPEN.
+
+**Evidence.** `.github/workflows/ci.yml` runs the `folio-designer` job as: `npm ci` → `npm run test` →
+`npm run typecheck` → `npm run lint` → `npm run build` → `npm run verify:offline:red` →
+`npm run verify:offline:wasm` → `npm run test:e2e:compile`, with **no `continue-on-error` on any step**.
+`npm run test` exits **1** at HEAD and has since DW-152's red appeared, and GitHub Actions stops a job at
+its first failing step. So the six steps after it have not executed for as long as that red has existed.
+
+**Why it matters more now.** Story 16.2's store round trip, the 30 s timeout, the first-abort table, the
+four dependency conditions, the file-access exemption and the host-font scan are all inside
+`npm run test`; `npm run build` (hence `verify:offline` and the release manifest) is behind it. DW-152
+records only the narrower masking — that a *second* `getComputedStyle` violation would change the
+failure's contents rather than its status. It does not record that the job's later steps are dark, which
+is what makes this story's gates hand-run rather than merely noisy.
+
+**What discharges it:** the shape already exists in this repo — `ci.yml`'s `folio-go` /
+`folio-go-known-red` split with `KNOWN_RED_TEST`. The designer job needs the same: a green step that
+excludes the sanctioned red by name, and a separate quarantined step that runs it.
+
+---
+
+### DW-172 — the local-tier pick's `fetch` is inside the pick hold and has no timeout, so one of three tiers can still hang the control
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2's review (2026-09-03). **Out of scope by the spec's own wording**, which
+  sites the timeout in `font-source.ts`'s default fetcher — "not at the six call sites".
+- **Owner:** the next story touching the pick path (16.3). **Severity:** LOW. **Status:** OPEN.
+
+**Evidence.** `folio-designer/src/App.tsx`'s local-tier branch of `resolveAndEmbedFamily` calls
+`await fetch(face.url)` with no signal — the only remaining bare `fetch(` in designer production source
+— and it sits inside `pickCatalogueFamily`'s hold, the same hold whose non-release Story 16.2 exists to
+fix. Every test on that path uses a stub that resolves, so a never-settling bundle read is invisible.
+
+**Why it is genuinely lower severity:** it is a same-origin read of a bundled asset served by the
+service worker, not a cross-origin request to a third-party host. **What discharges it:** point
+`App.font-store.test.tsx`'s never-settling-fetch shape at a local-tier pick and assert the control comes
+back, then reuse `timedFetcher`.
+
+---
+
+### DW-173 — the font store never closes its connection and answers no `onversionchange`, so a future schema upgrade will block on a tab this code documents
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2's review (2026-09-03). **Owner:** the first story to change the store's
+  schema. **Severity:** LOW today, and it becomes a release blocker on the day the schema moves.
+  **Status:** OPEN.
+
+**Evidence.** `folio-designer/src/font-store.ts`'s open path carefully handles `onblocked` and states
+"another tab is holding an older version open" — but the handle is held for the session, nothing sets
+`database.onversionchange = () => database.close()`, and no effect closes it. A second tab opening
+version 2 therefore hangs on exactly the condition the code names as ordinary. There is also no schema
+version on the record; migration today is `soundFace` silently dropping every entry it cannot read.
+
+**What discharges it:** an `onversionchange` handler that closes, a close on effect teardown, and a
+stated migration rule for records written by an older version.
+
+---
+
+### DW-174 — the store re-hashes every face on every read, and the preview registration re-reads all stored faces on every store mutation
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2's review (2026-09-03). **Owner:** Story 16.3's browser run, which is the
+  first place this is observable. **Severity:** LOW. **Status:** OPEN.
+
+**Evidence.** `font-store.ts`'s `get()` verifies the content address by re-hashing the whole face, and
+the largest offerable face in the addable population is **24,271,604 bytes**. Separately, the
+machine-scoped preview registration is keyed off a listing derived from `storedFaces`, and
+`refreshStoredFaces()` runs after every `put` and every `remove` — so each newly stored face releases
+and re-registers **every** stored face, re-reading and re-hashing all of them. The story's own risk
+paragraph describes this cost as "once per session", which is true only if the store never changes
+during that session.
+
+**What discharges it:** measure it in a real browser with a full store, then either diff the listing
+incrementally, register lazily from the dialog, or drop the re-hash on read to a cheaper check — and
+correct the "once per session" wording either way.
+
+---
+
+### DW-175 — bytes can outlive the face record that names them, with nothing able to free them
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2's review (2026-09-03). **Owner:** the first story that adds store
+  maintenance. **Severity:** LOW. **Status:** OPEN.
+
+**Evidence.** The store keeps face metadata and face bytes in two object stores under one key. `list()`
+drops a record whose metadata fails `soundFace`, and the corrupt-entry path drops by key — but bytes
+stored under a key with no sound face record are reachable by neither the listing nor the removal
+affordance. They hold origin quota permanently and no UI surface can name them.
+
+**What discharges it:** reconcile the two stores on open — read the byte store's keys, drop any key the
+face store has no sound record for — and assert it with a deliberately orphaned entry.
+
+---
+
+### DW-176 — real browser IndexedDB has no witness; ruled to Story 16.3's browser run as its fourth case
+
+- source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
+- **Deferred by:** Story 16.2 (2026-09-03), and **registered by ruling, not by discovery** — D-16.R.42
+  routes it explicitly: *"the browser-witness residual goes to 16.3, NOT the epic catch-up."*
+- **Owner:** Story 16.3's browser run. **Severity:** MEDIUM. **Status:** OPEN.
+
+**Evidence and why it is genuinely open.** Every store test in Story 16.2 runs against `fake-indexeddb`,
+an independent Apache-2.0 implementation chosen precisely so it could disagree with the store's own
+author — and it did, twice, catching a transaction auto-commit that dropped bytes and a realm-scoped
+`instanceof ArrayBuffer` that discarded sound entries. But it is not a browser. Real IndexedDB, real
+origin quota, real private-window refusal and real cross-reload persistence are proven by nothing in
+this story's gates, and the story's own browser verification line was deferred by the run's
+`end-of-run` heavy-test cadence (D-16.R.1).
+
+**The fourth case, as ruled:** *a stored face survives a reload and is offered with the network
+disabled.* It is written this way because 16.3's run already reloads to exercise the offline path and
+already discharges DW-161's three cases, so the case costs nothing to add and retires this residual
+**one story after it was created** rather than at the epic's end — and the store and the web tier then
+get their first real-browser exercise together, which is how they are actually used.
+
+**What discharges it:** that case passing in 16.3's browser run, with the observation recorded.

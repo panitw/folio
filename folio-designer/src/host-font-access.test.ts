@@ -73,6 +73,22 @@ describe('no code path in the designer reaches for host-installed fonts', () => 
     expect(reached, 'every declared scan root must contribute at least one file, and nothing outside them may').toEqual([...SCANNED_ROOTS].sort())
   })
 
+  // AND THE GUARD READS ITS OWN FILE, WHICH IS WHY EVERY SPELLING ABOVE IS
+  // SPLIT.
+  //
+  // A guard proved once, before the file that drives it existed, is not a guard
+  // that is still reading. This asserts the scanned population CONTAINS this
+  // test file, so the whole-tree claim covers the one file in the tree most
+  // likely to spell the forbidden API — and so the day somebody "fixes" a red
+  // here by excluding the test file from the walk, this reds instead of going
+  // quiet. It is also the standing reason the expected values in this file are
+  // written split rather than whole.
+  it('scans its own file, so the guard is not exempt from the rule it enforces', () => {
+    expect(scannedPopulation(repoRoot), 'the host-font guard must be inside the population it scans').toContain('folio-designer/src/host-font-access.test.ts')
+    // AND SO IS THE SCANNER IT DRIVES, for the same reason.
+    expect(scannedPopulation(repoRoot)).toContain('folio-designer/scripts/host-font-access.mjs')
+  })
+
   // 1 — THE POSITIVE CONTROL. Without this, every assertion above is satisfied
   // by a scanner that matches nothing at all.
   it('fails, naming the file and the line, on a source file that calls the API', () => {
@@ -86,7 +102,14 @@ describe('no code path in the designer reaches for host-installed fonts', () => 
       execFileSync('git', ['-C', scratch, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] })
 
       const result = scanHostFontAccess(scratch, { floor: 1 })
-      expect(result.findings.map((finding) => `${finding.file}:${finding.line}:${finding.api}`)).toEqual(['folio-designer/src/offender.ts:2:queryLocalFonts'])
+      // THE SPELLING IS SPLIT HERE FOR THE SAME REASON IT IS SPLIT ABOVE. This
+      // file is inside the scanned population (asserted below), and the scan
+      // reads RAW text, so writing the API whole in an expected value would make
+      // this file a real occurrence and red the whole-tree scan against itself.
+      // Splitting it is the file's own established technique; excluding this
+      // file from the scan would be the weaker fix, because a guard that does
+      // not read itself is a guard nobody is holding.
+      expect(result.findings.map((finding) => `${finding.file}:${finding.line}:${finding.api}`)).toEqual(['folio-designer/src/offender.ts:2:query' + 'LocalFonts'])
       // The thrown message NAMES the file and the line, not merely a count.
       expect(() => assertNoHostFontAccess(scratch, { floor: 1 })).toThrow(/folio-designer\/src\/offender\.ts:2/)
       // And the clean file is not reported, so the matcher discriminates.

@@ -546,7 +546,16 @@ describe('a fetch that stalls rather than rejecting', () => {
   // OFFLINE ONE. "You cannot add a family without a network connection" is
   // FALSE when the network is up and the host is hanging, and it sends the
   // author to check their wifi over a problem that is not theirs.
-  it('states a stall as a stall, never as the offline refusal', async () => {
+  //
+  // AND IT MUST NOT FAIL IN THE OTHER DIRECTION EITHER, which is the half that
+  // is easy to miss. An earlier wording said "your network is reachable — the
+  // font host is not answering". A timeout knows NEITHER of those things: the
+  // same abort fires when the network is down and packets are blackholed rather
+  // than refused (the captive portal this story cites as its own trigger), when
+  // DNS hangs, and on a link too slow to move a 24 MB face in 30 s. Both
+  // assertions below are therefore negative, and they point in opposite
+  // directions on purpose.
+  it('states a stall as a stall — neither as the offline refusal nor as a claim the network is fine', async () => {
     const { fetcher } = stubAbortingAt(kanitUpstream(), 0)
     const outcome = await fetchWebFamily('Kanit', fetcher)
     expect(outcome.ok).toBe(false)
@@ -554,6 +563,13 @@ describe('a fetch that stalls rather than rejecting', () => {
     expect(outcome.reason).toContain('Kanit')
     expect(outcome.reason).toMatch(/waited 30 seconds/)
     expect(outcome.reason, 'a stall must not be reported as being offline').not.toMatch(/without a network connection/)
+    // THE OTHER DIRECTION. A timeout cannot diagnose the network, and must not
+    // pretend to: saying the link is fine is as false as saying it is down.
+    expect(outcome.reason, 'a timeout cannot know the network is reachable, so it must not say so').not.toMatch(/network is reachable|connection is fine|you are online/i)
+    // WHAT IT DOES KNOW, AND ALL IT KNOWS: a request was made and did not
+    // finish inside the budget.
+    expect(outcome.reason).toMatch(/did not complete in time/)
+    expect(outcome.reason, 'the three things a timeout cannot distinguish are named rather than collapsed into one of them').toMatch(/cannot tell/)
     // AND IT SAYS NOTHING WAS RETRIED. A retry over a deterministic stall hides
     // it, so this designer does not retry — and says so, because "it gave up
     // after 30 seconds" reads as not trying hard enough unless the decision is

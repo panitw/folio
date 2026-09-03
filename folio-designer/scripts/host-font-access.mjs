@@ -73,11 +73,29 @@ export const SCANNED_ROOTS = ['folio-designer/src', 'folio-designer/scripts', 'f
 export const SCANNED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.css', '.html', '.json']
 
 /**
- * THE POPULATION FLOOR. Measured at Story 16.2: 123 tracked files under
- * `SCANNED_ROOTS` carry a scanned extension. The floor sits well under that on
- * purpose — it must catch a walk that collapsed, not fence in normal growth.
+ * THE POPULATION FLOOR, AND THE FRACTION IS STATED BECAUSE THE FRACTION IS THE
+ * WHOLE DESIGN OF IT.
+ *
+ * MEASURED AT STORY 16.2: **129** tracked files under `SCANNED_ROOTS` carry a
+ * scanned extension — the number `npm run scan:host-fonts` prints. (An earlier
+ * draft of this comment recorded 123 and set the floor at 50. That 123 was
+ * measured while this story's own six new files were still UNTRACKED, so the
+ * walk — which reads `git ls-files` — could not see them; the figure was
+ * corrected to the measurement taken over the committed tree rather than
+ * carried forward.)
+ *
+ * **86 is 2/3 of 129 (66.7%)**, deliberately the same fraction this guard's
+ * model runs: `forbidden-font-hosts.mjs` floors 400 against a measured 579-600,
+ * which is 67-69%. A floor at 50 was ~39% of the population, which means a walk
+ * that collapsed to 60 files — half the designer unread — would still have
+ * reported all-clear, and an all-clear from a scan that read half the tree is
+ * the exact failure this guard is shaped around.
+ *
+ * It is still a FLOOR and not an equality: it must catch a walk that collapsed,
+ * not fence in normal growth. Two thirds leaves room for a third of these files
+ * to be deleted before the floor is the thing that reds.
  */
-export const POPULATION_FLOOR = 50
+export const POPULATION_FLOOR = 86
 
 /** Reuses the host scan's comment blanker, because the two guards want the same asymmetry. */
 export { blankComments } from './forbidden-font-hosts.mjs'

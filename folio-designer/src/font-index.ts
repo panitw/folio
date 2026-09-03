@@ -47,8 +47,21 @@ import type { StoredFace } from './font-store'
 // over `FamilySource` reds until the new arm is handled, which is what makes
 // the hand-off a mechanism rather than a sentence in a spec.
 //
-// `AVAILABLE LOCALLY` MEANS THIS ARM AND THE LOCAL ARM — TYPEFACES THIS
-// DESIGNER HAS FETCHED OR SHIPS WITH. It never means "the fonts installed on
+// `AVAILABLE LOCALLY` IS FETCHED FACES — THIS ARM. The frozen intent contract
+// says so in those words ("`AVAILABLE LOCALLY` is fetched faces, never host
+// fonts", D-16.2), the story's plain-terms opener says it means "typefaces this
+// designer has fetched before", and the panel heading `App.tsx` renders says
+// TYPEFACES THIS DESIGNER HAS DOWNLOADED. All three agree, and this comment
+// agrees with them: it does NOT mean this arm plus the local arm.
+//
+// WHAT THE DROPDOWN GROUP OF THAT NAME ENDS UP CONTAINING IS STORY 16.4'S TO
+// DECIDE, AND IS NOT DECIDED HERE. 16.4 adds the headings that group this
+// union; 16.2 builds the union and no group at all. Whether the 31 shipped
+// local-tier faces are shown under that heading, under their own, or under
+// neither is a presentation question this module has no opinion on — it joins
+// three lists and returns them in one order.
+//
+// WHAT IS SETTLED, IN EVERY READING: it never means "the fonts installed on
 // this computer". SPEC-fonts' *"No host fonts"* Non-goal is the one clause
 // D-16.1 left standing and it is untouched: the Local Font Access API is not
 // used, referenced or feature-detected anywhere in this designer, and
@@ -160,13 +173,59 @@ export const addableFamilyCount = webFamilies.length + catalogueFaces.length
  * remains a pure join over three inputs, which is also what keeps it testable
  * without a database.
  */
+/**
+ * WHICH OF TWO STORED FACES OF ONE FAMILY IS OFFERED — A RULE, NOT AN ACCIDENT.
+ *
+ * The store is keyed by the SHA-256 of the bytes, so ONE FAMILY CAN HONESTLY
+ * HAVE MORE THAN ONE ENTRY: upstream re-cut the face between two fetches, or
+ * the author has a Regular and an Italic of it. Under AD-8 those are DIFFERENT
+ * FACES, not versions of one, and this function is `offeredFamilies` — one row
+ * per family — so exactly one of them is offered.
+ *
+ * IT USED TO BE WHICHEVER ONE CAME LAST IN `list()` ORDER, which is the store's
+ * family-then-key sort — that is, the hash, that is, arbitrary. A menu that
+ * silently hands the author one of two faces on the strength of a digest
+ * ordering is the "silent substitution" the contract forbids in the very clause
+ * that makes the key a content hash.
+ *
+ * THE RULE IS: THE MOST RECENTLY FETCHED WINS. `fetchedAt` is `YYYY-MM-DD`, so
+ * a plain string comparison is chronological. It is the right default because
+ * the newer entry is the one the author's last pick of that family actually
+ * produced, so it is the one they last saw work.
+ *
+ * TIES GO TO THE LEXICOGRAPHICALLY SMALLER KEY. Two faces fetched on the same
+ * day are common (a Regular and an Italic within one session), and the tie must
+ * break on something stable rather than on arrival order. The smaller key is
+ * also the one `font-store.ts`'s `list()` sorts FIRST within a family, so what
+ * the menu offers and what the listing shows first are the same face rather
+ * than two answers to one question.
+ *
+ * NEITHER OF THESE IS A DROPDOWN GROUP, AND 16.2 DOES NOT BUILD ONE. Offering
+ * both styles as separate rows is Story 16.4's, which owns the grouping; this
+ * story owes only a choice that is deterministic and stated.
+ */
+function mostRecentlyFetched(left: StoredFace, right: StoredFace): StoredFace {
+  if (left.fetchedAt !== right.fetchedAt) return left.fetchedAt > right.fetchedAt ? left : right
+  return left.key <= right.key ? left : right
+}
+
 export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace> = []): ReadonlyArray<FamilySource> {
   const needle = query.trim().toLowerCase()
   const hit = (family: string) => needle === '' || family.toLowerCase().includes(needle)
   // THE LOCAL TIER IS NOT DISPLACED BY THE STORE. Its record is the stronger
   // one (see the note on `FamilySource`), and it needs no network either, so
   // there is nothing to win by preferring a fetched copy of the same family.
-  const storedByFamily = new Map(stored.filter((record) => !localTierHolds(record.family)).map((record) => [record.family, record]))
+  //
+  // AND WHERE THE STORE HOLDS TWO FACES OF ONE FAMILY, WHICH ONE IS OFFERED IS
+  // CHOSEN AND WRITTEN DOWN — see `mostRecentlyFetched`. It used to be whichever
+  // `list()` happened to return last, which is the silent substitution the
+  // content-address key exists to refuse.
+  const storedByFamily = new Map<string, StoredFace>()
+  for (const record of stored) {
+    if (localTierHolds(record.family)) continue
+    const held = storedByFamily.get(record.family)
+    storedByFamily.set(record.family, held === undefined ? record : mostRecentlyFetched(held, record))
+  }
   const local: ReadonlyArray<FamilySource> = catalogueFaces.filter((face) => hit(face.family)).map((face) => ({ tier: 'local', family: face.family, face }))
   const web: FamilySource[] = []
   const offeredFromStore = new Set<string>()

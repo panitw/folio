@@ -68,8 +68,31 @@ describe('the content address the store keys by', () => {
   // `crypto.subtle`. If those ever disagreed, a store "hit" would be a hit on
   // bytes the document does not hold.
   //
-  // THE EXPECTED VALUE WAS PRODUCED BY GO ITSELF, not by this file's own
-  // reasoning, over exactly the bytes `sfntWithCopyright` builds:
+  // ⚠ THIS CONSTANT HAS A SECOND HOME, AND THAT IS WHAT MAKES IT A TIE.
+  //
+  // The Go half is `folio-go/stored_face_key_tie_test.go` — `TestStoredFaceKeyTie`,
+  // whose constant is named `storedFaceKeyTieDigest`. It rebuilds the same
+  // 110-byte fixture in Go from the same written-down sfnt layout, derives the
+  // digest with `crypto/sha256`, and asserts THE SAME 64 characters written
+  // below. That file names this one; this one names that one, so a reader who
+  // finds either finds the other.
+  //
+  // STATED PLAINLY, THE TIE IS: TWO SUITES PINNED TO ONE SHARED CONSTANT. It is
+  // not a generated fixture and not a cross-process check — it is one digest and
+  // one input, written as literals on both sides of the language boundary, each
+  // side deriving the digest by its own means (`crypto.subtle` here,
+  // `crypto/sha256` there).
+  //
+  // IT WAS NOT ALWAYS ONE. Until Story 16.2's review these characters appeared
+  // in exactly ONE place in the repository — this file — so a change to Go's
+  // derivation (`fmt.Sprintf("%x", sha256.Sum256(decoded))` in
+  // `component_commands.go`'s `embedFontFamily`) reddened Go's own tests and
+  // left this file's claim ABOUT Go standing and green. That is a transcribed
+  // literal, not a tie. Now a change on either side has to face the same
+  // constant from both.
+  //
+  // The value itself was produced by Go, over exactly the bytes
+  // `sfntWithCopyright` builds:
   //
   //   $ go run . fixture.bin
   //   71a8f6e9b586701b742afb6a357afc3f01e4a817ec26fe43a83365f6611a847f 110
@@ -77,11 +100,17 @@ describe('the content address the store keys by', () => {
   // where the program is the two lines that matter — `sha256.Sum256(data)`
   // printed with `%x` — and `fixture.bin` is this fixture's 110 bytes written
   // out unchanged. Recorded as a literal on purpose: a value recomputed here by
-  // the same method it is checking would be checking nothing.
+  // the same method it is checking would be checking nothing. NEITHER COPY MAY
+  // BE ADJUSTED to make the other pass; a disagreement means one of the two
+  // addressings moved, and the job is to find out which.
   const goDerivedAssetKey = '71a8f6e9b586701b742afb6a357afc3f01e4a817ec26fe43a83365f6611a847f'
 
   it('computes the same key Go derives for the same bytes', async () => {
-    expect(face.byteLength, 'the fixture moved; the Go-derived digest below must be re-derived, not adjusted').toBe(110)
+    // THE BYTE-LENGTH GUARD, which `folio-go/stored_face_key_tie_test.go`
+    // carries too: a digest over unknown bytes says nothing, so if the fixture
+    // moves this reds first and both halves must be re-derived over the new
+    // bytes.
+    expect(face.byteLength, 'the fixture moved; the Go-derived digest below must be re-derived on BOTH sides (see folio-go/stored_face_key_tie_test.go), not adjusted').toBe(110)
     expect(await storedFaceKey(face)).toBe(goDerivedAssetKey)
   })
 
@@ -183,7 +212,22 @@ describe('the store round trip', () => {
 describe('storage that cannot be opened or written', () => {
   // A PRIVATE WINDOW, CLEARED SITE DATA, STORAGE BLOCKED. The designer keeps
   // working and says what is degraded; nothing throws into the pick path.
+  //
+  // ⚠ AND THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED, because passing
+  // `undefined` does NOT bypass the default — it TRIGGERS it. The signature is
+  // `factory: IDBFactory | undefined = globalThis.indexedDB`, so the argument
+  // below selects `globalThis.indexedDB`, and this test exercises "the
+  // environment has no IndexedDB" only for as long as that is true of this
+  // file's environment. It is true today (measured at the build gate: jsdom
+  // 28.1.0 provides none), and it is a property of the ENVIRONMENT rather than
+  // of anything this test controls.
+  //
+  // So it is stated. The day a global fake is installed in this file — a
+  // `setupFiles` entry, an import with a side effect — this test would
+  // otherwise stop testing what its name says while staying green. Now it reds,
+  // and it reds with the reason written next to it.
   it('degrades with a stated reason when the environment has no IndexedDB at all', async () => {
+    expect(globalThis.indexedDB, 'this test asserts the no-IndexedDB path by letting the default parameter resolve; if a global IndexedDB has been installed in this file, the default no longer selects nothing and this test must be given an explicit absent factory instead').toBeUndefined()
     const opened = await openFontStore(undefined)
     expect(opened.ok).toBe(false)
     if (opened.ok) return

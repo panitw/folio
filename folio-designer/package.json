@@ -18,7 +18,7 @@
     "scan:font-hosts": "node scripts/forbidden-font-hosts.mjs",
     "scan:host-fonts": "node scripts/host-font-access.mjs",
     "refresh:font-index": "node scripts/build-font-index.mjs --refresh",
-    "build": "npm run scan:font-hosts && npm run build:wasm && tsc -b && vite build && npm run build:offline && npm run verify:offline",
+    "build": "npm run scan:font-hosts && npm run scan:host-fonts && npm run build:wasm && tsc -b && vite build && npm run build:offline && npm run verify:offline",
     "typecheck": "npm run build:wasm && tsc -b",
     "lint": "oxlint",
     "test": "npm run build:wasm && vitest run",

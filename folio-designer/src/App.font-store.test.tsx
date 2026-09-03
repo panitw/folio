@@ -4,6 +4,8 @@ import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 import App from './App'
 import type { EngineClient } from './engine-client'
 import { sfntWithNames } from './test/sfnt-fixture'
+import { embeddedFaceFamily } from './embedded-face-family'
+import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
 
 // STORY 16.2 AT THE BROWSER BOUNDARY — A FETCHED FACE STAYS ON THIS MACHINE.
 //
@@ -41,6 +43,55 @@ const upstreamFetch = () => vi.fn(async (url: string) => {
 })
 
 const timeoutError = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+
+// The page font set jsdom does not implement, installed for the one test that
+// needs to watch a face reach it. Written the way `App.test.tsx` writes it —
+// with neither of the two spellings `canvas-authority-contract.test.ts`
+// forbids, so this file needs no carve-out from that contract.
+function installStubFontSet(): Readonly<{ restore: () => void; added: string[] }> {
+  class StubFace {
+    readonly family: string
+    constructor(family: string) { this.family = family }
+    load(): Promise<StubFace> { return Promise.resolve(this) }
+  }
+  const added: string[] = []
+  const set = { add: (loaded: StubFace) => { added.push(loaded.family); return undefined }, delete: () => undefined }
+  Object.defineProperty(globalThis, 'FontFace', { value: StubFace, configurable: true, writable: true })
+  Object.defineProperty(document, 'fonts', { value: set, configurable: true, writable: true })
+  return { restore: () => { Reflect.deleteProperty(globalThis, 'FontFace'); Reflect.deleteProperty(document, 'fonts') }, added }
+}
+
+/**
+ * A DOCUMENT THAT PAINTS A FACE IT DOES NOT CARRY.
+ *
+ * The chain declares one SHIPPED face and no carried entry, so
+ * `carriedFaceKeys` — which reads `fontChains[].entries[].assetKey` — is empty
+ * and the document-scoped registration has nothing to do. The projection still
+ * attributes the fragment to `key`, so the only set that can supply a family
+ * for it is the machine store's.
+ */
+const storedOnlyFaceCanvas = (key: string) => ({
+  ...canvas,
+  fontFamilies: ['body'],
+  fontChains: [{ name: 'body', entries: [face('Noto Sans')] }],
+  components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'ignored', textPaint: { overflow: false, truncated: false, lines: [{ top: 0, baseline: 12_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] } }],
+})
+
+/** One complete stored record over `bytes`, written straight into the store before the designer opens it. */
+const storedOnly = (key: string, bytes: ArrayBuffer): StoredFaceRecord => ({
+  key,
+  family: 'A Machine Face',
+  style: 'Regular',
+  licence: 'OFL-1.1',
+  licenceText: kanitLicence,
+  copyright: 'Copyright 2026 A Face Only This Machine Has',
+  source: 'google/fonts — ofl/amachineface/AMachineFace-Regular.ttf, fetched 2026-09-03',
+  mediaType: 'font/ttf',
+  scripts: ['latin'],
+  fetchedAt: '2026-09-03',
+  byteLength: bytes.byteLength,
+  bytes,
+})
 
 let restoreFetch: typeof globalThis.fetch
 let restoreIndexedDB: PropertyDescriptor | undefined
@@ -194,6 +245,66 @@ describe('a fetched face stays on this machine', () => {
     await waitFor(() => expect(embedPayloads(request)).toHaveLength(1))
     expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
   })
+
+  // THE MACHINE-SCOPED PREVIEW REGISTRATION, PINNED IN BOTH DIRECTIONS.
+  //
+  // `App.tsx` keeps TWO registrations — the document's carried faces and this
+  // machine's stored faces — and unions them into `paintableFaces`, which is
+  // what the canvas is given. Until this test, that union was worth nothing to
+  // any assertion: a reviewer mutation-proved it by handing the canvas
+  // `carriedFaces` instead of `paintableFaces` at BOTH call sites, and the
+  // whole suite stayed green. The one machine-scoped registration in the
+  // application had no test at all.
+  //
+  // THE FIXTURE IS THE ASSERTION. The document declares ONE chain entry, a
+  // shipped face, so it carries no face of its own and `carriedFaces` is empty
+  // for the life of this test. The store holds one face, and the projection
+  // attributes its fragment to that face's asset key. So the fragment can only
+  // acquire a family if the set the canvas is given is LARGER than the set the
+  // document carries — which is the exact property the mutation removes.
+  //
+  // Neither registration is asked to do the other's job: nothing here goes
+  // through the engine's `asset` operation, and the assertion below that the
+  // engine was never asked for one is what says so.
+  it('registers a face this machine holds but this document does not carry, and paints with it', async () => {
+    const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2026 A Face Only This Machine Has' }])
+    const key = await storedFaceKey(bytes)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put(storedOnly(key, bytes))
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
+    const fontSet = installStubFontSet()
+    try {
+      // Every `asset` request is recorded, because the assertion at the end of
+      // this test is that there were NONE: the document carries no face, so the
+      // document-scoped registration has nothing to ask the engine for.
+      const assetRequests: string[] = []
+      const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+        if (operation === 'asset') assetRequests.push(new TextDecoder().decode(payload))
+        return { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: storedOnlyFaceCanvas(key) } }
+      })
+      const view = render(<App engine={engine(request)} blankBytes={new Uint8Array([1, 2, 3]).buffer} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: storedOnlyFaceCanvas(key) }} />)
+      // THE POSITIVE SETTLE CONDITION, so what follows is read on a chain that
+      // has actually reached the machine registration rather than on a race:
+      // the face is in the page's font set, under the family derived from the
+      // content address, and exactly once.
+      await waitFor(() => expect(fontSet.added).toEqual([embeddedFaceFamily(key)]))
+      // AND IT REACHED THE CANVAS. This is the assertion the mutation reds: with
+      // `carriedFaces` passed instead of `paintableFaces` the fragment keeps the
+      // stylesheet's declared stack and this stays `''` forever.
+      const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+      expect(painted().length).toBe(1)
+      await waitFor(() => expect(painted()[0]!.style.fontFamily, 'a face held only by the machine store must still reach the canvas').toBe(embeddedFaceFamily(key)))
+      // THE DOCUMENT CARRIED NOTHING, which is what makes the line above a
+      // claim about the machine registration and not about the document one.
+      // The document-scoped effect asks the ENGINE for bytes; it was never
+      // asked, because the document declares no carried entry.
+      expect(assetRequests, 'the document carries no face, so the engine must never be asked for one').toEqual([])
+    } finally {
+      fontSet.restore()
+    }
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,9 +340,13 @@ describe('a pick that stalls rather than failing', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toMatch(/stopped responding/)
     expect(alert.textContent).toMatch(/waited 30 seconds/)
-    // AND IT IS NOT THE OFFLINE SENTENCE, which would be false here: the
-    // network is up and the host is hanging.
+    // AND IT IS NOT THE OFFLINE SENTENCE, which this designer has no ground to
+    // say: a timeout does not establish that the network is down.
     expect(alert.textContent).not.toMatch(/without a network connection/)
+    // NOR THE OPPOSITE CLAIM, which it has no ground for either. A timeout
+    // cannot know the network is reachable — the same abort fires on a
+    // blackholed link, a hanging DNS lookup and a connection merely too slow.
+    expect(alert.textContent, 'a timeout cannot diagnose the network in either direction').not.toMatch(/network is reachable/i)
   })
 
   // (b) THE SECOND CARRIER — the instance D-16.R.15 predicted. The hold is

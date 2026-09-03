@@ -167,8 +167,13 @@ export type FontStore = Readonly<{
  * bounds and admits the bytes that reach `assets` (D-5.13.1/D-5.13.3), and this
  * changes none of that. What this hashes is the store's own address for its own
  * shelf, and it must agree with Go's exactly or the two addressings drift and
- * a hit would be a hit on the wrong bytes. `src/font-store.test.ts` asserts the
- * agreement against a digest Go itself produced.
+ * a hit would be a hit on the wrong bytes.
+ *
+ * THE AGREEMENT IS PINNED FROM BOTH SIDES, not asserted from this one.
+ * `src/font-store.test.ts` and `folio-go/stored_face_key_tie_test.go`
+ * (`TestStoredFaceKeyTie`) write out the SAME digest over the SAME 110-byte
+ * fixture and each derive it by their own means — two suites pinned to one
+ * shared constant. Each file's comment names the other.
  *
  * `crypto.subtle` is available in every browser this designer supports and in
  * the test environment (measured at the build gate: jsdom 28.1.0 provides
@@ -322,6 +327,21 @@ function fontStoreOver(database: IDBDatabase): FontStore {
       try {
         const transaction = database.transaction([faceStoreName, byteStoreName], mode)
         const done = settled(transaction)
+        // ⚠ `done` IS OBSERVED THE MOMENT IT EXISTS, NOT ONLY ON THE PATH THAT
+        // AWAITS IT.
+        //
+        // `work` can throw — a request rejecting is the ordinary quota case —
+        // and when it does, control leaves for the `catch` below and `done` is
+        // NEVER AWAITED. The transaction then aborts, `done` rejects, and a
+        // rejected promise with no handler is an unhandled rejection: noise in
+        // a console the author reads, and a process-level failure in some test
+        // runners, over a condition this module has already handled correctly
+        // and reported as an outcome.
+        //
+        // A no-op handler attached HERE, at creation, settles that for every
+        // path at once. It does not swallow anything: `await done` below still
+        // sees the same rejection and still turns it into a failed outcome.
+        void done.catch(() => undefined)
         const value = await work(transaction)
         await done
         return succeeded(value)

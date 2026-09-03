@@ -368,9 +368,25 @@ const isAbort = (error: unknown): boolean => {
  * stall hides it (Story 16.0's `Never:` clause), so this designer does not
  * retry — and says so, because "it took 30 seconds and gave up" reads as a
  * failure to try hard enough unless the decision is visible.
+ *
+ * ⚠ AND IT SAYS ONLY WHAT A TIMEOUT KNOWS, WHICH IS LESS THAN IT IS TEMPTING TO
+ * SAY. An earlier wording claimed "your network is reachable — the font host is
+ * not answering". A timeout cannot know either half. The same abort fires when
+ * the network is DOWN and the packets are being blackholed rather than refused
+ * — the captive-portal case this story cites as its own trigger — when DNS
+ * hangs, and on a link simply too slow to move a 24 MB face in 30 s. Asserting
+ * a healthy network is the SAME class of false statement this refusal exists to
+ * avoid, failing in the other direction: the offline wording sends the author
+ * to check wifi that is fine, and this one told them not to check wifi that is
+ * not.
+ *
+ * What is known is exactly this: the request was started and did not finish
+ * inside the budget. So that is what it says, and it stays clearly distinct
+ * from the offline refusal — which claims, as it may, that a request could not
+ * be MADE at all.
  */
 const stalledRefusal = (family: string, stage: string): string =>
-  `${family} stopped responding while ${stage}: the designer waited ${fetchTimeoutMs / 1000} seconds and then stopped. Your network is reachable — the font host is not answering — and nothing was retried automatically, because retrying over a stall that repeats only hides it. Try the pick again if you like; the faces this machine already holds are still offered.`
+  `${family} stopped responding while ${stage}: the designer waited ${fetchTimeoutMs / 1000} seconds for a reply that never finished arriving, and then stopped. The request was made and did not complete in time — from here this designer cannot tell whether the font host is hanging, whether something between here and it is, or whether the connection is simply too slow for this face — and nothing was retried automatically, because retrying over a stall that repeats only hides it. Try the pick again if you like; the faces this machine already holds are still offered.`
 
 const refuse = (reason: string, classification?: LicenceClassification): FetchOutcome => ({ ok: false, reason, classification })
 

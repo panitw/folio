@@ -4,13 +4,19 @@ type: 'feature'
 created: '2026-09-02'
 status: 'in-review'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
 context:
   - '{project-root}/_bmad-output/specs/spec-fonts/SPEC.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-8-15-decision-log.md'
 warnings: []
-deferred: []
+deferred:
+  - 'DW-171 — the designer CI job stops at npm run test, so six later steps have never run'
+  - 'DW-172 — the local-tier pick fetches inside the pick hold with no timeout'
+  - 'DW-173 — the store never closes its connection and answers no onversionchange'
+  - 'DW-174 — get() re-hashes every face, and the preview registration re-reads all stored faces per store mutation'
+  - 'DW-175 — bytes can outlive the face record that names them'
+  - 'DW-176 — real browser IndexedDB has no witness; ruled to Story 16.3 as its fourth case'
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -245,8 +251,17 @@ because a wrong line number still reads as a right one.
   Measured and independently confirmed three ways: the probe catch at `font-source.ts:281-283`, the
   byte catch at `:339-341` and `readText`'s catch at `:381` each `return` a refusal, and the probe
   loop's only `continue` is on a **404**, which an abort never produces. So a stall ends the whole
-  chain at the first timeout. **The worst-case hold is therefore T plus the requests that already
-  completed — roughly T + 3 s, not 6 x T.** State that number, and its derivation, in the Delivery Log.
+  chain at the first timeout. **The STALL bound is therefore T plus the requests that already
+  completed — roughly T + 3 s.** State that number, and its derivation, in the Delivery Log.
+  - **AND THE QUALIFIER IS PART OF THE CLAIM, ADDED AT REVIEW (2026-09-03).** `T + completed` is the
+    bound on a **STALL**, and only on a stall, because the chain terminates on the first abort. It is
+    **not** the general worst case. `AbortSignal.timeout` is armed **per request**, so a host that is
+    slow but ALIVE — every request answering just under T — is aborted by nothing, and the chain can
+    hold for up to **n x T**, where n is the number of requests the pick makes. That is not an
+    oversight: **no chain deadline was added, deliberately and by ruling**, so `n x T` is the accepted
+    slow-but-alive bound and the ruling stands with the number stated rather than implied. The bullet
+    originally said "not 6 x T" flat; that reading is true of the stall and false in general, and an
+    unqualified worst-case claim is exactly the kind of statement this spec refuses elsewhere.
   - A deferral with a trigger is the wrong instrument for a property that can simply be asserted: a
     note ages, an assertion reds. **Add one table-driven test that the chain terminates on the first
     abort** — an injected fetcher that aborts on request *N* produces a stated refusal, for *N* across
@@ -326,9 +341,14 @@ should not imply more than that.
   a gate that never fired.** `npm test` exits **1** at baseline on the DW-152 red
   (`src/canvas-authority-contract.test.ts:190`), so the `&&` short-circuits and the build has been
   silently not-measured for as long as that red has existed. Two lines, two reported results.
-- `cd folio-designer && npm run typecheck && npm run lint && npm run scan:font-hosts` — the lint
-  warning count and rule are the invariant (expect exactly 4 `only-export-components`); the line
-  numbers never are.
+- `cd folio-designer && npm run typecheck && npm run lint && npm run scan:font-hosts && npm run
+  scan:host-fonts` — the lint warning count and rule are the invariant (expect exactly 4
+  `only-export-components`); the line numbers never are.
+  **`scan:host-fonts` was added to this list at review (2026-09-03), and to the `build` script beside
+  `scan:font-hosts`.** The host-font guard shipped defined in `package.json` and wired into nothing:
+  `build` ran only its model, `scan:font-hosts`. A guard nothing runs is a guard that is not running,
+  and this one was in fact RED at the time it was reported green — see the Delivery Log's corrected
+  table. It now fails the build, which is the same standing its model has.
 - `cd lint && go run ./cmd/genmanifest` (required — a devDependency is being added), then
   `cd lint && go test -count=1 ./...`
 - `cd folio-go && go test -count=1 ./...`
@@ -356,8 +376,19 @@ Story 16.2 entered its build dispatch at `status: ready-for-dev` with CHECKPOINT
 the `<intent-contract>` (lines 30-105) frozen. Two forks were raised as Open Questions **before**
 implementation, because both change the shape of the code and the step-03 handoff is verbatim — the
 spec is the implementer's sole source of truth, so a ruling that is not written here does not reach it.
-Every edit in this entry is at line >= 106; the frozen block was not edited, and the check is the
-diff-hunk one, not a digest.
+**The frozen block was not edited, and the check IS a digest** (restated at review, 2026-09-03; the
+original wording of this sentence was "every edit in this entry is at line >= 106 … and the check is
+the diff-hunk one, not a digest", and that line claim was not true of the commit this entry shipped
+in). The `<intent-contract>` block — its two delimiter lines included, which is lines 39-114 of this
+file — is **byte-identical** before and after, sha256
+`193937cf232c65708ceca9b5a9a99779f170b28128f90437c918da300e63ce4a`, verified over `a378acd` (the last
+commit before this entry existed) and `2a0c92a` (the commit that added it), and the same digest holds
+back at `0e3b576`. That is the claim worth making, and it is stronger than the line-number one.
+
+The line claim itself was wrong: the commit that carried this entry also changed the frontmatter
+`status` at **line 5** (`ready-for-dev` → `in-review`) and rewrote the plain-terms opener at roughly
+**lines 18-41** — both below 106, and both correctly outside the frozen block. Nothing about the
+rulings below changes; only the sentence describing what was verified.
 
 **Rulings already carried into this spec at dispatch and NOT re-opened:** D-16.R.33 **R1** (the store's
 listing joins `FamilySource` as a third `'stored'` arm and the seam is built HERE, not left to 16.4;
@@ -413,8 +444,12 @@ existed**. Split into two commands, each reported separately.
 `folio-designer` `npm test` → **48 files / 529 tests, 1 failing**, that failure being DW-152 at
 `src/canvas-authority-contract.test.ts:190` with the received array exactly
 `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. Note `baseline_commit` in the
-frontmatter remains the planning-time `a40c34d` per the workflow's preserve rule; the commit this story
-was actually built on is `3c45993`.
+frontmatter remains the planning-time `a40c34d` per the workflow's preserve rule; **`3c45993` is where
+these pre-implementation baseline suites were measured, and is not the commit the story was built on —
+that is `227befe`, as the Delivery Log records** (corrected at review, 2026-09-03: this sentence used
+to say "the commit this story was actually built on is `3c45993`", which contradicted the Delivery Log
+two sections below. Three commits are in play and each has one job: `a40c34d` planned it, `3c45993`
+measured its baseline, `227befe` built it).
 
 ## Delivery Log
 
@@ -457,17 +492,48 @@ is at the module root as the spec's correction says, with `embedFontFamily` at `
 **Verification, each command run on its own and reported separately** (the previous single
 `npm run test && npm run build` line was a gate that never fired):
 
+⚠ **THIS TABLE WAS WRONG WHEN IT WAS WRITTEN, AND WHY IS WORTH MORE THAN THE NUMBERS.** It is
+reproduced below in its corrected form, re-measured command by command at review (2026-09-03) after the
+review patches landed. Two of its rows had been false at the time they were recorded:
+
+- It reported `npm run test` as **1 failing**. The true figure at the commit it describes was **2**, and
+  the second failure was **this story's own guard**, `src/host-font-access.test.ts:68`, red against
+  itself: the positive control at `:89` wrote `queryLocalFonts` whole in an expected value, and the
+  whole-tree scan — which reads RAW source and which does read its own test file — found it. Lines 82
+  and 85 of the same file split that spelling deliberately; line 89 was missed. The story's central
+  red-provable assertion was therefore shipped RED, reported GREEN.
+- It reported `scan:host-fonts` as 0 occurrences in **123** files. The real population is **129**, and
+  at the time the command **exited 1**.
+
+**THE MEASUREMENT-ORDER TRAP, RECORDED FOR THE NEXT STORY.** Both wrong numbers have one cause: the
+figures were taken while this story's own six new files were still **untracked**. Both scans enumerate
+`git ls-files`, so `font-store.ts`, `App.font-store.test.tsx` and the scanner's own test were invisible
+to a scan run before `git add` — the population was six files short, and the file carrying the
+violation had not been read. A scan whose population comes from the index measures the INDEX, not the
+working tree. **Run the tracked-file gates after staging, or the green they report is a green over a
+smaller repository than the one being shipped.** The same trap is what made `123` and `1 failing` agree
+with each other and with nothing else.
+
+Re-measured, each command run on its own (the previous single `npm run test && npm run build` line was
+a gate that never fired):
+
 | Command | Result |
 |---|---|
-| `cd folio-designer && npm run test` | **51 files / 579 tests, 1 failing** — the pre-existing DW-152 red at `src/canvas-authority-contract.test.ts:190`, received array exactly `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. Baseline was 48 / 529 / same 1 failure. |
-| `cd folio-designer && npm run build` | **Green.** `verify:offline` passed. |
-| `cd folio-designer && npm run typecheck` | Clean. |
-| `cd folio-designer && npm run lint` | **Exactly 4 `only-export-components` warnings**, the invariant. |
-| `cd folio-designer && npm run scan:font-hosts` | 0 occurrences in **600** tracked source files (floor 400). |
-| `cd folio-designer && npm run scan:host-fonts` | 0 occurrences of 4 spellings in **123** files (floor 50). |
-| `cd lint && go run ./cmd/genmanifest` then `go test -count=1 ./...` | Regenerated (**one row added**), all 4 packages green. |
-| `cd folio-go && go test -count=1 ./...` | **Only the two mandated permanent reds** — `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`, `got 7, need >=20`. The 23 golden digests unmoved. |
-| `cd folio-designer && npm run test:e2e:compile` | Clean. |
+| `cd folio-designer && npm run test` | **51 files / 584 tests, 1 failing** — the pre-existing DW-152 red at `src/canvas-authority-contract.test.ts:190`, received array exactly `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`, which is **not this story's** and is not fixed here. It is now the ONLY failure. As shipped it was **579 tests, 2 failing** — DW-152 plus this story's own `src/host-font-access.test.ts:68`. Pre-implementation baseline was 48 / 529 / the same single DW-152 failure. |
+| `cd folio-designer && npm run build` | **Green**, exit 0. `verify:offline` passed. `build` now runs `scan:host-fonts` beside `scan:font-hosts`; it previously ran only the latter, so the new guard was wired into nothing. |
+| `cd folio-designer && npm run typecheck` | Clean, exit 0. |
+| `cd folio-designer && npm run lint` | Exit 0, **exactly 4 `only-export-components` warnings**, the invariant — `src/preview/pdf-viewer.tsx` x2 and `src/App.tsx` x2. |
+| `cd folio-designer && npm run scan:font-hosts` | Exit 0. 0 occurrences in **606** tracked source files (floor 400). |
+| `cd folio-designer && npm run scan:host-fonts` | Exit 0. 0 occurrences of 4 spellings in **129** files (floor **86**, raised from 50 — see below). |
+| `cd lint && go run ./cmd/genmanifest` then `cd lint && go test -count=1 ./...` | Regenerated; **`MANIFEST.md` is unchanged by this review** (it records licences and dependencies, and a new `_test.go` file adds no row — the "one row added" in the original entry was `fake-indexeddb`, already committed). All 4 packages green. |
+| `cd folio-go && go test -count=1 ./...` | **Only the two mandated permanent reds** — `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`, `got 7, need >=20`. Every other package green, including the new `TestStoredFaceKeyTie`. The 23 golden digests under `fixtures/*/expected.pdf` are unmoved (`git status` reports no change under `fixtures/`). |
+| `cd folio-designer && npm run test:e2e:compile` | Clean, exit 0. |
+
+**The population floor was raised with the corrected number.** `POPULATION_FLOOR` was 50 against a real
+population of 129 — about 39%, so a walk that collapsed to 60 files would still have reported
+all-clear. It is now **86, two thirds of 129**, the same fraction this guard's model runs
+(`forbidden-font-hosts.mjs`: 400 against 579-606, 67-69%). The fraction is written into the comment,
+along with the note that the original 123 was measured over an untracked tree.
 
 **`maximumCacheAssets` is still 64, and the measured `s1.assetCount` after the build is 54** — margin
 10 of 64, exactly where DW-162 left it. The store consumed no cache slot, which is the assertion half
@@ -492,11 +558,31 @@ in kind — this connection is faster today — and neither loosens nor tightens
 `2,097 x 10 = 20,970 <= 30,000`. The constant carries the arithmetic, the x10 factor, and the sample's
 own limit (one connection, one day, five repetitions).
 
-**The worst-case hold, with its derivation, as the spec requires it stated.** A stall ends the chain at
+**The STALL hold, with its derivation, as the spec requires it stated.** A stall ends the chain at
 the **first** abort, so the hold is **T plus the requests that already completed**. The longest such
 prefix is the byte read: four probes at most (max observed 359 ms each) plus the licence read (275 ms),
 so **30,000 + (4 x 359) + 275 = 31,711 ms, i.e. about T + 1.7 s** on this measurement — and T + 3 s
-using the gate's slower sample. **Not 6 x T**, which the superseded text asserted.
+using the gate's slower sample.
+
+**AND THAT DERIVATION IS TRUE OF A STALL ONLY, WHICH THE ORIGINAL ENTRY DID NOT SAY** (corrected at
+review, 2026-09-03; the derivation itself is unchanged and was re-checked, only the scope of the claim
+was wrong). The entry ended "**Not 6 x T**" flat. That is right for a stall and wrong in general.
+`AbortSignal.timeout` is armed **per request**, not once for the chain, so a host that is **slow but
+alive** — every request answering just under T — never aborts anything, and a pick making n requests
+can hold the control for up to **n x T**. There is no chain deadline to stop it.
+
+**That is a ruling, not a gap.** No chain deadline was added, deliberately (Q1(3) in the Spec Change
+Log below, which records the same ruling and whose "not 6 x T" is likewise the stall reading). So the
+two bounds, both stated:
+
+| Case | Bound | Why |
+|---|---|---|
+| The host **stalls** (nothing answers) | **T + the requests already completed** — measured 31,711 ms, about T + 1.7 s | The first abort `return`s a refusal from every catch; the loop's only `continue` is on a 404, which an abort never produces. Asserted by the table-driven first-abort test, not assumed. |
+| The host is **slow but alive** (each request answers just under T) | **up to n x T** | The signal is per request, so nothing aborts. No chain deadline exists, by ruling. |
+
+The stall is the case this story exists for, and it is the one the timeout bounds tightly. The
+slow-but-alive case is bounded only by the ruling's own choice, and saying so is the honest form of the
+claim.
 
 **Red-proofs run, each by reinstating or deleting the guard rather than weakening an assertion.**
 
@@ -550,6 +636,23 @@ Two prose mentions of the API in `App.tsx` and `font-index.ts` were reworded to 
 than the API, which is the same convention the repository already holds for font hosts. **The
 prohibition is not weakened anywhere else.**
 
+**⚠ AND THE EXEMPTION AS SHIPPED WAS FAR WIDER THAN THAT ARGUMENT — NARROWED AT REVIEW (2026-09-03).**
+It returned early on the filename, which dropped the **whole** prohibition for that module: not only
+`indexedDB` but `localStorage`, `sessionStorage`, `caches.open`, `showDirectoryPicker`,
+`navigator.storage.getDirectory` and the entire `cloud|sync|recent files|collaborator|account` fiction
+half. That is exactly backwards here. The intent contract's `Never:` clause names `localStorage` and
+names it **at this module** ("Never: … store in `localStorage`"), so the one module the contract most
+explicitly forbids it in had become the one module where it was unguarded. The exemption existed only
+because D-16.2 **mandates** that this module write the `localStorage` refusal arithmetic into its own
+prose, which a raw-text scan cannot tell from a use. It is now narrowed to exactly that: the exempt
+file is scanned like every other, over a source with **comments blanked** (the idiom
+`canvas-authority-contract.test.ts` already uses, so the mandated arithmetic is invisible) and the
+single spelling `indexedDB` removed. Every other prohibition applies to `font-store.ts` again, and a
+**mutation proof** asserts it rather than the comment claiming it: a synthetic `font-store.ts` carrying
+`localStorage.setItem(…)` in CODE is reported under its own name, as are the other five prohibitions
+and the fiction half, while the same words in a comment are not — and `globalThis.indexedDB` in any
+OTHER file still is. Red-proved by restoring the whole-file skip, which reds that test.
+
 **This discharges DW-165**, closed in `deferred-work.md` with the measured number, the arithmetic, the
 worst-case hold and its derivation — not merely marked done.
 
@@ -567,3 +670,96 @@ stored face's bytes once per session, so an author who has fetched many large fa
 at start-up. The store grows by one face per newly-picked family, so this is a handful of megabytes in
 practice; the cost is written at the effect. If Story 16.3's browser run finds it material, the fix is
 to register lazily from the browser dialog rather than eagerly from the listing.
+
+### 2026-09-03 — review patches applied
+
+Fifteen findings from a four-layer review, applied on `main` at `2a0c92a`. Nothing pushed, no branch
+created, `<intent-contract>` byte-untouched (sha256 `193937cf232c65708ceca9b5a9a99779f170b28128f90437c918da300e63ce4a`
+over lines 39-114 inclusive, unchanged). The verification table above is re-measured from these, and
+the two corrections it carries — the second test failure and the scan population — are recorded there
+with the measurement-order trap that produced them.
+
+**The four that were red-proved by re-making the defect, not by argument.**
+
+1. **The story's own host-font guard was RED against itself.** `src/host-font-access.test.ts:89` spelled
+   the forbidden API whole in an expected value, and the whole-tree scan reads raw source and reads its
+   own file. Split, the way lines 82 and 85 of that file already do. **Not** fixed by excluding the test
+   file from the walk: a guard that does not read itself is a guard nobody is holding, so a new case
+   asserts `scannedPopulation` **contains** `folio-designer/src/host-font-access.test.ts` and the
+   scanner beside it. *Proof:* writing the spelling whole again reds the population test; excluding the
+   file from the walk reds the new one.
+2. **The durable-state exemption was a whole-file skip.** Narrowed to comments-blanked plus the single
+   `indexedDB` spelling, with a mutation proof. *Proof:* restoring the early return on the filename reds
+   the mutation proof. (Full argument in the paragraph above.)
+3. **Two stored faces of one family collapsed arbitrarily.** `offeredFamilies` built a `Map` from the
+   listing, so the LAST record in `list()` order — that is, hash order — silently won. Now
+   `mostRecentlyFetched`: the greater `fetchedAt` (a `YYYY-MM-DD` string, so plain comparison is
+   chronological), ties to the lexicographically smaller `key`, which is also the face `list()` sorts
+   first within a family, so the menu and the listing agree. Two tests, each run in **both** arrival
+   orders; the newer face is deliberately given the SMALLER key so a rule that was really sorting by key
+   reds. **No new dropdown group** — presenting both styles is Story 16.4's. *Proof:* restoring the
+   one-line `Map` build reds both.
+4. **The machine-scoped preview registration was pinned by nothing.** A reviewer mutation-proved it:
+   replacing `carriedFaces={paintableFaces}` with `carriedFaces={carriedFaces}` at both canvas call
+   sites left the whole suite green, so the one machine-scoped registration in the application had no
+   test. Added one: a document declaring only a shipped face (so `carriedFaces` is empty and the engine
+   is never asked for an asset) whose projection attributes a fragment to a face **only the store
+   holds** — the fragment can acquire a family only if the set the canvas is given is larger than the
+   set the document carries. *Proof:* that exact swap at both sites reds it, on the exact assertion
+   (`expected '' to be 'folio-carried-9b689b36…'`).
+
+**The rest.**
+
+- **`scan:host-fonts` was wired into nothing.** Added to `build` beside `scan:font-hosts` (its model was
+  already there) and to `## Verification`. Done only after (1), or it would have broken the build.
+- **The stall message asserted what the code cannot know.** It said "Your network is reachable — the
+  font host is not answering". A timeout knows neither half: the same abort fires on a blackholed link
+  (the captive portal this story cites as its own trigger), on a hanging DNS lookup, and on a
+  connection merely too slow for a 24 MB face. That is the same class of false statement the story
+  rightly refuses the offline wording for, failing in the other direction. It now says only that the
+  request was made and did not complete in time, and names the three things it cannot distinguish
+  between. Two tests now assert in **opposite** directions — not the offline sentence, and not a claim
+  the network is fine.
+- **The Go/browser key agreement was a transcribed literal, not a tie.** The digest appeared in exactly
+  one designer test file; changing Go's derivation reddened Go and left that claim green. Added
+  `folio-go/stored_face_key_tie_test.go` in the package that owns `embedFontFamily`: it rebuilds the
+  same 110-byte fixture from the same written-down sfnt layout, derives the digest two ways
+  (`sha256.Sum256`+`%x`, and the streaming API with `encoding/hex`), and asserts the **same constant**.
+  Each file's comment names the other by path and symbol. The byte-length guard is kept on both sides,
+  each saying the digest must be **re-derived, not adjusted**. Stated plainly in both: the tie is **two
+  suites pinned to one shared constant**. A second Go test drives the real `embedFontFamily` over a real
+  committed face and asserts the document is keyed by that same derivation, so the constant is tied to
+  the code path and not only to itself.
+- **Unobserved transaction rejection.** In `font-store.ts`'s `transact`, `settled(transaction)` was
+  created before `await work(transaction)`; a rejecting request threw out of `work`, the `catch`
+  returned a failed outcome, and the transaction promise then rejected with no handler. A no-op
+  `catch` is now attached at creation. `await done` still sees the same rejection and still turns it
+  into a failed outcome — nothing is swallowed.
+- **A test whose name did not match what it exercised.** `openFontStore(undefined)` **triggers** the
+  default parameter (`= globalThis.indexedDB`) rather than bypassing it, so the test named "the
+  environment has no IndexedDB at all" was really exercising `globalThis.indexedDB` and passed only
+  because that file's environment happens to have none. It now asserts that as a stated precondition,
+  so the day a global fake is installed in that file it reds and says why.
+- **A comment contradicted the frozen contract.** `font-index.ts` said `AVAILABLE LOCALLY` "means this
+  arm and the local arm". The frozen block says it is "fetched faces, never host fonts"; the
+  plain-terms opener says "typefaces this designer has fetched before"; the panel heading says
+  TYPEFACES THIS DESIGNER HAS DOWNLOADED. The comment now agrees with all three, and records that what
+  the dropdown group of that name ends up containing is **Story 16.4's to decide**. The panel heading is
+  untouched.
+- **The worst-case-hold claim was true only of a stall and was stated flat.** Qualified in both places
+  it appears (see the two-row table above and the `## Tasks & Acceptance` bullet): `T + completed` is
+  the **stall** bound; the slow-but-alive bound is **n x T**, by the deliberate ruling that added no
+  chain deadline. The derivation is unchanged and was re-checked; only the scope of the claim was wrong.
+- **The population floor was weak.** 50 against 129 (~39%) → **86** (two thirds, the fraction the model
+  runs), with the fraction and its reason in the comment.
+- **Two inaccurate claims in the Spec Change Log**, corrected in place with the substance kept: the
+  frozen-block check is a **digest** (`193937cf…`, lines 39-114 inclusive, verified at `0e3b576`,
+  `a378acd` and `2a0c92a`) and not the line-number claim the entry made — the commit it shipped in also
+  changed the frontmatter `status` at line 5 and rewrote the opener at roughly lines 18-41, both below
+  106 and both correctly outside the block; and `3c45993` is where the **pre-implementation baseline
+  suites were measured**, not the commit the story was built on, which is `227befe` as the Delivery Log
+  says.
+
+**Still deliberately not run, and still never reported as passing:** the browser e2e specs, the matrix
+corpora, the AD-21 legs and `TestCrossTargetByteIdentity`. Real browser IndexedDB is proven by nothing
+here either.
