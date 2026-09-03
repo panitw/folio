@@ -3470,3 +3470,64 @@ today.
 designer job still halts at step 2. Every gate in this epic is a local measurement, honestly taken and
 independently re-taken, **with no machine watching.** That is DW-171/DW-101, scheduled after 16.4, and it
 is the largest single piece of unearned confidence in the record.
+
+## D-16.R.71 — 16.5 closes; two rows stay partial, and a tracker vocabulary is widened rather than a record flattened
+
+**Closed at `f60ef7c`**, a separate closing commit rather than an amend, on `main`, unpushed (`origin` now
+148 behind), no branch. Tree clean. **Every gate measured with its population beside it and every red
+matched by NAME rather than count:** `typecheck`/`build`/`e2e:compile`/lint-module `rc=0`; `lint` **exactly
+4 of 4** `only-export-components` warnings **at the same four lines the spec records**; `vitest` **672/1 of
+673 across 55 files**, the red being DW-152's `canvas-authority-contract` scan; `folio-go` **13 ok / 1 FAIL
+package**, failing leaf set exactly `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`.
+
+**THE SWEEP RECONCILIATION IS THE ENTRY'S BEST ITEM, because a population disagreement was resolved rather
+than averaged.** The build measured 503 files; the closer measured **547**. Not a contradiction: the closer
+reconstructed the build's number **exactly** from its own extension histogram — `.go` 395 + `.ts` 89 +
+`.tsx` 16 + `.json` 3 = **503** — establishing that the build swept source files and the closer swept every
+tracked file including testdata, fonts and NOTICE files. **The superset was swept, and the subset was shown
+to be the subset.** Two different numbers, one reality, and the difference *explained* rather than declared
+harmless. Union **76 distinct identifiers, 0 unresolved**, against **182 register definitions**, plus a
+false-prefix check (`[A-Za-z0-9]DW-[0-9]+`) returning 0 in both populations — **so no match is a fragment of
+a longer token**, which is the one way this sweep could have passed while measuring the wrong thing.
+
+**Rows 3 and 8 stayed PARTIAL under independent verification.** The closer confirmed the mechanism itself —
+row 3's only coverage calls `classifyLicenceToken` directly, row 8's only the predicate — rather than
+inheriting the build's flag. **A partial that survives a second, differently-motivated reader is worth more
+than a pass**, and the per-row rule's entire purpose is that it can produce this answer at all.
+
+**And it corrected me on the shape of my own instruction.** I told the closer the superseding note covers
+*"two earlier entries… both by date"*. It covers **two paragraphs within ONE entry**, and **that entry
+carries no date of its own** — so it is identified by heading text, and only the two *superseding* rulings
+are dated `2026-09-03`. The substance holds; my framing was wrong, and it recorded the precise shape rather
+than repeating my words back. **That is the carrier rule working in the direction it is hardest to apply:
+against the instruction, not against the code.**
+
+**RULING 1 — the two non-vocabulary tracker values stay, and the VOCABULARY moves to meet them.**
+`8-4k…: deferred-to-epic-15` and `8-4d…: moved-to-epic-15` carry real routing the defined vocabulary cannot
+express: `done` would be a lie, `backlog` a regression, and either **erases where the work went.** The
+defect is not in the data, it is that `STATUS DEFINITIONS` never defined the terminal states the project
+actually uses. **Both are now defined there** — `moved-to-epic-<N>` (terminal; the epic it left is smaller,
+not blocked) and `deferred-to-epic-<N>` (terminal here, open there). **Widening a vocabulary to fit an
+honest record beats flattening a record to fit a vocabulary**, and the closer was right to refuse the
+flattening and escalate.
+
+**RULING 2 — the tracker's comment mass stays exactly where it is.** 365 of 545 lines are comments, and the
+closer measured them **load-bearing rather than agent chatter**: a 92-line sprint sequence carrying owner
+instructions and scope fences, a 13-line warning that `sprint_plan.py generate` **destroys four completed
+stories' records**, per-story insertion rulings, and a procurement constraint stating its reason is *parser
+scope, not licence policy*. **A migration would move a destroy-warning away from the file it warns about.**
+Not migrated, now or later, without a specific reason that names what is being moved and why the new
+location is safer.
+
+**Output-tree sweep: nothing moved, nothing removed — and that is a MEASURED result, not a skipped step.**
+Three items that match debris categories by shape were checked individually and **kept**:
+`8-4j-attempted-implementation.patch` is cited three times in 8.4j's own record as preserved evidence;
+`epic-5-boundary-gate-2.md` is a distinct second run referenced by the tracker, not a slug duplicate; the
+`review-*.md` files under `planning-artifacts` are planning-phase reviews sitting correctly. **All 5 context
+caches non-empty and current** (`epic-16-context.md` descends from `e3f655b` via `f4d401c`), zero untracked
+files. **A debris sweep that deletes by category rather than by evidence would have destroyed all three.**
+
+**Also recorded: no rejection tally exists anywhere in the record, and the closer did not invent one** — the
+Delivery Log states there were none **explicitly**, so a later reader cannot read the absence as an
+omission. Triage stands at **10 patched / 0 deferred / 0 rejected**, plus 4 story deferrals in frontmatter.
+**16.4 confirmed still `status: draft`** and untouched.

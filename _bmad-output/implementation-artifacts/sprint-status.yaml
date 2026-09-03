@@ -11,6 +11,10 @@
 #   - in-progress: Developer actively working on implementation
 #   - review: Implementation complete, ready for review
 #   - done: Story completed
+#   - moved-to-epic-<N>: Terminal. The story left this epic for another; the epic it left is
+#     SMALLER, not blocked. The comment above the key carries the ruling that moved it.
+#   - deferred-to-epic-<N>: Terminal HERE, open THERE. The work is still owed, by a later epic.
+#     Neither value is 'done' and neither is 'backlog' -- both would erase the routing.
 
 # Retrospective Status:
 #   - optional: Can be completed but not required
