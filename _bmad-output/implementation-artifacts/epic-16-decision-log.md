@@ -2288,3 +2288,136 @@ premises**, not two (D-16.R.45).
 is **medium**: if `choose()`'s third arm needs a **compound command** (embed + property commit as one
 undo) rather than two, that reopens 8.6's deliberately-refused fusion, and it returns to the lead before
 being designed around.
+
+### D-16.R.47 — Story 16.3's gate rulings, a defect in my own ruling, and the mockup's chip list proven to be a projection of its sample
+
+**Four questions from the 16.3 build, all measured. Two ruled by the orchestrator on the fast path, two by
+the lead. One of the fast-path rulings was wrong and the builder caught it.**
+
+**Q1 — script chips: ship All / Latin / Thai only. RULED, THEN CORRECTED ON ITS MECHANISM.**
+
+The mockup draws `["All","Latin","Thai","Cyrillic","Greek"]`. Cyrillic (233 families) and Greek (103) exist
+upstream in the raw `subsets` but the generated projection narrows to the product's own three-value type,
+and a chip that can never match is the false-control defect the owner already ratified on `⌘G`.
+
+**The orchestrator's ruling required the chip values be derived from `CatalogueScript` "so the compiler
+carries the tie". The builder measured and refused it.** `CatalogueScript` is `latin | thai | cjk`, and
+**`cjk` appears ZERO times across all 1,811 index rows** — CJK families are excluded from the snapshot
+wholesale (135, stated in the generated header). The 31 catalogue faces' vocabulary is `["latin"]` /
+`["thai"]`. Verified independently by the orchestrator. **So the prescribed mechanism would have shipped a
+CJK chip matching 0 of 1,305 offerable families — the exact defect the ruling removed, reintroduced by the
+fix for it.**
+
+**The distinction, in the builder's words, and it is the durable part: `CatalogueScript` is a RENDERING
+vocabulary; the chips need an ADDABILITY vocabulary. They are not the same set, and the difference is
+exactly one arm.** What disguises this is that `scriptFallbackFaces` genuinely carries a CJK fallback face
+("Noto Sans SC") — but **a fallback face is a rendering concern, not an addable family.**
+
+**Accepted synthesis, strictly stronger than what it replaced:** derive the chip vocabulary from the
+**observed data** (local tier + `webFamilies`), bind the array to `readonly CatalogueScript[]` so a
+non-script value fails to compile, and add a **bidirectional** drift test — reds if a chip matches nothing,
+reds if a face declares a script with no chip. Compiler-carried **and** structurally unable to ship a dead
+control, rather than trading one for the other. **It also kills the capitalisation defect structurally:**
+the mockup renders `"Thai"` where the data holds `"thai"`, so a literal port yields **zero results for
+every script chip** and presents as the empty state rather than an error. Values come from the data, so the
+mismatch cannot arise; only the display **label** is title-cased.
+
+**Q2 — category chips: add `Handwriting`, and derive both chip axes the same way. Lead ruling, and it is
+proven by set equality rather than inferred.**
+
+The mockup hardcodes four categories at line 659; its 14 placeholder families carry exactly `Sans Serif` 6,
+`Serif` 4, `Display` 3, `Monospace` 1. **The chip list IS the set of categories present in the placeholder
+data, and nothing else. There is no fifth chip because there was no fifteenth family.**
+
+Against the real 1,273 web families: Display 385 (30.2%), Sans Serif 384 (30.2%), **Handwriting 259
+(20.3%)**, Serif 221 (17.4%), Monospace 24 (**1.9%**). **The design draws a chip for the smallest category
+and omits the second-largest.** No one would make that curation judgement against the library; it is a chip
+list sized to a sample of fourteen. **D-16.R.25 rule 3 in the design layer — before any sentence of the
+form "these are the categories", ask what the denominator was. Here it was 14.**
+
+**The builder's reframing is what made this cheap to decide, and it is the reason it was held back from an
+isolated ruling.** Recast as *"are chip vocabularies data-derived or hand-authored?"*, Q2 **dissolves**:
+`Handwriting` appears because it is in the snapshot, and nobody decides to add it. **The question stops
+being "do we deviate from the owner's mockup" and becomes one rule covering both axes**, with the mockup's
+four categories re-read as a consequence of its sample rather than a design decision anyone made. That
+distinction changes what goes on the owner's deviation list, which is why it was worth holding.
+
+**Q3 — the footer's `weightLine`: keep the slot, restate the line. State the FACE fact, not the
+destination.**
+
+Both halves of *"≈ N weights · subset latin+thai"* are false. The weight count is unavailable by D-16.R.33
+R3's own payload ruling. And **the builder corrected its own premise by measurement**: it first assumed the
+product does not subset, then found `folio-go/internal/fontset` **does** subset at PDF render over the union
+of glyphs the document actually uses. So the string is false for a better reason — the subset is
+**usage-driven at render**, not a `latin+thai` script cut at embed.
+
+**Two corrections to the framing, both strengthening (b).** The three-line-rhythm argument was wrong:
+mockup line 680 is `weightLine: pendingCount ? "…" : ""`, so **the slot is already conditional** and (b)
+populates it **exactly when the author has staged families and is deciding whether to commit** — the best
+disclosure moment on the screen. And the restatement is **narrower** than proposed: state that each staged
+family adds **one upright Regular, no bold and no italic face**, derived from the staged count. **State no
+destination** — no *"goes into your file"* — because **16.5 inverts the destination**, and the face fact is
+true under both models where destination language is not. Drop the subset clause entirely: one fact per
+slot, and a render-pipeline fact in a font-picking dialog invites a wrong inference about file size.
+
+**AND THE SLOT EARNED A SECOND REASON, verified by the orchestrator.** *"One upright Regular"* has a
+consequence nobody had chased: **the property panel ships Bold and Italic toggles** (`App.tsx:1228`) while
+SPEC-fonts' surviving Non-goal is *"no synthetic bold or oblique. A weight is a face or it does not
+exist."* And `folio-go/internal/fontset/fontset.go:715` reads **"Bold, when it arrives, is a `wght` instance
+derived ahead of the build"** — **future tense. Bold-as-a-real-face is unbuilt.** Epic 16 turns this from an
+edge case into **the common case**, because every fetched family embeds exactly one Regular.
+
+**Registered as a QUESTION with 16.4 as its gate, deliberately not chased here** — what happens when an
+author sets Bold on a Regular-only family (chain fallback, silent regular, or refusal) is unknown, and
+expanding a footer ruling into a product investigation is the going-looking this run refuses. **But note the
+asymmetry: if the answer is unpleasant, this footer line is the cheapest place in the product to disclose
+it — and option (a) would have deleted that place.**
+
+**Q4 — colour tokens: snap ten, raise one.** 11 of the mockup's 40 hexes have no token. Nine are within 10
+channel steps and one is off by a single step — drafting drift, and **the near-miss is what makes it
+dangerous: a pasted `#262c33` beside a real `#272c33` survives every review that is not a diff.**
+`#6bb4d0` at **39 steps** is the confirm button's hover state: real intent with no token, **raised as a
+`DESIGN.md` gap** rather than snapped or pasted. Both halves stated in the Delivery Log with deltas — a
+token-fidelity pass reporting "matched" without saying what it moved is not a measurement.
+
+**And the `baseline_commit` catch — the FOURTH instance of the anchor rot flagged at grounding.** 16.3's
+frontmatter carried `a40c34d`, **52 commits stale**, predating the whole of Epic 16 and therefore predating
+this story's own Block If preconditions. **A review diff from it would have swept 5,900 insertions across
+five closed stories into 16.3's triage.** The builder corrected it to `0e3a291` and recorded it rather than
+burying it; the preserve rule is conditioned on a resumed run and this spec never reached `in-progress`.
+Belongs beside D-16.R.28: **`baseline_commit` is stale by construction for any story planned before its
+predecessors landed.**
+
+### D-16.R.48 — The mockup deviations get a consolidated showing at the epic gate, with a reversal-cost column
+
+**Lead ruling**, on the orchestrator's question about accumulation. **A disclosure at the epic gate, not an
+escalation now — nothing is blocked and nothing is asked of the owner today.**
+
+**The count, so the judgement is checkable.** Owner-ratified already: `SYSTEM_FONTS` → fetched faces
+(D-16.2); `FAMILIES` 14 → the snapshot, with the header count becoming the addable count (D-16.R.2).
+**Ruled by us and never individually put to them — seven:** the `⌘G` shortcut and its hint glyph (removed),
+the *Most styles* sort arm (removed), designer search (removed), the Cyrillic and Greek script chips
+(removed), a `Handwriting` chip (added), `weightLine` (restated), and nine colour hexes snapped with one
+raised as a `DESIGN.md` gap.
+
+**What tips it is not the seven — it is the eighth.** Story 16.5's install/embed reversal changes what
+`confirm` **means** and what the dropdown's middle group **is**. Against a screen whose purpose is shifting,
+seven unratified element changes stop reading as fidelity drift and start reading as **a different screen**.
+**Each ruling was individually correct and narrow; the failure mode of a series of individually-correct
+narrow rulings is a de facto redesign nobody approved, arrived at by a route where no single step was worth
+interrupting anyone for.**
+
+**Why the gate and not now, and this is a measured fact rather than convenience.** The lead checked every
+item for **rising reversal cost** and **none has one**: `⌘G` is a hints entry and a handler arm either way;
+the `Handwriting` chip is additive; `weightLine` is one derived function; the colour snaps are literals; the
+removed sort arm and search clause are subtractions with no dependents. **Nothing gets more expensive to
+reverse by waiting**, so a consolidated review costs the owner nothing and gives them the complete screen
+instead of a partial one. **Had any item hardened, the ruling would have been to interrupt.**
+
+**The form, because a list is a confession and a table is a decision document.** One table at the epic gate
+— after 16.4 and 16.5 land, before the retrospective — with four columns: **what the design drew · what
+shipped · why · what reversing it costs now.** The fourth column is what makes it actionable; without it the
+owner is being asked to audit rather than to decide. **Include the two already-ratified items, marked as
+ratified**, so the list is the whole diff and not the subset we are least sure about. **Presented as a
+screen rather than as prose** if that is cheap: this is a visual artefact, and seven textual deltas do not
+add up to what the thing looks like.
