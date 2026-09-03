@@ -534,7 +534,7 @@ development_status:
   16-1-a-font-arrives-from-the-web-with-its-terms-attached: done
   16-1a-the-local-face-tier-covers-the-head-of-the-library: done
   16-2-a-fetched-face-stays-on-this-machine: done
-  16-3-the-font-browser-is-the-dialog-the-design-drew: in-progress
+  16-3-the-font-browser-is-the-dialog-the-design-drew: review
   # 16.4 also discharges the listbox finding Story 8.6 registered as deferred (four role="presentation"
   # children inside role="listbox"): three groups would take it from four to seven, so it is fixed
   # there rather than multiplied. It also re-derives 8.6's disk-font decline against D-16.1 -- the

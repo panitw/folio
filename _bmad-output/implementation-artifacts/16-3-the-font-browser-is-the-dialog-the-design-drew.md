@@ -2,7 +2,7 @@
 title: 'Story 16.3: The font browser is the dialog the design drew'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 baseline_commit: '0e3a2913d96e1cac594fe76f743ea8eed8064592'
@@ -329,3 +329,136 @@ about an unrelated control. The describe now installs a **rejecting** fetch (whi
 | **F** | The Grid cap and the rail's readout now have one authority (`specimenSize` / `sizeReadout`), so the number printed is the number in use; the modal closes with the document; the door's sub-label is in its accessible name; focus returns to the family combobox on close; and the e2e specimen test addresses rows by name and asserts **every** row rather than the first. |
 
 **Gates, run as separate commands.** `npm run test`: 659 passed, **1 failed** — `canvas-authority-contract.test.ts`, the pre-existing DW-152 red, unchanged. `npm run test:e2e:compile`: exit 0. `npm run build`: exit 0. `npm run lint`: clean. The committed e2e spec was re-run **in a real browser** (Chromium 1228) with the strengthened assertions: **6 passed**.
+
+## Delivery Log
+
+**Gates, measured locally on `e3f655b` by the builder — not relayed.** Nothing in this epic may be
+called CI-verified: the designer CI job halts at step 2 on DW-152's standing red, and that repair lands
+after Story 16.4.
+
+| Gate | Result |
+|---|---|
+| `npm run test` | **659 passed, 1 failed** (54 files, 660 tests) |
+| `npm run test:e2e:compile` | EXIT=0 |
+| `npm run build` | EXIT=0 |
+| `cd lint && go test -count=1 ./...` | EXIT=0, 4 packages |
+| `cd folio-go && go test -count=1 ./...` | EXIT=1, 16 packages, 1 failure |
+| Real browser (`chromium-1217`) | **6/6 passed**, EXIT=0, against the built bundle |
+
+Both failures are **pre-existing, verified at `0e3a291` in an isolated worktree** rather than inferred:
+`canvas-authority-contract.test.ts` (DW-152's standing red) and `TestCorpusMeetsP6ExerciseFloors/P6g`
+(got 7, need >=20). The failing-test NAME SET is unchanged from baseline — diffed by name, not by total.
+This story changed **0 Go files**.
+
+**Two false greens were found in the measuring itself.** `PIPESTATUS` is bash and this shell is zsh, so
+an exit-code capture printed empty while a piped `tail` reported success over a suite that had failed;
+and `npm run test && npm run build` short-circuits, so the build never ran behind the standing red. Every
+gate above was re-run as a separate command with no pipe.
+
+**Deferrals: DW-176 DISCHARGED. DW-161 stays OPEN and its own text is why** — its ordering clause binds
+it to DW-101 ("the specs exist and CI never runs them"), which is open until the post-16.4 CI repair. Of
+its three cases, two ran against the real host and the licence case was **simulated at the network
+boundary because it is impossible, not skipped**: no CC-BY-SA family is reachable upstream, and a random
+sample of **60 of the 1,273** addable families resolved 60/60 with every token already in the closed table
+(`OFL` 58, `APACHE2` 1, `UFL` 1). **DW-177, DW-178 and DW-179 registered.**
+
+### The pattern behind three of this story's defects: the thing was changed and its explanation was not
+
+`App.css`'s comment still said the modal *"takes the page's, which is the only shadow token the
+stylesheet has"* while sitting directly above the line that had been changed to `--shadow-sheet`; the
+token-fidelity review's row recorded the token as minted while its own Recommendation still said it was
+not this story's to add; and a doc block was left orphaned from the constant it describes by an insertion
+placed between them. **The most serious code finding is the same species one level down:**
+`embedded-face-registry.ts` claimed a declined derivation *"takes the same degrade a fetch returning no
+bytes already takes"* when it did not — **a comment claiming a safety the code does not have, found
+inside the guard built for that exact defect.** Third instance in one story.
+
+### What the red-proofs bought, which is not what they are usually credited with
+
+F2's fix — resetting `fontBrowserOpen` when the document is replaced — **appended to the first matching
+pair in the file and landed in `closeTableEditor` instead of `clearDocumentInteraction`.** It compiled
+cleanly, the suite was green, and **its red-proof came back red WITH the fix supposedly in place.** No
+reviewer reading that diff would have seen it. It was caught only because the mutation was run *before*
+the fix rather than after, and the proof refused to change colour. A red-proof's value here was not
+*"the test is real"* but ***"the fix is where you think it is."***
+
+### A measurement over the wrong population, three times
+
+`indexCategories`/`indexScripts` derived from `familyIndex` (1,811) while the chips filter the offered
+population (1,273 web + 31 local); a comment cited Handwriting at **337** when the browser offers **259**;
+and the `'Thai + Latin'` badge was called unreachable on the strength of *"0 of 1,811 rows are
+thai-without-latin"* — a measurement over the **index**, offered as evidence about the **browser**, which
+also carries 31 local faces that are not in the index at all. **Two of them, `Noto Sans Thai Looped` and
+`Noto Serif Thai`, record `thai` alone**, so the badge was claiming Latin coverage beside two shipped
+faces whose own record denies it. It was a live user-visible defect, not a stylistic tidy. The rule this
+story pays for: **when two populations differ by a filter, every claim about one is silent about the
+other, and the silence is invisible at the point of use.**
+
+### Three re-proofs run at the close, by deletion, by the builder
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `return refuse(outcome.reason)` -> `refuse(...); return undefined` (both sites) | **RED** — `keeps the modal open, names the family, and sends no command` |
+| 2 | `App.css` `.font-browser` `--shadow-sheet` -> `--shadow-page` | **RED** — the elevation routing case |
+| 3a | delete the pre-fetch decline guard in `show()` | **RED** — `never fetches for a family whose name the derivation declines...` |
+| 3b | delete the load-rejection `onDeclined` in the seam | **RED** — 2 tests, incl. `reports a face whose bytes will not parse as unavailable, never as still fetching` |
+
+**The seam test renders the real `App` and clicks the real `Add fonts…` button** — it is not a stub one
+level down. `App.font-store.test.tsx` and `App.test.tsx` both mount `<App />`, and the new cases address
+the door by its accessible name and assert the real dialog.
+
+**One re-proof initially reported a false pass and was re-run.** A mutation regex matched nothing, so the
+file was never modified and the resulting green was a non-measurement rather than evidence. Re-targeted at
+the real site — the decline had moved into the seam behind a new `onDeclined` parameter — it reddened two
+tests. **A mutation that does not apply proves nothing, and its green looks exactly like a passing proof.**
+
+## Suggested Review Order
+
+**The one genuinely new mechanism: a third face lifetime**
+
+- The argument for a third lifetime, and why it cannot collide with the other two
+  [`preview-face-family.ts:40`](../../folio-designer/src/preview-face-family.ts#L40)
+
+- The seam widened to take the derivation as a parameter, defaulting to the document's
+  [`embedded-face-registry.ts:94`](../../folio-designer/src/embedded-face-registry.ts#L94)
+
+- The decline is checked BEFORE any byte is fetched, so a row cannot sit on `preparing` for ever
+  [`preview-face-registry.ts:124`](../../folio-designer/src/preview-face-registry.ts#L124)
+
+- The exact-list census gains one anchored position and four near-miss red-proofs
+  [`canvas-font-stack.test.ts:269`](../../folio-designer/src/canvas-font-stack.test.ts#L269)
+
+**Saying only what the data supports**
+
+- Chip vocabularies derived from the offered population, not the wider index
+  [`font-index.ts:335`](../../folio-designer/src/font-index.ts#L335)
+
+- The footer states one fact about what a face is, and names no destination
+  [`font-browser-model.ts:316`](../../folio-designer/src/font-browser-model.ts#L316)
+
+**The confirm batch and its refusals**
+
+- One named seam per staged family; refusals per family, the rest proceed
+  [`FontBrowser.tsx:137`](../../folio-designer/src/FontBrowser.tsx#L137)
+
+- Specimen bytes resolve through the same three tiers a pick does; the store is read, never written
+  [`App.tsx:403`](../../folio-designer/src/App.tsx#L403)
+
+**The elevation, transcribed rather than invented**
+
+- DESIGN.md's third declared elevation, implemented so the count stays three
+  [`tokens.css:15`](../../folio-designer/src/tokens.css#L15)
+
+- The guard asserts both the token's value and its use, from DESIGN.md's own text
+  [`design-contract.test.ts:52`](../../folio-designer/src/design-contract.test.ts#L52)
+
+- The surface that consumes it
+  [`App.css:380`](../../folio-designer/src/App.css#L380)
+
+**Supporting**
+
+- The App seam under a real `App` render, through the real door
+  [`App.font-store.test.tsx:203`](../../folio-designer/src/App.font-store.test.tsx#L203)
+
+- The executed browser witness, six cases
+  [`font-browser.spec.ts:38`](../../folio-designer/e2e/font-browser.spec.ts#L38)
