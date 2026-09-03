@@ -10,9 +10,12 @@ import { fileURLToPath } from 'node:url'
 // clause of that Non-goal D-16.1 left standing — every other clause of it was
 // reversed by an owner decision — and Story 16.2 is the story most likely to
 // break it, because it introduces a dropdown group whose heading reads
-// AVAILABLE LOCALLY. That group means "typefaces this designer has fetched
-// before". It does not mean "typefaces this computer has", and the distance
-// between those two readings is one browser API call.
+// AVAILABLE LOCALLY. STORY 16.4 SETTLED WHAT THAT GROUP CONTAINS: every face
+// this machine already holds — the faces committed inside this release AND the
+// faces this designer fetched and kept. It still does not mean "typefaces this
+// computer has", and the distance between those two readings is one browser API
+// call. WIDENING THE GROUP DID NOT WIDEN THE CLAUSE: both arms are bytes this
+// designer put there itself, and neither is read off the operating system.
 //
 // WHY IT IS A SOURCE SCAN OVER THE WHOLE TREE, AND NOT A UNIT TEST.
 // A test that only checked the store module would pass while `App.tsx` called
@@ -180,7 +183,7 @@ export function assertNoHostFontAccess(root, options = {}) {
     const named = result.findings.map((finding) => `  ${finding.file}:${finding.line}: ${finding.api}\n    ${finding.text}`).join('\n')
     throw new Error(`the Local Font Access API appears in the designer's source (${result.findings.length} occurrence(s) across ${result.files} files scanned):\n${named}\n`
       + 'SPEC-fonts forbids it outright: "No host fonts. Faces installed on the authoring or rendering machine are never enumerated or read." '
-      + 'The designer\'s AVAILABLE LOCALLY group means typefaces this designer has FETCHED before — src/font-store.ts — and never typefaces this computer has installed. '
+      + 'The designer\'s AVAILABLE LOCALLY group means faces this designer itself put on this machine — the release\'s committed catalogue and the faces it FETCHED and kept, src/font-store.ts — and never typefaces this computer has installed. '
       + 'A commented-out call fails too: comments are stripped from the EXEMPTION, not from the scan.')
   }
   return result

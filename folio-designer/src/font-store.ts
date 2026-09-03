@@ -467,7 +467,7 @@ function fontStoreOver(database: IDBDatabase): FontStore {
  * author is not left wondering which of their two files moved.
  */
 export const storeWriteRefusal = (family: string, reason: string): string =>
-  `${family} was not installed on this machine (${reason}). Nothing was kept and no document was changed. Free some space — the AVAILABLE LOCALLY list has a remove control on every face — and try again.`
+  `${family} was not installed on this machine (${reason}). Nothing was kept and no document was changed. Free some space — the TYPEFACES THIS DESIGNER HAS DOWNLOADED list, under TYPOGRAPHY, has a remove control on every face — and try again.`
 
 /**
  * AND THE OLD SENTENCE SURVIVES, FOR THE ONE PATH THAT STILL HAS SOMETHING TO

@@ -9,7 +9,21 @@ import type { EngineClient } from './engine-client'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { previewFaceFamily } from './preview-face-family'
-import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
+import { openFontStore, storedFaceKey, storeWriteRefusal, type StoredFaceRecord } from './font-store'
+import { addableFamilyCount, webFamilies } from './font-index'
+import { catalogueFaces } from './generated/font-catalogue'
+
+/**
+ * THE STORE PANEL'S HEADING, WRITTEN ONCE (Story 16.4).
+ *
+ * Two product sentences point the author at this panel — the quota refusal and
+ * the late-embed refusal — so the name they use and the name the panel renders
+ * are asserted against each other rather than each spelled out on its own.
+ * Before 16.4 the panel borrowed `AVAILABLE LOCALLY` from a dropdown group that
+ * lists strictly more than it does, and two differently populated regions shared
+ * one name.
+ */
+const storePanelHeading = 'TYPEFACES THIS DESIGNER HAS DOWNLOADED'
 
 // STORY 16.2 AT THE BROWSER BOUNDARY — A FETCHED FACE STAYS ON THIS MACHINE.
 //
@@ -469,6 +483,194 @@ describe('a fetched face stays on this machine', () => {
     expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
   })
 
+  // STORY 16.4 — A FONT CHANGES GROUP BECAUSE THE AUTHOR ACTED, AND THE WHOLE
+  // JOURNEY IS ONE TEST.
+  //
+  // 8.6's rule was "nothing says added, the entry simply moves", and three
+  // groups extend it rather than replace it: install moves a row 3 → 2, first
+  // use moves it 2 → 1. Both halves of what a pick does are asserted at the
+  // same time as the move, because the move is only honest if the act behind it
+  // is — a row that jumped to AVAILABLE LOCALLY without the bytes arriving, or
+  // to IN THIS TEMPLATE without a command, would be a heading lying twice.
+  it('moves a row 3 → 2 when it is installed and 2 → 1 when it is first used', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    let declaredChains = ['body']
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        if (parsed['kind'] === 'embedFontFamily') declaredChains = ['body', 'Kanit']
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } } }
+    })
+    mount(request)
+    const combobox = () => screen.getByRole('combobox', { name: 'Font family' })
+    const groupOf = (family: string) => {
+      fireEvent.focus(combobox())
+      fireEvent.change(combobox(), { target: { value: family } })
+      // The accessible name collapses the note's leading space, so the pattern
+      // is whitespace-tolerant rather than pinned to one spelling of the gap —
+      // and it accepts the bare name too, which is what group 1's rows carry.
+      return screen.getByRole('option', { name: new RegExp(`^${family}\\s*(—|$)`) }).closest('[role="group"]')?.getAttribute('aria-label')
+    }
+
+    // GROUP 3 — not on this machine.
+    expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    // NOTHING ENTERED THE DOCUMENT. No engine command at all, so no property
+    // commit either — which is what makes the row's new heading true.
+    expect(embedPayloads(request), 'installing sends no command: the document did not move').toEqual([])
+
+    // GROUP 2 — on this machine, not in this file.
+    expect(groupOf('Kanit')).toBe('AVAILABLE LOCALLY')
+    // AND PICKING FROM GROUP 2 REACHES NO NETWORK. Every fetch from here on
+    // fails, so an embed that completes can only have read the machine's copy.
+    const refuse = vi.fn(async () => { throw new TypeError('a face already on this machine must not be fetched') })
+    globalThis.fetch = refuse as never
+    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
+    // TWO COMMANDS AND TWO UNDO ENTRIES, in the order the engine forces.
+    await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
+    expect(refuse, 'a pick from AVAILABLE LOCALLY must not touch the network').not.toHaveBeenCalled()
+
+    // GROUP 1 — in the file. The projection is what says it arrived.
+    await waitFor(() => expect(groupOf('Kanit')).toBe('IN THIS TEMPLATE'))
+    // AND IT IS OFFERED ONCE, not once per group it has passed through.
+    expect(screen.getAllByRole('option', { name: /^Kanit\s*(—|$)/ })).toHaveLength(1)
+  })
+
+  // THE REGRESSION THE ORDER REPAIR AND THE PARTITION EXIST FOR, DRIVEN THROUGH
+  // THE CONTROL RATHER THAN ASSERTED OVER `offeredFamilies`.
+  //
+  // At HEAD a stored family took the INDEX POSITION of the web row it replaced.
+  // `Philosopher` sits at offset 891 of 1273, so with a 50-row cap applied to
+  // the union it was painted nowhere at all — while AVAILABLE LOCALLY was drawn
+  // over a group that was missing it. A heading is never drawn over a member the
+  // render cannot show.
+  it('draws a deeply-ranked stored family under AVAILABLE LOCALLY, and the cap does not swallow it', async () => {
+    const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2026 A Face Only This Machine Has' }])
+    const key = await storedFaceKey(bytes)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, bytes), family: 'Philosopher' })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+    // WITH NO NETWORK, so nothing here can be explained by a fetch.
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+    mount(commandRequest())
+    await waitFor(() => expect(screen.getByText(/Philosopher/, { selector: '.machine-font-name' })).toBeInTheDocument())
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
+    const install = within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option')
+    // IT IS UNDER THE HEADING THAT SAYS THE BYTES ARE HERE, AND IT SAYS SO.
+    expect(local.map((option) => option.textContent)).toContain('Philosopher — use it, already downloaded to this machine')
+    // AND THE GROUP IS DRAWN IN FULL — 31 committed faces plus this one against
+    // a 50-row cap that used to be applied to the union before the split.
+    expect(local, 'every installed row renders; the cap belongs to the other group').toHaveLength(catalogueFaces.length + 1)
+    expect(install, 'the cap is still doing its job where it belongs').toHaveLength(50)
+    // AND IT IS OFFERED ONCE: from the store, never also from the snapshot.
+    expect(screen.getAllByRole('option', { name: /^Philosopher/ })).toHaveLength(1)
+    // THE CAPPED GROUP'S NOTE COUNTS THE CAPPED GROUP. Group 2 and group 3
+    // together are the whole addable union, so naming the union would be
+    // counting rows the cap never touched.
+    const counted = /Showing (\d+) of (\d+) families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
+    expect(counted).not.toBeNull()
+    expect(Number(counted![2])).not.toBe(addableFamilyCount)
+    expect(Number(counted![2]) + local.length).toBe(addableFamilyCount)
+  })
+
+  // AND WITH NO STORE AT ALL THE ROW MOVES 3 → 1 IN ONE STEP.
+  //
+  // `storeUnavailableEmbedNote` says the font went straight into the document,
+  // and this asserts the consequence that sentence describes rather than the
+  // sentence again: with nowhere to install to, there is no middle group for the
+  // row to rest in, so it crosses group 2 without stopping. A row that landed
+  // under AVAILABLE LOCALLY here would be claiming a machine copy that this
+  // browser explicitly cannot keep.
+  it('moves a row 3 → 1 in one step when the store cannot be opened at all', async () => {
+    Reflect.deleteProperty(globalThis, 'indexedDB')
+    globalThis.fetch = upstreamFetch() as never
+    let declaredChains = ['body']
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        if (parsed['kind'] === 'embedFontFamily') declaredChains = ['body', 'Kanit']
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } } }
+    })
+    mount(request)
+    await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
+    const combobox = () => screen.getByRole('combobox', { name: 'Font family' })
+    const groupOf = (family: string) => {
+      fireEvent.focus(combobox())
+      fireEvent.change(combobox(), { target: { value: family } })
+      return screen.getByRole('option', { name: new RegExp(`^${family}\\s*(—|$)`) }).closest('[role="group"]')?.getAttribute('aria-label')
+    }
+    expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily']))
+    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit went straight into this document/))
+    // STRAIGHT TO GROUP 1, and never to group 2 — nothing is on this machine.
+    await waitFor(() => expect(groupOf('Kanit')).toBe('IN THIS TEMPLATE'))
+    expect(screen.queryByRole('group', { name: 'AVAILABLE LOCALLY' }), 'no family matches Kanit on a machine that keeps nothing').toBeNull()
+  })
+
+  // AND THE CAP IS APPLIED AFTER THE PARTITION, WHICH ONLY SHOWS WHEN THE
+  // INSTALLED GROUP IS BIGGER THAN THE CAP.
+  //
+  // With 31 committed faces and one stored family the two repairs are redundant
+  // — the repaired order puts all 32 inside the first 50 rows either way. This
+  // is the fixture that tells them apart: 25 stored families on top of the 31
+  // takes group 2 to 56, above `renderedFamilyLimit`. A cap over the union would
+  // paint 50 rows in total and NOTHING under AVAILABLE TO INSTALL, with both
+  // headings still drawn. It is also the measurement behind that group being
+  // deliberately uncapped, and behind the named trigger to revisit it.
+  it('renders every installed row even when the installed group is larger than the cap', async () => {
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const from = Math.floor(webFamilies.length * 0.7)
+    const deep = webFamilies.slice(from, from + 25)
+    expect(deep, 'the fixture needs enough stored families to overflow a union-wide cap').toHaveLength(25)
+    for (const row of deep) {
+      const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: `Copyright 2026 ${row.family}` }])
+      const written = await opened.value.put({ ...storedOnly(await storedFaceKey(bytes), bytes), family: row.family })
+      expect(written.ok, `the fixture face for ${row.family} must reach the store`).toBe(true)
+    }
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+    mount(commandRequest())
+    await waitFor(() => expect(document.querySelectorAll('.machine-font-name')).toHaveLength(deep.length))
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
+    expect(local, 'every row under a heading promising the bytes are here must be drawn').toHaveLength(catalogueFaces.length + deep.length)
+    expect(local.length, 'the fixture must really exceed the cap, or this measures nothing').toBeGreaterThan(50)
+    expect(within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option'), 'the third group keeps its own bound').toHaveLength(50)
+  })
+
+  // THE OTHER HALF OF BOTH RE-POINTED REFUSALS (Story 16.4).
+  //
+  // `storeWriteRefusal` and `lateEmbedRefusal` both tell the author to go to a
+  // named panel and press a remove control. Their guards were keyed on the
+  // PLACE NAME — `/AVAILABLE LOCALLY/` — which the rename invalidated, and a
+  // re-pointed place-keyed guard relocates its blind spot unless the property it
+  // asserts is restated with it. The property is this: the region those
+  // sentences name is really on the screen, and it is really the region that
+  // carries a per-face remove control.
+  it('points both refusals at the one region that actually carries a remove control', async () => {
+    globalThis.fetch = upstreamFetch() as never
+    mount(commandRequest())
+    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
+    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
+    // The heading the sentences name, drawn by the panel that holds the control.
+    expect(within(panel).getByText(storePanelHeading)).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Remove Kanit (Regular) from this machine' })).toBeInTheDocument()
+    expect(storeWriteRefusal('Kanit', 'the origin is out of space'), 'the quota refusal must name this region').toContain(storePanelHeading)
+    // AND THE PANEL NO LONGER ANSWERS TO THE BORROWED NAME. `AVAILABLE LOCALLY`
+    // is the DROPDOWN's group heading and belongs to it alone; the panel having
+    // given it back is the point of the rename, not a side effect of it.
+    expect(within(panel).queryByText(/AVAILABLE LOCALLY/)).toBeNull()
+  })
+
   // STORY 16.2's SELF-HEALING CONTRACT, WHICH STORY 16.5 BRIEFLY BROKE AND THEN
   // RESTORED — AND WHICH NOTHING HAD EVER ASSERTED.
   //
@@ -662,7 +864,14 @@ describe('a fetched face stays on this machine', () => {
       expect(alert.textContent).toMatch(/Kanit was not installed on this machine/)
       expect(alert.textContent).toMatch(/no room left/)
       expect(alert.textContent, 'nothing may claim a document changed: no command is sent at install').toMatch(/no document was changed/)
-      expect(alert.textContent, 'the author needs an action, and the removal control is the one that frees space').toMatch(/AVAILABLE LOCALLY/)
+      // AND THE PLACE IT NAMES IS ON THE SCREEN. This read `/AVAILABLE LOCALLY/`
+      // until 16.4 renamed the panel; re-pointing the regex alone would have
+      // moved the blind spot, so the heading is read OFF THE RENDERED PANEL and
+      // matched against the sentence. `getByText` throws if the panel stops
+      // drawing it, which is the half a string match cannot see.
+      const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
+      const heading = within(panel).getByText(storePanelHeading)
+      expect(alert.textContent, 'the author needs an action, and the removal control is the one that frees space').toContain(heading.textContent)
     } finally {
       FakeIndexedDBObjectStore.prototype.put = original
     }

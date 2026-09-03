@@ -207,11 +207,32 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
    section keeps the design's height while it is open. */
 .property-combobox { position: relative; }
 .property-disclosure { font: var(--type-body); }
-.property-options { position: absolute; z-index: 5; top: 100%; right: 0; left: 0; max-height: 168px; overflow-y: auto; margin: 2px 0 0; padding: 0; list-style: none; border: var(--hairline) solid var(--color-edge); background: var(--color-panel); box-shadow: var(--shadow-page); }
+/* The overlay is now a SHELL rather than the list itself (Story 16.4): it holds
+   the `role="listbox"` and, beneath it, the notes that were wrongly inside it.
+   Every box property it had stays here, so the surface is unchanged. */
+.property-options { position: absolute; z-index: 5; top: 100%; right: 0; left: 0; max-height: 168px; overflow-y: auto; margin: 2px 0 0; padding: 0; border: var(--hairline) solid var(--color-edge); background: var(--color-panel); box-shadow: var(--shadow-page); }
 .property-option { padding: var(--space-2) var(--space-3); color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .property-option-active { background: var(--color-active); color: var(--color-ink-high); }
 .property-option[aria-selected="true"] { color: var(--color-select); }
 .property-option-empty { color: var(--color-ink-low); font: var(--type-body); cursor: default; }
+/* THE THREE GROUPS (Story 16.4), IN THE TOKENS THE PANEL ALREADY SPEAKS.
+   `Font Browser.dc.html` separates its dropdown groups with a hairline in the
+   colour `--color-line` carries and sets each heading in the panel's own label
+   type, so both are transcribed rather than invented. */
+.property-option-heading { margin: 0; padding: var(--space-3) var(--space-3) var(--space-1); color: var(--color-ink-low); font: var(--type-label); letter-spacing: var(--tracking-label); }
+.property-option-group + .property-option-group .property-option-heading { border-top: var(--hairline) solid var(--color-line); }
+/* AND THE THIRD GROUP'S HEADING TAKES THE SELECT ACCENT, WHICH IS A DERIVATION
+   RATHER THAN A NEW IDEA. The design accents exactly one dropdown heading — the
+   web-font group, in the binding amber — and D-16.R.72 replaced that group with
+   AVAILABLE TO INSTALL. The amber is this product's BINDING vocabulary and
+   means nothing about fonts, so the accent is taken in the ramp that already
+   means "this does something the rows above it do not": the same
+   `--color-select` as the `Add fonts…` door directly beneath, which is the same
+   act — getting a typeface onto this machine. */
+.property-option-group-install .property-option-heading { color: var(--color-select); }
+/* The notes sit under the list, outside it. They are not options and not
+   pickable; `.property-option-empty` already carries the default cursor. */
+.property-option-notes { border-top: var(--hairline) solid var(--color-line); }
 /* THE SECOND GROUP IS VISIBLY A DIFFERENT KIND OF THING (Story 8.6, AC4). A
    declared chain is in the document; a catalogue entry is not yet, and picking
    one CHANGES the document rather than setting a property. The distinction is

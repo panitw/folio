@@ -10,6 +10,8 @@ import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { openFontStore } from './font-store'
+import { addableFamilyCount } from './font-index'
+import { catalogueFaces } from './generated/font-catalogue'
 import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 
 // STORY 16.5 — SOME OF THESE TESTS NEED A MACHINE THAT CAN KEEP A FACE.
@@ -156,6 +158,32 @@ describe('application shell', () => {
     expect(screen.getByLabelText('Properties panel')).toBeInTheDocument()
     expect(screen.getByLabelText('Status bar')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // STORY 16.4 — THE STATUS BAR STATES THE FONT COUNT, AND IT IS THE SAME COUNT
+  // THE DROPDOWN'S FIRST GROUP DRAWS.
+  //
+  // The two surfaces are asserted AGAINST EACH OTHER rather than each against a
+  // literal, because the property is that they teach one model from one source:
+  // `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate. A count
+  // read from anywhere else — the fonts added this session, say, which is what
+  // the mockup binds — would pass a two-literal test and fail this one.
+  it('states the template font count in the status bar, from the source the first group groups on', () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const bar = screen.getByLabelText('Status bar')
+    expect(within(bar).getByTestId('template-font-count')).toHaveTextContent('2 fonts in template')
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    expect(within(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).getAllByRole('option'), 'the bar and the first group must be counting the same thing').toHaveLength(2)
+  })
+
+  // AND IT AGREES WITH ITSELF AT ONE. A hardcoded "N fonts" reads "1 fonts",
+  // which is the kind of small lie a status bar makes for ever.
+  it('says one font in the singular', () => {
+    const oneChain = { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }] }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: oneChain }} />)
+    expect(screen.getByTestId('template-font-count')).toHaveTextContent('1 font in template')
   })
 
   it('opens an engine-projected, keyboard-operable table matrix with named controls', async () => {
@@ -1384,7 +1412,14 @@ describe('the font browser opens from the family control', () => {
       // An `aria-label` REPLACES the contents, so a bare "Add fonts…" deleted
       // the one sentence saying what the row does for everybody who cannot see
       // it.
-      expect(screen.getByRole('button', { name: 'Add fonts… Browse and embed web fonts' })).toBeInTheDocument()
+      const door = screen.getByRole('button', { name: 'Add fonts… Browse and embed web fonts' })
+      expect(door).toBeInTheDocument()
+      // AND NO SHORTCUT GLYPH, WHICH IS RULED RATHER THAN FORGOTTEN (D-16.R.33
+      // R2). The mockup prints `⌘G` beside this row and no key is bound, so a
+      // glyph here would be a false UI string. Story 16.4 restates the matrix
+      // row; the assertion is added because nothing held it.
+      expect(door.textContent, 'a hint glyph beside an unbound key is a false label').not.toMatch(/⌘|⌥/)
+      expect(screen.getByRole('listbox', { name: 'Fonts' }).contains(door), 'the door is a real button OUTSIDE the listbox, never a non-option child of it').toBe(false)
     } finally {
       restore.restore()
     }
@@ -1465,6 +1500,153 @@ describe('typography controls over the engine-projected closed sets', () => {
     expect(screen.getByText('Nothing in this document or the catalogue matches "Helvetica".')).toBeInTheDocument()
   })
 
+  // STORY 16.4 — THREE GROUPS, ON THE AXIS THE CODE ALREADY FORKS ON.
+  //
+  // The grouping key is (declared?, `familyIsInstalled`?) and nothing else, so
+  // these assertions are written against what each group's rows DO — the note a
+  // row carries says whether picking it uses the face or downloads it — rather
+  // than against a class name, which would pass on a control that grouped
+  // alphabetically.
+  const dropdown = () => screen.getByRole('listbox', { name: 'Fonts' })
+  const groupRows = (label: string) => within(screen.getByRole('group', { name: label })).getAllByRole('option').map((option) => option.textContent ?? '')
+
+  it('draws the three groups, disjoint and complete, on the where-are-the-bytes axis', () => {
+    select()
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    // THE ORDER IS THE MODEL: in the file, on the machine, on neither.
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
+    const template = groupRows('IN THIS TEMPLATE')
+    const local = groupRows('AVAILABLE LOCALLY')
+    const install = groupRows('AVAILABLE TO INSTALL')
+    // COMPLETE: every option the listbox owns sits in exactly one group.
+    expect(template.length + local.length + install.length).toBe(within(dropdown()).getAllByRole('option').length)
+    // DISJOINT: no family is offered twice under two different promises.
+    const names = [...template, ...local, ...install].map((text) => text.split(' — ')[0])
+    expect(new Set(names).size).toBe(names.length)
+    // AND EACH HEADING TELLS THE TRUTH ABOUT ITS OWN ROWS.
+    expect(template).toEqual(['body', 'heading'])
+    expect(local.every((text) => /already (on|downloaded to) this machine/.test(text)), `every AVAILABLE LOCALLY row must be one that needs no download: ${local.slice(0, 3).join(' / ')}`).toBe(true)
+    expect(install.every((text) => /install on this machine/.test(text)), `every AVAILABLE TO INSTALL row must be one that is not here yet: ${install.slice(0, 3).join(' / ')}`).toBe(true)
+    // THE SECOND GROUP IS POPULATED ON A FRESH MACHINE, which is the half of
+    // D-16.R.72 a store-shaped reading of the heading would have got wrong: the
+    // committed faces ship inside the release, so they are always on it.
+    expect(local, 'the committed faces are on this machine whether or not anything was ever downloaded').toHaveLength(catalogueFaces.length)
+  })
+
+  // THE CAP IS APPLIED AFTER THE PARTITION, NOT BEFORE IT. Under the old order
+  // it was `addable.slice(0, 50)` over the union, so the second group's tail
+  // fell off a heading promising the font was already on this machine.
+  it('renders the first two groups in full and caps only the third, whose note counts the third', () => {
+    select()
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    expect(groupRows('IN THIS TEMPLATE')).toHaveLength(2)
+    expect(groupRows('AVAILABLE LOCALLY')).toHaveLength(catalogueFaces.length)
+    const install = groupRows('AVAILABLE TO INSTALL')
+    expect(install, 'the web tier is the only group with a bound').toHaveLength(50)
+    const counted = /Showing (\d+) of (\d+) families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
+    expect(counted, 'the capped group must say how much of itself it painted').not.toBeNull()
+    expect(Number(counted![1])).toBe(install.length)
+    // THE POPULATION IT NAMES IS ITS OWN. Group 2 plus group 3 is the whole
+    // addable union, so a note naming the union would be counting rows the cap
+    // never touched.
+    expect(Number(counted![2])).not.toBe(addableFamilyCount)
+    expect(Number(counted![2]) + groupRows('AVAILABLE LOCALLY').length).toBe(addableFamilyCount)
+    // AND THE CAP NOTE IS THE CAPPED GROUP'S DESCRIPTION, so it is announced
+    // with the group rather than read out as though it were a font.
+    expect(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' }).getAttribute('aria-describedby')).toBe(screen.getByText(/families you can install/).id)
+  })
+
+  // A HEADING IS SUPPRESSED ONLY WHEN ITS OWN GROUP IS EMPTY AFTER FILTERING —
+  // never because another group emptied, and never while it still owns a row.
+  it('suppresses each heading only on its own empty group', () => {
+    select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    // A declared chain name that matches no typeface at all: group 1 alone.
+    fireEvent.change(combobox, { target: { value: 'heading' } })
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['IN THIS TEMPLATE'])
+    // A family on this machine and one that is not, matching no chain: groups
+    // 2 and 3 stand while group 1 goes.
+    fireEvent.change(combobox, { target: { value: 'lora' } })
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
+    // And the design's own example: nothing here yet, so only the third.
+    fireEvent.change(combobox, { target: { value: 'sara' } })
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['AVAILABLE TO INSTALL'])
+  })
+
+  // THE KEYBOARD IS LINEAR EVEN THOUGH THE LIST IS NOT. Three groups is three
+  // headings interleaved into ONE option sequence, and 8.6's reason for the flat
+  // list survives unchanged — which is exactly why the heading interleave had to
+  // go: it was the one element of the walk that read a position semantically.
+  it('walks all three groups in one arrow-key sequence, and wraps', () => {
+    select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    const owner = () => document.getElementById(combobox.getAttribute('aria-activedescendant') ?? '')?.closest('[role="group"]')?.getAttribute('aria-label') ?? undefined
+    const total = within(dropdown()).getAllByRole('option').length
+    expect(total, 'a walk over an empty list would prove nothing').toBeGreaterThan(50)
+    const visited: Array<string | undefined> = []
+    for (let step = 0; step < total; step += 1) {
+      visited.push(owner())
+      fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+    }
+    // ONE CONTIGUOUS RUN PER GROUP, IN THE ORDER THEY ARE DRAWN. Four runs would
+    // mean the walk crossed a group boundary and came back.
+    expect(visited.filter((label, index) => index === 0 || label !== visited[index - 1])).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
+    // AND THE SEQUENCE IS ONE SEQUENCE: the step past the last row is the first.
+    expect(owner()).toBe('IN THIS TEMPLATE')
+    // Backwards from the top lands on the last row of the last group, which is
+    // the same walk read the other way.
+    fireEvent.keyDown(combobox, { key: 'ArrowUp' })
+    expect(owner()).toBe('AVAILABLE TO INSTALL')
+  })
+
+  // STORY 8.6's DEFERRAL, CLOSED HERE RATHER THAN MULTIPLIED (it would have gone
+  // from six non-option children to seven). NOTHING PINNED THE PRESENTATION ROLE
+  // BEFORE THIS TEST — measured: zero assertions over the whole test corpus — so
+  // the fix would otherwise have been unguarded, and a note dropped back into the
+  // list would break the listbox again in silence.
+  it('owns only groups of options, with every note outside the list and referenced from it', () => {
+    select()
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    const listbox = dropdown()
+    expect(listbox.querySelectorAll('[role="presentation"]'), 'a listbox may not own a presentational child').toHaveLength(0)
+    expect(Array.from(listbox.children).map((child) => child.getAttribute('role')), 'every child of the listbox is a group').toEqual(['group', 'group', 'group'])
+    for (const group of within(listbox).getAllByRole('group')) {
+      for (const child of Array.from(group.children)) {
+        expect(child.getAttribute('role') === 'option' || child.getAttribute('aria-hidden') === 'true', `${group.getAttribute('aria-label')} owns a child that is neither an option nor hidden from the tree: ${child.outerHTML.slice(0, 80)}`).toBe(true)
+      }
+    }
+    // POSITIVE CONTROL — THE NOTES ARE STILL THERE, and still attached to the
+    // list. Deleting them would satisfy every assertion above.
+    const disclosure = screen.getByText(/families you can add/)
+    expect(listbox, 'the disclosure is about the list and is not a row in it').not.toContainElement(disclosure)
+    const notes = document.getElementById(listbox.getAttribute('aria-describedby') ?? '')
+    expect(notes, 'the list must name the notes that describe it').not.toBeNull()
+    expect(notes).toContainElement(disclosure)
+    expect(notes).toContainElement(screen.getByText(/A font file from your own disk cannot be added/))
+  })
+
+  // MATRIX ROW: TWO COMPONENTS WITH DIFFERENT FAMILIES STILL SAY `Mixed`, AND
+  // THE THREE GROUPS DO NOT CHANGE THAT. The row was carried as "as today" and
+  // "as today" was asserted by nothing, so a control rebuilt around a partition
+  // could have lost it in silence.
+  it('keeps the Mixed placeholder over a selection with two different families', () => {
+    const two = [
+      { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'One', fontFamily: 'body' },
+      { id: 'e2', type: 'text' as const, band: 'content' as const, x: 0, y: 30_000, width: 72_000, height: 24_000, resizable: true, value: 'Two', fontFamily: 'heading' },
+    ]
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: two } }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByLabelText('text component e2'), { shiftKey: true })
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    expect(combobox).toHaveAttribute('placeholder', 'Mixed')
+    expect(combobox).toHaveAttribute('aria-description', 'Mixed value')
+    // AND NO ROW CLAIMS TO BE THE SELECTED ONE, because none of them is.
+    fireEvent.focus(combobox)
+    expect(within(screen.getByRole('listbox', { name: 'Fonts' })).queryAllByRole('option', { selected: true })).toEqual([])
+  })
+
   // STORY 8.6, AC4. THE TWO GROUPS ARE DIFFERENT KINDS OF THING, and the
   // difference is asserted by what each does when it is picked — not by a
   // class name, which would pass on a control where both options committed the
@@ -1485,8 +1667,15 @@ describe('typography controls over the engine-projected closed sets', () => {
     // index snapshot carries the plain note, because picking it fetches.
     const inter = screen.getByRole('option', { name: /^Inter\s*—\s*use it, already on this machine$/ })
     expect(inter).toBeInTheDocument()
-    expect(screen.getByText('In this document')).toBeInTheDocument()
-    expect(screen.getByText('Catalogue — not yet in this document')).toBeInTheDocument()
+    // STORY 16.4: THREE HEADINGS, ON THE AXIS `WHERE ARE THE BYTES`. The two
+    // 8.6 shipped — `In this document` and `Catalogue — not yet in this
+    // document` — named a WHEN and a source that is no longer the only one.
+    // They are corrected here rather than edited quietly: the group a row sits
+    // in is now a pure function of (declared?, `familyIsInstalled`?), and each
+    // heading is the accessible name of the group that owns those rows.
+    expect(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).toBeInTheDocument()
     // AND THE COUNT IS THE ADDABLE COUNT, WITH "LIVE" QUALIFIED. The list is a
     // dated build-time snapshot — the endpoint that publishes it sends no
     // CORS header and a browser cannot read it — and only the typeface is
@@ -1501,7 +1690,16 @@ describe('typography controls over the engine-projected closed sets', () => {
     // missing, so the answer to "where do I add my own font file?" is written
     // where the question is asked, rather than left to be inferred from its
     // absence.
-    expect(screen.getByText('Fonts come from this catalogue. A typeface on your own disk cannot be embedded.')).toBeInTheDocument()
+    //
+    // AND THE SENTENCE WAS RE-DERIVED AT 16.4, NOT CARRIED. Its 8.6 wording —
+    // "Fonts come from this catalogue" — became FALSE when D-16.1 made the
+    // catalogue one of three sources, so a `getByText` pinning it exactly was
+    // pinning a false statement. The clause that survives is the decline
+    // itself, and the reason recorded with it is the one D-16.R.46 Q4 supplies:
+    // a file off a disk arrives without the terms an embedded face has to carry.
+    const decline = screen.getByText(/A font file from your own disk cannot be added/)
+    expect(decline.textContent, 'the decline must state the licence reason, not merely refuse').toMatch(/licence text and copyright/)
+    expect(decline.textContent, 'the catalogue is no longer the only source and the sentence may not say it is').not.toMatch(/Fonts come from this catalogue/)
     // The declared group never carries the addition note: picking one of those
     // sets a property, and it is already in the file.
     expect(declaredOptions().map((option) => option.textContent)).toEqual(['body', 'heading'])

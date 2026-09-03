@@ -14,9 +14,10 @@ import { addableFamilyCount, indexRowFor, type FamilySource } from './font-index
 //
 //   `FAMILIES` (14) AND `SYSTEM_FONTS` (6) ARE PLACEHOLDER DATA. The story says
 //   so in those words. Fourteen rows stand in for the snapshot; the six host
-//   fonts are superseded by D-16.2, which made `AVAILABLE LOCALLY` mean faces
-//   this designer has fetched before and never the fonts installed on the
-//   machine.
+//   fonts are superseded by D-16.2 and by Story 16.4, which together made
+//   `AVAILABLE LOCALLY` mean every face this machine already holds — the
+//   release's committed catalogue and the faces this designer fetched and kept
+//   — and never the fonts installed on the machine.
 //
 //   THE `designer` FIELD DOES NOT EXIST HERE (D-16.R.33 R3). Neither the
 //   generated module nor the raw snapshot carries it, so the search predicate is

@@ -376,6 +376,52 @@ describe('the faces this machine already holds', () => {
     expect(offered).toEqual([])
   })
 
+  // STORY 16.4 — THE UNION ARRIVES IN THE ORDER THIS MODULE'S OWN DOC COMMENT
+  // DOCUMENTS, AND THE ASSERTION IS THE RUN STRUCTURE RATHER THAN A ROW LIST.
+  //
+  // WHY A RUN STRUCTURE. A test naming families re-pins the order to one
+  // snapshot and rots at the next index bump, which is how an ordering claim
+  // ends up asserted by a comment instead of by a run. The property that
+  // actually matters to every caller is one sentence long: everything
+  // `familyIsInstalled` accepts comes before everything it does not.
+  //
+  // WHY IT MATTERS OUTSIDE THIS MODULE. The family control draws a heading over
+  // the installed rows and caps only the tail. Under the pre-16.4 order the
+  // installed rows came out in FOUR alternating runs, a planted stored face
+  // landed at offset 900 of 1304, and 31 of 32 installed rows fell inside a
+  // 50-row cap — so the control drew AVAILABLE LOCALLY over a group it could
+  // not show in full. This test reds against that implementation.
+  it('returns every installed row as one contiguous run, with a stored face planted deep in the snapshot', () => {
+    const deep = Math.floor(webFamilies.length * 0.7)
+    const planted = webFamilies[deep]!
+    // THE PLANT IS THE POSITIVE CONTROL, so it is measured rather than assumed:
+    // a stored family that happened to sit near the top of the snapshot would
+    // pass the broken implementation too.
+    expect(deep, 'the planted family must sit deep in the snapshot for this to measure anything').toBeGreaterThan(500)
+    const offered = offeredFamilies('', [stored(planted.family, 'f'.repeat(64))])
+    const installed = offered.map(familyIsInstalled)
+    const runs = installed.reduce<boolean[]>((acc, flag) => (acc.length === 0 || acc[acc.length - 1] !== flag ? [...acc, flag] : acc), [])
+    expect(runs, 'installed first, then everything that needs a download — two runs, never four').toEqual([true, false])
+    // AND THE PLANTED ROW IS INSIDE THE INSTALLED RUN, so the structure above
+    // cannot be satisfied by dropping it instead of moving it.
+    const at = offered.findIndex((source) => source.family === planted.family)
+    expect(at, 'the planted stored family must still be offered').toBeGreaterThanOrEqual(0)
+    expect(offered[at]!.tier).toBe('stored')
+    expect(at).toBeLessThan(installed.indexOf(false))
+    // THE POPULATION IS STATED BESIDE THE STRUCTURE. Two runs over a list with
+    // only one kind of row in it would be a vacuous pass.
+    expect(installed.filter((flag) => flag).length).toBeGreaterThan(catalogueFaces.length)
+    expect(installed.filter((flag) => !flag).length).toBeGreaterThan(0)
+  })
+
+  // AND THE SAME PROPERTY WITH THE STORE EMPTY, because the repair must not be
+  // a special case that only fires when something is planted: the local tier is
+  // the installed run on a fresh machine and it is already contiguous.
+  it('returns one contiguous installed run with no store at all', () => {
+    const runs = offeredFamilies('').map(familyIsInstalled).reduce<boolean[]>((acc, flag) => (acc.length === 0 || acc[acc.length - 1] !== flag ? [...acc, flag] : acc), [])
+    expect(runs).toEqual([true, false])
+  })
+
   // THE SEAM ITSELF. Every arm of the union has a sentence, and the switch that
   // produces it is exhaustive — so a fourth tier added without being handled
   // stops compiling rather than silently rendering nothing.

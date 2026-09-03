@@ -1476,7 +1476,19 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     </div>
     {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
-    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" /><span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
+    {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
+        `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
+        the dropdown's first group and this line teach one model from one
+        source and cannot drift apart.
+
+        THE MOCKUP'S BINDING IS REFUSED, DELIBERATELY. `statusFontLine` counts
+        `s.added.length` — the fonts added THIS SESSION — which is the
+        session-scoped set this story forbids as a grouping key and would be no
+        better here; and its else-branch is a hardcoded "3 fonts in template",
+        which is placeholder data rather than a specification. No grid reading,
+        no snap state and no selection content is added: those are three more
+        claims about the canvas, and this story is not the place to make them. */}
+    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" />{canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
 }
 
@@ -1756,7 +1768,16 @@ function MachineFontStore({ faces, note, onRemove }: { faces: ReadonlyArray<Stor
   // screen reader and by a test — without either of them having to guess which
   // of the panel's several live regions this one is.
   return <div className="machine-font-store" role="group" aria-label="Typefaces downloaded to this machine">
-    <p className="section-label">AVAILABLE LOCALLY — TYPEFACES THIS DESIGNER HAS DOWNLOADED</p>
+    {/* THE BORROWED HALF OF THIS LABEL IS GIVEN BACK (Story 16.4). It used to
+        read `AVAILABLE LOCALLY — TYPEFACES THIS DESIGNER HAS DOWNLOADED`, which
+        took the name of a dropdown group that did not exist yet. It exists now,
+        and it holds MORE than this panel does — every face this machine holds,
+        the release's committed catalogue included — so two differently
+        populated regions were sharing one name. The panel keeps the half that
+        describes what it actually lists. Measured: `AVAILABLE LOCALLY` occurs
+        exactly once across the six mockup files, as the dropdown's group
+        heading; the design draws no machine-store panel at all. */}
+    <p className="section-label">TYPEFACES THIS DESIGNER HAS DOWNLOADED</p>
     {faces.length === 0
       ? <p className="honest-note">No typefaces have been downloaded to this machine yet. Picking a family downloads it once and keeps it here, so the next document offers it with no download and no network.</p>
       : <ul className="machine-font-list">{faces.map((face) => <li key={face.key} className="machine-font-row">
@@ -1893,21 +1914,44 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
 // engine's own list rather than a free-text field whose every typo is a round
 // trip to a rejection. The typed text filters; it is never committed as a value.
 //
-// STORY 8.6 GAVE IT A SECOND GROUP, AND THE TWO ARE DIFFERENT KINDS OF THING.
-// The first group is the chains THE DOCUMENT DECLARES — picking one commits
-// `fontFamily`, exactly as before. The second is the bundled catalogue, which
-// the document does NOT declare — picking one sends the embed command, which
-// puts the face in the file and declares a chain for it, and the entry then
-// appears in the first group instead. That transition IS the feedback: nothing
-// says "added", the entry simply moves.
+// STORY 8.6 GAVE IT A SECOND GROUP; STORY 16.4 MAKES IT THREE, ON THE AXIS THE
+// CODE ALREADY FORKS ON — WHERE ARE THE BYTES, never when did they arrive.
+//
+//   1. IN THIS TEMPLATE — `families.includes(name)`, the document's own
+//      declared chains. The bytes are IN THE FILE. Picking commits `fontFamily`,
+//      exactly as it did before 8.6.
+//   2. AVAILABLE LOCALLY — `familyIsInstalled(source)`, which is the `local` and
+//      `stored` arms together. ON THIS MACHINE, NOT IN THIS FILE. Picking embeds
+//      from the machine and then commits the property: two commands, two undos,
+//      no network.
+//   3. AVAILABLE TO INSTALL — the `web` arm. NOT ON THIS MACHINE. Picking
+//      installs the face and nothing enters the document at all.
+//
+// A ROW'S GROUP IS A PURE FUNCTION OF (declared?, `familyIsInstalled`?) AND OF
+// NOTHING ELSE — never of a set built up over this session. The `local`/`stored`
+// split is deliberately invisible here: it is a provenance difference with no
+// consequence at the moment of choosing, and surfacing it would be a fourth
+// group. It surfaces where it does have a consequence, at REMOVAL, which is why
+// `lateEmbedRefusal` above still tells the two apart.
+//
+// AND A FONT CHANGES GROUP BECAUSE THE AUTHOR ACTED. Story 8.6's rule survives
+// three groups word for word: nothing says "added", the entry simply moves.
+// Install moves a row 3 → 2; first use moves it 2 → 1.
 //
 // The engine stays the authority on what `fontFamily` may name. The designer
-// never invents a family name — a catalogue name reaches the document only by
+// never invents a family name — an offered name reaches the document only by
 // going through a command, and the projection is what says it arrived.
-// HOW MANY ADDABLE FAMILIES THE LISTBOX PAINTS AT ONCE. The addable population
-// is around eighteen hundred; the number a person reads before typing is not.
-// The disclosure beneath the list always states the true total, so this bounds
-// the DOM and never the claim.
+// HOW MANY *NOT-YET-INSTALLED* FAMILIES THE LISTBOX PAINTS AT ONCE, AND ONLY
+// THOSE. The web population is around thirteen hundred; the number a person
+// reads before typing is not. The disclosure beneath the list always states the
+// true total, so this bounds the DOM and never the claim.
+//
+// IT IS APPLIED AFTER THE PARTITION, NOT BEFORE IT, AND THAT IS THE WHOLE POINT
+// (Story 16.4). Capping the union and then grouping it drew AVAILABLE LOCALLY
+// over a group the render could not show in full — measured at HEAD: 32
+// installed rows, 31 of them inside the cap, one stored family stranded at
+// offset 900. A heading that promises a font is on your machine may not be
+// drawn over a member it does not show, so groups 1 and 2 render in full.
 const renderedFamilyLimit = 50
 
 /**
@@ -1935,7 +1979,7 @@ const renderedFamilyLimit = 50
 const lateEmbedRefusal = (family: string, style: string, removable: boolean, engineMessage: string): string =>
   `${family} is installed on this machine and cannot be embedded in this document: ${engineMessage} Nothing was written to the document, and the face is still on this machine — `
   + (removable
-    ? `remove it with the “Remove ${family} (${style}) from this machine” control in AVAILABLE LOCALLY, under TYPOGRAPHY.`
+    ? `remove it with the “Remove ${family} (${style}) from this machine” control in TYPEFACES THIS DESIGNER HAS DOWNLOADED, under TYPOGRAPHY.`
     : 'it ships inside this designer rather than in the machine store, so there is nothing to remove.')
 
 function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
@@ -1978,16 +2022,50 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
   // one exclusion that is about THIS DOCUMENT: a family the document already
   // declares a chain for has moved into the first group and is not offered twice.
   const addable = offeredFamilies(query, storedFaces).filter((source) => !families.includes(source.family))
-  // AND THE RENDERED LIST IS CAPPED WHILE THE COUNT IS NOT. A combobox that
-  // paints eighteen hundred rows is not a list anybody reads, and the arrow-key
-  // walk below is linear over whatever is painted. The DISCLOSURE states the
-  // real addable total, so the cap is a presentation choice that never
-  // misreports the population — type more and the window moves.
-  const shown = addable.slice(0, renderedFamilyLimit)
-  // ONE flat option list behind two visible groups, because the keyboard is
-  // linear even when the list is not: `active` indexes this, arrow keys walk
-  // it, and Enter dispatches whichever kind it lands on.
-  const matches: ReadonlyArray<{ name: string; source?: FamilySource }> = [...declared.map((name) => ({ name })), ...shown.map((source) => ({ name: source.family, source }))]
+  // THE PARTITION. Two predicates, three groups, and no third state anywhere:
+  // `declared` above is `families.includes(name)`, and `familyIsInstalled` is
+  // the one definition of "this machine already holds it", shared with the
+  // browser's row state so the two surfaces cannot disagree.
+  const onThisMachine = addable.filter((source) => familyIsInstalled(source))
+  const toInstall = addable.filter((source) => !familyIsInstalled(source))
+  // GROUP 2 IS DELIBERATELY UNCAPPED, AND THE REVISIT TRIGGER IS NAMED RATHER
+  // THAN LEFT TO BE NOTICED. Its population is the 31 committed faces plus
+  // whatever this designer has downloaded, so it is tens of rows and not
+  // thousands, and a heading saying a font is already on your machine may not
+  // hide one. REVISIT WHEN THE MACHINE STORE CAN HOLD ON THE ORDER OF 200
+  // ENTRIES: at that size the group needs its own bound, and the bound has to
+  // arrive with something that still tells the truth about what it hid.
+  //
+  // AND THE THIRD GROUP IS CAPPED WHILE ITS COUNT IS NOT. A combobox that paints
+  // thirteen hundred rows is not a list anybody reads, and the arrow-key walk
+  // below is linear over whatever is painted. The cap note under that group
+  // states its own population, so the cap is a presentation choice that never
+  // misreports what it drew from — type more and the window moves.
+  const shownToInstall = toInstall.slice(0, renderedFamilyLimit)
+  // ONE flat option list behind three visible groups, because the keyboard is
+  // linear even when the list is not: `active` indexes this, arrow keys walk it,
+  // and Enter dispatches whichever kind it lands on. The groups below are drawn
+  // over CONTIGUOUS SLICES of this one array — `offeredFamilies` returns the
+  // installed rows as a single run (Story 16.4 repaired it so that it does), so
+  // grouping is labelling here and never re-ordering.
+  const matches: ReadonlyArray<{ name: string; source?: FamilySource }> = [...declared.map((name) => ({ name })), ...onThisMachine.map((source) => ({ name: source.family, source })), ...shownToInstall.map((source) => ({ name: source.family, source }))]
+  // THE THREE GROUPS, EACH OVER ITS OWN SLICE OF `matches`, so a row's option id
+  // and its arrow-key position stay the flat index whatever the grouping does.
+  // A heading is drawn only when its own group has rows after filtering.
+  const groups: ReadonlyArray<{ key: string; label: string; from: number; rows: ReadonlyArray<{ name: string; source?: FamilySource }>; note?: string }> = [
+    { key: 'template', label: 'IN THIS TEMPLATE', from: 0, rows: matches.slice(0, declared.length) },
+    { key: 'local', label: 'AVAILABLE LOCALLY', from: declared.length, rows: matches.slice(declared.length, declared.length + onThisMachine.length) },
+    {
+      key: 'install',
+      label: 'AVAILABLE TO INSTALL',
+      from: declared.length + onThisMachine.length,
+      rows: matches.slice(declared.length + onThisMachine.length),
+      // THE COUNT NAMES THIS GROUP'S OWN POPULATION, NOT THE UNION'S. The cap
+      // applies to this group alone now, so a sentence counting everything
+      // addable would be counting rows the cap never touched.
+      note: toInstall.length > shownToInstall.length ? `Showing ${shownToInstall.length} of ${toInstall.length} families you can install — keep typing to narrow them.` : undefined,
+    },
+  ]
   const close = () => { setOpen(false); setQuery(''); setActive(0) }
   const commit = async (intent: PropertyIntent) => {
     if (pendingRef.current) return
@@ -2060,27 +2138,81 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
       <button type="button" className="property-inline-action" aria-label={chainsOpen ? 'Hide font chains' : 'Edit font chains'} title={chainsOpen ? 'Hide font chains' : 'Edit font chains'} aria-expanded={chainsOpen} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); onToggleChains() }}>≡</button>
       {(committed !== '' || !uniform) && <button type="button" className="property-inline-action" aria-label="Clear Font family" title="Clear Font family" disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); void commit({ field: 'fontFamily', operation: 'clear' }) }}>×</button>}
     </div>
-    {open && <ul className="property-options" id={listId} role="listbox" aria-label="Fonts">
-      {declared.length > 0 && <li className="property-option property-option-empty" role="presentation">In this document</li>}
-      {matches.map((match, index) => <li key={`${match.source ? 'catalogue' : 'declared'}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}>{match.name}{match.source && <span className="property-option-note">{familySourceNote(match.source)}</span>}
-        {/* THE GROUP HEADING SITS BEFORE THE FIRST CATALOGUE ENTRY rather than
-            between two lists, because the options are one flat list for the
-            keyboard's sake (see `matches`) and splitting the markup would
-            split the arrow-key walk with it. */}
-      </li>).flatMap((node, index) => index === declared.length ? [<li key="catalogue-heading" className="property-option property-option-empty" role="presentation">Catalogue — not yet in this document</li>, node] : [node])}
-      {matches.length === 0 && <li className="property-option property-option-empty" role="presentation">{`Nothing in this document or the catalogue matches "${query.trim()}".`}</li>}
-      {/* THE COUNT IS THE ADDABLE COUNT AND IT SAYS SO, and the word "live" is
-          qualified where it would otherwise be read into the control: the LIST
-          is a dated build-time snapshot, because the endpoint that publishes it
-          sends no CORS header and a browser cannot read it. Only the typeface
-          is fetched, at the moment of a pick. */}
-      <li className="property-option property-option-empty" role="presentation">{familyIndexDisclosure()}</li>
-      {addable.length > shown.length && <li className="property-option property-option-empty" role="presentation">{`Showing ${shown.length} of ${addable.length} matching families — keep typing to narrow them.`}</li>}
-      {/* AC: the disk-font decline is STATED, not merely absent behaviour.
-          There is no import control to find missing, so the answer to "where
-          do I add my own font file?" is written where the question is asked. */}
-      <li className="property-option property-option-empty" role="presentation">Fonts come from this catalogue. A typeface on your own disk cannot be embedded.</li>
-    </ul>}
+    {/* THE LISTBOX OWNS OPTIONS AND GROUPS OF OPTIONS, AND NOTHING ELSE (Story
+        16.4, closing 8.6's deferral rather than multiplying it). It carried SIX
+        `role="presentation"` children — two headings, an empty state, the
+        disclosure, the cap note and the disk-font decline — which breaks a
+        listbox's required-owned-elements rule, and a third heading would have
+        made seven. Both sanctioned repairs are used, each where it fits:
+
+          · THE HEADINGS BECOME `role="group"` WITH AN `aria-label`. The visible
+            heading is `aria-hidden` and the group carries the same words as its
+            name, so the accessibility tree sees listbox → group → option with no
+            stray text node in it, and a sighted reader still reads the heading.
+          · THE NOTES MOVE OUT OF THE LIST ENTIRELY and are referenced with
+            `aria-describedby`. They were never options: they describe the list.
+
+        AND THE KEYBOARD WALK IS UNCHANGED, WHICH IS WHY THIS IS THE FIX AND NOT
+        A SECOND DELIVERABLE. The one element in the walk that read POSITION
+        semantically was the heading interleave this replaces (`index ===
+        declared.length`); `move`, `active`, the option ids, `aria-activedescendant`
+        and `choose` are all order-agnostic and are untouched. `active` still
+        indexes the one flat `matches` array, and the groups are drawn over
+        contiguous slices of it. */}
+    {open && <div className="property-options">
+      <div className="property-option-groups" id={listId} role="listbox" aria-label="Fonts" aria-describedby={`${listId}-notes`}>
+        {groups.filter((group) => group.rows.length > 0).map((group) => <div key={group.key} className={`property-option-group property-option-group-${group.key}`} role="group" aria-label={group.label} aria-describedby={group.note ? `${listId}-${group.key}-note` : undefined}>
+          <p className="property-option-heading" aria-hidden="true">{group.label}</p>
+          {group.rows.map((match, offset) => {
+            const index = group.from + offset
+            return <div key={`${group.key}:${match.name}`} id={`${listId}-${index}`} role="option" aria-selected={match.source === undefined && match.name === committed} className={`property-option${index === active ? ' property-option-active' : ''}${match.source ? ' property-option-catalogue' : ''}`} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActive(index)} onClick={() => choose(match)}>{match.name}{match.source && <span className="property-option-note">{familySourceNote(match.source)}</span>}</div>
+          })}
+          {/* THE CAP NOTE IS THIS GROUP'S DESCRIPTION, not a row in it: hidden
+              from the tree where it would be a non-option child, and named by
+              the group's `aria-describedby` so it is still announced. */}
+          {group.note && <p id={`${listId}-${group.key}-note`} className="property-option property-option-empty" aria-hidden="true">{group.note}</p>}
+        </div>)}
+      </div>
+      <div id={`${listId}-notes`} className="property-option-notes">
+        {matches.length === 0 && <p className="property-option property-option-empty">{`Nothing in this document or the catalogue matches "${query.trim()}".`}</p>}
+        {/* THE COUNT IS THE ADDABLE COUNT AND IT SAYS SO, and the word "live" is
+            qualified where it would otherwise be read into the control: the LIST
+            is a dated build-time snapshot, because the endpoint that publishes it
+            sends no CORS header and a browser cannot read it. Only the typeface
+            is fetched, at the moment of a pick. */}
+        <p className="property-option property-option-empty">{familyIndexDisclosure()}</p>
+        {/* THE DISK-FONT DECLINE, RE-DERIVED AT STORY 16.4 RATHER THAN CARRIED
+            UNREAD. 8.6 wrote it from one premise; two of the three premises it
+            now rests on did not exist then, so the working is recorded here.
+
+            (1) REVERSED — D-16.1. "Fonts come from this catalogue" was the whole
+                argument in 8.6 and it is now FALSE: the catalogue is one of three
+                sources, beside this machine's store and the published library.
+                The old sentence is not merely stale, it states something untrue
+                about the control it sits under, so it is restated rather than
+                kept.
+            (2) STANDING — D-16.2. Faces installed on the authoring machine are
+                never enumerated or read. This is the one clause of SPEC-fonts'
+                Non-goal that D-16.1 left standing, so the designer has no way to
+                see a typeface sitting on the author's disk in the first place.
+            (3) NEW — D-16.R.46 Q4. Installing is only ever a precursor to
+                embedding, and embedding is the step the licence requirement
+                gates.
+
+            THE CONCLUSION HOLDS, AND PREMISE 3 IS WHY IT HOLDS MORE FIRMLY THAN
+            IT DID. A fetched face arrives with its licence file and its name
+            table; a file dragged off a desktop arrives with neither, and a
+            document may not embed a face that cannot state its terms. Because
+            installing exists only to lead to embedding, such a file cannot
+            usefully be installed either — it would be a dead end with a
+            friendlier first click, which is exactly what D-16.R.46 Q4 forbids.
+
+            AND IT IS STATED, NOT LEFT AS ABSENT BEHAVIOUR. There is no import
+            control to find missing, so the answer to "where do I add my own font
+            file?" is written where the question is asked. */}
+        <p className="property-option property-option-empty">Typefaces come from this list — the ones already on this machine, and the ones this designer downloads when you pick them. A font file from your own disk cannot be added: it arrives without the licence text and copyright a document has to carry with an embedded face.</p>
+      </div>
+    </div>}
     {/* STORY 16.3 — THE DOOR TO THE BROWSER, WHERE THE DESIGN PUTS IT: the last
         row of the open family dropdown. It is a real button OUTSIDE the
         `role="listbox"` rather than a fourth `role="presentation"` child inside

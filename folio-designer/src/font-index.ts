@@ -42,24 +42,32 @@ import type { StoredFace } from './font-store'
 // that filled this store. The store wins over the web tier for the plain reason
 // that it is the same bytes without the round-trip.
 //
-// THE SEAM IS BUILT HERE, NOT LEFT TO STORY 16.4. 16.4 adds the headings that
-// GROUP these three; it does not reshape the union. Every exhaustive switch
-// over `FamilySource` reds until the new arm is handled, which is what makes
-// the hand-off a mechanism rather than a sentence in a spec.
+// THE SEAM IS BUILT HERE. 16.2 predicted that Story 16.4 would add headings and
+// "not reshape the union"; the second half of that prediction was WRONG and is
+// corrected rather than carried. 16.4 measured this module's own documented
+// order against the order it produced and found them different (see
+// `offeredFamilies`), so 16.4 repaired the ORDER as well as adding the headings.
+// The ARMS are untouched, and that is the part the seam was for: every
+// exhaustive switch over `FamilySource` reds until a new arm is handled, which
+// is what makes the hand-off a mechanism rather than a sentence in a spec.
 //
-// `AVAILABLE LOCALLY` IS FETCHED FACES — THIS ARM. The frozen intent contract
-// says so in those words ("`AVAILABLE LOCALLY` is fetched faces, never host
-// fonts", D-16.2), the story's plain-terms opener says it means "typefaces this
-// designer has fetched before", and the panel heading `App.tsx` renders says
-// TYPEFACES THIS DESIGNER HAS DOWNLOADED. All three agree, and this comment
-// agrees with them: it does NOT mean this arm plus the local arm.
+// `AVAILABLE LOCALLY` IS THE DROPDOWN HEADING OVER BOTH INSTALLED ARMS — THIS
+// ONE AND THE LOCAL ONE (Story 16.4, D-16.R.72). 16.2 read the name as this arm
+// alone and said so here; 16.4 owned the question 16.2 delegated and settled it
+// the other way, because the heading's axis is WHERE ARE THE BYTES rather than
+// WHEN DID THEY ARRIVE. A face that ships inside this release and a face this
+// designer fetched last week are both on this machine, both need no network,
+// and both embed on a pick — so splitting them would be a provenance difference
+// with no consequence at the moment of choosing, and a fourth group besides.
 //
-// WHAT THE DROPDOWN GROUP OF THAT NAME ENDS UP CONTAINING IS STORY 16.4'S TO
-// DECIDE, AND IS NOT DECIDED HERE. 16.4 adds the headings that group this
-// union; 16.2 builds the union and no group at all. Whether the 31 shipped
-// local-tier faces are shown under that heading, under their own, or under
-// neither is a presentation question this module has no opinion on — it joins
-// three lists and returns them in one order.
+// THE 31 LOCAL-TIER FACES THEREFORE SIT UNDER THAT HEADING TOO, which is why
+// the group is never empty on a fresh machine. `familyIsInstalled` below is the
+// one predicate that decides it, for the control and for the browser alike.
+//
+// THE PANEL HEADING IN `App.tsx` IS A DIFFERENT REGION AND NO LONGER SHARES THE
+// NAME: the machine store's own panel reads TYPEFACES THIS DESIGNER HAS
+// DOWNLOADED, because it lists this arm only. Two differently populated regions
+// may not share one name, and until 16.4 they did.
 //
 // WHAT IS SETTLED, IN EVERY READING: it never means "the fonts installed on
 // this computer". SPEC-fonts' *"No host fonts"* Non-goal is the one clause
@@ -149,6 +157,20 @@ export const addableFamilyCount = webFamilies.length + catalogueFaces.length
  * ONE ORDERED LIST OF EVERY FAMILY THE AUTHOR MAY PICK, local tier first, then
  * the faces this machine already holds, then the rest of the snapshot.
  *
+ * THAT SENTENCE WAS FALSE FROM 16.2 UNTIL STORY 16.4, AND IT IS WORTH SAYING SO
+ * HERE RATHER THAN QUIETLY FIXING IT. The stored rows were pushed inside the
+ * snapshot loop, so they arrived at their WEB positions and the installed rows
+ * came out in four alternating runs instead of one. The comment was written
+ * above the function and never measured over it. `font-index.test.ts` now
+ * measures the run structure on every run, because a comment is not a
+ * measurement.
+ *
+ * THE ORDER IS PART OF THE CONTRACT, NOT A PRESENTATION DETAIL. The family
+ * control groups this list under headings and caps only its tail; a caller that
+ * trusts the heading over the order draws a heading it cannot fill. So the
+ * guarantee is stated in one line: EVERY ROW SATISFYING `familyIsInstalled`
+ * COMES BEFORE EVERY ROW THAT DOES NOT — exactly two runs, never four.
+ *
  * Local first is the honest order rather than a preference: those rows need no
  * network, and the join above has already removed their web duplicates, so a
  * family present in both appears once, from the tier that can serve it offline.
@@ -209,7 +231,7 @@ function mostRecentlyFetched(left: StoredFace, right: StoredFace): StoredFace {
   return left.key <= right.key ? left : right
 }
 
-export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace> = []): ReadonlyArray<FamilySource> {
+export function offeredFamilies(query: string, storedListing: ReadonlyArray<StoredFace> = []): ReadonlyArray<FamilySource> {
   const needle = query.trim().toLowerCase()
   const hit = (family: string) => needle === '' || family.toLowerCase().includes(needle)
   // THE LOCAL TIER IS NOT DISPLACED BY THE STORE. Its record is the stronger
@@ -221,12 +243,21 @@ export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace>
   // `list()` happened to return last, which is the silent substitution the
   // content-address key exists to refuse.
   const storedByFamily = new Map<string, StoredFace>()
-  for (const record of stored) {
+  for (const record of storedListing) {
     if (localTierHolds(record.family)) continue
     const held = storedByFamily.get(record.family)
     storedByFamily.set(record.family, held === undefined ? record : mostRecentlyFetched(held, record))
   }
   const local: ReadonlyArray<FamilySource> = catalogueFaces.filter((face) => hit(face.family)).map((face) => ({ tier: 'local', family: face.family, face }))
+  // A STORED ROW IS COLLECTED, NOT PUSHED WHERE ITS WEB ROW STOOD (Story 16.4).
+  //
+  // The snapshot loop is walked for its MEMBERSHIP — which families the store
+  // can serve instead of the network — and never for its POSITION. It used to
+  // contribute both, so a family the author had already downloaded took the
+  // index rank of the row it replaced: measured, one planted stored face landed
+  // at offset 900 of 1304, four alternation runs deep, under a heading that
+  // says the bytes are already here. That is the defect this split repairs.
+  const stored: FamilySource[] = []
   const web: FamilySource[] = []
   const offeredFromStore = new Set<string>()
   for (const row of webFamilies) {
@@ -234,15 +265,14 @@ export function offeredFamilies(query: string, stored: ReadonlyArray<StoredFace>
     const record = storedByFamily.get(row.family)
     if (record === undefined) { web.push({ tier: 'web', family: row.family, row }); continue }
     offeredFromStore.add(row.family)
-    web.push({ tier: 'stored', family: row.family, record })
+    stored.push({ tier: 'stored', family: row.family, record })
   }
-  const orphaned: ReadonlyArray<FamilySource> = [...storedByFamily.values()]
+  // A stored family the snapshot no longer lists follows the ones it does, so
+  // the two halves of the store stay adjacent and the run stays contiguous.
+  const orphanedStored: ReadonlyArray<FamilySource> = [...storedByFamily.values()]
     .filter((record) => !offeredFromStore.has(record.family) && hit(record.family))
     .map((record) => ({ tier: 'stored', family: record.family, record }))
-  // Stored-but-unlisted families come first among the non-local rows for the
-  // same reason the local tier does: they are here, and the rows after them are
-  // not.
-  return [...local, ...orphaned, ...web]
+  return [...local, ...stored, ...orphanedStored, ...web]
 }
 
 /**

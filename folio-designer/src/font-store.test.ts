@@ -281,7 +281,26 @@ describe('storage that cannot be opened or written', () => {
     expect(stated).toContain('the origin is out of space')
     expect(stated, 'nothing may claim a document changed: no command is sent at install').not.toContain('added to this document')
     expect(stated).toMatch(/no document was changed/)
-    expect(stated, 'the recovery is the removal control the store panel already ships').toMatch(/AVAILABLE LOCALLY/)
+    // AND IT NAMES A REGION THE DESIGNER REALLY DRAWS (Story 16.4).
+    //
+    // This assertion used to read `toMatch(/AVAILABLE LOCALLY/)`, and 16.4
+    // renamed the panel — it had borrowed that heading from a dropdown group
+    // that now holds MORE than this panel lists. Re-pointing the regex at the
+    // new spelling would have RELOCATED the blind spot rather than closed it:
+    // the property is not "some string is present", it is "this sentence points
+    // the author at a place they can find". So the panel's own heading is read
+    // out of `App.tsx` and matched against the sentence, and a rename on either
+    // side reds this.
+    const shell = fs.readFileSync(path.join(here, 'App.tsx'), 'utf8')
+    const marker = 'aria-label="Typefaces downloaded to this machine"'
+    expect(shell, 'the store panel must still be a named region in the shell').toContain(marker)
+    const heading = /<p className="section-label">([^<{]+)<\/p>/.exec(shell.slice(shell.indexOf(marker)))?.[1]
+    expect(heading, 'the store panel must render a section label of its own').toBeTruthy()
+    expect(stated, 'the recovery must name the panel the designer actually draws').toContain(heading)
+    // AND IT SAYS WHAT IS THERE TO PRESS. `App.font-store.test.tsx` asserts the
+    // other half in a mounted designer: that this very region is the one that
+    // carries a per-face remove control.
+    expect(stated, 'the recovery is the removal control the store panel already ships').toMatch(/remove control on every face/)
   })
 
   // THE THREE SENTENCES ARE THREE DIFFERENT EVENTS, AND THE DISTINCTION IS THE
