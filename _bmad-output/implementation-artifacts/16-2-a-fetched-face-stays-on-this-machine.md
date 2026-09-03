@@ -2,7 +2,7 @@
 title: 'Story 16.2: A fetched face stays on this machine'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: true
 baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
@@ -763,3 +763,65 @@ with the measurement-order trap that produced them.
 **Still deliberately not run, and still never reported as passing:** the browser e2e specs, the matrix
 corpora, the AD-21 legs and `TestCrossTargetByteIdentity`. Real browser IndexedDB is proven by nothing
 here either.
+
+## Suggested Review Order
+
+**The store itself — what it keeps, and why not `localStorage`**
+
+- Start here: the arithmetic that decided the mechanism, written into the module so it survives.
+  [`font-store.ts:33`](../../folio-designer/src/font-store.ts#L33)
+
+- The record shape: everything `embedFontFamily` refuses a face without, so a store hit needs no network.
+  [`font-store.ts:122`](../../folio-designer/src/font-store.ts#L122)
+
+- The content address, computed in the browser; this is the key, never the family name.
+  [`font-store.ts:182`](../../folio-designer/src/font-store.ts#L182)
+
+- The one open path that degrades instead of throwing into callers.
+  [`font-store.ts:286`](../../folio-designer/src/font-store.ts#L286)
+
+- Self-healing: a stored face whose bytes no longer hash to its key is dropped, not served.
+  [`font-store.ts:396`](../../folio-designer/src/font-store.ts#L396)
+
+**The timeout, and what a stall is allowed to claim**
+
+- The whole timeout: one signal into `fetch()`, so the abort reaches the body stream too.
+  [`font-source.ts:343`](../../folio-designer/src/font-source.ts#L343)
+
+- The stall's own sentence — deliberately not the offline wording, and it claims nothing it cannot know.
+  [`font-source.ts:388`](../../folio-designer/src/font-source.ts#L388)
+
+- The three catches that each end the chain; this is why a stall costs T, not six of them.
+  [`font-source.ts:412`](../../folio-designer/src/font-source.ts#L412)
+
+**The seam Story 16.4 inherits**
+
+- The third arm. An exhaustive switch over this union reds until 16.4 handles `stored`.
+  [`font-index.ts:69`](../../folio-designer/src/font-index.ts#L69)
+
+- Two stored faces of one family: the choice is stated and deterministic, not arrival order.
+  [`font-index.ts:207`](../../folio-designer/src/font-index.ts#L207)
+
+**Where the store meets the pick**
+
+- The store read sits in front of the fetch; a hit sends no request at all.
+  [`App.tsx:325`](../../folio-designer/src/App.tsx#L325)
+
+- Machine-held faces join document-carried ones for preview, without disturbing the document-scoped keying.
+  [`App.tsx:332`](../../folio-designer/src/App.tsx#L332)
+
+**The two guards that had to be got right**
+
+- The host-font prohibition, source-level over the whole designer, by every spelling.
+  [`host-font-access.mjs:53`](../../folio-designer/scripts/host-font-access.mjs#L53)
+
+- The durable-state exemption, narrowed to one spelling in one file rather than to the file.
+  [`file-access-contract.test.ts:66`](../../folio-designer/src/file/file-access-contract.test.ts#L66)
+
+**Peripherals**
+
+- The Go half of the key tie: both suites pinned to one shared constant.
+  [`stored_face_key_tie_test.go:115`](../../folio-go/stored_face_key_tie_test.go#L115)
+
+- The population floor, at the ratio its model uses rather than a round number.
+  [`host-font-access.mjs:98`](../../folio-designer/scripts/host-font-access.mjs#L98)
