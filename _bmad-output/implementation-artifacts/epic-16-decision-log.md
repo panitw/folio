@@ -3174,3 +3174,70 @@ and before the announcement arrived: `e80f607` → `7a3aa2f`, one commit, decisi
 for checking is the right one and worth preserving verbatim: *"'HEAD moved' is the one signal I will never
 take on trust."*** D-16.R.52 made announcing the move my obligation; this is the other half, and it does not
 depend on me remembering.
+
+### D-16.R.61 — The degraded-by-default hazard measured away, and a sixth false measurement caught mid-check
+
+**16.5's implementation raised a real hazard and the builder disposed of it by two-sided measurement rather
+than argument.**
+
+**THE HAZARD.** `App.test.tsx` has no IndexedDB, so after this story its font-browser tests exercise the
+**degraded** dialog by default — and degraded mode is *embed-at-pick*, the pre-16.5 behaviour. **So a test
+asserting install behaviour could silently assert the OLD path and pass, because embed-at-pick still does
+what it always did.** The implementer patched the one test that broke; **the tests that did not break were
+the concern** — one that broke was looking at the right thing, while one that quietly kept passing is
+either genuinely path-independent or has re-anchored onto degraded copy, and **those two are
+indistinguishable from a green.**
+
+**This is the epic's most-caught defect class in a new medium, with an aggravation: the different mechanism
+covering the case is the fallback THIS STORY INTRODUCED. The story built its own alibi.**
+
+**THE MEASUREMENT — and it is two-sided, which is what makes it a proof rather than a classification.**
+Scope: the two font `describe` blocks, **20 tests**. **PRIMARY (store-dependent) 5; path-independent 15;
+degraded-path in this file 0** (the degraded arm lives in `App.font-store.test.tsx:655`). **Not inverted:
+5 primary against 1 degraded.**
+
+- **Mutation A** neutered the fake-store installation, isolated-diffed to exactly one changed line.
+  **Result: precisely the 5 tests classified PRIMARY went red, and no others** (134 passed / 5 failed).
+  **That proves both halves at once — the 5 genuinely exercise the primary path, AND no test called
+  path-independent was secretly depending on the store.**
+- **Mutation B** made the store *available* to the degraded test. **It went red** — so it asserts
+  degradation specifically rather than the ambient default. **A degraded-path test that passes when the
+  degradation is removed is asserting nothing**, and this one does not.
+
+**The two tests I named as suspects were cleared, and for STRUCTURAL reasons rather than luck.** One takes
+the third arm on `source.tier !== 'web'`, which **never consults the store**, so it exercises the real
+first-use path with bundle bytes — genuinely primary-path *and* store-independent. The other was one of the
+three vacuous survivors; it passes both with and without a store because the fetch failure precedes any
+store interaction, **and it has been properly de-vacuumed**: it now picks a declared chain afterwards and
+asserts a command **is** sent, commented *"the spy must be able to see a command, or the assertion above is
+a tautology."* **A live positive control, not a renamed tautology.**
+
+**Also asserted rather than merely described: the degraded arm keeps embed-at-pick as the fork's SECOND arm
+rather than fusing it**, so the degradation does not quietly undo Story 8.6's two-decisions-two-undos. The
+test asserts the property is not committed in degraded mode. **That property was going to live only in a
+Delivery Log sentence; it now lives in code.**
+
+**THE SIXTH FALSE MEASUREMENT, AND IT WAS COMMITTED WHILE CHECKING FOR EXACTLY THAT CLASS.** The builder's
+first probe inserted its restore call **into the wrong test** — the isolated diff showed it landing at line
+1584 instead of inside the intended test — **and it ran green only because `-t` had skipped the test it had
+broken.** Two faults compounding: the edit missed its target, and the filter hid the consequence.
+
+**Caught by diffing against its own backup rather than trusting the edit.** This is D-16.R.54's *"the fix is
+not where you think it is"* and D-16.R.55's *"the mutation did not apply"* arriving together, **inside the
+procedure created to catch them** — which is the strongest available evidence that the procedure is load-
+bearing rather than ceremonial. **Consequence, already implicit and now explicit: a probe run under `-t` or
+any name filter must confirm the filtered set actually CONTAINS the test the mutation targeted.** A filter
+that skips the broken test converts a red into a green with no other symptom.
+
+**And a second self-caught error worth one line, because its shape recurs:** adding a cross-reference broke
+the spec's **frontmatter YAML** — apostrophes in *"16.4's"* inside a single-quoted scalar. **Caught by
+parsing the frontmatter rather than eyeballing it**, and fixed by rewording rather than escaping so the raw
+file stays readable. The implementer had dodged the identical trap earlier with a stray `DW-171"s`, **which
+is why that typo exists** — an unexplained oddity in the record explained by the constraint that produced
+it.
+
+**Step-04 note, correctly raised:** `baseline_commit` is `e80f607` while HEAD is `d3baf0a`, and the two
+intervening commits are the orchestrator's, **decision-log only, 0 code files**. The code diff is
+unaffected, but a reviewer diffing the raw range sees decision-log churn in the review surface. **The review
+is scoped to code paths, and says so** — the right handling, and a direct consequence of the orchestrator
+committing during a dispatch (D-16.R.52), whose cost lands here rather than on the committer.
