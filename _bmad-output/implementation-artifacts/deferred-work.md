@@ -8106,3 +8106,56 @@ expensive to attribute to a working tree rather than to code.
 **What discharges it:** normalising the ten files to LF in a deliberate commit, with a rebuild and a
 `dist/offline-release-manifest.json` diff showing what moved — and, if it is cheap, a guard that fails
 when a tracked text file's working-tree bytes disagree with its blob, since `git status` will not say so.
+
+### DW-180 — the browser that produced Story 16.3's 6/6 CORS result cannot be re-identified, so the measurement cannot be re-taken
+
+- source_spec: `_bmad-output/implementation-artifacts/16-3-the-font-browser-is-the-dialog-the-design-drew.md`
+  summary: `playwright.config.ts:11` sets `executablePath` from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`,
+  which is unset in the ambient environment and was exported per-run. Three different Chromium
+  identifiers were reported for one run, the pinned `chromium-1208` is a 428K stub with no binary, and
+  the browser that actually executed the run is gone. The 6/6 result stands; only its identifier is
+  withdrawn.
+
+**Why it matters, and it is worse than an absent witness.** DW-161's whole subject is that "the CORS facts
+become measurements the suite takes rather than notes somebody wrote". A witness that is real and
+unreproducible at once is closer to a note than it looks: nobody can re-take the measurement, so the next
+person to doubt it has no move except to rebuild the environment and hope.
+
+**What discharges it:** pin the browser the way `-count=1` and the `d6d51f1` snapshot commit are pinned, so
+the witness names itself — the run records which binary executed it rather than inheriting one from an
+exported variable that does not survive the session.
+
+**Registered late, and the lateness is the point.** The decision log has said "Registered as DW-180" since
+the 16.3 gate and cited it twice more, including in 16.5's spec, while no entry existed. Build-16.5 found
+it while filing its own deferrals and refused to write it, on the grounds that inventing a register entry
+to satisfy a citation is how a record stops being evidence. It is filed here by the citation's own author,
+verbatim from `epic-16-decision-log.md:2930`. See D-16.R.67.
+
+### DW-181 — The `variableface.go` carve-out is a prose prohibition with nothing enforcing it
+
+- source_spec: `_bmad-output/implementation-artifacts/16-5-installing-a-face-is-not-embedding-it.md`
+  summary: Story 16.5's amendment to `folio-go/internal/fontset/variableface.go` forbids "any second
+  `fvar` test sited at or behind the embed command, in either language" — a rule this epic wrote,
+  enforced by nothing but the comment stating it.
+  evidence: Found by the blind-hunter layer at 16.5's review (2026-09-03) and verified. The prohibition
+  is the load-bearing half of the OPT-4 carve-out that permitted a designer-side `fvar` filter at all:
+  the filter is admissible ONLY because it can refuse and never admit, and only Go decides what enters
+  a document. A future command-side copy would silently void that reasoning. **The precedent for
+  enforcing it already exists in this repository** — `lint/` ships rule packages that walk `folio-go`,
+  and `scripts/forbidden-font-hosts.mjs` scans source for banned host literals with a population floor
+  and a positive control. Neither was extended here. The comment even predicts its own failure mode
+  ("gets re-litigated or silently generalised") without closing it, which makes this a rule about
+  comments claiming safety they do not have, written in a comment claiming safety it does not have.
+
+### DW-182 — The catalogue face count drifts between 21 and 31, now inside lines this story touched
+
+- source_spec: `_bmad-output/implementation-artifacts/16-5-installing-a-face-is-not-embedding-it.md`
+  summary: Both `21` and `31` are used as the committed-catalogue face count across the designer, and
+  Story 16.5's own diff contains instances of each.
+  evidence: `e2e/font-embed-boundary.spec.ts` was corrected under D-16.R.35 to stop naming a stale
+  count, while `src/App.test.tsx` — inside this story's own hunks — still reads "one of the 21
+  committed faces" and "not among the 21", and `font-browser-model.test.ts`, `font-index.ts` and
+  `font-source.ts` say 31. Registered now rather than earlier because **this is the first time the
+  drift appears in lines a story actually touched**, which puts it inside our attribution range instead
+  of being pre-existing background. Not repaired here: correcting numerals across five files inside a
+  story about install/embed separation would blur what 16.5 changed.

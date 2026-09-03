@@ -3241,3 +3241,232 @@ intervening commits are the orchestrator's, **decision-log only, 0 code files**.
 unaffected, but a reviewer diffing the raw range sees decision-log churn in the review surface. **The review
 is scoped to code paths, and says so** — the right handling, and a direct consequence of the orchestrator
 committing during a dispatch (D-16.R.52), whose cost lands here rather than on the committer.
+
+---
+
+## D-16.R.62 — The matrix audit answered a narrower question than its name, and reported the wide one
+
+**16.5's step-04 review's best finding is against its own step-03 work**, and the builder stated it in its
+own words: row 7 — *"Store write fails at install | Origin quota refuses the put | The install fails and
+says so | Refusal, not a silent success"* — **was never covered, and the audit passed it.** It verified
+rows 2 and 5, **the two rows already flagged**, and never systematically checked the remaining six.
+
+**The defect is not the missed row. It is that "matrix audit clean" reads as *all rows* and meant *the
+flagged rows*.** That is this epic's signature failure — a true statement about a narrow population
+reported against a wide one — arriving **in the check itself**, which is the one place it is most
+expensive: *"four teeth"* that were seven (D-16.R.57), *"0 of 1,811"* measured against the wrong
+population (D-16.R.54), `defer: 1` true of the count and false of the set (D-16.R.41).
+
+**Aggravating, and the builder named it:** row 7's only assertion is a module-level string check calling
+`storeWriteRefusal(...)` directly — **exactly the defect the Row 5 ruling was written to name, sitting
+undetected in the row beside it.** Making that refusal return `undefined` today reports a silent success
+with the whole suite green.
+
+**RULING — a matrix audit reports PER ROW, not per verdict.** N rows in, N results out. Any row whose only
+assertion calls the production function directly rather than driving the path is **failed, not passed** —
+the Row 5 ruling applied to every row rather than only to the row that provoked it. Row 7 needs a failing
+`put` driven through `installFamily` in a mounted designer, red-proved by making the refusal return
+`undefined`.
+
+## D-16.R.63 — The carrier chain failed at its third hop, and defeated the guardrail written to prevent this exact outcome
+
+D-16.R.60 extended the carrier check from lead→spec to spec→test on the reasoning that *"if the carrier
+rule can fail between a lead and a spec, it can fail between a spec and a test."* **It did, in the next
+story, one hop further along: the ruling reached the spec, reached a test, and the test does not reach the
+code that decides it.**
+
+`storeKeepsFaces` is **never asserted as `App` computes it.** Every occurrence outside the two production
+files hand-passes the prop. So the acceptance criterion the lead and I added — *a degraded browser's
+confirm names the count* — is proven only for a component **handed** `false`. **Hardcoding
+`storeKeepsFaces={true}` at the `App` call site passes the entire suite while a private-window author gets
+"Install 5 on this machine" on a button that writes five faces into their document.**
+
+**Two rulings converge on that outcome — the lead's guardrail and the owner's install/embed reversal
+(D-16.R.46) — and the alibi still holds.** A prop-level test proves the component renders what it is told;
+it proves nothing about what it is told. Same class as 16.3's *guard observes the declaration, not the
+behaviour*.
+
+**RULING:** assert it as `App` computes it, red-proved by hardcoding `true` at the call site. And the
+Delivery Log says plainly that **the guardrail's first test did not reach its decision point** — the third
+confirmed carrier-chain failure, each at a different hop, which is the argument for checking every hop
+rather than the one that failed last.
+
+## D-16.R.64 — A file's own guarding pattern was not inherited by the path added to it
+
+`commitFirstUse` has **no generation or selection re-check** between `await onUseFamily(source)` and the
+property commit: replacing the document mid-embed commits `fontFamily` against a stale selection. **The
+file guards every other async commit exactly that way and carries tests named for it** — so the defect is
+not that the pattern is unknown here, it is that **the new path did not inherit it.** Shape matches
+D-16.R.15, where a hold was released on one path and not its sibling. Red-proved by replacing the document
+mid-embed, never by asserting the guard exists.
+
+## D-16.R.65 — The story's own record contradicts its shipped code, and stays that way
+
+The Spec Change Log still asserts *"a stored-read miss is now refused"* and *"a store that cannot be opened
+now refuses the install"* — **both overturned by rulings printed in the section below them.** This is
+D-16.R.35's *two readings of one artifact disagree, so neither is evidence* in a fourth medium.
+
+**Confirmed handling: append a superseding note, do not edit the entries** — the same reasoning that
+refused to rewrite another pass's record at D-16.R.45. The note names the superseded entries **by date**,
+so a reader landing on the earlier text gets a forward pointer instead of a contradiction.
+
+## D-16.R.66 — Three review layers, three disjoint yields, one corroborated defect
+
+Recorded because it is the only evidence the run has about what the layers cost and return.
+**Verification-gap** found all three HIGH items; **edge-case** independently found the staleness bug;
+**the blind hunter** found the WCAG 2.5.3 violation, the optional-parameter hazard, and the contradictory
+record. **No layer redundant.** The independent double-find on staleness is the useful signal — two
+different methods reaching one defect is corroboration in the way two runs of one method is not
+(D-16.R.43.2, and the root cause of D-16.R.38).
+
+## D-16.R.67 — "Registered as DW-180" was a claim that a carrier was filled, and the carrier was empty
+
+**The fourth carrier failure of the day, at a fourth hop, committed by me.** This log has said
+*"**Registered as DW-180**"* since the 16.3 gate (`:2930`), cited it again in the post-16.4 infrastructure
+item (`:3025`), and 16.5's spec cites it a third time (`:479`) — **and no DW-180 entry existed.** The
+register ran DW-177, DW-179, stop.
+
+**Same shape as the three that preceded it, and cheaper to check than any of them:** the lead's *"carried
+into 16.5's spec"* (D-16.R.59), the tasks pointing at *"the ruling at CHECKPOINT 1"* (D-16.R.60), and
+`storeKeepsFaces`'s test asserting a clause without reaching the code that decides it (D-16.R.63). **What
+makes this one the easiest to miss is that the citation names an identifier, and an identifier looks like
+evidence.** Three readers passed over it, including me, twice.
+
+**Live consequence, not bookkeeping:** the browser pin is *scheduled work* inside the post-16.4 item beside
+DW-171, DW-177 and DW-179. Picked up as scheduled, three of the four would have had text and one would
+have been a number.
+
+**Found by build-16.5, which refused to file it** — *"inventing a register entry to satisfy a citation is
+how a record stops being evidence"* — and correctly skipped 180 rather than reuse a cited number when
+filing DW-181 and DW-182. **That refusal is the right instinct and the second time this run a builder has
+declined an instruction on evidence** (D-16.R.38 was the first). **Now filed by the citation's own author,
+verbatim from `:2930`.**
+
+**RULING, and it generalises past this epic: a reference to a registered identifier is verified by locating
+the identifier's DEFINITION, never by re-reading the citation.** The carrier check (D-16.R.59/60) already
+says a carrier is verified by locating the text in the artifact. **An identifier is a carrier whose text is
+one line long, which is exactly why it gets checked least.** Extend the closing sweep: every `DW-\d+` cited
+in this epic's artifacts must resolve to a definition line in the register.
+
+**And the near-miss beside it, recorded because it is the seventh instance of the same class.** The
+builder's first search for `DW-180` references used `--include` flags **zsh rejected outright** — the
+command measured nothing and printed no matches, and read as *"no references"*, which is the opposite of
+the truth. It was caught by the count printed on the following line. **Identical to the wrapper exit code
+(D-16.R.55) and to `PIPESTATUS` under zsh (D-16.R.53): the tool answered, the answer looked like every
+other answer, and nothing distinguished measured from failed-to-measure.** State the population beside
+every zero.
+
+## D-16.R.68 — The identifier sweep ran clean, and reported a population rather than a verdict
+
+D-16.R.67's new rule discharged immediately rather than at close, **so that a second dangling identifier
+would surface while the implementer was still reachable**. Correct sequencing, and it is the same reasoning
+that puts red-proofs before fixes: a finding is worth more before the thing that could fix it goes away.
+
+**Reported per-identifier, as required:** **37 distinct `DW-` identifiers cited across the 11 epic-16
+artifacts — 37 resolved, 0 unresolved.** Cross-checked against a second, differently-drawn population:
+**503 source files under `folio-designer/src` and `folio-go`, 45 distinct identifiers, 0 unresolved.**
+Register holds **182 definition lines**; `DW-180` resolves at `deferred-work.md:8110`.
+
+**Two populations by two draws, not one number twice** — which is the correction D-16.R.38 demanded and
+D-16.R.43.2 generalised. **And every zero here arrives beside its population**, so a reader can tell a
+clean sweep from a sweep that measured nothing: the failure mode of the seventh false measurement, one
+message earlier, in the same agent's own hands.
+
+Carried into `## Verification` with the populations written down, so a later reader inherits **a number to
+re-measure against rather than a claim of cleanliness.** Contract markers unmoved at 43/109; frontmatter
+re-validated after the edit — the trap from D-16.R.61 checked rather than assumed.
+
+## D-16.R.69 — Ten patches, three alibis closed, and one test correctly not written
+
+**All ten applied and red-proved.** The three HIGH items shared one shape and were proved against it: **a
+clause that existed, a test that asserted it, and an alibi that still held** — so each mutation was chosen
+to expose the *alibi*, not to break the feature. That distinction is the whole of D-16.R.63 and it was
+applied without being restated.
+
+- **Staleness** — the guard was sited in `embedInstalledFamily`, **not** in `commitFirstUse` where the
+  review pointed. The implementer's reason is better than the finding: the family control's
+  `documentGeneration` and `ids` are **the render's, frozen in the closure**, so a check there compares
+  them to themselves and always agrees. **A guard that cannot disagree is a spelling test** — the defect
+  class this story forbids, nearly re-committed inside the fix for it. The proof also found the failure is
+  worse than a dropped response: `applyProperties` **sends first and guards after**, so it reaches the
+  engine carrying the previous document's element ids.
+- **Row 7** — `return undefined` in place of the refusal reproduces the predicted silent success exactly:
+  `Unable to find role="alert"` while **274 tests across six other files stay green.** The prediction and
+  the measurement agree, which is what makes it a proof rather than a fix.
+- **`storeKeepsFaces`** — hardcoding `{true}` at the call site **reds the new App-level test while
+  `FontBrowser.test.tsx` stays 25/25 green.** The alibi demonstrated and closed in one run, which is the
+  cleanest possible evidence that the guardrail now reaches the code that decides it.
+
+**THE ONE NOT WRITTEN, AND IT IS THE RIGHT CALL.** Patch 6's busy/no-engine path is **unreachable from the
+UI today** — the combobox is disabled whenever `fontChainBusy || fileBusy` — so routing those returns
+through the refusal surface is defence against the ref/state lag D-16.R.15 named, not a fix for a reachable
+bug. **A test asserting the guard is *present* would be precisely the spelling test this story forbids**,
+and writing one would have converted an honest defence into a false measurement. **Stated in the spec's
+patch table and in the sentinel rather than papered over** — the third refusal-on-evidence of this run
+(D-16.R.38, D-16.R.67), and the first where what was refused was *producing a green*.
+
+**Gates:** `test` **672/673**, 55 files, **`rc` taken from `$?` directly** — the one red is the standing
+DW-152 failure, identical to baseline. `typecheck`/`lint`/`build`/`e2e:compile` `rc=0`, 4 pre-existing
+warnings re-measured. `folio-go` failing-test **name set** identical to baseline; lint module `rc=0`.
+**Real browser re-run after the confirm control changed: 6/6, `rc=0`** — re-measured rather than inherited,
+which is the DW-180 lesson applied before DW-180 was filed.
+
+**Method held throughout:** every mutation diffed to prove it applied, run serially, restored **by absolute
+path** and re-diffed, in a **detached worktree at `e80f607`**, with the `<intent-contract>` block **hashed
+before and after** and byte-identical. Every requirement from D-16.R.53–61 discharged by measurement rather
+than assertion.
+
+**One item is mine.** The implementer observed HEAD move and `deferred-work.md` / `epic-16-decision-log.md`
+become modified mid-round, and correctly attributed it to the reviewing session rather than to itself.
+**That is D-16.R.52 landing on someone else again** — nothing was committed by me during this round, but
+the working tree is dirty with my two files, and **a dirty tree is the next dispatch's hard stop.** It is
+mine to clear at close, with the HEAD move announced.
+
+## D-16.R.70 — My no-commit rule collided with the story's own output, for the second time and by the same mechanism
+
+**16.5 committed at `f4d401c`** — 22 files, 2,659 insertions, 384 deletions, `review_loop_iteration` 0, no
+intent_gap, no bad_spec, no loopback. Push and PR declined per standing instruction (`main` is ahead 146 of
+`origin`, and stays that way).
+
+**And my instruction to leave `deferred-work.md` alone was wrong in the same way D-16.R.52's was.** That
+file carries **DW-181 and DW-182, which are 16.5's own output**, in the same dirty file as my DW-180. The
+builder obeyed, flagged the collision rather than resolving it, and named exactly why: *"committing your
+file to save my two entries is exactly the kind of tidy-up you told me not to do."* **Correct — and the
+fault is upstream of the obedience.** I wrote a rule scoped to a *file* when the hazard is scoped to
+*authorship*, so a shared file makes the rule unsatisfiable: whoever commits it commits someone else's
+work.
+
+**RULING, and it supersedes the file-scoped phrasing: `deferred-work.md` is a SHARED register, not any
+one pass's artifact.** The rule is that **a pass commits the entries it wrote**, and when entries from two
+passes share a dirty file, **the later committer commits the file and names both authors in the message.**
+That is what happens here: the record commit carries DW-180 (mine, D-16.R.67) alongside DW-181 and DW-182
+(16.5's), and says so. **HEAD move announced, as D-16.R.52 requires.**
+
+**A hash without its algorithm is not a checkable claim.** The builder's independent contract byte-identity
+check disagreed with the implementer's reported `2f84b9785f4b` until it worked out the implementer had
+reported **SHA-1** while it was computing **SHA-256** (`d7652ec23ec8`). **Same bytes, different algorithm** —
+and resolving it cost a search across four ranges and three algorithms before *mismatch* turned out to mean
+*agreement*. **This is the false-measurement class inverted: not a failure that looks like a pass, but a
+pass that looks like tampering.** Consequence: **a reported digest names its algorithm and its byte range,
+or it is not evidence** — cheaper to write than to reconstruct, and the reconstruction here nearly produced
+an accusation.
+
+**THE PER-ROW MATRIX AUDIT, RUN UNDER THE NEW RULE, AND ITS FIRST PASS WAS ALSO DEFECTIVE.** 8 rows, 8
+results. Rows 1, 2, 4, 5, 6, 7 **driven in a mounted designer, all PASSED** — including row 7's new
+`App.font-store.test.tsx:651`, the row the original audit missed. **Rows 3 and 8 are covered at module
+level and flagged as such rather than scored as driven**: row 3's carrier is designated by the row itself
+(*"as today"*), and row 8's subject *is* two functions' divergent behaviour, so module level is the right
+altitude. **Neither is the `storeWriteRefusal` defect** — both exercise real behaviour rather than
+asserting a formatter's output — **but neither is driven, and the rule says say so.** That is the rule
+working: it produced two honest partials where the old form would have produced a clean verdict.
+
+**And the first per-row pass was discarded because its regexes matched the wrong things** —
+`offline-release-contract` for row 6, `embedded-face-family` for row 7. **The same "answered a different
+question than its name implies" defect that created the rule, caught inside the rule's first execution, by
+reading the matches instead of the count.** Eighth instance of the class, and the second self-caught one
+today.
+
+**Standing gap restated because it now spans the whole epic: nothing in Epic 16 is CI-verified.** The
+designer job still halts at step 2. Every gate in this epic is a local measurement, honestly taken and
+independently re-taken, **with no machine watching.** That is DW-171/DW-101, scheduled after 16.4, and it
+is the largest single piece of unearned confidence in the record.
