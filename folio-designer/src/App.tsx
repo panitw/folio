@@ -2152,29 +2152,34 @@ function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily,
             file?" is written where the question is asked. */}
         <p className="property-option property-option-empty">Typefaces come from this list — the ones already on this machine, and the ones this designer downloads when you pick them. A font file from your own disk cannot be added: it arrives without the licence text and copyright a document has to carry with an embedded face.</p>
       </div>
-    </div>}
-    {/* STORY 16.3 — THE DOOR TO THE BROWSER, WHERE THE DESIGN PUTS IT: the last
-        row of the open family dropdown. It is a real button OUTSIDE the
-        `role="listbox"` rather than a fourth `role="presentation"` child inside
-        it, because a listbox's children are options and this is not one — the
-        keyboard walk over `matches` above must not land on it.
+      {/* STORY 16.3 — THE DOOR TO THE BROWSER, WHERE THE DESIGN PUTS IT: the last
+          row of the open family dropdown, INSIDE the floating panel (Story 16.6 follow-on).
+          It used to be a sibling of that panel, and `.property-combobox` is the
+          positioning context, so `top: 100%` put the panel below the button and the
+          design's last row rendered FIRST. Measured in Chromium before the move:
+          button at y=433, list at y=481. The scroll now belongs to the listbox, so
+          this row stays pinned at the foot of the panel instead of scrolling away. It is a real button OUTSIDE the
+          `role="listbox"` rather than a fourth `role="presentation"` child inside
+          it, because a listbox's children are options and this is not one — the
+          keyboard walk over `matches` above must not land on it.
 
-        NO KEYBOARD SHORTCUT AND NO HINT GLYPH, AND THE OMISSION IS RULED RATHER
-        THAN FORGOTTEN (D-16.R.33 R2, owner-confirmed). The mockup prints `⌘G`
-        beside this row; `⌘G` is the browser's own Find Next, and this
-        application's convention puts conventional document actions on Command
-        (⌘S, ⌘Z) and app-specific ones on Option (⌥P, ⌥S). `⌥F` is named as the
-        eventual shape and is not bound in this epic — so no glyph is drawn,
-        because a `⌘G` label beside a key that does nothing is a false UI
-        string. `src/shortcuts.ts` is untouched. */}
-    {/* THE ACCESSIBLE NAME CARRIES BOTH LINES. An `aria-label` REPLACES the
-        element's contents for assistive technology, so naming this "Add fonts…"
-        alone deleted the only sentence saying what the row does — the sub-label
-        is visible to a sighted reader and was inaudible to everybody else. */}
-    {open && <button type="button" className="property-add-fonts" aria-label="Add fonts… Browse and embed web fonts" disabled={pending || pickBusy} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); onOpenFontBrowser() }}>
-      <span className="property-add-fonts-label">Add fonts…</span>
-      <span className="property-add-fonts-note">Browse and embed web fonts</span>
-    </button>}
+          NO KEYBOARD SHORTCUT AND NO HINT GLYPH, AND THE OMISSION IS RULED RATHER
+          THAN FORGOTTEN (D-16.R.33 R2, owner-confirmed). The mockup prints `⌘G`
+          beside this row; `⌘G` is the browser's own Find Next, and this
+          application's convention puts conventional document actions on Command
+          (⌘S, ⌘Z) and app-specific ones on Option (⌥P, ⌥S). `⌥F` is named as the
+          eventual shape and is not bound in this epic — so no glyph is drawn,
+          because a `⌘G` label beside a key that does nothing is a false UI
+          string. `src/shortcuts.ts` is untouched. */}
+      {/* THE ACCESSIBLE NAME CARRIES BOTH LINES. An `aria-label` REPLACES the
+          element's contents for assistive technology, so naming this "Add fonts…"
+          alone deleted the only sentence saying what the row does — the sub-label
+          is visible to a sighted reader and was inaudible to everybody else. */}
+      <button type="button" className="property-add-fonts" aria-label="Add fonts… Browse and embed web fonts" disabled={pending || pickBusy} onMouseDown={(event) => event.preventDefault()} onClick={() => { close(); onOpenFontBrowser() }}>
+        <span className="property-add-fonts-label">Add fonts…</span>
+        <span className="property-add-fonts-note">Browse and embed web fonts</span>
+        </button>
+    </div>}
     {pickError && <p role="alert" className="property-error">{pickError.message}</p>}
     {error && <p id={errorId} role="alert" className="property-error">{error.message}</p>}
   </div>
