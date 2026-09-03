@@ -3025,3 +3025,108 @@ gate.** The natural home is the same post-16.4 infrastructure item that already 
 DW-177's dependency pin, DW-179's CRLF normalisation and DW-180's browser pin — every one of them a case of
 *the record and the reality drifting with nothing watching*, which is now this epic's most-repeated finding
 in any medium.
+
+### D-16.R.59 — Story 16.5's gate: a ruling that never reached disk, and the rule against that failing on its first use
+
+**16.5 approved at CHECKPOINT 1 (`[K]` on the token gate, spec at `e80f607`) and implementing. Four
+rulings, two process rules, and one immediate demonstration of why the process rules were needed.**
+
+**1. THE COPY RULING WAS MINE AND WRONG; THE IMPLEMENTER REPAIRED IT.** I ruled *"install language for web
+and stored"*. **A `stored` face is already installed** — picking it is a **use**, not an install — so
+install language there would have been false in the same way `weightLine` was. The implementer routed
+`stored` to use language on its own reasoning. **It did not diverge from the ruling; it fixed it.** Fourth
+premise correction this epic from an implementing agent, all four against their own convenience.
+
+**2. THE DEFECT UNDERNEATH: MY RULING LIVED ONLY IN THE ORCHESTRATION CHANNEL AND NEVER REACHED DISK.** The
+spec's tasks pointed at *"the ruling at CHECKPOINT 1"* — **a pointer to nothing**, because the implementer
+reads the spec as its sole source of truth by design. It derived the copy from the contract instead, and
+should not have had to.
+
+> **STANDING RULE: any ruling the implementer must act on is written INTO the spec, verbatim, before
+> dispatch. A ruling that exists only in the orchestration channel does not exist.**
+
+**And the lead adopted the complementary half, because half the failure is upstream of me:**
+
+> **Every ruling names its carrier** — spec Tasks, an AC, `## Verification`, a code comment, or the
+> decision log — and where the carrier is the spec, the lead **supplies verbatim text ready to paste** and
+> marks which clauses are record-only.
+
+**With the corollary that changes how the next incident is read: when an implementer diverges from a ruling
+it never saw, that is a DISTRIBUTION failure, not a COMPLIANCE failure — fix the carrier, not the agent.**
+
+**3. AND THE CARRIER RULE FAILED ON ITS FIRST USE, WHICH IS THE ENTRY'S MOST USEFUL FACT.** The lead's next
+message stated both new guardrails were *"carried into 16.5's spec — guardrail as a Tests bullet,
+count-naming as an AC clause."* **Checked by the orchestrator: neither is in the file.** No matching string,
+and the spec is unchanged but for the builder's own edits.
+
+**Nobody lied and nothing was careless — the lead named a carrier and did not fill it**, which is exactly
+the gap between *deciding where a clause goes* and *putting it there*. **The rule as adopted names the
+carrier; it does not verify the carrier was filled.** So it inherits D-16.R.41's discipline, which was
+written for deferrals and applies unchanged here:
+
+> **A ruling's carrier is verified by LOCATING THE TEXT IN THE ARTIFACT, never by reading the claim that it
+> was carried.** Grep the spec for the clause. "Carried into the spec" is a report, not a measurement.
+
+**Two instances now: a ruled deferral that vanished while `defer: 1` stayed true (D-16.R.41), and a ruled
+guardrail reported as carried while the file had no such line.** Same shape, different artifact.
+
+**4. THE STORE-UNAVAILABLE RULING — degrade to the pre-16.5 model. UPHELD by the lead, which went looking
+for a better option first and rejected the one it found.**
+
+The implementer had made a store that cannot open **refuse the install**, which contradicts 16.2's **locked**
+contract (*"Storage failure is a degradation, stated"*; *"Write failure degrades to no-store"*). **But
+keeping 16.2's degradation literally also fails**: under embed-on-use an install that stores nothing leaves
+nothing usable — a dead end Q4 forbids. **Two rulings colliding in a place neither of us had looked.**
+
+**The answer: when the store is unavailable, the pick embeds directly, exactly as it does before this
+story.** Satisfies 16.2 (*"still works and says what is degraded"*), satisfies Q4, and keeps IndexedDB a
+**convenience rather than a dependency**, which is what 16.2 designed it to be.
+
+**The lead's rejected fourth option is recorded because it is genuinely attractive.** `openFontStore` already
+takes an injectable `IDBFactory`, so a **session-scoped in-memory `FontStore`** is ~20 lines with **zero
+downstream branches** — one path with two backends rather than two behaviours, which dominates on the
+maintenance axis. **It loses on 16.2's locked matrix row: *"Private window / storage blocked → Group empty;
+picks still fetch; message states it."*** An in-memory store makes the group **non-empty**, contradicting
+the row directly and requiring a contract amendment no story may make. **The chosen option keeps the group
+empty, keeps the fetch, and adds an embed the row never forbade — because before 16.5 that is exactly what
+a pick did.**
+
+**TWO GUARDRAILS ON IT, both of which I had missed:**
+
+- **The degraded path must be TESTED, not merely retained.** After 16.5, embed-at-pick stops being *"what
+  the product does"* and becomes **a retained arm — an unmeasured claim, the half nobody changed and nobody
+  exercises.** Required: a test that with the store unavailable a pick embeds, the document changes, and the
+  message says why, **red-proved by removing the fallback.** Without it, 16.5 leaves a path that executes
+  only on machines nobody tests on, **which is how a fallback rots into a crash.**
+- **The degradation must NAME THE COUNT, and this is product-visible.** Under it, staging five families and
+  confirming embeds **five faces into the document — precisely the outcome the owner's reversal was made to
+  prevent.** Acceptable as a stated degradation of a rare path, but *"the font went straight into the
+  document"* understates it. The confirm affordance says *"this browser will not keep fonts, so confirming
+  adds N families to this document."* **Cheap, and it stops the one case where a degradation quietly does
+  the thing the owner rejected.**
+
+**5. THE SECOND REVERSAL REFUSED, and it is worse than "against the matrix row".** A corrupt stored entry
+that no longer refetches turns a **self-healing** path into a **permanent local failure clearable only by
+manual removal** — and **silently, because a miss that does not refetch looks identical to a family that was
+never installed.** The row *"Entry treated as absent and dropped; refetch on next pick — Self-healing,
+logged honestly"* is not a preference; it is what stops one bad write becoming a permanently broken family
+on that machine.
+
+**6. THE BUILDER WITHDREW ITS OWN FRAMING, and its version is more accurate than mine.** It had reported
+*"two unrequested behaviour reversals"*; it corrected that to **gaps its spec left rather than liberties the
+implementer took** — *"I wrote a matrix row for a failed **write** and never asked what a failed **open**
+means once the store became load-bearing."* **That names the gap more precisely than I did**, and it also
+told the implementer explicitly that its copy work corrected the ruling rather than diverging from it, on
+the grounds that an agent told only *"we reverted two of your three calls"* **learns the wrong lesson about
+when to push back.**
+
+**7. THE FIFTH FALSE MEASUREMENT, and the first manufactured a layer ABOVE the command.** A wrapper reported
+**exit 0 while the real exit was 1**, because the wrapper's status came from a trailing `echo`. **Worse than
+the `PIPESTATUS` case precisely because there was no pipe to be suspicious of** — the shape that normally
+triggers doubt was absent and the report read as a clean measurement.
+
+> **A status that passed through a wrapper is unverified until the wrapper's own capture is read.** `rc=$?`
+> immediately after the command, asserted on. **The tell is a wrapper whose LAST STATEMENT IS NOT THE
+> COMMAND** — an echo, a summary line or a cleanup step each silently become the status. And `##
+> Verification` records **the invocation**, not only the verdict, so a reader can see whose status is being
+> quoted.
