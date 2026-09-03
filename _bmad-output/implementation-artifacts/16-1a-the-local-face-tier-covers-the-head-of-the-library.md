@@ -70,11 +70,17 @@ deferred:
     severity: medium
   - summary: >-
       DW-168's preferred discharge (-count=1 wherever a story's verification is recorded) was applied
-      by hand this run and is written into no script, Makefile target or CI config.
+      by hand this run and is written into no LOCAL script, Makefile target or npm script. CORRECTED
+      AT CLOSE - the CI half of the original claim was false.
     evidence: |-
-      The stale-cache class that produced a false green for TestLicenceSignalCensus in this very
-      dispatch is therefore fully live for the next story. DW-168's owner field reads "whoever next
-      adds a test that reads the tree at runtime", which is not an assignable owner.
+      As registered this read "written into no script, Makefile target or CI config" and called the
+      class "fully live for the next story". Measured by the closer at 99ac74c: .github/workflows/ci.yml
+      already runs EVERY Go invocation with -count=1 - folio-go green set, folio-go expected-red set,
+      hashmatrix and lint - on every push to main and every pull request, attributed to D-000.11 and
+      carrying the same reasoning verbatim ("A cached ok is not evidence"). CI would have caught the
+      census failure on first push. The undischarged residue is the LOCAL path only: no script carries
+      the flag, so an unattended dispatch measuring a module by hand is on the honour system. DW-168's
+      owner, severity and status are corrected to that narrower shape rather than the entry deleted.
     location: >-
       _bmad-output/implementation-artifacts/deferred-work.md
     severity: medium
@@ -115,45 +121,27 @@ deferred:
 
 *Owner summary; the intent contract below governs implementation.*
 
-The font browser could offer an author almost two thousand typeface families, but not the ones they are
-most likely to want. Roboto, Open Sans, Montserrat, Lora — most of the fifty most popular — are published
-on Google's mirror in a form this product deliberately does not accept, because it holds every weight in
-one file and picking a weight out of it at the last moment would make the same template print differently
-on different machines.
+The font browser could show nearly two thousand typeface families but refused most of the ones an author
+would actually reach for. The mirror it reads publishes those families only in a form this product will
+not accept: one file holding every weight, taken apart at the last moment, so the same template could
+print differently on different machines.
 
-There was a cheaper answer than it first appeared. Those families publish perfectly ordinary single-weight
-files from their **own** project releases; only the mirror lacks them. This product already carried
-twenty-one typefaces exactly that way, each with its licence, its copyright and a record of the precise
-file it came from. **This story added ten more the same way**, so the browser offers them from the machine
-rather than refusing them: **Arimo, DM Sans, Lora, Montserrat, Open Sans, Oswald, Plus Jakarta Sans,
-Roboto Condensed, Roboto Mono and Roboto Slab.** The tier is now thirty-one families.
+Those families do publish ordinary single-weight files — from their own project releases, not the
+mirror. The product already carried twenty-one typefaces that way, each with its licence, its copyright
+and a record of the exact file it came from. **This story added ten more on identical terms: Arimo, DM
+Sans, Lora, Montserrat, Open Sans, Oswald, Plus Jakarta Sans, Roboto Condensed, Roboto Mono and Roboto
+Slab.** The tier is now thirty-one, with ten spare slots left rather than none.
 
-**The batch was sized by goal, not by shelf space, and that turned out to matter.** An earlier plan asked
-which of thirty-two candidates would fit in twenty free slots — a question that would have filled every
-slot the release had. The rule that governs instead names a target: the refused families in the top twenty
-by popularity, minus the ones already carried, minus the ones the product's own interface fonts collide
-with, minus any whose own project publishes nothing usable. That yields ten, into twenty slots, and leaves
-ten spare rather than none.
+**Two families inside the target range were not taken, and both are recorded rather than dropped
+quietly.** One publishes no usable file anywhere. The other's bytes spell its name with a character the
+product will not put in a family name, so listing it would publish a name the typeface contradicts.
+Neither was backfilled from below: a batch sized by goal shrinks when a member fails.
 
-**Two families in that top twenty could not be taken, and both are recorded rather than quietly dropped.**
-Google Sans publishes no static file anywhere. Jost publishes one, but the file calls itself `Jost*` —
-with the asterisk — and this product refuses to publish a family name that the typeface's own bytes
-contradict. Neither was replaced by the next family down: a goal-shaped batch shrinks when a member fails,
-it does not backfill.
+The story also stopped the product's two halves describing an embedded typeface's origin in two
+different misleading ways.
 
-The story also fixed a smaller thing it was already touching. Every embedded typeface records where it
-came from, and the two halves of the product wrote that differently: one pointed at a file inside this
-repository that the recipient of a document does not have, the other wrote a web address on a branch that
-can move tomorrow. Both now say the same three things — the project, the file within it, and the date it
-was fetched — and a test fails the build if either ever writes an address again.
-
-What it deliberately did not do: it converted nothing, it added no general mechanism for getting statics,
-and it does not promise the whole library. It is a curated batch, and the rule, the size, the owner and
-the trigger for re-running it are written down — because a batch nobody owns is the failure this work
-exists to prevent.
-
-Done looks like: the families an author is most likely to type are offered and embed with no download at
-all, each carrying its own terms.
+**What will look wrong later and is not.** Two test failures survive this work; both predate it. A
+follow-up review was flagged by a mechanical rule and is deliberately still open.
 
 <intent-contract>
 
@@ -915,3 +903,163 @@ have a written verdict. **Red-proved:** removing the `robotoslab/LICENSE-APACHE.
   going-looking D-000.15 forbids. It stays where D-16.R.17 put it.
 - **`IBM Plex Sans` stays unofferable**, per the same ruling: promoting a chrome asset to a document
   asset is a different story with its own licence obligations.
+
+### 2026-09-03 — done
+
+Baseline `efd79bf`. Shipped across four builder commits — `4aca77f` (the ten faces, the catalogue rows,
+the three floors, the `source` shape), `efd0ed1` (the ten licence verdicts and the boundary of the cut),
+`5d5409f` (the twelve review patches) and `99ac74c` (the review record) — plus this closing commit. The
+run stops here at the owner's instruction; this is the final story of the run.
+
+**WHAT SHIPPED: TEN families, not eleven and not twenty.** `Arimo · DM Sans · Lora · Montserrat ·
+Open Sans · Oswald · Plus Jakarta Sans · Roboto Condensed · Roboto Mono · Roboto Slab`, each a
+byte-for-byte static from its own project's upstream release with its unmodified `LICENSE*` and a
+`NOTICE.md` carrying both digests. `font-catalogue.json` is **31 rows = 21 + 10**, counted at close.
+
+**The batch is pinned to a COMMIT, not to a filename** — `folio-designer/font-index.json` at
+`d6d51f16988cddf20d1a28697cd556b3d0a63f62`. A regeneration between the survey and the build would have
+changed the membership while every recorded step still read true, and a later reader could not have told
+a wrong list from a moved file.
+
+**`Jost` was admitted by the rule at position 20 — the last family inside the top-20 cut — and dropped at
+TASK 2 for cause.** Its upstream static's nameID 1 is `Jost*`; the asterisk is outside `familyShape`
+(`folio-designer/scripts/build-wasm.mjs:162`, re-read at close: `/^[A-Za-z0-9][A-Za-z0-9 .+-]*$/`), so
+declaring it as `Jost` would publish a family name the face's own bytes contradict. **No reserve family
+was promoted**, per **D-16.R.16**: a goal-bounded set shrinks when a member fails; backfilling would have
+smuggled back the margin-bounded criterion the lead removed. `Google Sans` had already gone on the same
+clause.
+
+**DW-167** carries D-16.R.13's self-contradiction on the committed tier (inline the committed digest /
+never restate the SHA-256 — for a committed face one value), with the prohibition taken as governing and
+the one-line reversal recorded. **DW-168** carries the stale-cache class that produced a false green for
+`TestLicenceSignalCensus` — and see the correction below, which is mine.
+
+---
+
+#### The gates, measured by me at `99ac74c`, tree clean, not relayed from the build's report
+
+| command | working directory | what I saw |
+|---|---|---|
+| `npm run test` | `folio-designer` | **515 passed, 1 failed of 516**; 47 of 48 files |
+| `npm run lint` | `folio-designer` | exit 0; the 4 standing `react(only-export-components)` warnings |
+| `npm run scan:font-hosts` | `folio-designer` | exit 0, **0 occurrences in 600 tracked source files** (floor 400) |
+| `npm run build` | `folio-designer` | exit 0 through `verify:offline`; `verify:offline` re-run standalone, **exit 0** |
+| `npm run test:e2e:compile` | `folio-designer` | exit 0 |
+| `go test -count=1 ./...` | `lint` | **4 of 4 packages `ok`**, none `(cached)` |
+| `go test -count=1 ./...` | `folio-go` | **14 packages `ok`, 1 FAIL** (`internal/text`) |
+| `shasum -a 256 fixtures/*/expected.pdf` | **repository root** | **23 lines**, 23 pinned, **0 mismatches, 0 unpinned** |
+
+**The slot arithmetic, read out of the built manifest rather than out of the log.** `s1.assetCount`
+**54**, `s1.cacheAssets` length **54**, of which **31** are `catalogue-*.ttf` and all ten new ids are
+among them. `maximumCacheAssets` still reads **64** at `folio-designer/src/release-payload.ts:33` — the
+constant **was not moved**, which the contract's own Block If requires. **Margin 10.** Payload:
+`brotli.totalBytes` **16,681,316**, `brotli.catalogue.familyCount` **31**, `catalogue.totalBytes`
+**3,151,569** — the figures Story 15.2's budget gate inherits.
+
+**The census was re-run alone and verbose, because a green from it is the one green this story cannot
+take on trust.** `go test -count=1 -run TestLicenceSignalCensus -v ./internal/licence` → **PASS**,
+printing `CENSUS: 67 licence texts measured (58 committed files + 9 dependency licences), all matching
+their pinned verdicts` and enumerating its population. It asserted something; it did not pass by
+measuring nothing.
+
+**The two reds are pre-existing, and I re-confirmed that rather than assuming it.** Both cited files
+exist at HEAD — `folio-designer/src/canvas-authority-contract.test.ts` and
+`folio-designer/e2e/e9-5-border-no-ink.spec.ts` — so the empty `git diff --name-only efd79bf..HEAD` over
+them is a real emptiness and not a typo'd path matching nothing. For `folio-go` the diff is empty over
+the **whole module** (439 tracked files), so `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`
+(`floor not met: got 7, need >=20`; `P6 stats: {P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`) is
+untouchable by this story by construction. **No third red appeared anywhere.**
+
+---
+
+#### Triage audit — what I re-opened, confirmed, and corrected
+
+**TEETH: the red-proof re-run by me, and the count is SEVEN, not the four the build recorded.** Removing
+the `lora` row from `font-catalogue.json` and running the **whole module** suite gives **8 failed / 508
+passed of 516 across 5 files** — 7 new reds plus the standing DW-152. They are: the population floor in
+`font-catalogue.test.ts`, in `font-index.test.ts`, in `font-name-table.test.ts` and in
+`font-provenance.test.ts` (*"one of FOUR population floors and all four move together"*); the
+variable-upstream membership list; the offered-once loop, naming **`Lora was added by Story 16.1a and the
+local tier does not hold it`**; and the delta assertion, **`the pre-batch tier is the catalogue minus the
+ten: expected 21 to be 20`**. The build's *"reds four assertions"* was a narrower command scope, not a
+wrong claim — but the number in the record was unmeasured at module scope and is now measured. The teeth
+are real and specific: each red names a distinct property, the delta recomputes from the catalogue rather
+than comparing against a number typed in from a previous run, and nothing is covered by a sibling
+mechanism. Reverted with an absolute-path `git checkout --`; the suite returned to **515 / 1** and
+`git status` came back clean.
+
+**Both substantive rejections spot-checked at their cited locations and CONFIRMED SOUND.** (a) *"the
+delta test reads `row.variable`, which the story forbids"* — measured: `font-index.json`'s 1,811 rows
+carry exactly `{axes, category, family, popularity, styles, subsets}` and **no `variable` key at all**,
+while `scripts/build-font-index.mjs:124` synthesises `variable: axes.length > 0` into the emitted
+module. The rejection refutes the specific claim at the cited place, which is the only kind of rejection
+that holds. (b) *"`scripts: [\"latin\"]` is under-inclusive for Arimo and Lora"* — `scriptFallbacks` is
+literally `{latin, thai, cjk}` and the row validator throws on any other declared script, so `["latin"]`
+is the only legal declaration these faces can carry; the coarseness is real and is deferred as a
+vocabulary limitation, which is the right home for it. **The other four rejections are record-level or
+cosmetic and I did not independently re-derive them — stated, not implied.**
+
+**A CORRECTION I MADE: DW-168's CI claim does not survive measurement, and I fixed it in both places.**
+The entry was registered saying the `-count=1` flag *"is written into no script, Makefile target or CI
+config"* and that the stale-cache class is *"fully live for the next story"*. Measured at close:
+`.github/workflows/ci.yml` runs **every** Go invocation with `-count=1` — `folio-go` green set,
+`folio-go` expected-red set, `hashmatrix`, and `lint` (`working-directory: lint`, `run: go test -count=1
+./...`) — on every push to `main` and every pull request, under a header comment attributing the flag to
+**D-000.11 (Story 1.4 finisher)** and carrying this story's own rediscovered sentence verbatim: *"A
+cached ok is not evidence."* **CI would have caught the census failure on the first push.** The
+undischarged residue is the **local** path only — no script, Makefile target or npm script carries the
+flag, so an unattended dispatch measuring a module by hand is on the honour system, which is exactly how
+this story measured it. DW-168's owner, severity and status are corrected to that narrower shape, and
+the matching frontmatter deferral with them. The entry was **narrowed, not deleted**: the class is real
+and the local exposure is the half that bit.
+
+**FIVE of the nine deferrals are caused by this story's own new code, not pre-existing — say so.** The
+TLD allowlist and the two-named-files "one writer per tier" check both live in `font-provenance.test.ts`,
+which this story created; `committedFaceSource`'s untested throw path is new code in `build-wasm.mjs`;
+the old-`.folio`-`source` compatibility question exists **because** this story changed what is written;
+and the `licenceSignatures` overlap became possible **because** this story admitted `Apache-2.0` to that
+table. Each deferral is scope-legitimate and each is registered rather than dropped — but "deferred"
+should not be read here as "pre-existing", and a later reader picking these up should know they are this
+batch's own edges rather than inherited ones.
+
+---
+
+#### The follow-up review is OUTSTANDING at close, deliberately, by orchestrator decision
+
+`followup_review_recommended: true` **stays `true` in the frontmatter. It was not flipped, and it was not
+resolved.** The flag fired **mechanically** on the "two or more mediums" rule (12 patched: 0 high, 4
+medium, 8 low; 9 deferred; 6 rejected), not on evidence that anything is wrong.
+
+**The orchestrator's call, recorded as an explicit and reversible decision with its reasons:** no second
+review pass is being run. Because — **zero high findings**; **all twelve patches carry red-proofs**; the
+**nine deferrals are registered** in the frontmatter and the standing register rather than dropped; and
+**the owner has stopped the run**, so a fresh review pass is new work beyond this story rather than the
+completion of it.
+
+> **Follow-up review OUTSTANDING at close, deliberately, by orchestrator decision.** A later session
+> should read this as an **open obligation**, not a closed one. Whoever picks Epic 16 back up inherits
+> it, and the cheapest discharge is to run the pass against `4aca77f..99ac74c` before 16.2 lands on top
+> of it.
+
+I gave the twelve patches the closer's own scrutiny in the audit above rather than a full second review
+pass, and I am saying plainly which is which.
+
+---
+
+#### Outstanding at close — the run stops early, and the tracker must not pretend otherwise
+
+- **`epic-16` stays `in-progress`, and is NOT marked done.** `16.2`, `16.3` and `16.4` all remain at
+  `backlog`.
+- **The end-of-run heavy-test catch-up HAS NOT RUN**, because the run is stopping early at the owner's
+  instruction. Unmeasured and due at the next Epic 16 dispatch: the **matrix corpora**, the **four AD-21
+  legs**, **`TestCrossTargetByteIdentity`**, and the **browser specs**. This story ran e2e
+  **compile-only** by D-16.R.1's cadence and no browser witness exists for it. Nothing in this story
+  changes a rendered pixel and the 23 goldens are unmoved, which is why compile-only was the right
+  cadence — but it is a deferral, not a waiver, and it comes due before Epic 16 closes.
+- **DW-152** (the designer red) and the **P6g exercise floor** (the `folio-go` red) both survive; both
+  belong to other lanes and neither is this story's to fix.
+- **DW-162** remains open with the margin now **halved to 10** — the release build still reports no
+  cache-slot margin and still fails only on exceeding 64, so the first signal is a release that fails
+  outright, now half as far away.
+- **DW-166**'s re-run trigger still relies on a human noticing that the index snapshot was regenerated;
+  the cheap tripwire was named in the deferral and not built.

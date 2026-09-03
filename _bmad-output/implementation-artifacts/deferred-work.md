@@ -7641,13 +7641,29 @@ compatibility promise covers.
 - **Deferred by:** **Story 16.1a** (2026-09-03). Not a defect in any one test — a **class of false
   green** that this repository's own tooling produces by design, found the expensive way and registered
   so the next occurrence is cheap.
-- **Owner:** **whoever next adds a test that reads the tree at runtime**, or the first story that adds a
-  CI invocation for the Go modules — whichever comes first. Naturally discharged by whoever makes the
-  invocation authoritative.
-- **Severity:** **MEDIUM, and higher than it looks.** The failure mode is a **passing report**, so
-  nothing surfaces it; the loss is not a broken build but a gate that stopped gating while continuing to
-  say it had.
-- **Status:** OPEN.
+- **Owner:** **whoever next adds a test that reads the tree at runtime**, or the first story that runs
+  a Go module's suite by hand and records the result — whichever comes first. Naturally discharged by
+  whoever makes the *local* invocation authoritative; CI's is already authoritative (see the correction
+  below).
+- **Severity:** **MEDIUM.** The failure mode is a **passing report**, so nothing surfaces it; the loss
+  is not a broken build but a gate that stopped gating while continuing to say it had. Registered as
+  *"higher than it looks"* on the belief that nothing guarded the class; **that half is corrected
+  below** and the residue is narrower than first written.
+- **Status:** OPEN, **narrowed** — open on the local/agent path, already discharged on the CI path.
+
+**CORRECTION, measured by the closer at close (2026-09-03, working directory the repository root, tree
+clean at `99ac74c`).** This entry was registered saying the flag *"is written into no script, Makefile
+target or CI config"* and that the class is *"fully live for the next story"*. **The CI half of that is
+false.** `.github/workflows/ci.yml` runs **every** Go invocation with `-count=1` — `folio-go` (green
+set), `folio-go` (expected-red set), `hashmatrix`, and `lint` — on every push to `main` and every pull
+request, and it carries a header comment attributing the flag to **D-000.11 (Story 1.4 finisher)** with
+the same reasoning this entry rediscovered independently, down to the sentence *"A cached ok is not
+evidence."* So the census failure Story 16.1a hit locally **would have been caught by CI** on the first
+push. What is genuinely undischarged is the **local** path: no script, no Makefile target and no npm
+script carries the flag, so an unattended dispatch that measures a module by hand — which is exactly how
+16.1a measured it, and how every story in this pipeline measures it — is still on the honour system. The
+owner and severity above are corrected to that narrower shape rather than the entry being deleted,
+because the class is real and the local exposure is the half that bit.
 
 **THE GENERAL SHAPE, stated first because the instance is not the point.** A build cache decides whether
 to re-run a test by hashing **the inputs it knows about** — for Go, the compiled package and its

@@ -596,7 +596,12 @@ development_status:
   # Reconciled DOWNWARD 2026-09-03 (D-16.R.30): sprint-status is the orchestrator's record and it
   # must never claim more than the spec does. Restored to `done` only by the closer, after it
   # verifies the gates itself rather than reading them off a report.
-  16-1a-the-local-face-tier-covers-the-head-of-the-library: in-progress
+  # RESTORED to `done` 2026-09-03 by the closer, which re-ran every gate itself at `99ac74c` rather
+  # than relaying the build's report: designer 515/516 with only the DW-152 baseline red, build exit
+  # 0 with s1.assetCount 54 against an unmoved maximumCacheAssets 64, lint and folio-go under
+  # `-count=1` with only the mandated P6g red, and 23 of 23 goldens unmoved. Follow-up review is
+  # left OUTSTANDING by orchestrator decision; the reasoning is in the story's Delivery Log, not here.
+  16-1a-the-local-face-tier-covers-the-head-of-the-library: done
   16-2-a-fetched-face-stays-on-this-machine: backlog
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and
