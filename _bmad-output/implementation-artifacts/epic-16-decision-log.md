@@ -2525,3 +2525,75 @@ orchestrator. Twice now, the lowest level of the stack has been the thing that c
 working at its best and it is recorded as such — never read as a delay.** The incentive is fragile and worth
 protecting explicitly: an agent that learns a correction costs it standing will stop volunteering them, and
 the failure mode of that is invisible.
+
+### D-16.R.51 — CORRECTION to D-16.R.47: the bold question is already owned by Epic 11, my anchor had rotted, and "edge case into common case" was false
+
+**Three corrections from the 16.3 builder, all verified independently by the orchestrator before acceptance.
+This is that builder's THIRD volunteered correction in one story** (after the subsetting premise and the CJK
+chip), and one of the three is against a claim already committed to this log in D-16.R.47.
+
+**1. DO NOT MINT A REGISTER ENTRY — the question is already owned, and by a different gate.**
+`_bmad-output/planning-artifacts/epics.md:521-525`, verbatim:
+
+> *"Bold and italic are **not** in this epic. They are stored and projected today and consumed by no
+> producer, and no weighted face ships; giving them meaning is not a consequence of embedding. That work is
+> **Epic 11 (FR57)**, which owns the realize-or-retire decision in full — realize them as shipped weighted
+> and sloped faces, or retire the toggles. SPEC-fonts records the same question as open; Epic 11 is where it
+> is answered."*
+
+D-16.R.47 instructed the builder to register the question with **16.4** as its gate. **That would put a
+second authority on a question that already has one, at a gate that does not own it** — the defect this epic
+has refused twice (D-16.R.13 on `source`, D-16.R.6 on licence). **Instruction withdrawn.** Instead: one
+sentence in 16.3's Design Notes pointing at the existing owner (Epic 11 / FR57, `SPEC.md:151`) and recording
+that the footer slot is the cheapest disclosure point should Epic 11 rule unfavourably. **That preserves
+everything the entry was for without creating a second authority.**
+
+**A real distinction the builder drew, and it is not a quibble.** Epic 11's framing is **binary** — realize
+the toggles as shipped weighted faces, or retire them. The three candidate behaviours framed in D-16.R.47 —
+chain fallback / silent regular / refusal — are a **finer and different** question: *what happens in the
+INTERIM*, before Epic 11 rules. **That interim question is genuinely unregistered.** It is Epic 11's to
+absorb rather than 16.4's to re-own, and the lead places it rather than the builder.
+
+**2. `App.tsx:1228` had rotted.** At `0e3a291` that line is a bare `}`. The Bold and Italic `BooleanProperty`
+toggles are real but live at **`App.tsx:1414`**, inside the single-line TYPOGRAPHY `PropertySection`.
+Verified. The anchor was quoted into a decision entry from a grep against an earlier commit — **the fifth
+instance of anchor rot in this epic**, and the first to reach this log rather than a spec.
+
+**3. THE SUBSTANTIVE ONE: "Epic 16 turns this from an edge case into the common case" is FALSE, and it is my
+sentence.** Measured and independently confirmed:
+
+- All **31** catalogue faces are `style: "Regular"`. There is no `weight` field in the record at all.
+- **45** committed font binaries repo-wide; **zero** are bold, italic or oblique. The only non-`-Regular`
+  names are a variable test-only face and three lint fixtures called `shipped-face.ttf`.
+
+**So no weighted or sloped face ships anywhere today — it was ALREADY the universal case, exactly as
+`epics.md` asserts.** Epic 16 does not change the **proportion**, which was and remains 100% Regular-only.
+**What it changes is the POPULATION:** 31 local families become ~1,305 offerable ones — a **42x growth in
+exposure**, i.e. in how often an author can set Bold on a family that has no bold face.
+
+**Why the correction matters rather than being a nicety.** The false version *"Epic 16 makes this the common
+case"* invites a later reader to conclude **Epic 16 introduced a regression it did not introduce.** The true
+version — the proportion is unchanged and the exposure grows 42x — supports the same conclusion (build the
+slot; it is the cheapest disclosure point) **on a footing that survives being checked.** D-16.R.47's ruling
+stands; only its stated reason is replaced.
+
+**TWO METHODOLOGY HAZARDS the builder hit and reported, both of which would have produced confidently wrong
+ABSENCE claims — the failure class this epic has now been bitten by four times.**
+
+1. **`grep -c` silently returned `0` on a listing of 40+ files in this environment.** Re-counted with `awk`.
+   Had that gone unnoticed it would have yielded *"no weighted faces exist"* — **the right answer reached by
+   a broken route**, indistinguishable from a real measurement and impossible to catch by reading the
+   conclusion.
+2. **A `0/0` measurement from a wrong glob proved nothing at all**, and the builder caught it *because the
+   denominator was zero*, not because the answer looked wrong.
+
+**Consequence, added to D-16.R.38's absence rule: a count of zero is not a measurement until the denominator
+is known to be non-zero.** State the population size alongside every zero. "0 occurrences" and "0
+occurrences in 607 files" are different claims, and only the second one is evidence.
+
+**And the builder's own near-miss, which it flagged rather than fixed quietly.** Its first search for the
+SPEC-fonts phrasing returned nothing **because it had scoped the grep to `planning-artifacts` while the SPEC
+lives under `specs/`** — it nearly reported the quote as non-existent. A positive control caught it.
+**That is D-16.R.38's exact failure — a package-scoped absence read as a repository-scoped one — caught this
+time by the discipline that entry created.** The rule worked; it is worth recording that it worked, because
+the entries in this log that only ever record failures make the discipline look futile.
