@@ -632,6 +632,15 @@ describe('a fetched face stays on this machine', () => {
     // THE CAPPED GROUP'S NOTE COUNTS THE CAPPED GROUP. Group 2 and group 3
     // together are the whole addable union, so naming the union would be
     // counting rows the cap never touched.
+    // THE SUM BELOW HAS A PRECONDITION, AND IT IS ASSERTED RATHER THAN
+    // INHERITED FROM THE FIXTURE'S CHOICE OF NAME. `addableFamilyCount` is
+    // `webFamilies.length + catalogueFaces.length` and never counts
+    // `orphanedStored` — a family this machine holds that the snapshot has
+    // since stopped listing. So group 2 + group 3 === addableFamilyCount is
+    // true of a stored face the snapshot STILL LISTS and false by exactly one
+    // of an orphaned one. Planting a family that is not in the snapshot would
+    // leave this arithmetic quietly wrong, so the precondition is measured here.
+    expect(webFamilies.some((row) => row.family === 'Philosopher'), 'this sum holds only for a stored family the snapshot still lists; an orphaned one makes addableFamilyCount short by one').toBe(true)
     const counted = /Showing (\d+) of (\d+) matching families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
     expect(counted).not.toBeNull()
     expect(Number(counted![2])).not.toBe(addableFamilyCount)
