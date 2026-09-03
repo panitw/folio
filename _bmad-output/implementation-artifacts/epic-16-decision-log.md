@@ -2815,3 +2815,84 @@ untestable; and the Grid cap had two spellings, so the rail printed a size nothi
 **Gates after the patch pass, measured locally with no pipes: 659 passed / 1 failed** (up from 641 passing),
 the single failure being DW-152, pre-existing and unchanged; `test:e2e:compile`, `build` and `lint` all
 clean; **the committed e2e spec re-run in a real Chromium with strengthened per-row assertions, 6/6.**
+
+### D-16.R.55 — A red-proof reported a false pass because its mutation never applied, and that is the fourth false measurement of this epic
+
+**Self-reported by the 16.3 builder while running the three re-proofs the orchestrator required as close
+conditions.** All three ultimately reddened; one of them **first reported a pass that was not a
+measurement at all.**
+
+**What happened.** Its mutation regex **matched nothing**, so the target file was never modified, and the
+suite returned **15/15 green**. **A proof whose mutation silently fails to apply is indistinguishable from a
+proof that passed** — same command, same output shape, same green. The decline logic had moved into the
+seam behind a new `onDeclined` parameter, so the pattern it was hunting no longer existed. Re-targeted, the
+mutation reddened two tests.
+
+**THE FOURTH FALSE MEASUREMENT IN THIS EPIC, AND THEY ARE ALL ONE SHAPE.**
+
+| # | fault | what it produced |
+|---|---|---|
+| 1 | `grep -c` returning 0 on a listing of 40+ files | the **right** answer by a broken route |
+| 2 | a `0/0` glob | a conclusion with no denominator |
+| 3 | `PIPESTATUS` in zsh | **exit 0 reported over a failing suite** |
+| 4 | a mutation regex matching nothing | **a passing-looking non-measurement** |
+
+**In every case the tool answered, the answer looked exactly like every other answer, and nothing in the
+output distinguished *measured* from *failed to measure*.** That is the property that makes them dangerous
+and it is why "be careful" does not address them — the careful reading and the careless one see the same
+thing.
+
+**STANDING RULE, completing the set: A RED-PROOF MUST ASSERT THAT ITS MUTATION APPLIED.** Diff the file, or
+check the substitution count, before trusting the result. **A green from an unapplied mutation is not a
+weak proof — it is not a proof**, and it is the one failure mode that produces false confidence in exactly
+the instrument this run uses to buy confidence.
+
+Together the four now form the epic's measurement discipline:
+1. **State the population beside every zero** (D-16.R.51).
+2. **Never read a status through a pipe** (D-16.R.53).
+3. **A red-proof asserts its mutation applied** (here).
+4. **Run the mutation BEFORE the fix, not only after** (D-16.R.54) — which is what caught a fix that had
+   landed in the wrong function and compiled cleanly.
+
+**Rules 3 and 4 are complements, not duplicates.** Rule 4 catches *the fix is not where you think it is*;
+rule 3 catches *the mutation is not where you think it is*. **Both are failures of the proof's own
+plumbing rather than of the code under test**, which is precisely the class no code review can see.
+
+### D-16.R.56 — Story 16.3 closes: the font browser, with its confirm semantics provisional
+
+**Gates, measured locally by the builder on `e3f655b`, re-run rather than relayed, no pipes:** designer
+**659 passed / 1 failed** of 660 across 54 files; `test:e2e:compile`, `build`, `lint` all exit 0; `lint`
+Go 4 packages green under `-count=1`; `folio-go` exit 1 with **only** `TestCorpusMeetsP6ExerciseFloors/P6g`,
+and **this story changed 0 Go files**. Both failures verified pre-existing at `0e3a291` **in an isolated
+worktree**, with the failing-test **name set** diffed rather than the totals. **A real browser run —
+chromium-1217, against the built bundle — 6/6, exit 0.**
+
+**Nothing in this story is CI-verified and the Delivery Log says so**: the designer job still halts at step
+2 on DW-152 until the post-16.4 repair (D-16.R.44).
+
+**The three close conditions, all RED by deletion, and the seam answer is the good one.** The seam mutation
+reds; **the new test renders the real `App` and clicks the real `Add fonts…` button by accessible name,
+then asserts the real dialog** — not a stub one level down, so no named hole was needed. The elevation
+revert reds. The decline guard reds on both arms, and the ordering fix landed: the derivation is now checked
+**before** any byte is fetched, so a name that will be declined no longer buys a full upstream licence
+resolution first.
+
+**Triage: 21 patch, 0 defer, 3 reject, no `intent_gap`, no `bad_spec`, `review_loop_iteration` 0.** The three
+rejections were verified rather than accepted, and two reviewer claims did not survive: *"the Go P6g failure
+has no deferred-work entry"* (false — 15 mentions and its own registered home) and a claimed silent-drop
+defect (unreachable — the lookup is built from the unfiltered row set).
+
+**Deferrals, each grepped back by subject rather than counted (D-16.R.43.1):** **DW-176 DISCHARGED** — no
+ordering clause, and the stored-face-survives-reload case ran in a browser. **DW-161 OPEN** — its ordering
+clause binds it to DW-101, open until the post-16.4 CI repair; two of three cases ran against the real host
+and the licence case is **impossible rather than skipped** (60 of 1,273 families sampled, 60/60 resolved,
+every token already in the closed table). **DW-177** the offline `OFL.txt` read misreported as an upstream
+project publishing no licence file. **DW-178** three declared elevations, one implemented, five surfaces
+sharing it. **DW-179** ten CRLF licence texts in a tree `git status` calls clean.
+
+**And the builder's own note on why re-running rather than relaying was required**, which is the best
+argument in this log for the practice: the implementer's report was accurate on every count it checked —
+**but its first browser run caught a stale e2e assertion that `tsc --noEmit` structurally cannot see,
+because the assertion lives inside a regex, and its own build gate caught a TypeScript error it had
+committed after running the suite but before running the build.** Both were the builder's own. **A suite
+that passes is not a build that passes, and a type-checker cannot read a string.**
