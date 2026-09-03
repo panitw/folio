@@ -142,10 +142,59 @@ because a wrong line number still reads as a right one.
   drift.
 - `src/App.tsx` — read the store before fetching; register stored faces for preview alongside the
   document's carried faces, without disturbing the document-scoped effect's keying.
+- `src/font-index.ts` — the store's listing joins the existing `FamilySource` union as a third arm,
+  `{ tier: 'stored'; family: string; record: StoredFace }`, alongside `'local'` and `'web'`. The pick
+  path handles all three. Story 16.4 groups this union; it does not reshape it. **Build the seam here,
+  do not leave it to 16.4**: an exhaustive switch over `FamilySource` reds until the new arm is
+  handled, so the tier cannot be silently dropped later (ruled, D-16.R.33 R1).
 - `src/` — the removal affordance, naming what it removes and stating that documents are unaffected.
+- `src/font-source.ts` — the fetch timeout goes in the **default fetcher** (`fetcher: Fetcher = (url)
+  => fetch(url)`), not at the six call sites, and the signal is passed **into `fetch()`** so the abort
+  reaches the **body** stream: the bytes are read by `response.arrayBuffer()` AFTER the fetcher
+  returns, so a header-only timeout leaves the worst real stall uncovered. A test must stall during
+  `arrayBuffer()`, not during the request, and assert the same stated degradation.
+- The timeout's NUMBER is established by measurement, never invented: timed fetches against the real
+  host `raw.githubusercontent.com` over both shapes in the chain (a small `METADATA.pb` and a **large**
+  face — SPEC-fonts records shipped faces up to 646 KB, so a budget fitted to the 90 KB
+  `Sarabun-Regular.ttf` refuses the tail it exists to tolerate). Take the **maximum** observed, not the
+  mean or median — the number is a ceiling on patience, not an estimate of typical latency — times a
+  stated factor with its reason recorded. Record it per D-8.4j.8 (command, commit, tree state, working
+  directory). The constant carries its own measurement in its comment.
+  **It may NOT be measured in jsdom against the stubbed fetcher** — timing our own stub measures the
+  stub, the vacuity D-16.R.12 named. A number that "feels right" or is copied from another project is
+  refused (D-16.R.14).
+- The worst-case hold is **6 x T** across the chain's six requests, with the control disabled, and that
+  — not T — is what the author experiences. State it in the code and in the Delivery Log. If 6 x T is
+  longer than this story will hold a control, the remedy is a chain deadline **in addition**, which is
+  a second number needing its own basis: bring it back to the lead rather than inventing it.
+- The stall path states its degradation in the located, anchored form the offline refusal uses at
+  `font-source.ts:340`, and **must not reuse the offline wording** — "you cannot add a family without a
+  network connection" is FALSE when the network is up and the host is hanging.
 - Tests: store round trip; hit avoids fetch; miss with no network degrades as stated; open failure
   leaves a working designer; corrupt entry is dropped and refetched; and a **red-provable** assertion
-  that no code path enumerates host fonts.
+  that no code path enumerates host fonts. That assertion is **source-level over the whole `src/`
+  tree** — a test that only checks the store module would pass while `App.tsx` called
+  `queryLocalFonts` — and it is red-proved by **deleting the guard**, never by falsifying a condition.
+- The timeout's red-proof is THREE tests, and the second is the one usually skipped (D-16.R.15 named
+  this class and said to assume a fourth instance):
+  **(a) Release.** Never-settling fetcher + fake timers: after T the control is enabled and the
+  degradation stated. Mutation: **delete the release path**; the test must red.
+  **(b) The second carrier.** D-16.R.15's actual defect was a hold backed by both a ref and state,
+  where the document-reset path cleared only the state copy. So: stall a fetch, **replace the document
+  mid-stall**, then assert the hold is clear and a subsequent pick works. Proving (a) alone re-proves a
+  shape that was already fixed.
+  **(c) No silent retry.** Assert the fetcher was called **exactly** the expected number of times and
+  not once more after the timeout, with the count written as a **literal** — never computed from the
+  same code path that drives the fetches.
+- **This discharges DW-165.** Close that entry with the measured number recorded, not merely marked
+  done.
+- A face stored and read back carries a `source` byte-identical to the one it was stored with,
+  asserted through `assertProvenanceShape` at the RETRIEVAL side — the store is a carrier, and a
+  carrier that normalises, truncates or re-derives a provenance record has become an authority
+  (contract Boundary: *"the store never becomes an authority on a document"*). This makes an existing
+  Boundary checkable rather than adding scope, and it puts a **third real call site** on the shared
+  provenance helper, whose current two call sites both feed it known-good values — the precise
+  condition that let its assertions go inert (D-16.R.34 F1).
 - Docs: `font-catalogue.md` gains the store's description — what it is, what it is not, and that it is
   authoring-only.
 
@@ -155,8 +204,10 @@ because a wrong line number still reads as a right one.
 - Given a stored family, when it is picked again in any document on this machine, then nothing is
   fetched and the embed runs over the stored bytes.
 - Given a stored family and no network, when it is picked, then it is embedded successfully.
-- Given the dropdown, when it is opened, then `AVAILABLE LOCALLY` lists exactly the stored faces and no
-  operating-system font.
+- Given a populated store, when its listing is read, then it returns exactly the faces this designer
+  has fetched and stored, and nothing else — and a red-provable test asserts that no code path in the
+  designer enumerates, reads, or feature-detects host fonts (no `queryLocalFonts`, no
+  `navigator.fonts`, no Local Font Access API by any spelling).
 - Given storage that cannot be opened or written, when the designer runs, then it still works and says
   what is degraded.
 - Given a fetch that stalls rather than rejecting, when the timeout fires, then the hold is released,
@@ -183,6 +234,15 @@ should not imply more than that.
 ## Verification
 
 - `cd folio-designer && npm run test && npm run build`
+- `cd lint && go test -count=1 ./...`
+- `cd folio-go && go test -count=1 ./...`
+  **`-count=1` is mandatory and is not decoration** (DW-168, narrowed by D-16.R.31): CI already passes
+  it everywhere, so the live residue is exactly this by-hand path. This story touches no Go, which is
+  precisely the condition under which a filesystem-walking Go test replays a stale green.
 - Browser: fetch a family; reload; confirm it is offered with the network disabled; remove it; confirm
   a document that embedded it still renders.
-- The 23 golden digests, unmoved. `maximumCacheAssets` still 64.
+- The 23 golden digests, unmoved. `maximumCacheAssets` still 64 — **and report the measured
+  `s1.assetCount` after the build** (DW-162's margin is halved to 10 of 64 and is watched by nothing).
+  The store is runtime IndexedDB data and must consume **no** cache slot; reporting the number means a
+  store implementation that accidentally lands anything in the release manifest is caught by an
+  assertion rather than by a release failing. The mechanism stays deferred; this is the assertion half.

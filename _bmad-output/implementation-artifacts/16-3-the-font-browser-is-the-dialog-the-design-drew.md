@@ -160,8 +160,64 @@ dozen edge cases — what the button says when a family is in the template versu
 footer says at zero, which sample text a Thai family gets. Re-deriving those from the screenshot is how
 a product drifts from its design while everyone believes it matches.
 
+## PENDING GATE AMENDMENTS — read before implementing (added 2026-09-03 by the orchestrator)
+
+*Non-normative. These are RULED changes to this spec, recorded here so they are not lost, but NOT yet
+applied. They are applied at this story's own plan gate, not now — see the reason below.*
+
+**Why they are not applied yet.** This spec was planned at `baseline_commit: a40c34d` and approved
+before 16.0, 16.1, 16.1b and 16.1a landed. Its `## Code Map` line anchors are therefore stale by
+construction (D-16.R.28), and Story 16.2 lands before this one, which will rot them again. Re-verifying
+them now would be work done twice and trusted once. Anchors are re-verified at this story's gate,
+against the tree as it stands then.
+
+**Anchors known stale at `8a9e297`** (indicative, re-measure at the gate — do not trust these numbers
+either): the document-scoped face registration cited as `:186-224` is at `:232-243`; `pickCatalogueFamily`
+cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `:1284-1380` begins at
+`:1385`; the disk-font decline cited as `:1366` is at `:1474`. `App.css:210-223` and
+`e2e/component-properties.spec.ts:35-60` were checked and are still correct.
+
+**Ruled changes to apply at the gate (D-16.R.33):**
+
+1. **R3 — drop the *Most styles* sort arm, and drop `designer` from the search predicate.** This
+   product embeds **exactly one face per family** (the upright Regular at weight 400 —
+   `font-source.ts:197`, and `:314` refuses a family that publishes none), so style count is not a
+   difference the author can act on; a family with eighteen styles and one with a single style deliver
+   the identical thing. And `designer` is not a field addition but a **snapshot regeneration**: the
+   committed `font-index.json` carries no designer field, obtaining it means re-running
+   `refresh:font-index`, and that breaks the `d6d51f1` pin (D-16.R.23), fires DW-166 trigger 1, and per
+   D-16.R.26 inverts Story 16.1a's landed batch on exactly the axis this epic has already litigated
+   twice. **The payload was measured first so this is a priced decline, not a budget one:** `+1,326`
+   brotli bytes for a style count, ~0.008% of a 15,729,262-byte first load. **Affordable, and declined
+   on the criterion.** Do not reverse it when 15.0 frees room.
+2. **R3 — the header's family count reuses `familyIndexDisclosure()`, which already ships the correct
+   sentence.** This spec still says *"~1,946 families"* in three places; D-16.R.2's own consequence is
+   that the browser's count is the **addable** count. Measured at `8a9e297`: 1,811 snapshot rows
+   (1,946 published, 135 CJK excluded), 1,273 web-addable, 31 local — **1,304**. Two authorities on one
+   count is the defect D-16.R.13 refused on `source` and D-16.R.6 refused on licence.
+3. **R2 — `Add fonts…` is this story's entry point, and there is NO keyboard shortcut in this epic.**
+   The spec's *"`⌘G` opens it, or the omission is ruled and recorded"* is hereby the omission, ruled:
+   `⌘G` is the browser's Find Next, and this application's own convention (`src/shortcuts.ts`) puts
+   conventional document actions on Command and **app-specific actions on Option** (`⌥P`, `⌥S`). No
+   hint glyph is rendered, because a `⌘G` label beside a key that does nothing is the false-UI-string
+   class this epic has ruled against three times. Registered deferred with `⌥F` named as its shape.
+4. **The browser run also discharges DW-161** — a pick with the network up, a pick with it down, and a
+   pick whose licence is outside the allowlist, against the real hosts. The container is already being
+   paid for by this story's own override; scoping it wider costs almost nothing and converts the
+   epic's largest evidence gap from a note into a measurement.
+
+**Items 1 and 2 are CONTRACT AMENDMENTS.** This spec's `<intent-contract>` spans lines 27-91, and the
+Sort row (`:82`) and the `~1,946` statements (`:31`, `:50`, `:52`) are **inside** it, on a spec already
+at `ready-for-dev`. They are reopened deliberately at the gate and recorded as amendments in a
+`## Spec Change Log`, not edited in silently. Item 3 touches Tasks only; item 4 touches Verification only.
+
 ## Verification
 
 - `cd folio-designer && npm run test && npm run test:e2e:compile && npm run build`
+- `cd lint && go test -count=1 ./...`
+- `cd folio-go && go test -count=1 ./...`
+  **`-count=1` is mandatory** (DW-168, narrowed by D-16.R.31): CI already passes it everywhere, so the
+  live residue is exactly this by-hand path — and this story touches no Go, the condition under which a
+  filesystem-walking Go test replays a stale green.
 - A browser run: search, filter, sort, stage three, confirm, and one deliberate upstream failure.
 - Token fidelity checked against `DESIGN.md`, in the form `review-token-fidelity.md` already uses.

@@ -22,8 +22,43 @@ argument would make neither readable. They are load-bearing for every story here
 
 ## Lead Grounding
 
-*Filed by the orchestrator from the engineering lead's grounding report. Pending — the lead is grounding
-as this log is written; this section is filled in before the first plan dispatch.*
+*Filed by the orchestrator from the engineering lead's grounding report. The original placeholder said
+this section would be "filled in before the first plan dispatch"; it never was. That is itself worth
+recording rather than quietly overwriting — the run's first lead grounded and ruled through thirty-one
+decisions with its report never filed, so its reasoning survives only as the rulings it produced. The
+refresh below is the FIRST content this section has ever carried.*
+
+### 2026-09-03 — refresh, on resuming the run with 16.2/16.3/16.4 outstanding
+
+The run's first lead did not survive its session. A replacement was grounded from THIS LOG and the three
+remaining specs rather than re-derived from the ADRs, per the resumption rule: re-ground from the record,
+verify only what has plausibly changed. Verified at `8a9e297`, tree clean.
+
+**Confirmed unchanged since the log was written:** the generated catalogue is 31 families (21 + 10);
+`familyIndex` is 1,811 rows with 537 `variable: true`; `font-licence.ts`, `font-name-table.ts`,
+`font-source.ts` and `font-index.ts` are all present; SPEC-fonts carries both required amendments; the
+Non-goal clauses *"No host fonts"* and *"no variable-font axes"* survive untouched.
+
+**Confirmed about CI, which narrows the local-only debt precisely.** CI runs the designer's
+test/typecheck/lint/build, `verify:offline:red`, `verify:offline:wasm` and `test:e2e:compile`, and every
+Go invocation with `-count=1`. It does **not** run `playwright test`, and it only `go build`/`go vet`s the
+`matrix`-tagged suites. So the browser and matrix legs are genuinely local-only debt, and D-16.R.31's
+correction to DW-168 (CI *is* watching `-count=1`) is confirmed a second time by a second reader.
+
+**The orchestrator's own verification of the report, before acting on it.** Load-bearing numbers were
+re-measured rather than relayed: the six `role="presentation"` children (1456, 1462, 1463, 1469, 1470,
+1474); `IndexFamily` = `{family, category, scripts, variable, popularity}`; `maximumCacheAssets = 64`;
+`FontFamilyProperty` at 1385; `pickCatalogueFamily` at 660; the decline sentence at 1474 with
+`familyIndexDisclosure()` at 1469; 1,811 rows / 537 variable. All hold.
+
+**One correction the orchestrator made to the report.** The rot table rendered the designer anchors as
+`src/App.tsx`, which reads as a repo-root path that does not exist (the file is at
+`folio-designer/src/App.tsx`). The specs' Code Maps group anchors under module headings — **`Designer
+(`folio-designer/`)`** — so `src/App.tsx` is CORRECT as the specs write it and must not be rewritten.
+Only the line numbers are stale. Recorded because D-16.R.28 corrected a genuine path error in 16.2
+(`internal/template/` → `folio-go/`), and that precedent must not license rewriting a prefix that is right.
+The near-miss is the point: two readers looked at the same anchor and one of them saw a defect in a
+notation.
 
 ## Standing decisions
 
@@ -1253,3 +1288,197 @@ work beyond it. **Reversible by construction:** the flag is left set, so resumin
 `4aca77f..99ac74c`; the heavy-test catch-up (matrix corpora, four AD-21 legs, `TestCrossTargetByteIdentity`,
 browser specs) due before Epic 16 closes; DW-168's narrowed discharge; DW-162, whose margin is now **halved
 to 10** and watched by nothing; and DW-166's tripwire, named but not built.
+
+### D-16.R.32 — The five outstanding obligations get a disposition each, and only one of them is a story
+
+**Orchestrator decision**, on the engineering lead's recommendation, taken on resuming the run on
+2026-09-03. D-16.R.31 closed 16.1a with five obligations named and none of them scheduled. Naming a debt
+and scheduling it are different acts, and the gap between them is where obligations go to die.
+
+**Verdict — one line each, and each has a named home.**
+
+| Obligation | Disposition | Home |
+|---|---|---|
+| 16.1a follow-up review (`4aca77f..99ac74c`) | **Before 16.2 is dispatched**, as its own read-only pass | its own pass, not folded into a story |
+| Heavy-test catch-up | **Split.** Browser half in 16.3; Go half (matrix corpora, four AD-21 legs, `TestCrossTargetByteIdentity`) at end of run | 16.3 + end-of-run |
+| DW-168 (`-count=1` on local Go runs) | **Discharged during**, as a Verification edit to all three remaining specs | 16.2's plan gate, applied to 16.2/16.3/16.4 at once |
+| DW-162 (margin halved to 10 of 64) | **Assert-only.** Mechanism stays deferred | 16.2's Verification |
+| DW-166 (batch tripwire) | **Stays standing.** No completion state; the lead holds it | none — not a story |
+
+**Situation.** Each of these was registered honestly and left unowned. The temptation on resuming is to
+fund them all as work, which would put roughly a story's worth of effort in front of 16.2 and price two
+*permanent* obligations (DW-162's margin watch, DW-166's tripwire) as one-off tasks — the inverse of the
+criterion error D-16.R.16 already corrected once in this epic.
+
+**In simple terms.** Five items on a list are not five jobs. One is a job you should do now because it
+gets more expensive every day you wait. Two are things you should simply *write down in the right place*
+so a number gets checked automatically. One is a standing watch with no finish line, which belongs to a
+person, not a sprint. And one is a job whose right moment is later, when a browser is already open for
+another reason and the marginal cost is near zero.
+
+**Why the follow-up review goes first, and this is the only one that changes the dispatch order.** Its
+subject — the fetch path, the provenance record, the licence verdicts — is the code that 16.2, 16.3 and
+16.4 all build on top of. Reviewed now, a finding lands on a two-commit-old diff. Reviewed after three
+more stories, the same finding has to be separated from three stories of change layered over it: a scoped
+review becomes archaeology. The expected yield is low (the flag fired mechanically on *"two or more
+mediums"*, over twelve findings already patched with red-proofs) but the expected cost is an hour, and
+the asymmetry is entirely one-sided.
+
+**Why it is NOT folded into 16.2.** Putting a 16.1a review finding inside a 16.2 dispatch makes one
+commit answer for two stories, which is the shape D-16.R.11 spent this run's own money learning to
+refuse. It runs as its own pass, read-only, producing findings for triage rather than patches.
+
+**Why the browser half of the catch-up lands in 16.3 specifically.** 16.3 already carries a browser run
+under D-16.R.1's own override — its specimens, focus trap and staged-confirm flow have no non-browser
+witness — so the container is already being paid for. Scoping that run to also discharge **DW-161**'s
+three cases (a pick with the network up, with it down, and with a licence outside the allowlist, against
+the real hosts) costs almost nothing and converts the largest evidence gap in the epic from a note into a
+measurement. This is not a cadence exception; it is the override D-16.R.1 already granted, used well.
+
+**The accepted cost.** The Go half of the catch-up still runs once, at the end, across three stories'
+worth of change — so a red there is still expensive to bisect. That is the `end-of-run` bargain the owner
+struck in D-16.R.1 and this decision does not reopen it. What makes it tolerable is that 16.2, 16.3 and
+16.4 touch **no Go code**, so the Go suites have no story-attributable reason to move; if they go red, the
+cause is upstream of this epic, not inside it.
+
+**Consequences.** 16.2 is not dispatched until the follow-up review returns and its findings are triaged.
+All three remaining specs get `-count=1` written into their Go Verification commands at 16.2's gate.
+16.2's Verification gains a reported measurement of `s1.assetCount` after build, so a store implementation
+that accidentally lands anything in the release manifest is caught by a number rather than by a release
+failing. DW-166 is not built and not closed; the lead carries it, and a regeneration of `font-index.json`
+by any of the three remaining stories is trigger 1 and returns it to the lead at that moment.
+
+**How we'd know this was wrong.** The follow-up review returning a high-severity finding in shipped 16.1
+or 16.1a code — that would mean "expected yield is low" was a guess dressed as an estimate, and that the
+same reasoning should not be used to defer the next such flag.
+
+### D-16.R.33 — Four gate rulings for the remaining stories, and the one place the lead's own method gave the opposite answer
+
+**Lead rulings**, requested by the orchestrator before 16.2's dispatch and applied. All four were RULINGs;
+none ran out of direction. Recorded together because they were taken as one set against one warm
+measurement of the tree at `8a9e297`.
+
+**R1 — 16.2 owns the store and the read-before-fetch; 16.4 owns the group in the control.** 16.2 needs no
+new dropdown group at all: its "picked again / no network" criteria are satisfied through **today's**
+control by putting a store read in front of the existing fetch. Only AC 4 reached into the control, and it
+is restated against the store's listing plus a red-provable no-host-fonts assertion. **The seam is the
+ruling's real content:** the store's listing joins the shipped `FamilySource` union as a third `'stored'`
+arm, so 16.4 adds headings rather than plumbing, and every exhaustive switch over the union reds until
+16.4 handles the arm. That is the mechanism enforcing the hand-off instead of a sentence in a spec.
+
+**R2 — no keyboard shortcut in this epic, and no hint glyph.** `Add fonts…` is 16.3's entry point (a story
+cannot verify a modal it cannot open); the footer row is 16.4's. `⌘G` is declined: it is the browser's
+Find Next, and this application's own convention puts conventional document actions on Command and
+**app-specific actions on Option** (`⌥P`, `⌥S` — verified in `src/shortcuts.ts`, an 8-key closed record).
+The glyph is not rendered because **a `⌘G` label beside a key that does nothing is a false UI string** —
+the class this epic has already ruled against three times (D-16.3 on "live", D-16.R.2 on the family count,
+D-16.R.20 on the header). Both or neither, and so neither. Deferred with `⌥F` named as its shape.
+16.3's spec pre-authorised exactly this: *"or the omission is ruled and recorded"*.
+
+**R3 — both of 16.3's data-less arms are dropped, and the decline is PRICED rather than asserted.**
+*Most styles* sorts on a property the product collapses: `font-source.ts:197` selects only
+`style === 'normal' && weight === 400` and `:314` refuses a family publishing no upright Regular, so
+**exactly one face is embedded per family** — eighteen styles and one style deliver the author the
+identical thing. `designer` is not a field addition but a snapshot regeneration, which breaks the
+`d6d51f1` pin, fires DW-166 trigger 1, and per D-16.R.26 inverts 16.1a's landed batch on the axis this
+epic litigated twice. **The lead measured the payload first, on purpose:** `+1,326` brotli bytes
+(~0.008% of a 15,729,262-byte first load) — **affordable, and declined on the criterion anyway.** It also
+established that DW-162's halved margin does **not** bind here: DW-162 counts cache slots and the
+snapshot is source bundled into JS. Recording the affordability is the point — otherwise the next reader
+reverses this the moment 15.0 frees room, believing it was a budget call.
+
+**R4 — the fetch timeout's BASIS, not its value.** Sited in the injected `Fetcher` default so one place
+covers all six round-trips. **The signal must reach `fetch()` so the abort propagates to the body
+stream** — the bytes are read by `response.arrayBuffer()` *after* the fetcher returns, so a header-only
+timeout leaves the worst real stall completely uncovered, and the test must stall during `arrayBuffer()`
+rather than during the request. The number comes from timed fetches against the real host over a **large**
+face (shipped faces reach 646 KB; a budget fitted to the 90 KB measurement refuses the tail it exists to
+tolerate), taking the **maximum** not the median — it is a ceiling on patience, not an estimate of typical
+latency — recorded per D-8.4j.8, and **explicitly not measured in jsdom against our own stub**, which
+would be D-16.R.12's vacuity. Worst case is 6 x T with the control disabled and must be stated. Discharges
+DW-165.
+
+**THE CORRECTION, and it is the entry's most useful part.** R1 established that 16.2's AC 4 sits at line
+158 while `</intent-contract>` closes at 105 — **outside the lock**, so a Tasks/AC edit, not an amendment.
+The orchestrator applied that same method to 16.3 and 16.4 and it returned the **opposite** answer:
+16.3's contract spans **27-91**, and R3's Sort row (`:82`) and the three `~1,946` statements (`:31`,
+`:50`, `:52`) are all **inside** it — on a spec already at `ready-for-dev`, i.e. approved at a previous
+session's CHECKPOINT 1. **So R3's edits are contract amendments and R1's were not.** The lead did not
+claim otherwise; it located the lock for the spec it was asked about and did not generalise. The lesson is
+that "locate the lock" is a **per-spec** check, and a ruling that was correctly not-an-amendment in one
+spec is not evidence about another. Verified after editing by the honest method the lead prescribed —
+every diff hunk at a line number beyond the contract's close (16.2: all six at >= 144; 16.3/16.4: all at
+>= 157) — rather than by md5, because the lead could not reproduce D-16.R.28's recorded digest and
+correctly refused to quote either figure forward.
+
+**Consequence: 16.3's and 16.4's ruled changes are RECORDED but NOT APPLIED.** Both specs gain a
+non-normative `## PENDING GATE AMENDMENTS` section listing every ruled change with its reasoning, plus the
+anchors known stale at `8a9e297`, explicitly labelled do-not-trust. They are applied at each story's own
+plan gate. **Reason: Story 16.2 lands before either of them, so anchors re-verified today would be rotted
+again by the time they are read** — work done twice and trusted once. The contract amendments are then
+reopened deliberately, at a gate, and recorded in a `## Spec Change Log`, rather than edited in silently
+three stories early.
+
+**How we'd know R2 was wrong.** The owner reading the mockup's `⌘G` as a requirement rather than a hint
+label. The lead put its own confidence at medium on this one alone, and the reversal is one line — a ninth
+`ShortcutHints` entry plus one arm in the existing handler. It goes to the owner at 16.3's gate rather
+than being presented as settled taste.
+
+### D-16.R.34 — The follow-up review was not clean, and the estimate that deferred it was a guess
+
+**Measured**, by the read-only follow-up pass D-16.R.32 scheduled on `4aca77f..99ac74c`.
+
+**D-16.R.32's stated falsifier has partially fired, and this entry is that admission.** That decision
+deferred nothing but justified its ordering with *"the expected yield is low"* — the flag having fired
+mechanically on "two or more mediums" over twelve already-patched findings. Seven findings came back, one
+of them medium-high and sitting in a file Story 16.2 will touch. **The reasoning was sound and the
+estimate inside it was a guess dressed as an estimate**, which is the same species as every other error
+this epic has catalogued: a claim asserted at a confidence its evidence did not carry. The *decision* to
+run it first was right; the *prediction* attached to it should not have been stated so flatly.
+
+**F1 — the tripwire's whole prohibition half is asserted by nothing (medium-high, MEASURED).**
+`folio-designer/src/test/provenance-shape.ts`. Replacing `hostShaped`, `schemeShaped`, `digestShaped` and
+`branchShaped` with `/(?!)/` and `projectShaped` with `/[\s\S]*/` — five of seven assertions rendered
+inert — and running the helper's **complete** call scope (exactly two importers) gives **33 passed, 0
+failed.** Every call site feeds known-good values; nothing anywhere feeds the predicate a violating
+string. **Patch P6's widening (`develop`, `trunk`, `Main` "cannot pass") could not have had a red-proof,
+because no input reaches those branches.** This is the "test that passes whether or not the feature works"
+shape one level up: the *guard* is untested, not the feature.
+
+**In simple terms.** The story built a tripwire and proved it by walking around it, never over it. Every
+test steps carefully on the safe side of the wire and reports that nothing went off. Cutting the wire
+changes nothing anyone can observe.
+
+**F2 (medium, measured).** Two false positives in those same regexes, in the direction no deferral covers:
+`hostShaped` matches `notofonts/notofonts.github.io@v2.0` because `github.io` hits the `io` TLD — a
+plausible next-batch upstream that would red the committed-tier loop for the whole catalogue — and
+`branchShaped` trips on any path segment in `dev|head|latest|default|trunk|main|master|develop`, e.g.
+`ofl/dev/Dev-Regular.ttf`. Deferral #2 registers the **under**-inclusive direction only.
+
+**F3 (medium, measured).** `lint/internal/licence/licencecensus_test.go:23-24` calls `pinnedCensus` the
+whole population at "**48 committed** files plus 9 dependency licences". Actual: 67 rows, 9 `dep`,
+**58 committed** — and the story's own Delivery Log says 58 + 9 = 67. The commit added ten rows and an
+"AND BY 10 AT STORY 16.1a" paragraph **three lines below** the stale total and left the total at 48. The
+vacuity floor at `:229` is still `< 20` against 58, its message still naming "the 12 asset files".
+**Story 16.1a raised four population floors in `folio-designer` for precisely this reason and walked past
+the fifth one, in the module it was editing.**
+
+**F4-F7 (medium-low to low).** `build-wasm.mjs` corrected "44 -> 54" at `:272` and left "21 texts" at
+`:269` and "all 21 committed faces" at `:236`, with `:238-240` describing SPDX-identifier keying that
+`:257` says was **replaced** — the paragraph contradicts the one below it. Eight stale population claims
+in `folio-go`, including "the OFL row covers 19 of the 21 catalogue faces" (actual 28 of 31) and a
+justification for having no build-time Apache row that reads *"no committed catalogue face is
+Apache-licensed"* — `robotoslab` now is, though the behaviour was verified correct and only the
+justification is false. `assertProvenanceShape`'s comment promises a path assertion the code never makes.
+The "one writer per tier" halves are asymmetric: fetched exhaustive, committed a bare `toContain`.
+
+**What the pass confirmed, stated so it is falsifiable.** The "four population floors" claim is exact at
+repo scope. P3's `split(' — ')` fix is complete — repo-wide, `provenance-shape.ts` is the only thing that
+splits on that separator, and the engine treats `source` as an opaque string it never parses.
+`provenance-shape.ts` weakens nothing it centralised; it is strictly stronger than the inline original.
+Three of the twelve red-proofs were independently re-run and all three genuinely red.
+
+**One attribution corrected before it entered the record.** The reviewer saw `epic-16-decision-log.md`
+dirty in its baseline and attributed it to D-16.R.31. It was the orchestrator's — the grounding refresh
+and D-16.R.32, written while the review ran. Recorded because an unexamined "pre-existing" label is
+exactly the claim this pipeline is supposed to verify rather than accept.

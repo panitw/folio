@@ -155,9 +155,51 @@ and a file dragged off a desktop arrives with neither. The premise moved and the
 did not, which is precisely the case where a team carries a sentence forward without re-reading it.
 Writing the new derivation down is cheap; discovering later that nobody checked is not.
 
+## PENDING GATE AMENDMENTS — read before implementing (added 2026-09-03 by the orchestrator)
+
+*Non-normative. These are RULED changes to this spec, recorded here so they are not lost, but NOT yet
+applied. They are applied at this story's own plan gate, not now — see the reason below.*
+
+**Why they are not applied yet.** This spec was planned at `baseline_commit: a40c34d` and approved
+before 16.0, 16.1, 16.1b and 16.1a landed. Its `## Code Map` line anchors are therefore stale by
+construction (D-16.R.28), and Story 16.2 lands before this one, which will rot them again. Re-verifying
+them now would be work done twice and trusted once. Anchors are re-verified at this story's gate,
+against the tree as it stands then.
+
+**Anchors known stale at `8a9e297`** (indicative, re-measure at the gate — do not trust these numbers
+either): the document-scoped face registration cited as `:186-224` is at `:232-243`; `pickCatalogueFamily`
+cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `:1284-1380` begins at
+`:1385`; the disk-font decline cited as `:1366` is at `:1474`. `App.css:210-223` and
+`e2e/component-properties.spec.ts:35-60` were checked and are still correct.
+
+**Ruled changes to apply at the gate (D-16.R.33):**
+
+1. **The registered listbox defect is SIX, not four — and the AC as written is unsatisfiable.** This
+   spec names `role="presentation"` children at `:1355`, `:1361`, `:1363` and `:1366`. Measured at
+   `8a9e297` there are **six**: `1456`, `1462`, `1463`, `1469`, `1470`, `1474`. Story 16.1 added two of
+   them (the index disclosure and the "Showing N of M" line) **after** Story 8.6 registered the finding.
+   The fix must sweep all six plus whatever the three groups, the filter field and the footer add — not
+   the four this spec enumerates. Same shape as D-16.R.18: a defect that exists in six places is six.
+2. **R1 — the `AVAILABLE LOCALLY` group's membership is inherited, not invented.** Add: *"The group's
+   membership comes from Story 16.2's `FamilySource` `'stored'` arm; this story groups and labels it
+   and does not reshape the union."* 16.2 builds the union arm so every exhaustive switch reds until
+   this story handles it — the tier cannot be silently dropped.
+3. **R2 — the footer row carries `Add fonts…` only.** Replace *"`Add fonts…` and `⌘G` open the browser;
+   `src/shortcuts.ts` if the shortcut lands"*: the browser is Story 16.3's and this story's footer opens
+   it. **No hint glyph is rendered**, the mockup's `⌘G` label is not carried, and `src/shortcuts.ts` is
+   untouched. See 16.3's note for the reasoning.
+4. **The disk-font decline sentence is pinned by an exact-string test** at `App.test.tsx:1353`, against
+   `App.tsx:1474`. Restating or lifting that sentence **will red that test by design** — which is
+   correct behaviour, and is written here so it is expected rather than discovered mid-implementation.
+
 ## Verification
 
 - `cd folio-designer && npm run test && npm run test:e2e:compile && npm run build`
+- `cd lint && go test -count=1 ./...`
+- `cd folio-go && go test -count=1 ./...`
+  **`-count=1` is mandatory** (DW-168, narrowed by D-16.R.31): CI already passes it everywhere, so the
+  live residue is exactly this by-hand path — and this story touches no Go, the condition under which a
+  filesystem-walking Go test replays a stale green.
 - A browser run: open with an empty store and with a populated one; pick from each group; walk the list
   by keyboard end to end.
 - The 23 golden digests, unmoved.
