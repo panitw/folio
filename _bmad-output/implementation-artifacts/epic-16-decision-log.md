@@ -3687,3 +3687,84 @@ and the harvest at step-04/05 is what has actually been filing these. The substa
 no refusal. It gets its own Spec Change Log entry rather than a place in a list of six, with the pre-edit
 md5 `88c7de19c0dcf8a0a8292cab82152574` over lines 29–90 recorded. **`font-embed-boundary.spec.ts:128` left
 untouched and said so** — single owner, per D-16.R.41.
+
+## D-16.R.74 — A doc comment was read as a measurement, and the label the design drew was on the other control all along
+
+**BOTH RULINGS ACCEPTED, and I verified the two decisive measurements myself before accepting** (D-16.R.59/60 — verify by location, never by re-reading the claim).
+
+### The new failure mode, and it is the cleanest instance this epic has produced
+
+D-16.R.72's contiguity premise **did not come from nowhere**: `font-index.ts:148-150` states, in the
+module's own doc comment, *"ONE ORDERED LIST OF EVERY FAMILY THE AUTHOR MAY PICK, local tier first, then
+the faces this machine already holds, then the rest of the snapshot."* **The code beneath it does not do
+that** — a stored family with an index row is pushed inside the `for (const row of webFamilies)` loop at
+`:231-235`, so only *orphaned* stored rows land after `local`. **`offeredFamilies` contradicts its own
+documentation, and the lead grounded on the half that lies.**
+
+**NAME IT AND ADD IT TO THE STANDING RULES: A COMMENT IS NOT A MEASUREMENT.** Every prior instance of this
+epic's signature defect involved a *tool* answering narrowly (a filtered grep, a wrapper's exit code, a
+`-t` filter, a directory-scoped search). **This one involved no tool at all** — a sentence written by an
+earlier author, read as though it described the code. It was findable **only by execution**, which is how
+the builder found it: it planted a stored face and ran the function. **Where a ruling depends on an
+ordering, an invariant, or a bound, the evidence is a run — not the sentence above the function.** Ninth
+instance of the class, first with no tool in the loop.
+
+**Consequence: the fix moves.** Repair `offeredFamilies` to return `[...local, ...stored, ...orphanedStored,
+...web]`, making the function do what it has always claimed to do — after which **R1 is literally true
+again**: the control groups and labels the union and does not reorder it, because the union arrives in the
+documented order. **Verified safe for 16.3's browser rather than assumed:** the other consumer re-sorts
+through `sortRows`, whose two arms are **both total orders with a `localeCompare` tiebreak**, so the
+browser's order is a function of `sortRows` alone.
+
+### The keyboard-walk widening was refuted element by element
+
+The builder said 8.6's linear walk must be rebuilt; **the lead checked all five elements rather than
+reasoning about them, and each is order-agnostic**: `move()` is arithmetic over a length · `active` is an
+index into `matches` · option ids are `${listId}-${index}`, positional by construction · `aria-activedescendant`
+reads `active` against those ids · `choose()` dispatches on `match.source` and `familyIsInstalled`, **never
+on position.** So the story grows by a three-line reorder, a partition-and-concat, and one `slice` moving
+from the union to one group. **Not a second deliverable, and it does not go to the owner.**
+
+### Cap policy — decided by the cap's own stated contract rather than by a new principle
+
+`App.tsx:1908-1911`: *"The disclosure beneath the list always states the true total, so **this bounds the
+DOM and never the claim**."* Groups 1 and 2 render in full; the cap applies to `AVAILABLE TO INSTALL`
+alone; *"Showing N of M"* moves to group 3 and names the population it counts. **The builder's measurement
+is the proof: one stored face deep in the list, 32 rows satisfy `familyIsInstalled`, 31 fall inside the cap
+— so under one undifferentiated heading that was a truncation, and under a heading reading *on this
+machine* it is a false statement about the author's own machine.** Group 2's unboundedness gets a **named
+revisit trigger (~200 stored entries) written into the comment** — *a silent unboundedness is what this
+epic has spent the week correcting.*
+
+### Fork B — arm (c), and it REMOVES a deviation rather than adding one
+
+**MEASURED BY ME, with the population stated: `AVAILABLE LOCALLY` occurs EXACTLY ONCE across all SIX
+mockup files** — `Font Browser.dc.html:219` — **and it is the dropdown's group heading**, immediately above
+`<sc-for list="{{ dropdownSystemFonts }}">`. **The design draws no machine-store panel at all.**
+
+So the store panel is a 16.2 invention that **took its label from a control it did not own**, at a moment
+when 16.4 did not exist and nothing could collide with it. **The collision was authored by 16.2 borrowing,
+not by D-16.R.72.** Renaming the store section to `TYPEFACES THIS DESIGNER HAS DOWNLOADED` — already the
+second half of its visible label, and already its `aria-label` in substance — **returns the design's own
+string to the control the design drew it on.** The shipped screen becomes *more* faithful to the mockup.
+**Deviation table stays at ten rows.**
+
+(a) was refused on a cost that **rises rather than holds** — two regions sharing one visible name means
+every future sentence naming the region inherits the ambiguity — and the sharpest instance already ships:
+`lateEmbedRefusal` (`App.tsx:1938`) is a **navigation instruction in a recovery sentence**, and *an
+ambiguous pointer is most expensive precisely where the author is stuck.*
+
+**One guardrail I am underlining because it is the epic's own lesson applied to a rename:** the two
+`/AVAILABLE LOCALLY/` assertions must be re-pointed **and must still assert that a pointer to a removal
+control that actually exists** — *re-pointing a place-keyed guard relocates its blind spot unless the
+property it asserts is restated with it.*
+
+### Restated reversal cost for deviation row ten, split honestly
+
+**The part the owner can reverse:** three heading literals, one boolean projection, the concat order of
+`matches`, one `slice` and one disclosure line moving between groups, plus the tests written against them.
+**The part they cannot and would not:** the `offeredFamilies` reorder — **it stands alone as a defect fix**,
+since the function disagrees with its own documentation today, so reversing row ten does not reverse it.
+**Recorded as a repair in its own right rather than inside the deviation row**, which is what keeps the
+row's figure honest instead of inflating it with work that survives the reversal. It grew, but **not onto
+anything that hardens with time** (D-16.R.48's test), so it stays a gate disclosure.
