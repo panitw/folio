@@ -3931,3 +3931,46 @@ the wrong defect."* Also registered: `familyIndexDisclosure` counts `catalogueFa
 on this machine* while the widened heading shows 31 **plus every stored face** — **the two disagree the
 moment one family is installed**, and D-16.R.72 ruled the disclosure not rewritten here, so it is in scope
 for nobody yet.
+
+## D-16.R.78 — 16.4's review cannot be resumed, because its triage was never written down; it is re-run instead
+
+**Third consecutive agent death, all server-side** — HTTP 500, then 529, then 529 on the resume. Tree
+verified **clean and undisturbed at `24b3a75`**, no stray worktrees, after each one.
+
+**THE DETERMINATION, AND IT IS MINE TO MAKE: the step-04 review is RE-RUN, not resumed.** I asked the
+resuming builder to establish per finding what the patch round had applied. **That question has no answer
+on disk.** Measured:
+- **`## Review Triage Log` does not exist in the spec** — the section list runs In plain terms · Intent ·
+  Boundaries · Matrix · Code Map · Tasks & Acceptance · Spec Change Log · Design Notes · Verification.
+- **No patch, triage, finding or severity record anywhere in the Spec Change Log.**
+- Tasks are **14 `[x]` / 0 `[ ]`**, which records implementation and says nothing about review findings.
+
+**So the finding list existed only in the dead builder's transcript.** The rescued diff contains *some*
+patch work — an `aria-description` for the mixed state, an `App.css` note about the 168px scroller, a
+comment recording that `property-option-groups` was styled in **zero** places — **but partial evidence of
+patching is not a list of what was found.** *You cannot finish a list you cannot read*, and a resumed round
+that treated the green suite as "the patches must have landed" would be the epic's own defect in its purest
+form: **absence of a red read as presence of a fix.**
+
+**Re-running costs a review round. Resuming would cost the truth of the record**, and this story's own
+Verification says a green gate list means only the gates in that list.
+
+## THE PIPELINE FRAGILITY THIS EXPOSES, and it is worth more than the story
+
+**BMAD's step-04 holds its triage in the conversation until step-05 writes it out.** So **an agent death
+between step-04 and step-05 loses the entire review** — every finding, severity and disposition — while
+leaving behind a **green suite, a complete task list, and a spec that looks finished.** That combination is
+worse than an obvious failure: **the artifacts assert completion and the missing thing is invisible.**
+
+It is the same shape this epic has been cataloguing all week, one layer up: **the record does not
+distinguish *reviewed and clean* from *review lost*.** Every other instance was a tool answering more
+narrowly than its name implied; this is a **pipeline** answering more narrowly than its state implies.
+
+**Registered for the post-16.4 infrastructure item: step-04 should append findings to the spec as it
+triages them, not at step-05.** A review that survives only in a transcript is not a record, and this run
+has now lost one to a 529 that no amount of method would have prevented.
+
+**What survived and is not re-derived:** the 7 frontmatter deferrals (including the sharpened
+`font-embed-boundary` cause-change and the `familyIndexDisclosure` 31-vs-31-plus-stored divergence), the
+Spec Change Log's correction that the transcription undercounted its own edits, the browser measurements,
+and the gate baselines. **The re-run inherits those as inputs and re-derives only the findings.**
