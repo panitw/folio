@@ -321,10 +321,33 @@ export function indexRowFor(family: string): IndexFamily | undefined {
  * `Font Browser.dc.html` draws four category chips — Sans Serif, Serif, Display,
  * Monospace — over fourteen placeholder families. The snapshot carries FIVE
  * categories, and the fifth (Handwriting) is the third largest of them. A hand
- * copy of the mockup's four would hide 337 families behind chips that look
- * exhaustive, which is the failure mode a derived vocabulary cannot have.
+ * copy of the mockup's four would hide 259 OFFERED families behind chips that
+ * look exhaustive (337 is the figure over the whole index; the browser offers
+ * 259 of them, and the denominator is the offered population, not the snapshot), which is the failure mode a derived vocabulary cannot have.
  */
-export const indexCategories: ReadonlyArray<string> = [...new Set(familyIndex.map((row) => row.category))].sort()
+/**
+ * THE POPULATION A CHIP VOCABULARY MUST BE DERIVED FROM IS THE ONE THE CHIPS
+ * FILTER, AND THAT IS NOT `familyIndex`.
+ *
+ * `familyIndex` is 1,811 rows. The browser offers 1,273 web rows plus the 31 the
+ * local tier holds: `addableFromTheWeb` alone drops 537 variable-only rows. A
+ * vocabulary read off the wider list is a vocabulary that can name a value no
+ * offered family carries — which is a chip that empties the list every time it
+ * is pressed, the exact false affordance the derivation exists to prevent.
+ *
+ * MEASURED TODAY THE TWO AGREE EXACTLY: no category and no script is present in
+ * the full index and absent from the offered population. THAT IS A MEASUREMENT
+ * AND NOT A GUARANTEE — it is a coincidence of this snapshot's data, and one
+ * release in which a category appears only among variable-only families would
+ * reintroduce the dead chip. Deriving from the offered rows costs nothing and
+ * cannot have that failure.
+ */
+const offeredIndexRows: ReadonlyArray<IndexFamily> = [
+  ...webFamilies,
+  ...catalogueFaces.map((face) => indexByFamily.get(face.family)).filter((row): row is IndexFamily => row !== undefined),
+]
+
+export const indexCategories: ReadonlyArray<string> = [...new Set(offeredIndexRows.map((row) => row.category))].sort()
 
 /**
  * AND THE WRITING-SYSTEM VOCABULARY, ON THE SAME GROUND.
@@ -336,4 +359,4 @@ export const indexCategories: ReadonlyArray<string> = [...new Set(familyIndex.ma
  * that can only ever empty the list is a false affordance, so the chips are the
  * scripts the snapshot and the local tier actually name.
  */
-export const indexScripts: ReadonlyArray<CatalogueScript> = [...new Set([...familyIndex.flatMap((row) => row.scripts), ...catalogueFaces.flatMap((face) => face.scripts)])].sort()
+export const indexScripts: ReadonlyArray<CatalogueScript> = [...new Set([...offeredIndexRows.flatMap((row) => row.scripts), ...catalogueFaces.flatMap((face) => face.scripts)])].sort()

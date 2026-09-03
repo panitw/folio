@@ -34,6 +34,32 @@ describe('DESIGN.md token contract', () => {
     expect(css).toContain("@import './generated/runtime-fonts.css'")
   })
 
+  // STORY 16.3 — THE DECLARED ELEVATIONS ARE ROUTED FROM `DESIGN.md`, NOT TYPED.
+  //
+  // `DESIGN.md` declares THREE elevations and says "no fourth may be added".
+  // `tokens.css` carried exactly ONE of them (`--shadow-page`), so a floating
+  // surface had no shadow of its own and every sheet borrowed the page's. This
+  // story mints `--shadow-sheet` by TRANSCRIBING the declared
+  // `components.sheet.shadow` value — a design system's third elevation is not
+  // "added" by being implemented; it was added when it was declared, and the
+  // count stays three.
+  //
+  // IT IS ASSERTED FROM `DESIGN.md`'s OWN TEXT so the token cannot drift from the
+  // declaration, the same discipline the colour routing above uses. The third
+  // declared elevation (the page in preview) is still unimplemented and is
+  // deliberately NOT asserted here — registering an absence as a passing test is
+  // how it stops being visible.
+  it('routes each implemented elevation from the design source into the CSS token', () => {
+    const source = fs.readFileSync(designPath, 'utf8')
+    const css = fs.readFileSync(cssPath, 'utf8')
+    const sheetShadow = source.match(/^  sheet:\n(?:.*\n)*?    shadow: '([^']+)'/m)?.[1]
+    const pageShadow = source.match(/^  page-surface:\n(?:.*\n)*?    shadow: '([^']+)'/m)?.[1]
+    expect(sheetShadow, 'DESIGN.md declares components.sheet.shadow').toBeTruthy()
+    expect(pageShadow, 'DESIGN.md declares components.page-surface.shadow').toBeTruthy()
+    expect(css).toContain(`--shadow-sheet: ${sheetShadow}`)
+    expect(css).toContain(`--shadow-page: ${pageShadow}`)
+  })
+
   it('pins package, lockfile, and strict compiler metadata independently', () => {
     const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'))
     const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'))

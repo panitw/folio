@@ -147,9 +147,15 @@ describe('the footer states what is about to go into the file', () => {
     // one upright Regular per family and subsets nothing, so a footer repeating
     // the mockup would be the one region that lies about the file.
     expect(weightLine(0)).toBe('')
-    expect(weightLine(1)).toBe('1 face · one upright Regular each · whole file, not subset')
-    expect(weightLine(3)).toBe('3 faces · one upright Regular each · whole file, not subset')
-    expect(weightLine(3)).not.toMatch(/weights|subset latin/)
+    expect(weightLine(1)).toBe('1 face · one upright Regular each, no bold or italic')
+    expect(weightLine(3)).toBe('3 faces · one upright Regular each, no bold or italic')
+    // THE FOOTER MAY NOT SPEAK ABOUT SUBSETTING AT ALL, in either direction.
+    // The product DOES subset (at PDF render, over the glyphs the document
+    // uses), so both "subset latin+thai" and "whole file, not subset" are false
+    // sentences — the second shipped briefly and this is what catches it.
+    expect(weightLine(3)).not.toMatch(/weights|subset/i)
+    // AND IT MAY NOT NAME A DESTINATION, because Story 16.5 inverts it.
+    expect(weightLine(3)).not.toMatch(/template|file|document|embed|install/i)
   })
 })
 

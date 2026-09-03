@@ -221,19 +221,43 @@ export function pendingLine(staged: number): string {
 }
 
 /**
- * THE MOCKUP'S `weightLine`, CORRECTED TO WHAT THIS PRODUCT DOES.
+ * THE MOCKUP'S `weightLine`, CORRECTED TO ONE FACT ABOUT WHAT A FACE IS.
  *
  * The mockup prints `≈ N weights · subset latin+thai` over `Math.min(styles, 4)`
- * per family. Both halves are false here and neither is a rendering detail:
- * this product embeds exactly ONE face per family (the upright Regular at weight
- * 400) and subsets nothing in the browser. A footer that says "≈ 9 weights ·
- * subset latin+thai" over a file that will carry three whole faces is the
- * footer lying about what is going into the document, which is the one thing
- * this region exists not to do.
+ * per family. Both halves are false here, and the second was corrected TWICE
+ * before it was right, which is why the reasoning is written down rather than
+ * the conclusion.
+ *
+ *   THE WEIGHT COUNT IS UNAVAILABLE BY RULING. `styles` exists in the raw
+ *   snapshot but is deliberately not projected into the generated module
+ *   (D-16.R.33 R3, +1,326 brotli bytes to reverse), because this product embeds
+ *   exactly ONE face per family — the upright Regular at weight 400 — so a style
+ *   count sorts and totals on a difference the product erases.
+ *
+ *   AND THIS PRODUCT DOES SUBSET, WHICH IS THE OPPOSITE OF WHAT AN EARLIER
+ *   VERSION OF THIS COMMENT SAID. `folio-go/internal/fontset` subsets at PDF
+ *   RENDER, over the union of glyph IDs the document actually uses — one subset
+ *   call per font per document. So "whole file, not subset" was false, and
+ *   "subset latin+thai" is false too: the cut is driven by document usage, not
+ *   by a script range, and it happens nowhere near this dialog. The clause is
+ *   dropped rather than repaired, because a render-pipeline fact surfaced in a
+ *   font-PICKING dialog is true, tangential, and invites a wrong inference about
+ *   file size. ONE FACT PER SLOT.
+ *
+ * WHAT IS LEFT IS A FACT ABOUT WHAT A FACE IS, NOT ABOUT WHERE IT GOES, and that
+ * is deliberate: Story 16.5 inverts the destination (confirm will install rather
+ * than embed), so destination language written here is language 16.5 must
+ * invert. It stays in `confirmLabel` and `pendingLine`, which 16.5 revises in one
+ * place. "One upright Regular, no bold or italic" is true under both models.
+ *
+ * THE SLOT IS CONDITIONAL AND THAT IS WHY IT EARNS ITS PLACE: it is empty until
+ * families are staged, so it appears exactly when the author is deciding whether
+ * to commit — the best disclosure moment on the screen. See this story's Design
+ * Notes for the open question it is the cheapest place to disclose.
  */
 export function weightLine(staged: number): string {
   if (staged === 0) return ''
-  return `${staged} ${staged === 1 ? 'face' : 'faces'} · one upright Regular each · whole file, not subset`
+  return `${staged} ${staged === 1 ? 'face' : 'faces'} · one upright Regular each, no bold or italic`
 }
 
 /** The mockup's `confirmLabel`. */

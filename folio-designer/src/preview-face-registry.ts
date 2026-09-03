@@ -29,6 +29,16 @@ import { previewFaceFamily } from './preview-face-family'
 // (`folio-preview-` against `folio-carried-`), and `preview-face-registry.test.ts`
 // asserts the disjointness rather than reading it.
 //
+// ⚠ AND THE GUARD THAT ACTUALLY CATCHES THE HAZARD IS NOT THE ONE THIS COMMENT
+// USED TO CREDIT. A red-proof pass deleted the `previewFaceFamily` argument
+// below, so preview faces fell back to the DOCUMENT derivation — the exact shape
+// of the collision — and the namespace-disjointness test PASSED UNCHANGED,
+// because it is a pure-function comparison of two derivations and neither
+// derivation changed. What reddened were the behavioural tests that assert which
+// family names actually reached the page's font set. Both guards are real, but
+// only the font-set observation can see this mistake: do not delete it believing
+// the disjointness assertion covers it.
+//
 // AND IT IS NOT A SECOND AUTHORITY ON WHAT A DOCUMENT CONTAINS. Nothing here
 // writes to the machine store, sends a command, touches `fontFamilies` or
 // produces anything a `.folio` can carry. A registered preview face is a face

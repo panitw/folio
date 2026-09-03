@@ -25,7 +25,7 @@ follows is the residue.
 | FB3 | `#6b7d86` | 2 | `:234, 560` | The `Add fonts…` sub-label, and the `In template` button's disabled text. Between `ink-low` (#737C86) and `ink-faint` (#5E666F). | **medium** | `--color-ink-low` for the sub-label, `--color-ink-ghost` for the disabled button — the ramp already distinguishes "quiet" from "inert" and this one value was doing both jobs. |
 | FB4 | `#1d2227` | 1 | `:364` | The Row-view hover. One digit off `row-focus` (#1D2228), which `DESIGN.md` reserves in those words for the focused matrix row and calls "the single exception". | **medium** | No hover tint at all. Taking `row-focus` would spend the one reserved exception on a list this screen does not need it for; the row already separates on a hairline. |
 | FB5 | `#202a30` / `#26343b` | 1 each | `:230` | The `Add fonts…` row's ground and its hover. Two more unnamed surfaces, both cyan-tinted. | **medium** | `--color-select-tint` on a `--color-select-edge` border. It is the design's own cyan wash and reads as the same object without inventing a step. |
-| FB6 | `#6bb4d0` | 1 | `:414` | The confirm button's hover. Between `select` (#58A6C4) and `select-hover` (#7CC0DA). | **low** | `--color-select-hover` is the named neighbour; this build draws no hover fill on the confirm button at all, so the value is simply unused. |
+| FB6 | `#6bb4d0` | 1 | `:414` | The confirm button's hover. Between `select` (#58A6C4) and `select-hover` (#7CC0DA). | **low** | **`--color-select-hover`.** Corrected during review: an earlier pass drew **no hover fill at all**, which removed an interaction state the design specifies. Declining an undeclared literal is not a reason to delete the element the literal was colouring — the declared neighbour exists and is what it is for. **This was raised as a token gap and is NOT one.** |
 | FB7 | `#262c33` | 1 | `:330` | The Thai-toggle hover. The same unnamed value `review-token-fidelity.md` already raised as **U2** across `TableEditor.dc.html`. | **low** | Nothing. Recorded here only to note that U2 recurs on a sixth artboard — it is a real gap in `colors:`, not a one-file slip. |
 | FB8 | `#232d33` | 1 | `:496` | The selected dropdown row. Unrelated to the modal; carried by the panel Story 16.4 owns. | **low** | Not built here. Flagged for 16.4. |
 
@@ -40,7 +40,7 @@ follows is the residue.
 
 | # | Value | Where | Severity | What shipped |
 |---|---|---|---|---|
-| FB11 | `box-shadow: 0 24px 70px rgba(0,0,0,0.6)` | `:292` | **high** | `--shadow-page`. `DESIGN.md`'s *Elevation & Depth* lists **three** shadows and says "no fourth may be added"; the nearest listed one is the sheet's `0 18px 60px rgba(0,0,0,0.6)`, which is not in `tokens.css` as a token at all. **This is a genuine gap to close**: the modal is a floating surface and the product's only shadow token is the page's. Raised rather than resolved — minting `--shadow-sheet` is a `DESIGN.md`/`tokens.css` change, not a story's to make on its own. |
+| FB11 | `box-shadow: 0 24px 70px rgba(0,0,0,0.6)` | `:292` | **high** | **`--shadow-sheet`, minted by this story.** Corrected during review: this was first raised as "not a story's to make", and that was wrong. `DESIGN.md:474-484` **already declares** the sheet elevation at `0 18px 60px rgba(0,0,0,0.6)` over `{tints.scrim}`, and `components.sheet.shadow` carries the same value in the frontmatter. Nothing was designed — a declared elevation was transcribed into the file that implements declarations, so the count stays three and *"no fourth may be added"* is untouched. Routed through `design-contract.test.ts`, which now asserts both implemented elevations **from `DESIGN.md`'s own text**. **The wider finding is registered as DW-178**: `tokens.css` carried one of three declared elevations and five surfaces shared it, two of them mis-elevated and one (`.property-options`, a dropdown) outside the taxonomy entirely. |
 
 ## 4. Radius
 
@@ -59,6 +59,24 @@ appears anywhere in the file, which agrees with `rounded.DEFAULT: 0`.
 | FB16 | `:236` | The `⌘G` hint glyph beside `Add fonts…` | `⌘G` is the browser's Find Next, and this application puts app-specific actions on Option (D-16.R.33 R2, owner-confirmed). No shortcut is bound in this epic, so no glyph is drawn — a label beside a key that does nothing is a false UI string. |
 
 ---
+
+## The discriminator, stated once because it decided every row above
+
+**The test is not severity. It is whether `DESIGN.md` already says it.** Transcribe a declared value;
+refuse an undeclared one.
+
+That single rule separates the two corrections this review took. **FB11's sheet shadow was declared** —
+in the elevation table and again in `components.sheet` — so implementing it is transcription and the
+story mints it. **FB6's confirm hover and FB9's scrim are undeclared drift** — the mockup reaching past
+the ramp — so they are refused in favour of `--color-select-hover` and `--tint-scrim`, and the deltas go
+on the owner's deviation list rather than into the token file.
+
+The failure mode the rule prevents is symmetric, and this review made **both** mistakes before catching
+them: refusing a declared value as "not ours to add" (FB11) leaves the design system unimplemented and
+every surface borrowing the wrong token; and treating an undeclared value as a gap to be filled (FB6, as
+first raised) mints tokens nobody designed. A third instinct — **delete the element rather than resolve
+its value** — appeared three times in this story and is worse than either, because it silently drops
+what the design specifies instead of recording a disagreement.
 
 ## Recommendation
 

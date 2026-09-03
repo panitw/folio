@@ -384,6 +384,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // `<span>` in one modal, and `preview-face-registry.ts` releases it when the
   // row leaves the page.
   //
+  // THE STORE IS READ AND NOT WRITTEN, AND THAT ASYMMETRY IS THE POINT. THE
+  // STORE HOLDS FACES THE AUTHOR CHOSE, NOT FACES THEY SCROLLED PAST. Reading it
+  // is free and makes a family this machine already holds cost no network at
+  // all; writing it would fill a store that carries a slot and byte budget
+  // (Story 16.2) with every family that happened to cross the viewport, so the
+  // budget would be spent by browsing rather than by deciding. A face earns its
+  // place on this machine by being picked.
+  //
   // THE WEB TIER GOES THROUGH `fetchWebFamily` — THE FULL RESOLUTION, LICENCE
   // CLASSIFICATION AND ALL — AND THAT IS NOT AN OVERSIGHT. A cheaper
   // bytes-only fetch would be a SECOND fetch path in a designer whose whole

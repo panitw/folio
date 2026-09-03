@@ -7380,7 +7380,41 @@ branch URL would be second best and would still not let anyone re-fetch the byte
   suite into CI. **Ordering: this entry and [DW-101] discharge together or not at all** — DW-101 is
   "the specs exist and CI never runs them"; this is "for the web tier there are no such specs to run."
 - **Severity:** **MEDIUM.** The largest evidence gap in Epic 16 so far.
-- **Status:** OPEN.
+- **Status:** **OPEN — evidence half satisfied, ordering half outstanding (Story 16.3, 2026-09-03).**
+
+**What Story 16.3's browser run exercised, and what it could not.** Of the three cases this entry names:
+**a pick with the network up** ran against the real hosts (three families fetched, classified and
+embedded, three history entries); **a pick with the network down** ran genuinely offline. **The third —
+a pick whose licence is outside the allowlist — was SIMULATED at the network boundary**, by serving a
+synthetic `METADATA.pb` declaring `license: "CC-BY-SA"`.
+
+**That third case is IMPOSSIBLE against a real host, not skipped, and the distinction matters.** No
+CC-BY-SA family is reachable: `cc-by-sa/` upstream now holds only `knowledge`, whose `METADATA.pb`
+404s, and no such family is in the snapshot. This entry's discharge text asks for the cases to run
+*"against the real hosts, so the CORS facts become measurements the suite takes rather than notes
+somebody wrote"*, and a synthetic response is exactly what that sentence declines to accept. It is a
+floor **reported unmet because it cannot be met**, which is a different object from one quietly filled.
+**Trigger for the third case:** a CC-BY-SA family becoming reachable upstream or entering the snapshot.
+**A strictly better real-host case if one exists:** an *unmapped* licence token is also a refusal
+(D-16.R.4's third state) and needs no particular licence directory — only a family whose `METADATA.pb`
+declares a token outside the closed table. Such a family would exercise the same fetch-classify-refuse
+path over bytes nobody wrote for the test. **Looked for, and not found:** over a random sample of **60
+of the 1,273** addable web families, all 60 resolved upstream and every `license:` token observed was
+already in the closed table — `OFL` 58, `APACHE2` 1, `UFL` 1. That does not prove none exists across the
+full 1,273, but no unmapped token surfaced in the sample, so the simulated case stands as the honest best
+available rather than as a shortcut past a reachable one.
+
+**WHY THIS ENTRY STILL CANNOT CLOSE, AND IT IS NOT THE SIMULATED CASE.** The ordering constraint above
+binds this entry to [DW-101] — *"discharge together or not at all"* — and DW-101 ("the specs exist and
+CI never runs them") is OPEN: `.github/workflows/ci.yml` still runs only `test:e2e:compile`. The ruling
+that this run "discharges DW-161" (D-16.R.42) was corrected rather than this entry being amended, on the
+ground that amending an entry's ordering clause to make a ruling retroactively true is fixing the record
+to match the claim rather than the claim to match the record.
+
+**And the closure path is now dated, which changes what this entry is.** The owner has scheduled the CI
+repair for after Story 16.4 (D-16.R.44) — that is DW-101's subject — so this entry's ordering condition
+becomes satisfiable **inside this epic**, and it can close at the epic gate. A deferral whose ordering
+partner is unscheduled reads as permanent; this one has a date.
 
 **The gap, measured at the story's close.** `folio-designer/e2e/font-embed-boundary.spec.ts` asserts only
 that web-tier rows **exist** in the control; its embed loop still covers the **21 local faces alone**.
@@ -7932,7 +7966,11 @@ face store has no sound record for — and assert it with a deliberately orphane
 - source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
 - **Deferred by:** Story 16.2 (2026-09-03), and **registered by ruling, not by discovery** — D-16.R.42
   routes it explicitly: *"the browser-witness residual goes to 16.3, NOT the epic catch-up."*
-- **Owner:** Story 16.3's browser run. **Severity:** MEDIUM. **Status:** OPEN.
+- **Owner:** Story 16.3's browser run. **Severity:** MEDIUM. **Status:** **DISCHARGED (Story 16.3,
+  2026-09-03).** The case ran in a real browser: Kanit added with the network up, page reloaded, network
+  disabled, browser reopened — the row read `downloaded to this machine`, its specimen rendered from the
+  stored bytes with no network, and confirming embedded it with the network still down. First
+  real-browser witness of IndexedDB persistence, and of the store and the web tier used together.
 
 **Evidence and why it is genuinely open.** Every store test in Story 16.2 runs against `fake-indexeddb`,
 an independent Apache-2.0 implementation chosen precisely so it could disagree with the store's own
@@ -7949,3 +7987,73 @@ already discharges DW-161's three cases, so the case costs nothing to add and re
 get their first real-browser exercise together, which is how they are actually used.
 
 **What discharges it:** that case passing in 16.3's browser run, with the observation recorded.
+
+---
+
+### DW-177 — an offline `OFL.txt` read is reported as an upstream project publishing no licence file
+
+- source_spec: `_bmad-output/implementation-artifacts/16-3-the-font-browser-is-the-dialog-the-design-drew.md`
+- **Deferred by:** Story 16.3's browser run (2026-09-03), which hit it live. **The code is Story 16.1's**
+  (`folio-designer/src/font-source.ts`), not this story's.
+- **Owner:** whoever next opens `fetchWebFamily`'s refusal paths. **Severity:** MEDIUM. **Status:** OPEN.
+
+**The defect, and why it is worse than an imprecise message.** With a partially warm HTTP cache — the
+family's `METADATA.pb` served from cache while `OFL.txt` is not — an offline read of the licence file is
+reported as *"Kanit declares OFL-1.1 but publishes no OFL.txt beside its face"*. **That is a false
+statement about a third party's licensing practice, produced by a condition in the reader's own network.**
+It is not "the message is vague": the product asserts, in the author's own words, that an upstream project
+failed to publish a licence file that is in fact sitting there. `readText` distinguishes a **stall** from a
+failure but never an **offline failure** from a **missing file**, so the two collapse into the sentence
+written for the second.
+
+**Reachable in ordinary use**, not a contrived state: any partially warm cache, which is the normal
+condition after a page reload on a flaky connection. Observed on the first attempt of the browser run's
+offline case.
+
+**Why it was not fixed in Story 16.3.** It is `fetchWebFamily`'s, and repairing a refusal message in the
+fetch module from a browser story is how a fix lands without a test that would notice it regressing. It is
+also one branch over from `font-source.ts`'s own stall comment, which describes precisely this hazard
+("sends the reader upstream to look for a file that is sitting there") for the branch beside it.
+
+**What discharges it:** `readText` returning a third outcome for a transport failure, and a refusal
+sentence that says the licence file could not be READ rather than that it does not EXIST — with a test
+that reds if the offline case reports the missing-file sentence.
+
+---
+
+### DW-178 — `DESIGN.md` declares three elevations, `tokens.css` implements one, and five surfaces share it
+
+- source_spec: `_bmad-output/implementation-artifacts/16-3-the-font-browser-is-the-dialog-the-design-drew.md`
+- **Deferred by:** Story 16.3 (2026-09-03), which minted the second elevation for its own surface and
+  registered the rest rather than touching other stories' code.
+- **Owner:** whoever next works the elevation taxonomy. **Severity:** MEDIUM. **Status:** OPEN.
+
+**The measured state.** `DESIGN.md:474-484` declares **three** shadows and says *"no fourth may be added"*
+and *"Nothing else casts a shadow"*. Before this story `tokens.css` carried **exactly one**,
+`--shadow-page`, and it was applied to **five** surfaces in `App.css`:
+
+| line | surface | declared elevation |
+|---|---|---|
+| 91 | `.page-surface` | 1 — correct |
+| 330 | `.pdf-preview-scroll canvas` | **2 — should be `0 4px 32px rgba(0,0,0,0.7)`** |
+| 292 | `.table-editor` | **3 — should be the sheet elevation** |
+| 376 | `.font-browser` | 3 — **fixed by this story** with the minted `--shadow-sheet` |
+| 210 | `.property-options` | **none — a dropdown is not in the three-shadow taxonomy at all** |
+
+**So a design built on three deliberate depth steps rendered all of them identically.** Story 16.3 minted
+`--shadow-sheet` by **transcribing** the already-declared `components.sheet.shadow` value — the count stays
+three, because an elevation is not "added" by being implemented; it was added when it was declared — and
+routed it through `design-contract.test.ts` so both implemented elevations are now asserted from
+`DESIGN.md`'s own text rather than typed. **The third declared elevation is deliberately not asserted**,
+because registering an absence as a passing test is how it stops being visible.
+
+**What is left, and it is two different things.** (a) Two **mis-elevated** surfaces:
+`.pdf-preview-scroll canvas` should carry the preview elevation, `.table-editor` the sheet's. Both are
+other stories' code. (b) One **open question that must not be resolved silently**: `.property-options` is a
+dropdown carrying a shadow the taxonomy does not cover — so either the dropdown should not cast one, or the
+"three shadows" list is already incomplete. **Registered, not resolved.**
+
+**The discriminator this entry exists to preserve:** the test is not severity, it is **whether `DESIGN.md`
+already says it**. Transcribe a declared value; refuse an undeclared one. The sheet shadow was declared, so
+it was minted. The mockup's confirm-hover and scrim values were **not** declared, so they were refused in
+favour of `--color-select-hover` and `--tint-scrim`, and the deltas go on the owner's deviation list.

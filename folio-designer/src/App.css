@@ -373,7 +373,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
      at three. This takes the page's, which is the only shadow token the
      stylesheet has. */
 .font-browser-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
-.font-browser { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(1180px, calc(100vw - 44px)); height: min(748px, calc(100vh - 44px)); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-page); }
+.font-browser { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(1180px, calc(100vw - 44px)); height: min(748px, calc(100vh - 44px)); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-sheet); }
 
 .font-browser-header { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-bottom: var(--hairline) solid var(--color-line); }
 .font-browser-header-row { display: flex; align-items: center; gap: var(--space-6); }
@@ -450,5 +450,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .font-browser-cancel { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .font-browser-confirm { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-select); border-radius: var(--radius-default); background: var(--color-select); color: var(--color-ground); font: var(--type-body-em); font-weight: 500; cursor: pointer; }
 .font-browser-confirm:disabled { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-ghost); cursor: default; }
+/* THE HOVER THE DESIGN DRAWS, ON THE TOKEN THAT ALREADY NAMES IT. The mockup's
+   confirm-hover value is undeclared and sits between `select` and
+   `select-hover`; `--color-select-hover` is the declared neighbour and this is
+   what it is for. An earlier pass drew NO hover at all rather than paste the
+   literal, which removed an interaction state the design specifies — declining a
+   literal is not a reason to delete the element.
+   (No hex appears in this comment on purpose: `design-contract.test.ts`'s
+   colour-literal scan reads raw text and does not blank comments, so a literal
+   quoted in prose here would trip it — correctly, since a literal in a comment
+   is still one somebody can copy.)
+   Specificity is deliberate: `:hover:not(:disabled)` is (0,3,0) against the base
+   rule's (0,1,0) and the disabled rule's (0,2,0), and it is placed after both, so
+   it wins on both axes and can never repaint a disabled button. */
+.font-browser-confirm:hover:not(:disabled) { border-color: var(--color-select-hover); background: var(--color-select-hover); }
 .font-browser-refusals { display: grid; gap: var(--space-1); margin: 0; padding: 0 var(--space-6) var(--space-4); list-style: none; }
 .font-browser :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }

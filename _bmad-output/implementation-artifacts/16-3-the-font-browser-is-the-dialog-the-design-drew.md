@@ -171,6 +171,29 @@ dozen edge cases — what the button says when a family is in the template versu
 footer says at zero, which sample text a Thai family gets. Re-deriving those from the screenshot is how
 a product drifts from its design while everyone believes it matches.
 
+**The footer's face line, and the question it is the cheapest place to disclose.** `weightLine` states
+one fact — one upright Regular per staged family, no bold and no italic — and deliberately names no
+destination, because Story 16.5 inverts the destination (confirm will install rather than embed) and
+destination language written here is language 16.5 must invert. It stays in `confirmLabel` and
+`pendingLine`, which 16.5 revises in one place.
+
+That fact has a consequence this story does **not** own and must not re-own. The property panel ships
+Bold and Italic toggles (`src/App.tsx:1414`), while `SPEC.md:151` records the standing Non-goal — *"No
+synthetic bold or oblique, and no variable-font axes. A weight is a face or it does not exist"* — and
+`folio-go/internal/fontset/fontset.go:715` says bold *"when it arrives"* will be a `wght` instance
+shipped as its own static face, in the future tense. Measured at this story's gate: all 31 catalogue
+faces are `style: "Regular"` and **0 of 45** committed font binaries are bold, italic or oblique, so no
+weighted face ships anywhere today. **Epic 16 therefore does not change the proportion — it was already
+universal — it changes the population**, from 31 local families to ~1,305 offerable ones, roughly a 42x
+growth in how often an author can set Bold on a family that has no bold face.
+
+**`epics.md:521-525` already owns this**: bold and italic are *"not in this epic"* and the
+realize-or-retire decision belongs to **Epic 11 (FR57)**, with SPEC-fonts recording the same question as
+open. Nothing is registered here, because a second entry at a gate that does not own the question is the
+two-authorities defect this epic has refused twice. It is recorded only that **this footer slot is the
+cheapest place in the product to disclose the answer** should Epic 11 rule unfavourably — which is a
+second reason the slot is built rather than deleted.
+
 ## Spec Change Log
 
 ### 2026-09-03 — applied at the plan gate (orchestrator)

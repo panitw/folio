@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { catalogueFaces } from './generated/font-catalogue'
 import { familyIndex, familyIndexPublishedFamilies, familyIndexSnapshotDate } from './generated/font-index'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
-import { addableFamilyCount, familyIndexDisclosure, familySourceNote, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
+import { addableFamilyCount, familyIndexDisclosure, familySourceNote, indexCategories, indexRowFor, indexScripts, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
 import type { StoredFace } from './font-store'
 
 // STORY 16.1 — THE TWO TIERS AND THE JOIN BETWEEN THEM (D-16.R.3, D-16.R.2).
@@ -392,5 +392,65 @@ describe('the faces this machine already holds', () => {
     expect(familySourceNote(local)).toMatch(/this machine/)
     expect(familySourceNote(fromStore)).toMatch(/this machine/)
     expect(familySourceNote(web)).not.toMatch(/this machine/)
+  })
+})
+
+// STORY 16.3 — THE CHIP VOCABULARIES ARE TIED TO THE POPULATION THEY FILTER.
+//
+// The mockup hardcodes its chip lists, and its lists are exactly the values its
+// FOURTEEN placeholder families happen to carry — four categories because there
+// was no fifteenth family, and Cyrillic/Greek chips for coverage this snapshot
+// records for nobody. Hand-copying either produces a control that can only ever
+// empty the list.
+//
+// THESE TESTS DO NOT RECOMPUTE THE DERIVATION. Asserting a derived value equals
+// itself computed the same way is a test that cannot fail. The expectation here
+// is built from `offeredFamilies('')` — the function the BROWSER actually asks
+// for its rows — so the two agree only if the vocabulary really is the offered
+// population's.
+describe('the browser chips name values the offered population actually carries', () => {
+  const offered = offeredFamilies('')
+
+  it('offers no chip that cannot match a family, in either vocabulary', () => {
+    // The property that matters, stated directly: a chip that matches nothing is
+    // a false affordance. This cannot be satisfied vacuously — it fails the
+    // moment a value is added that no offered family carries.
+    expect(offered.length).toBeGreaterThan(1000)
+    for (const category of indexCategories) {
+      const matching = offered.filter((source) => indexRowFor(source.family)?.category === category)
+      expect(matching.length, `category chip "${category}" matches no offered family`).toBeGreaterThan(0)
+    }
+    for (const script of indexScripts) {
+      const matching = offered.filter((source) => {
+        const scripts = source.tier === 'local' ? source.face.scripts : indexRowFor(source.family)?.scripts ?? []
+        return scripts.includes(script)
+      })
+      expect(matching.length, `script chip "${script}" matches no offered family`).toBeGreaterThan(0)
+    }
+  })
+
+  it('names every value the offered population carries, so no family is unreachable by chip', () => {
+    const categoriesOffered = [...new Set(offered.map((source) => indexRowFor(source.family)?.category).filter((value): value is string => value !== undefined))].sort()
+    const scriptsOffered = [...new Set(offered.flatMap((source) => source.tier === 'local' ? [...source.face.scripts] : [...(indexRowFor(source.family)?.scripts ?? [])]))].sort()
+    expect([...indexCategories]).toEqual(categoriesOffered)
+    expect([...indexScripts]).toEqual(scriptsOffered)
+  })
+
+  it('carries the two values the mockup omitted and drops the two it invented', () => {
+    // Handwriting is the mockup's omission and it is not a tail: it is the third
+    // largest category of the OFFERED population. The figure is stated against
+    // that denominator on purpose — 337 is the count over the whole 1,811-row
+    // index, and the browser does not offer all of those.
+    expect(indexCategories).toContain('Handwriting')
+    const handwriting = offered.filter((source) => indexRowFor(source.family)?.category === 'Handwriting')
+    expect(handwriting.length).toBeGreaterThan(200)
+    expect(handwriting.length).toBeLessThan(337)
+    expect(indexScripts).not.toContain('cyrillic')
+    expect(indexScripts).not.toContain('greek')
+    // AND `cjk` IS THE ONE THE TYPE WOULD HAVE ADDED. `CatalogueScript` carries
+    // it and `scriptFallbackFaces` names a CJK fallback FACE, but no family is
+    // offered under it — the snapshot excludes CJK wholesale. A vocabulary
+    // derived from the TYPE rather than the DATA would ship a dead chip here.
+    expect(indexScripts).not.toContain('cjk')
   })
 })
