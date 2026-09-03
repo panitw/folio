@@ -591,21 +591,11 @@ development_status:
   # catalogue faces is derived. It is "add an upstream static to the local face tier", the mechanism
   # already executed 21 times. Roboto and Inter are already in the tier and appear refused only because
   # the google/fonts MIRROR carries VF-only builds of them.
-  # 16.1a was set `done` when its first build pass reported done, then REOPENED for a review pass
-  # that landed twelve patches (`5d5409f`). Its spec file says `in-review`; this file said `done`.
-  # Reconciled DOWNWARD 2026-09-03 (D-16.R.30): sprint-status is the orchestrator's record and it
-  # must never claim more than the spec does. Restored to `done` only by the closer, after it
-  # verifies the gates itself rather than reading them off a report.
-  # RESTORED to `done` 2026-09-03 by the closer, which re-ran every gate itself at `99ac74c` rather
-  # than relaying the build's report: designer 515/516 with only the DW-152 baseline red, build exit
-  # 0 with s1.assetCount 54 against an unmoved maximumCacheAssets 64, lint and folio-go under
-  # `-count=1` with only the mandated P6g red, and 23 of 23 goldens unmoved. Follow-up review is
-  # left OUTSTANDING by orchestrator decision; the reasoning is in the story's Delivery Log, not here.
-  # REOPENED 2026-09-03 (D-16.R.35) for a bounded remediation pass. The follow-up review left
-  # outstanding at the last stop found the provenance tripwire measurably inert: five of seven
-  # assertions replaced with never-match leaves 33 passed / 0 failed over its whole call scope.
-  # Per D-16.R.30, sprint-status moves WITH the reopen and only the closer writes `done` back.
-  16-1a-the-local-face-tier-covers-the-head-of-the-library: review
+  # HISTORY, now closed: 16.1a was set `done`, REOPENED once for a review pass, and REOPENED again
+  # 2026-09-03 (D-16.R.35) for a bounded remediation pass after its provenance tripwire was measured
+  # inert. Set `done` 2026-09-03 by the closer at `efa9b75`, which re-ran every gate itself per
+  # D-16.R.30. Gates, deferrals and the still-flagged follow-up review: the story's Delivery Log.
+  16-1a-the-local-face-tier-covers-the-head-of-the-library: done
   16-2-a-fetched-face-stays-on-this-machine: backlog
   # 16.2: the owner said "local storage"; the mechanism is IndexedDB and the refusal is arithmetic,
   # not taste (D-16.2) -- ~5 MB string quota, base64 at +33%, one measured face at 90,220 bytes, and

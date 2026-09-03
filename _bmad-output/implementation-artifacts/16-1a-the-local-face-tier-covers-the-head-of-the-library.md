@@ -121,27 +121,25 @@ deferred:
 
 *Owner summary; the intent contract below governs implementation.*
 
-The font browser could show nearly two thousand typeface families but refused most of the ones an author
-would actually reach for. The mirror it reads publishes those families only in a form this product will
-not accept: one file holding every weight, taken apart at the last moment, so the same template could
-print differently on different machines.
+The font browser could list nearly two thousand typeface families but refused most of the ones an
+author would reach for, because the mirror it reads publishes them in a form this product will not
+accept. **This story added ten families on the same terms as the twenty-one already carried** — each an
+ordinary single-weight file from its own project's release, carrying its licence and a record of where
+it came from. The tier is now thirty-one, with ten spare slots rather than none. Two families inside
+the target range were not taken, and both are written down rather than dropped quietly.
 
-Those families do publish ordinary single-weight files — from their own project releases, not the
-mirror. The product already carried twenty-one typefaces that way, each with its licence, its copyright
-and a record of the exact file it came from. **This story added ten more on identical terms: Arimo, DM
-Sans, Lora, Montserrat, Open Sans, Oswald, Plus Jakarta Sans, Roboto Condensed, Roboto Mono and Roboto
-Slab.** The tier is now thirty-one, with ten spare slots left rather than none.
+**The story was then reopened, and that is the part worth knowing.** It had built a tripwire meant to
+stop a typeface's origin ever being recorded as a download address, and declared it working. A later
+review found the tripwire proved nothing: every test walked around the wire, and cutting it changed
+nothing anyone could see. It now runs against a table of examples it must reject and others it must
+accept, each checked by breaking the guard on purpose and confirming a test turns red. A second check
+pinned to a fixed number now derives it, and several comments that had drifted from the code beneath
+them were corrected.
 
-**Two families inside the target range were not taken, and both are recorded rather than dropped
-quietly.** One publishes no usable file anywhere. The other's bytes spell its name with a character the
-product will not put in a family name, so listing it would publish a name the typeface contradicts.
-Neither was backfilled from below: a batch sized by goal shrinks when a member fails.
+**What will look wrong later and is not.** Two test failures survive this work; both belong to other
+lanes and predate it. One further finding was written down rather than fixed, because both readings of
+it are defensible. A follow-up review stays flagged.
 
-The story also stopped the product's two halves describing an embedded typeface's origin in two
-different misleading ways.
-
-**What will look wrong later and is not.** Two test failures survive this work; both predate it. A
-follow-up review was flagged by a mechanical rule and is deliberately still open.
 
 <intent-contract>
 
@@ -1132,6 +1130,139 @@ pass, and I am saying plainly which is which.
   outright, now half as far away.
 - **DW-166**'s re-run trigger still relies on a human noticing that the index snapshot was regenerated;
   the cheap tripwire was named in the deferral and not built.
+
+### 2026-09-03 — done (remediation pass, reopen)
+
+Baseline `a378acd`. Commit `efa9b75`, the pass's only commit, local and unpushed on `main`. This entry
+closes the **reopen** ruled by **D-16.R.35**, not the original delivery — that record is the
+`2026-09-03 — done` entry above and is left standing.
+
+**WHAT WAS REPAIRED.** A follow-up review (**D-16.R.34**) found seven defects in 16.1a's own delivered
+work; **D-16.R.35** reopened the story over six of them, bounded to four files, and registered the
+seventh. Eight findings were patched in the end — the six briefed plus two the red-provers found while
+proving the fixes:
+
+- **F1** — the `source` tripwire's entire prohibition half was asserted by nothing. Five of seven
+  predicates replaced with never-match gave **33 passed / 0 failed** across the helper's whole call
+  scope. A table now drives the helper directly; each row pins **which** prohibition rejects it,
+  because the helper short-circuits and "it threw" passes for the wrong reason.
+- **F2** and **F2a** — two false positives in those same predicates, narrowed to the slots where a host
+  or a moving ref can actually stand; **F2a** is the bound the first narrowing dropped, restored at the
+  correct operand rather than by returning to a whole-field scan.
+- **F3** — the census vacuity floor stops being the literal `20` and derives itself from the
+  hand-typed table's own non-dependency row count.
+- **F6** — the path half of the provenance shape, promised by a comment and asserted by nothing.
+- **F7** and **F7a** — both tiers now scraped identically; **F7a** is the relocation the first fix
+  caused, where the fetched side's line-anchored scrape admitted a second writer silently once reflowed.
+- **F4** — comment-only, and **claims no red-proof**; the evidence is a byte-identical generated tree.
+
+**DECISIONS APPLIED.** **D-16.R.32** (the follow-up review was scheduled rather than deferred, and its
+yield estimate was recorded as a guess). **D-16.R.35** (the reopen itself, its four-file bound, the
+F2-before-F1 ordering that stops the table pinning a false positive as intended behaviour, and the
+stale-comment rule). **D-16.R.36** (a correct fact sitting beside a wrong one launders it).
+**D-16.R.37** (the two mid-pass checkpoints). **D-16.R.38** (correcting D-16.R.36's and D-16.R.37's
+worked example: the filename was never wrong, and the "two independent readers" were one method
+failing twice).
+
+#### The gates, as the closer measured them at `efa9b75`
+
+Re-run by the closer from the repository root with a clean source tree; **not** taken from the pass's
+own report. `-count=1` on every Go invocation, per **DW-168**.
+
+- `cd lint && go test -count=1 ./...` — **exit 0, 4 packages `ok`**: `cmd/genmanifest` 0.257s,
+  `internal/licence` 0.429s, `internal/manifest` 5.333s, `internal/rules` 7.028s. `TestLicenceSignalCensus`
+  — DW-168's worked instance — was additionally re-run alone under `-count=1 -run` and observed
+  executing and emitting its 67 census rows, because a green without the flag is not evidence of a run.
+- `cd folio-go && go test -count=1 ./...` — **13 packages `ok`, 5 with no test files, 1 FAIL**:
+  `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` in `internal/text`, `corpus_test.go:196`,
+  *"floor not met: got 7, need >=20"*, with the run's own stats line
+  `{P6a:64 P6b:63 P6c:16 P6d:20 P6e:284 P6f:115 P6g:7}`. That is the **mandated** exercise-floor red and
+  not a regression: `git show --stat efa9b75` touches **no `folio-go/` file at all**.
+- `cd folio-designer && npm run test` — **529 tests, 528 passed, 1 failed; 48 files, 47 passed.** The
+  single failure is the **DW-152** baseline red at `canvas-authority-contract.test.ts:190`, and its
+  reported violation is still the one Epic 9/10 owns. **The +13 delta was checked against the actual
+  test names rather than accepted as a sum**: `font-provenance.test.ts` reports **19 tests** where it
+  previously carried 6 — nine `rejects …` rows, three `accepts …` rows and one coverage test
+  (*"drives every prohibition the helper has, from a table that cannot go empty"*). 516 + 13 = 529, and
+  every one of the thirteen is a named row in that file.
+- `cd folio-designer && npm run build` — **exit 0** through `verify:offline`. **`s1.assetCount` 54**,
+  read out of the built `dist/offline-release-manifest.json` rather than from a log line
+  (`assets.length` 54, `s1.cacheAssets.length` 54, **31** `catalogue-*` assets among them).
+  `maximumCacheAssets` is **still 64** and **unmoved** at `folio-designer/src/release-payload.ts:33`.
+  **Margin 10**, which is DW-162 unchanged.
+- `cd folio-designer && npm run lint` — **exit 0**, 4 pre-existing `react(only-export-components)`
+  warnings.
+- `cd folio-designer && npm run test:e2e:compile` — **exit 0**.
+- `cd folio-designer && npm run scan:font-hosts` — **exit 0, 0 occurrences in 600 tracked source files**
+  (floor 400).
+- **The 23 golden digests were deliberately NOT run.** Nothing rendered changes; every fix is a test
+  predicate or a comment. They were measured unmoved at the previous close and this pass touches no
+  input to them.
+
+**NOT RUN, AND THIS STORY IS NOT GREEN ON UNIT TESTS ALONE.** Under the run's `end-of-run` heavy-test
+cadence (**D-16.R.1**) the following are **written and compiling but never executed** for this story,
+and they come due at **Epic 16's catch-up run**, before the epic may be marked done: the **browser e2e
+specs** (this story ran `test:e2e:compile` only, so no browser has witnessed it), the **matrix
+corpora**, the **four AD-21 legs**, and **`TestCrossTargetByteIdentity`**. That is a deferral, not a
+waiver.
+
+#### Two things the pass's own notes must not be allowed to lose
+
+**(a) `followup_review_recommended` stays `true`, and here is the distinction.** **D-16.R.31's specific
+obligation — that the follow-up review be *run* — IS discharged.** It ran as the read-only pass
+D-16.R.32 scheduled, over `4aca77f..99ac74c`, and D-16.R.34 is its record; this pass is that review's
+remediation, so nothing about it remains outstanding. **What is not discharged is the flag**, and it
+must not be cleared as a bookkeeping tidy-up, because the same mechanical rule fires again on this
+pass's own eight patches (1 high, 6 medium, 1 low) — and this time on the work that repaired a guard
+which had been asserting nothing, which is the least safe category in the epic to mark self-reviewed.
+The flag now points at **the remediation pass**, not at the original delivery. A later reader inheriting
+it should review `a378acd..efa9b75`, not `4aca77f..99ac74c`.
+
+**(b) The pass introduced two regressions of its own, and neither was caught by its author.**
+First, the fix drafts spelled real font hosts in test values and prose, redding `scan:font-hosts` with
+**nine occurrences**, two of them a host D-16.3 forbids outright — caught by the gate, not by the agents
+who wrote the rows, and repaired by composing from the exported constant instead of spelling the host.
+Second, the pass proposed renaming `licencegraph.go` on the premise that no such file exists; **it does**,
+and the premise reached the orchestrator's decision log as a *ruling* (D-16.R.37) before the implementing
+agent refused it on evidence and D-16.R.38 corrected it. Three readers had converged on the wrong answer
+by running the same too-narrow search. **Both regressions were caught before commit, and in both cases by
+someone other than whoever introduced them** — which is the measured argument for the author/prover
+separation, not an assertion of it.
+
+#### What the closer found that the pass's record does not say
+
+- **F5 was ruled *"Register"* by D-16.R.35 and was never registered.** The register entry this pass
+  wrote is **DW-169** — the `build-wasm.mjs` "six slots" ambiguity, a different finding surfaced by the
+  F4 sweep. F5 itself, the stale population claims in `folio-go`, appears nowhere: not in
+  `deferred-work.md`, not in this spec's frontmatter, not under any DW number. The closer verified two
+  of its claims are still live and still false — `folio-go/internal/fontset/licencesignature.go:80-81`
+  justifies having no build-time Apache row with *"no committed catalogue face is Apache-licensed"*
+  while `robotoslab` ships `LICENSE-APACHE.txt` and classifies `Apache-2.0`, and
+  `licencesignature_test.go:266`/`:292` still say *"the OFL row covers 19 of the 21 catalogue faces"*
+  against a measured 28 OFL / 1 Apache / 2 UFL over 31 catalogue faces. **Filed by the closer as
+  DW-170.** No `folio-go` source was touched to do it.
+- **The remediation triage header's severity split does not match its own enumeration.** It reads
+  `patch: 8: (high 1, medium 5, low 2)`; the eight enumerated `[patch]` findings are F1 `[high]`,
+  F2/F2a/F3/F6/F7/F7a `[medium]` and F4 `[low]` — **high 1, medium 6, low 1**. The total of 8 is right
+  and the finding-by-finding record is right; only the header's split is wrong. Recorded rather than
+  silently corrected, because the enumeration is the evidence and the header is the summary of it.
+- **The spec's frontmatter already read `status: 'done'` at `efa9b75`**, written by the pass rather
+  than by the closer. D-16.R.30 reserves `done` for the closer; the reservation held for
+  `sprint-status.yaml`, which was correctly left at `review` for this pass to verify, but not for the
+  spec's own frontmatter. Left as it stands — the gates have now been verified and `done` is the right
+  value — and recorded so the next dispatch knows the two records were written by different hands.
+
+#### Commit hygiene
+
+`git show --stat efa9b75` carries **eight files**: the four in the pass's scope
+(`build-wasm.mjs`, `font-provenance.test.ts`, `provenance-shape.ts`, `licencecensus_test.go`), this
+spec, `deferred-work.md`, `sprint-status.yaml`, **and 299 lines of `epic-16-decision-log.md` that are
+the orchestrator's**, being D-16.R.35 through D-16.R.38 with zero deletions. **This is known, is
+recorded as D-16.R.39, and is deliberately not repaired**: the branch is local, nothing is missing, and
+rewriting history to fix an attribution fault risks real work. The message follows the project's
+convention and carries the required `Co-Authored-By:` trailer. Nothing was pushed and no branch was
+created.
+
 
 ## Suggested Review Order
 

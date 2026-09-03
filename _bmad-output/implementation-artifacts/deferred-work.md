@@ -7748,3 +7748,50 @@ tripwire asserting nothing is the worst possible place to start guessing at inte
 if it means the six font slots, says so in words rather than a digit, so the count cannot rot when a
 tenth slot lands. The F4 sweep's own treatment of `:118` is the model: that line said "Twenty-seven
 hardcoded keys" and was rewritten to carry **no count at all**, describing the shape instead.
+
+---
+
+### DW-170 — F5's stale `folio-go` population claims were ruled REGISTERED and never were, including a false justification for a missing licence row
+
+- **Deferred by:** **Story 16.1a's remediation pass** (2026-09-03) — *nominally*. **D-16.R.35 ruled
+  "Register F5" and the pass registered DW-169 instead**, a different finding surfaced by its own F4
+  comment sweep. F5 has no entry in this register, none in the story's frontmatter `deferred:` list,
+  and no DW number anywhere. **Filed here by the closer**, which found the gap while reconciling the
+  pass's triage against the lead's ruling.
+- **Owner:** **whoever next edits `folio-go/internal/fontset/licencesignature.go` or its test**, or
+  Epic 16's retrospective, whichever comes first.
+- **Severity:** **low-to-medium.** Nothing mechanical depends on either sentence and the *behaviour*
+  was verified correct when the review found this — but one of them is a **justification for the
+  absence of a licence row**, so it is the class of comment that makes a future reader confident about
+  a gap that has since stopped being safe.
+- **Status:** OPEN.
+
+**MEASURED BY THE CLOSER at `efa9b75`, working directory the repository root, source tree clean.** Two
+of F5's claims are still live and still false:
+
+- `folio-go/internal/fontset/licencesignature.go:80-81` explains the build-time table's missing Apache
+  row as *"it never needed one — no committed catalogue face is Apache-licensed"*. **`robotoslab` is**:
+  it ships `LICENSE-APACHE.txt` and `lint`'s own census classifies it `Apache-2.0`. Story 16.1a added
+  it, so **16.1a is the toucher that made this sentence false** — the same causation test D-16.R.35
+  applied to the other six findings.
+- `folio-go/internal/fontset/licencesignature_test.go:266` and its failure message at `:292` both say
+  *"the OFL row covers 19 of the 21 catalogue faces"*. Measured over `folio-designer/public/fonts` at
+  this commit: **31 catalogue faces, of which 28 OFL, 1 Apache-2.0 (`robotoslab`) and 2 UFL** — so both
+  numbers in that clause are stale, in a sentence whose job is to say how much of the population the
+  row actually reaches.
+
+D-16.R.34 recorded F5 as **eight** stale population claims in `folio-go`. **The closer verified two and
+did not enumerate the rest**, because doing so is the going-looking D-000.15 forbids from a closing
+phase, and because the remediation pass was bounded to four files none of which are in `folio-go`. The
+count of eight is D-16.R.34's, not the closer's.
+
+**Why it was not fixed here.** D-16.R.35 bounded the reopen to four files and `folio-go` is not among
+them; the closer does not widen a bound the lead set. **The defect this entry records is the missing
+register write, not the stale comments** — those were correctly deferred, and then the deferral was
+lost.
+
+**What discharges it:** the two sentences above are corrected against a measured population, and the
+Apache justification is rewritten to state the *mechanism* rather than a claim about the catalogue's
+contents — the same treatment F3 and F4 gave their own rotted counts in this story, where a literal was
+replaced by a derived figure or by no figure at all. The other six of D-16.R.34's eight should be
+enumerated at that point, by re-running its measurement rather than by trusting its count.
