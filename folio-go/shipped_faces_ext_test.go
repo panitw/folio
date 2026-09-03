@@ -26,6 +26,7 @@ var shippedPostScriptNames = map[string]string{
 	"Noto Sans":      "NotoSans-Regular",
 	"Noto Sans Thai": "NotoSansThai-Regular",
 	"Noto Sans SC":   "NotoSansSC-Regular",
+	"Roboto":         "Roboto-Regular",
 }
 
 // shippedFaceFiles is where each shipped face's bytes are supposed to
@@ -35,6 +36,7 @@ var shippedFaceFiles = map[string]string{
 	"Noto Sans":      "notosans/NotoSans-Regular.ttf",
 	"Noto Sans Thai": "notosansthai/NotoSansThai-Regular.ttf",
 	"Noto Sans SC":   "notosanssc/NotoSansSC-Regular.ttf",
+	"Roboto":         "roboto/Roboto-Regular.ttf",
 }
 
 // TestFontsShippedMatchesExpectedFaceSet is the outermost link in the

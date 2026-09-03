@@ -1391,9 +1391,29 @@ func TestShapedTextGoldenFixture(t *testing.T) {
 	//     The TAG changes with this story, expectedly — the subset input
 	//     is now the shaped glyph set — so the SHAPE is asserted, never a
 	//     literal tag.
+	//
+	// SCOPED TO THIS FIXTURE'S OWN CHAIN, NOT EVERY SHIPPED FACE (Story
+	// 16.8) — the same correction as TestMultiScriptFallbackGoldenFixture's,
+	// for the same reason: `shapedTextTemplateJSON`'s "body" chain names
+	// three faces, and Story 16.8 adds a fourth shipped face (Roboto)
+	// that is engine-only and never embedded in any document, so it is
+	// legitimately absent from this fixture's /BaseFont set and its
+	// per-instance program count. Re-parsing the template here (rather
+	// than threading `tpl` out of renderShapedTextFixture) keeps the
+	// helper's signature untouched.
+	shapedTpl, err := ParseTemplate([]byte(shapedTextTemplateJSON))
+	if err != nil {
+		t.Fatalf("parse template: %v", err)
+	}
+	wantEmbeddedFaces := map[string]bool{}
+	for _, entry := range shapedTpl.doc.Fonts["body"] {
+		wantEmbeddedFaces[entry.Face] = true
+	}
 	wantPS := map[string]bool{}
 	for _, spec := range shippedFaceSpecs {
-		wantPS[spec.PostScriptName] = true
+		if wantEmbeddedFaces[spec.Key] {
+			wantPS[spec.PostScriptName] = true
+		}
 	}
 	assertBaseFontNames(t, "shaped-text golden", b, wantPS)
 	assertSubsetTagsAppearOnlyInNames(t, "shaped-text golden", b)
@@ -1405,8 +1425,12 @@ func TestShapedTextGoldenFixture(t *testing.T) {
 		t.Fatal("shaped-text golden fixture render contains no FontFile2")
 	}
 	programs := extractAllFontFile2Programs(t, b)
-	if len(programs) != len(shippedFaceSpecs) {
-		t.Fatalf("expected exactly %d embedded FontFile2 programs, got %d", len(shippedFaceSpecs), len(programs))
+	wantEmbeddedCount := len(shapedTpl.doc.Fonts["body"])
+	if wantEmbeddedCount == 0 {
+		t.Fatal("shapedTextTemplateJSON's \"body\" chain parsed to zero entries — this assertion would be vacuous")
+	}
+	if len(programs) != wantEmbeddedCount {
+		t.Fatalf("expected exactly %d embedded FontFile2 programs (one per face this fixture's own \"body\" chain names), got %d", wantEmbeddedCount, len(programs))
 	}
 	assertEmbeddedProgramsAreStaticRegular(t, "shaped-text golden", programs, 400)
 

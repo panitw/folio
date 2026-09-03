@@ -6,7 +6,7 @@
     "pageHeader": {"elements": [], "height": 60}
   },
   "fonts": {
-    "body": ["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]
+    "Roboto": ["Roboto", "Noto Sans Thai", "Noto Sans SC"]
   },
   "locale": "en",
   "nextId": 1,

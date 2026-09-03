@@ -92,6 +92,30 @@ const repoRoot = path.join(designerRoot, '..')
 // structure below is derived from the generator's own slots instead.
 const chromeFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai'] as const
 
+// STORY 16.8'S ADDITION. Roboto is the first face this repository ships
+// under BOTH vocabularies at once: it is a `font-catalogue.json` catalogue
+// face (Story 8.5, `AVAILABLE LOCALLY` in the family control) AND, as of
+// this story, an engine-shipped face (`fonts.Shipped()`), so the browser's
+// `@font-face` for it comes from the CATALOGUE emitter's templated rule
+// (`scripts/build-wasm.mjs`'s `catalogueFaces.map(...)` loop), never from a
+// hand-written rule — a hand-written seventh rule naming the SAME family the
+// catalogue already declares would be the exact duplicate-`@font-face`
+// hazard `font-catalogue.json`'s own collision guard exists to refuse
+// (`catalogueFamilies.has(entry.family)` in build-wasm.mjs). The catalogue's
+// per-face rule is therefore invisible to `declaredFamilies`/
+// `familySourcePaths` below, which see the SIX hand-written rules only, so
+// the two ties this story's own boundary calls out — "does the browser have
+// a face for it" and "are the two Roboto files byte-identical" — are made
+// here explicitly, against the catalogue path, rather than assumed to fall
+// out of the six-rule machinery built for the other three faces.
+const catalogueEngineRobotoFile = 'public/fonts/roboto/Roboto-Regular.ttf'
+
+/** Family names `font-catalogue.json` declares, read as data rather than re-derived from build-wasm.mjs's loop. */
+function catalogueDeclaredFamilies(): ReadonlyArray<string> {
+  const catalogue = JSON.parse(fs.readFileSync(path.join(designerRoot, 'font-catalogue.json'), 'utf8')) as ReadonlyArray<{ family: string }>
+  return catalogue.map((entry) => entry.family)
+}
+
 // withoutComments strips line and block comments while leaving string and
 // template literals intact, so the parses below answer to the CODE that emits
 // the stylesheet rather than to prose that merely spells a rule.
@@ -671,7 +695,7 @@ describe('the family names the browser is given are the files the engine measure
     const slots = slotSourcePaths(generator)
     expect(Object.keys(slots).length, `read no font asset slots out of ${generatorPath}`).toBeGreaterThanOrEqual(3)
     expect(familySlots(generator).length, `read no @font-face rules out of ${generatorPath}`).toBe(6)
-    expect(shippedFaceNames(fontsGo).length, `read no face names out of Shipped() in ${enginePath}`).toBe(3)
+    expect(shippedFaceNames(fontsGo).length, `read no face names out of Shipped() in ${enginePath}`).toBe(4)
   })
 
   // AND NEITHER HALF COUNTS COMMENTED-OUT TEXT. The floor of six above is a
@@ -947,9 +971,15 @@ describe('the family names the browser is given are the files the engine measure
     // fewer families per file, never more — so the opposite direction is
     // asserted here, through a helper the red-proof fixture drives too. The
     // required set is not a list: three design-system families fixed by
-    // DESIGN.md, and the engine's own face names read out of `fonts.Shipped()`.
+    // DESIGN.md, and the engine's own face names read out of `fonts.Shipped()`
+    // — EXCEPT a face the CATALOGUE also declares (Roboto, since Story 16.8):
+    // that one's rule is the catalogue's own templated one, invisible to this
+    // hand-written-rule parse by construction (see the note above
+    // `catalogueDeclaredFamilies`), and checked instead in its own dedicated
+    // assertion below.
+    const catalogueFamilySet = new Set(catalogueDeclaredFamilies())
     expect(
-      familiesWithNoRule(generator, [...chromeFamilies, ...shippedFaceNames(fontsGo)]),
+      familiesWithNoRule(generator, [...chromeFamilies, ...shippedFaceNames(fontsGo).filter((face) => !catalogueFamilySet.has(face))]),
       'A family listed here is one the chrome or the canvas ASKS FOR and no @font-face rule declares. The browser falls '
       + 'silently through to a generic face — which is the shape of the Thai rendering defect on this repository\'s '
       + 'record, where "letters rendered on top of each other". A rule "simplified" away is the way this happens.',
@@ -1046,22 +1076,54 @@ describe('the family names the browser is given are the files the engine measure
     const engineNamed = Object.keys(declaredPaths).filter((family) => !isChrome(family))
     const shipped = shippedFacePaths(fontsGo)
 
-    // THE NAME SETS ARE EQUAL. Add a fourth face to `fonts.Shipped()`, or drop
-    // one, and the generator no longer declares the set it claims to.
-    expect([...engineNamed].sort()).toEqual(Object.keys(shipped).sort())
-    expect(Object.keys(shipped).length).toBe(3)
+    // THE NAME SETS ARE EQUAL, OVER THE HAND-WRITTEN HALF ONLY. Story 16.8
+    // adds Roboto to `fonts.Shipped()` without a seventh hand-written rule
+    // (see the note above `catalogueDeclaredFamilies`), so `engineNamed` —
+    // sourced from the six hand-written rules alone — is one name short of
+    // `shipped` by construction. It is excluded here, BY NAME rather than by
+    // a bare count adjustment, and checked its own way immediately below:
+    // add a face to `fonts.Shipped()` that is neither hand-written NOR a
+    // catalogue face, or drop one of the three Noto faces, and this still
+    // reddens.
+    const shippedViaCatalogue = new Set(['Roboto'])
+    const shippedHandWritten = Object.fromEntries(Object.entries(shipped).filter(([face]) => !shippedViaCatalogue.has(face)))
+    expect([...engineNamed].sort()).toEqual(Object.keys(shippedHandWritten).sort())
+    expect(Object.keys(shipped).length).toBe(4)
+    expect(Object.keys(shippedHandWritten).length).toBe(3)
 
-    // AND SO ARE THE BYTES, face by face.
-    for (const face of Object.keys(shipped)) {
+    // AND SO ARE THE BYTES, face by face, over the hand-written three.
+    for (const face of Object.keys(shippedHandWritten)) {
       const browserFile = path.join(designerRoot, declaredPaths[face])
-      const engineFile = path.join(engineFontsDir, shipped[face])
+      const engineFile = path.join(engineFontsDir, shippedHandWritten[face])
       expect(fs.existsSync(browserFile), `${browserFile} (declared for '${face}') must exist`).toBe(true)
       expect(fs.existsSync(engineFile), `${engineFile} (embedded for '${face}') must exist`).toBe(true)
       expect(
         digest(browserFile),
-        `the browser declares '${face}' from ${declaredPaths[face]}, which must be byte-identical to the file folio-go embeds under that face name (${shipped[face]}) — AD-17 makes the browser a rasterizer only, so a same-named different face fails silently`,
+        `the browser declares '${face}' from ${declaredPaths[face]}, which must be byte-identical to the file folio-go embeds under that face name (${shippedHandWritten[face]}) — AD-17 makes the browser a rasterizer only, so a same-named different face fails silently`,
       ).toBe(digest(engineFile))
     }
+  })
+
+  // ROBOTO'S OWN BYTE-IDENTITY TIE (Story 16.8), THE CATALOGUE-ROUTED TWIN OF
+  // THE TEST ABOVE. "THERE IS EXACTLY ONE ROBOTO" is this story's own stated
+  // risk: two cuts of Roboto already exist in this repository 180 KB apart
+  // (this file, byte-identical; folio-go/testdata/fonts/Roboto-Regular.ttf,
+  // a DIFFERENT cut used only as an internal/fontset licence-signature
+  // fixture and never embedded). The Go-side twin of this assertion is
+  // folio-go/fonts/fonts_test.go's TestShippedRobotoMatchesDesignerCatalogue;
+  // this is the browser side of the same claim, so a mismatch is caught
+  // whichever half of the repository a reader is looking from.
+  it('ships the SAME Roboto bytes the catalogue declares — there is exactly one Roboto', () => {
+    const shipped = shippedFacePaths(fontsGo)
+    expect(shipped.Roboto, 'fonts.Shipped() carries no "Roboto" key, or fonts.go\'s //go:embed for it could not be read').toBeDefined()
+    const catalogueFile = path.join(designerRoot, catalogueEngineRobotoFile)
+    const engineFile = path.join(engineFontsDir, shipped.Roboto as string)
+    expect(fs.existsSync(catalogueFile), `${catalogueFile} must exist`).toBe(true)
+    expect(fs.existsSync(engineFile), `${engineFile} must exist`).toBe(true)
+    expect(
+      digest(catalogueFile),
+      `the designer's catalogue Roboto (${catalogueEngineRobotoFile}) must be byte-identical to the file folio-go embeds as "Roboto" (${shipped.Roboto}) — a second cut under the same name would make "fontFamily": "Roboto" render differently depending on which path produced the document`,
+    ).toBe(digest(engineFile))
   })
 })
 

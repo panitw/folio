@@ -566,4 +566,13 @@ development_status:
   # declared chain shows the face it paints with. Needs a browser run: no test here can see whether
   # a specimen rendered in its own face.
   16-7-every-row-shows-the-typeface-it-names: in-progress
+  # 16.8 added 2026-09-04 by OWNER: `body` is internal vocabulary standing where a typeface name
+  # belongs. Offered three shapes -- rename the chain to Noto Sans (free), embed Roboto in the
+  # starter (+348 KB per document), or SHIP Roboto in the engine -- the owner chose the third,
+  # knowing the payload grows ~348 KB for every user whether they use it or not. Roboto is OFL-1.1
+  # (relicensed 2024), already an admitted identifier, so the licence boundary is not a blocker.
+  # THE RISK IS ONE ROBOTO: the catalogue cut (347.6 KB, e688a215…) and the testdata cut (167.7 KB,
+  # 79e85140…) are different bytes under one name, and shipping the wrong one would render rather
+  # than fail. A digest assertion is a task, not a note.
+  16-8-a-new-document-opens-in-a-typeface-with-a-name: in-progress
   epic-16-retrospective: optional

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,12 +53,55 @@ const enginePath = path.join(here, '..', '..', 'folio-go', 'fonts', 'fonts.go')
 // IBM Plex families must remain named by a `--font-*` token here, or the two
 // vocabularies this story deliberately keeps apart have been collapsed.
 const tokensPath = path.join(here, 'tokens.css')
+const catalogueJsonPath = path.join(here, '..', 'font-catalogue.json')
+// The catalogue's own copy of Roboto, byte-identical (Story 16.8) to the one
+// folio-go embeds as its fourth shipped face.
+const catalogueEngineRobotoFile = 'public/fonts/roboto/Roboto-Regular.ttf'
+
+/**
+ * Family names `font-catalogue.json` declares, read as data.
+ *
+ * STORY 16.8'S OWN SEAM. Roboto is the first face this repository ships
+ * under BOTH vocabularies at once: a catalogue face (`AVAILABLE LOCALLY`,
+ * Story 8.5) AND, as of this story, an engine-shipped face
+ * (`fonts.Shipped()`). Its browser `@font-face` comes from the CATALOGUE
+ * emitter's templated rule in `scripts/build-wasm.mjs`
+ * (`catalogueFaces.map(...)`), never from a seventh hand-written rule — a
+ * hand-written rule naming a family the catalogue already declares is
+ * exactly the duplicate `@font-face` build-wasm.mjs's own collision guard
+ * (`catalogueFamilies.has(entry.family)`) refuses. `declaredFamilies` below
+ * therefore cannot see it: it parses literal `font-family: '...'` text out
+ * of the generator SOURCE, and the catalogue's rule is templated
+ * (`font-family: '${face.family}'`), resolving to real names only once the
+ * script actually runs. This function is the other side of that same gap
+ * closed for `fonts.Shipped()`'s hand-written half: read the data the
+ * catalogue rule is generated FROM, rather than the generated rule's own
+ * unresolved source text.
+ */
+function catalogueDeclaredFamilies(): ReadonlyArray<string> {
+  const catalogue = JSON.parse(fs.readFileSync(catalogueJsonPath, 'utf8')) as ReadonlyArray<{ family: string }>
+  return catalogue.map((entry) => entry.family)
+}
 
 /** The face names `fonts.Shipped()` keys its FontSet by, in the order it writes them. */
 function shippedFaceNames(fontsGo: string): ReadonlyArray<string> {
   const body = /func Shipped\(\) folio\.FontSet \{[\s\S]*?\n\}/.exec(fontsGo)?.[0]
   if (body === undefined) throw new Error(`no Shipped() function in ${enginePath}`)
   return [...body.matchAll(/"([^"]+)":\s*\w+,/g)].map((m) => m[1])
+}
+
+/**
+ * Face name -> the file `fonts.go` embeds for it, joining `Shipped()`'s map
+ * through the //go:embed directives.
+ *
+ * DUPLICATED FROM font-binary-identity.test.ts, DELIBERATELY — the same
+ * self-containment reason `withoutComments` is duplicated below: this file
+ * must be able to redden on its own.
+ */
+function shippedFacePaths(fontsGo: string): Readonly<Record<string, string>> {
+  const embeds = Object.fromEntries([...fontsGo.matchAll(/\/\/go:embed\s+(\S+)\s*\nvar\s+(\w+)\s+\[\]byte/g)].map((match) => [match[2], match[1]]))
+  const body = /func Shipped\(\) folio\.FontSet \{[\s\S]*?\n\}/.exec(fontsGo)?.[0] ?? ''
+  return Object.fromEntries([...body.matchAll(/"([^"]+)":\s*(\w+),/g)].map((match) => [match[1], embeds[match[2]] ?? `<no //go:embed for ${match[2]}>`]))
 }
 
 // THE ONE MODULE ALLOWED TO REGISTER A FACE WHILE A DOCUMENT IS OPEN
@@ -478,7 +522,7 @@ describe('the canvas paints with the faces the engine measured', () => {
     // 'IBM Plex Sans', so the three families stay present while a chrome token
     // has been collapsed onto the engine's vocabulary. The face names come from
     // `fonts.Shipped()`, not from a literal restated here.
-    expect(engineFaces.length, 'the engine face names must have been read').toBe(3)
+    expect(engineFaces.length, 'the engine face names must have been read').toBe(4)
     for (const face of engineFaces) {
       expect(
         fontTokens.filter(([, value]) => value.includes(`'${face}'`)).map(([name]) => name),
@@ -747,21 +791,40 @@ describe('the canvas paints with the faces the engine measured', () => {
     // NON-VACUITY BEFORE ANYTHING ELSE. A parse that yields nothing makes every
     // `filter(...).toEqual([])` below pass over an empty set, which is the
     // classic way this shape of guard goes quiet.
-    expect(engineFaces.length, `read no face names out of Shipped() in ${enginePath}`).toBe(3)
+    expect(engineFaces.length, `read no face names out of Shipped() in ${enginePath}`).toBe(4)
 
     // THE CHROME HALF, UNWEAKENED. The design system's vocabulary must remain
     // declared; the canvas no longer asks for it, but every type token does.
     expect(declared).toEqual(expect.arrayContaining(['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai']))
 
-    // THE BROWSER CAN NAME THE FACE THE ENGINE MEASURED WITH. Every face in
-    // the shipped FontSet has an @font-face of its own. That those faces are
-    // declared from the ENGINE'S OWN BYTES is the separate, stronger claim
-    // made in src/font-binary-identity.test.ts.
-    expect(engineFaces.filter((face) => !declared.includes(face))).toEqual([])
+    // SCOPED TO THE HAND-WRITTEN HALF OF `fonts.Shipped()` FROM HERE DOWN
+    // (Story 16.8). Roboto joined `fonts.Shipped()` as a face that is ALSO a
+    // `font-catalogue.json` catalogue face (`AVAILABLE LOCALLY`) — its
+    // `@font-face` is the catalogue emitter's own templated rule, invisible
+    // to `declared`'s literal-text parse (see `catalogueDeclaredFamilies`'s
+    // note above), and it is never added to the fixed `.canvas-text-fragment`
+    // fallback stack this section ties order to: that stack is the DEGRADE
+    // PATH for a fragment the engine attributed to NOTHING, spelled once in
+    // App.css and once in shipped-face-family.ts's `canvasFragmentFallbackStack`,
+    // and widening it is a change to what every UNATTRIBUTED fragment in
+    // EVERY existing document falls back to — outside this story's own
+    // boundary ("no existing document changes"). Roboto's own ties — that the
+    // catalogue declares an @font-face for it, and that the browser has the
+    // SAME bytes folio-go embeds — are asserted on their own, immediately
+    // after this test, the same way font-binary-identity.test.ts routes them.
+    const catalogueFamilySet = new Set(catalogueDeclaredFamilies())
+    const handWrittenEngineFaces = engineFaces.filter((face) => !catalogueFamilySet.has(face))
+    expect(handWrittenEngineFaces, 'expected exactly the three Story 2.2 Noto faces once the catalogue-declared half (Roboto) is set aside').toHaveLength(3)
+
+    // THE BROWSER CAN NAME THE FACE THE ENGINE MEASURED WITH. Every
+    // HAND-WRITTEN-declared face in the shipped FontSet has an @font-face of
+    // its own. That those faces are declared from the ENGINE'S OWN BYTES is
+    // the separate, stronger claim made in src/font-binary-identity.test.ts.
+    expect(handWrittenEngineFaces.filter((face) => !declared.includes(face))).toEqual([])
 
     // AND THE CANVAS ASKS FOR THEM. Containment, not equality: the stack ends
     // in the generic `sans-serif` keyword, which is guarded separately below.
-    expect(engineFaces.filter((face) => !requested.includes(face))).toEqual([])
+    expect(handWrittenEngineFaces.filter((face) => !requested.includes(face))).toEqual([])
 
     // AND IN THE ENGINE'S OWN ORDER, which containment alone does not say.
     // The acceptance criterion and the I/O matrix both require the ORDER, and
@@ -770,13 +833,14 @@ describe('the canvas paints with the faces the engine measured', () => {
     // measured) and all three cover `A` and `5`. Reordering the stack CJK-first
     // changes which face rasterizes every overlapping codepoint — a metric
     // change the containment assertion above waves straight through. The
-    // expected order is `fonts.Shipped()`'s own source order, parsed above, so
-    // this ties the browser's search order to the engine's declaration order
-    // rather than to a literal restated here.
+    // expected order is `fonts.Shipped()`'s own source order, parsed above
+    // and then narrowed to the hand-written half, so this ties the browser's
+    // search order to the engine's declaration order rather than to a
+    // literal restated here.
     expect(
-      requested.slice(0, engineFaces.length),
-      'the .canvas-text-fragment stack must name the engine\'s faces first and in the order fonts.Shipped() writes them',
-    ).toEqual([...engineFaces])
+      requested.slice(0, handWrittenEngineFaces.length),
+      'the .canvas-text-fragment stack must name the engine\'s hand-written-declared faces first and in the order fonts.Shipped() writes them',
+    ).toEqual([...handWrittenEngineFaces])
 
     // AND TIED TO THE THIRD AUTHORITY TOO — THE BROWSER-SIDE PREDICATE THAT
     // DECIDES WHETHER A FACE NAME CAN BE ASKED FOR AT ALL (Story 8.4e).
@@ -789,6 +853,11 @@ describe('the canvas paints with the faces the engine measured', () => {
     // it, and every assertion in this file stays green. So the engine's own
     // names are read against the predicate as well, and as a SET DIFFERENCE
     // rather than a count: a count is lossy (Design Note 7).
+    //
+    // THIS PAIR IS OVER ALL FOUR `engineFaces`, ROBOTO INCLUDED: the shape
+    // predicate and the "names itself first" derivation hold for it exactly
+    // as they do for the three hand-written faces — nothing about either
+    // rule depends on WHERE the browser's @font-face for a name comes from.
     expect(
       engineFaces.filter((face) => !isShippedFaceName(face)),
       'shipped-face-family.ts declines a face name fonts.Shipped() actually ships. A fragment attributed to it would set no inline family and fall back to the fixed stack, silently, with nothing else in this file red.',
@@ -802,6 +871,38 @@ describe('the canvas paints with the faces the engine measured', () => {
       engineFaces.filter((face) => familiesIn(shippedFaceFamily(face) ?? '')[0] !== face),
       'shipped-face-family.ts does not name every shipped face FIRST in the family value it derives for that face',
     ).toEqual([])
+  })
+
+  // ROBOTO'S OWN TIES, SET ASIDE FROM THE TEST ABOVE (Story 16.8). It is the
+  // first face to ship under both vocabularies at once — see
+  // `catalogueDeclaredFamilies`'s note — so its "does the browser have a
+  // face for it" and "are the bytes the SAME bytes" claims are made here,
+  // against the catalogue path, rather than folded into the hand-written
+  // six-rule machinery the test above exercises.
+  it('Roboto: the catalogue declares it, and its bytes are the ones fonts.Shipped() embeds', () => {
+    expect(engineFaces, 'fonts.Shipped() must still carry "Roboto" for this test to check anything').toContain('Roboto')
+    expect(catalogueDeclaredFamilies(), 'font-catalogue.json must still declare "Roboto" — Story 16.8 does not remove it from the catalogue').toContain('Roboto')
+
+    // THE BYTES ARE THE SAME BYTES ("there is exactly one Roboto"). This is
+    // the browser-side twin of folio-go/fonts/fonts_test.go's
+    // TestShippedRobotoMatchesDesignerCatalogue and of
+    // font-binary-identity.test.ts's own version of this same tie.
+    const shippedPaths = shippedFacePaths(fs.readFileSync(enginePath, 'utf8'))
+    const engineFile = path.join(here, '..', '..', 'folio-go', 'fonts', shippedPaths.Roboto ?? '')
+    const catalogueFile = path.join(here, '..', catalogueEngineRobotoFile)
+    expect(fs.existsSync(engineFile), `${engineFile} must exist`).toBe(true)
+    expect(fs.existsSync(catalogueFile), `${catalogueFile} must exist`).toBe(true)
+    const digest = (file: string) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    expect(
+      digest(catalogueFile),
+      'the designer catalogue\'s Roboto and the file folio-go embeds as "Roboto" must be byte-identical — a second cut under the same name would make a document naming Roboto render differently depending on which path produced it',
+    ).toBe(digest(engineFile))
+
+    // AND THE PREDICATE/DERIVATION HOLD FOR IT, restated here as Roboto's own
+    // positive case rather than inferred only from the SET DIFFERENCE
+    // assertions in the test above.
+    expect(isShippedFaceName('Roboto')).toBe(true)
+    expect(familiesIn(shippedFaceFamily('Roboto') as string)[0]).toBe('Roboto')
   })
 
   // STORY 8.4a'S POSITIVE TWIN OF STORY 8.4'S DISCLOSURE OF ABSENCE.

@@ -56,6 +56,12 @@ var testShippedNotoSansThai []byte
 //go:embed fonts/notosanssc/NotoSansSC-Regular.ttf
 var testShippedNotoSansSC []byte
 
+// testShippedRoboto is Story 16.8's fourth shipped face, duplicated here
+// for the same reason as the three above.
+//
+//go:embed fonts/roboto/Roboto-Regular.ttf
+var testShippedRoboto []byte
+
 // testShippedNotoSansThaiLicence is Story 8.6's addition, and it is here
 // for the SAME reason the three faces above are: fixtures/embedded-font/
 // now has to state the face's terms, embeddedFontTemplateJSON() builds
@@ -92,5 +98,6 @@ func testShippedFontSet() FontSet {
 		"Noto Sans":      testShippedNotoSans,
 		"Noto Sans Thai": testShippedNotoSansThai,
 		"Noto Sans SC":   testShippedNotoSansSC,
+		"Roboto":         testShippedRoboto,
 	}
 }

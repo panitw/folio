@@ -132,6 +132,17 @@ var shippedFaceSpecs = []shippedFaceSpec{
 		PostScriptName: "NotoSansSC-Regular", WeightClass: 400,
 		AxisPins: "wght=400",
 	},
+	{
+		// Story 16.8's fourth shipped face. UNLIKE the three above, it is
+		// NOT a variable-build instance: the upstream release publishes a
+		// static TTF directly, so there is no instancer invocation to
+		// record — AxisPins says so rather than being left blank, which
+		// would read as an omission instead of a fact about the face.
+		Key: "Roboto", Dir: "roboto", File: "Roboto-Regular.ttf",
+		Family: "Roboto", Subfamily: "Regular",
+		PostScriptName: "Roboto-Regular", WeightClass: 400,
+		AxisPins: "n/a — static upstream release, no instancer step (Story 16.8)",
+	},
 }
 
 // ---------------------------------------------------------------------

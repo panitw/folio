@@ -723,10 +723,31 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 		t.Fatal("multi-script-fallback golden fixture render does not contain a FontFile2 — the fixture would certify nothing (AC10b)")
 	}
 	programs := extractAllFontFile2Programs(t, b)
-	if len(programs) != len(shippedFaceSpecs) {
+	// THE EXPECTED COUNT IS THIS FIXTURE'S OWN CHAIN LENGTH, READ FROM THE
+	// PARSED TEMPLATE — NOT `len(shippedFaceSpecs)` (Story 16.8).
+	//
+	// Until Story 16.8 those two numbers were the same value for a reason
+	// that was never stated: `multiScriptTestTemplateJSON`'s "body" chain
+	// happened to name every face `fonts.Shipped()` carried, because Story
+	// 2.2 built this fixture specifically to exercise all of them at once.
+	// Story 16.8 ships a fourth face (Roboto) that this fixture's own
+	// document does NOT declare — Roboto is an engine-shipped face meant
+	// to need no embedding at all, and per this story's own boundary the
+	// golden fixtures stay UNMOVED, so this document is not extended to
+	// use it. `len(shippedFaceSpecs)` therefore stopped being this
+	// fixture's own invariant the moment a shipped face could legitimately
+	// go unused here. The count that IS still this fixture's own
+	// invariant is its declared chain's length, read off the parsed
+	// template rather than restated as a literal — so a chain edited here
+	// without its golden being re-measured still reddens this line.
+	wantEmbeddedCount := len(tpl.doc.Fonts["body"])
+	if wantEmbeddedCount == 0 {
+		t.Fatal("multiScriptTestTemplateJSON's \"body\" chain parsed to zero entries — this assertion would be vacuous")
+	}
+	if len(programs) != wantEmbeddedCount {
 		t.Fatalf(
-			"expected exactly %d embedded FontFile2 programs (one per shipped face actually used), got %d",
-			len(shippedFaceSpecs), len(programs),
+			"expected exactly %d embedded FontFile2 programs (one per face this fixture's own \"body\" chain names), got %d",
+			wantEmbeddedCount, len(programs),
 		)
 	}
 
@@ -740,9 +761,22 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 	// ...and on the produced PDF: /BaseFont must carry the embedded
 	// program's own PostScript name behind exactly one six-letter tag
 	// (ISO 32000-1 Table 117), not the FontSet key.
+	// SCOPED TO THIS FIXTURE'S OWN CHAIN, NOT EVERY SHIPPED FACE (Story
+	// 16.8). assertBaseFontNames is a COVERAGE witness in both
+	// directions — every name in `want` must actually appear — so
+	// building it from all of `shippedFaceSpecs` would demand Roboto's
+	// PostScript name show up in a PDF this fixture never asks the
+	// engine to embed Roboto into. `wantEmbeddedFaces` is the same
+	// chain-derived set `wantEmbeddedCount` above is the length of.
+	wantEmbeddedFaces := map[string]bool{}
+	for _, entry := range tpl.doc.Fonts["body"] {
+		wantEmbeddedFaces[entry.Face] = true
+	}
 	wantPS := map[string]bool{}
 	for _, spec := range shippedFaceSpecs {
-		wantPS[spec.PostScriptName] = true
+		if wantEmbeddedFaces[spec.Key] {
+			wantPS[spec.PostScriptName] = true
+		}
 	}
 	assertBaseFontNames(t, "multi-script-fallback golden", b, wantPS)
 
@@ -773,27 +807,49 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 	}
 	faceLabels := []string{"Noto Sans", "Noto Sans SC", "Noto Sans Thai"}
 
-	// V7's guard, REBUILT. It previously read
+	// V7's guard, REBUILT AT STORY 2.2, AND NARROWED AT STORY 16.8.
+	//
+	// It previously read
 	//
 	//     if len(wantProgramSHA256) != 3 { ... }
 	//
-	// which compares a slice literal's length to a hard-coded 3
-	// declared six lines above it. That cannot detect the hazard V7 is
-	// named for, and was red-proved open: adding a fourth face to
-	// fonts.Shipped() left the whole root package green, with four
-	// shipped (face, instance) pairs against three goldens.
+	// which compares a slice literal's length to a hard-coded 3 declared
+	// six lines above it — unable to detect the hazard V7 is named for
+	// (red-proved open: adding a fourth face to fonts.Shipped() left the
+	// whole root package green, with four shipped pairs against three
+	// goldens) — so Story 2.2 asserted the count against `len(shippedFaceSpecs)`
+	// instead, THE ENUMERATION rather than a number narrated beside it.
 	//
-	// The count is now asserted against the ENUMERATION rather than
-	// narrated beside it (D-000.14). testShippedFontSet() is chained to
-	// fonts.Shipped() by TestShippedSpecCoversEverythingShipped and
-	// TestFontsShippedMatchesExpectedFaceSet, so a face added to the
-	// shipped set and nowhere else now fails HERE.
-	if len(wantProgramSHA256) != len(shippedFaceSpecs) {
+	// THAT FORM ASSUMED "every shipped face appears in THIS fixture",
+	// which was true only because Story 2.2 built this document
+	// specifically to exercise all of them at once — an assumption Story
+	// 16.8 breaks on purpose: Roboto ships as a fourth face that is
+	// engine-only and never embedded in any document (the whole point of
+	// an engine-shipped face), so it is legitimately absent from every
+	// per-instance PDF-embedding golden, this one included, forever. The
+	// comparator is `wantEmbeddedCount` (this fixture's own chain length,
+	// derived above) rather than `len(shippedFaceSpecs)` for the same
+	// reason the earlier fix moved off the bare literal 3: it must answer
+	// to something that would actually change if this ONE document's
+	// declared chain did, not to a number that changes for a reason
+	// unrelated to this fixture.
+	//
+	// V7's ORIGINAL HAZARD — a face shipping with NO weight/name/
+	// staticness assertion anywhere — is still closed for Roboto, just by
+	// a different guard: TestShippedFacesMatchSpec (shipped_faces_test.go)
+	// runs assertShippedFaceMatchesSpec against EVERY shippedFaceSpecs row
+	// including Roboto's, off the committed source file, and
+	// fonts_test.go's TestShippedRobotoMatchesDesignerCatalogue ties that
+	// same source file's bytes to the designer catalogue's. What is NOT
+	// covered, stated rather than hidden, is a per-instance PDF-embedded-
+	// program digest for Roboto — because there is no document, golden or
+	// otherwise, that ever asks the engine to embed it.
+	if len(wantProgramSHA256) != wantEmbeddedCount {
 		t.Fatalf(
-			"AC7/V7: %d per-instance goldens are recorded, but %d (face, pinned instance) pairs ship. "+
-				"The matrix would be monitoring a subset of the risk surface and reporting green over the "+
-				"uncovered ones — D-2.2.1's exact hazard.",
-			len(wantProgramSHA256), len(shippedFaceSpecs),
+			"AC7/V7: %d per-instance goldens are recorded, but this fixture's own chain embeds %d (face, "+
+				"pinned instance) pairs. The matrix would be monitoring a subset of the risk surface and "+
+				"reporting green over the uncovered ones — D-2.2.1's exact hazard.",
+			len(wantProgramSHA256), wantEmbeddedCount,
 		)
 	}
 	if len(faceLabels) != len(wantProgramSHA256) {

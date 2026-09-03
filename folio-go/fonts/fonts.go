@@ -1,11 +1,12 @@
-// Package fonts holds Story 2.2's three shipped production faces —
-// Noto Sans, Noto Sans Thai and Noto Sans SC — each embedded from its
-// own subdirectory under folio-go/fonts/, alongside its OFL-1.1 licence
-// text and NOTICE (AD-26, AC25). It is declared at the module root, NOT
-// under internal/: AD-8's "no package under internal/ embeds font data"
-// binds internal/ packages to never carry shipped font DATA — it says
-// nothing about a leaf, non-internal package whose entire purpose is to
-// hold that data (spine's own scope fence, AC26).
+// Package fonts holds folio-go's shipped production faces — Story 2.2's
+// three (Noto Sans, Noto Sans Thai and Noto Sans SC) plus Story 16.8's
+// fourth (Roboto) — each embedded from its own subdirectory under
+// folio-go/fonts/, alongside its OFL-1.1 licence text and NOTICE (AD-26,
+// AC25). It is declared at the module root, NOT under internal/: AD-8's
+// "no package under internal/ embeds font data" binds internal/ packages
+// to never carry shipped font DATA — it says nothing about a leaf,
+// non-internal package whose entire purpose is to hold that data
+// (spine's own scope fence, AC26).
 //
 // fonts imports package folio (also module root, folio-go/*.go) for its
 // FontSet type — a one-directional import (fonts -> folio) that package
@@ -25,7 +26,7 @@ import (
 	folio "github.com/panitw/folio/folio-go"
 )
 
-// The three shipped faces are STATIC, Regular-only instances derived
+// The three Story 2.2 faces are STATIC, Regular-only instances derived
 // from their upstream variable builds ahead of the build, by
 // tools/fontgen/instance_faces.py (D-2.2.4). The .ttf files are
 // COMMITTED, not generated at build time, on purpose: generating them
@@ -46,18 +47,40 @@ var notoSansThai []byte
 //go:embed notosanssc/NotoSansSC-Regular.ttf
 var notoSansSC []byte
 
-// Shipped returns folio-go's shipped font set — Noto Sans, Noto Sans
-// Thai, and Noto Sans SC — keyed by the exact face names a `.folio`
-// document's `fonts` fallback chains reference (folio-format.md's own
-// `"fonts": {"body": ["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]}`
-// example uses these three names verbatim). One expression, no
-// arguments (AC9) — callers wire the shipped set into a render with
-// `fonts.Shipped()`, never a package-level variable a caller could
-// mutate out from under another caller.
+// Roboto is Story 16.8's fourth shipped face, and it is NOT a derivation:
+// unlike the three Noto faces above, the upstream release publishes a
+// static TTF directly, so this file is copied byte-for-byte from the
+// designer's own catalogue face (`folio-designer/public/fonts/roboto/
+// Roboto-Regular.ttf`, `font-catalogue.json`'s `"roboto"` entry) rather
+// than derived by tools/fontgen/instance_faces.py — its own NOTICE.md
+// records that explicitly, and fontgen_matrix_test.go's UPSTREAM list is
+// unchanged by this addition for that reason.
+//
+// THERE IS EXACTLY ONE ROBOTO (Story 16.8's own boundary): this file's
+// sha256 must always equal the designer catalogue's, and
+// TestShippedRobotoMatchesDesignerCatalogue in fonts_test.go makes that a
+// machine-checked property. folio-go/testdata/fonts/Roboto-Regular.ttf is
+// a DIFFERENT cut used only as an Apache-2.0 licence-signature fixture in
+// internal/fontset — it is never embedded here.
+//
+//go:embed roboto/Roboto-Regular.ttf
+var roboto []byte
+
+// Shipped returns folio-go's shipped font set — the three Story 2.2 Noto
+// faces plus Story 16.8's Roboto — keyed by the exact face names a
+// `.folio` document's `fonts` fallback chains reference. A new document's
+// starter template names its default chain `"Roboto": ["Roboto", "Noto
+// Sans Thai", "Noto Sans SC"]` (folio-designer/public/templates/
+// starter.folio); the three original Noto names remain shipped unchanged
+// for every document that names them, `body` chains from before this
+// story included. One expression, no arguments (AC9) — callers wire the shipped
+// set into a render with `fonts.Shipped()`, never a package-level
+// variable a caller could mutate out from under another caller.
 func Shipped() folio.FontSet {
 	return folio.FontSet{
 		"Noto Sans":      notoSans,
 		"Noto Sans Thai": notoSansThai,
 		"Noto Sans SC":   notoSansSC,
+		"Roboto":         roboto,
 	}
 }
