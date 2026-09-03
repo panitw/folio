@@ -1909,3 +1909,146 @@ right call under D-16.R.27, whose whole subject is claims asserted beyond their 
 **How we'd know this consequence is wrong.** If verifying dispositions by artifact turns up nothing over the
 remaining stories while costing a grep per ruling, it is over-engineered for a one-off. One instance is not
 a pattern — but it is the *fourth* count-that-reconciled in this epic, and that is a pattern.
+
+### D-16.R.42 — Story 16.2's gate: a timeout overruled by its own arithmetic, and a dependency admitted by a procedure rather than a preference
+
+**Lead rulings**, on two forks the builder correctly refused to guess. Both verified independently by the
+orchestrator before relay — including the one that overrules the builder, and the one where the lead ruled
+rather than escalating.
+
+**Q1(1a) — T = 30 s, not the recommended 20 s. Overruled on the recommendation's OWN arithmetic.**
+
+The builder measured against the real host — max observed **2,097 ms** for a 24,271,604-byte face — and
+proposed `AbortSignal.timeout(20_000)`, justified as *"max × 10 … keeps the worst legitimate fetch inside
+budget on a connection ten times slower."* **That sentence is false at 20 s:**
+
+```
+2,097 × 10 = 20,970  >  20,000
+```
+
+**The single largest offerable face falls outside the budget the factor was chosen to cover — by 5%, on
+the one case the factor exists for.** Everything below it is comfortable (p99 1,715,888 B at 365 ms →
+3,650 ms), so the failure sits exactly at the tail the measurement was extended to reach. Per D-16.R.25's
+positive exemplar a shipped constant must carry a reason that is **true**; at 20 s it would ship carrying
+arithmetic that contradicts it.
+
+**In simple terms.** Someone measured the heaviest thing they might have to carry, said "I'll size the bag
+at ten times that," and then bought a bag slightly smaller than ten times that. Everything except the
+heaviest thing fits, which is why the mistake survives casual checking — the only item that exposes it is
+the one the rule was written for.
+
+**Direction of correction settled by cost asymmetry.** Too short **wrongly refuses a legitimate pick of a
+real font** — loudly, repeatably, the author retries and fails again. Too long only lengthens an
+already-bounded hold on a genuine stall. T exists to prevent "dead for the session", which 30 s serves
+identically. **When a bound's failure modes are "wrongly refuse a real thing" and "release a hang slightly
+later", the second is always the cheaper side to err on.** The constant carries the arithmetic rather than
+the prose, including the sample's own limit — one connection, one day, five reps — which is the honest
+statement of why the factor is ×10 and not ×2.
+
+**Q1(1c) — the 646 KB measurement target was a denominator error, and it was the LEAD'S OWN sentence.**
+*"SPEC-fonts records shipped faces up to 646 KB"* is true of the **31 committed faces** and false of the
+**1,273 fetchable families** the budget actually serves, whose tail is ~37× larger: median 107,440 B, p90
+420,092 B, p99 1,715,888 B, **max 24,271,604 B**. A budget fitted to 646 KB would time out real, offerable
+picks. Verified independently: `Noto Color Emoji` sits in the snapshot as `{variable: false, scripts: [],
+popularity: 51}`, so it is in `webFamilies` and offerable **today**. Same class as R3's, in the lead's own
+writing, caught by the builder and **reported rather than quietly fixed** — the behaviour D-16.R.22 asked
+for.
+
+**A pleasant property, recorded so nobody writes a revisit clause for it:** that face is one of DW-163's 66
+script-less families. If the owner filters them at 16.3 the maximum drops to 7,881,488 B / 933 ms and T
+becomes very slack. **A later filter can only ADD margin here, never remove it**, so sizing for today's
+population is safe under either outcome.
+
+**Q1(1b) — no chain deadline, and no deferral either. The property is ASSERTED instead.**
+
+The builder's own caveat was the real risk: it argued from *current* code shape, and a future change making
+a catch `continue` rather than `return refuse(...)` would make 6 × T reachable with nothing watching. **But
+a deferral with a trigger is the wrong instrument for a property you can simply assert.** Register it and
+you get a note that ages; assert it and the change that would break it reds. So 16.2 adds a table-driven
+test that the chain terminates on first abort — for *N* across the probe loop, the licence read and the
+byte read, with no further fetcher calls after — **red-proved by changing one catch to `continue`.**
+
+**And the 6 × T premise itself was wrong — in text the orchestrator wrote into the spec from R4.** Verified
+separately by the orchestrator and the lead: the catches at `:281-283`, `:339-341` and `:381` each end the
+chain, and the loop's only `continue` is on a **404**, which an abort never produces. **Worst-case hold is
+T plus the requests already completed — about T + 3 s, not 6 × T.** R4 demanded the arithmetic be shown;
+showing it is what revealed the premise was false.
+
+**Q2 — `fake-indexeddb` as a devDependency, RULED rather than escalated, because the constraint everyone
+was deferring to does not exist.**
+
+jsdom 28.1.0 ships no IndexedDB and the package is absent, so every store test the spec requires currently
+has no backing store. The builder recommended adding it but flagged that it could not make the call, citing
+a standing decision on dependency count. **The orchestrator searched for that decision and could not find
+it, and told the lead not to rule around it** — if it crossed an owner decision it was the owner's. **The
+lead then looked specifically for it and established it does not exist.** What exists is three other
+things, all verified:
+
+1. **A hard no-new-dependency rule scoped to the WRONG MODULE** — D-1.3.6 invariant (b), measured and
+   asserted across three stories, about **`folio-go`**. `folio-designer/` is not in it.
+2. **Story 5.5's project-structure note**, which is what everyone was sensing: *"No new dependency is
+   justified for pickers, JSON schema, storage, sync, or downloads … audit any unavoidable package through
+   AD-26 before adding it."* Its subject is a **runtime** package doing a job a browser API already does,
+   and **its own disposition clause is a procedure, not a prohibition**.
+3. **AD-26**, verified by the orchestrator to be a **licence boundary with CI automation** — not a count
+   cap — which names `pdfjs-dist` as a shipped **Apache-2.0** dependency, making Apache-2.0 in the designer
+   **precedented rather than novel**.
+
+**Direction and licence are governed; COUNT is not.** The repo's dependency discipline is real, but it is a
+culture of specific reasoned refusals whose stated procedure returns *admit* here. **Three agents reasoned
+from that culture as though it were a written invariant** — which is its own finding, noted below.
+
+**(a) over (b) for the reason the builder gave AGAINST ITSELF**, and it is the rule this run holds hardest:
+*a fake written by the adapter's own author is shaped by that author's reading of the plumbing, so it
+agrees with the code by construction and proves the plumbing not at all.* Both-sides-move-together vacuity,
+the construction D-16.R.12 named. **An independent implementation can disagree with you, and that capacity
+is the entire value of the test.** Not (c): it is (b) plus a smaller claim, and it would leave the adapter
+with **no witness of any kind** until the epic catch-up — stacking a second unwitnessed adapter on
+DW-161's already-unwitnessed web tier, which is D-16.R.1's own stated falsifier for the cadence.
+
+**Four conditions, the fourth a halt.** devDependency only, asserted by a test that no shipping module
+imports it; the AD-26 audit runs over the **transitive** tree because AD-26 says *"at any depth"*, reporting
+every package added with its licence; `lint/MANIFEST.md` regenerated and `go test -count=1` green (DW-168's
+class, load-bearing for the second time in three stories); and **if any transitive package carries a licence
+outside AD-26's admitted set, STOP and return it — no substituting, no vendoring, no silent fallback.**
+
+**One verification that removed a worry rather than adding one:** `committedLicenceFiles` shells out to
+`git ls-files` (`licencecensus_test.go:381-385`), so it enumerates **tracked** files. `node_modules` is
+untracked — confirmed — so the devDependency does **not** move `pinnedCensus` and does **not** move the
+derived floor from D-16.R.35's ruling C. Only `MANIFEST.md` moves.
+
+**The browser-witness residual goes to 16.3, NOT the epic catch-up.** Under every option real browser
+IndexedDB is proven only by a browser. 16.3's run is already scoped to discharge DW-161's three cases and
+already reloads to exercise the offline path, so a fourth case — *a stored face survives a reload and is
+offered with the network disabled* — costs nothing and **retires the residual one story after it is
+created** rather than at the epic's end. The store and the web tier then get their first real-browser
+exercise together, which is how they are actually used.
+
+**A silently dead gate, found at this checkpoint.** 16.2's Verification read `npm run test && npm run
+build`. `npm test` exits 1 at baseline on the DW-152 red, so **the `&&` short-circuits and the build never
+runs** — that gate has been measuring nothing for as long as that baseline red has existed. Split into
+separate lines, both reported. Worth more than its size: a *conjunction* is a gate that silently drops
+everything after its first known-failing term.
+
+### D-16.R.43 — Two standing rules this checkpoint earned
+
+**1. A ruled deferral is a NAMED OBLIGATION, not a slot.** D-16.R.41 recorded that F5 was ruled REGISTER
+and displaced by a finding the pass discovered itself, while `defer: 1` stayed true. The lead identifies
+this as the **fifth** instance of cardinality agreeing while membership differs — after the eleven families,
+the 5-of-20 churn, and two others. **Consequence: a pass reporting `defer: N` NAMES which N. A ruled
+deferral absent from that list is a miss regardless of what N says.** Cardinality is not membership, and a
+count that reconciles is the specific thing that stops anyone checking the set.
+
+**2. Concurrence reached by one method is one measurement, not several** — and it now has two independent
+confirmations in two days. D-16.R.38 recorded three readers "independently" agreeing `licencegraph.go` was
+missing, all via the same package-scoped grep. The lead adds, unprompted and against itself, that it **ran
+a package-scoped grep of its own three messages ago and got lucky**. For accuracy: **the lead never ruled
+on `licencegraph.go`** — that ruling was the orchestrator's, in D-16.R.37, and D-16.R.38 records it as such.
+**Consequence: when citing agreement as evidence, state the METHOD. If the methods match, it is one datum
+and must be discounted to one.**
+
+**The control that actually worked, in both instances, was the same one:** a junior agent refusing on
+evidence rather than deferring to concurring seniors. In the `licencegraph.go` case it refused an
+orchestrator ruling. In this checkpoint's case the builder declined to add a dependency on a constraint it
+believed existed, and asking rather than complying is what caused three people to look and discover the
+constraint was never written down.
