@@ -2,15 +2,31 @@
 title: 'Story 16.4: The family control names three sources'
 type: 'feature'
 created: '2026-09-02'
-status: 'draft'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
-baseline_commit: 'a40c34db6cff7372363b2a553710eff48759bef1'
+baseline_commit: 'b8431c4e9d743cc2cde314c98688d393bfbbe828'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html'
   - '{project-root}/_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md'
 warnings: []
-deferred: []
+deferred:
+  - summary: >-
+      epics.md contradicts five shipped stories: Story 16.5 has no entry at all, the file ends
+      mid-Epic-16, and Story 16.4 AC1/AC2/AC5 still describe ADDED FROM WEB FONTS and embed-on-pick.
+    evidence: >-
+      Measured at b8431c4. Superseded by D-16.R.46 and D-16.R.72. Filed rather than noted because a
+      note in this spec is read by whoever reads this spec, and the person harmed is whoever reads
+      epics.md believing it. Owner: the post-16.4 infrastructure item beside DW-171/177/179/180/182.
+  - summary: >-
+      A pick from AVAILABLE TO INSTALL blocks up to 30 s on a stall and up to 180 s against a
+      slow-but-alive host, with nothing bounding, reporting or cancelling the wait.
+    evidence: >-
+      Registered by Story 16.5 gated to 16.4, with a remedy D-16.R.72 forecloses: the web arm keeps
+      its heading inside the control, so the rows and the pick both stay. The ruling supplied
+      legibility, not a bound. Re-measured: fetchTimeoutMs = 30_000 armed PER REQUEST in timedFetcher
+      (font-source.ts:313,343) across up to six call sites, so 16.5's recorded 30 s is the stall half.
+      Owner: NOT Story 16.4 - the post-16.4 infrastructure item, or whoever next opens fetchWebFamily.
 ---
 
 ## In plain terms (read this first if you just want the gist)
@@ -18,268 +34,284 @@ deferred: []
 *This section is background, not a requirement; the contract below governs.*
 
 The font menu has to answer a question it currently cannot: where is this typeface, and what happens to
-my file if I choose it? Three groups, three different answers — already in this template; fetched from
-the web and now in this template; on this machine but not in this file yet. A font moves between them
-because you did something, never on its own.
+my file if I pick it? Three answers, so three groups — already in this file; on this machine but not in
+this file; not on this machine at all. A font moves between them because you did something, never on
+its own.
 
-There is also an old sentence at the bottom of that menu saying a typeface from your own disk cannot be
-embedded. It was true for a good reason, and the reason has just changed. This story does not quietly
-carry it forward — it either restates it with the new reason or takes it away deliberately.
+Two things underneath it turn out to be broken. The list that feeds the menu says in its own
+documentation that it returns the on-this-machine faces together, and it does not — a face you
+downloaded sits wherever the web list happened to put it. And the menu only ever draws the first fifty
+rows, which was harmless when they all sat under one heading and is not harmless under a heading that
+promises a font is on your machine. Both are fixed here, because a heading that lies is worse than no
+heading.
+
+There is also an old sentence at the bottom of the menu saying a typeface from your own disk cannot be
+embedded. It was true for a good reason, and the reason has moved twice since. This story does not
+quietly carry it forward — it re-derives it and writes down the working.
 
 <intent-contract>
 
 ## Intent
 
-**Problem:** `FontFamilyProperty` draws two groups — the document's chains, and the bundled catalogue.
-Epic 16 creates a third relationship (fetched, on this machine, not in this file), and the design draws
-all three. The control also carries a disk-font decline derived from a premise D-16.1 has changed, and
-a listbox that breaks its required-owned-elements rule four times, registered as deferred at 8.6.
+**Problem:** `FontFamilyProperty` draws two groups — the document's chains, and everything addable.
+Epic 16 created three relationships to a font, and 16.5 made *installing* and *embedding* different
+acts. The control also carries a disk-font decline derived from a premise D-16.1 reversed, a listbox
+that breaks its required-owned-elements rule six times, and an ordering defect that makes any grouping
+over its flat list draw a false heading.
 
-**Approach:** Rebuild the control to the design's three groups plus its filter field and `Add fonts…`
-footer; route the third group to Story 16.2's store; re-derive the disk-font decline against D-16.1;
-and fix the listbox defect here rather than multiplying it.
+**Approach:** Re-cut the control into the design's three groups on the axis the code already forks on;
+repair `offeredFamilies` so the union arrives in its own documented order; partition before capping;
+fix the listbox defect here rather than multiplying it; re-derive the disk-font decline against three
+premises; and give the design's borrowed label back to the control it belongs to.
 
 ## Boundaries & Constraints
 
 **Always:**
-- **Three groups mean three relationships, and the difference must be legible without explanation.**
-  `IN THIS TEMPLATE` is in the file. `ADDED FROM WEB FONTS` is what this session fetched into the file.
-  `AVAILABLE LOCALLY` is on this machine and **not** in the file.
-- **A font changes group because the author acted.** Story 8.6's rule — *"nothing says 'added', the
-  entry simply moves"* — extends to three groups unchanged.
-- **The fork at `choose()` keeps its shape.** A declared name is a `fontFamily` property commit. A
-  family not yet in the document is a document change through the embed command. Two decisions, two
-  undos; fusing them was refused at 8.6 and is refused here.
+- **Three groups mean three relationships, and the axis is *where are the bytes*, never *when did it
+  arrive*.**
+  1. `IN THIS TEMPLATE` — the document's declared chains (`families.includes(name)`). **The bytes are
+     in the file.**
+  2. `AVAILABLE LOCALLY` — `familyIsInstalled(source)` is true: the `local` **and** `stored` arms.
+     **On this machine, not in this file.** Picking embeds and commits the property in one gesture,
+     two commands, no network.
+  3. `AVAILABLE TO INSTALL` — the `web` arm. **Not on this machine.** Picking installs; nothing enters
+     the file.
+- **A row's group is a pure function of (declared?, `familyIsInstalled`?)** — never of a session-scoped set. The `local`/`stored` split stays invisible in the grouping: it is a provenance difference with
+  no consequence at the moment of choosing, and surfacing it would be the fourth group this spec
+  forbids.
+- **A font changes group because the author acted.** Story 8.6's rule, carried in its own code comment
+  at `App.tsx:1901-1902` — *"nothing says 'added', the entry simply moves"* — extends to three groups
+  unchanged. Install moves a row 3 → 2; first use moves it 2 → 1.
+- **The fork at `choose()` keeps its shape.** Two decisions, two undos; fusing them was refused at 8.6,
+  refused again at 16.5, and is refused here.
+- **A heading tells the truth about every row it could own.** No group may be capped, filtered or
+  re-ordered in a way that leaves a member of it undrawn while its heading is shown.
 - **The accessible names Playwright addresses must not move.** `combobox` "Font family", "Edit font
-  chains", "Show fonts"/"Hide fonts", "Clear Font family" — `e2e/component-properties.spec.ts` and
-  `browser-native-roundtrip.spec.ts` address them, and the latter is the repository's only
-  cross-boundary authoring witness.
-- **The listbox defect is fixed, not extended.** 8.6 registered it: four `role="presentation"` children
-  inside `role="listbox"`. Three groups plus a filter field plus a footer row makes it worse. Use
-  `role="group"` with `aria-label`, or move the notes out of the `<ul>` and reference them with
-  `aria-describedby`.
-- **The disk-font decline is re-derived or lifted, never carried unread.** D-8.6.1 declined it because
-  a file off the author's disk supplies no licence text and no copyright, so the designer would have to
-  invent terms or write a document its own parser refuses. **That reasoning still stands on its own
-  terms** — a fetched face brings `OFL.txt` and a `name` table with it, a dropped file brings neither —
-  so the likely outcome is *restated with the new contrast*, which is more useful than the old wording.
-  It is not, however, a foregone conclusion, and it must be written down either way.
+  chains", the listbox's own name "Fonts".
+- **The listbox is fixed, not extended.** Use `role="group"` with `aria-label`, or move the notes out of the `<ul>` and reference them with `aria-describedby`.
+- **The disk-font decline is re-derived or lifted, never carried unread**, and the reasoning is
+  recorded in the code comment, which is where 8.6 put the last one.
 - Commit only on `main`. Never push, never branch, never `git add -A`.
 
+**Ask First:**
+- Any change that would fuse the embed and the property commit into one command.
+- Any fourth group, or any grouping key other than (declared?, `familyIsInstalled`?).
+
 **Block If:**
-- **Stories 16.2 and 16.3 are not closed.** The third group has no source and the footer no destination.
 - **An accessible name in the e2e specs would move.**
-- **The control would offer a font the engine will refuse** — 14.4's rule, applied here.
+- **The control would offer a font the engine will refuse** — Story 14.4's rule, applied here.
+- **A heading would be drawn over a group whose membership the render cannot show in full.**
 
 **Never:** a host font in any group · a group whose membership changes without an author action · a
-fourth group.
+fourth group · a session-scoped set anywhere in the grouping.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |---|---|---|---|
-| Open with an empty store | Fresh machine, 1 chain | `IN THIS TEMPLATE` only; the other groups absent rather than empty-with-a-heading; `Add fonts…` present | — |
-| Open with a populated store | 4 stored, 2 in document | Two groups populated, membership disjoint | — |
-| Pick from `AVAILABLE LOCALLY` | Stored face | Embedded with no fetch; row moves to `IN THIS TEMPLATE` | Refusal anchored at the control |
+| Open on a fresh machine | Empty store, 1 chain | All three groups drawn: `IN THIS TEMPLATE`, a **populated** `AVAILABLE LOCALLY` (the 31 committed faces are always present), `AVAILABLE TO INSTALL`; `Add fonts…` present | — |
+| Open with a populated store | 4 stored, 2 in document | Three groups, membership disjoint and complete; stored rows sit under `AVAILABLE LOCALLY` regardless of their index position | — |
+| Pick from `AVAILABLE LOCALLY` | Stored or local face | Embedded from the machine with no fetch, then the property committed — **two commands, two undos**; row moves 2 → 1 | Engine refusal anchored at the control; the property commit is suppressed |
+| Pick from `AVAILABLE TO INSTALL` | Web-tier family | Face installed. **No engine command, no property commit.** Row moves 3 → 2 | Refusal anchored at the control |
+| Pick from `AVAILABLE TO INSTALL`, store unavailable | No IndexedDB | Degrades to embed-on-pick; row moves 3 → 1; `storeUnavailableEmbedNote` says so | — |
 | Pick a declared chain | Name in the document | `fontFamily` property commit, as today | Existing refusal path |
-| Filter field | `sara` | All groups filtered; headings for empty groups suppressed | — |
-| Add fonts… | Click, or `⌘G` | Opens the browser (16.3) | — |
+| More than 50 web families offered | Empty query, 1,273 web rows | Groups 1 and 2 render **in full**; the 50-row cap applies to `AVAILABLE TO INSTALL` alone; the *"Showing N of M"* line sits under that group and names **its** population, not the union's | — |
+| A stored face ranked deep in the web list | 1 stored family at web index ~900, 32 installed rows against a 50-row cap | It draws under `AVAILABLE LOCALLY` and **is not dropped by the cap**; all 32 installed rows render | This is the regression the repair exists for: a heading is never drawn over a group it cannot show in full |
+| Filter field | `sara` | All groups filtered; a heading is suppressed **only when its own group is empty after filtering** | — |
+| Add fonts… | Click | Opens the browser (16.3). **No `⌘G`, no hint glyph** | — |
 | Mixed selection | Two components, different families | `Mixed` placeholder, as today | — |
-| Keyboard walk | Arrow keys | One linear walk across all three groups, as 8.6's flat `matches` list already does | — |
+| Keyboard walk | Arrow keys | One linear walk across all three groups in one sequence | — |
 
 </intent-contract>
 
 ## Code Map
 
-**Designer (`folio-designer/`)**
-- `src/App.tsx:1284-1380` — `FontFamilyProperty` in full: the header comment stating the two-group
-  rule, `declared` / `catalogue` at `:1310-1315`, the flat `matches` list at `:1317` (**and why it is
-  flat — the keyboard walk**), `choose()`'s fork at `:1333-1337`, the combobox at `:1342`, the three
-  inline action buttons at `:1358-1362`, the listbox at `:1354-1367`, and the
-  `role="presentation"` children at `:1355`, `:1361`, `:1363` and `:1366` — **the registered defect**.
-- `src/App.tsx:1366` — the disk-font decline string: *"Fonts come from this catalogue. A typeface on
-  your own disk cannot be embedded."* **The sentence D-16.1 puts back in question.**
-- `src/App.css:210-223` — `.property-options`, `.property-option`, `.property-option-catalogue`,
-  `.property-option-note`. The third group needs a treatment that is distinct without inventing a
-  vocabulary.
-- `src/App.tsx:608-627` — `pickCatalogueFamily`, the embed path both non-document groups share.
-- `src/font-chain-control.ts` — `FontChainControl.action`, refusal anchoring.
-- `e2e/component-properties.spec.ts:35-60`, `e2e/browser-native-roundtrip.spec.ts` — the accessible
-  names that must not move.
-- `_bmad-output/implementation-artifacts/8-6-picking-a-family-puts-it-in-the-file.md` frontmatter
-  `deferred:` — the listbox finding, its evidence and its suggested shapes.
+**Every anchor below was re-measured at `604ae8f` and re-confirmed at `b8431c4`** — the diff between
+them is one file, `epic-16-decision-log.md`, +145 lines, touching nothing under `folio-designer/`
+(D-16.R.28's rule, discharged by measurement rather than by assumption).
+
+**The control — `folio-designer/src/App.tsx`**
+- `:1941-2109` — `FontFamilyProperty` in full. Note its two-group doc comment is **detached**: it sits at `:1890-1906`, above `renderedFamilyLimit`, not above the function.
+- `:1969` `declared` · `:1980` `addable` · `:1986` `shown = addable.slice(0, renderedFamilyLimit)` · `:1990` the flat `matches` list · `:1911` `renderedFamilyLimit = 50`.
+- `:2041-2046` `choose()` — **three** arms since 16.5, forking on `familyIsInstalled(match.source)` then on `match.source`. `:2011-2024` `commitFirstUse` — embed, then property only if no refusal.
+- `:2063` the `<ul role="listbox" aria-label="Fonts">`; `:2083` its close.
+- **The six `role="presentation"` children: `:2064`, `:2070`, `:2071`, `:2077`, `:2078`, `:2082`.**
+  Four are conditional; two always paint. Max five render at once.
+- `:2065-2070` the `.flatMap((node, index) => index === declared.length ? [heading, node] : [node])`
+  heading interleave — **the one element in the walk that reads position semantically**, and the one
+  the `role="group"` fix replaces.
+- `:2082` the disk-font decline, verbatim: *"Fonts come from this catalogue. A typeface on your own disk cannot be embedded."* Its rationale comment is at `:2079-2081`.
+- `:2077` `familyIndexDisclosure()` · `:2078` the "Showing N of M" line · `:2102` the `Add fonts…` button, already a sibling **outside** the `<ul>`.
+- `:1754-1769` `MachineFontStore`; `:1759` its label, which **borrows** `AVAILABLE LOCALLY`. `:1938` `lateEmbedRefusal`'s removable branch names that label; its non-removable branch is **already correct**. `:1479` the status bar. `:184`/`:292-310`/`:350-356` the store state and its one session-scoped loader — **no new async work is needed; `storedFaces` is already in state.** **The union — `folio-designer/src/font-index.ts`**
+- `:148-150` the doc comment that lies: *"ONE ORDERED LIST … local tier first, then the faces this
+  machine already holds, then the rest of the snapshot."*
+- `:212-246` `offeredFamilies`. **`:231-235` pushes a `stored` row inside the `for (const row of webFamilies)` loop**, so a stored family with an index row lands at its *web* position. Measured by execution: 4 alternation runs under `familyIsInstalled`, not 2; a planted stored face landed at
+  index 900 of 1304; 32 installed rows existed and 31 fell inside the 50-row cap.
+- `:264` `familyIsInstalled = source.tier !== 'web'` · `:283-297` `familySourceNote`, exhaustive with `const unhandled: never` at `:289` · `:308-312` `familyIndexDisclosure` · `:50-62` the comment
+  contradicting the shipped heading.
+
+**Read-only evidence**
+- `folio-designer/src/App.css:208-223` the option rules; `:352-355` `.property-add-fonts`. Token vocabulary is `tokens.css`, name-gated against `DESIGN.md` by `design-contract.test.ts`.
+- `folio-designer/src/font-browser-model.ts:198` `sortRows` — **both arms are total orders ending in `localeCompare`**, so 16.3's browser order is a function of `sortRows` alone and is immune to the `offeredFamilies` repair. `:143` `rowTierNote`, a second exhaustive switch over the union.
+- `font-store.ts:470` `storeWriteRefusal` and `:502` `storeUnavailableEmbedNote`.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- `src/App.tsx` — three groups over one flat `matches` list, preserving the linear keyboard walk;
-  suppress a heading whose group is empty; the design's filter field at the top and `Add fonts…`
-  pinned at the bottom.
-- `src/App.tsx` — the third group's source is Story 16.2's store, filtered to exclude anything already
-  declared, exactly as `catalogue` already excludes declared families.
-- `src/App.tsx` — the listbox fix from 8.6's deferred entry, with a test that reds if the
-  non-option children return.
-- `src/App.tsx` — the disk-font decline: re-derived and restated against D-16.1, or lifted; **and the
-  reasoning recorded in the code comment**, which is where 8.6 put the last one.
-- `src/App.tsx` — `Add fonts…` and `⌘G` open the browser; `src/shortcuts.ts` if the shortcut lands.
-- `src/App.tsx` — the status line's font count, as the design's own status bar states it.
-- `src/App.css` — a treatment for the third group in the existing token vocabulary.
-- Tests: group membership is disjoint and complete; picking from the store embeds without a fetch and
-  moves the row; the keyboard walk crosses all three groups in one sequence; accessible names unchanged;
-  the listbox reds if regressed.
+- [ ] `src/font-index.ts` — **repair `offeredFamilies` to return the order its own doc comment already documents.** Collect stored rows into their own list inside the `webFamilies` loop and return `[...local, ...stored, ...orphanedStored, ...web]`. **This is a defect fix with independent standing: the function contradicts its own documentation at `:148-150`, and the grouping ruling
+      was grounded on the half that lies.** After it, the control groups and labels the union and does
+      not reorder it.
+- [ ] `src/font-index.test.ts` — **assert the union arrives as exactly TWO runs under `familyIsInstalled` (installed, then not), with a stored face planted at a deep web position.**
+      Assert the **run structure, not a row list** — a test naming families re-pins to the snapshot and
+      rots at the next index bump. This test reds today.
+- [ ] `src/font-index.ts` — amend the comment at `:50-62`, which states the name means the `stored` arm
+      and *"does NOT mean this arm plus the local arm"*. **A module that contradicts the shipped
+      heading is worse than either reading.** The same claim is made in three further places and all
+      four are amended together: `scripts/host-font-access.mjs:13` and `:183`, and `font-browser-model.ts:17`. **A defect that exists in four places is four.**
+- [ ] `src/App.tsx` — partition `matches` into the three groups, then render. **Groups 1 and 2 render in full; the cap becomes `webGroup.slice(0, renderedFamilyLimit)`.** The cap's own comment says
+      *"this bounds the DOM and never the claim"* — a cap applied before the partition breaks that.
+      Move the "Showing N of M" line into group 3 and have it name the population it counts.
+- [ ] `src/App.tsx` — **group 2 is deliberately uncapped, with a NAMED revisit trigger written into the
+      comment: revisit when a store can hold on the order of 200 entries.** A silent unboundedness is
+      the thing this epic has spent the week correcting.
+- [ ] `src/App.tsx` — fix the listbox: **all six** `role="presentation"` children plus whatever the third heading adds. `role="group"` with `aria-label`, or the notes moved out of the `<ul>` and referenced by `aria-describedby`. **The heading interleave at `:2065-2070` is replaced by this
+      change, which is what keeps the keyboard walk order-agnostic.** Add the assertion that reds if
+      non-option children return — nothing pins the presentation role today (0 assertions over 67
+      test/spec files), so the fix is otherwise unguarded.
+- [ ] `src/App.tsx` — the three headings, `IN THIS TEMPLATE` / `AVAILABLE LOCALLY` / `AVAILABLE TO INSTALL`; a heading suppressed only when its own group is empty after filtering. **Do not rewrite `familySourceNote` and do not duplicate it into the heading** — the heading names the
+      place, the per-row note names the act, and both already ship.
+- [ ] `src/App.tsx:1759` — **rename the store panel's label to `TYPEFACES THIS DESIGNER HAS DOWNLOADED`**, dropping the borrowed `AVAILABLE LOCALLY —` prefix. Measured: `AVAILABLE LOCALLY` occurs **exactly once across all six mockup files**, at `Font Browser.dc.html:219`, and it is the
+      dropdown's group heading; **the design draws no machine-store panel at all.** The store panel
+      borrowed a label from a control that did not yet exist. This removes a deviation rather than
+      adding one.
+- [ ] `src/App.tsx:1938`, `src/font-store.ts:470` — follow the rename in the **removable branch only**. `lateEmbedRefusal`'s non-removable branch is already correct and **must not be touched**: a
+      local-tier face genuinely has nothing to remove.
+- [ ] `src/font-store.test.ts:284`, `src/App.font-store.test.tsx:665` — re-point the two `/AVAILABLE LOCALLY/` assertions. **Each must still assert a pointer to a removal control that
+      actually exists, not merely that some string is present** — re-pointing a place-keyed guard
+      relocates its blind spot unless the property it asserts is restated with it.
+- [ ] `src/App.tsx:2082` and its comment at `:2079-2081` — **re-derive the disk-font decline against
+      THREE premises and record the working in the code comment.** (1) REVERSED, D-16.1: the catalogue
+      is no longer the only source. (2) STANDING, D-16.2: faces already on the authoring machine are
+      never enumerated or read. (3) NEW, D-16.R.46 Q4: *"installing is only ever a precursor to
+      embedding, and embedding is the step the licence requirement gates."* The conclusion holds and
+      premise 3 is why it holds more firmly: a fetched face arrives with its `OFL.txt` and its name
+      table, a file dragged off a desktop arrives with neither, so it cannot be embedded — and because
+      installing exists only to lead to embedding, it cannot usefully be installed either. **It would
+      be a dead end with a friendlier first click.**
+- [ ] `src/App.tsx:1479` — the status bar states the font count **and nothing else new**: *"N fonts in template"* off `families.length`, which is `IN THIS TEMPLATE`'s own predicate, so
+      both surfaces teach one model from one source. **No grid, no snap, no selection content.** The
+      mockup's `s.added.length` binding is refused for D-16.R.72's reason, and its hardcoded `"3 fonts in template"` else-branch is placeholder data, not a spec. **If it needs more than the
+      count, it splits and returns to the orchestrator.**
+- [ ] `src/App.css` — a treatment for the third group in the existing token vocabulary. **No new token, no colour literal, no `border-radius` that is not `var(--radius-*)`, no gradient, and no `@media`** — `canvas-authority-contract.test.ts:230` permits App.css exactly one, and it is `prefers-reduced-motion: reduce`. Leave `.property-options`' box-shadow alone (DW-178).
+- [ ] Tests — group membership disjoint and complete; a heading suppressed only on its own empty group;
+      picking from `AVAILABLE LOCALLY` embeds with no fetch and moves the row; picking from `AVAILABLE TO INSTALL` sends no engine command and no property commit; the keyboard walk crosses all three
+      groups in one sequence; the six-child listbox regression reds.
 
 **Acceptance Criteria:**
-- Given the control, when opened, then it draws the design's three groups, its filter field and its
-  `Add fonts…` footer.
+- Given the control, when opened, then it draws three groups on the (declared?, `familyIsInstalled`?) axis, its filter and its `Add fonts…` footer, and no group's heading is drawn over a member it does
+  not show.
+- Given a face this machine holds whose family sits deep in the index, when the control is opened with
+  no query, then that face appears under `AVAILABLE LOCALLY` — which is false at HEAD and is the
+  measurement this story turns green.
+- Given the union, when `offeredFamilies` returns, then rows satisfying `familyIsInstalled` form
+  exactly one contiguous run, matching the order the module documents.
 - Given a font in any group, when the author reads it, then its relationship to the file is legible
   without explanation, and it changes group only because the author acted.
-- Given a font in `AVAILABLE LOCALLY`, when picked, then it is embedded from the store with no fetch,
-  as one command and one undo, and it moves to `IN THIS TEMPLATE`.
-- Given the disk-font decline, when the control is rebuilt, then it is restated with its current reason
-  or removed deliberately, and the choice is recorded.
+- Given the disk-font decline, when the control is rebuilt, then it is restated or removed against all
+  three premises, and the derivation is in the code comment.
 - Given the listbox, when read by assistive technology, then it owns only options, and a test reds if
   that regresses.
-- Given the e2e specs, when they compile, then every accessible name they address still resolves.
+- Given the store panel and the dropdown group, when both are on screen, then no two differently
+  populated regions share one name.
+
+## Spec Change Log
+
+- **2026-09-03, plan gate at `b8431c4` — the `<intent-contract>` was TRANSCRIBED, not preserved
+  verbatim.** Step-02's draft-resume rule preserves the frozen block; it is declined here because the
+  orchestrator reset this spec from `ready-for-dev` to `draft` (D-16.R.58) precisely so its contract
+  could be amended, and D-16.R.33 parked nine ruled changes for application at this gate. Pre-edit
+  contract md5 `88c7de19c0dcf8a0a8292cab82152574` over lines 29-90. `baseline_commit` moved from `a40c34d` (where the contract was written) to `b8431c4` (where its anchors were measured).
+- **Six contract edits, all ruled.** Always bullet 1 replaced with D-16.R.72's three-group text · the
+  *"Open with an empty store"* matrix row was **false** (the 31 local faces are always present) · the
+  `AVAILABLE LOCALLY` pick row said **"one command and one undo"**, which **16.5 falsified — it is two commands and two undos** (`commitFirstUse`, `App.tsx:2011-2024`); this is a closed story's frozen
+  text falsified by a later story, recorded here rather than corrected silently · a new matrix row for
+  the install pick · `⌘G` struck from the `Add fonts…` row (D-16.R.33 R2) · a new Always clause and a
+  new Block If for the heading-truth rule that Q2's measurement forced.
+- **Two premises in the record were measured false at this gate.** `font-index.ts:148-150` documents an order `offeredFamilies` does not produce, and D-16.R.33 R1's *"16.4 adds headings rather than
+  plumbing"* rested on it. The repair is now a task with independent standing. Separately, the
+  amendment block's own line anchors were stale as it predicted; all were re-measured.
+- **The keyboard-walk rebuild I proposed was withdrawn after an element-by-element audit.** `move()`, `active`, the option ids, `aria-activedescendant`, `aria-selected` and `choose()` are all order-agnostic; the single position-reading element is the heading interleave at `:2065-2070`, which the listbox fix replaces. The story grows by a reorder, a partition and one `slice` — not a second
+  deliverable.
 
 ## Design Notes
 
 **Why the flat list survives three groups.** 8.6's comment is explicit: the options are one flat list
-because the keyboard is linear even when the list is not, and splitting the markup would split the
-arrow-key walk with it. Three groups is more headings interleaved into the same single list, not three
-lists — which is also exactly why the `role="presentation"` defect gets worse and has to be fixed here.
+because the keyboard is linear even when the list is not. Three groups is more headings interleaved
+into the same single list, not three lists — which is exactly why the `role="presentation"` defect gets
+worse and has to be fixed here.
 
-**The decline is the interesting part of this story.** D-8.6.1 declined disk fonts because the
-catalogue was the only source that could supply licence terms. D-16.1 removes "the catalogue is the
-only source" — but not the reason: a fetched face arrives **with** its `OFL.txt` and its `name` table,
-and a file dragged off a desktop arrives with neither. The premise moved and the conclusion probably
-did not, which is precisely the case where a team carries a sentence forward without re-reading it.
-Writing the new derivation down is cheap; discovering later that nobody checked is not.
+**Why the order repair is not scope creep.** Grouping over a flat list is only *labelling* if the list
+is already ordered by group. It is not, and the sentence claiming it is was written above the function
+rather than measured over it. **A comment is not a measurement.** Every earlier instance of this
+epic's signature defect had a tool answering more narrowly than its name implied; this one had no tool
+at all, and was findable only by execution.
 
-## PENDING GATE AMENDMENTS — read before implementing (added 2026-09-03 by the orchestrator)
-
-*Non-normative. These are RULED changes to this spec, recorded here so they are not lost, but NOT yet
-applied. They are applied at this story's own plan gate, not now — see the reason below.*
-
-**Why they are not applied yet.** This spec was planned at `baseline_commit: a40c34d` and approved
-before 16.0, 16.1, 16.1b and 16.1a landed. Its `## Code Map` line anchors are therefore stale by
-construction (D-16.R.28), and Story 16.2 lands before this one, which will rot them again. Re-verifying
-them now would be work done twice and trusted once. Anchors are re-verified at this story's gate,
-against the tree as it stands then.
-
-**Anchors known stale at `8a9e297`** (indicative, re-measure at the gate — do not trust these numbers
-either): the document-scoped face registration cited as `:186-224` is at `:232-243`; `pickCatalogueFamily`
-cited as `:608-627` is at `:660`; `FontFamilyProperty` cited as `:1296-1380` / `:1284-1380` begins at
-`:1385`; the disk-font decline cited as `:1366` is at `:1474`. `App.css:210-223` and
-`e2e/component-properties.spec.ts:35-60` were checked and are still correct.
-
-**Ruled changes to apply at the gate (D-16.R.33):**
-
-0. **ITS MIDDLE GROUP IS NOW FALSE, AND THIS SPEC WAS RE-OPENED FOR IT.** `status:` was
-   `ready-for-dev`, which routes a dispatch **straight to implementation, skipping the plan gate**. Reset
-   to `draft` on 2026-09-03 so the next dispatch re-plans instead (D-16.R.58). The reason: this spec
-   defines `ADDED FROM WEB FONTS` as *"what this session fetched **into the file**"*, and OWNER DECISION
-   D-16.R.46 separates installing from embedding — **so adding from web fonts INSTALLS, and that
-   definition is false.** The mockup's three groups survive; the middle one is redefined as *installed
-   this session* or collapsed into `AVAILABLE LOCALLY`. A `ready-for-dev` spec asserting a superseded mechanism is a
-   loaded gun for the next dispatch, and it was found by 16.5's builder rather than by anything watching
-   this file.
-
-   **RULED 2026-09-03 (D-16.R.72) — NEITHER ARM. The three groups are re-derived onto the axis the code
-   already forks on.** Both candidate answers left the `web` tier — the largest population of rows the
-   control offers — under no heading at all, which is why the fork looked binary and was not. Paste-ready
-   contract text, replacing Boundaries → Always bullet 1 in full:
-
-   > 1. `IN THIS TEMPLATE` — the document's declared chains (`families.includes(name)`). **The bytes are
-   >    in the file.**
-   > 2. `AVAILABLE LOCALLY` — `familyIsInstalled(source)` is true: the `local` **and** `stored` arms.
-   >    **On this machine, not in this file.** Picking embeds and commits the property in one gesture,
-   >    two commands, no network.
-   > 3. `AVAILABLE TO INSTALL` — the `web` arm. **Not on this machine.** Picking installs; nothing enters
-   >    the file.
-
-   **The axis is *where are the bytes*, never *when did it arrive*.** A row's group is a pure function of
-   (declared?, `familyIsInstalled`?) — never of a session-scoped set. This story's own `Never:` clause
-   (*"a group whose membership changes without an author action"*) refuses the recency reading in the
-   spec's own words, and the degraded store confirms the partition rather than straining it: when the
-   store cannot be opened, `installFamily` embeds immediately and says so, so a row jumps 3 → 1 and every
-   heading stays true.
-
-   **Three carriers tell the author where the bytes are, and two already ship.** The HEADING names the
-   place (in the file / on this machine / neither) — the install-vs-embed distinction said as a location
-   instead of a verb. The PER-ROW NOTE names the act: `familySourceNote` (`src/font-index.ts:283-297`)
-   already returns *"— use it, already on this machine"* / *"— use it, already downloaded to this
-   machine"* / *"— install on this machine"*. **Do not rewrite it, do not duplicate it into the
-   heading.** The MOVE is the confirmation: 8.6's *"nothing says 'added', the entry simply moves"* becomes
-   load-bearing **only** under this partition — install moves a row 3 → 2, first use moves it 2 → 1, each
-   caused by an author action and nothing else. That is why a healthy install returning silently is
-   correct rather than a gap.
-
-   **The `local`/`stored` split stays invisible in the grouping.** It is a provenance difference with no
-   consequence at the moment of choosing — both embed with no fetch, both carry a licence record — and
-   surfacing it would be the fourth group this spec forbids.
-
-   **WHY THIS IS A RULING AND NOT AN OWNER ESCALATION, stated because it widens an OWNER decision's
-   words.** D-16.2 (OWNER) says *"`AVAILABLE LOCALLY` is fetched faces, never host fonts"*, and this
-   heading will contain 31 faces nobody fetched. The clause's load-bearing half is **never the OS font
-   list**, and `src/host-font-access.test.ts` remains its tripwire, untouched: the 31 are committed to
-   this repository, machine-local, and are not host fonts. **Decisively, 16.2 delegated this exact
-   question rather than settling it** — `src/font-index.ts:57-63` reads *"WHAT THE DROPDOWN GROUP OF THAT
-   NAME ENDS UP CONTAINING IS STORY 16.4'S TO DECIDE … whether the 31 shipped local-tier faces are shown
-   under that heading, under their own, or under neither."* The chosen arm is one of the three it names.
-   **The tension is real and is disclosed to the owner at the epic gate as deviation row ten; it is not
-   hidden inside an implementation.**
-
-6. **`src/font-index.ts:50-56` MUST be amended in the same change.** It currently states the name means
-   the stored arm and *"does NOT mean this arm plus the local arm"* — the exact reading this ruling
-   adopts. **A module that contradicts the shipped heading is worse than either reading**, and leaving it
-   is the record-vs-reality drift this epic has found five times (DW-171, 177, 179, 180, 182).
-
-7. **Matrix row *"Open with an empty store"* is FALSE as written.** The `local` tier is 31 committed faces
-   that are always present, so a fresh machine shows `IN THIS TEMPLATE` plus a **populated**
-   `AVAILABLE LOCALLY` plus `AVAILABLE TO INSTALL`. **A heading is suppressed only when its own group is
-   empty after filtering.**
-
-8. **Matrix GAINS a row:** pick from `AVAILABLE TO INSTALL` → face installed, **no engine command, no
-   property commit**, row moves to `AVAILABLE LOCALLY`. Store-unavailable degradation embeds instead, the
-   row moves to `IN THIS TEMPLATE`, and `storeUnavailableEmbedNote` says so.
-
-1. **The registered listbox defect is SIX, not four — and the AC as written is unsatisfiable.** This
-   spec names `role="presentation"` children at `:1355`, `:1361`, `:1363` and `:1366`. Measured at
-   `8a9e297` there are **six**: `1456`, `1462`, `1463`, `1469`, `1470`, `1474`. Story 16.1 added two of
-   them (the index disclosure and the "Showing N of M" line) **after** Story 8.6 registered the finding.
-   The fix must sweep all six plus whatever the three groups, the filter field and the footer add — not
-   the four this spec enumerates. Same shape as D-16.R.18: a defect that exists in six places is six.
-2. **R1 — SUPERSEDED IN PART 2026-09-03 by D-16.R.72, corrected here in place rather than left to read
-   as current.** The membership is **`familyIsInstalled(source)` — the `local` and `stored` arms
-   together** — not the `'stored'` arm alone. **The half of R1 that still stands is unchanged and is
-   exactly what the ruling does:** *"this story groups and labels the union and does not reshape it."*
-   Original text, retained so this correction is legible: *"The group's membership comes from Story 16.2's
-   `FamilySource` `'stored'` arm; this story groups and labels it and does not reshape the union."* 16.2 builds the union arm so every exhaustive switch reds until
-   this story handles it — the tier cannot be silently dropped.
-3. **R2 — the footer row carries `Add fonts…` only.** Replace *"`Add fonts…` and `⌘G` open the browser;
-   `src/shortcuts.ts` if the shortcut lands"*: the browser is Story 16.3's and this story's footer opens
-   it. **No hint glyph is rendered**, the mockup's `⌘G` label is not carried, and `src/shortcuts.ts` is
-   untouched. See 16.3's note for the reasoning.
-4. **RE-DERIVE Story 8.6's disk-font decline against D-16.1 — an obligation registered NOWHERE else.**
-   The tracker note that carried it has been stripped; half of it was DW-141, and this half had no home
-   (D-16.R.45). 8.6 declined disk fonts under a premise D-16.1 has since **reversed** — the catalogue is no
-   longer the only source. The conclusion probably still holds, because D-16.2 leaves *"No host fonts"*
-   standing as the one Non-goal clause D-16.1 does not touch. **But "probably" is the state a sentence is
-   in when nobody has re-read it**, and this is exactly the case where a premise moves and the sentence
-   built on it gets carried forward unexamined. Re-derive it explicitly and record the reasoning in the
-   code comment, which is where 8.6 put the last one.
-5. **The disk-font decline sentence is pinned by an exact-string test** at `App.test.tsx:1353`, against
-   `App.tsx:1474`. Restating or lifting that sentence **will red that test by design** — which is
-   correct behaviour, and is written here so it is expected rather than discovered mid-implementation.
+**Why `AVAILABLE LOCALLY` contains 31 faces nobody fetched.** D-16.2 (OWNER) says the group *"is
+fetched faces, never host fonts"*, and this heading widens that. It is a ruling and not an override
+because 16.2 delegated this exact question rather than settling it (`font-index.ts:57-63`), and the
+clause's load-bearing half — *never the OS font list* — is untouched, with
+`src/host-font-access.test.ts` still its tripwire. Deviation row ten, owner-visible at the epic gate. **Why `lateEmbedRefusal`'s two branches are not contradictory.** The `local`/`stored` split has no
+consequence when *choosing* a font and a real one when *removing* it. The grouping hides it at pick
+time; that sentence correctly surfaces it at removal time. The product already speaks about the
+asymmetry in the right place.
 
 ## Verification
 
-- `cd folio-designer && npm run test && npm run test:e2e:compile && npm run build`
-- `cd lint && go test -count=1 ./...`
-- `cd folio-go && go test -count=1 ./...`
-  **`-count=1` is mandatory** (DW-168, narrowed by D-16.R.31): CI already passes it everywhere, so the
-  live residue is exactly this by-hand path — and this story touches no Go, the condition under which a
-  filesystem-walking Go test replays a stale green.
+**Nothing in Epic 16 is CI-verified.** The designer CI job halts at `npm run test` (DW-171), so the six
+later steps have not run for as long as DW-152 has been red. Every gate below is a local measurement
+with no machine watching. Repair is scheduled immediately after this story (D-16.R.44).
+
+**Commands** — run each on its own line; a conjunction silently drops everything after its first
+known-failing term, and `npm test` exits 1 on DW-152.
+- `cd folio-designer && npm test` — expect **672 passed / 1 failed of 673 across 55 files**, `rc=1`. Match the red by NAME, not count: `canvas-authority-contract.test.ts:190`, received array exactly `["e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"]`. **A matching count with a different
+  name is a regression.** The count will rise as this story adds tests; the name set must not.
+- `cd folio-designer && npm run typecheck` — `rc=0`.
+- `cd folio-designer && npm run lint` — `rc=0`, **exactly 4** `only-export-components` warnings.
+- `cd folio-designer && npm run test:e2e:compile` — `rc=0`.
+- `cd folio-designer && npm run build` — `rc=0`.
+- `cd lint && go test -count=1 ./...` — four `ok`. **`-count=1` is mandatory** (DW-168): the rules package walks the directory and Go's cache does not track `ReadDir`, so a cached `ok` is no
+  measurement at all.
+- `cd folio-go && go test -count=1 ./...` — expect `rc=1` with the failing leaf set **exactly** `TestCorpusMeetsP6ExerciseFloors` + `P6g_(opaque_names)`, the mandated permanent red. This story
+  touches no Go; if anything else moves, the cause is upstream of this epic.
+- Take every exit code from `$?` **immediately** after the command, never through a pipe or a trailing `echo`. The shell is zsh: `${PIPESTATUS[0]}` is wrong here. Run each module's commands in their own invocation — a `cd` persists and breaks a later relative path into a message that reads like a pass.
+
+**Standing rules, re-run and never cited:**
+- **The per-row matrix audit reports N rows, N results — never a single verdict.** Any row whose only
+  assertion calls the production function directly rather than driving the path is **FAILED, not
+  passed**. A row covered only at module level is a **PARTIAL**; never upgrade a partial to a pass.
+- **The identifier sweep:** every `DW-\d+` cited in this story's artifacts must resolve to a **definition line** in `deferred-work.md` (182 definitions at this gate). **A citation is verified by
+  locating its definition, never by re-reading the citation.**
+- **A COMMENT IS NOT A MEASUREMENT.** Where a claim depends on an ordering, an invariant or a bound,
+  the evidence is a **run** — not the sentence above the function.
+- **State the population beside every zero**, read the matches rather than the count, and pair every
+  absence claim with a positive control that must produce hits. An unquoted `grep --include=*.ts` dies
+  in zsh printing nothing, which reads exactly like a clean result.
+
+**Guards that red on PROSE, including comments, in the file this story edits:**
+- `file/file-access-contract.test.ts:70` bans `cloud|sync|recent files|collaborator|account` case-insensitively over App.tsx raw text. `asScanned` blanks comments **only** for `font-store.ts`.
+- `host-font-access.test.ts` bans `queryLocalFonts`, `navigator.fonts`, a **quoted** `local-fonts`, and `FontData`. The re-derivation comment must state its rationale without naming the API — which is possible: `App.tsx:1767` already ships that rationale in prose and the guard is green over 129 files.
+- `property-prose-height.test.ts:38-43` — exactly ONE `<input>` may wear `property-value-prose`.
+- `canvas-authority-contract.test.ts:230` — App.css may contain exactly one `@media`. **Expected reds, by design, not surprises:** `App.test.tsx:1504` pins the disk-font sentence as an
+**exact whole-element** `getByText` match, so restating **or deleting** it reds (a `getBy*` throws on
+zero). `App.test.tsx:1488-1489` pins today's two heading literals. Correct these with the change and
+say so in the Delivery Log; **if an existing test asserts today's interleaved order, it is pinning the
+divergence from the doc comment and is corrected with it — say so rather than editing it quietly.**
+
+**Manual checks:**
 - A browser run: open with an empty store and with a populated one; pick from each group; walk the list
-  by keyboard end to end.
-- The 23 golden digests, unmoved.
+  by keyboard end to end across all three groups.
+- `e2e/font-embed-boundary.spec.ts:128` is a **measured browser red** at the baseline. **Do not touch
+  it** — it is assigned to the post-16.4 CI repair, and two owners is how a ruled deferral vanishes.
+- The 23 golden digests, unmoved (`shasum` from the repo root; they live at `<root>/fixtures/`).
+
+**NOT RUN HERE — deferred to the epic catch-up by this run's heavy-test cadence, which gates `epic-16: done`:** the matrix corpora, the four AD-21 legs, `TestCrossTargetByteIdentity`, and the Playwright browser specs. **Naming them is the point.** The commands above are unit, type, lint, build and compile only, so **nothing measured here may be reported as evidence that the heavy suites pass** — and with CI halted at step 2 (DW-171) there is no machine that would say otherwise. A green gate list in this story means the gates in this list, and a report that does not say so is making the wider claim by omission.

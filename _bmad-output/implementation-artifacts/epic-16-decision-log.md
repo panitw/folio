@@ -3768,3 +3768,53 @@ since the function disagrees with its own documentation today, so reversing row 
 **Recorded as a repair in its own right rather than inside the deviation row**, which is what keeps the
 row's figure honest instead of inflating it with work that survives the reversal. It grew, but **not onto
 anything that hardens with time** (D-16.R.48's test), so it stays a gate disclosure.
+
+## D-16.R.75 — An exit code that is not portable between agents, and an accessibility fix witnessed only by jsdom
+
+**THE TENTH FALSE-MEASUREMENT MECHANISM, AND THE FIRST THAT IS ENVIRONMENTAL RATHER THAN AUTHORED.** 16.4's
+implementer measured `npm run lint` at **`rc=1`**, with the output `ESLint output (JSON parse failed: EOF
+while parsing a value at line 1 column 0)` — **a wrapper failing on oxlint's non-JSON output and exiting on
+its own behalf**, not the linter reporting a problem. It first reported this as a defect in the spec's gate,
+then **struck its own claim** on finding the cause.
+
+**I RE-MEASURED IN THIS SESSION: `npm run lint` returns `rc=0`** with exactly the same four
+`only-export-components` warnings, and `package.json:23` shows the script is a bare `oxlint`. **So the same
+command, on the same tree, returns different exit codes in different agent contexts.**
+
+**That is a worse property than a wrong exit code, and it is the generalisation to carry: AN EXIT CODE IS
+NOT PORTABLE BETWEEN AGENTS.** This run has agents relaying measurements to one another constantly — an
+implementer's gate result reaching a builder reaching a closer reaching this log. **A number that depends on
+who ran it cannot survive that chain**, and nothing in the number's appearance says which context produced
+it. **Rule: for any tool whose runner may be rewritten, the recorded measurement is taken from the tool
+directly** (`npx oxlint`), with the `npm run` form kept only as the convenience spelling. The implementer's
+own fallback was the correct discriminator and it reached the right answer unaided.
+
+**Note also that its two measurements were `>/dev/null 2>&1; echo rc=$?`** — a redirect with `$?` read
+immediately, so **the zsh/`PIPESTATUS` trap (D-16.R.53) was correctly avoided and was not the cause.** It
+diagnosed past the obvious explanation rather than settling for it, which is why the finding is right.
+
+**The four warnings moved from `App.tsx:2141,2148` to `:2273,2280`** — consistent with a story that adds
+code. The gate pins **the count and the rule, not the lines**, which is why it still matches; the closer's
+16.5 record pinned the lines, and that pin is now stale by design rather than by drift.
+
+## THE ITEM THAT MATTERS MORE THAN THE EXIT CODE
+
+**This story replaced `<ul>`/`<li>` with `<div role="listbox">`/`<div role="option">` — an ACCESSIBILITY fix
+— and there has been no browser run. The real accessibility tree and the CSS are witnessed by nothing but
+jsdom.**
+
+**16.3's 6/6 browser result cannot be inherited across this change, because the change is to the DOM that
+result was about.** And the reason it has not been re-taken is **DW-180 biting for the third time**:
+Playwright's pinned `chromium_headless_shell-1208` is not installed, which is the unreproducible-witness
+defect I registered late at `deferred-work.md:8110`.
+
+**So the epic's last story ships its accessibility repair with jsdom as its only witness — and jsdom is
+precisely the layer that cannot see an accessibility tree the way a browser computes it.** This is not a
+gate failure and must not be recorded as one; it is **an uncovered claim**, and the Delivery Log must say
+so in those words rather than listing green gates beside it. **That is exactly what the `NOT RUN HERE` block
+I added at the plan gate exists to force** — *a green gate list means the gates in that list, and a report
+that does not say so is making the wider claim by omission.*
+
+**Correctly not restated:** the implementer did **not** re-run the two Go suites or re-shasum the 23
+fixtures, because the commit adds one designer test file and touches no Go, no CSS and no production code.
+**Standing from a prior baseline is honest; restating them as fresh measurements would not be.**
