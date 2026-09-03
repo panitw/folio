@@ -2971,3 +2971,57 @@ the closer **recorded the corrections in its own entry rather than editing anoth
 discipline as D-16.R.45's refusal to rewrite a triage header after the fact — **a correction applied to
 someone else's record by someone who did not take the measurement is a fabricated agreement.** This entry is
 where the corrections live.
+
+### D-16.R.58 — A `ready-for-dev` spec routes past its own plan gate, and a two-field diff finds three of them
+
+**Found by 16.5's builder while investigating something else**, then generalised into a check that
+immediately found two more instances in a closed epic.
+
+**THE 16.4 CASE.** `16-4-the-family-control-names-three-sources.md` sat at **`status: 'ready-for-dev'`**
+while `sprint-status.yaml` said `backlog`. The disagreement is not the finding. **The finding is that
+`ready-for-dev` routes a dispatch straight to step-03 IMPLEMENT, skipping CHECKPOINT 1 entirely** — and
+that spec defines its middle dropdown group as *"what this session fetched **into the file**"*, which OWNER
+DECISION D-16.R.46 makes **false**: adding from web fonts now **installs**.
+
+**So the next dispatch would have implemented a superseded mechanism with no gate to catch it.** Reset to
+**`draft`** so it re-plans, with the redefinition recorded in its pending amendments and the fork left to
+its own gate once 16.5 has shown what it actually builds.
+
+**What this says about the system, which is worth more than the fix: nothing routinely re-checks an
+approved spec against decisions taken AFTER it was approved.** A spec is gated once, at CHECKPOINT 1, and
+then trusted indefinitely. D-16.R.28 established that a spec's *anchors* rot; this establishes that its
+*premises* rot too, and unlike anchors there is no re-verification step that would notice. **It took a
+story planning something else to find it.**
+
+**THE GENERALISATION, and the builder proposed it rather than merely flagging its own case:** the gap is a
+**two-field diff — spec frontmatter `status:` against `sprint-status.yaml`** — which would have caught 16.4
+without a story stumbling into it.
+
+**Run immediately across all 55 specs carrying both fields. It found TWO MORE, and both are in the
+dangerous direction:**
+
+| story | spec says | tracker says |
+|---|---|---|
+| `5-9-a-canvas-the-browser-never-measures` | `in-progress` | **`done`** |
+| `5-10-preview-the-exact-production-document` | `in-progress` | **`done`** |
+
+**These are the D-16.R.30 shape, inverted from 16.4's and worse.** That entry ruled: ***"a status record must
+never claim more than the artifact it summarises"***, and reconciled 16.1a **downward** for exactly this
+reason — `done` beside an `in-review` spec asserts verified gates that nobody has verified. **Here the
+tracker claims `done` over two specs that say `in-progress`, in a CLOSED epic.** Either the specs were never
+advanced when the work finished, or the tracker was advanced when it was not. **From the records alone the
+two cases are indistinguishable, which is precisely why the rule exists.**
+
+**NOT FIXED HERE, deliberately.** Epic 5 is closed and long out of this run's attribution range; reconciling
+another epic's records mid-run is the unrelated churn that D-16.R.45's closer correctly declined when it
+left ~357 comment lines alone. **Registered as DW-181** with both stories named, the direction of the
+disagreement stated, and the resolution named as *establish which record is right by evidence, then move the
+other* — never by assuming the tracker.
+
+**And the check itself is the deliverable.** Three instances across two epics from one two-field comparison,
+found in under a minute, in a system that had produced four anchor-rot incidents and one superseded-premise
+near-miss without noticing any of them. **Registered as DW-182: make the spec-vs-tracker status diff a
+gate.** The natural home is the same post-16.4 infrastructure item that already carries DW-171's CI repair,
+DW-177's dependency pin, DW-179's CRLF normalisation and DW-180's browser pin — every one of them a case of
+*the record and the reality drifting with nothing watching*, which is now this epic's most-repeated finding
+in any medium.
