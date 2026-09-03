@@ -4016,3 +4016,64 @@ author/prover separation, and it is the one review activity a degraded API could
 adversarial review layer has run against the current tree. The re-derived findings, the 12-row per-row
 matrix audit and the identifier sweep all remain outstanding. **Two pins verified is two pins, not a
 review.**
+
+## D-16.R.80 — Fifth death; the two standing verification rules discharged by hand, and what that still does not amount to
+
+**A fifth agent died on 529 seconds after launch. Subagent dispatch is not currently viable; this session's
+own calls succeed.** So I ran the two standing rules myself. **They are measurements, not authorship, and I
+authored neither the code nor the tests — which is the correct side of author/prover separation rather than
+a workaround for it.**
+
+### IDENTIFIER SWEEP — clean, two populations, with both controls
+
+- **Register:** **187 heading lines, 182 distinct identifiers.**
+- **Population 1 — the 10 epic-16 artifacts:** **37 distinct cited, 37 resolved, 0 unresolved.**
+- **Population 2 — 625 tracked files** under `folio-designer/src`, `folio-go`, `lint`: **56 distinct cited,
+  56 resolved, 0 unresolved.**
+- **Negative control** `DW-99999` → **0**. **Positive control** `DW-180` → **1**. So a zero here means
+  *absent*, not *the sweep failed to run* — the discipline the epic's eight false zeros exist to enforce.
+
+**AND THE LEVEL-AGNOSTIC MATCH EARNED ITS KEEP IMMEDIATELY.** 187 lines against 182 identifiers looked like
+five duplicated register entries. **Reading the matches rather than the count showed all five are
+legitimate** — `### DW-N — …` definitions paired with `## DW-N IS CLOSED — Story X` closure markers, for
+DW-24, 25, 29, 35 and 36. **The earlier close reported 182 lines / 182 distinct because it matched `^### `
+only; both figures are correct for what each measured.** The instruction that came from a false zero
+(matching `^### ` when 19 decisions use `##`) turns out to also surface the closure record. Populations
+differ from earlier sweeps (503 / 547 / 625) **because the globs differ, and each is stated rather than
+reconciled by assertion.**
+
+### PER-ROW MATRIX AUDIT — 12 rows, 12 results, all DRIVEN, 0 PARTIAL
+
+| # | Row | Driving test |
+|---|---|---|
+| 1 | Open on a fresh machine | `App.test.tsx:1520` three groups, disjoint and complete |
+| 2 | Open with a populated store | `App.font-store.test.tsx:609`, `:1192` |
+| 3 | Pick from `AVAILABLE LOCALLY` | `App.font-store.test.tsx:555` two undo entries · `:386` no network |
+| 4 | Pick from `AVAILABLE TO INSTALL` | `App.font-store.test.tsx:495` row moves 3 → 2, then 2 → 1 |
+| 5 | …store unavailable | `App.font-store.test.tsx:649` row moves 3 → 1 in one step |
+| 6 | Pick a declared chain | `App.test.tsx:1475` commits the chosen chain |
+| 7 | More than 50 web families | `App.test.tsx:1546` — **red-proved by me at D-16.R.79** |
+| 8 | Stored face ranked deep | `App.font-store.test.tsx:609`, `:687` |
+| 9 | Filter field | `App.test.tsx:1568` heading suppressed only on its own empty group · `:1494` |
+| 10 | `Add fonts…` | `App.test.tsx:1405` **both halves** · four mounted tests open the modal |
+| 11 | Mixed selection | `App.test.tsx:1641` |
+| 12 | Keyboard walk | `App.test.tsx:1588` walks all three groups and wraps |
+
+**Row 3's earlier PARTIAL is confirmed closed.** Row 10 is the one worth recording, because **I first scored
+it uncovered and I was wrong**: my grep searched test *names* and the string lives in test *bodies*.
+Corrected by sweeping contents with a positive control (`Browse and embed` → 1 hit across 67 test/spec
+files). **Both halves of that row are asserted** — the positive by accessible name, and the negative by
+`App.test.tsx:1421`, *"a hint glyph beside an unbound key is a false label"*, `not.toMatch(/⌘|⌥/)`, which
+is **non-vacuous because the app renders ⌘ glyphs elsewhere** (`:661`) and the assertion is scoped to the
+control's own `textContent`. **A ninth instance of searching the wrong population, committed by me, inside
+the audit written to catch it.**
+
+### WHAT THIS DOES NOT AMOUNT TO — stated because the story's own Verification demands it
+
+**No adversarial review layer has run against this tree.** Everything above is *confirmatory*: it checks
+that stated claims hold. **It cannot find a defect nobody has named**, which is precisely what step-04's
+parallel hunters are for, and that is the part five dead agents have not delivered.
+
+**So 16.4 is: implemented, gated, browser-witnessed, matrix-audited 12/12, sweep-clean, with its two
+load-bearing pins verified and its cap ruling red-proved — and NOT reviewed.** Those are different claims
+and the record keeps them apart. **The story does not close on this.**
