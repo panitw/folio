@@ -2896,3 +2896,78 @@ argument in this log for the practice: the implementer's report was accurate on 
 because the assertion lives inside a regex, and its own build gate caught a TypeScript error it had
 committed after running the suite but before running the build.** Both were the builder's own. **A suite
 that passes is not a build that passes, and a type-checker cannot read a string.**
+
+### D-16.R.57 — CORRECTIONS to D-16.R.56, and the browser witness turns out not to name a build at all
+
+**Three disagreements found by 16.3's closer by re-measuring rather than relaying. Two are errors in this
+log; the third is an error in the orchestrator's own brief, and it is the failure D-16.R.49 was written to
+prevent.**
+
+**1. THE BROWSER WITNESS NAMES A BUILD IT NEVER RAN — and the real finding is that it cannot name one.**
+
+D-16.R.56 records the 6/6 browser run as `chromium-1217`; the story's *Verification as run* says
+`chromium-1228`; an earlier report said `1217/1223/1228 are real (336M/341M/344M)` while `chromium-1208 is
+still the 428K stub`. **Three identifiers for one run.**
+
+**Measured by the orchestrator:** Playwright is **1.58.2**. The cache holds `chromium-1208`, `-1217`,
+`-1223`, `-1228` at **428K, 336M, 341M, 344M** — and **`chromium-1208` contains no browser binary at all.**
+So the run cannot have used the revision Playwright pins.
+
+**The resolution is in the config, and it explains every divergent number:**
+`folio-designer/playwright.config.ts:11` — `executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+**The browser is selected by an environment variable each operator sets by hand**, against a cache holding
+four builds. Each agent pointed it at whichever build it found and reported that number as though it were a
+property of the run.
+
+**So the honest record is: the browser suite passed 6/6, and which Chromium executed it is not recoverable
+from the repository.** Not a fourth guess — **the correct entry is the uncertainty plus what would resolve
+it.** `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` is unset in the ambient environment, so it was exported per-run
+and is gone.
+
+**This is a witness that is real and unreproducible at once**, which is a worse property than either being
+absent or being pinned: DW-161's whole subject is *"the CORS facts become measurements the suite takes
+rather than notes somebody wrote"*, and a measurement nobody can re-take is closer to a note than it looks.
+**Registered as DW-180**, with the shape of the fix stated — pin the browser the way `-count=1` and the
+`d6d51f1` snapshot commit are pinned, so the witness names itself — and folded into the post-16.4
+infrastructure item beside DW-171, DW-177 and DW-179. **The 6/6 result stands; only its identifier is
+withdrawn.**
+
+**2. "+18 (641 → 659)" IS NOT A DELTA BETWEEN ANY TWO MEASURED POINTS.** Totals by `vitest list` at each
+commit: `0e3a291` **584** → `c4b6d1a` **635** → `0e9fa9a` **639** → `24b5d0d` **641** → `7820118` **642** →
+`e3f655b` **660**.
+
+**641 is the TOTAL at the third of five commits; 659 is the PASSING count at the fifth.** The figure
+subtracts a passing count from a total across different commits — **two different quantities at two
+different times, differenced as though they were one series.** Correct figures: **review phase +25
+(635 → 660)**, **whole story +76 (584 → 660)**, **0 tests removed or renamed at either boundary**. The +25
+accounts by name: `font-browser-model.test.ts` 7, `FontBrowser.test.tsx` 5, `App.test.tsx` 4,
+`font-index.test.ts` 3, `App.font-store.test.tsx` 3, `preview-face-registry.test.ts` 2,
+`design-contract.test.ts` 1 — and Group E's "seven new cases" across the two App files matches exactly.
+
+**This is the population error of D-16.R.54 in the time dimension rather than the set dimension:** a claim
+true of one measurement offered as evidence about another, where the two differ by a filter — here, by
+*passing* versus *total*, and by three commits.
+
+**3. THE DEVIATION COUNT IN THE ORCHESTRATOR'S CLOSING BRIEF WAS FOUR. IT IS SEVEN, PLUS TWO RATIFIED.**
+
+D-16.R.48 records **seven** unratified deviations and **two** owner-ratified ones to be included and marked
+as ratified — **nine rows**. The closer's brief said *"the four mockup deviations"*.
+
+**This is precisely the failure D-16.R.49 exists to prevent, committed by its author two entries later.**
+That ruling refused to drop a row because *"if 'we found a principled derivation for it' removes a row, the
+list becomes the deviations we were least confident about — curated by our own certainty, which is the one
+criterion that makes it useless."* **The brief did not drop rows by a principle; it dropped them by
+inattention, which produces the same short table.** Had the closer not held the brief against D-16.R.48,
+**the epic-gate table would have shipped short — and a table that claims to be the whole diff while being a
+subset is worse than no table.**
+
+**Consequence: the epic-gate deviation table is built from D-16.R.48 and D-16.R.49 directly, never from a
+brief's restatement of them.** Nine rows: seven ours with the reversal-cost column, two ratified and marked
+as such.
+
+**Two corrections deliberately NOT made to other agents' prose**, and the closer was right both times: the
+wrong Chromium identifier and the `+18` figure also appear in the builder's own Delivery Log section, and
+the closer **recorded the corrections in its own entry rather than editing another pass's record.** Same
+discipline as D-16.R.45's refusal to rewrite a triage header after the fact — **a correction applied to
+someone else's record by someone who did not take the measurement is a fabricated agreement.** This entry is
+where the corrections live.
