@@ -149,13 +149,39 @@ describe('the footer states what is about to go into the file', () => {
     expect(weightLine(0)).toBe('')
     expect(weightLine(1)).toBe('1 face · one upright Regular each, no bold or italic')
     expect(weightLine(3)).toBe('3 faces · one upright Regular each, no bold or italic')
-    // THE FOOTER MAY NOT SPEAK ABOUT SUBSETTING AT ALL, in either direction.
-    // The product DOES subset (at PDF render, over the glyphs the document
-    // uses), so both "subset latin+thai" and "whole file, not subset" are false
-    // sentences — the second shipped briefly and this is what catches it.
-    expect(weightLine(3)).not.toMatch(/weights|subset/i)
-    // AND IT MAY NOT NAME A DESTINATION, because Story 16.5 inverts it.
-    expect(weightLine(3)).not.toMatch(/template|file|document|embed|install/i)
+  })
+
+  // THESE ARE A SEPARATE `it` ON PURPOSE, AND THE REASON IS A DEFECT A RED-PROOF
+  // FOUND IN THE FIRST VERSION OF THEM.
+  //
+  // They used to sit under the exact-string assertions above. Vitest aborts an
+  // `it` at the first failing expectation, and an exact-string pin ENTAILS every
+  // vocabulary ban over the same input — so those bans could never be the first
+  // failure, and never executed. They read like guards and were documentation.
+  //
+  // The prover then showed what that cost: emitting the false clause for
+  // `staged === 2` alone shipped `2 faces · … · whole file, not subset, added to
+  // template` with the FULL SUITE GREEN, because every assertion here only ever
+  // looked at `staged === 3`. A guard pinned to one value of an input the
+  // function is parameterised over is a guard over one point, not over the
+  // function.
+  it('never speaks about subsetting or about a destination, at any staged count', () => {
+    for (const staged of [1, 2, 3, 4, 5, 12, 40]) {
+      const line = weightLine(staged)
+      // The product DOES subset (at PDF render, over the glyphs the document
+      // uses), so "subset latin+thai" and "whole file, not subset" are BOTH
+      // false. The footer may not speak about it in either direction.
+      expect(line, `weightLine(${staged}) speaks about subsetting`).not.toMatch(/weights|subset/i)
+      // AND IT MAY NOT NAME A DESTINATION, because Story 16.5 inverts it: today
+      // confirm embeds, and there it installs. Destination language lives in
+      // `confirmLabel` and `pendingLine`, which 16.5 revises in one place.
+      expect(line, `weightLine(${staged}) names a destination`).not.toMatch(/template|file|document|embed|install/i)
+      // And it still states the face fact, so this cannot be satisfied by
+      // returning nothing.
+      expect(line, `weightLine(${staged}) dropped the face fact`).toMatch(/one upright Regular each, no bold or italic/)
+    }
+    // The empty slot stays empty — the one staged count with no sentence at all.
+    expect(weightLine(0)).toBe('')
   })
 })
 

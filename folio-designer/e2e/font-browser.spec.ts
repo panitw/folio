@@ -106,9 +106,18 @@ test('staging several families states what is about to be embedded, and Escape d
   await add.nth(0).click()
   await add.nth(0).click()
   await expect(browser.getByText(/^2 families ready to embed/)).toBeVisible()
-  // THE FOOTER SAYS WHAT THIS PRODUCT ACTUALLY PUTS IN THE FILE — one upright
-  // Regular per family, whole — and not the mockup's "≈ N weights · subset".
-  await expect(browser.getByText(/2 faces · one upright Regular each · whole file, not subset/)).toBeVisible()
+  // THE FOOTER STATES ONE FACT ABOUT WHAT A FACE IS — one upright Regular per
+  // family, no bold and no italic — and deliberately NOT where it goes, because
+  // Story 16.5 inverts the destination. It also says nothing about subsetting in
+  // either direction: this product DOES subset, at PDF render over the glyphs the
+  // document uses, so "whole file, not subset" was as false as the mockup's
+  // "subset latin+thai" and shipped briefly before review caught it.
+  //
+  // THIS ASSERTION IS WHY THE BROWSER RUN IS NOT OPTIONAL. When the string was
+  // corrected in `font-browser-model.ts`, this line still matched the old one —
+  // and `test:e2e:compile` is `tsc --noEmit`, which cannot see inside a regex.
+  // Only executing it in a browser failed.
+  await expect(browser.getByText(/2 faces · one upright Regular each, no bold or italic/)).toBeVisible()
   await expect(browser.getByRole('button', { name: 'Add 2 to template' })).toBeEnabled()
 
   // ESCAPE DISCARDS THE STAGED SET AND LEAVES THE DOCUMENT UNTOUCHED. Nothing
