@@ -39,6 +39,28 @@ const withMachineStore = (): (() => void) => {
   }
 }
 
+/**
+ * WAITS UNTIL THE STORE REALLY HOLDS A FACE BY THIS FAMILY NAME.
+ *
+ * Story 16.6 deleted the machine-store panel, which the tests below used to
+ * poll via `.machine-font-name` as their settle condition for "the install
+ * finished" — the panel simply rendered whatever `storedFaces` held, so
+ * waiting on its DOM was a proxy for waiting on the write. Reading the store
+ * directly, past the designer, is the same wait with no deleted DOM to depend
+ * on. (`App.font-store.test.tsx` carries the identical helper; this file does
+ * not import from it, so it is repeated here rather than reached across.)
+ */
+const waitForStoredFamily = async (familyName: string): Promise<void> => {
+  await waitFor(async () => {
+    const opened = await openFontStore(globalThis.indexedDB)
+    expect(opened.ok, 'the fake store must open, or reading it back asserts nothing').toBe(true)
+    if (!opened.ok) return
+    const listed = await opened.value.list()
+    expect(listed.ok).toBe(true)
+    expect(listed.ok ? listed.value.map((record) => record.family) : []).toContain(familyName)
+  })
+}
+
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
@@ -1827,7 +1849,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       // THE SETTLE CONDITION IS THE FACE ARRIVING ON THIS MACHINE. There is no
       // command to wait on, and waiting on the absence of one would settle
       // before the resolution had even started.
-      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      await waitForStoredFamily('Kanit')
       // AND THE DOCUMENT DID NOT MOVE. No command means no revision, no history
       // entry and no undo — the whole of what "installing is not embedding" buys.
       expect(commandsSentBy(request)).toEqual([])
@@ -1901,12 +1923,16 @@ describe('typography controls over the engine-projected closed sets', () => {
       // A second pick inside the window, driven the same way the author would.
       pick()
       release()
-      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      await waitForStoredFamily('Kanit')
       // EXACTLY ONE RESOLUTION, ONE STORED ROW, AND NO COMMAND AT ALL. Two
       // resolutions would have written the same content-addressed record twice
-      // and, before 16.5, embedded the family twice.
+      // and, before 16.5, embedded the family twice. Read past the designer,
+      // rather than off the deleted panel, for the count.
       expect(fetchStub.mock.calls.filter((call) => String(call[0]).endsWith('METADATA.pb'))).toHaveLength(1)
-      expect(screen.getAllByText(/Kanit/, { selector: '.machine-font-name' })).toHaveLength(1)
+      const opened = await openFontStore(globalThis.indexedDB)
+      if (!opened.ok) throw new Error(opened.reason)
+      const listed = await opened.value.list()
+      expect(listed.ok && listed.value.map((record) => record.family)).toEqual(['Kanit'])
       expect(commandsSentBy(request)).toEqual([])
     } finally {
       globalThis.fetch = restore
@@ -1975,7 +2001,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       // selected, and replacing the document cleared the selection, so the
       // component is re-selected before the row is looked for.
       fireEvent.click(screen.getByLabelText('text component e1'))
-      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      await waitForStoredFamily('Kanit')
 
       // AND THE CONTROL IS STILL A CONTROL. A hold left behind by the replaced
       // document would make this return silently with nothing to show the author
@@ -2024,7 +2050,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
       fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
-      await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      await waitForStoredFamily('Kanit')
       const observed = noted.mock.calls.map((call) => String(call[0])).join('\n')
       expect(observed).toContain('ofl/')
       expect(observed).toContain('APACHE2')

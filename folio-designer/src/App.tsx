@@ -19,7 +19,7 @@ import { embedFontFamilyCommand } from './font-chain-command'
 import { scriptFallbackFaces } from './generated/font-catalogue'
 import { familyIndexDisclosure, familyIsInstalled, familySourceNote, offeredFamilies, type FamilySource } from './font-index'
 import { fetchWebFamily } from './font-source'
-import { openFontStore, storeUnavailableEmbedNote, storeWriteDegradation, storeWriteRefusal, storedFaceKey, type FontStore, type StoredFace } from './font-store'
+import { openFontStore, storeWriteRefusal, storedFaceKey, type FontStore, type StoredFace } from './font-store'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
 import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
@@ -176,13 +176,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // move it off the stylesheet's declared stack onto a family nothing
   // declares. See the registration effect below.
   const [carriedFaces, setCarriedFaces] = useState<ReadonlySet<string>>(NO_CARRIED_FACES)
-  // STORY 16.2 — THE MACHINE FONT STORE. Three values, and the third one is the
-  // degradation, which is state rather than a thrown error on purpose: a
-  // private window, cleared site data or a quota refusal must leave a WORKING
-  // designer with an empty group and a sentence, never an error the author
-  // cannot act on.
+  // STORY 16.2 — THE MACHINE FONT STORE. What this machine holds, kept for the
+  // family control's `AVAILABLE LOCALLY` group. A private window, cleared site
+  // data or a quota refusal leaves a WORKING designer with an empty group —
+  // Story 16.6 deleted the panel that used to say so on screen, deliberately
+  // reversing 16.2's stated-degradation clause.
   const [storedFaces, setStoredFaces] = useState<ReadonlyArray<StoredFace>>(NO_STORED_FACES)
-  const [storeNote, setStoreNote] = useState<string>()
   // WHETHER THIS BROWSER CAN KEEP TYPEFACES AT ALL. Optimistic until the store
   // answers, because the modal cannot be open before it has: flashing the
   // degraded copy and then withdrawing it would be a worse lie than either state.
@@ -286,15 +285,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // question whose answer cannot have changed, and clearing it per document
   // would delete the feature.
   //
-  // AN OPEN FAILURE IS STATED ONCE, NOT PER PICK. A browser with storage
-  // blocked is a standing condition, and reporting it on every pick would turn
-  // one fact the author can act on into a stream of noise they cannot.
+  // AN OPEN FAILURE SAYS NOTHING ON SCREEN (Story 16.6, reversing 16.2's
+  // stated-degradation clause by owner decision). A browser with storage
+  // blocked simply keeps `storedFaces` empty; the designer works and picks
+  // still embed straight into the document.
   useEffect(() => {
     let live = true
     const opening = openFontStore().then((opened) => {
       if (live) setStoreKeepsFaces(opened.ok)
       if (opened.ok) return opened.value
-      if (live) setStoreNote(opened.reason)
       return undefined
     })
     fontStore.current = opening
@@ -302,8 +301,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       const store = await opening
       if (!live || !store) return
       const listed = await store.list()
-      if (!live) return
-      if (!listed.ok) { setStoreNote(`The typefaces this designer keeps on this machine could not be read (${listed.reason}). Picking a family still fetches it.`); return }
+      if (!live || !listed.ok) return
       setStoredFaces(listed.value)
     })()
     return () => { live = false }
@@ -345,30 +343,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
 
   // The listing is re-read from the store rather than patched in memory, so the
   // store stays the single authority on what this machine holds. A refresh that
-  // fails leaves the previous listing standing and says what is degraded: a
-  // stale listing still picks correctly, because every pick re-reads the bytes.
+  // fails leaves the previous listing standing, silently — a stale listing
+  // still picks correctly, because every pick re-reads the bytes.
   const refreshStoredFaces = async () => {
     const store = await fontStore.current
     if (!store) return
     const listed = await store.list()
     if (listed.ok) setStoredFaces(listed.value)
-    else setStoreNote(`The typefaces this designer keeps on this machine could not be re-read (${listed.reason}).`)
-  }
-
-  // REMOVING AN ENTRY IS A MACHINE ACTION, NEVER A DOCUMENT ONE.
-  //
-  // No command is sent, no revision moves, no undo entry is pushed and no
-  // snapshot changes. A `.folio` that already embeds this face carries the
-  // bytes inside it (CAP-2), so removing the copy kept here cannot reach it —
-  // which is exactly why the affordance has to SAY so rather than leave the
-  // author to guess whether they are about to break a document.
-  const removeStoredFace = async (face: StoredFace) => {
-    const store = await fontStore.current
-    if (!store) return
-    const removed = await store.remove(face.key)
-    if (!removed.ok) { setStoreNote(`${face.family} could not be removed from this machine (${removed.reason}).`); return }
-    setStoreNote(`${face.family} (${face.style}) was removed from this machine. Documents that already embed it are unchanged — a .folio carries its own faces.`)
-    await refreshStoredFaces()
   }
 
   // STORY 16.3 — WHAT THE FONT BROWSER OFFERS, AND WHAT ITS SPECIMENS ARE SET IN.
@@ -993,11 +974,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // forbids.
     //
     // SO THIS BROWSER GETS THE OLD MODEL: the pick puts the font straight into
-    // the document, exactly as it did before this story, and the note says so in
-    // those terms. It is also the honest description of the mode — with nowhere
-    // to keep a face there is nothing to install, and embedding at once is the
-    // only way a web font can be used here. The machine store stays a
-    // convenience and never becomes a dependency.
+    // the document, exactly as it did before this story. It is also the honest
+    // description of the mode — with nowhere to keep a face there is nothing to
+    // install, and embedding at once is the only way a web font can be used
+    // here. The machine store stays a convenience and never becomes a
+    // dependency. Story 16.6 deleted the note that used to say this on screen
+    // (deliberate reversal, D-16.R.82) — nothing is said, here or anywhere.
     //
     // The property is NOT committed, because this is still the second arm of the
     // fork: Story 8.6's *"carry this typeface"* and *"draw this box with it"* stay
@@ -1005,7 +987,6 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (!(await fontStore.current)) {
       const rejected = await dispatchEmbed(face, responseGeneration, selectionKey, announce)
       if (rejected !== undefined) return rejected
-      setStoreNote(storeUnavailableEmbedNote(face.family))
       return undefined
     }
 
@@ -1050,18 +1031,18 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
    * A `local` row is read from the release's own content-addressed assets behind
    * the service worker; a `stored` row is read out of the machine font store. A
    * stored read can MISS: the entry may have been dropped as unsound between the
-   * listing and this read — the store self-heals by dropping, and says so — or
+   * listing and this read — the store self-heals by dropping, silently — or
    * removed in another tab. 16.2's matrix is explicit that this is SELF-HEALING,
    * *"entry treated as absent and dropped; refetch on next pick"*, and that is a
    * shipped contract this story may not amend. Refusing instead would convert a
-   * path that repairs itself into a permanent local failure the author could
-   * clear only by finding and pressing a removal control, and it would do it
-   * silently.
+   * path that repairs itself into a permanent local failure the author would
+   * have no way to clear, since Story 16.6 removed the only control that ever
+   * touched the store.
    *
    * THE FACE IS THEN WRITTEN BACK, which is the half that makes it self-healing
-   * rather than merely survivable. That write follows an embed, so its failure is
-   * 16.2's DEGRADATION and not this story's refusal — the document already has
-   * the face, and `storeWriteDegradation` is the sentence for exactly that.
+   * rather than merely survivable. That write follows an embed, so the document
+   * already has the face; a write-back failure is silent (Story 16.6) rather
+   * than stated, same as every other store degradation.
    */
   const embedInstalledFamily = async (source: FamilySource, responseGeneration: number, selectionKey: string): Promise<string | undefined> => {
     const refuse = (message: string) => refuseFontChain(message, responseGeneration, selectionKey, 'panel')
@@ -1076,7 +1057,6 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     holdFontChain(true)
     try {
       let embedded: ResolvedFace
-      let removable = false
       // Set when the bytes had to come over the network because the stored entry
       // was gone. They are worth writing back; a face read successfully OUT of
       // the store is deliberately not rewritten to it, because the record is
@@ -1087,14 +1067,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         if (read?.ok && read.value !== undefined) {
           const held = read.value
           embedded = { family: held.family, style: held.style, licence: held.licence, licenceText: held.licenceText, copyright: held.copyright, source: held.source, mediaType: held.mediaType, bytes: held.bytes, scripts: held.scripts }
-          removable = true
         } else {
           const outcome = await fetchWebFamily(source.family)
           if (!outcome.ok) return refuse(outcome.reason)
           if (outcome.face.layoutDivergence !== undefined) console.info(outcome.face.layoutDivergence)
           embedded = { ...outcome.face, scripts: source.record.scripts }
           refetched = true
-          removable = true
         }
       } else if (source.tier === 'local') {
         const face = source.face
@@ -1120,15 +1098,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // messages for one event, in whichever order React settled.
       setFontChainError(undefined)
       const rejected = await dispatchEmbed(embedded, responseGeneration, selectionKey, 'caller')
-      if (rejected !== undefined) return refuse(lateEmbedRefusal(embedded.family, embedded.style, removable, rejected))
-      // THE STORE HEALS AFTER THE EMBED, AND FAILING TO HEAL IS A DEGRADATION.
-      // The document has the face; what failed is keeping a copy for next time,
-      // which is precisely the distinction Story 16.2 drew and the one place
-      // under embed-on-use where it still applies.
-      if (refetched) {
-        const kept = await keepOnThisMachine(embedded)
-        if (kept !== undefined) setStoreNote(storeWriteDegradation(embedded.family, kept))
-      }
+      if (rejected !== undefined) return refuse(lateEmbedRefusal(embedded.family, rejected))
+      // THE STORE HEALS AFTER THE EMBED. The document already has the face, so
+      // a write-back failure here is silent (Story 16.6) rather than stated —
+      // there is nothing left for the author to act on.
+      if (refetched) await keepOnThisMachine(embedded)
       // THE PROPERTY COMMIT IS AUTHORISED HERE, NOT IN THE FAMILY CONTROL, AND
       // ONLY IF THE DOCUMENT AND THE SELECTION ARE STILL THE ONES THE AUTHOR
       // ACTED IN.
@@ -1163,11 +1137,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
    * DEGRADATION (Story 16.5 — see `installFamily` for why the ruling inverted).
    *
    * IT RETURNS THE REASON AND RENDERS NOTHING, because its two callers owe the
-   * author two different sentences. Under Story 16.2 this wrote a note into the
-   * store panel, because the pick had already succeeded and the note was a
-   * footnote to it — true of the FIRST-USE refetch path and false of an install,
-   * where the write IS the whole act. So the reason comes back bare and the
-   * caller chooses between `storeWriteRefusal` and `storeWriteDegradation`.
+   * author two different treatments. `installFamily` turns a non-`undefined`
+   * reason into a refusal via `storeWriteRefusal`, because the write IS the
+   * whole act there. `embedInstalledFamily`'s write-back after a refetch is the
+   * one place under embed-on-use where the document already has the face, so it
+   * discards the reason and stays silent (Story 16.6) rather than stating it.
    * `undefined` means the face is on this machine.
    *
    * Everything `embedFontFamily` requires travels into the store WITH the bytes
@@ -1470,7 +1444,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} storeNote={storeNote} onRemoveStoredFace={(face) => void removeStoredFace(face)} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onFontChainCommand={(payload, control) => void applyFontChain(payload, control, documentGeneration.current, selected.join(','))} onPickFamily={(source) => void pickCatalogueFamily(source, documentGeneration.current, selected.join(','))} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -1692,7 +1666,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, storeNote, onRemoveStoredFace, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; storeNote?: string; onRemoveStoredFace: (face: StoredFace) => void; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, defaultFontSize, onCommit, onFontChainCommand, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; defaultFontSize: number; onCommit: CommitProperties; onFontChainCommand: (payload: ArrayBuffer, control: FontChainControl) => void; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -1725,7 +1699,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<MachineFontStore faces={storedFaces} note={storeNote} onRemove={onRemoveStoredFace} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} components={components} ids={ids} onCommit={onCommit} onPickFamily={onPickFamily} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} chainsOpen={chainsOpen} onToggleChains={() => setChainsOpen((open) => !open)} />{chainsOpen && <FontChainEditor chains={fontChains} busy={fontChainBusy} error={scopedChainError} onCommand={onFontChainCommand} />}<div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1741,54 +1715,6 @@ function ComponentProperties({ components, fontFamilies, fontChains, defaultFont
 // colour alone — and the control is a plain, visibly-labelled button, so
 // both the accessible name and keyboard/focus behaviour come from the same
 // existing button pattern every other file/pick control in this panel uses.
-// STORY 16.2 — THE TYPEFACES THIS MACHINE HOLDS, AND THE AFFORDANCE THAT LETS
-// AN AUTHOR LET ONE GO.
-//
-// IT SAYS WHAT IT IS AND WHAT IT IS NOT, IN THE PLACE THE QUESTION IS ASKED.
-// Two misreadings are available and both are worth pre-empting rather than
-// leaving to be discovered:
-//
-//   "These are the fonts on my computer." They are not. This designer never
-//   enumerates, reads or feature-detects host-installed fonts — SPEC-fonts'
-//   *"No host fonts"* Non-goal — and this list is only what the designer itself
-//   has downloaded.
-//
-//   "If I remove one, my documents break." They do not. A `.folio` carries its
-//   own faces (CAP-2), so what is removed here is a copy kept to save a
-//   download. The sentence is written down rather than implied, because an
-//   author who has to GUESS whether a delete button reaches their saved work
-//   will simply never press it.
-//
-// THE SIZE AND THE DATE ARE SHOWN because they are the two facts an author
-// needs to decide which one to let go of, and both are already in the record.
-// Neither is read from the bytes: the listing carries them, which is why
-// rendering this list does not deserialize a single face.
-function MachineFontStore({ faces, note, onRemove }: { faces: ReadonlyArray<StoredFace>; note?: string; onRemove: (face: StoredFace) => void }) {
-  // A NAMED GROUP, so the list and its one status line can be found — by a
-  // screen reader and by a test — without either of them having to guess which
-  // of the panel's several live regions this one is.
-  return <div className="machine-font-store" role="group" aria-label="Typefaces downloaded to this machine">
-    {/* THE BORROWED HALF OF THIS LABEL IS GIVEN BACK (Story 16.4). It used to
-        read `AVAILABLE LOCALLY — TYPEFACES THIS DESIGNER HAS DOWNLOADED`, which
-        took the name of a dropdown group that did not exist yet. It exists now,
-        and it holds MORE than this panel does — every face this machine holds,
-        the release's committed catalogue included — so two differently
-        populated regions were sharing one name. The panel keeps the half that
-        describes what it actually lists. Measured: `AVAILABLE LOCALLY` occurs
-        exactly once across the six mockup files, as the dropdown's group
-        heading; the design draws no machine-store panel at all. */}
-    <p className="section-label">TYPEFACES THIS DESIGNER HAS DOWNLOADED</p>
-    {faces.length === 0
-      ? <p className="honest-note">No typefaces have been downloaded to this machine yet. Picking a family downloads it once and keeps it here, so the next document offers it with no download and no network.</p>
-      : <ul className="machine-font-list">{faces.map((face) => <li key={face.key} className="machine-font-row">
-        <span className="machine-font-name">{face.family}</span>
-        <span className="machine-font-meta">{face.style} · {Math.max(1, Math.round(face.byteLength / 1024))} KB · downloaded {face.fetchedAt}</span>
-        <button type="button" className="property-inline-action" aria-label={`Remove ${face.family} (${face.style}) from this machine`} title={`Remove ${face.family} from this machine`} onClick={() => onRemove(face)}>×</button>
-      </li>)}</ul>}
-    <p className="honest-note">These are typefaces this designer downloaded, kept in this browser on this machine — not the fonts installed on your computer, which this designer never looks at. Removing one frees the space and means the next pick downloads it again; documents that already embed it are unchanged, because a .folio carries its own faces.</p>
-    {note && <p className="honest-note" role="status">{note}</p>}
-  </div>
-}
 
 function ImageSection({ component, onPick, available, busy, error }: { component: PanelComponent; onPick: (id: string) => void; available: boolean; busy: boolean; error?: string }) {
   const image = component.image
@@ -1930,9 +1856,10 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
 // A ROW'S GROUP IS A PURE FUNCTION OF (declared?, `familyIsInstalled`?) AND OF
 // NOTHING ELSE — never of a set built up over this session. The `local`/`stored`
 // split is deliberately invisible here: it is a provenance difference with no
-// consequence at the moment of choosing, and surfacing it would be a fourth
-// group. It surfaces where it does have a consequence, at REMOVAL, which is why
-// `lateEmbedRefusal` above still tells the two apart.
+// consequence at the moment of choosing. It used to surface at REMOVAL, in
+// `lateEmbedRefusal`'s two branches — Story 16.6 deleted the removal control
+// that distinction served, and the refusal below now says one sentence for
+// both tiers.
 //
 // AND A FONT CHANGES GROUP BECAUSE THE AUTHOR ACTED. Story 8.6's rule survives
 // three groups word for word: nothing says "added", the entry simply moves.
@@ -1965,22 +1892,18 @@ const renderedFamilyLimit = 50
  * authority over what enters a document — so it stays in Go, and the residue is
  * that a face can install successfully and be refused the first time it is used.
  *
- * A DEAD END THE AUTHOR CAN SEE AND CLEAR IS A STATED LIMIT; A DEAD END THAT
- * SIMPLY FAILS IS NOT. So the sentence says three things the engine's own
- * refusal cannot: that the face IS on this machine, that nothing was written to
- * the document, and where the control that removes it lives. That control is
- * already shipped — `MachineFontStore`'s per-face `Remove <family> (<style>) from
- * this machine` — and this points at it rather than growing a second one.
+ * A DEAD END THE AUTHOR CAN SEE IS A STATED LIMIT; A DEAD END THAT SIMPLY FAILS
+ * IS NOT. So the sentence says what the engine's own refusal cannot: that the
+ * face IS on this machine and that nothing was written to the document.
  *
- * A LOCAL-TIER FACE HAS NO SUCH CONTROL, because it ships inside the release
- * rather than in the machine store, so the tail says that instead of naming a
- * button the author will not find.
+ * ONE SENTENCE FOR BOTH TIERS (Story 16.6). It used to point at a per-face
+ * remove control for a stored face and say a bundled one had none — the
+ * distinction the family control's `local`/`stored` split still tracks above,
+ * for grouping only. That control is gone, so there is no remedy left to
+ * offer and nothing left to tell the two tiers apart by.
  */
-const lateEmbedRefusal = (family: string, style: string, removable: boolean, engineMessage: string): string =>
-  `${family} is installed on this machine and cannot be embedded in this document: ${engineMessage} Nothing was written to the document, and the face is still on this machine — `
-  + (removable
-    ? `remove it with the “Remove ${family} (${style}) from this machine” control in TYPEFACES THIS DESIGNER HAS DOWNLOADED, under TYPOGRAPHY.`
-    : 'it ships inside this designer rather than in the machine store, so there is nothing to remove.')
+const lateEmbedRefusal = (family: string, engineMessage: string): string =>
+  `${family} is installed on this machine and cannot be embedded in this document: ${engineMessage} Nothing was written to the document, and the face is still on this machine.`
 
 function FontFamilyProperty({ families, components, ids, onCommit, onPickFamily, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, pickBusy, pickError, documentGeneration, error, chainsOpen, onToggleChains }: { families: ReadonlyArray<string>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onPickFamily: (source: FamilySource) => void; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError; chainsOpen: boolean; onToggleChains: () => void }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))

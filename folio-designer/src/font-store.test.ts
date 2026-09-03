@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory as FakeIndexedDBFactory, IDBObjectStore as FakeIndexedDBObjectStore } from 'fake-indexeddb'
-import { openFontStore, storedFaceKey, storeUnavailableEmbedNote, storeWriteDegradation, storeWriteRefusal, type FontStore, type StoredFaceRecord } from './font-store'
+import { openFontStore, storedFaceKey, storeWriteRefusal, type FontStore, type StoredFaceRecord } from './font-store'
 import { isCarriedFaceAssetKey } from './embedded-face-family'
 import { sfntWithCopyright } from './test/sfnt-fixture'
 import { assertProvenanceShape } from './test/provenance-shape'
@@ -274,6 +274,14 @@ describe('storage that cannot be opened or written', () => {
   // nothing follows it, so the same failure now means the author got nothing.
   // The old claim is asserted ABSENT rather than merely replaced, because the
   // one way this can regress is a sentence that keeps saying a document moved.
+  //
+  // RETIRED, STORY 16.6: the cross-check against `App.tsx`'s panel heading and
+  // the "remove control on every face" assertion. The panel and its remove
+  // control are gone by owner decision (D-16.R.82); `storeWriteRefusal` no
+  // longer names a region to visit or a control to press, so there is nothing
+  // left for those two assertions to check. The remaining assertions — that the
+  // sentence names the family and the reason, and says a refusal rather than a
+  // caching hiccup — still hold and stay.
   it('states a refused install as a refused install, naming the family and what did not happen', () => {
     const stated = storeWriteRefusal('Kanit', 'the origin is out of space')
     expect(stated).toContain('Kanit')
@@ -281,64 +289,10 @@ describe('storage that cannot be opened or written', () => {
     expect(stated).toContain('the origin is out of space')
     expect(stated, 'nothing may claim a document changed: no command is sent at install').not.toContain('added to this document')
     expect(stated).toMatch(/no document was changed/)
-    // AND IT NAMES A REGION THE DESIGNER REALLY DRAWS (Story 16.4).
-    //
-    // This assertion used to read `toMatch(/AVAILABLE LOCALLY/)`, and 16.4
-    // renamed the panel — it had borrowed that heading from a dropdown group
-    // that now holds MORE than this panel lists. Re-pointing the regex at the
-    // new spelling would have RELOCATED the blind spot rather than closed it:
-    // the property is not "some string is present", it is "this sentence points
-    // the author at a place they can find". So the panel's own heading is read
-    // out of `App.tsx` and matched against the sentence, and a rename on either
-    // side reds this.
-    const shell = fs.readFileSync(path.join(here, 'App.tsx'), 'utf8')
-    const marker = 'aria-label="Typefaces downloaded to this machine"'
-    expect(shell, 'the store panel must still be a named region in the shell').toContain(marker)
-    const heading = /<p className="section-label">([^<{]+)<\/p>/.exec(shell.slice(shell.indexOf(marker)))?.[1]
-    expect(heading, 'the store panel must render a section label of its own').toBeTruthy()
-    expect(stated, 'the recovery must name the panel the designer actually draws').toContain(heading)
-    // AND IT SAYS WHAT IS THERE TO PRESS. `App.font-store.test.tsx` asserts the
-    // other half in a mounted designer: that this very region is the one that
-    // carries a per-face remove control.
-    expect(stated, 'the recovery is the removal control the store panel already ships').toMatch(/remove control on every face/)
-  })
-
-  // THE THREE SENTENCES ARE THREE DIFFERENT EVENTS, AND THE DISTINCTION IS THE
-  // ASSERTION (Story 16.5).
-  //
-  // `storeWriteDegradation` lost its only test when 16.5 repurposed it into the
-  // refusal's, and it kept a live path: the write-back after a refetch at first
-  // use, where the document ALREADY HAS the face. Saying "no document was
-  // changed" there would be false, and saying "was not installed" would be
-  // false in the other direction — which is exactly why the two are pinned
-  // against each other rather than each on its own.
-  it('keeps the refusal, the degradation and the no-store note as three distinct sentences', () => {
-    const refusal = storeWriteRefusal('Kanit', 'the origin is out of space')
-    const degradation = storeWriteDegradation('Kanit', 'the origin is out of space')
-    const noStore = storeUnavailableEmbedNote('Kanit')
-
-    // THE DEGRADATION: the document has it, the machine does not, and the
-    // author's only decision is whether to free space.
-    expect(degradation).toContain('Kanit is in this document')
-    expect(degradation).toContain('could not be kept on this machine')
-    expect(degradation).toContain('the origin is out of space')
-    expect(degradation, 'the document DID change here, so the refusal\'s wording would be false').not.toContain('no document was changed')
-    expect(degradation).not.toContain('was not installed on this machine')
-
-    // THE REFUSAL: nothing happened at all.
-    expect(refusal, 'the install failed, so the degradation\'s wording would be false').not.toContain('is in this document')
-
-    // THE NO-STORE NOTE: a different MODEL, not a failed step. It says the font
-    // went into the document and why, and it never reports a failure.
-    expect(noStore).toContain('Kanit went straight into this document')
-    expect(noStore).toContain('nothing to install')
-    expect(noStore).toContain('carries its own copy')
-    expect(noStore).not.toContain('could not')
-    expect(noStore).not.toContain('was not installed')
-
-    // AND NO TWO OF THEM ARE THE SAME STRING, which is the cheapest guard
-    // against a later edit collapsing three events back into one sentence.
-    expect(new Set([refusal, degradation, noStore]).size).toBe(3)
+    // AND IT OFFERS NO REMEDY (Story 16.6). With no removal control left
+    // anywhere in the designer, a sentence that still pointed at one would be
+    // pointing at nothing — this is the deletion's own guard on the sentence.
+    expect(stated, 'no remedy remains to offer: the removal control this once pointed at is deleted').not.toMatch(/remove/i)
   })
 })
 

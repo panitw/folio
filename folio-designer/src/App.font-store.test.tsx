@@ -9,21 +9,9 @@ import type { EngineClient } from './engine-client'
 import { sfntWithNames } from './test/sfnt-fixture'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { previewFaceFamily } from './preview-face-family'
-import { openFontStore, storedFaceKey, storeWriteRefusal, type StoredFaceRecord } from './font-store'
+import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
 import { addableFamilyCount, webFamilies } from './font-index'
 import { catalogueFaces } from './generated/font-catalogue'
-
-/**
- * THE STORE PANEL'S HEADING, WRITTEN ONCE (Story 16.4).
- *
- * Two product sentences point the author at this panel — the quota refusal and
- * the late-embed refusal — so the name they use and the name the panel renders
- * are asserted against each other rather than each spelled out on its own.
- * Before 16.4 the panel borrowed `AVAILABLE LOCALLY` from a dropdown group that
- * lists strictly more than it does, and two differently populated regions shared
- * one name.
- */
-const storePanelHeading = 'TYPEFACES THIS DESIGNER HAS DOWNLOADED'
 
 // STORY 16.2 AT THE BROWSER BOUNDARY — A FETCHED FACE STAYS ON THIS MACHINE.
 //
@@ -97,6 +85,19 @@ const faceRecordsOnThisMachine = async (): Promise<ReadonlyArray<Readonly<{ fami
   const listed = await opened.value.list()
   expect(listed.ok).toBe(true)
   return listed.ok ? listed.value : []
+}
+
+/**
+ * WAITS UNTIL THE STORE REALLY HOLDS A FACE BY THIS FAMILY NAME.
+ *
+ * Story 16.6 deleted the machine-store panel, which every "a pick installed"
+ * test used to poll via `.machine-font-name` as its settle condition — the
+ * panel simply rendered whatever `storedFaces` held, so waiting on its DOM was
+ * a proxy for waiting on the write. Reading the store directly, past the
+ * designer, is the same wait with no deleted DOM to depend on.
+ */
+const waitForStoredFamily = async (familyName: string): Promise<void> => {
+  await waitFor(async () => expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toContain(familyName))
 }
 
 // The page font set jsdom does not implement, installed for the one test that
@@ -181,9 +182,6 @@ const pick = (query: string, name: RegExp) => {
   return option !== null
 }
 
-/** The store panel's own live region, so this is never confused with the panel's other status lines. */
-const storeNote = () => within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).getByRole('status')
-
 const embedPayloads = (request: { mock: { calls: unknown[][] } }) => request.mock.calls
   .filter((call) => call[0] === 'command')
   .map((call) => JSON.parse(new TextDecoder().decode(call[1] as ArrayBuffer)) as Record<string, unknown>)
@@ -215,7 +213,7 @@ describe('the font browser sets a stored family\'s specimen from the store', () 
       const offline = vi.fn(async () => { throw new TypeError('Failed to fetch') })
       globalThis.fetch = offline as never
       mount(commandRequest())
-      await waitFor(() => expect(screen.getByText(/A Machine Face/, { selector: '.machine-font-name' })).toBeInTheDocument())
+      await waitForStoredFamily('A Machine Face')
 
       fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
       fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
@@ -292,8 +290,7 @@ describe('the font browser names a refusal the seam returned', () => {
       // record shape the engine refuses a document over — passes the line
       // above and fails every line below it.
       expect(embedPayloads(request)).toEqual([])
-      expect(screen.getByText(/No typefaces have been downloaded to this machine yet/), 'a refused install must keep nothing').toBeInTheDocument()
-      expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
+      expect(await faceRecordsOnThisMachine(), 'a refused install must keep nothing').toEqual([])
       // AND THE FAMILY CONTROL STILL OFFERS IT AS AN INSTALL. `offeredFamilies`
       // reads the store's own listing, so a row that had moved to the
       // already-downloaded note would mean a record survived the refusal.
@@ -352,15 +349,19 @@ describe('a fetched face stays on this machine', () => {
     const request = commandRequest()
     mount(request)
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'a snapshot family must be offered before it is stored').toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     // THE DOCUMENT DID NOT MOVE. The store row above is the positive settle
     // condition — the install really finished — so this is a claim about a
     // completed install and not about an assertion that ran too early.
     expect(embedPayloads(request), 'installing a family sends no engine command at all').toEqual([])
     expect(request.mock.calls.filter((call) => call[0] === 'command'), 'no command means no revision, no history entry and no undo').toEqual([])
-    // THE ROW SAYS WHAT IT IS: the family, the style, its size and the day it
-    // was downloaded — the two facts an author needs to decide which to let go.
-    expect(screen.getByText(/Regular · \d+ KB · downloaded \d{4}-\d{2}-\d{2}/)).toBeInTheDocument()
+    // THE RECORD CARRIES ITS SIZE AND THE DAY IT WAS DOWNLOADED — read out of
+    // the store itself now that Story 16.6 deleted the panel row that used to
+    // display them. `FontStore`'s own API is unchanged; only the render went.
+    const [kept] = await faceRecordsOnThisMachine()
+    expect((kept as unknown as { style: string; byteLength: number; fetchedAt: string } | undefined)?.style).toBe('Regular')
+    expect((kept as unknown as { byteLength: number } | undefined)?.byteLength).toBeGreaterThan(0)
+    expect((kept as unknown as { fetchedAt: string } | undefined)?.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     // AND THE FAMILY CONTROL NOW OFFERS IT FROM THE STORE. The document
     // declares a chain for it too, so it is searched by a row that is offered
     // as an ADDITION only while the chain is absent — the store's own listing
@@ -390,7 +391,7 @@ describe('a fetched face stays on this machine', () => {
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     // THE SETTLE CONDITION IS THE STORE ROW, and it has to be: there is no
     // command to wait on any more, so waiting on one would wait for ever.
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     expect(embedPayloads(first), 'the install must not have embedded anything').toEqual([])
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
@@ -438,50 +439,15 @@ describe('a fetched face stays on this machine', () => {
     expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
   })
 
-  // THE REMOVAL AFFORDANCE. It names what it removes, and it states — in the
-  // panel, not in a decision log — that documents are unaffected. An author who
-  // has to GUESS whether a delete button reaches their saved work will simply
-  // never press it.
-  // NEUTRALISED VACUOUS SURVIVOR (Story 16.5), AND THE FIX IS TO MAKE THE
-  // DOCUMENT ACTUALLY CARRY THE FACE FIRST.
-  //
-  // `expect(embedPayloads(request)).toHaveLength(embedsBefore)` was a real claim
-  // while a pick embedded: `embedsBefore` was 1, the document had the face, and
-  // the line said removing the machine copy did not reach it. A pick installs
-  // now, so `embedsBefore` is 0 and the line reads "0 commands before, 0 after"
-  // — TRUE OF A DESIGNER THAT CANNOT SEND COMMANDS AT ALL.
-  //
-  // So the test now does what its own name has always claimed: it puts the face
-  // IN THE DOCUMENT — by using it, which is two commands — and only then removes
-  // the machine copy. `embedsBefore` is 2, the count must still be 2 afterwards,
-  // and the sentence about documents being unchanged is finally being asserted
-  // over a document that has something to be unchanged about.
-  it('removes a face by name, and says documents that embed it are unchanged', async () => {
-    globalThis.fetch = upstreamFetch() as never
-    const request = commandRequest()
-    mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
-    // The standing note is present before anything is removed, because it is
-    // what the list IS, not a consequence of pressing the button.
-    expect(screen.getByText(/not the fonts installed on your computer, which this designer never looks at/)).toBeInTheDocument()
-
-    // FIRST USE, so the document really carries the face: the embed and then the
-    // property commit, two commands and two undo entries.
-    expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/), 'the installed family must be offered for use').toBe(true)
-    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
-    const embedsBefore = embedPayloads(request).length
-    expect(embedsBefore, 'the count this test guards must be non-zero, or guarding it says nothing').toBe(2)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Kanit (Regular) from this machine' }))
-    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit \(Regular\) was removed from this machine/))
-    expect(storeNote().textContent).toMatch(/Documents that already embed it are unchanged/)
-    // NOT A DOCUMENT CHANGE. No command, no revision, no undo entry: removing a
-    // cached copy is a machine action, and a `.folio` carries its own faces.
-    expect(embedPayloads(request)).toHaveLength(embedsBefore)
-    await waitFor(() => expect(screen.queryByText(/Kanit/, { selector: '.machine-font-name' })).not.toBeInTheDocument())
-    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
-  })
+  // RETIRED, STORY 16.6: `it('removes a face by name, and says documents that
+  // embed it are unchanged', ...)`. Deleted by owner decision (D-16.R.82) along
+  // with the per-face removal control it drove — `Remove Kanit (Regular) from
+  // this machine` no longer exists anywhere in the designer, so nothing can
+  // drive this test's premise. There is no replacement: the capability itself
+  // is gone, not merely moved, and the deletion's own guard is the family
+  // control still offering the face under `AVAILABLE LOCALLY` with no way to
+  // let it go — asserted below in "renders no store section with faces
+  // present, and offers no way to remove one".
 
   // STORY 16.4 — A FONT CHANGES GROUP BECAUSE THE AUTHOR ACTED, AND THE WHOLE
   // JOURNEY IS ONE TEST.
@@ -516,13 +482,12 @@ describe('a fetched face stays on this machine', () => {
     // GROUP 3 — not on this machine.
     expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    // GROUP 2 — on this machine, not in this file. The group move IS the settle
+    // condition; the deleted panel no longer offers a DOM row to wait on.
+    await waitFor(() => expect(groupOf('Kanit')).toBe('AVAILABLE LOCALLY'))
     // NOTHING ENTERED THE DOCUMENT. No engine command at all, so no property
     // commit either — which is what makes the row's new heading true.
     expect(embedPayloads(request), 'installing sends no command: the document did not move').toEqual([])
-
-    // GROUP 2 — on this machine, not in this file.
-    expect(groupOf('Kanit')).toBe('AVAILABLE LOCALLY')
     // AND PICKING FROM GROUP 2 REACHES NO NETWORK. Every fetch from here on
     // fails, so an embed that completes can only have read the machine's copy.
     const refuse = vi.fn(async () => { throw new TypeError('a face already on this machine must not be fetched') })
@@ -579,7 +544,7 @@ describe('a fetched face stays on this machine', () => {
     // INSTALL FIRST, AND IT PUSHES NOTHING. No command is sent, so there is
     // nothing to undo — which is also the control for the two presses below.
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     expect(undo(), 'installing is not a document change and may not be undoable').toBeDisabled()
 
     // FIRST USE — the embed, then the property.
@@ -616,7 +581,7 @@ describe('a fetched face stays on this machine', () => {
     // WITH NO NETWORK, so nothing here can be explained by a fetch.
     globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
     mount(commandRequest())
-    await waitFor(() => expect(screen.getByText(/Philosopher/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Philosopher')
 
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
@@ -647,15 +612,17 @@ describe('a fetched face stays on this machine', () => {
     expect(Number(counted![2]) + local.length).toBe(addableFamilyCount)
   })
 
-  // AND WITH NO STORE AT ALL THE ROW MOVES 3 → 1 IN ONE STEP.
+  // AND WITH NO STORE AT ALL THE ROW MOVES 3 → 1 IN ONE STEP, SILENTLY (Story
+  // 16.6, reversing 16.2's stated-degradation clause by owner decision).
   //
-  // `storeUnavailableEmbedNote` says the font went straight into the document,
-  // and this asserts the consequence that sentence describes rather than the
-  // sentence again: with nowhere to install to, there is no middle group for the
-  // row to rest in, so it crosses group 2 without stopping. A row that landed
-  // under AVAILABLE LOCALLY here would be claiming a machine copy that this
-  // browser explicitly cannot keep.
-  it('moves a row 3 → 1 in one step when the store cannot be opened at all', async () => {
+  // With nowhere to install to, there is no middle group for the row to rest
+  // in, so it crosses group 2 without stopping. A row that landed under
+  // AVAILABLE LOCALLY here would be claiming a machine copy that this browser
+  // explicitly cannot keep. Story 16.6 deleted the note that used to describe
+  // this on screen — the deleted panel was its only render site — so this test
+  // now asserts the designer works and says nothing, rather than asserting what
+  // it used to say.
+  it('moves a row 3 → 1 in one step when the store cannot be opened at all, and says nothing', async () => {
     Reflect.deleteProperty(globalThis, 'indexedDB')
     globalThis.fetch = upstreamFetch() as never
     let declaredChains = ['body']
@@ -667,7 +634,6 @@ describe('a fetched face stays on this machine', () => {
       return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } } }
     })
     mount(request)
-    await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
     const combobox = () => screen.getByRole('combobox', { name: 'Font family' })
     const groupOf = (family: string) => {
       fireEvent.focus(combobox())
@@ -677,10 +643,14 @@ describe('a fetched face stays on this machine', () => {
     expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily']))
-    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit went straight into this document/))
     // STRAIGHT TO GROUP 1, and never to group 2 — nothing is on this machine.
     await waitFor(() => expect(groupOf('Kanit')).toBe('IN THIS TEMPLATE'))
     expect(screen.queryByRole('group', { name: 'AVAILABLE LOCALLY' }), 'no family matches Kanit on a machine that keeps nothing').toBeNull()
+    // AND NOTHING WAS EVER SAID ABOUT IT — no alert, and neither of the two
+    // sentences this story deleted: the deliberate reversal this story ships.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/not letting the designer keep typefaces on this machine/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/went straight into this document/)).not.toBeInTheDocument()
   })
 
   // AND THE CAP IS APPLIED AFTER THE PARTITION, WHICH ONLY SHOWS WHEN THE
@@ -706,44 +676,25 @@ describe('a fetched face stays on this machine', () => {
     }
     globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
     mount(commandRequest())
-    await waitFor(() => expect(document.querySelectorAll('.machine-font-name')).toHaveLength(deep.length))
-
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    // THE GROUP ITSELF IS THE SETTLE CONDITION — the deleted panel no longer
+    // offers a DOM count to wait on, and this is a more direct proof of the
+    // property under test anyway.
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')).toHaveLength(catalogueFaces.length + deep.length))
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
     expect(local, 'every row under a heading promising the bytes are here must be drawn').toHaveLength(catalogueFaces.length + deep.length)
     expect(local.length, 'the fixture must really exceed the cap, or this measures nothing').toBeGreaterThan(50)
     expect(within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option'), 'the third group keeps its own bound').toHaveLength(50)
   })
 
-  // THE REGION BOTH RE-POINTED REFUSALS NAME REALLY CARRIES THE CONTROL (Story
-  // 16.4).
-  //
-  // `storeWriteRefusal` and `lateEmbedRefusal` both tell the author to go to a
-  // named panel and press a remove control. Their guards were keyed on the
-  // PLACE NAME — `/AVAILABLE LOCALLY/` — which the rename invalidated, and a
-  // re-pointed place-keyed guard relocates its blind spot unless the property it
-  // asserts is restated with it.
-  //
-  // THIS TEST OWNS THE PANEL HALF: the named region is on the screen and it is
-  // the region that carries a per-face remove control, with `storeWriteRefusal`
-  // matched against it. The SENTENCE half of `lateEmbedRefusal` is asserted
-  // where that alert is actually raised, above — this test cannot raise it, and
-  // an earlier title claiming both refusals overstated what it measures.
-  it('draws the region both refusals name, and puts the remove control inside it', async () => {
-    globalThis.fetch = upstreamFetch() as never
-    mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
-    const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
-    // The heading the sentences name, drawn by the panel that holds the control.
-    expect(within(panel).getByText(storePanelHeading)).toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: 'Remove Kanit (Regular) from this machine' })).toBeInTheDocument()
-    expect(storeWriteRefusal('Kanit', 'the origin is out of space'), 'the quota refusal must name this region').toContain(storePanelHeading)
-    // AND THE PANEL NO LONGER ANSWERS TO THE BORROWED NAME. `AVAILABLE LOCALLY`
-    // is the DROPDOWN's group heading and belongs to it alone; the panel having
-    // given it back is the point of the rename, not a side effect of it.
-    expect(within(panel).queryByText(/AVAILABLE LOCALLY/)).toBeNull()
-  })
+  // RETIRED, STORY 16.6: `it('draws the region both refusals name, and puts the
+  // remove control inside it', ...)`. The named region — `role="group"`,
+  // `aria-label="Typefaces downloaded to this machine"` — and the per-face
+  // remove control it carried are both deleted by owner decision (D-16.R.82).
+  // `storeWriteRefusal` no longer names any region (its remedy clause is cut;
+  // `font-store.test.ts` asserts the sentence names no remedy), and
+  // `lateEmbedRefusal` no longer distinguishes a removable face from a bundled
+  // one, so there is nothing left for either half of this test to check.
 
   // STORY 16.2's SELF-HEALING CONTRACT, WHICH STORY 16.5 BRIEFLY BROKE AND THEN
   // RESTORED — AND WHICH NOTHING HAD EVER ASSERTED.
@@ -768,7 +719,7 @@ describe('a fetched face stays on this machine', () => {
     const request = commandRequest()
     mount(request)
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     const installed = await faceRecordsOnThisMachine()
     expect(installed.map((record) => record.family)).toEqual(['Kanit'])
 
@@ -824,10 +775,8 @@ describe('a fetched face stays on this machine', () => {
     // assertions above would be about a different guard.
     expect(fetchStub.mock.calls.map((call) => String(call[0]).split('/').pop())).toEqual(['METADATA.pb', 'OFL.txt', 'Kanit-Regular.ttf'])
 
-    // NOTHING STORED — read out of the store itself, not off the screen.
+    // NOTHING STORED — read out of the store itself.
     expect(await faceRecordsOnThisMachine()).toEqual([])
-    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
-    expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
     // AND NOTHING REACHED THE DOCUMENT EITHER.
     expect(embedPayloads(request)).toEqual([])
     // AND THE ROW STILL SAYS "INSTALL", because nothing was installed. A row
@@ -836,28 +785,24 @@ describe('a fetched face stays on this machine', () => {
     expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })).toBeInTheDocument()
   })
 
-  // MATRIX ROW: "First use, licence contradiction | Go's nameID-13 tie refuses at
-  // embed | Refusal states the face IS INSTALLED ON THIS MACHINE AND CANNOT BE
-  // EMBEDDED, and points at the removal control | Property command not sent;
-  // face stays installed and removable".
+  // MATRIX ROW: "Late embed refusal, stored face | Engine refuses an installed
+  // face | One sentence: refused, nothing written, face still on this machine —
+  // no removal instruction".
   //
   // THIS IS THE ONE ADMISSION CHECK THAT COULD NOT MOVE TO INSTALL, and the
   // whole reason the story is allowed to leave it in Go is that the residue is
   // DISCLOSED rather than left to surprise the author. An undisclosed dead end
-  // is what D-16.R.46 Q4 forbids; a dead end the author can see and clear is a
-  // stated limit. So the disclosure is the deliverable, and it is asserted here.
-  //
-  // THE POINTER IS CHECKED AGAINST A CONTROL THAT REALLY EXISTS. Naming a button
-  // in prose is worth nothing if the button is called something else — so the
-  // sentence's own words are handed to `getByRole` as an accessible name. That
-  // is what stops this from being a spelling assertion.
+  // is what D-16.R.46 Q4 forbids; a dead end the author can see is a stated
+  // limit — but Story 16.6 deletes the one control that could ever have
+  // cleared it, so the sentence below no longer offers a remedy, only the
+  // disclosure.
   //
   // The engine's refusal is stubbed rather than provoked with a mislabelled
   // binary: the tie itself is Go's, proven in
   // `folio-go/internal/fontset/licencesignature_test.go` over committed bytes.
   // What is unproven anywhere else — and what this owns — is what the DESIGNER
   // does with a refusal that arrives at first use.
-  it('says an installed face cannot be embedded, points at the removal control, and leaves it installed', async () => {
+  it('says an installed face cannot be embedded, names no removal control, and leaves it installed', async () => {
     globalThis.fetch = upstreamFetch() as never
     const sent: Record<string, unknown>[] = []
     const contradiction = 'fonts: font "Kanit": the face\'s own name table records it under the SIL Open Font License while this document declares Apache-2.0'
@@ -877,42 +822,21 @@ describe('a fetched face stays on this machine', () => {
     // INSTALLED FIRST, and the install is unaffected: this face passes every
     // check that CAN run at install.
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     expect(sent, 'the install must not have sent anything for the engine to refuse').toEqual([])
 
     // FIRST USE — and this is where the refusal arrives.
     expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
     const alert = await screen.findByRole('alert')
 
-    // THE THREE THINGS THE ENGINE'S OWN SENTENCE CANNOT SAY.
+    // THE THREE THINGS THE ENGINE'S OWN SENTENCE CANNOT SAY, AND NO FOURTH.
     expect(alert.textContent, 'the author must be told the face IS here').toMatch(/Kanit is installed on this machine and cannot be embedded in this document/)
     expect(alert.textContent, "the engine's own reason must survive, not be replaced by a friendlier one").toContain(contradiction)
     expect(alert.textContent, 'the author must be told their file did not move').toMatch(/Nothing was written to the document/)
-
-    // AND THE POINTER NAMES A CONTROL THAT IS REALLY ON THE SCREEN. The
-    // sentence's own words are used as the accessible name, so a renamed or
-    // missing affordance reds this rather than leaving prose pointing at nothing.
-    const pointer = /remove it with the “(.+?)” control/.exec(alert.textContent ?? '')
-    expect(pointer, `the refusal must point at a named control: ${alert.textContent}`).not.toBeNull()
-    expect(screen.getByRole('button', { name: pointer![1] })).toBeInTheDocument()
-
-    // AND THE REGION IT SENDS THEM TO IS A REGION THE PRODUCT DRAWS (Story
-    // 16.4). The regex above extracts only the quoted CONTROL name, so the
-    // words after `control in …` were covered by nothing — demonstrated, not
-    // suspected: reverting this sentence to name `AVAILABLE LOCALLY`, a heading
-    // the store panel gave back, left the whole suite at 688 passed / 1 failed
-    // with the standing red as its only failure. That is exactly the blind spot
-    // the re-pointing task warned a place-keyed guard relocates, still open on
-    // the second of the two refusals.
-    //
-    // So the region is READ OFF THE RENDERED PANEL and matched against the
-    // sentence, the way the quota alert's assertion already does. `getByText`
-    // throws if the panel stops drawing the heading; `toContain` fails if the
-    // sentence stops naming it. Neither half can drift alone.
-    const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
-    const heading = within(panel).getByText(storePanelHeading)
-    expect(alert.textContent, 'the refusal must name the region that holds the control, not a heading nothing draws').toContain(heading.textContent)
-    expect(alert.textContent, 'and where to find that region, because a panel name alone is not a location').toMatch(/under TYPOGRAPHY/)
+    // AND NO REMOVAL INSTRUCTION (Story 16.6): there is no control left to
+    // point at, so the sentence stops offering a remedy rather than naming one
+    // that is not on the screen.
+    expect(alert.textContent, 'no remedy remains to offer').not.toMatch(/remove/i)
 
     // THE PROPERTY COMMAND WAS NOT SENT. `canvas.fontFamilies` never gained the
     // chain, so committing `style.fontFamily` would have been refused anyway —
@@ -920,13 +844,9 @@ describe('a fetched face stays on this machine', () => {
     // author on top of this one.
     expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily'])
 
-    // AND THE FACE IS STILL INSTALLED AND STILL REMOVABLE, which is what makes
-    // the pointer above actionable rather than decorative.
-    expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument()
+    // AND THE FACE IS STILL ON THIS MACHINE — the sentence's own claim, checked
+    // against the store rather than a deleted panel.
     expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toEqual(['Kanit'])
-    fireEvent.click(screen.getByRole('button', { name: pointer![1] }))
-    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit \(Regular\) was removed from this machine/))
-    expect(await faceRecordsOnThisMachine(), 'the control the refusal points at must actually clear the dead end').toEqual([])
   })
 
   // MATRIX ROW 7: "Store write fails at install | Origin quota refuses the `put` |
@@ -956,39 +876,32 @@ describe('a fetched face stays on this machine', () => {
       expect(alert.textContent).toMatch(/Kanit was not installed on this machine/)
       expect(alert.textContent).toMatch(/no room left/)
       expect(alert.textContent, 'nothing may claim a document changed: no command is sent at install').toMatch(/no document was changed/)
-      // AND THE PLACE IT NAMES IS ON THE SCREEN. This read `/AVAILABLE LOCALLY/`
-      // until 16.4 renamed the panel; re-pointing the regex alone would have
-      // moved the blind spot, so the heading is read OFF THE RENDERED PANEL and
-      // matched against the sentence. `getByText` throws if the panel stops
-      // drawing it, which is the half a string match cannot see.
-      const panel = screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })
-      const heading = within(panel).getByText(storePanelHeading)
-      expect(alert.textContent, 'the author needs an action, and the removal control is the one that frees space').toContain(heading.textContent)
+      // AND IT OFFERS NO REMEDY (Story 16.6). It used to point at the panel's
+      // remove control as a way to free space; that panel is gone.
+      expect(alert.textContent, 'no remedy remains to offer: the removal control this once pointed at is deleted').not.toMatch(/remove/i)
     } finally {
       FakeIndexedDBObjectStore.prototype.put = original
     }
     // AND NOTHING WAS KEPT AND NOTHING WAS SENT.
     expect(await faceRecordsOnThisMachine()).toEqual([])
-    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
     expect(embedPayloads(request)).toEqual([])
   })
 
-  // THE FAILED HEAL DISCLOSES, AND IT IS A DEGRADATION RATHER THAN A REFUSAL.
+  // THE FAILED HEAL IS SILENT NOW (Story 16.6, reversing 16.2's
+  // stated-degradation clause by owner decision).
   //
-  // `storeWriteDegradation` has exactly one live path left: the write-back after
-  // a refetch at first use. Deleting that `setStoreNote` made a failed heal
-  // completely silent with the suite green — the author's document gets the face
-  // and their machine quietly does not, for ever, with no way to tell.
-  //
-  // AND THE SENTENCE MUST NOT BE THE REFUSAL'S. The document HAS the face here,
-  // so a message saying "no document was changed" would be false; this is the
-  // one place Story 16.2's original distinction still holds.
-  it('states a failed heal as a degradation, not a refusal, when the document already has the face', async () => {
+  // `storeWriteDegradation` was the one sentence for this exact path — the
+  // write-back after a refetch at first use — and its only render site was the
+  // deleted panel's status line. Deleting the panel deletes the sentence with
+  // it: there is nowhere left for it to appear, so this test now asserts the
+  // document keeps the face and the machine quietly does not, with nothing
+  // said, rather than asserting what used to be said.
+  it('silently fails to heal the store after a refetch, while the document keeps the face', async () => {
     globalThis.fetch = upstreamFetch() as never
     const request = commandRequest()
     mount(request)
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     const installed = await faceRecordsOnThisMachine()
     const opened = await openFontStore(globalThis.indexedDB)
     if (!opened.ok) throw new Error(opened.reason)
@@ -1000,30 +913,29 @@ describe('a fetched face stays on this machine', () => {
     try {
       expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
       await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
-      await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit is in this document, but it could not be kept on this machine/))
     } finally {
       FakeIndexedDBObjectStore.prototype.put = original
     }
-    expect(storeNote().textContent).toMatch(/no room left/)
-    // THE DISTINCTION, ASSERTED IN BOTH DIRECTIONS. This is not the install
-    // refusal's sentence, and it must never claim the document was left alone.
-    expect(storeNote().textContent).not.toMatch(/was not installed on this machine/)
-    expect(storeNote().textContent).not.toMatch(/no document was changed/)
-    expect(screen.queryByRole('alert'), 'a degradation is not a refusal and does not alert at the control').not.toBeInTheDocument()
+    // THE DOCUMENT HAS THE FACE — the refetch and the embed both succeeded.
+    expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties'])
+    // AND THE MACHINE QUIETLY DOES NOT. Read past the designer to prove the
+    // heal genuinely failed rather than merely going unreported: with `put`
+    // refusing, the store must stay empty.
+    expect(await faceRecordsOnThisMachine(), 'the heal must have really failed, not merely gone unreported').toEqual([])
+    expect(screen.queryByRole('alert'), 'a write-back failure is silent, not a refusal').not.toBeInTheDocument()
   })
 
-  // THE LOCAL-TIER ARM OF THE LATE REFUSAL, which the Row 5 test cannot reach.
+  // MATRIX ROW: "Late embed refusal, bundled face | Engine refuses a local-tier
+  // face | The same sentence as the stored case".
   //
-  // `lateEmbedRefusal` takes a `removable` flag and Row 5 drives only the STORED
-  // tier, so hoisting that flag to `true` passed every assertion there while a
-  // local-tier refusal pointed the author at a "Remove …" control that is not on
-  // the screen — the exact "prose naming a control that is not there" failure
-  // that test exists to catch, one tier over.
-  //
-  // A bundled face ships inside the release rather than in the machine store, so
-  // there is nothing to remove and the sentence says that instead of naming a
-  // button the author will hunt for and not find.
-  it('does not point at a removal control for a bundled face, which has none', async () => {
+  // Before Story 16.6, `lateEmbedRefusal` took a `removable` flag and this
+  // tier's refusal read differently from the stored tier's — pointing the
+  // author at a "Remove …" control that was never on the screen for a bundled
+  // face, since it ships inside the release rather than in the machine store.
+  // The flag and both its branches are gone now, so the two tiers must produce
+  // the IDENTICAL sentence — asserted here against the exact string, not a
+  // pattern, so the two tiers cannot quietly drift apart again.
+  it('names a bundled face the same way it names a stored one, with no removal instruction', async () => {
     const bundled = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Inter Project Authors' }])
     // The local tier reads its bytes from the release's own content-addressed
     // assets — a relative URL, never a host.
@@ -1042,13 +954,8 @@ describe('a fetched face stays on this machine', () => {
     mount(request)
     expect(pick('Inter', /^Inter\s*—\s*use it, already on this machine$/), 'a committed local-tier family must be offered for use').toBe(true)
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/Inter is installed on this machine and cannot be embedded in this document/)
-    expect(alert.textContent).toContain(contradiction)
-    // THE TAIL IS THE OTHER ARM: it says why there is nothing to remove.
-    expect(alert.textContent).toMatch(/ships inside this designer rather than in the machine store, so there is nothing to remove/)
-    // AND IT NAMES NO CONTROL, because none exists — the store list is empty.
-    expect(alert.textContent, 'a bundled face has no removal control to point at').not.toMatch(/remove it with the/)
-    expect(within(screen.getByRole('group', { name: 'Typefaces downloaded to this machine' })).queryAllByRole('button', { name: /^Remove / })).toEqual([])
+    expect(alert.textContent).toBe(`Inter is installed on this machine and cannot be embedded in this document: ${contradiction} Nothing was written to the document, and the face is still on this machine.`)
+    expect(alert.textContent, 'no remedy remains to offer').not.toMatch(/remove/i)
   })
 
   // THE DOCUMENT MAY BE REPLACED WHILE THE EMBED IS IN FLIGHT, AND THE PROPERTY
@@ -1077,7 +984,7 @@ describe('a fetched face stays on this machine', () => {
     })
     mount(request)
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
 
     holdTheEmbed = true
     expect(pick('Kanit', /^Kanit\s*—\s*use it, already downloaded to this machine$/)).toBe(true)
@@ -1119,7 +1026,6 @@ describe('a fetched face stays on this machine', () => {
     try {
       globalThis.fetch = upstreamFetch() as never
       mount(commandRequest())
-      await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
 
       fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
       fireEvent.click(screen.getByRole('button', { name: /^Add fonts…/ }))
@@ -1130,7 +1036,13 @@ describe('a fetched face stays on this machine', () => {
       // THE COUNT TRAVELS IN THE NAME OF THE CONTROL THAT DOES IT, and the name
       // CONTAINS the visible label rather than replacing it (WCAG 2.5.3), so a
       // speech-input author can still say what they can see.
-      const confirm = within(dialog).getByRole('button', { name: 'Install 1 on this machine — this browser will not keep fonts, so confirming adds 1 family to this document' })
+      //
+      // `findByRole` RATHER THAN `getByRole`, AND THAT IS THE SETTLE CONDITION.
+      // `storeKeepsFaces` settles asynchronously after `openFontStore` resolves,
+      // with no DOM to poll before this dialog even opens (Story 16.6 deleted
+      // the panel note that used to serve as a settle signal), so the retry has
+      // to live in the query that actually depends on the state, not before it.
+      const confirm = await within(dialog).findByRole('button', { name: 'Install 1 on this machine — this browser will not keep fonts, so confirming adds 1 family to this document' })
       expect(confirm.textContent).toBe('Install 1 on this machine')
       expect(within(dialog).getByText(/This browser will not keep typefaces, so these go straight into the document/)).toBeInTheDocument()
     } finally {
@@ -1138,30 +1050,28 @@ describe('a fetched face stays on this machine', () => {
     }
   })
 
-  // STORAGE THAT CANNOT BE OPENED LEAVES A WORKING DESIGNER — STORY 16.2's
-  // CONTRACT, KEPT, BY DEGRADING TO THE PRE-16.5 MODEL (orchestrator ruling,
-  // 2026-09-03).
+  // STORAGE THAT CANNOT BE OPENED LEAVES A WORKING DESIGNER, SILENTLY — STORY
+  // 16.2's CONTRACT KEPT IN SUBSTANCE AND REVERSED IN VOICE (orchestrator
+  // ruling 2026-09-03; Story 16.6's deliberate reversal, D-16.R.82).
   //
-  // BEHAVIOUR-CHANGED, THEN CORRECTED, AND THE CORRECTION IS THE INTERESTING
-  // PART. This story first made an unopenable store REFUSE the install, on the
-  // ground that installing IS the store write. That was refused in review: it
-  // contradicts 16.2's locked *"still works and says what is degraded"*, and it
-  // would mean a private window could add no font at all. But 16.2's degradation
-  // taken literally fails too — "install anyway, keep nothing" leaves a face that
-  // can never be used, the dead end D-16.R.46 Q4 forbids. The third option is
-  // what is asserted here: this browser gets the OLD MODEL, the pick embeds
-  // directly, and the note SAYS THAT IS WHAT HAPPENED.
+  // BEHAVIOUR-CHANGED, THEN CORRECTED. This story first made an unopenable
+  // store REFUSE the install, on the ground that installing IS the store
+  // write. That was refused in review: it would mean a private window could
+  // add no font at all. But "install anyway, keep nothing" fails too — a face
+  // that can never be used, the dead end D-16.R.46 Q4 forbids. The third
+  // option is what is asserted here: this browser gets the OLD MODEL, the pick
+  // embeds directly — and Story 16.6 deletes the note that used to say so, the
+  // panel that rendered it being its only site.
   //
-  // TWO CLAIMS, AND BOTH ARE LOAD-BEARING. A degradation that embedded silently
-  // would leave the author unable to tell why this browser behaves unlike the
-  // last one; a message with no embed behind it would be a lie.
-  it('still designs and still adds fonts when the store cannot be opened at all, by embedding directly and saying so', async () => {
+  // ONLY ONE CLAIM IS LOAD-BEARING NOW: the embed really happens. Story 16.2
+  // required a message too, so an author could tell why this browser behaves
+  // unlike the last one; the owner chose silence over that, knowingly.
+  it('still designs and still adds fonts when the store cannot be opened at all, and says nothing about it', async () => {
     Reflect.deleteProperty(globalThis, 'indexedDB')
     const fetchStub = upstreamFetch()
     globalThis.fetch = fetchStub as never
     const request = commandRequest()
     mount(request)
-    await waitFor(() => expect(storeNote().textContent).toMatch(/not letting the designer keep typefaces on this machine/))
     // THE PICK STILL PUTS THE FONT IN THE DOCUMENT. IndexedDB is a convenience
     // here and never a dependency.
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
@@ -1171,11 +1081,11 @@ describe('a fetched face stays on this machine', () => {
     // running in its old shape, not the third. The degradation may not quietly
     // fuse the two decisions Story 8.6 kept apart.
     expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily'])
-    // AND THE AUTHOR IS TOLD WHICH MODEL THEY ARE IN, in the product's own terms.
-    await waitFor(() => expect(storeNote().textContent).toMatch(/Kanit went straight into this document/))
-    expect(storeNote().textContent).toMatch(/nowhere to keep it there is nothing to install/)
-    expect(storeNote().textContent, 'the author must be told their document is still self-contained').toMatch(/carries its own copy/)
-    expect(screen.getByText(/No typefaces have been downloaded to this machine yet/)).toBeInTheDocument()
+    // AND NOTHING IS SAID ABOUT WHICH MODEL THE AUTHOR IS IN — the deliberate
+    // reversal this story ships, asserted against the two sentences it deletes.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Kanit went straight into this document/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not letting the designer keep typefaces on this machine/)).not.toBeInTheDocument()
   })
 
   // THE MACHINE-SCOPED PREVIEW REGISTRATION, PINNED IN BOTH DIRECTIONS.
@@ -1236,6 +1146,74 @@ describe('a fetched face stays on this machine', () => {
     } finally {
       fontSet.restore()
     }
+  })
+
+  // MATRIX ROW 1 (Story 16.6): "Panel with nothing stored | Empty store |
+  // Typography panel renders no store section at all". The three-faces guard
+  // below proves the POPULATED case only — it never mounts with an empty
+  // store, so it says nothing about this row. And this is the row that
+  // matters most: under the deleted code the EMPTY state rendered THE MOST, a
+  // heading plus two full paragraphs and no controls at all, which is exactly
+  // what the owner was looking at when they asked for the deletion. A
+  // regression that restores only `faces.length === 0 ? <emptyBranch> : null`
+  // would sail straight past the three-faces guard, because that guard cannot
+  // see a branch it never renders under.
+  it('renders no store section with nothing stored either', async () => {
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+    mount(commandRequest())
+    // THE STORE REALLY IS EMPTY — confirmed past the designer rather than
+    // merely assumed from a fresh fixture, since `beforeEach` gives every test
+    // its own IndexedDB factory.
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const listed = await opened.value.list()
+    expect(listed.ok && listed.value).toEqual([])
+
+    // NO STORE SECTION ANYWHERE — the named region, its heading, its own
+    // empty-state sentence and its CSS class, checked separately so a partial
+    // revival of only one of them still reds this.
+    expect(screen.queryByRole('group', { name: 'Typefaces downloaded to this machine' })).not.toBeInTheDocument()
+    expect(screen.queryByText('TYPEFACES THIS DESIGNER HAS DOWNLOADED')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No typefaces have been downloaded to this machine yet/)).not.toBeInTheDocument()
+    expect(document.querySelector('.machine-font-store')).toBeNull()
+  })
+
+  // THE DELETION'S OWN GUARD (Story 16.6). This story's Verification section
+  // says it plainly: "proving a section is gone by observing a green suite
+  // proves nothing; assert its absence with faces present." So this drives
+  // three stored faces through the real store and mounts the whole designer,
+  // then asserts the named region, its heading and its remove controls are
+  // ALL absent — none of `MachineFontStore`'s three renders, checked
+  // separately, so a partial revival (the heading returns but not the remove
+  // button, say) still reds this.
+  it('renders no store section with three faces present, and offers no way to remove one', async () => {
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const fixtures = ['Alpha Machine Face', 'Beta Machine Face', 'Gamma Machine Face']
+    for (const family of fixtures) {
+      const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: `Copyright 2026 ${family}` }])
+      const written = await opened.value.put({ ...storedOnly(await storedFaceKey(bytes), bytes), family })
+      expect(written.ok, `the fixture face for ${family} must reach the store`).toBe(true)
+    }
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
+    mount(commandRequest())
+    // THE FACES REALLY LANDED IN `storedFaces` — the settle condition, proven
+    // through the dropdown rather than the deleted panel.
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    await waitFor(() => expect(within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')).toHaveLength(catalogueFaces.length + fixtures.length))
+
+    // NO STORE SECTION ANYWHERE, in a typography panel that has three faces to
+    // draw if it were still drawing them.
+    expect(screen.queryByRole('group', { name: 'Typefaces downloaded to this machine' })).not.toBeInTheDocument()
+    expect(screen.queryByText('TYPEFACES THIS DESIGNER HAS DOWNLOADED')).not.toBeInTheDocument()
+    expect(document.querySelector('.machine-font-store')).toBeNull()
+    expect(screen.queryAllByRole('button', { name: /^Remove .* from this machine$/ })).toEqual([])
+
+    // AND THE THREE FACES ARE STILL OFFERED — the deletion costs no
+    // discoverability, because `AVAILABLE LOCALLY` is the family control's own
+    // list and was never the deleted panel's to begin with.
+    const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
+    for (const family of fixtures) expect(local.map((option) => option.textContent)).toContain(`${family} — use it, already downloaded to this machine`)
   })
 })
 
@@ -1322,7 +1300,7 @@ describe('a pick that stalls rather than failing', () => {
     expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'the pick must still be offered in the new document').toBe(true)
     // THE FACE REACHES THE MACHINE. A stuck hold returns before the fetch, so
     // neither of these can be satisfied by a pick that silently did nothing.
-    await waitFor(() => expect(screen.getByText(/Kanit/, { selector: '.machine-font-name' })).toBeInTheDocument())
+    await waitForStoredFamily('Kanit')
     expect(fetchStub.mock.calls.length).toBeGreaterThan(probesBefore)
   })
 

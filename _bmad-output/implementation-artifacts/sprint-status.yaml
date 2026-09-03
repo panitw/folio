@@ -556,5 +556,5 @@ development_status:
   # pending, because its owner was 'the first story that adds store maintenance' and there will
   # now be none. Sequenced AFTER 16.4 closes: 16.4 is in review with a frozen contract that does
   # not cover deleting a panel, and folding this in would invalidate the review just completed.
-  16-6-the-machine-store-panel-goes-away: backlog
+  16-6-the-machine-store-panel-goes-away: in-progress
   epic-16-retrospective: optional
