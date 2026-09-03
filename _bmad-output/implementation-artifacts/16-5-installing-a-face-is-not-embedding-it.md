@@ -24,21 +24,24 @@ deferred:
 
 *This section is background, not a requirement; the contract below governs.*
 
-Today, choosing a typeface does three things at once: it downloads the font, keeps a copy on your
-machine, and writes the font into your template file. That third step happens even if you never use
-the font, and once it is in the file it stays there. After this story the three come apart. Browse as
-freely as you like; install what looks promising onto this machine; and a font is written into your
-template at the moment something in the template is actually set in it.
+This shipped. Choosing a typeface used to do three things in one action: download the font, keep a
+copy on this machine, and write it into the template file — even for a font never used, and once
+written it stayed. Those three have come apart. Browse freely, install what looks promising onto this
+machine, and the font enters your template only when something in it is actually set in that face.
+Story 8.6's title reverses, but its guarantee does not: the file still carries its fonts, so a
+colleague's pages come out identical. Only the moment a font starts travelling has moved.
 
-**Story 8.6's title reverses — picking a family no longer puts it in the file — but its guarantee does
-not.** Send the file to a colleague and the pages still come out identical, because a font still
-travels inside the template. Only the moment it starts travelling moves.
+Two limits are deliberate and disclosed. One rare licence check could not move earlier without
+creating a second authority over what enters a document, so a face can install and still be refused
+on first use — and the refusal now says so, and points at the control that removes it from this
+machine. A browser that will not keep anything falls back to the old behaviour, putting the font
+straight into the document and saying why.
 
-One limit is deliberate and disclosed rather than hidden. Install checks everything it can check
-without becoming a second opinion about what may enter a document. One rare check cannot move — the
-one that compares a font's declared licence against the licence written inside the font itself — so a
-face can install successfully and still be refused the first time you use it. When that happens the
-refusal says so plainly and points at the button that removes it from this machine.
+Three things are intentional, not oversights. A browser-run test here fails, and failed identically
+before this story began: it looks for the right sentence in the wrong place, and its repair belongs
+to the next story. One guard added late has no test of its own, because nothing an author can do
+today reaches it. And two rows of this story's behaviour table are proven below the interface rather
+than by driving it, so they are recorded as partial.
 
 <intent-contract>
 
@@ -653,3 +656,110 @@ browser IndexedDB exists, so the dialog is in its ordinary mode and the confirm 
 
 - Row 7's covering test — the one the first audit missed.
   [`App.font-store.test.tsx:651`](../../folio-designer/src/App.font-store.test.tsx#L651)
+
+## Delivery Log
+
+### 2026-09-03 — done
+
+Baseline `e80f607`. Shipped as specified: the single pick action is split into an **install** (fetch →
+classify → store, dispatching no engine command) and an **embed at first use** that sends
+`embedFontFamily` then `updateComponentProperties` as two commands with two undo entries. Zero engine
+change — the only edit under `folio-go/` is the 24-line carve-out comment in `variableface.go`, which
+records why a refuse-only install-time filter is not the second authority D-16.6 forbids. Story 8.6's
+title reverses; its guarantee does not.
+
+**Decisions applied by ID.** D-16.R.46 (and its Q4 amendment) is the owner decision the story exists to
+discharge. D-16.R.59 — a ruling that reached the implementer only through the orchestration channel is
+a pointer to nothing — became the standing rule that any ruling the implementer must act on is written
+into the spec verbatim before dispatch; this story is its first application, and the `2026-09-03 —
+orchestrator rulings applied after the step-03 matrix audit` entry is that rule discharged. D-16.R.55's
+mutation-asserted-applied discipline governed every red-proof. D-16.R.63's rule — mutate to expose the
+*alibi*, not to break the feature — governed the three HIGH patches. D-16.R.69 records the patch round;
+D-16.R.70 records why the two shared record files were committed separately.
+
+**Findings triaged: 10 patched / 0 review-deferred / 0 rejected.** All ten review findings were applied
+and red-proved; no finding was deferred or rejected in triage. Separately, the story registers **four
+deferrals** in its own frontmatter (the README e2e-gate claim, the Go-only nameID-13 residue, the
+pre-existing browser red in `font-embed-boundary.spec.ts`, and the 30-second dropdown-block hazard gated
+to Story 16.4). No rejection tally appears anywhere in the record, because there were no rejections —
+stated here so a later reader does not read the absence as an omission.
+
+**What the review caught.** Three review layers with disjoint yields and one corroborated defect
+(D-16.R.66). The three HIGH items shared one shape — a clause that exists, a test that asserts it, and
+an alibi that still holds. The staleness guard was sited in `embedInstalledFamily` rather than
+`commitFirstUse` where the finding pointed, because the family control's `documentGeneration` and `ids`
+are the render's, frozen in the closure, so a check there compares them to themselves; the red-proof
+also established that `applyProperties` **sends first and guards after**, making a stale commit a
+command that reaches the engine rather than a dropped response. Row 7's quota refusal was covered only
+by a module-level string check: replacing the refusal with `return undefined` left the author told
+nothing while 274 tests across six other files stayed green.
+
+**PATCH 6 HAS NO BEHAVIOURAL TEST, DELIBERATELY, AND THE REASONING IS THE POINT.** The busy/no-engine
+early returns in `embedInstalledFamily` were silent and are now routed through `refuseFontChain`. That
+path is **unreachable from the UI today**: the family combobox is `disabled={pending || pickBusy}`, and
+`pickBusy` is fed from `fontChainBusy || fileBusy` at the `ComponentProperties` call site, so an author
+cannot open the window the guard closes. The guard defends against the **ref/state lag** D-16.R.15
+named — it reads `fontChainBusyRef.current`, which updates synchronously, while the combobox's disabled
+state re-renders a tick later. So it is defence against a lag, not a fix for a reachable bug. A test
+could therefore only assert that the guard is *present*, which is exactly the spelling test this story
+forbids and which 16.3 committed in a different medium. Writing one would have converted an honest
+defence into a false measurement. Verified at close: the disabled condition and the ref-vs-state split
+are both still as described.
+
+**THE MATRIX AUDIT FAILED ITS OWN FIRST EXECUTION, AND THAT FAILURE IS WHY THE RULE EXISTS.** The
+original step-03 audit reported the matrix "clean" while having checked **only the two rows already
+flagged** — it never looked at row 7, which was the row that was actually broken. *"Matrix audit clean"*
+read as ALL rows and meant THE FLAGGED ROWS: this epic's signature defect committed inside the check
+written to catch it (D-16.R.62). The correction is the standing rule now named in `## Verification` —
+**a matrix audit reports N rows and N results, never a single verdict** — together with its companion,
+that any row whose only assertion calls the production function directly rather than driving the path a
+user takes is FAILED, not passed.
+
+**ROWS 3 AND 8 ARE MODULE-LEVEL PARTIALS, NOT PASSES.** Rows 1, 2, 4, 5, 6 and 7 are driven in a mounted
+designer and pass. Row 3 (unmapped licence token) is exercised only by `font-licence.test.ts` calling
+`classifyLicenceToken` directly; no mounted test drives that refusal along the install path. Row 8 (bytes
+that are not a font) is exercised only by the tie test calling the predicate directly. Both are recorded
+as partial and must not be upgraded to passes by a later reader counting eight green rows.
+
+**The Spec Change Log's superseding note.** Two claims in the log's first entry assert behaviours that
+were reversed within hours. The log is append-only, so the originals stand untouched and a superseding
+note was appended above them naming both reversals and pointing each at the dated `2026-09-03 —
+orchestrator rulings applied after the step-03 matrix audit` entry, items 4 and 3 respectively. Note
+for precision: the two reversed claims are two *paragraphs of one entry*, not two entries, and that
+first entry carries no date of its own — the note says so explicitly and identifies it by its heading
+text. Both superseding rulings are dated. Both reversals are now covered by tests that did not exist
+when the original entry was written.
+
+**Measured gates, re-run at close on `b0f9a74`,** every exit code taken from `$?` immediately after the
+command with no pipe or wrapper between:
+
+| gate | result |
+|---|---|
+| `npm run typecheck` | `rc=0`, clean |
+| `npm run lint` | `rc=0`, exactly **4** `only-export-components` warnings, re-measured at `preview/pdf-viewer.tsx:16,17` and `App.tsx:2141,2148` |
+| `npm run test` | `rc=1` — **672 passed / 1 failed of 673, 55 files**. Failing **name set** is the single standing `canvas-authority-contract` red (DW-152), matched by name and not by count |
+| `npm run build` | `rc=0`, node v24.16.0 |
+| `npm run test:e2e:compile` | `rc=0`. **A compile, not a run** |
+| `folio-go` `go test -count=1 ./...` | `rc=1` — failing leaf **name set** exactly `TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`, of 13 ok packages, 1 failing package (`internal/text`), 4 with no test files |
+| `lint` `go test -count=1 ./...` | `rc=0`, 4 packages |
+
+**Standing-rule sweeps re-measured at close, not cited.** Identifier sweep, reported per identifier:
+**37 distinct `DW-\d+` cited across the 11 epic-16 artifacts, 37 resolved, 0 unresolved**; second
+population **547 tracked files** under `folio-designer/src` and `folio-go` (the build's 503 was
+`.go`+`.ts`+`.tsx`+`.json`; the wider set was swept), **45 distinct cited, 45 resolved, 0 unresolved**.
+Union across both populations: 76 distinct, 0 unresolved. Register holds **182 definition lines, 182
+distinct**. No citation was verified by re-reading a citation.
+
+**Not CI-verified — nothing in this epic may be described as such.** The designer CI job still halts at
+step 2 until the post-16.4 repair (DW-171). No browser run was performed at close; the two real browser
+runs recorded above are the builder's, and are labelled as the builder's.
+
+**Deferred, with owners.** DW-181 and DW-182 are this story's output; DW-180 was filed late by the
+orchestrator against its own dangling citation. The `font-embed-boundary.spec.ts` browser red and the
+README e2e-gate claim both belong with **DW-171's post-16.4 CI repair**. The 30-second dropdown-block
+hazard and the listbox `role="presentation"` defect (a second sighting of DW-141's) are **gated to Story
+16.4**, which is deliberately held at `status: draft` because its middle group asserts what this story
+made false.
+
+Story commit `f4d401c` (22 files, 2,659 insertions, 384 deletions). Shared-register commit `b0f9a74`.
+Closed by this entry.
