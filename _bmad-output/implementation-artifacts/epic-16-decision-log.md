@@ -4077,3 +4077,78 @@ parallel hunters are for, and that is the part five dead agents have not deliver
 **So 16.4 is: implemented, gated, browser-witnessed, matrix-audited 12/12, sweep-clean, with its two
 load-bearing pins verified and its cap ruling red-proved — and NOT reviewed.** Those are different claims
 and the record keeps them apart. **The story does not close on this.**
+
+## D-16.R.81 — The adversarial layer ran at last, on a different model in three short hunts; it corrects D-16.R.74 and finds a test that asserts a false invariant
+
+**Six consecutive deaths on the heavy dispatch, so the layer was rebuilt as three short read-only hunts on
+a different model.** All three completed. **Changing the shape of the work, not repeating it, is what got
+past the outage** — and the narrower jobs also produced sharper reports than the omnibus round would have.
+
+### FINDING 1 — a new defect, and 16.4's own new tests bake it in
+
+**`addableFamilyCount = webFamilies.length + catalogueFaces.length` (`font-index.ts:154`) never counts
+`orphanedStored`.** VERIFIED BY ME. `offeredFamilies` returns `[...local, ...stored, ...orphanedStored,
+...web]`, and every `webFamilies` row goes to exactly one of `stored` or `web` — **so the true addable
+union is `catalogueFaces + webFamilies + orphanedStored`, and the count is short by exactly
+`orphanedStored.length`.** `familyIndexDisclosure` (`:339`) then hardcodes `catalogueFaces.length` as
+*"already on this machine"*.
+
+**The part that is 16.4's and not inherited: this story's NEW tests assert the shortfall as an invariant.**
+`App.test.tsx:1560` and `App.font-store.test.tsx:638` both assert
+`counted + <group 2 rows> === addableFamilyCount` — **which is false whenever `orphanedStored` is
+non-empty**, and holds only because both fixtures plant their stored family *drawn from* `webFamilies` and
+never orphan it. **The invariant is untested exactly where it breaks, and reads as proven when it is not.**
+`orphanedStored` is a deliberately supported, reachable state — `font-index.test.ts:316` exists to prove it
+(*"still offers a stored family the snapshot has since stopped listing"*).
+
+**This is distinct from the registered deferral**, which is about `familyIndexDisclosure` counting the
+catalogue while the heading shows local + stored. **The orphaned arm is not named in that entry.** The
+class is one this epic knows well — **a guard that passes because the fixture avoids the case** — but it
+arrives here in a new medium: *an assertion that is arithmetic, and wrong as arithmetic.*
+
+### FINDING 2 — AND IT CORRECTS D-16.R.74, WHICH IS MINE
+
+**The blind reader challenged the causal story I recorded, and it is right.** I wrote that `offeredFamilies`
+contradicting its doc comment *"moves the fix"*, and the lead's ruling rested on grouping being *"labelling
+and never re-ordering"* over **contiguous runs** of the flat list.
+
+**VERIFIED: `App.tsx:2029-2030` builds the groups with `addable.filter(familyIsInstalled)` and
+`addable.filter(!familyIsInstalled)` — FILTERS over the whole array, not positional slices.** `matches` is
+then *manufactured* as `[...declared, ...onThisMachine, ...shownToInstall]`. **Filter-then-concat is
+order-independent: a row stranded at offset 900 would have been found and drawn exactly as completely even
+if `offeredFamilies` still interleaved the tiers.**
+
+**So the `offeredFamilies` order repair was NOT required by the heading defect.** What actually fixed that
+defect is the App.tsx change from cap-before-partition to **partition-then-cap-only-the-tail** — the ruling
+at D-16.R.74, which stands. The order repair remains independently justified: **it makes a function agree
+with its own long-standing documentation**, which is worth doing on its own terms. **But the causal claim I
+recorded — and the comment now shipped above `offeredFamilies` — credits it with fixing something it did
+not fix.**
+
+**That is this epic's signature defect committed by me in the record, one turn after I named the rule.** A
+comment was not a measurement when the lead read it; **my correction to that was also not a measurement**,
+because I accepted that repairing the order was load-bearing for the rendering without tracing the caller.
+The reversal-cost split at D-16.R.74 happens to survive — the repair genuinely stands alone — **but it
+stands alone for a different reason than the one I gave.**
+
+### FINDING 3 — corroborated by two independent hunts, which is why it is trustworthy
+
+**Nothing scrolls the keyboard-active option into view**, in a `168px` scroller (`App.css:213`) that the
+three groups now routinely fill past 80 rows; `move()` updates `active` and `aria-activedescendant` only.
+`grep scrollIntoView` → **0 hits in App.tsx, against a positive control confirming the same method finds
+that file's other DOM calls.** Already registered as a deferral, pre-existing and worsened here. **Both the
+correctness hunt and the blind hunt reached it independently by different routes** — two methods, one
+defect, which is the corroboration D-16.R.43.2 asks for and the thing concurrence-by-one-method never gave.
+
+### WHAT THE GUARD-INTEGRITY HUNT FOUND, AND ITS ONE LIMIT
+
+**No findings** — and it went further than asked, diffing the test files against their pre-16.4 state and
+confirming the two re-pointed `/AVAILABLE LOCALLY/` assertions **genuinely restate the property**: one
+extracts the heading from `App.tsx`'s source and compares it to `storeWriteRefusal`'s output, the other
+reads the heading off the **rendered DOM** and asserts the alert contains it. **Both compare two
+independently-sourced strings rather than a string to a constant**, which is exactly the guardrail the lead
+required against relocating a place-keyed blind spot.
+
+**Its limit, which it stated itself: it executed nothing.** Its verdict is inferred from source, so a clean
+guard-integrity report is *"I could not see how these would pass while the behaviour broke"*, **not** *"I
+made them fail."* Recorded as such rather than as a measurement.
