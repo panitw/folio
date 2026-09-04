@@ -862,6 +862,136 @@ describe('a fetched face stays on this machine', () => {
     // AND NOTHING IS SHOWN AGAINST A CONTROL THE AUTHOR IS NO LONGER LOOKING AT.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+  // THE ONE-RESOLUTION-AT-A-TIME GUARD, BOTH DIRECTIONS, AT THE ONLY LAYER THAT
+  // HOLDS IT.
+  //
+  // `App.tsx:114` keeps the busy flag in a REF as well as in state, and
+  // `setCurrentSnapshot` clears BOTH on a document replacement while
+  // `embedInstalledFamily`'s own `finally` deliberately does NOT release a hold
+  // whose generation has moved. Two copies of one flag, released from two
+  // places, is a hazard with two distinct failure modes, and neither is visible
+  // from `font-source.ts` or `font-licence.ts` — the guard is not in either
+  // module, so no unit test of either can reach it. The two tests below own it.
+  //
+  // TRIGGER: `AVAILABLE LOCALLY` first use, which Story 16.9 left standing. The
+  // deleted tests drove the removed `AVAILABLE TO INSTALL` row; the mechanism
+  // they exercised is reachable through this door unchanged, so the fixture is
+  // seeded straight into the store the way every other test in this file does.
+
+  // (a) THE HOLD IS RELEASED WHEN THE DOCUMENT IS REPLACED UNDER IT.
+  //
+  // The releasing `finally` is generation-guarded, so on a replacement it is
+  // `setCurrentSnapshot`'s own `holdFontChain(false)` — and nothing else — that
+  // hands the flag back. Clear only the state copy there and the ref stays true
+  // for the life of the session: every later pick takes the busy branch, the
+  // author is told the designer is busy by a designer that is doing nothing,
+  // and no font can ever be used again without a reload. Silent, permanent, and
+  // invisible to a test that only replaces the document and stops there.
+  it('releases the pick hold when the document is replaced mid-resolution, so a later pick still commits', async () => {
+    const key = await storedFaceKey(kanitFace)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
+    globalThis.fetch = upstreamFetch() as never
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const sent: Record<string, unknown>[] = []
+    let holdTheEmbed = false
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        if (holdTheEmbed && parsed['kind'] === 'embedFontFamily') await held
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
+    })
+    mount(request)
+    await waitForStoredFamily('Kanit')
+
+    holdTheEmbed = true
+    expect(pick('Kanit', /^Kanit$/), 'the installed family must be offered for first use').toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
+
+    // THE DOCUMENT IS REPLACED WHILE THAT FIRST RESOLUTION IS STILL RUNNING, and
+    // then the first resolution finishes into a document nobody is looking at.
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
+    holdTheEmbed = false
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // AND THE NEXT PICK STILL WORKS. This is the whole claim: the flag was
+    // handed back by the replacement, not stranded by a `finally` that declined
+    // to release it.
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    expect(pick('Kanit', /^Kanit$/), 'the installed family is still offered in the replacement document').toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind']), 'a pick after the replacement must reach the engine, not the busy branch').toEqual(['embedFontFamily', 'embedFontFamily', 'updateComponentProperties']))
+    expect(screen.queryByRole('alert'), 'a released hold states no refusal').not.toBeInTheDocument()
+  })
+
+  // (b) THE HOLD IS TAKEN AT ALL, so a second pick made while the first is still
+  // resolving is REFUSED rather than run beside it.
+  //
+  // THE SECOND PICK IS MADE AGAINST ANOTHER COMPONENT, because that is what
+  // makes it a claim about `App.tsx`'s flag and not about the control's own
+  // `pendingRef`: `ComponentProperties` is keyed by the selection, so clicking
+  // the second box REMOUNTS the family control with a fresh per-control guard.
+  // The only thing left standing between two picks at that instant is the
+  // designer-wide hold — and if it is not taken, two resolutions run side by
+  // side and two `embedFontFamily` commands commit for one author gesture each.
+  it('refuses a pick made against another component while the first embed is still in flight, and sends one embed', async () => {
+    const key = await storedFaceKey(kanitFace)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
+    globalThis.fetch = upstreamFetch() as never
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const sent: Record<string, unknown>[] = []
+    let holdTheEmbed = false
+    const twoBoxes = { ...canvas, components: [textComponent, { ...textComponent, id: 'e2', y: 48_000 }] }
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        if (holdTheEmbed && parsed['kind'] === 'embedFontFamily') await held
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: twoBoxes } }
+    })
+    render(<App engine={engine(request)} blankBytes={new Uint8Array([1, 2, 3]).buffer} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: twoBoxes }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    await waitForStoredFamily('Kanit')
+
+    holdTheEmbed = true
+    expect(pick('Kanit', /^Kanit$/), 'the installed family must be offered for first use').toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
+
+    // THE AUTHOR MOVES TO THE OTHER BOX AND PICKS AGAIN, mid-resolution.
+    fireEvent.click(screen.getByLabelText('text component e2'))
+    expect(pick('Kanit', /^Kanit$/), 'the row is still offered against the second component').toBe(true)
+    // SETTLED GENEROUSLY FIRST, so a second resolution that DID start has
+    // reached its own `embedFontFamily` by the time this is read — otherwise
+    // the count would agree merely because nothing had run yet. Ten macrotasks,
+    // not one: the stored tier reads IndexedDB before it dispatches, and one
+    // tick is measurably too few to carry that read to the command.
+    for (let tick = 0; tick < 10; tick++) await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.map((payload) => payload['kind']), 'one resolution at a time: the second pick sends no command of its own').toEqual(['embedFontFamily'])
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent, 'the second pick is refused in words, against the control the author used').toBe('Kanit was not used: the designer was busy with another change. Try it again.')
+
+    // AND THE FIRST RESOLUTION IS UNHARMED BY THE REFUSAL — it finishes, and the
+    // property it was going to set is the one it declines to set, because the
+    // selection moved. Settled through the event loop so this is a claim about
+    // the guard and not about when the assertion ran.
+    holdTheEmbed = false
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.map((payload) => payload['kind']), 'still exactly one embed for the two picks').toEqual(['embedFontFamily'])
+  })
 
   // THE DEGRADED CONFIRM WARNING, ASSERTED AGAINST THE CODE THAT DECIDES IT AND
   // NOT THE CODE THAT DISPLAYS IT.

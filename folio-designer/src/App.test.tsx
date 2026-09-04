@@ -1907,12 +1907,35 @@ describe('typography controls over the engine-projected closed sets', () => {
   // web-tier resolution; releasing the pick hold on a mid-resolution
   // document replacement; a directory disagreeing with its declared
   // licence token; installing with no network) can no longer be reached
-  // from this control at all. The underlying mechanism they exercised —
-  // `fetchWebFamily` / `timedFetcher`'s stall handling, the licence
-  // classification, the one-resolution-at-a-time guard — is unit-tested
-  // directly in `font-source.test.ts` and `font-licence.test.ts`, and is
-  // still reachable end to end through the font browser's own 'Add fonts...'
-  // flow, which this story does not touch.
+  // from this control at all. OF THE THREE MECHANISMS THEY EXERCISED, TWO ARE
+  // UNIT-TESTED DIRECTLY AND ONE IS NOT, and the difference is now stated
+  // instead of averaged over: `fetchWebFamily` / `timedFetcher`'s stall
+  // handling is covered in `font-source.test.ts`, and the licence
+  // classification in `font-licence.test.ts`.
+  //
+  // THE ONE-RESOLUTION-AT-A-TIME GUARD IS IN NEITHER FILE, and this comment
+  // used to say it was. It cannot be: the guard is not in either module. It is
+  // `App.tsx`'s own `fontChainBusyRef` / `holdFontChain` (App.tsx:114-115),
+  // read by both surviving doors — `addFamilyToDocument` (App.tsx:885) and
+  // `embedInstalledFamily` (App.tsx:1073) — and handed back on a document
+  // replacement by `setCurrentSnapshot` rather than by either `finally`, which
+  // is generation-guarded and deliberately declines to release a moved hold.
+  // Measured against the claim: searching both named files for
+  // `at a time|concurrent|overlapping|in flight|busy|re-entran` returns 0 hits,
+  // against 29 `fetchWebFamily` hits in `font-source.test.ts` as the positive
+  // control that the search itself works.
+  //
+  // WHERE IT IS COVERED NOW: two tests in `App.font-store.test.tsx`, driven
+  // through the surviving `AVAILABLE LOCALLY` first-use door — 'releases the
+  // pick hold when the document is replaced mid-resolution, so a later pick
+  // still commits' (the flag stranded, so every later pick is dead for the
+  // session) and 'refuses a pick made against another component while the
+  // first embed is still in flight, and sends one embed' (the flag never
+  // taken, so two overlapping picks both resolve and two embeds commit). The
+  // deleted row is what went; the mechanism did not.
+  //
+  // AND ALL THREE ARE STILL REACHABLE END TO END through the font browser's
+  // own 'Add fonts...' flow, which this story does not touch.
 
   it('shows the engine\'s own default size for an element that commits none, as a placeholder and not a value', () => {
     select()
