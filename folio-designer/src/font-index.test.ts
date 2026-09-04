@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { catalogueFaces } from './generated/font-catalogue'
 import { familyIndex, familyIndexPublishedFamilies, familyIndexSnapshotDate } from './generated/font-index'
 import { blankComments } from '../scripts/forbidden-font-hosts.mjs'
-import { addableFamilyCount, familyIndexDisclosure, familyIsInstalled, familySourceNote, indexCategories, indexRowFor, indexScripts, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
+import { addableFamilyCount, familyIsInstalled, familySourceNote, indexCategories, indexRowFor, indexScripts, indexExcludedCjkFamilies, localTierHolds, offeredFamilies, webFamilies } from './font-index'
 import type { StoredFace } from './font-store'
 
 // STORY 16.1 — THE TWO TIERS AND THE JOIN BETWEEN THEM (D-16.R.3, D-16.R.2).
@@ -237,23 +237,22 @@ describe('what the browser shows and what it says about it', () => {
     expect(offeredFamilies('').some((source) => source.tier === 'web' && source.row.variable)).toBe(false)
   })
 
-  it('reports the ADDABLE count, and says which count it is', () => {
+  // THE COUNT'S OWN FACTS, REHOMED SO THEY OUTLIVE THE SENTENCE THAT QUOTED THEM
+  // (Story 16.10). Both assertions were written inside a test named for
+  // `familyIndexDisclosure()`. That sentence is gone — the design's header draws
+  // no paragraph — but the number is not: `resultLine` still prints
+  // `N of ${addableFamilyCount} families` in the browser's results toolbar. The
+  // wording assertions retired with their subject; these two did not, because
+  // deleting a live assertion along with a dead one leaves the number that still
+  // ships unguarded while every gate stays green.
+  //
+  // 1,946 IS NOT THIS COUNT. It is what the upstream source PUBLISHED on the
+  // snapshot date; the addable count is strictly smaller because variable-only
+  // rows are dropped, and keeping the inequality asserted is what stops the two
+  // being confused for one another.
+  it('reports the ADDABLE count, which is strictly smaller than the published one', () => {
     expect(addableFamilyCount).toBe(webFamilies.length + catalogueFaces.length)
     expect(addableFamilyCount).toBeLessThan(familyIndexPublishedFamilies)
-    const disclosure = familyIndexDisclosure()
-    expect(disclosure).toContain(`${addableFamilyCount} families you can add`)
-    expect(disclosure).not.toContain(String(familyIndexPublishedFamilies))
-    expect(disclosure).toContain(`${catalogueFaces.length} already on this machine`)
-  })
-
-  // THE WORD "LIVE" IS QUALIFIED WHEREVER IT WOULD OTHERWISE BE READ IN. The
-  // LIST is a build-time snapshot with a date; only the typeface is fetched.
-  it('says the list is a dated snapshot and only the typeface is fetched', () => {
-    const disclosure = familyIndexDisclosure()
-    expect(disclosure).toContain(`snapshot taken on ${familyIndexSnapshotDate}`)
-    expect(disclosure).toMatch(/changes only when the designer is released/)
-    expect(disclosure).toMatch(/fetched at the moment you pick one/)
-    expect(disclosure).toMatch(/single variable file are not shown/)
   })
 
   it('searches both tiers, local first, and matches on substring', () => {

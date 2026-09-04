@@ -392,15 +392,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .font-browser-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
 .font-browser { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; width: min(1180px, calc(100vw - 44px)); height: min(748px, calc(100vh - 44px)); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-sheet); }
 
-.font-browser-header { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-6); border-bottom: var(--hairline) solid var(--color-line); }
-.font-browser-header-row { display: flex; align-items: center; gap: var(--space-6); }
+/* THE HEADER IS THE ONE 46px ROW THE DESIGN DRAWS (Story 16.10).
+   `Font Browser.dc.html:293` is `height: 46px … display: flex; align-items:
+   center; gap: 14px; padding: 0 14px`, transcribed here with `--space-6`,
+   which is 14px. It was a two-row grid only to carry a disclosure paragraph
+   the design has no slot for; with the paragraph gone the second row and the
+   grid that made it go too. */
+.font-browser-header { display: flex; align-items: center; gap: var(--space-6); height: 46px; padding: 0 var(--space-6); border-bottom: var(--hairline) solid var(--color-line); }
 .font-browser-title { margin: 0; color: var(--color-ink-high); font: var(--type-title); }
 .font-browser-search { display: flex; align-items: center; gap: var(--space-2); flex: 1; max-width: 460px; padding: var(--space-1) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); }
 .font-browser-search input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--color-ink-high); font: var(--type-body-em); outline: none; }
-/* THE DISCLOSURE IS `familyIndexDisclosure()` AND IT WRAPS. The mockup's header
-   is a fixed 46px carrying one short false sentence; the true sentence is three
-   clauses long, so the region grows rather than the sentence shrinking. */
-.font-browser-disclosure { margin: 0; max-width: 96ch; color: var(--color-ink-low); font: var(--type-mono); }
 .font-browser-toggles { display: flex; align-items: center; gap: var(--space-2); }
 .font-browser-toggle-label { color: var(--color-ink-low); }
 .font-browser-sort { padding: 0 0 2px; border: none; border-bottom: var(--hairline) solid transparent; background: none; color: var(--color-ink-low); font: var(--type-body); cursor: pointer; }

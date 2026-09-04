@@ -109,6 +109,39 @@ describe('DESIGN.md token contract', () => {
     expect(shellCss).toContain('.preview-failure button:focus-visible { outline: 2px solid var(--color-select);')
   })
 
+  // STORY 16.10 — THE FONT BROWSER'S HEADER IS ONE ROW, PINNED WHERE A GATE RUNS.
+  //
+  // Nothing that actually RUNS could see this before. `npm test` is vitest over
+  // jsdom, which applies no stylesheet at all, and the one real measurement — the
+  // 46px `boundingBox` in `e2e/font-browser.spec.ts` — is in the Playwright suite,
+  // which no gate in this epic executes (D-000.4). Reverting `.font-browser-header`
+  // to its two-row grid left `npm test`, `typecheck`, `oxlint` and `build` all
+  // green, so the story's central claim had no running guard. This is that guard.
+  //
+  // IT READS THE EXTRACTED DECLARATION BLOCK, NEVER THE RAW FILE. The comment
+  // standing above that rule in `App.css` contains both "grid" and "46px" in
+  // prose, so a whole-file `toContain`/`not.toContain` pair would be satisfied by
+  // the commentary rather than by the rule — a false guard of exactly the kind
+  // this epic keeps finding. The same reason strips comments before the
+  // orphaned-selector scan below.
+  it('draws the font browser header as the design\'s single 46px flex row', () => {
+    const shellCss = fs.readFileSync(appCssPath, 'utf8')
+    const block = shellCss.match(/^\.font-browser-header\s*\{([^}]*)\}/m)?.[1]
+    expect(block, 'App.css must declare a `.font-browser-header` rule').toBeTruthy()
+    expect(block, 'the design draws one flex row').toContain('display: flex')
+    expect(block, 'Font Browser.dc.html:293 fixes the row at 46px').toContain('height: 46px')
+    expect(block, 'a grid here is the two-row header the disclosure paragraph needed').not.toContain('display: grid')
+
+    // AND THE SELECTORS THE PARAGRAPH OWNED ARE GONE FROM THE FILE, not merely
+    // unreferenced by the TSX. Comments are stripped first for the reason above:
+    // the prose that explains the removal names both classes.
+    const withoutComments = shellCss.replaceAll(/\/\*[\s\S]*?\*\//g, '')
+    expect(withoutComments, 'the disclosure paragraph and its rule went together').not.toContain('.font-browser-disclosure')
+    expect(withoutComments, 'with one row left there is no inner row wrapper').not.toContain('.font-browser-header-row')
+    // POSITIVE CONTROL for the strip-and-scan: a sibling rule that DOES survive.
+    expect(withoutComments, 'the scan must still see the rules that remain').toContain('.font-browser-title')
+  })
+
   it('limits the display and large numeric exception to S1', () => {
     const shellCss = fs.readFileSync(appCssPath, 'utf8')
     expect(shellCss.match(/var\(--type-display\)/g)).toHaveLength(1)

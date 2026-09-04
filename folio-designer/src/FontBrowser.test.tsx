@@ -76,15 +76,62 @@ describe('the font browser is the design\'s modal', () => {
     expect(screen.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
   })
 
-  it('names the snapshot rather than claiming a live library, and reuses the one sentence that says so', () => {
+  // THE HEADER SLOT IS EMPTY, AND BOTH CANDIDATE SENTENCES ARE REFUSED
+  // (Story 16.10). The design's header is a single 46px row with no paragraph
+  // under it, so this asserts the paragraph's ABSENCE rather than its wording.
+  // The mockup's own `web font library · 1,946 families` stays refused on top of
+  // that — following the design strictly here means drawing nothing in that
+  // slot, not swapping one claim for a shorter one.
+  //
+  // THE LOAD-BEARING ASSERTION IS THE STRUCTURAL ONE, AND IT IS WORDING-FREE ON
+  // PURPOSE. A phrase list only catches the sentences we already retired: mint a
+  // NEW short one into the empty metadata slot — `1304 families`, say — and every
+  // phrase assertion below still passes, which is precisely the defect the story's
+  // "Ask First" and "Never" lists forbid. So the header's ELEMENT CHILDREN are
+  // pinned as a CLOSED SET, by tag and class, in the design's own order. Any node
+  // minted into that slot reds this test whatever it says and whatever tag it uses.
+  // The phrase assertions are kept underneath as a second, weaker net that names
+  // the specific claims this epic has ruled false.
+  //
+  // TWO POSITIVE CONTROLS, ONE PER QUERY MECHANISM. Every negative below is a
+  // `getByText`, so a `getByText` control is what proves the negatives mean
+  // something — a broken or renamed text query would otherwise report every
+  // sentence gone and the guard would pass on nothing. The `getByRole` control
+  // covers the accessible-name mechanism the rest of this file addresses controls
+  // by, which is a different lookup and cannot vouch for the first.
+  it('draws no disclosure paragraph in its header, and claims no live library either', () => {
     installed = installStubFontSet()
     open()
-    // The mockup's `web font library · 1,946 families` is neither the addable
-    // count nor a snapshot disclosure, and this is the sentence Story 16.1
-    // already shipped.
-    expect(screen.getByText(new RegExp(`${addableFamilyCount} families you can add`))).toBeInTheDocument()
-    expect(screen.getByText(/The list itself is a snapshot taken on/)).toBeInTheDocument()
+    const header = document.querySelector('.font-browser-header')
+    expect(header, 'the header the design draws must exist before its contents can be pinned').not.toBeNull()
+    expect(Array.from(header!.children).map((child) => `${child.tagName}.${child.className}`)).toEqual([
+      'H2.font-browser-title',
+      'DIV.font-browser-search',
+      'DIV.font-browser-toggles',
+      'DIV.font-browser-segmented',
+      'BUTTON.font-browser-inline-action',
+    ])
+    expect(header!.querySelectorAll('p').length, 'the design draws no paragraph in the header').toBe(0)
+
+    // POSITIVE CONTROLS — the role mechanism, then the text mechanism.
+    expect(screen.getByRole('heading', { name: 'Font browser' })).toBeInTheDocument()
+    expect(screen.getByText('Font browser')).toBeInTheDocument()
+
+    // NOT `/already on this machine/`: `buttonName(family, 'installed')` returns
+    // `${family} is already on this machine` as a row's accessible name, so
+    // asserting that string's absence asserts the absence of something the browser
+    // is SUPPOSED to print. It passed only because this fixture is four `web`-tier
+    // sources; one `local` or `stored` source and it reds on correct behaviour.
+    // The closed set above is what that assertion was reaching for. Do not re-add it.
+    expect(screen.queryByText(/families you can add/)).toBeNull()
+    expect(screen.queryByText(/The list itself is a snapshot taken on/)).toBeNull()
+    expect(screen.queryByText(/variable file are not shown/)).toBeNull()
     expect(screen.queryByText(/web font library/)).toBeNull()
+
+    // AND THE COUNT IS NOT LOST WITH THE SENTENCE. `resultLine` prints it in the
+    // results toolbar from the same `addableFamilyCount` the paragraph quoted,
+    // which is what keeps a count in the browser at all.
+    expect(screen.getByText(new RegExp(`\\d+ of ${addableFamilyCount} families`))).toBeInTheDocument()
   })
 
   it('closes on Escape and on Cancel, discarding whatever was staged', async () => {

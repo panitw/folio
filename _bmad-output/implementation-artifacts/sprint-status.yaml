@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 09-03-2026
+last_updated: 09-04-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -594,5 +594,5 @@ development_status:
   # sentence that disagreed will not exist. Does NOT discharge the resultLine defect ("1274 of
   # 1273"): resultLine reads addableFamilyCount and STAYS. Spec deliberately not written yet --
   # 16.9 is moving the test files this story would anchor into, and stale anchors are D-16.R.28.
-  16-10-the-browser-header-says-what-the-design-says: backlog
+  16-10-the-browser-header-says-what-the-design-says: review
   epic-16-retrospective: optional

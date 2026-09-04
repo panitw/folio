@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { familyIndexDisclosure, familyIsInstalled, indexCategories, indexScripts, type FamilySource } from './font-index'
+import { familyIsInstalled, indexCategories, indexScripts, type FamilySource } from './font-index'
 import { browserRows, browserSorts, browserViews, buttonLabel, buttonName, confirmLabel, confirmName, degradedFooterNote, defaultSpecimenSize, emptyStateHeading, emptyStateHint, filterRows, filtersActive, maxSpecimenSize, minSpecimenSize, noFilters, pageCount, pageLine, pageOf, pendingLine, resultLine, rowState, rowTierNote, scriptBadge, sizeReadout, sortRows, specimenFor, specimenSize, weightLine, type BrowserFilters, type BrowserRow, type BrowserSort, type BrowserView } from './font-browser-model'
 import { previewFaceFamily } from './preview-face-family'
 import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
@@ -18,13 +18,21 @@ import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistr
 // the list without a command. The scope is this modal because the design put a
 // Cancel/Apply pair in this modal, and it is not a precedent for the inspector.
 //
-// THE HEADER'S COUNT IS `familyIndexDisclosure()` AND NOT A SECOND SENTENCE.
+// THE HEADER'S METADATA SLOT DRAWS NOTHING, AND THAT IS THE DESIGN (Story 16.10).
 // The mockup says *"web font library · 1,946 families"*, and both halves of that
 // are wrong here: 1,946 is what the source PUBLISHED on the snapshot date, not
 // what this designer can add, and "library" reads as live when the list is a
-// build-time snapshot. Story 16.1 already ships the one sentence that states
-// both correctly, derived from `addableFamilyCount`. Minting a second one is the
-// two-authorities-on-one-count defect refused twice already in this epic.
+// build-time snapshot. THAT REFUSAL STANDS. What changes at 16.10 is that the
+// three-clause disclosure paragraph this file drew in its place also goes: the
+// design's header is a single 46px row and draws no paragraph at all, so
+// following it strictly means drawing nothing in that slot rather than drawing a
+// shorter claim of our own. Minting one would be the two-authorities-on-one-count
+// defect this epic has now refused three times.
+//
+// THE COUNT IS NOT LOST WITH THE SENTENCE. `resultLine` prints
+// `N of <addableFamilyCount> families` in the results toolbar below, from the
+// same number the paragraph quoted, and that line is the browser's one authority
+// on how many families it offers.
 type Props = Readonly<{
   /** Every family the author may add, in the order `offeredFamilies` returns them. */
   sources: ReadonlyArray<FamilySource>
@@ -269,22 +277,19 @@ export function FontBrowser({ sources, inTemplate, previewBytes, onAddFamily, st
     <div className="font-browser">
 
       <div className="font-browser-header">
-        <div className="font-browser-header-row">
-          <h2 className="font-browser-title">Font browser</h2>
-          <div className="font-browser-search">
-            <input ref={search} type="text" aria-label="Search fonts" placeholder="Search fonts" value={filters.query} disabled={busy} onChange={(event) => amend({ query: event.target.value })} />
-            {filters.query !== '' && <button type="button" className="font-browser-inline-action" aria-label="Clear the search" disabled={busy} onClick={() => amend({ query: '' })}>×</button>}
-          </div>
-          <div className="font-browser-toggles" role="group" aria-label="Sort">
-            <span className="font-browser-toggle-label">Sort</span>
-            {browserSorts.map((option) => <button key={option} type="button" className={`font-browser-sort${sort === option ? ' font-browser-sort-active' : ''}`} aria-pressed={sort === option} aria-label={`Sort by ${option}`} disabled={busy} onClick={() => { setSort(option); setPage(0) }}>{option}</button>)}
-          </div>
-          <div className="font-browser-segmented" role="group" aria-label="Results view">
-            {browserViews.map((option) => <button key={option} type="button" className={`font-browser-view${view === option ? ' font-browser-view-active' : ''}`} aria-pressed={view === option} aria-label={`${option} view`} disabled={busy} onClick={() => setView(option)}>{option}</button>)}
-          </div>
-          <button type="button" className="font-browser-inline-action" aria-label="Close font browser" disabled={busy} onClick={onClose}>×</button>
+        <h2 className="font-browser-title">Font browser</h2>
+        <div className="font-browser-search">
+          <input ref={search} type="text" aria-label="Search fonts" placeholder="Search fonts" value={filters.query} disabled={busy} onChange={(event) => amend({ query: event.target.value })} />
+          {filters.query !== '' && <button type="button" className="font-browser-inline-action" aria-label="Clear the search" disabled={busy} onClick={() => amend({ query: '' })}>×</button>}
         </div>
-        <p className="font-browser-disclosure">{familyIndexDisclosure()}</p>
+        <div className="font-browser-toggles" role="group" aria-label="Sort">
+          <span className="font-browser-toggle-label">Sort</span>
+          {browserSorts.map((option) => <button key={option} type="button" className={`font-browser-sort${sort === option ? ' font-browser-sort-active' : ''}`} aria-pressed={sort === option} aria-label={`Sort by ${option}`} disabled={busy} onClick={() => { setSort(option); setPage(0) }}>{option}</button>)}
+        </div>
+        <div className="font-browser-segmented" role="group" aria-label="Results view">
+          {browserViews.map((option) => <button key={option} type="button" className={`font-browser-view${view === option ? ' font-browser-view-active' : ''}`} aria-pressed={view === option} aria-label={`${option} view`} disabled={busy} onClick={() => setView(option)}>{option}</button>)}
+        </div>
+        <button type="button" className="font-browser-inline-action" aria-label="Close font browser" disabled={busy} onClick={onClose}>×</button>
       </div>
 
       <div className="font-browser-body">

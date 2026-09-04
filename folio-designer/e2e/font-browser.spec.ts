@@ -55,12 +55,37 @@ test('the browser opens from the family control as the design\'s five-region mod
   await expect(browser.getByRole('list', { name: 'Font families' })).toBeVisible()
   await expect(browser.getByRole('button', { name: 'Install on this machine' })).toBeDisabled()
 
-  // THE COUNT IS THE ADDABLE ONE AND IT NAMES THE SNAPSHOT. The mockup's
-  // "web font library · 1,946 families" claims a live library over a published
-  // count; this is the sentence Story 16.1 already ships.
-  await expect(browser.getByText(/families you can add/)).toBeVisible()
-  await expect(browser.getByText(/The list itself is a snapshot taken on/)).toBeVisible()
+  // THE HEADER IS ONE ROW AND SAYS NOTHING ABOUT COUNTS (Story 16.10). The
+  // design's header is a fixed 46px row — title, search, sort, view, close — and
+  // draws no paragraph under it, so the disclosure this file used to require is
+  // gone. The mockup's own "web font library · 1,946 families" is still refused
+  // on top of that: drawing nothing in that slot is the design, and a shorter
+  // sentence of our own would be the same two-authorities defect.
+  //
+  // ABSENCE, AGAINST A POSITIVE CONTROL — the heading text that IS drawn.
+  await expect(browser.getByRole('heading', { name: 'Font browser' })).toBeVisible()
+  await expect(browser.getByText(/families you can add/)).toHaveCount(0)
+  await expect(browser.getByText(/The list itself is a snapshot taken on/)).toHaveCount(0)
+  await expect(browser.getByText(/variable file are not shown/)).toHaveCount(0)
   await expect(browser.getByText(/web font library/)).toHaveCount(0)
+
+  // AND THE COUNT SURVIVES WHERE IT ALWAYS LIVED: the results toolbar, printed
+  // by `resultLine` from the same number the paragraph quoted. Unfiltered and
+  // paginated at 12, the real population takes `resultLine`'s SECOND arm —
+  // `12 of 1304 matching families, out of 1304` — so the pattern admits both.
+  await expect(browser.getByText(/\d+ of \d+ (?:matching )?families/)).toBeVisible()
+
+  // THE HEADER IS THE 46px ROW THE DESIGN DRAWS. This is the one claim no jsdom
+  // test can make — it needs layout — so it is made here.
+  const header = browser.locator('.font-browser-header')
+  await expect(header).toHaveCount(1)
+  const box = await header.boundingBox()
+  // NULL FIRST, SO A HIDDEN OR DETACHED HEADER NAMES ITSELF. Without this the
+  // failure reads `undefined !== 46`, which points at the height and not at the
+  // header having no box at all.
+  expect(box, 'the header must be laid out before its height means anything').not.toBeNull()
+  expect(box?.height).toBe(46)
+  await expect(header.locator('p')).toHaveCount(0)
 })
 
 test('search, chips and sort narrow the results, and reset filters appears exactly while one is active', async ({ page }) => {

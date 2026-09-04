@@ -1,5 +1,5 @@
 import { catalogueFaces, type CatalogueFace, type CatalogueScript } from './generated/font-catalogue'
-import { familyIndex, familyIndexExcludedCjkFamilies, familyIndexPublishedFamilies, familyIndexSnapshotDate, type IndexFamily } from './generated/font-index'
+import { familyIndex, familyIndexExcludedCjkFamilies, familyIndexPublishedFamilies, type IndexFamily } from './generated/font-index'
 import type { StoredFace } from './font-store'
 
 // THE TWO TIERS, AND THE JOIN BETWEEN THEM (D-16.R.3).
@@ -82,8 +82,26 @@ export type FamilySource =
   /** A family from the build-time index snapshot. Picking it fetches. */
   | Readonly<{ tier: 'web'; family: string; row: IndexFamily }>
 
-/** Restated here so the UI can say how old the list is without importing the generated module. */
-export const indexSnapshotDate = familyIndexSnapshotDate
+/* `indexSnapshotDate` STOOD HERE AND WENT WITH THE DISCLOSURE (Story 16.10).
+   Its only reader was `familyIndexDisclosure()`, the sentence the browser's
+   header no longer draws, so restating the snapshot date for a UI that never
+   asks for it again is dead. `familyIndexSnapshotDate` is untouched in
+   `generated/font-index.ts`, where `font-index.test.ts` still reads it. */
+
+/* NEITHER OF THESE HAS A UI READER, AND THE COMMENT THAT CLAIMED ONE WAS WRONG.
+   MEASURED at Story 16.10, over `src`, `e2e` and `scripts`:
+   `indexPublishedFamilies` has ZERO readers — its own definition below and one
+   prose mention at `:157`, nothing else; `indexExcludedCjkFamilies` has exactly
+   one, `font-index.test.ts:62`. No component reads either.
+
+   THEY STAY ANYWAY, and the distinction matters. `indexPublishedFamilies` was
+   already orphaned BEFORE this story — 16.10 removed `familyIndexDisclosure()`,
+   which never read it — so deleting it is a separate change with a separate
+   justification, not this story's tidying. It is also the named carrier the
+   comment at `:157` points at to keep the published count and the addable count
+   from being confused for one another. `indexExcludedCjkFamilies` still has its
+   one reader. Both are restatements of `generated/font-index.ts`, kept so a
+   caller need not reach into the generated module by name. */
 export const indexPublishedFamilies = familyIndexPublishedFamilies
 export const indexExcludedCjkFamilies = familyIndexExcludedCjkFamilies
 
@@ -324,21 +342,6 @@ export function familySourceNote(source: FamilySource): string {
       throw new Error(`a FamilySource tier nothing describes reached the family control: ${String((unhandled as FamilySource).tier)}`)
     }
   }
-}
-
-/**
- * THE SENTENCE THE BROWSER SHOWS ABOUT ITS OWN LIST.
- *
- * It says the count is the addable one, and it qualifies the word "live": the
- * LIST is a build-time snapshot with a date, because the endpoint that publishes
- * it sends no CORS header and a browser cannot read it. Only the typeface is
- * fetched at the moment of a pick. A product that let this read as "live font
- * browser" would be saying something untrue.
- */
-export function familyIndexDisclosure(): string {
-  return `${addableFamilyCount} families you can add — ${catalogueFaces.length} already on this machine, ${webFamilies.length} downloaded when you pick them. `
-    + `The list itself is a snapshot taken on ${indexSnapshotDate} and ships with this designer, so it changes only when the designer is released; the typefaces are fetched at the moment you pick one. `
-    + `Families published only as a single variable file are not shown, because this product embeds one static weight.`
 }
 
 /**

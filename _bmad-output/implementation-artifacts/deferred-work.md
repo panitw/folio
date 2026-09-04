@@ -8170,3 +8170,49 @@ verbatim from `epic-16-decision-log.md:2930`. See D-16.R.67.
   drift appears in lines a story actually touched**, which puts it inside our attribution range instead
   of being pre-existing background. Not repaired here: correcting numerals across five files inside a
   story about install/embed separation would blur what 16.5 changed.
+
+### DW-183 — `font-embed-boundary.spec.ts` still requires the disclosure sentence in the family dropdown, and the sentence no longer exists anywhere
+
+- source_spec: `_bmad-output/implementation-artifacts/16-10-the-browser-header-says-what-the-design-says.md`
+  summary: `e2e/font-embed-boundary.spec.ts:147-149` asserts that a family-dropdown option contains
+  "families you can add", "snapshot taken on <date>" and "changes only when the designer is released";
+  the dropdown stopped rendering that sentence before this story, and Story 16.10 has now deleted the
+  function that produced it, so the assertion is not merely failing but unsatisfiable.
+  evidence: PRE-EXISTING, and derived rather than asserted: at the baseline commit `0176415`,
+  `familyIndexDisclosure` had **zero** occurrences in `src/App.tsx` (positive control: 3 occurrences in
+  `src/FontBrowser.tsx` at the same commit), so the dropdown could not have rendered the sentence at
+  baseline and `options.find(...)` was already `undefined` there. **I did not execute that spec at the
+  baseline commit** — the claim is a derivation from a measurement, not a measured red. The file is
+  byte-identical to baseline (sha256 `6cfde866…3be6`); it was left exactly as found because the spec's
+  Never list forbids touching the family dropdown, and because repairing it means deciding what that
+  test should assert now, which is a decision this story was not given.
+
+### DW-184 — the product no longer states anywhere that the family list is a dated snapshot, or that variable-only families are hidden
+
+- source_spec: `_bmad-output/implementation-artifacts/16-10-the-browser-header-says-what-the-design-says.md`
+  summary: The deleted paragraph was the only surface stating (a) that the list is a build-time
+  snapshot with a date rather than a live feed and (b) that families published only as a single
+  variable file are excluded. The count survives in `resultLine` by explicit design; these two facts
+  survive nowhere.
+  evidence: The spec rules the slot stays empty and forbids a replacement sentence, and that ruling is
+  settled — this is not a request to re-open it. What is unresolved is whether the two facts get a home
+  elsewhere (footer beside `degradedFooterNote`, an info affordance, a `title`) or are retired on
+  purpose. The visible consequence today: an author who searches for a variable-only family gets
+  `emptyStateHint` — "Try a different spelling, or clear the category filters." — which is advice no
+  spelling change and no filter change can act on, because the family is excluded by policy rather
+  than missed by the query. That sentence was true while the disclosure explained the exclusion and is
+  misleading by omission now.
+
+### DW-185 — `indexPublishedFamilies` is a zero-reader export in `src/font-index.ts`
+
+- source_spec: `_bmad-output/implementation-artifacts/16-10-the-browser-header-says-what-the-design-says.md`
+  summary: `src/font-index.ts:92` re-exports `familyIndexPublishedFamilies` as `indexPublishedFamilies`
+  and nothing reads it — measured over `src`, `e2e` and `scripts`, excluding `src/generated/`: its own
+  definition and one prose mention at `:157`, zero call sites. `indexExcludedCjkFamilies` beside it has
+  exactly one reader, `font-index.test.ts:62`, and it is a test.
+  evidence: PRE-EXISTING — it was already readerless at the baseline commit, so it is not orphaned by
+  this story, and this story's own rule was to delete only what its change orphaned (which is why
+  `indexSnapshotDate`, whose sole reader was the deleted function, went and this did not). Left in
+  place deliberately; the JSDoc above it was corrected, because as first written it claimed a UI reader
+  that does not exist. Deleting it is a separate change: `:157` names it as the deliberate separate
+  carrier for the published count, so removing it means also deciding what that prose should say.

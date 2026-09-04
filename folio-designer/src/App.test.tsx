@@ -1798,11 +1798,16 @@ describe('typography controls over the engine-projected closed sets', () => {
     expect(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'AVAILABLE TO INSTALL' })).not.toBeInTheDocument()
-    // RETIRED, NOT WEAKENED: the disclosure no longer renders in this dropdown
-    // (OWNER, 2026-09-03 — the standing explanation above `Add fonts…` was cut).
-    // `familyIndexDisclosure()` itself is unchanged and still ships in the font
-    // browser's header; `font-index.test.ts` pins every clause above, so the
-    // sentence keeps its guard and only this surface stops asserting it.
+    // RETIRED, AND THE SUBJECT NO LONGER EXISTS: the disclosure stopped rendering
+    // in this dropdown (OWNER, 2026-09-03 — the standing explanation above
+    // `Add fonts…` was cut), and Story 16.10 then removed its last render site,
+    // the font browser's header, because the design draws no paragraph there.
+    // `familyIndexDisclosure()` IS DELETED — measured at zero consumers — so
+    // there is no sentence left for any surface to assert. The COUNT it quoted
+    // survives: `addableFamilyCount`'s own two facts are pinned in
+    // `font-index.test.ts`, and `resultLine`, the line that still prints that
+    // count in the browser's results toolbar, has its output pinned separately in
+    // `font-browser-model.test.ts:285-288`. Two different subjects, two files.
     // THE DISK-FONT DECLINE IS RETIRED FROM THIS SURFACE (OWNER, 2026-09-03).
     // It was re-derived at 16.4 rather than carried, and it was the only place
     // this product answered "where do I add my own font file?" — there is no
