@@ -650,3 +650,17 @@ development_status:
   # decision overturned; NOT recorded in epic-16-decision-log.md, which is
   # Epic 16's.
   17-4-arrow-keys-step-a-number-field: done
+  # 17.5 Raised by the OWNER on 2026-09-04 from the running designer: the CONTENT
+  # box resizes, but only by the BROWSER's own diagonal grip in its bottom-right
+  # corner -- the one control in the inspector this application does not draw.
+  # Replace it with the field's own bottom edge as the handle. TWO THINGS TO HOLD
+  # AT THE GATE. (a) The height is VIEW state: a drag must send no command and
+  # change no saved bytes -- and this is the row Story 17.1 just put a ~200ms
+  # commit timer under, where `blur` is a commit path, so a handle that steals
+  # focus turns a resize into a write. (b) `property-prose-height.test.ts`
+  # asserts `resize: vertical` today; it is a guard to CORRECT, not to delete --
+  # it exists because a height contract on the shared `.property-value-prose`
+  # class once rendered the font-family combobox at twice its size.
+  # ONE DECISION LEFT TO THE BUILD, to be stated and tested rather than assumed:
+  # whether an author's height survives a change of selection.
+  17-5-the-content-box-resizes-from-its-bottom-edge: backlog
