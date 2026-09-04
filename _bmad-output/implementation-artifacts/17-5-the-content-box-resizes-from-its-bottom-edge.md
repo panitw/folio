@@ -2,7 +2,7 @@
 title: 'Story 17.5: The CONTENT box resizes from its bottom edge'
 type: 'feature'
 created: '2026-09-04'
-status: 'backlog'
+status: 'in-review'
 review_loop_iteration: 0
 baseline_commit: '3bacfec'
 context: []
@@ -109,23 +109,89 @@ one day.**
   shared-class exclusions, `:38-43` the non-vacuity pairing and `:45-47` the body-type assertion, **all
   three to keep**.
 
+
+**RE-VERIFIED AT `1a56007` (the build baseline; `1a56007` is the only commit after `3bacfec`, and it
+is artifact-only). Every anchor above is exact.** Two corrections and eleven measured facts follow.
+
+- **Correction 1.** The Intent block's `rows={4}` at `App.tsx:2231` is STALE — `:2231` is a comment
+  line inside the Escape/keyDown note. `rows={4}` is at `App.tsx:2289`, as the Code Map itself says.
+  The frozen block is read-only, so this is recorded rather than fixed.
+- **Correction 2.** `App.css:329` is the `textarea` BASE rule, not a rule for the raw-parameter
+  textarea specifically. It still governs the CONTENT field: `textarea { resize: vertical }` (0,0,1)
+  is outranked by `textarea.property-value-prose` (0,1,1), so `resize: none` at `:204` wins without
+  touching `:329`. jsdom applies no stylesheet — that specificity is read by hand and guarded only by
+  the source-text assertions in `property-prose-height.test.ts`.
+
+- **NO DOM MEASUREMENT IS AVAILABLE.** `canvas-authority-contract.test.ts:18-45` prohibits
+  `getBoundingClientRect`, `getClientRects`, `offsetWidth/Height/Left/Top/Parent`,
+  `clientWidth/Height/Left/Top`, `scrollWidth/Height/Left/Top`, `getComputedStyle` and
+  `ResizeObserver` across production, unit-test AND e2e sources. `clientY` is NOT in that list. So the
+  height is component state, the drag is pure `clientY` arithmetic (the canvas drag's own shape,
+  `App.tsx:2830`), and tests read the height off the INLINE style — never `getComputedStyle`.
+- **THE RESTING BOX IS EXACTLY 72px, so a drag may start its arithmetic there.** `--type-body-em` is
+  `400 11px/1.3` (`tokens.css:17`) → `rows={4}` gives an intrinsic 4 x 14.3 = **57.2px**, and
+  `.property-value` sets `padding: 0; border: 0` (`App.css:181`). 57.2 < 72, so the `min-height`
+  floor governs today and there is no first-drag jump. (72px is ~5 of those rows; "four-row minimum"
+  is the design's number, not an arithmetic consequence of `rows={4}`.)
+- **TEST PLACEMENT TRAP — the new block goes BEFORE the `// STORY 17.1:` header (`App.test.tsx:3628`),
+  not at the end of the file.** `App.test.tsx:4229` reads the 17.1 header's spelled count back off the
+  source and compares it with `(source.slice(start).match(/\n {2}it\(/g)).length`, where `start` is
+  the index of that block's own `describe(` — and the 17.1 block runs to END OF FILE. A describe
+  appended after it has every one of its `it(` counted into 17.1's total and reds that test. Two
+  further constraints on the new block, both from the same test: it must not contain that describe
+  title as a literal string, and it must not contain a comment matching `// WORD tests.` in capitals —
+  that regex takes the LAST such match before the 17.1 describe as the declared count.
+- **The 17.1 harness is block-scoped; a new block needs its own copies.** `proseEngine` (`:3672`,
+  returns `{ sent: string[], request, hold, release, engineHolds }` — the only double that echoes a
+  canvas back), `openEditor` (`:3718`), `type` (`:3726`), `elapse`/`settle` (`:3716-3717`),
+  `changes(wire)` (`:3709`). The file-level engine double is `:154`. `PROSE_COMMIT_DEBOUNCE_MS` is
+  exported from `./App` (`App.tsx:1667`, = 200). Fake timers: `vi.useFakeTimers()` in `beforeEach`,
+  and **never `waitFor`** in a fake-timer block — it advances timers itself.
+- **The CONTENT field is `screen.getByRole('textbox', { name: 'Text' })`** — the accessible name is
+  `Text`, not `Content`. The font-family combobox is the other wearer of `.property-value-prose`.
+- **Drag idiom (`App.test.tsx:747-767`): every pointer event fires on the SAME element.**
+  `setPointerCapture?.()` (`App.tsx:2821`) is optional-called precisely because jsdom leaves it
+  undefined. `fireEvent.pointerDown(...)` returns `false` when `preventDefault()` was called — that
+  return value is the falsifiable proof of the preventDefault, **because jsdom does not move focus on
+  pointerdown at all**, which makes "activeElement is unchanged" vacuous in jsdom. Assert both, and
+  say which one is the real measurement; the focus and the caret are only proved in the browser run.
+- **Selection-change idiom:** `fireEvent.click(screen.getByLabelText(/^text component e1/))` — a
+  painted component's accessible name carries its text, so the anchored regex is required.
+- **`documentGeneration` bumps ONLY in `setCurrentSnapshot(..., clearDocumentInteraction = true)`
+  (`App.tsx:1227`)** — a document replacement, which also clears the selection. A property commit does
+  not bump it. So the `documentGeneration:selection` key (`App.tsx:1478`) changes on a selection
+  change or a new/opened document, and **never on the author's own typing**.
+- **Handles in this codebase are `<span aria-hidden="true">` carrying the four pointer handlers**
+  (`App.tsx:2846`); only the `se` canvas handle is a `<button>`, and a button would add a keyboard
+  tab stop the matrix's last row says must not appear. Tests reach an aria-hidden handle with
+  `view.container.querySelector(...)` — 37 existing uses in `App.test.tsx`.
+- **`design-contract.test.ts:84` forbids colour literals and non-token `border-radius` in `App.css`**;
+  `:93` requires the accent grammar. A transparent hit strip with a cursor trips neither.
+- **BASELINE MEASURED AT `1a56007`:** `cd folio-designer && npm test` → 55 files, **733 tests, 1
+  failed**. The one failure is `canvas-authority-contract.test.ts > canvas projection authority
+  contract > scans a non-vacuous production, unit-test, and e2e corpus for browser measurement
+  authority`, whose violation array is exactly one entry, the pre-existing `getComputedStyle` use in
+  `e2e/e9-5-border-no-ink.spec.ts`. **That array must not grow**; the assertion is `toEqual([])`, so
+  it reds identically either way and the array's CONTENTS are the only thing that distinguishes a
+  regression from the standing red.
+
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `App.css` — `resize: none` on `textarea.property-value-prose`; keep the 72px floor; add the
+- [x] `App.css` — `resize: none` on `textarea.property-value-prose`; keep the 72px floor; add the
       handle strip's rule (full width, `cursor: ns-resize`, a hit height in the 6–8px band, drawn as
       the box's own edge rather than as a new visual element).
-- [ ] `App.tsx` — the handle element on the prose row only, with a pointer-capture drag that sets the
+- [x] `App.tsx` — the handle element on the prose row only, with a pointer-capture drag that sets the
       box height from the pointer delta, clamped at the floor. `onPointerDown` **must**
       `preventDefault()` so focus and caret stay put.
-- [ ] Decide and assert what happens to the height when the selection changes — the two honest
+- [x] Decide and assert what happens to the height when the selection changes — the two honest
       options are "the author's height is the panel's until the app closes" and "each selection starts
       at the floor". Pick one, state why in Design Notes, and test it.
-- [ ] Rewrite `property-prose-height.test.ts` to the new contract; **do not delete it**.
-- [ ] Tests — one per matrix row (**11 rows**), plus the two the matrix cannot reach on its own: that
+- [x] Rewrite `property-prose-height.test.ts` to the new contract; **do not delete it**.
+- [x] Tests — one per matrix row (**11 rows**), plus the two the matrix cannot reach on its own: that
       a drag sends **no** command (assert against the command spy, with a positive control that the
       same field's typing does send one), and that the 17.1 debounce still fires after a drag.
-- [ ] A browser run: hover the edge and photograph the cursor, drag the box taller mid-typing, and show
+- [x] A browser run: hover the edge and photograph the cursor, drag the box taller mid-typing, and show
       the caret where it was left and the canvas still following the text.
 
 **Acceptance Criteria:**
@@ -157,6 +223,65 @@ font-family combobox, and the last time a height contract was written on the sha
 combobox rendered at twice its size. Anything this story adds is scoped to the element or to
 `.property-field-prose`, never to the shared class — which is exactly what
 `property-prose-height.test.ts` was built to catch, and why it is rewritten rather than removed.
+
+**THE DECISION THE SPEC LEFT TO THE BUILD: an author's height does NOT survive a change of
+selection. Each selection starts at the 72px floor.** Three reasons, in the order that decided it.
+
+1. **It is what happens today, so the story changes the affordance and nothing else.** The native
+   grip's height is user-agent state on the DOM element instance. `ComponentProperties` is keyed
+   `${documentGenerationValue}:${selected.join(',')}` (`App.tsx:1478`), so selecting another
+   component unmounts that whole subtree and mounts a *fresh* textarea — the grip's height cannot
+   survive it. Making the new handle's height persist would be a second, unasked-for change smuggled
+   in beside the one the owner asked for.
+2. **The existing key gives it for free, and the alternative costs a second copy of the drag
+   bookkeeping.** A `useState` height inside `PropertyDraft` resets on a remount that already exists
+   and is already documented (`App.tsx:2060-2067` states it outright: "a change of selection or
+   document REMOUNTS every `PropertyDraft` beneath it"). Persisting instead means lifting per-row
+   view state above the keyed boundary and threading it through `ComponentProperties` — which the
+   Boundaries forbid ("never … a second copy of the drag bookkeeping") — and it would apply one
+   component's authored height to a different component's content, which is arbitrary rather than
+   helpful.
+3. **The failure mode that would have disqualified this option is ruled out by measurement, not by
+   assumption.** If `documentGeneration` bumped on every commit, "starts at the floor" would in fact
+   mean "the height evaporates while you type", which is indefensible. It does not: the counter is
+   incremented only inside `setCurrentSnapshot(…, clearDocumentInteraction = true)` (`App.tsx:1227`),
+   a document replacement, which also clears the selection. A property commit leaves the key alone.
+
+**Tested as a pair, because the first half alone is not falsifiable.** (a) Drag taller, select
+another text component, assert the CONTENT box is back at 72px. (b) Drag taller, type, let the 200ms
+debounce fire and the command settle, assert the height is **unchanged** — this is what proves (a)
+is a property of the *selection* key rather than of any state change at all.
+
+**REVIEW PATCHES (iteration 1). Eight findings, all applied; two were MEASURED DEFECTS in the
+first implementation, not opinions.** (1) A RIGHT-BUTTON press on the strip started a resize —
+Chromium 1217, 122px after a 50px move, with the context menu then blocking the page mid-gesture.
+`beginProseResize` now returns unless `event.button === 0`, before `preventDefault`, so a right-press
+is still the browser's. (2) A missed `pointerup` left the drag live, so the next bare hover across the
+strip resized the box with nothing held; a `event.buttons === 0` check now ends it on the first such
+move. (3) The drag ref carried no pointer id, so a second pointer's press rebased the anchor and its
+moves were read as the first pointer's travel; the ref now carries `pointerId`, a press from a
+different pointer is refused while a gesture is live, and move/end both require the id to match.
+(4) The anchor is now recorded BEFORE `setPointerCapture` is requested — that call is specified to
+throw `NotFoundError` for an inactive pointer, and the old order would have let such a throw swallow
+the press silently. (5) Pointer capture had ZERO executed coverage despite the Boundaries requiring it
+in terms; it is now asserted through a `vi.fn()` stub, jsdom leaving `setPointerCapture` undefined
+being why the production call is optional-called. (6) `touch-action: none` was asserted by nothing,
+and dropping it makes a touch press a pan that fires `pointercancel`. (7) Three source-text guards did
+not pin what they claimed: the "full-width strip on the bottom edge" row asserted only the cursor and
+the two sides, so a strip pinned to the TOP stayed green; the "paints nothing" guard was a two-item
+denylist that permitted `border-top`, `box-shadow` and `outline` and could not see a `::after` rule at
+all, and is now an ALLOWLIST of the eight properties the rule may declare plus a no-pseudo-element
+assertion; and the base-`textarea` row passed unchanged when `resize: vertical !important` was added
+to the very rule it exists to be outranked by. (8) A false comment in `App.css` claimed the handle's
+7px hit height was the canvas handles' idiom; measured, `.selection-handle` is 12px and
+`.resize-handle` 24px — the CURSOR is shared, the size is this row's own 6-8px band. Every guard added
+or changed was red-proved by mutating the production line.
+
+**Two recording notes.** The build baseline is `1a56007`; the frontmatter keeps `baseline_commit:
+3bacfec` because the workflow forbids overwriting an existing value, and `3bacfec` is the commit the
+Code Map was measured at. The only commit between them is `1a56007` itself, which is artifact-only.
+Separately: `App.css:329` — the `textarea` base rule, with the same `resize: vertical` defect on the
+raw-parameter textarea — is **named and left alone**, as Out of scope directs.
 
 ## Verification
 

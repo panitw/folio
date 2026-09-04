@@ -1665,6 +1665,15 @@ const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', 
 // assertion over the two constants rather than by a number written out here,
 // which would go on claiming a relationship after either one moved.
 export const PROSE_COMMIT_DEBOUNCE_MS = 200
+// STORY 17.5. THE FOUR-ROW FLOOR, IN THE ONE PLACE THE DRAG CAN READ IT.
+// `App.css`'s `textarea.property-value-prose { min-height: 72px }` is the
+// RESTING floor and this is the DRAG's; they are the same number twice because
+// no DOM measurement is available to derive one from the other
+// (`canvas-authority-contract.test.ts` prohibits `getComputedStyle` and every
+// layout box property across this repository). The pair is held together by a
+// source-text assertion in `property-prose-height.test.ts` rather than by
+// hoping the two copies are noticed together.
+const PROSE_MIN_HEIGHT_PX = 72
 // The picker can only carry a well-formed #RRGGBB — exactly what Go's
 // parseHexColor accepts — so an unset or half-typed field opens it on black
 // while the text beside it stays the committed truth.
@@ -2284,10 +2293,101 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     // just inserted, in the layout effect that runs once the render commits.
     proseCaret.current = head + plain.length
   }
+  // STORY 17.5: THE BOTTOM EDGE IS THE HANDLE, AND THE HEIGHT IS VIEW STATE.
+  //
+  // NOTHING BELOW SENDS A COMMAND, marks anything dirty or changes a saved
+  // byte. It is the panel's own presentation, exactly as the user agent's grip
+  // was — a `useState` and some `clientY` arithmetic, and no path from either
+  // into `submit`, `writeDraft`, `holdDraft`, `queuedProse` or the debounce.
+  //
+  // AN AUTHORED HEIGHT DOES NOT SURVIVE A CHANGE OF SELECTION. That is not an
+  // omission; it is what the grip did, and it is this `useState`'s ordinary
+  // behaviour: `ComponentProperties` is keyed `documentGeneration:selection`
+  // (App.tsx:1478), so selecting another component REMOUNTS every
+  // `PropertyDraft` beneath it and this state starts again at the floor.
+  // Persisting instead would mean lifting per-row view state above that keyed
+  // boundary — a second copy of the drag bookkeeping — to apply one
+  // component's authored height to a different component's prose. Note the
+  // counter only bumps on a document REPLACEMENT (`setCurrentSnapshot`'s
+  // `clearDocumentInteraction`, App.tsx:1227), never on a property commit, so
+  // this is "resets when you select something else", not "evaporates as you
+  // type"; both halves are asserted, because the first alone is not
+  // falsifiable.
+  //
+  // `undefined` means "resting", so the box keeps the CSS floor and no inline
+  // height is written until the author actually drags.
+  const [proseHeight, setProseHeight] = useState<number>()
+  // THE GESTURE IS IDENTIFIED, not merely "in progress". Without the id a
+  // second pointer's press silently rebases the anchor under the first one's
+  // drag, and a second pointer's move is accepted as if the first had made it.
+  const proseResize = useRef<{ pointerId: number; pointerY: number; height: number } | undefined>(undefined)
+  const beginProseResize = (event: PointerEvent<HTMLSpanElement>) => {
+    // PRIMARY BUTTON ONLY. A right-button press fires `pointerdown` like any
+    // other, so without this a context-menu click on the strip STARTED A DRAG
+    // (measured in Chromium 1217: right-press then a 50px move set the box to
+    // 122px, and the menu then blocked the page mid-gesture). A middle-click
+    // paste-press is the same shape. `button === 0` is the primary button on
+    // mouse, pen and touch alike.
+    if (event.button !== 0) return
+    // ONE GESTURE AT A TIME, AND THE FIRST POINTER OWNS IT. Without this a
+    // second finger's press REBASES the anchor under the first one's drag —
+    // the id recorded below is what a move is checked against, and it would
+    // simply have become the second pointer's. A press from the SAME pointer
+    // still re-anchors, which is the ordinary "press again" case and is what
+    // keeps a gesture that somehow outlived its `pointerup` from wedging the
+    // handle shut. (A gesture stranded with no `pointerup`, no `pointercancel`
+    // AND no further move from its own pointer would block a new press; that
+    // needs all three to go missing at once, and `pointercancel` is exactly
+    // what a browser sends when a touch gesture is taken away.)
+    if (proseResize.current !== undefined && proseResize.current.pointerId !== event.pointerId) return
+    // THE ONE LINE THAT KEEPS A RESIZE FROM BECOMING A WRITE. Pressing the
+    // handle would otherwise move focus out of the textarea, and `blur` on
+    // this field is a commit path; it would also move the caret out of the
+    // clause the author is mid-way through. `preventDefault` on pointerdown
+    // suppresses both, so the drag disturbs neither the field nor the pending
+    // debounce underneath it.
+    event.preventDefault()
+    // THE ANCHOR IS RECORDED BEFORE CAPTURE IS REQUESTED, and the order is the
+    // point. `setPointerCapture` is specified to THROW NotFoundError for a
+    // pointerId that is not active; with the call first, such a throw would
+    // unwind before this assignment and swallow the press — the author would
+    // hold the edge and nothing would move, with no error they could see.
+    // Capture is an enhancement to a drag that already works without it.
+    proseResize.current = { pointerId: event.pointerId, pointerY: event.clientY, height: proseHeight ?? PROSE_MIN_HEIGHT_PX }
+    // Optional-called because jsdom leaves it undefined, exactly as the canvas
+    // handles do (`begin`, App.tsx:2881). In a browser it is what lets the drag
+    // survive the pointer leaving a 7px strip.
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+  // Pure `clientY` arithmetic against where the press started — never a
+  // measured box, and never an increment against the last event, which would
+  // accumulate rounding across a long drag.
+  const moveProseResize = (event: PointerEvent<HTMLSpanElement>) => {
+    const from = proseResize.current
+    if (from === undefined || event.pointerId !== from.pointerId) return
+    // A MOVE WITH NOTHING HELD DOWN IS A HOVER, NOT A DRAG. If a `pointerup` is
+    // ever missed — capture lost to something outside this component, the
+    // element taken out from under the gesture — the drag state would outlive
+    // the press and the next bare hover across the strip would resize the box
+    // with no button held. This ends it instead, on the first such move.
+    //
+    // IT IS CHECKED AFTER THE ID, not before: a pen hovering (buttons === 0)
+    // while a touch drag is live must not tear down the touch's gesture, which
+    // is the very cross-pointer interference the id guard above exists for.
+    // The hazard this closes — a hover resizing the box — is closed either way,
+    // because a hover from the DRAGGING pointer is exactly what reaches here.
+    if (event.buttons === 0) { endProseResize(event); return }
+    setProseHeight(Math.max(PROSE_MIN_HEIGHT_PX, from.height + (event.clientY - from.pointerY)))
+  }
+  // Both endings, and they are the same ending: pointerup, and the
+  // pointercancel that fires when the gesture is taken away (the pointer
+  // leaving the window, a touch interrupted). Neither leaves drag state behind
+  // — and neither lets an unrelated pointer end someone else's drag.
+  const endProseResize = (event: PointerEvent<HTMLSpanElement>) => { if (proseResize.current?.pointerId === event.pointerId) proseResize.current = undefined }
   const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: blur, onKeyDown: keyDown }
   return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
-    ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} {...shared} onChange={(event) => { holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
-    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+    ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} style={proseHeight === undefined ? undefined : { height: `${proseHeight}px` }} {...shared} onChange={(event) => { holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
+    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
 function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {

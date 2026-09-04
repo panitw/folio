@@ -3625,6 +3625,494 @@ describe('canvas sheet stack', () => {
 // issued them is gone. Chain-command construction itself is still tested
 // directly in `font-chain-command.test.ts`, independent of any UI.
 
+// STORY 17.5: THE CONTENT BOX RESIZES FROM ITS BOTTOM EDGE.
+//
+// Eighteen tests. Eleven are the story's I/O matrix, one per row. The other
+// seven are rows the matrix does not have. Two are about the timer this
+// control sits on rather than about the drag: that a resize sends NO command
+// (with a positive control that the same field's typing does), and that Story
+// 17.1's debounce still fires afterwards. The other five came out of review,
+// and four of them were measured defects rather than hypotheses: a RIGHT-BUTTON
+// press started a resize (Chromium 1217: 122px after a 50px move, with the
+// context menu then blocking the page); the drag carried no pointer id, so a
+// second pointer rebased it; the anchor was recorded AFTER capture was
+// requested, so a throw from `setPointerCapture` would have swallowed the
+// press; a missed `pointerup` left the drag live, so a bare hover resized the
+// box. The fifth closes a hole in the tests rather than in the code — pointer
+// capture, which the frozen Boundaries require in terms, had NO executed
+// coverage at all: deleting the production call reddened nothing.
+//
+// WHAT JSDOM CAN AND CANNOT SEE, STATED ONCE. There is no layout here and no
+// stylesheet, so the drag's ARITHMETIC is testable — it is pure `clientY`
+// against the press, and the height it produces is written as an INLINE style
+// this file reads back — while the CURSOR and the ABSENT GRIP are only real in
+// a browser. Two rows below are therefore asserted against the CSS SOURCE and
+// say so. Worse, jsdom does not move focus on pointerdown AT ALL, which makes
+// "the caret did not move" vacuous here: the falsifiable measurement of the
+// `preventDefault()` that protects the caret is `fireEvent.pointerDown`'s
+// RETURN VALUE, and the caret itself is proved in the browser run.
+describe('the CONTENT box resizes from its bottom edge', () => {
+  const paintOf = (text: string) => ({ overflow: false, truncated: false, lines: text === '' ? [] : [{ top: 0, baseline: 10_000, advance: 14_000, width: 30_000, fragments: [{ text, x: 0 }] }] })
+  const box = (id: string, y: number, text: string) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height: 24_000, resizable: true, value: text, textPaint: paintOf(text) })
+  // TWO text components, because one of the matrix rows is what a change of
+  // SELECTION does to an authored height, and that needs somewhere else to go.
+  const at = (first: string) => ({ ...canvas, components: [box('e1', 0, first), box('e2', 40_000, 'Second')] })
+
+  // This block's own engine double: `hold()` freezes it mid-command so a test
+  // can drag ACROSS an in-flight commit. It echoes a canvas carrying the
+  // accepted value, which is what makes "the panel still commits after a drag"
+  // an assertion about the round trip rather than about the box alone.
+  const resizeEngine = () => {
+    const sent: string[] = []
+    let held: (() => void) | undefined
+    let holding = false
+    let revision = 1
+    let value = 'Hello'
+    const answer = () => ({ snapshot: { documentState: 'loaded' as const, revision, byteLength: 3, canvas: at(value) } })
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation !== 'command' || payload === undefined) return answer()
+      const wire = new TextDecoder().decode(payload)
+      sent.push(wire)
+      if (holding) await new Promise<void>((resolve) => { held = resolve })
+      const fields = (JSON.parse(wire) as { changes?: Record<string, { op: string; value: string }> }).changes
+      if (fields?.value !== undefined) { value = fields.value.value; revision += 1 }
+      return answer()
+    })
+    return { sent, request, hold: () => { holding = true }, release: () => { holding = false; held?.(); held = undefined } }
+  }
+  const elapse = async (ms = PROSE_COMMIT_DEBOUNCE_MS) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
+  const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }) }
+  const openEditor = (request: ReturnType<typeof resizeEngine>['request']) => {
+    const view = render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at('Hello') }} />)
+    // A painted component's accessible name CARRIES ITS TEXT, so the anchored
+    // regex reaches it by the part of the name that does not move.
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    const field = screen.getByRole('textbox', { name: 'Text' }) as HTMLTextAreaElement
+    field.focus()
+    return { view, field }
+  }
+  // The handle is `aria-hidden` — deliberately, see the keyboard row — so it
+  // has no role and no name to be queried by, and the container is how every
+  // other aria-hidden handle in this file is reached.
+  const handleOf = (view: ReturnType<typeof render>) => view.container.querySelector('.property-prose-resize') as HTMLElement
+  const type = (field: HTMLTextAreaElement, text: string) => fireEvent.change(field, { target: { value: text } })
+  const changesOf = (wire: string) => (JSON.parse(wire) as { changes: Record<string, { op: string; value: string }> }).changes
+  const appCss = () => fs.readFileSync('src/App.css', 'utf8')
+
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  // MATRIX ROW 1. Hover the bottom edge -> the resize cursor.
+  it('puts a full-width hit strip carrying ns-resize on the bottom edge of the box', async () => {
+    const { view } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    expect(handle).not.toBeNull()
+    // The strip belongs to the BORDERED BOX the author sees, not to the
+    // textarea inside its padding: a handle anywhere else is the original
+    // complaint in a different place.
+    expect(handle.parentElement?.className).toContain('property-field-prose')
+    // The cursor itself is a stylesheet fact and jsdom applies no stylesheet,
+    // so this is read from the SOURCE and photographed in the browser run.
+    const rule = appCss().match(/^\.property-prose-resize \{[^}]*\}/m)
+    expect(rule).not.toBeNull()
+    expect(rule![0]).toMatch(/cursor:\s*ns-resize/)
+    // FULL WIDTH, and on the edge this test's own name claims. Review found
+    // this row asserting only the cursor and the two sides: the strip could
+    // have been pinned to the TOP of the box, or given a 1px hit target, and
+    // it stayed green.
+    expect(rule![0]).toMatch(/left:\s*0/)
+    expect(rule![0]).toMatch(/right:\s*0/)
+    expect(rule![0]).toMatch(/bottom:\s*-?\d/)
+    expect(rule![0]).not.toMatch(/\btop:/)
+    const hit = /height:\s*(\d+)px/.exec(rule![0])
+    expect(hit, 'the strip must declare a hit height').not.toBeNull()
+    expect(Number(hit![1])).toBeGreaterThanOrEqual(6)
+    expect(Number(hit![1])).toBeLessThanOrEqual(8)
+  })
+
+  // MATRIX ROW 2. Drag down 40px from the floor -> the box is 40px taller.
+  it('grows the box by the pointer travel on a downward drag', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    // The resting box carries NO inline height: it is sitting on the CSS
+    // floor, which is what makes the arithmetic below start at 72 honestly.
+    expect(field.style.height).toBe('')
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 340 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 340 })
+    expect(field.style.height).toBe('112px')
+    // And the text is still in it — the box grew, the value did not move.
+    expect(field).toHaveValue('Hello')
+  })
+
+  // MATRIX ROW 3. Drag up past the floor -> clamped at 72px, not refused.
+  it('clamps an upward drag at the 72px floor instead of refusing it', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    // Far past the floor, and then far past zero.
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 240 })
+    expect(field.style.height).toBe('72px')
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: -500 })
+    expect(field.style.height).toBe('72px')
+    // Clamped, not stuck: the same drag still grows again on the way back.
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 320 })
+    expect(field.style.height).toBe('92px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 320 })
+    expect(field.style.height).toBe('92px')
+  })
+
+  // MATRIX ROW 4. Drag with a caret in the text -> caret and focus unmoved.
+  it('presses the handle without taking the focus or the caret', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    type(field, 'Invoice for Ada')
+    field.setSelectionRange(7, 7)
+    const handle = handleOf(view)
+    // THE REAL MEASUREMENT. `fireEvent` returns false when the handler called
+    // `preventDefault()`, and that call is the whole protection: without it a
+    // browser moves focus out of the textarea on pointerdown, and `blur` on
+    // this field is a commit path.
+    expect(fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })).toBe(false)
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 350 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
+    expect(field.style.height).toBe('122px')
+    // These two are TRUE BUT WEAK HERE and are kept as the browser run's unit
+    // shadow: jsdom does not move focus on pointerdown at all, so they would
+    // pass with the `preventDefault()` deleted. The row above is what fails.
+    expect(document.activeElement).toBe(field)
+    expect(field.selectionStart).toBe(7)
+  })
+
+  // MATRIX ROW 5. Drag with an unflushed 17.1 debounce -> neither flushed nor
+  // cancelled; it fires on its own schedule.
+  it('leaves a pending debounce exactly where it was, to fire on its own clock', async () => {
+    const { sent, request } = resizeEngine()
+    const { view, field } = openEditor(request)
+    await elapse(0)
+    type(field, 'Half a clause')
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS / 2)
+    expect(sent).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(1)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 330 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 330 })
+    // NOT FLUSHED: nothing went early. NOT CANCELLED: the timer is still armed.
+    expect(sent).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(1)
+    expect(field.style.height).toBe('102px')
+    // And it fires on the schedule the KEYSTROKE set, not one the drag reset.
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS / 2)
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changesOf(sent[0]!).value!.value).toBe('Half a clause')
+  })
+
+  // MATRIX ROW 6. Drag while a commit is IN FLIGHT -> the queued send drains.
+  it('does not disturb a queued commit while a command is in flight', async () => {
+    const { sent, request, hold, release } = resizeEngine()
+    const { view, field } = openEditor(request)
+    await elapse(0)
+    hold()
+    type(field, 'One')
+    await elapse()
+    await settle()
+    // The first command is dispatched and stuck in the engine.
+    expect(sent).toHaveLength(1)
+    // More text across it: this one has nowhere to go but the queue.
+    type(field, 'One two')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 336 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 336 })
+    expect(field.style.height).toBe('108px')
+    expect(sent).toHaveLength(1)
+    // The drag touched neither the queue flag nor what the engine was told, so
+    // the parked send still goes when the engine answers.
+    release()
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(changesOf(sent[1]!).value!.value).toBe('One two')
+  })
+
+  // MATRIX ROW 7. Release outside the panel -> pointercancel ends it too.
+  it('ends the drag on pointercancel and leaves no drag state behind', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 350 })
+    expect(field.style.height).toBe('122px')
+    fireEvent.pointerCancel(handle, { pointerId: 1 })
+    // A stuck drag would keep tracking the pointer forever. This one does not.
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 900 })
+    expect(field.style.height).toBe('122px')
+    // Positive control, so "the move did nothing" is not "moves never do
+    // anything": a fresh press resumes from the height the author left.
+    fireEvent.pointerDown(handle, { pointerId: 2, buttons: 1, clientY: 100 })
+    fireEvent.pointerMove(handle, { pointerId: 2, buttons: 1, clientY: 110 })
+    expect(field.style.height).toBe('132px')
+    fireEvent.pointerUp(handle, { pointerId: 2, clientY: 110 })
+  })
+
+  // MATRIX ROW 8. The native grip -> absent.
+  it('turns the user agent grip off on the field that now draws its own', async () => {
+    const { field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    // jsdom paints nothing, so ABSENCE is asserted where the grip is declared.
+    const scoped = appCss().match(/^textarea\.property-value-prose \{[^}]*\}/m)
+    expect(scoped).not.toBeNull()
+    expect(scoped![0]).toMatch(/resize:\s*none/)
+    expect(scoped![0]).not.toMatch(/resize:\s*vertical/)
+    // Non-vacuity for the rule above: the field on screen really does wear the
+    // class that rule selects, and it really is a textarea.
+    expect(field.tagName).toBe('TEXTAREA')
+    expect(field.className).toContain('property-value-prose')
+    // And nothing put the grip back inline.
+    expect(field.style.resize).toBe('')
+  })
+
+  // MATRIX ROW 9. The font-family input -> unchanged height, no handle.
+  it('gives the combobox that shares the class no handle and no height', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const family = screen.getByRole('combobox', { name: 'Font family' })
+    // The shared class is the whole hazard: both controls wear it.
+    expect(family.className).toContain('property-value-prose')
+    expect(field.className).toContain('property-value-prose')
+    // Exactly one handle in the whole panel, and it is not in the family row.
+    expect(view.container.querySelectorAll('.property-prose-resize')).toHaveLength(1)
+    expect(family.closest('.property-editor')?.querySelector('.property-prose-resize')).toBeNull()
+    expect((family as HTMLInputElement).style.height).toBe('')
+    // Dragging the CONTENT box leaves the combobox exactly where it was.
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 400 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 400 })
+    expect(field.style.height).toBe('172px')
+    expect((family as HTMLInputElement).style.height).toBe('')
+  })
+
+  // MATRIX ROW 10, FIRST HALF. Selection changes while tall -> back to the
+  // floor. See the story's Design Notes: this is what the user agent's grip
+  // did, because the grip's height was state on a DOM element that the
+  // `documentGeneration:selection` key unmounts.
+  it('starts each selection at the floor rather than inheriting a height', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 380 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 380 })
+    expect(field.style.height).toBe('152px')
+    fireEvent.click(screen.getByLabelText(/^text component e2/))
+    await settle()
+    const next = screen.getByRole('textbox', { name: 'Text' }) as HTMLTextAreaElement
+    expect(next).toHaveValue('Second')
+    expect(next.style.height).toBe('')
+    // And the handle came back with the fresh row, so the affordance is not
+    // what was lost.
+    expect(handleOf(view)).not.toBeNull()
+  })
+
+  // MATRIX ROW 11. Keyboard only -> no regression, and no new tab stop.
+  it('adds no keyboard tab stop, as the grip was not keyboard-reachable either', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    // A <button> here would have added a tab stop to every text selection.
+    expect(handle.tagName).toBe('SPAN')
+    expect(handle.getAttribute('aria-hidden')).toBe('true')
+    expect(handle.hasAttribute('tabindex')).toBe(false)
+    expect(handle.tabIndex).toBe(-1)
+    // Positive control for the line above, which would otherwise pass over any
+    // element at all: the field the handle belongs to IS in the tab order.
+    expect(field.tabIndex).toBe(0)
+  })
+
+  // NOT A MATRIX ROW. A GESTURE THAT IS NOT A DRAG MUST NOT START ONE, and
+  // three of the four rows below were measured as live defects by review
+  // rather than imagined: a right-press really did resize the box in Chromium
+  // 1217, and the missing pointer id and the missing button-state check are
+  // both reachable from ordinary input.
+  it('ignores a press that is not the primary button', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    // Measured before the guard: right-press then a 50px move set the box to
+    // 122px, and the context menu then blocked the page mid-gesture.
+    // `toBe(true)` is the second half of the assertion — the guard returns
+    // BEFORE `preventDefault()`, so a right-press is left to the browser and
+    // the context menu still opens.
+    expect(fireEvent.pointerDown(handle, { pointerId: 1, button: 2, buttons: 2, clientY: 300 })).toBe(true)
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 2, clientY: 350 })
+    fireEvent.pointerUp(handle, { pointerId: 1, button: 2, clientY: 350 })
+    expect(field.style.height).toBe('')
+    // Middle button, the other one an author reaches by accident.
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 1, buttons: 4, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 4, clientY: 350 })
+    expect(field.style.height).toBe('')
+    // POSITIVE CONTROL, so the two zeros above are not a handle that never
+    // works: the same gesture on the primary button resizes.
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 0, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 350 })
+    expect(field.style.height).toBe('122px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 350 })
+  })
+
+  it('ignores a second pointer, so nothing can rebase the gesture under it', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 340 })
+    expect(field.style.height).toBe('112px')
+    // A SECOND FINGER. Its press must not move the anchor, and its moves must
+    // not be read as the first pointer's travel.
+    fireEvent.pointerDown(handle, { pointerId: 2, buttons: 1, clientY: 500 })
+    fireEvent.pointerMove(handle, { pointerId: 2, buttons: 1, clientY: 900 })
+    expect(field.style.height).toBe('112px')
+    // Nor may it END the first pointer's drag by lifting.
+    fireEvent.pointerUp(handle, { pointerId: 2, clientY: 900 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 360 })
+    // Still measured from the ORIGINAL press at 300, not rebased to 500.
+    expect(field.style.height).toBe('132px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 360 })
+  })
+
+  it('records the anchor before requesting capture, so a refused capture cannot swallow the press', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    // `setPointerCapture` is SPECIFIED to throw NotFoundError for a pointerId
+    // that is not active. Ordered before the anchor, such a throw unwinds past
+    // the assignment and the author holds the edge while nothing moves —
+    // silently, because an exception out of a React event handler is reported
+    // rather than shown. The order is measured HERE, from inside the call
+    // itself: this stub runs at exactly the moment capture is requested, and
+    // the move it fires only does anything if the anchor is ALREADY recorded.
+    handle.setPointerCapture = () => { fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 320 }) }
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    expect(field.style.height).toBe('92px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 320 })
+  })
+
+  it('stops tracking when a move arrives with no button held', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 350 })
+    expect(field.style.height).toBe('122px')
+    // THE POINTERUP NEVER ARRIVES — capture lost to something outside this
+    // component, the element taken out from under the gesture. Without the
+    // button-state check the drag outlives the press, and the author's next
+    // bare hover across the strip resizes the box with nothing held down.
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 0, clientY: 500 })
+    expect(field.style.height).toBe('122px')
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 0, clientY: 900 })
+    expect(field.style.height).toBe('122px')
+    // Positive control: a real press still resizes from where it was left.
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 310 })
+    expect(field.style.height).toBe('132px')
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 310 })
+  })
+
+  // THE BOUNDARIES REQUIRE CAPTURE IN TERMS — "so it survives leaving the
+  // strip" — and jsdom leaves `setPointerCapture` undefined, which is why the
+  // production call is optional-called and why deleting it reddened NOTHING
+  // until this row existed. The double is the block's own jsdom-shadow idiom:
+  // the browser run is where the surviving drag is actually observed.
+  it('captures the pointer for the drag', async () => {
+    const { view, field } = openEditor(resizeEngine().request)
+    await elapse(0)
+    const handle = handleOf(view)
+    const capture = vi.fn()
+    handle.setPointerCapture = capture
+    fireEvent.pointerDown(handle, { pointerId: 7, buttons: 1, clientY: 300 })
+    expect(capture).toHaveBeenCalledWith(7)
+    // Non-vacuity: the press it was taken on is a press that really drags.
+    fireEvent.pointerMove(handle, { pointerId: 7, buttons: 1, clientY: 330 })
+    expect(field.style.height).toBe('102px')
+    fireEvent.pointerUp(handle, { pointerId: 7, clientY: 330 })
+    // And a press the guards refuse takes no capture either.
+    capture.mockClear()
+    fireEvent.pointerDown(handle, { pointerId: 8, button: 2, buttons: 2, clientY: 300 })
+    expect(capture).not.toHaveBeenCalled()
+  })
+
+  // NOT A MATRIX ROW, AND THE PROPERTY THE STORY IS REALLY ABOUT: the height
+  // is VIEW state. A drag sends no command, marks nothing dirty and changes no
+  // saved byte.
+  it('sends no command for a resize, while the same field still commits typing', async () => {
+    const { sent, request } = resizeEngine()
+    const { view, field } = openEditor(request)
+    await elapse(0)
+    const before = request.mock.calls.length
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 320 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 360 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 360 })
+    // NO TIMER WAS ARMED AT ALL, which is the assertion that actually bites.
+    // "Nothing was sent" alone is satisfied by a drag that DOES arm the 17.1
+    // debounce, because `sendProseDraft` returns early when the draft still
+    // equals what the engine was last told — measured, by adding
+    // `scheduleProseCommit()` to the pointerdown handler and watching this
+    // test stay green until this line existed.
+    expect(vi.getTimerCount()).toBe(0)
+    // Long past any debounce the drag could have armed.
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS * 5)
+    await settle()
+    expect(sent).toEqual([])
+    // Not one round trip of ANY kind, so this is not merely "no command".
+    expect(request.mock.calls).toHaveLength(before)
+    expect(field.style.height).toBe('132px')
+    // THE POSITIVE CONTROL, so the zero above is not a panel that never
+    // commits: the same field, the same session, one keystroke.
+    type(field, 'Now it sends')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changesOf(sent[0]!).value!.value).toBe('Now it sends')
+  })
+
+  // NOT A MATRIX ROW EITHER, AND THE OTHER HALF OF THE SELECTION PAIR. Half
+  // one showed the height resetting on a selection change; on its own that is
+  // not falsifiable, because a height that reset on ANY state change would
+  // pass it. This is what makes it a property of the SELECTION key: the height
+  // survives typing, a fired debounce and an accepted commit.
+  it('keeps the height across typing and a committed debounce, which still fires', async () => {
+    const { sent, request } = resizeEngine()
+    const { view, field } = openEditor(request)
+    await elapse(0)
+    const handle = handleOf(view)
+    fireEvent.pointerDown(handle, { pointerId: 1, buttons: 1, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 1, clientY: 348 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 348 })
+    expect(field.style.height).toBe('120px')
+    type(field, 'Typed after the drag')
+    await elapse()
+    await settle()
+    // Story 17.1's timer is untouched by the drag: it still fires and commits.
+    expect(sent).toHaveLength(1)
+    expect(changesOf(sent[0]!).value!.value).toBe('Typed after the drag')
+    // And the canvas followed, so this is a real accepted round trip.
+    expect(screen.getByLabelText(/^text component e1/)).toHaveAccessibleName(/Typed after the drag/)
+    // The height did not evaporate: `documentGeneration` does not bump on a
+    // property commit, so nothing remounted the row.
+    expect(field.style.height).toBe('120px')
+  })
+})
+
 // STORY 17.1: THE CANVAS FOLLOWS THE CONTENT FIELD.
 //
 // TWENTY-THREE tests. NINE are the story's I/O matrix, one per row. The other

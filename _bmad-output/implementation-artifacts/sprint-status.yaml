@@ -613,7 +613,7 @@ development_status:
   # was chosen. CONSEQUENCE TO HOLD AT THE GATE: the canvas updates shortly
   # AFTER typing stops, not while typing, so the acceptance wording must not
   # promise per-keystroke painting.
-  17-1-the-canvas-follows-the-content-field: in-progress
+  17-1-the-canvas-follows-the-content-field: done
   # 17.2 Clicking the empty space around the page must KEEP the selection. Watch
   # what else relies on the clear -- Escape-to-deselect and keyboard navigation
   # are the likely dependents, and a test asserting the clear is a guard to
@@ -663,4 +663,4 @@ development_status:
   # class once rendered the font-family combobox at twice its size.
   # ONE DECISION LEFT TO THE BUILD, to be stated and tested rather than assumed:
   # whether an author's height survives a change of selection.
-  17-5-the-content-box-resizes-from-its-bottom-edge: backlog
+  17-5-the-content-box-resizes-from-its-bottom-edge: done
