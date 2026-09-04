@@ -2294,9 +2294,13 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
   const values = components.map((component) => component[field])
   const uniform = values.every((value) => value === values[0])
   const active = uniform && values[0] === true
-  const [pending, setPending] = useState(false); const pendingRef = useRef(false); const commit = async (operation: PropertyIntent['operation'], value?: boolean) => { if (pendingRef.current) return; pendingRef.current = true; setPending(true); await onCommit(ids, { field, operation, value }, documentGeneration, ids.join(',')); pendingRef.current = false; setPending(false) }
-  const set = values.some((value) => value !== undefined)
-  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className="property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} onClick={() => void commit('set', !active)}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}{set && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onClick={() => void commit('clear')}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  const [pending, setPending] = useState(false); const pendingRef = useRef(false); const commit = async (intent: PropertyIntent) => { if (pendingRef.current) return; pendingRef.current = true; setPending(true); await onCommit(ids, intent, documentGeneration, ids.join(',')); pendingRef.current = false; setPending(false) }
+  // A TOGGLE CARRIES ITS OWN CLEAR: pressing a pressed B or I unsets the
+  // property, exactly as SegmentedProperty's "press again to clear" does, so
+  // the inline × that used to sit beside each of these is gone. Turning bold
+  // off therefore writes NO `bold: false` into the document -- unset and false
+  // paint identically, and the round trip a toggle implies is off -> absent.
+  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className="property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} title={active ? `${label}, press again to clear` : label} onClick={() => void commit(active ? { field, operation: 'clear' } : { field, operation: 'set', value: true })}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
 // The font family is a closed set too, but a per-DOCUMENT one: style.fontFamily
 // must name a declared, non-empty font chain, and Go now projects exactly those

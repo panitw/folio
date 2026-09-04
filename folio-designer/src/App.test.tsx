@@ -2200,6 +2200,40 @@ describe('typography controls over the engine-projected closed sets', () => {
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
     expect(sent.map((payload) => new TextDecoder().decode(payload)).join('')).toContain('"op":"clear"')
   })
+
+  // B and I are toggles, so they clear themselves: the inline × that used to
+  // sit beside each of them was a second control for what one press already
+  // says. Pressing a pressed toggle unsets the property rather than writing
+  // `false`, which is SegmentedProperty's contract one row above.
+  it('clears bold from the toggle itself, with no separate × beside it', async () => {
+    const emboldened = { ...canvas, components: [{ ...textComponent, bold: true }] }
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: emboldened }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const bold = screen.getByRole('button', { name: 'Bold' })
+    expect(bold).toHaveAttribute('aria-pressed', 'true')
+    // Positive control for the two absences: the row that DOES keep an inline
+    // clear is right beside these, so an empty panel cannot fake this pass.
+    expect(screen.getByRole('button', { name: 'Clear Line spacing' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear Bold' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear Italic' })).not.toBeInTheDocument()
+    fireEvent.click(bold)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"bold":{"op":"clear"}}}')
+  })
+
+  it('sets bold from an unset toggle, and never writes bold false', async () => {
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const bold = screen.getByRole('button', { name: 'Bold' })
+    expect(bold).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(bold)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"bold":{"op":"set","value":true}}}')
+  })
 })
 
 // Story 7.4: authoring body text in the designer. The CONTENT control was an
