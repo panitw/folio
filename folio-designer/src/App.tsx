@@ -1647,6 +1647,24 @@ const sizeFields: ReadonlyArray<FieldSpec> = [{ field: 'width', label: 'Width (p
 // The flag was declared on FieldSpec long before anything set it; this is the
 // field it was anticipated for, and it stays the only one that sets it.
 const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', prose: true, fx: 'placeholder' }
+// STORY 17.1: THE CANVAS FOLLOWS THE CONTENT FIELD, AFTER A PAUSE — NOT PER
+// KEYSTROKE, AND THE DIFFERENCE IS NOT A DETAIL.
+//
+// AD-17 forbids the browser from measuring or breaking text, so a new line
+// break exists only once the ENGINE has returned a new `textPaint`. There is
+// therefore no local preview to paint: every update the author sees is a real
+// round trip carrying a real `updateComponentProperties` command, with its own
+// revision and its own undo entry. One per keystroke would be one command per
+// keystroke. The owner took that trade at the gate and declined the three
+// costlier options (a non-committing preview op among them), so what this
+// number buys is stated plainly: the canvas LAGS typing by it, and nothing in
+// this story may claim the canvas paints as you type.
+//
+// It is deliberately SHORTER than the PDF preview's own debounce: the canvas is
+// the thing being typed into, the preview is not. That ordering is pinned by an
+// assertion over the two constants rather than by a number written out here,
+// which would go on claiming a relationship after either one moved.
+export const PROSE_COMMIT_DEBOUNCE_MS = 200
 // The picker can only carry a well-formed #RRGGBB — exactly what Go's
 // parseHexColor accepts — so an unset or half-typed field opens it on black
 // while the text beside it stays the committed truth.
@@ -1838,14 +1856,109 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const [draft, setDraft] = useState(inherited(committed))
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
+  // STORY 17.1. THE DRAFT NOW HAS A READER THAT IS NOT A RENDER.
+  //
+  // A debounced commit fires from a TIMER, outside the render whose closure
+  // scheduled it, and `draft` read from that closure is whatever was on screen
+  // one keystroke ago — a silently truncated command. `draftRef` is the same
+  // value read at the instant the timer runs, which is why EVERY write to the
+  // draft goes through `writeDraft` and nothing calls `setDraft` alone. A
+  // second writer would not fail loudly; it would send stale text.
+  const draftRef = useRef(draft)
+  const writeDraft = (value: string) => { draftRef.current = value; setDraft(value) }
+  // The render-time write below (`setDraft` in the committed transition) does
+  // NOT go through `writeDraft`, because touching a ref during render is both
+  // impure and lint-flagged; this catches the ref up once the render commits,
+  // which is long before any timer or continuation can read it.
+  //
+  // HONESTLY LABELLED: no test reddens when this line is deleted, and that is
+  // not an oversight in the tests. The committed transition only writes the
+  // draft when `unsentEdit` is false, and `unsentEdit` is false only after a
+  // dispatch — at which point no debounce timer is armed, so nothing reads a
+  // stale `draftRef`. This maintains the invariant "`draftRef` is `draft`"
+  // rather than repairing a reachable defect, and it is what keeps that
+  // invariant true if the transition's guard is ever relaxed.
+  useEffect(() => { draftRef.current = draft })
+  // STORY 17.1: WHO OWNS THE DRAFT — THE AUTHOR, OR THE ENGINE'S ECHO.
+  //
+  // TRUE from the moment the author types until the moment a command carrying
+  // that text is dispatched. While it is true the engine may not write the
+  // draft, because anything it has to say is about text the author has already
+  // moved past. Blur alone could produce that collision before this story
+  // (measured at c13864c: type `Invoice`, blur, type `Invoice 2026` while the
+  // command is in flight, and the field comes back reading `Invoice`); a timer
+  // makes it ordinary, which is what turns a rare race into the story's risk.
+  //
+  // IT IS HELD TWICE, AND THAT IS NOT AN OVERSIGHT. The committed transition
+  // below reads it DURING RENDER, where a ref may not be read; `submit` reads
+  // it in an async continuation, where a state value captured at dispatch is
+  // stale by construction. One setter writes both, so the two cannot drift.
+  //
+  // ONLY THE PROSE FIELD EVER RAISES IT. The single-line rows have no debounce
+  // and no way to type across their own commit — `shared` disables them for the
+  // duration — so raising it there would change how a half-typed number
+  // survives an unrelated canvas drag, on no evidence and outside this story's
+  // remit. The flag is lowered by every dispatch regardless of which control
+  // sent it, which costs nothing where it was never raised.
+  const [unsentEdit, setUnsentEdit] = useState(false)
+  const unsentEditRef = useRef(false)
+  const holdDraft = (held: boolean) => { unsentEditRef.current = held; setUnsentEdit(held) }
+  // Escape reverts and blurs, and `.blur()` dispatches blur SYNCHRONOUSLY into
+  // `shared.onBlur`, which commits. This suppresses that one commit. See the
+  // Escape arm in `keyDown` for the defect it repairs.
+  const reverting = useRef(false)
+  const proseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // A debounced commit that collides with a command already in flight is
+  // QUEUED, never dropped. `submit`'s early return is right for a click — the
+  // author cannot mean two — and wrong for a timer, where dropping means the
+  // last thing typed never reaches the engine at all.
+  const queuedProse = useRef(false)
+  // WHAT THE ENGINE HAS LAST BEEN TOLD THIS FIELD SAYS — which is NOT always
+  // what the document holds, and the difference is the point.
+  //
+  // It advances at DISPATCH, so the drain can tell a genuine new edit from a
+  // repeat of the command that just went: the drain runs inside `submit`'s
+  // continuation, BEFORE React has re-rendered with the accepted projection,
+  // so `committed` is still the pre-commit value there and comparing against
+  // it would resend text the engine already has.
+  //
+  // It re-syncs to `committed` whenever the DOCUMENT'S value moves, which
+  // covers both our own accepted commit and a change this field did not make.
+  // A REFUSED command is exactly the case where the two diverge and must: the
+  // engine was told `{{cust`, the document still holds `Invoice`, and an
+  // author who deletes back to `Invoice` has to be able to send it again —
+  // that resend is what runs `applyProperties`' `setPropertyError(undefined)`
+  // and clears the alert. Comparing against `committed` there would return
+  // early, send nothing, and leave a refusal on screen describing text that is
+  // no longer in the box.
+  const toldEngine = useRef(committed)
+  const mounted = useRef(true)
+  // The timer must call the CURRENT send, not the one captured when it was
+  // scheduled: `submit` closes over `committed`, `ids` and `onCommit`, all of
+  // which move under the author while the timer runs.
+  const proseSender = useRef<() => void>(() => {})
+  const cancelProseCommit = () => { if (proseTimer.current !== undefined) { clearTimeout(proseTimer.current); proseTimer.current = undefined } }
+  const scheduleProseCommit = () => {
+    cancelProseCommit()
+    proseTimer.current = setTimeout(() => { proseTimer.current = undefined; proseSender.current() }, PROSE_COMMIT_DEBOUNCE_MS)
+  }
   // A canvas drag, resize or nudge commits geometry without this field ever
   // being touched. Follow the engine on a committed transition; a draft the
   // engine has not accepted (a rejected commit leaves the value unchanged)
   // still survives, because nothing transitioned.
+  //
+  // STORY 17.1 ADDED THE `unsentEdit` GUARD, AND THIS IS THE CLOBBER SITE THAT
+  // ACTUALLY FIRES. When a commit is accepted the projection comes back,
+  // `committed` becomes the text that was sent, this transition sees it change,
+  // and it overwrites the draft with the engine's echo — including whatever
+  // the author has typed since. It fires regardless of `reconcileDraft`, so
+  // guarding only `submit`'s reconciliation below leaves the hazard open.
+  // `lastCommitted` still advances either way: skipping THAT would leave the
+  // transition armed to fire again later against an even older value.
   const [lastCommitted, setLastCommitted] = useState(committed)
-  if (lastCommitted !== committed) { setLastCommitted(committed); setDraft(inherited(committed)) }
+  if (lastCommitted !== committed) { setLastCommitted(committed); if (!unsentEdit) setDraft(inherited(committed)) }
   const selectionKey = ids.join(',')
-  const revert = () => setDraft(inherited(committed))
+  const revert = () => { holdDraft(false); writeDraft(inherited(committed)) }
   // `disable` is the ONE thing the arrow step varies, and it is not a second
   // commit path: the intent, the encoder, the reconciliation and the
   // single-flight `pendingRef` guard are all shared verbatim. `shared` carries
@@ -1869,6 +1982,13 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     if (pendingRef.current) return
     pendingRef.current = true
     if (disable) setPending(true)
+    // The engine has now been told what the author is holding, so the author
+    // no longer holds anything unsent — until the next keystroke, which is
+    // exactly the window an echo may not write the draft in.
+    holdDraft(false)
+    // Only a TEXT value is recorded; the prose field is the only reader, and it
+    // only ever sends a string.
+    if (typeof intent.value === 'string') toldEngine.current = intent.value
     const accepted = await onCommit(ids, intent, documentGeneration, selectionKey)
     pendingRef.current = false
     if (disable) setPending(false)
@@ -1877,15 +1997,120 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     // rather than to an empty row. Without this wrapper the committed
     // transition above would set the default and this line would immediately
     // overwrite it with the empty string, whichever order they landed in.
-    if (accepted && reconcileDraft) setDraft(inherited(canonicalValue(accepted, ids, field) ?? draft))
+    // `!unsentEditRef.current` is STORY 17.1's: the answer describes text the
+    // author may already have typed past, and a canonical spelling is worth
+    // nothing if the price is a lost character.
+    if (accepted && reconcileDraft && !unsentEditRef.current) writeDraft(inherited(canonicalValue(accepted, ids, field) ?? draftRef.current))
+    // THE DRAIN. A debounced commit that arrived while this one was in flight
+    // parked itself here rather than being dropped; it goes now, carrying
+    // whatever the author is holding at this instant. Not after unmount: the
+    // continuation of an in-flight command outlives the component, and a
+    // command sent from a dead panel is one the author cannot see, undo from,
+    // or be shown a refusal for. `sendProseDraft` is the ONE place that refuses
+    // after unmount: guarding here as well would make each check unfalsifiable
+    // through the other, which is how a dead guard survives a mutation run.
+    if (queuedProse.current) { queuedProse.current = false; proseSender.current() }
   }
+  // STORY 17.1. THE DEBOUNCED COMMIT ITSELF — the same `submit`, the same
+  // encoder, the same single-flight guard, the same command bytes. Three
+  // things differ from `commit`, and each is forced:
+  //
+  // 1. `disable = false`. `shared` carries `disabled: pending`, and disabling a
+  //    FOCUSED input moves focus to the body and does not give it back when the
+  //    input is re-enabled (measured in Chromium 1217, Story 17.4). With the
+  //    default every debounce would blank the author's focus mid-sentence, and
+  //    the acceptance criterion "the canvas shows the text WITHOUT focus
+  //    leaving the field" would be false in a real browser. jsdom does not
+  //    implement blur-on-disable, so a green suite is not evidence here — the
+  //    browser run is.
+  // 2. `reconcileDraft = false`. The author is still typing; there is nothing
+  //    to normalise a live draft to.
+  // 3. A collision QUEUES instead of returning.
+  //
+  // It reads `draftRef`, never `draft`: see `writeDraft` above.
+  const sendProseDraft = () => {
+    // Never while the field is read-only — a drag owns those fields and typing
+    // does nothing — and never after unmount.
+    if (!mounted.current || live !== undefined) return
+    const text = draftRef.current
+    // NOTHING TO SAY, AND THE AUTHOR IS HOLDING NOTHING UNSENT. The engine has
+    // already been told this exact text, so there is no command to send — and
+    // the ownership flag must come DOWN here rather than staying raised for the
+    // life of the selection, which would stop the box ever following the engine
+    // again. Typing a character and deleting it before the pause is the
+    // ordinary way to reach this line.
+    if (text === toldEngine.current) { holdDraft(false); return }
+    if (pendingRef.current) { queuedProse.current = true; return }
+    // A half-typed `{{` routes to `expression` and the engine REFUSES it
+    // (measured over the whole ladder at c13864c: `{{`, `{{c`, `{{cust` and
+    // `{{customer.name` are all refused with "component properties did not
+    // pass format validation"; `{`, `{{customer.name}}` and `}}` are
+    // accepted). It is sent anyway and the existing refusal path renders,
+    // because the alternative — suppressing the send — means re-implementing
+    // the engine's placeholder grammar in the browser, a mirrored invariant
+    // this story carries no ruling for. `applyProperties` clears the error on
+    // entry, so the next debounce that succeeds clears the alert itself.
+    void submit({ field: contentCommand(field, text), operation: 'set', value: text }, false, false)
+  }
+  useEffect(() => { proseSender.current = sendProseDraft })
+  useEffect(() => { toldEngine.current = committed }, [committed])
+  // ONE PLACE CANCELS THE TIMER ON THE WAY OUT, and it is this cleanup.
+  //
+  // IN PRACTICE IT IS UNMOUNT-ONLY, and the deps do not earn their keep by
+  // catching a live selection change: `ComponentProperties` is keyed
+  // `documentGeneration:selection` (App.tsx:1478), so a change of selection or
+  // document REMOUNTS every `PropertyDraft` beneath it and this cleanup runs as
+  // an unmount. The deps are kept as a standing guard for the day that key
+  // changes — they cost one comparison, and would be the only thing stopping a
+  // timer firing against `ids` naming a component the author never typed into
+  // — but nothing here should be read as evidence that the in-place transition
+  // happens today. It does not.
+  //
+  // Cancelling in the unmount effect below as well would make each of the two
+  // unfalsifiable through the other, which is how a dead guard survives a
+  // mutation run.
+  useEffect(() => cancelProseCommit, [selectionKey, documentGeneration])
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   // The `else` arm is Story 17.3's, and it is not a commit: emptying a box
   // whose key is ALREADY absent leaves `draft === committed === ''`, so there
   // is nothing to send — and nothing was sent before this story either. What
   // changes is what the author is left looking at. The row must come back to
   // the value it inherits, the same one it opened on, instead of sitting blank
   // beside a canvas that is still painting 12.
-  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true); else setDraft(inherited(committed)) }
+  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true); else writeDraft(inherited(committed)) }
+  // BLUR STILL COMMITS, AND IT COMMITS EXACTLY ONCE. It cancels the debounce
+  // first, so a timer that was about to fire for this same text does not
+  // become a second command.
+  //
+  // AND THAT CANCELLATION IS WHY THIS CANNOT SIMPLY FALL THROUGH TO `commit`.
+  // A blur landing while a debounced command is still in flight used to lose
+  // everything typed after that command went out, and the two halves of the
+  // control conspired to do it silently: `cancelProseCommit` destroyed the
+  // armed timer that would have QUEUED the text, and then `commit` reached
+  // `submit`'s `if (pendingRef.current) return` and was dropped. Only
+  // `sendProseDraft` ever queued, and its timer no longer existed. The text
+  // reached neither the engine nor anything that would later reconcile it —
+  // the spec's "TYPING MUST NEVER LOSE A CHARACTER" broken by the one gesture
+  // an author makes to finish typing.
+  //
+  // So a blur whose commit the in-flight guard would swallow queues instead,
+  // exactly as a debounced commit does, and the drain sends it. Prose only:
+  // `queuedProse` is drained through `sendProseDraft`, which sends a `value`
+  // or `expression` command, and a single-line row would have its own field's
+  // edit sent under the wrong key. Those rows are `disabled` for the duration
+  // of their own commit anyway, so nothing can be typed into them to lose.
+  const blur = () => {
+    cancelProseCommit()
+    if (reverting.current) return
+    if (prose && pendingRef.current) { queuedProse.current = true; return }
+    // Leaving the field ends the author's hold on it: whatever is in the box is
+    // being committed on the next line, and if it already IS the committed text
+    // then nothing was ever unsent. Without this, a draft typed and then
+    // deleted back before blurring would leave the flag raised for the life of
+    // the selection.
+    holdDraft(false)
+    void commit()
+  }
   // STORY 17.4: ARROWS STEP A NUMBER FIELD.
   //
   // THE NUMERIC SET IS THE ONE THE CONTROL ALREADY KNOWS. This predicate was
@@ -1954,7 +2179,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     // but nothing changed, so no command is sent.
     if (next === current) return true
     const value = points(next)
-    setDraft(value)
+    writeDraft(value)
     // `reconcileDraft` is false BY DESIGN. `points` already emits the
     // canonical spelling, so there is nothing for the engine to normalise, and
     // reconciling from a resolved step would overwrite a draft a later repeat
@@ -1987,7 +2212,28 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // and canonicalValue reconciliation are shared verbatim.
   const keyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !prose) { event.preventDefault(); void commit() }
-    if (event.key === 'Escape') { event.preventDefault(); revert(); event.currentTarget.blur() }
+    // STORY 17.1 REPAIRED THIS ARM, WHICH DID NOT DO WHAT IT SAYS.
+    //
+    // MEASURED AT c13864c: focus a prose field, type, press Escape — ONE
+    // command leaves carrying the unwanted draft, and the field ends up still
+    // showing it. `revert()` only SCHEDULES the new draft, while
+    // `.blur()` dispatches blur SYNCHRONOUSLY into `shared.onBlur`, which
+    // commits against the PRE-revert `draft` from the render in flight. The
+    // pre-existing test for this row never focused the field, so `.blur()` was
+    // a no-op, no blur event fired, and `expect(sent).toHaveLength(0)` passed
+    // vacuously.
+    //
+    // `reverting` suppresses that one commit, and is lowered immediately
+    // afterwards so an UNFOCUSED Escape — where `.blur()` dispatches nothing —
+    // cannot leave the flag raised and swallow the next real blur.
+    //
+    // THE DEBOUNCE IS CANCELLED BY THE BLUR THIS DISPATCHES, not here. Escape
+    // is defined as revert-and-blur, `blur` already cancels, and cancelling
+    // twice would leave two arms neither of which any test could redden. On the
+    // path where `.blur()` dispatches nothing the field was never focused, and
+    // `revert()` has put the draft back to `committed`, which `sendProseDraft`
+    // declines to send.
+    if (event.key === 'Escape') { event.preventDefault(); reverting.current = true; revert(); event.currentTarget.blur(); reverting.current = false }
     // Story 17.4. Enter and Escape above are untouched; the arrows are the
     // only addition, and only where the step actually took the key.
     //
@@ -2026,7 +2272,11 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     const field = event.currentTarget
     const head = field.selectionStart ?? field.value.length
     const tail = field.selectionEnd ?? field.value.length
-    setDraft(`${field.value.slice(0, head)}${plain}${field.value.slice(tail)}`)
+    // A paste is a typed edit by another name: it changes the draft, so it
+    // takes the author's ownership of it and it starts the same debounce.
+    holdDraft(true)
+    writeDraft(`${field.value.slice(0, head)}${plain}${field.value.slice(tail)}`)
+    scheduleProseCommit()
     // The textarea is CONTROLLED, so React rewrites its value on the next
     // render and the caret goes to the end of the whole field. Pasting into
     // the middle of a long clause would then land the author's next keystroke

@@ -1,7 +1,9 @@
-import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import fs from 'node:fs'
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import App, { placementPoint } from './App'
+import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { shortcutHintsFor } from './shortcuts'
+import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
@@ -3588,3 +3590,716 @@ describe('canvas sheet stack', () => {
 // names the six chain commands the editor used to issue; only the UI that
 // issued them is gone. Chain-command construction itself is still tested
 // directly in `font-chain-command.test.ts`, independent of any UI.
+
+// STORY 17.1: THE CANVAS FOLLOWS THE CONTENT FIELD.
+//
+// TWENTY-THREE tests. NINE are the story's I/O matrix, one per row. The other
+// fourteen are rows the matrix does not have, and mutation testing or review
+// demanded every one of them: the late
+// echo on the BLUR path (the reproduction the story's Code Map measured at
+// c13864c, where the hazard was live before any debounce existed); a blur
+// landing while a debounced command is IN FLIGHT, which lost the author's text
+// outright until review caught it; the `disable = false` decision, whose
+// consequence jsdom cannot see; a paste, which takes the same debounce; the
+// dead-panel drain; ownership of the draft returning to the engine at dispatch
+// and at a no-op pause; a refusal clearing itself when the author deletes back
+// to the committed text; the suppression flag Escape raises being lowered
+// again; the single-line rows NOT debouncing; and the two debounce constants'
+// ordering; and this sentence's own count, which review caught claiming
+// "Eleven" over fifteen tests and which is now read back off the source by the
+// last test in the block, so it cannot quietly go stale again.
+//
+// THE MOCK IS THE POINT OF THIS BLOCK. Every prose test written before this
+// story used a `request` that answers with NO canvas, so `applyProperties`
+// returns `undefined`, and neither the committed transition nor `submit`'s
+// reconciliation is ever reached. Those tests are blind to all three clobber
+// sites by construction. The engine here ECHOES a canvas carrying the accepted
+// value — and, on demand, echoes an OLDER value while a NEWER draft is held,
+// which is the only shape in which the story's real risk is observable.
+describe('Story 17.1: the canvas follows the content field', () => {
+  // A paint the canvas can actually draw, so "the canvas shows the text" is
+  // asserted against the CANVAS and not merely against the box the author
+  // typed into. One engine line per commit; AD-17 means the browser never
+  // decides where a break goes, so a stand-in engine may put them anywhere.
+  const paintOf = (text: string) => ({ overflow: false, truncated: false, lines: text === '' ? [] : [{ top: 0, baseline: 10_000, advance: 14_000, width: 30_000, fragments: [{ text, x: 0 }] }] })
+  const at = (text: string) => ({ ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: text, textPaint: paintOf(text) }] })
+
+  // `hold()` freezes the engine mid-command so a test can type ACROSS an
+  // in-flight commit, and `release()` lets the answer land — late, and about
+  // text the author has typed past. `refusal` stands in for the engine's
+  // format validation on the `expression` command: measured at c13864c over
+  // the whole ladder, `{{`, `{{c`, `{{cust` and `{{customer.name` are refused
+  // with "component properties did not pass format validation" while `{`,
+  // `{{customer.name}}` and `}}` are accepted. No Go runs in this file, so the
+  // double reproduces the SHAPE of that refusal; what the test owns for itself
+  // is the browser-side fact — which command a half-typed placeholder routes
+  // to, and what the panel does with the answer.
+  const proseEngine = (refusal?: (fields: Record<string, { op: string; value: string }>) => string | undefined, normalise: (text: string) => string = (text) => text) => {
+    const sent: string[] = []
+    let held: (() => void) | undefined
+    let holding = false
+    let revision = 1
+    let engineValue = 'Hello'
+    const answer = () => ({ snapshot: { documentState: 'loaded' as const, revision, byteLength: 3, canvas: at(engineValue) } })
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation !== 'command' || payload === undefined) return answer()
+      const wire = new TextDecoder().decode(payload)
+      sent.push(wire)
+      if (holding) await new Promise<void>((resolve) => { held = resolve })
+      const parsed = JSON.parse(wire) as { kind: string; segments?: string[] }
+      // AN EDIT THIS FIELD DID NOT MAKE. Binding a data path is the one surface
+      // that rewrites a text component's `value` while the selection — and so
+      // the panel, and so this field's own state — stays exactly where it was.
+      // It is the only way to observe what the box does when the DOCUMENT moves
+      // under it: undo deselects, and a selection change remounts the panel.
+      if (parsed.kind === 'bindComponentScalar') {
+        engineValue = `{{${(parsed.segments ?? []).join('.')}}}`
+        revision += 1
+        return answer()
+      }
+      const fields = JSON.parse(wire).changes as Record<string, { op: string; value: string }>
+      const message = refusal?.(fields)
+      if (message !== undefined) throw Object.assign(new Error(message), { elementId: 'e1' })
+      engineValue = normalise((fields.value ?? fields.expression)!.value)
+      revision += 1
+      return answer()
+    })
+    return {
+      sent,
+      request,
+      hold: () => { holding = true },
+      release: () => { holding = false; held?.(); held = undefined },
+      engineHolds: () => engineValue,
+    }
+  }
+  const changes = (wire: string) => JSON.parse(wire).changes as Record<string, { op: string; value: string }>
+  // The two things a test does between fake-timer steps: let the debounce
+  // elapse, and let a released promise settle. Both inside `act`, so React has
+  // committed before anything is asserted. `waitFor` is deliberately NOT used
+  // here — with fake timers it advances them itself, which would fire the very
+  // debounce several of these rows exist to prove does not fire.
+  const elapse = async (ms = PROSE_COMMIT_DEBOUNCE_MS) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
+  const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }) }
+  const openEditor = (request: ReturnType<typeof proseEngine>['request']) => {
+    const view = render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at('Hello') }} />)
+    // The accessible name of a painted component CARRIES ITS TEXT, so the
+    // component is reached by the part of the name that does not move.
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    const field = screen.getByRole('textbox', { name: 'Text' }) as HTMLTextAreaElement
+    field.focus()
+    return { view, field }
+  }
+  const type = (field: HTMLTextAreaElement, text: string) => fireEvent.change(field, { target: { value: text } })
+  // THE ONLY EDIT IN THIS PANEL THAT MOVES `value` WITHOUT THIS FIELD SENDING
+  // IT, and without taking the panel away. Undo cannot serve: it passes
+  // `clearDocumentInteraction` and empties the selection (App.tsx:1327), which
+  // unmounts the inspector. A selection change remounts it too, through
+  // `ComponentProperties`' key. So binding a data path from the DATA tab is how
+  // the two guards below are reached at all — both are about what the box does
+  // when the DOCUMENT moves under a draft the author has touched.
+  const openWithSampleData = (request: ReturnType<typeof proseEngine>['request']) => {
+    const sampleData = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer)
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at('Hello') }} initialSampleData={sampleData} />)
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    const field = screen.getByRole('textbox', { name: 'Text' }) as HTMLTextAreaElement
+    field.focus()
+    return field
+  }
+  const bindCustomerName = () => {
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    const customer = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '2' && item.textContent?.startsWith('customer'))!
+    customer.focus()
+    fireEvent.keyDown(customer, { key: 'ArrowRight' })
+    const name = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith('name'))!
+    name.focus()
+    fireEvent.keyDown(name, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+  }
+
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  // MATRIX ROW 1, and the story's first acceptance criterion whole: the canvas
+  // paints the typed text WITHOUT focus leaving the field.
+  it('paints the typed text on the canvas after a pause, without the author leaving the field', async () => {
+    const { sent, request, engineHolds } = proseEngine()
+    const { field } = openEditor(request)
+    type(field, 'Invoice')
+    // Before the debounce elapses nothing has been sent — this is a pause, not
+    // a keystroke, and the story may not claim per-keystroke painting.
+    expect(sent).toHaveLength(0)
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changes(sent[0]!).value).toEqual({ op: 'set', value: 'Invoice' })
+    expect(engineHolds()).toBe('Invoice')
+    // THE CANVAS, not the box: the projected paint the engine returned is what
+    // is on screen, and the author never blurred to get it.
+    expect(screen.getByLabelText('text component e1: Invoice')).toBeInTheDocument()
+    expect(document.activeElement).toBe(field)
+    expect(field).toHaveValue('Invoice')
+  })
+
+  // MATRIX ROW 2 / AC2. Seven characters faster than the debounce is ONE
+  // command, not seven — the whole reason this is a debounce and not an
+  // onChange commit, since every command is a revision and an undo entry.
+  it('sends exactly one command for seven characters typed faster than the debounce', async () => {
+    const { sent, request } = proseEngine()
+    const { field } = openEditor(request)
+    for (const text of ['I', 'In', 'Inv', 'Invo', 'Invoi', 'Invoic', 'Invoice']) {
+      type(field, text)
+      await elapse(PROSE_COMMIT_DEBOUNCE_MS - 50)
+    }
+    expect(sent).toHaveLength(0)
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changes(sent[0]!).value!.value).toBe('Invoice')
+  })
+
+  // MATRIX ROW 3. `submit`'s early return is right for a click — an author
+  // cannot mean two — and wrong for a timer, where it means the last thing
+  // typed never reaches the engine at all.
+  it('does not drop a debounced commit that collides with one already in flight', async () => {
+    const { sent, request, hold, release, engineHolds } = proseEngine()
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    // The author types on while the first command is awaited, and its own
+    // debounce elapses against a busy panel.
+    type(field, 'Invoice 2026')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    release()
+    await settle()
+    // Nothing was silently discarded: the later text went as its own command.
+    expect(sent).toHaveLength(2)
+    expect(changes(sent[1]!).value!.value).toBe('Invoice 2026')
+    expect(engineHolds()).toBe('Invoice 2026')
+    expect(field).toHaveValue('Invoice 2026')
+  })
+
+  // MATRIX ROW 4. THE ECHO IS OLDER THAN THE DRAFT. The author's text wins.
+  it('keeps the draft the author is holding when an older echo lands', async () => {
+    const { sent, request, hold, release } = proseEngine()
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    type(field, 'Invoice 2026')
+    release()
+    await settle()
+    // The engine has just said `Invoice`. It is answering about text the
+    // author moved past, and it may not overwrite it.
+    expect(field).toHaveValue('Invoice 2026')
+    expect(screen.getByLabelText('text component e1: Invoice')).toBeInTheDocument()
+    // And the author's text is not merely preserved on screen — it reaches the
+    // engine on the next debounce, so no character was lost anywhere.
+    await elapse()
+    await settle()
+    expect(changes(sent[1]!).value!.value).toBe('Invoice 2026')
+    expect(screen.getByLabelText('text component e1: Invoice 2026')).toBeInTheDocument()
+  })
+
+  // THE SAME HAZARD ON THE BLUR PATH, which is where the story's Code Map
+  // MEASURED it at c13864c: typing `Invoice`, blurring, typing `Invoice 2026`
+  // while the command was still in flight, then releasing the engine, left the
+  // field reading `Invoice` — the later text destroyed. The debounce did not
+  // create this; it only makes it ordinary. A blur commits with
+  // `reconcileDraft` TRUE, so this row crosses `submit`'s reconciliation as
+  // well as the committed transition.
+  it('keeps a newer draft when a BLUR commit echoes an older value back', async () => {
+    const { sent, request, hold, release } = proseEngine()
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    fireEvent.blur(field)
+    await settle()
+    expect(sent).toHaveLength(1)
+    field.focus()
+    type(field, 'Invoice 2026')
+    release()
+    await settle()
+    expect(field).toHaveValue('Invoice 2026')
+  })
+
+  // THE DEFECT REVIEW FOUND, AND THE ONE THAT ACTUALLY LOST TEXT.
+  //
+  // Every other row in this block happens to `elapse()` before it blurs, which
+  // is exactly why they all stayed green over it. Blur while a DEBOUNCED
+  // command is still in flight and two halves of the control conspire: `blur`
+  // cancels the armed timer that would have queued the text, and then `commit`
+  // is swallowed by `submit`'s in-flight guard. Measured before the fix —
+  // `sent` = 1, the engine holding `Invoice`, and the field showing
+  // `Invoice 2026` that nothing would ever reconcile.
+  //
+  // The assertion is deliberately on the ENGINE and not only on the command
+  // count: what the story promises is that the author's characters arrive, not
+  // that a second payload was constructed.
+  it('does not lose text typed across an in-flight command when the author blurs instead of pausing', async () => {
+    const { sent, request, hold, release, engineHolds } = proseEngine()
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    // Typed across the in-flight command, then the author leaves the field
+    // WITHOUT pausing — so no timer of this text's own ever fires.
+    type(field, 'Invoice 2026')
+    fireEvent.blur(field)
+    release()
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(changes(sent[1]!).value!.value).toBe('Invoice 2026')
+    expect(engineHolds()).toBe('Invoice 2026')
+    expect(field).toHaveValue('Invoice 2026')
+  })
+
+  // MATRIX ROW 5. Blur commits, as it always has, and the timer that was about
+  // to fire for the same text does not become a second command.
+  it('sends exactly one command when a blur lands on top of a pending debounce, and cancels the timer', async () => {
+    const { sent, request } = proseEngine()
+    const { field } = openEditor(request)
+    // The designer schedules zero-delay timers of its own (the canvas focus
+    // hand-off), so they are flushed first and the count below is the
+    // debounce alone.
+    await elapse(0)
+    type(field, 'Invoice')
+    // THE TIMER ITSELF, not merely its consequence. A blur that commits and
+    // leaves the timer armed still produces one command here — the sender
+    // declines to repeat text it has already sent — so counting commands alone
+    // cannot tell a cancelled timer from a neutered one, and a timer left
+    // armed is one that can fire against a later `committed`.
+    expect(vi.getTimerCount()).toBe(1)
+    // Mid-timer: the debounce has not elapsed.
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS - 50)
+    fireEvent.blur(field)
+    await elapse(0)
+    expect(vi.getTimerCount()).toBe(0)
+    await settle()
+    expect(sent).toHaveLength(1)
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS * 2)
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changes(sent[0]!).value!.value).toBe('Invoice')
+  })
+
+  // THE PASTE PATH TAKES THE SAME DEBOUNCE. A clipboard is a typed edit by
+  // another name — it changes the draft, and Story 7.4 exists precisely
+  // because authors paste whole clauses in. Leaving it out would have made the
+  // canvas follow typing but not pasting, with nothing to say why.
+  it('debounces a paste into the prose field exactly as it debounces typing', async () => {
+    const { sent, request, engineHolds } = proseEngine()
+    const { field } = openEditor(request)
+    // NOTHING IS TYPED FIRST, deliberately. A `change` before the paste would
+    // arm the debounce by itself, and the timer it left would pick up the
+    // pasted text when it fired — a paste that schedules nothing would still
+    // look green. The caret is placed instead, which is also what makes this a
+    // mid-field paste rather than a replacement.
+    await elapse(0)
+    field.setSelectionRange(5, 5)
+    fireEvent.paste(field, { clipboardData: { getData: () => ['', 'Clause 2.'].join('\n') } })
+    expect(field).toHaveValue(['Hello', 'Clause 2.'].join('\n'))
+    expect(sent).toHaveLength(0)
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(engineHolds()).toBe(['Hello', 'Clause 2.'].join('\n'))
+  })
+
+  // MATRIX ROW 6 / AC4. THE FIELD IS FOCUSED, which is the whole test.
+  //
+  // The Story 7.4 test for this row (`reverts and blurs on Escape`) never
+  // focuses, so `.blur()` is a no-op, no blur event fires, and its
+  // `expect(sent).toHaveLength(0)` passes vacuously. MEASURED at c13864c with
+  // a focused field: Escape sent one command carrying the unwanted draft and
+  // did NOT revert. That test is left in place unchanged; this is the row that
+  // bites.
+  it('sends nothing and reverts when Escape is pressed in a FOCUSED field mid-typing', async () => {
+    const { sent, request } = proseEngine()
+    const { field } = openEditor(request)
+    expect(document.activeElement).toBe(field)
+    await elapse(0)
+    type(field, ['a draft', 'nobody wants'].join('\n'))
+    expect(vi.getTimerCount()).toBe(1)
+    fireEvent.keyDown(field, { key: 'Escape' })
+    // The matrix's own words for this row are "Timer cancelled", so the timer
+    // is what is asserted — not just that nothing was sent, which stays true of
+    // a timer that survives and then declines to act. The extra `elapse(0)`
+    // discards the zero-delay focus timer Escape's blur hands the canvas.
+    await elapse(0)
+    expect(vi.getTimerCount()).toBe(0)
+    // Escape's own synchronous blur must not commit the draft it just threw away.
+    await settle()
+    expect(field).toHaveValue('Hello')
+    expect(sent).toHaveLength(0)
+    // And no debounced command follows it: the timer went with the draft.
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS * 2)
+    await settle()
+    expect(sent).toHaveLength(0)
+    expect(field).toHaveValue('Hello')
+  })
+
+  // THE OTHER HALF OF ESCAPE'S SUPPRESSION FLAG. Escape blurs, and the flag
+  // exists so the blur it dispatches does not commit the draft Escape just
+  // threw away — but on an UNFOCUSED field `.blur()` dispatches nothing, so a
+  // flag that is raised and not lowered again stays raised, and the author's
+  // NEXT real blur is silently swallowed. Story 7.4's Escape test is exactly
+  // that unfocused shape, which is why this failure mode is reachable at all.
+  it('does not swallow a later blur after an Escape that had nothing to blur', async () => {
+    const { sent, request, engineHolds } = proseEngine()
+    const { field } = openEditor(request)
+    // Unfocused, the way Story 7.4's Escape test leaves it.
+    field.blur()
+    await settle()
+    expect(sent).toHaveLength(0)
+    fireEvent.keyDown(field, { key: 'Escape' })
+    await settle()
+    expect(sent).toHaveLength(0)
+    // A real edit, and a real blur, which must still commit.
+    field.focus()
+    type(field, 'Invoice')
+    fireEvent.blur(field)
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(engineHolds()).toBe('Invoice')
+  })
+
+  // MATRIX ROW 7. A timer may not outlive the panel it was scheduled in.
+  // The console spy below is NOT what carries this row, and the test is no
+  // longer named as though it were. React is 19.2.0 and the "state update on an
+  // unmounted component" warning was removed in React 18, so
+  // `expect(complaints).toEqual([])` cannot fail on that account; it is kept
+  // only to catch an unrelated console error appearing. What carries the row is
+  // the timer count and the absence of a command.
+  it('clears the timer on unmount, so no command fires from a dead panel', async () => {
+    const { sent, request } = proseEngine()
+    const { view, field } = openEditor(request)
+    await elapse(0)
+    type(field, 'Invoice')
+    expect(vi.getTimerCount()).toBe(1)
+    const complaints: unknown[][] = []
+    const complained = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { complaints.push(args) })
+    try {
+      view.unmount()
+      // CLEARED, not merely disarmed. The matrix says "Timer cleared", and a
+      // timer that survives unmount is a reference to a dead render tree held
+      // until it fires.
+      await elapse(0)
+      expect(vi.getTimerCount()).toBe(0)
+      await elapse(PROSE_COMMIT_DEBOUNCE_MS * 4)
+      await settle()
+      expect(sent).toHaveLength(0)
+      expect(complaints).toEqual([])
+    } finally { complained.mockRestore() }
+  })
+
+  // MATRIX ROW 7, THE HALF A CLEARED TIMER DOES NOT COVER. A command already
+  // in flight when the panel unmounts keeps its own continuation — that
+  // closure is not a timer and nothing cancels it — and the QUEUED debounce
+  // behind it would be drained from there. Clearing the timer on unmount is
+  // not enough; the drain has to know the panel is gone.
+  it('does not drain a queued debounce out of a dead panel', async () => {
+    const { sent, request, hold, release } = proseEngine()
+    const { view, field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    // Queued behind the in-flight command, then the selection goes away.
+    type(field, 'Invoice 2026')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    view.unmount()
+    release()
+    await settle()
+    expect(sent).toHaveLength(1)
+  })
+
+  // THE OTHER HALF OF `unsentEdit`, AND THE ONE THE MATRIX DOES NOT REACH:
+  // ownership goes BACK to the engine the moment a command carrying the text
+  // is dispatched. A guard that is raised and never lowered would keep the
+  // author's draft safe from every echo forever — including the ones that are
+  // not stale at all — and the box would then go on showing text the document
+  // does not hold, silently, with every gate green.
+  //
+  // The double normalises here (a trailing space is dropped) precisely so the
+  // engine's answer is DISTINGUISHABLE from what was typed. When the engine and
+  // the author agree character for character, as they do on the plain `value`
+  // path, a reconciliation that never happens is invisible.
+  it('lets the engine own the draft again once the text it holds has been sent', async () => {
+    const { sent, request, engineHolds } = proseEngine(undefined, (text) => text.trimEnd())
+    const { field } = openEditor(request)
+    type(field, 'Invoice   ')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changes(sent[0]!).value!.value).toBe('Invoice   ')
+    expect(engineHolds()).toBe('Invoice')
+    // The author is holding nothing unsent, so the document is the authority
+    // again and the box reads what the document actually holds.
+    expect(field).toHaveValue('Invoice')
+  })
+
+  // MATRIX ROW 8. A half-typed `{{` now reaches the engine mid-word where it
+  // never did before, and the DECIDED behaviour is to send it and let the
+  // existing refusal path render. Suppressing the send would mean
+  // re-implementing the engine's placeholder grammar in the browser — a
+  // mirrored invariant this story carries no ruling for.
+  //
+  // THE SELF-CLEARING HALF IS NOT OPTIONAL: an author who must cross four
+  // refusals on the way to a valid expression has to see the last one go.
+  it('sends a half-typed placeholder as an expression, shows the refusal, and clears it when the text completes', async () => {
+    const refusal = (fields: Record<string, { op: string; value: string }>) => fields.expression && !/^\{\{[^{}]*\}\}$/.test(fields.expression.value) ? 'component properties did not pass format validation' : undefined
+    const { sent, request, engineHolds } = proseEngine(refusal)
+    const { field } = openEditor(request)
+    type(field, '{{cust')
+    await elapse()
+    await settle()
+    // The BROWSER-side fact this test owns: `contentCommand` routed a
+    // half-typed placeholder to `expression`, not to `value`.
+    expect(Object.keys(changes(sent[0]!))).toEqual(['expression'])
+    expect(screen.getByRole('alert')).toHaveTextContent('component properties did not pass format validation')
+    // Typing is not blocked while the refusal stands — no `disabled`, and the
+    // field still takes a keystroke.
+    expect(field).not.toBeDisabled()
+    expect(field).toHaveValue('{{cust')
+    type(field, '{{customer.name}}')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(engineHolds()).toBe('{{customer.name}}')
+    // The alert cleared ITSELF on the next successful debounce.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  // MATRIX ROW 9. A refusal that is not about placeholders at all: the
+  // existing error path renders, and typing carries on over the top of it.
+  it('renders the existing error path when the engine refuses, and does not block typing', async () => {
+    const refusal = (fields: Record<string, { op: string; value: string }>) => fields.value?.value.endsWith(' ') ? 'value must not end in a space' : undefined
+    const { sent, request, engineHolds } = proseEngine(refusal)
+    const { field } = openEditor(request)
+    type(field, 'Invoice ')
+    await elapse()
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent('e1: value must not end in a space')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).not.toBeDisabled()
+    // The refused text is still the author's, and still theirs to fix.
+    expect(field).toHaveValue('Invoice ')
+    type(field, 'Invoice')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(engineHolds()).toBe('Invoice')
+    expect(field).not.toHaveAttribute('aria-invalid')
+  })
+
+  // PATCH 2 (review). THE ALERT MUST CLEAR WHEN THE AUTHOR TAKES THE OFFENDING
+  // TEXT BACK OUT, and it is the whole justification for sending half-typed
+  // placeholders at all — "the existing refusal path renders" is only humane if
+  // the author can see it go.
+  //
+  // The trap is that deleting back lands the draft on the text the DOCUMENT
+  // already holds, so an early return keyed on `committed` sends nothing,
+  // `applyProperties` never runs its `setPropertyError(undefined)`, and the
+  // refusal sits there describing text that is no longer in the box. Keying on
+  // what the engine was last TOLD is what distinguishes the two: it was told
+  // `Invoice}}`, the document holds `Invoice`, and the difference is a command.
+  it('clears a refusal when the author deletes the offending text back to the committed value', async () => {
+    const refusal = (fields: Record<string, { op: string; value: string }>) => fields.expression && !/^\{\{[^{}]*\}\}$/.test(fields.expression.value) ? 'component properties did not pass format validation' : undefined
+    const { sent, request, engineHolds } = proseEngine(refusal)
+    const { field } = openEditor(request)
+    type(field, 'Invoice')
+    await elapse()
+    await settle()
+    expect(engineHolds()).toBe('Invoice')
+    // Refused: a lone `}}` routes to `expression` and does not spell one.
+    type(field, 'Invoice}}')
+    await elapse()
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent('component properties did not pass format validation')
+    // Straight back to the text the document already holds.
+    type(field, 'Invoice')
+    await elapse()
+    await settle()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(field).not.toHaveAttribute('aria-invalid')
+    expect(engineHolds()).toBe('Invoice')
+    expect(sent).toHaveLength(3)
+  })
+
+  // PATCH 3 (review). A PAUSE THAT SENDS NOTHING MUST STILL HAND THE DRAFT BACK
+  // TO THE ENGINE. `unsentEdit` is raised by every keystroke and lowered at
+  // dispatch — so a pause that decides there is nothing to dispatch would leave
+  // it raised for the life of the selection, and the box would stop following
+  // the engine from then on, silently.
+  //
+  // Reaching it without an external editing surface: type ACROSS an in-flight
+  // command and then back to exactly the text that command carried. The pause
+  // then has nothing to send, and the engine's own answer — normalised here, so
+  // it is distinguishable from what was typed — must still land in the box.
+  it('hands the draft back to the engine after a pause that finds nothing to send', async () => {
+    const { sent, request, hold, release } = proseEngine(undefined, (text) => text.trimEnd())
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice   ')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    // Away and back again while the command is awaited: the draft ends on the
+    // text the engine was already told, so this pause sends nothing.
+    type(field, 'Invoice   X')
+    type(field, 'Invoice   ')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    release()
+    await settle()
+    // The engine normalised it. The box has to follow, which it can only do if
+    // the pause above put ownership back.
+    expect(field).toHaveValue('Invoice')
+    expect(sent).toHaveLength(1)
+  })
+
+  // PATCH 4 (review). THE SCOPE BOUNDARY, WHICH NOTHING ELSE PINNED. The
+  // spec's Ask First names "applying the debounce to any field other than the
+  // prose content field", and that is a boundary a test has to hold: adding
+  // `scheduleProseCommit()` to the single-line `<input>`'s `onChange` reddened
+  // NOTHING in this block before this row existed.
+  it('does not debounce a single-line field — only the prose one', async () => {
+    const { sent, request } = proseEngine()
+    openEditor(request)
+    await elapse(0)
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    fireEvent.change(width, { target: { value: '96' } })
+    // No timer was armed at all, and none fires however long is waited.
+    expect(vi.getTimerCount()).toBe(0)
+    await elapse(PROSE_COMMIT_DEBOUNCE_MS * 5)
+    await settle()
+    expect(sent).toHaveLength(0)
+    expect(width).toHaveValue('96')
+    // The contrast arm, so this cannot pass over a panel that never commits:
+    // the same field still commits on Enter, exactly as it always has.
+    fireEvent.keyDown(width, { key: 'Enter' })
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(changes(sent[0]!).width!.value).toBe(96)
+  })
+
+  // THE COUNT IN THIS BLOCK'S HEADER, PINNED. Review found that header claiming
+  // "Eleven tests" over fifteen of them — a comment that had simply been left
+  // behind, in a repo that treats a false comment as a defect. A prose count
+  // cannot be maintained by intention, so it is read back off the source.
+  it('states its own test count truthfully in its header', () => {
+    // Read from the runner's working directory, not `import.meta.url`: the
+    // react plugin rewrites that to a non-file URL in this `.tsx` file, which
+    // `readFileSync` refuses.
+    const source = fs.readFileSync('src/App.test.tsx', 'utf8')
+    const start = source.indexOf("describe('Story 17.1")
+    // The LAST all-caps "N tests." sentence before the describe is this block's
+    // header; no other header in this file is written that way.
+    const declared = [...source.slice(0, start).matchAll(/\/\/ ([A-Z-]+) tests\./g)].at(-1)
+    expect(declared).toBeDefined()
+    const spelled: Record<string, number> = { TEN: 10, ELEVEN: 11, TWELVE: 12, THIRTEEN: 13, FOURTEEN: 14, FIFTEEN: 15, SIXTEEN: 16, SEVENTEEN: 17, EIGHTEEN: 18, NINETEEN: 19, TWENTY: 20, 'TWENTY-ONE': 21, 'TWENTY-TWO': 22, 'TWENTY-THREE': 23 }
+    const written = spelled[declared![1] as string]
+    expect(written).toBeDefined()
+    expect(written).toBe((source.slice(start).match(/\n {2}it\(/g) ?? []).length)
+  })
+
+  // A BLUR THAT SENDS NOTHING MUST STILL HAND THE DRAFT BACK.
+  //
+  // The pause path lowers the ownership flag when it finds nothing to send, but
+  // blur CANCELS that pause — so a draft typed and then deleted back to the
+  // committed text before the author clicks away never reaches it, `commit`
+  // takes its no-op branch, and the flag would stay raised for the life of the
+  // selection. Nothing after that could make the box follow the document again.
+  //
+  // Deliberately no `elapse()` before the blur: letting the debounce fire first
+  // would lower the flag on the pause path and hide whether blur does its half.
+  it('hands the draft back to the engine when a blur finds nothing to send', async () => {
+    const { sent, request } = proseEngine()
+    const field = openWithSampleData(request)
+    type(field, 'Helloz')
+    type(field, 'Hello')
+    fireEvent.blur(field)
+    await settle()
+    expect(sent).toHaveLength(0)
+    // The document now moves on its own. The box has to follow it.
+    bindCustomerName()
+    await settle()
+    expect(field).toHaveValue('{{customer.name}}')
+  })
+
+  // WHAT THE ENGINE WAS TOLD HAS TO BE FORGOTTEN WHEN THE DOCUMENT MOVES
+  // WITHOUT IT. `toldEngine` is what suppresses a duplicate command; left
+  // pointing at text the document no longer holds, it suppresses a REAL one,
+  // and the box and the document disagree with nothing to reconcile them.
+  it('sends text again after the document has moved underneath it', async () => {
+    const { sent, request, engineHolds } = proseEngine()
+    const field = openWithSampleData(request)
+    type(field, 'Invoice')
+    await elapse()
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(engineHolds()).toBe('Invoice')
+    bindCustomerName()
+    await settle()
+    expect(field).toHaveValue('{{customer.name}}')
+    // The author types the old text back. The document does NOT hold it any
+    // more, so this is a real edit and it has to travel.
+    type(field, 'Invoice')
+    await elapse()
+    await settle()
+    // Three payloads on the wire: the first commit, the bind, and this one.
+    expect(sent).toHaveLength(3)
+    expect(changes(sent[2]!).value!.value).toBe('Invoice')
+    expect(engineHolds()).toBe('Invoice')
+    expect(field).toHaveValue('Invoice')
+  })
+
+  // PATCH 6 (review). The ordering of the two debounces was asserted in a
+  // COMMENT that spelled the preview's number out, where it would rot the
+  // moment either constant moved. It is asserted here instead, over the
+  // constants themselves.
+  it('pauses for less time than the PDF preview does', () => {
+    expect(PROSE_COMMIT_DEBOUNCE_MS).toBeLessThan(PREVIEW_DEBOUNCE_MS)
+  })
+
+  // THE DECISION THE STORY'S CODE MAP FORCED, tied to a test so it cannot be
+  // undone silently. `shared` carries `disabled: pending`, and a debounced
+  // commit passes `disable = false` for the same reason Story 17.4's arrow
+  // step does: disabling a FOCUSED input moves focus to the body and does not
+  // give it back when the input is re-enabled (measured in Chromium 1217).
+  // With the default, every debounce would blank the author's focus
+  // mid-sentence and AC1 would be false in a real browser.
+  //
+  // JSDOM CANNOT SEE THE FOCUS THEFT — measured: the textarea reports
+  // `disabled: true` mid-flight while `document.activeElement` stays the
+  // textarea. So the reachable assertion is the `disabled` attribute itself,
+  // in BOTH directions against blur, which still disables. The browser run is
+  // the only place the theft is observable.
+  it('does not disable the field while a DEBOUNCED commit is in flight, though a blur commit still does', async () => {
+    const { sent, request, hold, release } = proseEngine()
+    const { field } = openEditor(request)
+    hold()
+    type(field, 'Invoice')
+    await elapse()
+    expect(sent).toHaveLength(1)
+    expect(screen.getByRole('textbox', { name: 'Text' })).not.toBeDisabled()
+    release()
+    await settle()
+    // The contrast arm: without it this would pass over a control that never
+    // disables for any reason.
+    hold()
+    type(field, 'Invoice 2026')
+    fireEvent.blur(field)
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(screen.getByRole('textbox', { name: 'Text' })).toBeDisabled()
+    release()
+    await settle()
+    expect(screen.getByRole('textbox', { name: 'Text' })).not.toBeDisabled()
+  })
+})
