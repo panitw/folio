@@ -8216,3 +8216,75 @@ verbatim from `epic-16-decision-log.md:2930`. See D-16.R.67.
   place deliberately; the JSDoc above it was corrected, because as first written it claimed a UI reader
   that does not exist. Deleting it is a separate change: `:157` names it as the deliberate separate
   carrier for the published count, so removing it means also deciding what that prose should say.
+
+---
+
+### DW-186 — the design draws a magnifying glass in both search boxes and the implementation draws neither
+
+- source_spec: the Epic 16 adversarial review round (2026-09-04), run across stories 16.6-16.10.
+- **Deferred by:** the orchestrator, after the review. **PRE-EXISTING — not introduced by 16.6-16.10**,
+  but in scope of the owner's standing instruction on this epic, "follow the design strictly".
+- **Owner:** the next story touching either search control. **Severity:** LOW. **Status:** OPEN.
+
+**Evidence, measured.** `Font Browser.dc.html` draws the same 12x12 magnifier twice — once as the first
+child of the dropdown's filter box (`:191`) and once as the first child of the browser header's search box
+(`:297`) — both spelled `<svg ... ><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>`.
+Count of `circle cx="7" cy="7"` in the mockup: **2**. Count of `<svg` in
+`folio-designer/src/FontBrowser.tsx`: **0**, against a positive control of **6** in `App.tsx`, so the
+query works and the zero is real. `App.css`'s `.font-browser-search` carries no `content:` or
+`background-image` icon rule either.
+
+**Why it is LOW rather than cosmetic-only:** Story 16.9 established that this project's icons are SVG and
+not text glyphs, for a measured reason — a text glyph centres by the font's metrics rather than by its box.
+Anything closing this must use the mockup's own path, not a `🔍`.
+
+---
+
+### DW-187 — the dropdown's option rows omit the design's selection checkmark column
+
+- source_spec: the Epic 16 adversarial review round (2026-09-04).
+- **Deferred by:** the orchestrator. **PRE-EXISTING.** **Owner:** the next story touching the family
+  control's rows. **Severity:** LOW-MEDIUM. **Status:** OPEN.
+
+**Evidence, measured.** `Font Browser.dc.html:196-200` gives every option row a fixed 12px leading column
+holding a `✓` whose visibility is toggled per row (`<div style="width: 12px; flex-shrink: 0; ...">
+<span style="{{ f.checkStyle }}">✓</span></div>`) — reserved structurally so rows do not shift when the
+selection moves. Count of `✓` in the mockup: **4**. In `folio-designer/src/App.tsx`: **0**.
+
+**Why it is not purely visual.** The rows are an ARIA listbox and the committed family is currently
+distinguished only by `aria-selected`. A sighted author reading the open menu has no mark showing which
+row is the one in force — the design's answer to a question the implementation currently leaves unanswered.
+
+---
+
+### DW-188 — the `Add fonts…` row omits the design's bordered `+` icon box
+
+- source_spec: the Epic 16 adversarial review round (2026-09-04).
+- **Deferred by:** the orchestrator. **PRE-EXISTING**, and note that Story 16.7's own owner ruling already
+  removed a different element of this row (the `⌘G` shortcut hint) deliberately; this one was never ruled
+  on. **Owner:** the next story touching the row. **Severity:** LOW. **Status:** OPEN.
+
+**Evidence, measured.** `Font Browser.dc.html:230-236` draws the row as a 16x16 box
+(`border: 1px solid #58a6c4`) containing a `+`, then the label/note stack. `App.tsx`'s button contains
+only `property-add-fonts-label` and `property-add-fonts-note`; `App.css`'s rule for it is a two-line
+`display: grid` stack with no icon column.
+
+---
+
+### DW-189 — three absence guards match a WORD where they should match a CONTROL
+
+- source_spec: the Epic 16 adversarial review round (2026-09-04).
+- **Deferred by:** the orchestrator. **Owner:** the next story touching the store's alert surfaces.
+  **Severity:** LOW today. **Status:** OPEN.
+
+**Evidence.** `App.font-store.test.tsx:704`, `:803` and `font-store.test.ts:295` each assert the deleted
+removal remedy is gone with `expect(alert.textContent, ...).not.toMatch(/remove/i)`. That is a check on a
+WORD. A remedy reintroduced as "clear it from this machine", "discard it" or "free it up" passes all three.
+
+**This is the same defect class Story 16.10 measured and closed in the font browser**, where a phrase-only
+guard was proved unable to see a newly minted sentence: with `<span>1304 families</span>` in the header and
+only the structural assertion removed, the suite ran green at rc=0. **That measurement is the argument for
+this entry** — the equivalence is demonstrated, not asserted.
+
+**Why LOW today:** the panel that would host such a control is independently proven absent by structural
+tests. The risk is that those tests and these guards drift apart.
