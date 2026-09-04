@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory as FakeIndexedDBFactory, IDBObjectStore as FakeIndexedDBObjectStore } from 'fake-indexeddb'
@@ -10,7 +7,7 @@ import { sfntWithNames } from './test/sfnt-fixture'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { previewFaceFamily } from './preview-face-family'
 import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-store'
-import { addableFamilyCount, webFamilies } from './font-index'
+import { webFamilies } from './font-index'
 import { catalogueFaces } from './generated/font-catalogue'
 import { shippedFaceFamily } from './shipped-face-family'
 
@@ -53,35 +50,6 @@ const upstreamFetch = () => vi.fn(async (url: string) => {
   if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => kanitMetadata }
   if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => kanitLicence }
   if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => kanitFace }
-  return { ok: false, status: 404, text: async () => '' }
-})
-
-const timeoutError = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError')
-
-// THE VARIABLE FACE THE INSTALL MUST REFUSE, AND IT IS THE FILE GO EMBEDS.
-//
-// `folio-go/testfont_embed_test.go:34` reaches this exact path by `//go:embed`,
-// so the bytes the designer refuses at install are the same bytes
-// `fontset.RefuseVariableFace` refuses at the command. A synthesised `fvar`
-// would test the predicate against a fixture of our own making; this tests it
-// against the one the authority is held to. `src/font-variable-face-tie.test.ts`
-// carries the predicate-level tie and its over-broadness control; what is
-// asserted HERE is the different claim the matrix row actually makes — that the
-// INSTALL PATH refuses, names the family, and keeps nothing.
-const variableFaceFixture = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'folio-go', 'testdata', 'fonts', 'notosansthai-variable-testonly', 'NotoSansThai-VF.ttf')
-
-/** Fails, never skips, if the shared fixture moves — a tie that cannot read its fixture is broken, not absent. */
-const variableFaceBytes = (): ArrayBuffer => {
-  expect(fs.existsSync(variableFaceFixture), `the shared fixture ${variableFaceFixture} is not there; Go embeds it by this exact path`).toBe(true)
-  const held = fs.readFileSync(variableFaceFixture)
-  return held.buffer.slice(held.byteOffset, held.byteOffset + held.byteLength) as ArrayBuffer
-}
-
-/** The Kanit upstream, but the face it serves is the variable one. Everything before the bytes still admits. */
-const upstreamServingAVariableFace = (bytes: ArrayBuffer) => vi.fn(async (url: string) => {
-  if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => kanitMetadata }
-  if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => kanitLicence }
-  if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => bytes }
   return { ok: false, status: 404, text: async () => '' }
 })
 
@@ -309,15 +277,18 @@ describe('the font browser names a refusal the seam returned', () => {
       // above and fails every line below it.
       expect(embedPayloads(request)).toEqual([])
       expect(await faceRecordsOnThisMachine(), 'a refused install must keep nothing').toEqual([])
-      // AND THE FAMILY CONTROL STILL OFFERS IT AS AN INSTALL. `offeredFamilies`
+      // AND THE FAMILY CONTROL'S OWN DROPDOWN STILL DOES NOT OFFER IT AT ALL
+      // (Story 16.9 removed its install-tier group entirely). `offeredFamilies`
       // reads the store's own listing, so a row that had moved to the
-      // already-downloaded note would mean a record survived the refusal.
+      // already-downloaded note would mean a record survived the refusal —
+      // the stronger, now-correct claim is that this control never named it
+      // in the first place, refused or not.
       fireEvent.keyDown(dialog, { key: 'Escape' })
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Font browser' })).toBeNull())
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
       fireEvent.focus(combobox)
       fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })).toBeInTheDocument()
+      expect(screen.queryByRole('option', { name: /^Kanit/ })).not.toBeInTheDocument()
     } finally {
       fontSet.restore()
     }
@@ -357,37 +328,14 @@ describe('the font browser names a refusal the seam returned', () => {
 })
 
 describe('a fetched face stays on this machine', () => {
-  // AC1, BEHAVIOUR-CHANGED BY STORY 16.5 IN ITS SECOND HALF. The pick fetches
-  // and KEEPS the face — under the SHA-256 of its bytes, with everything the
-  // embed command requires beside it — AND IT NO LONGER EMBEDS. Installing is
-  // a machine action: no command, no revision, no history entry, no undo.
-  it('keeps a fetched face with its licence record, sends no command for it, and offers it back as already downloaded', async () => {
-    const fetchStub = upstreamFetch()
-    globalThis.fetch = fetchStub as never
-    const request = commandRequest()
-    mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'a snapshot family must be offered before it is stored').toBe(true)
-    await waitForStoredFamily('Kanit')
-    // THE DOCUMENT DID NOT MOVE. The store row above is the positive settle
-    // condition — the install really finished — so this is a claim about a
-    // completed install and not about an assertion that ran too early.
-    expect(embedPayloads(request), 'installing a family sends no engine command at all').toEqual([])
-    expect(request.mock.calls.filter((call) => call[0] === 'command'), 'no command means no revision, no history entry and no undo').toEqual([])
-    // THE RECORD CARRIES ITS SIZE AND THE DAY IT WAS DOWNLOADED — read out of
-    // the store itself now that Story 16.6 deleted the panel row that used to
-    // display them. `FontStore`'s own API is unchanged; only the render went.
-    const [kept] = await faceRecordsOnThisMachine()
-    expect((kept as unknown as { style: string; byteLength: number; fetchedAt: string } | undefined)?.style).toBe('Regular')
-    expect((kept as unknown as { byteLength: number } | undefined)?.byteLength).toBeGreaterThan(0)
-    expect((kept as unknown as { fetchedAt: string } | undefined)?.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    // AND THE FAMILY CONTROL NOW OFFERS IT FROM THE STORE. The document
-    // declares a chain for it too, so it is searched by a row that is offered
-    // as an ADDITION only while the chain is absent — the store's own listing
-    // is what this asserts.
-    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit$/ })).toBeInTheDocument()
-  })
+  // RETIRED (Story 16.9): drove the install mechanism itself — fetch, keep,
+  // send no command, offer the row back as already downloaded — by picking
+  // the dropdown's removed install-tier row. There is no route left from
+  // this control to a family that is not yet on this machine, so an install
+  // can no longer be provoked here. The store-write half is unit-tested
+  // directly in `font-store.test.ts`; the font browser's own "Add fonts…"
+  // flow is the one remaining door to an install, and is untouched by this
+  // story.
 
   // AC2 AND AC3 TOGETHER, WHICH IS THE WHOLE POINT OF THE STORE, RE-ANCHORED BY
   // STORY 16.5 ONTO THE MOMENT THAT NOW CARRIES THE EMBED.
@@ -402,15 +350,26 @@ describe('a fetched face stays on this machine', () => {
   // The claim is unchanged and is the one Story 16.2 exists for: a second
   // document, with THE NETWORK REMOVED ENTIRELY, still gets the face and its
   // terms out of the store. Only the trigger moved, from the pick to first use.
+  //
+  // TRIGGER CHANGED BY STORY 16.9: 'Kanit' reaches this machine by being
+  // seeded directly into the store — exactly the record an install through
+  // the (now removed) dropdown row would have written — rather than by
+  // picking that row live. What this test owns is the SECOND document's
+  // no-network first use, which is unaffected by how the face arrived.
   it('embeds a stored family in a second document with no network at all, fetching nothing', async () => {
+    const seedKey = await storedFaceKey(kanitFace)
+    const seeded = await openFontStore(globalThis.indexedDB)
+    if (!seeded.ok) throw new Error(seeded.reason)
+    const seedWrite = await seeded.value.put({ ...storedOnly(seedKey, kanitFace), family: 'Kanit', licence: 'OFL-1.1', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors', source: 'google/fonts — ofl/kanit/Kanit-Regular.ttf, fetched 2026-09-03' })
+    expect(seedWrite.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     const first = commandRequest()
     mount(first)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     // THE SETTLE CONDITION IS THE STORE ROW, and it has to be: there is no
     // command to wait on any more, so waiting on one would wait for ever.
     await waitForStoredFamily('Kanit')
-    expect(embedPayloads(first), 'the install must not have embedded anything').toEqual([])
+    expect(embedPayloads(first), 'nothing has embedded anything yet').toEqual([])
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
 
@@ -446,16 +405,12 @@ describe('a fetched face stays on this machine', () => {
     expect(property['ids']).toEqual(['e1'])
   })
 
-  // A FAMILY THIS MACHINE DOES NOT HOLD, WITH NO NETWORK, IS A STATED
-  // DEGRADATION — never a document that will not render, and never a silence.
-  it('states that a family cannot be installed right now when it is neither stored nor reachable', async () => {
-    globalThis.fetch = (vi.fn(async () => { throw new TypeError('Failed to fetch') })) as never
-    mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/You cannot install a family without a network connection/)
-    expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
-  })
+  // RETIRED (Story 16.9): drove the offline-install refusal by picking the
+  // dropdown's removed install-tier row for a family not on this machine —
+  // there is no such row left to pick. `fetchWebFamily`'s own offline
+  // sentence is unit-tested directly, independent of any UI, in
+  // `font-source.test.ts` ("You cannot install a family without a network
+  // connection").
 
   // RETIRED, STORY 16.6: `it('removes a face by name, and says documents that
   // embed it are unchanged', ...)`. Deleted by owner decision (D-16.R.82) along
@@ -467,59 +422,15 @@ describe('a fetched face stays on this machine', () => {
   // let it go — asserted below in "renders no store section with faces
   // present, and offers no way to remove one".
 
-  // STORY 16.4 — A FONT CHANGES GROUP BECAUSE THE AUTHOR ACTED, AND THE WHOLE
-  // JOURNEY IS ONE TEST.
-  //
-  // 8.6's rule was "nothing says added, the entry simply moves", and three
-  // groups extend it rather than replace it: install moves a row 3 → 2, first
-  // use moves it 2 → 1. Both halves of what a pick does are asserted at the
-  // same time as the move, because the move is only honest if the act behind it
-  // is — a row that jumped to AVAILABLE LOCALLY without the bytes arriving, or
-  // to IN THIS TEMPLATE without a command, would be a heading lying twice.
-  it('moves a row 3 → 2 when it is installed and 2 → 1 when it is first used', async () => {
-    globalThis.fetch = upstreamFetch() as never
-    let declaredChains = ['body']
-    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
-      if (operation === 'command' && payload) {
-        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
-        if (parsed['kind'] === 'embedFontFamily') declaredChains = ['body', 'Kanit']
-      }
-      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } } }
-    })
-    mount(request)
-    const combobox = () => screen.getByRole('combobox', { name: 'Font family' })
-    const groupOf = (family: string) => {
-      fireEvent.focus(combobox())
-      fireEvent.change(combobox(), { target: { value: family } })
-      // The accessible name collapses the note's leading space, so the pattern
-      // is whitespace-tolerant rather than pinned to one spelling of the gap —
-      // and it accepts the bare name too, which is what group 1's rows carry.
-      return screen.getByRole('option', { name: new RegExp(`^${family}\\s*(—|$)`) }).closest('[role="group"]')?.getAttribute('aria-label')
-    }
-
-    // GROUP 3 — not on this machine.
-    expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    // GROUP 2 — on this machine, not in this file. The group move IS the settle
-    // condition; the deleted panel no longer offers a DOM row to wait on.
-    await waitFor(() => expect(groupOf('Kanit')).toBe('AVAILABLE LOCALLY'))
-    // NOTHING ENTERED THE DOCUMENT. No engine command at all, so no property
-    // commit either — which is what makes the row's new heading true.
-    expect(embedPayloads(request), 'installing sends no command: the document did not move').toEqual([])
-    // AND PICKING FROM GROUP 2 REACHES NO NETWORK. Every fetch from here on
-    // fails, so an embed that completes can only have read the machine's copy.
-    const refuse = vi.fn(async () => { throw new TypeError('a face already on this machine must not be fetched') })
-    globalThis.fetch = refuse as never
-    expect(pick('Kanit', /^Kanit$/)).toBe(true)
-    // TWO COMMANDS AND TWO UNDO ENTRIES, in the order the engine forces.
-    await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily', 'updateComponentProperties']))
-    expect(refuse, 'a pick from AVAILABLE LOCALLY must not touch the network').not.toHaveBeenCalled()
-
-    // GROUP 1 — in the file. The projection is what says it arrived.
-    await waitFor(() => expect(groupOf('Kanit')).toBe('IN THIS TEMPLATE'))
-    // AND IT IS OFFERED ONCE, not once per group it has passed through.
-    expect(screen.getAllByRole('option', { name: /^Kanit\s*(—|$)/ })).toHaveLength(1)
-  })
+  // RETIRED (Story 16.9): this drove the whole 3 → 2 → 1 journey — install
+  // moving a row into AVAILABLE LOCALLY, first use moving it into IN THIS
+  // TEMPLATE — by picking the dropdown's own install-tier row. The first leg
+  // (3 → 2) no longer has a row to start from: there is nothing left on this
+  // machine's control at group 3 to pick. THE SECOND LEG SURVIVES ELSEWHERE:
+  // `App.test.tsx`'s "embeds and then commits the property, as two commands,
+  // when a family this machine holds is picked" asserts the 2 → 1 move (two
+  // commands, no network, offered once) against `Inter`, a local-tier family
+  // that reaches AVAILABLE LOCALLY without a pick at all.
 
   // AND THE TWO COMMANDS ARE TWO SEPARATELY UNDOABLE ENTRIES, WHICH IS THE HALF
   // A COMMAND COUNT CANNOT SEE.
@@ -535,7 +446,17 @@ describe('a fetched face stays on this machine', () => {
   // after one press and disabled only after the second. The stub's depth is a
   // counter over the commands the designer actually sends — not a hardcoded
   // `canUndo: true`, which would pass over a fused single command.
+  // TRIGGER CHANGED BY STORY 16.9: 'Kanit' is seeded directly into the store
+  // rather than installed by picking the dropdown's removed install-tier
+  // row, so the control for "installing pushes nothing to undo" moved with
+  // it — there is nothing left in this test that installs at all.
   it('leaves two separately undoable entries after one pick from AVAILABLE LOCALLY', async () => {
+    const seedKey = await storedFaceKey(kanitFace)
+    const seeded = await openFontStore(globalThis.indexedDB)
+    if (!seeded.ok) throw new Error(seeded.reason)
+    const seedWrite = await seeded.value.put({ ...storedOnly(seedKey, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(seedWrite.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     let revision = 1
     let undoDepth = 0
@@ -558,12 +479,8 @@ describe('a fetched face stays on this machine', () => {
     })
     mount(request)
     const undo = () => screen.getByRole('button', { name: 'Undo' })
-
-    // INSTALL FIRST, AND IT PUSHES NOTHING. No command is sent, so there is
-    // nothing to undo — which is also the control for the two presses below.
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitForStoredFamily('Kanit')
-    expect(undo(), 'installing is not a document change and may not be undoable').toBeDisabled()
+    expect(undo(), 'nothing has been sent yet').toBeDisabled()
 
     // FIRST USE — the embed, then the property.
     expect(pick('Kanit', /^Kanit$/)).toBe(true)
@@ -581,21 +498,25 @@ describe('a fetched face stays on this machine', () => {
     await waitFor(() => expect(undo(), 'two entries, not three: the pick may not push anything else').toBeDisabled())
   })
 
-  // THE REGRESSION THE ORDER REPAIR AND THE PARTITION EXIST FOR, DRIVEN THROUGH
-  // THE CONTROL RATHER THAN ASSERTED OVER `offeredFamilies`.
+  // THE REGRESSION THE ORDER REPAIR EXISTS FOR, DRIVEN THROUGH THE CONTROL
+  // RATHER THAN ASSERTED OVER `offeredFamilies`.
   //
-  // At HEAD a stored family took the INDEX POSITION of the web row it replaced.
-  // `Philosopher` sits at offset 891 of 1273, so with a 50-row cap applied to
-  // the union it was painted nowhere at all — while AVAILABLE LOCALLY was drawn
-  // over a group that was missing it. A heading is never drawn over a member the
-  // render cannot show.
-  it('draws a deeply-ranked stored family under AVAILABLE LOCALLY, and the cap does not swallow it', async () => {
+  // At HEAD a stored family took the INDEX POSITION of the web row it
+  // replaced. `Philosopher` sits at offset 891 of 1273 in the web-tier
+  // snapshot — a fact `offeredFamilies`' repaired order must not let leak
+  // into this control, which draws no web-tier rows at all any more
+  // (Story 16.9) and so has no cap left to swallow anything under. The claim
+  // this test still owns is narrower than it once was and no less real: a
+  // stored face ranked deep in a list this control no longer shows must
+  // still appear under AVAILABLE LOCALLY, drawn in full.
+  it('draws a deeply-ranked stored family under AVAILABLE LOCALLY, in full', async () => {
     const bytes = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2026 A Face Only This Machine Has' }])
     const key = await storedFaceKey(bytes)
     const opened = await openFontStore(globalThis.indexedDB)
     if (!opened.ok) throw new Error(opened.reason)
     const written = await opened.value.put({ ...storedOnly(key, bytes), family: 'Philosopher' })
     expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+    expect(webFamilies.some((row) => row.family === 'Philosopher'), 'the fixture must really rank deep in the web-tier snapshot, or this measures nothing').toBe(true)
     // WITH NO NETWORK, so nothing here can be explained by a fetch.
     globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as never
     mount(commandRequest())
@@ -603,85 +524,32 @@ describe('a fetched face stays on this machine', () => {
 
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
-    const install = within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option')
     // IT IS UNDER THE HEADING THAT SAYS THE BYTES ARE HERE, AND IT SAYS SO.
     expect(local.map(optionText)).toContain('Philosopher')
-    // AND THE GROUP IS DRAWN IN FULL — 31 committed faces plus this one against
-    // a 50-row cap that used to be applied to the union before the split.
-    expect(local, 'every installed row renders; the cap belongs to the other group').toHaveLength(catalogueFaces.length + 1)
-    expect(install, 'the cap is still doing its job where it belongs').toHaveLength(50)
+    // AND THE GROUP IS DRAWN IN FULL — 31 committed faces plus this one, with
+    // no cap anywhere in this control to have swallowed it.
+    expect(local, 'every installed row renders').toHaveLength(catalogueFaces.length + 1)
+    expect(screen.queryByRole('group', { name: 'AVAILABLE TO INSTALL' })).not.toBeInTheDocument()
     // AND IT IS OFFERED ONCE: from the store, never also from the snapshot.
     expect(screen.getAllByRole('option', { name: /^Philosopher/ })).toHaveLength(1)
-    // THE CAPPED GROUP'S NOTE COUNTS THE CAPPED GROUP. Group 2 and group 3
-    // together are the whole addable union, so naming the union would be
-    // counting rows the cap never touched.
-    // THE SUM BELOW HAS A PRECONDITION, AND IT IS ASSERTED RATHER THAN
-    // INHERITED FROM THE FIXTURE'S CHOICE OF NAME. `addableFamilyCount` is
-    // `webFamilies.length + catalogueFaces.length` and never counts
-    // `orphanedStored` — a family this machine holds that the snapshot has
-    // since stopped listing. So group 2 + group 3 === addableFamilyCount is
-    // true of a stored face the snapshot STILL LISTS and false by exactly one
-    // of an orphaned one. Planting a family that is not in the snapshot would
-    // leave this arithmetic quietly wrong, so the precondition is measured here.
-    expect(webFamilies.some((row) => row.family === 'Philosopher'), 'this sum holds only for a stored family the snapshot still lists; an orphaned one makes addableFamilyCount short by one').toBe(true)
-    const counted = /Showing (\d+) of (\d+) matching families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
-    expect(counted).not.toBeNull()
-    expect(Number(counted![2])).not.toBe(addableFamilyCount)
-    expect(Number(counted![2]) + local.length).toBe(addableFamilyCount)
   })
 
-  // AND WITH NO STORE AT ALL THE ROW MOVES 3 → 1 IN ONE STEP, SILENTLY (Story
-  // 16.6, reversing 16.2's stated-degradation clause by owner decision).
-  //
-  // With nowhere to install to, there is no middle group for the row to rest
-  // in, so it crosses group 2 without stopping. A row that landed under
-  // AVAILABLE LOCALLY here would be claiming a machine copy that this browser
-  // explicitly cannot keep. Story 16.6 deleted the note that used to describe
-  // this on screen — the deleted panel was its only render site — so this test
-  // now asserts the designer works and says nothing, rather than asserting what
-  // it used to say.
-  it('moves a row 3 → 1 in one step when the store cannot be opened at all, and says nothing', async () => {
-    Reflect.deleteProperty(globalThis, 'indexedDB')
-    globalThis.fetch = upstreamFetch() as never
-    let declaredChains = ['body']
-    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
-      if (operation === 'command' && payload) {
-        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
-        if (parsed['kind'] === 'embedFontFamily') declaredChains = ['body', 'Kanit']
-      }
-      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, fontFamilies: declaredChains, components: [textComponent] } } }
-    })
-    mount(request)
-    const combobox = () => screen.getByRole('combobox', { name: 'Font family' })
-    const groupOf = (family: string) => {
-      fireEvent.focus(combobox())
-      fireEvent.change(combobox(), { target: { value: family } })
-      return screen.getByRole('option', { name: new RegExp(`^${family}\\s*(—|$)`) }).closest('[role="group"]')?.getAttribute('aria-label')
-    }
-    expect(groupOf('Kanit')).toBe('AVAILABLE TO INSTALL')
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(embedPayloads(request).map((sent) => sent['kind'])).toEqual(['embedFontFamily']))
-    // STRAIGHT TO GROUP 1, and never to group 2 — nothing is on this machine.
-    await waitFor(() => expect(groupOf('Kanit')).toBe('IN THIS TEMPLATE'))
-    expect(screen.queryByRole('group', { name: 'AVAILABLE LOCALLY' }), 'no family matches Kanit on a machine that keeps nothing').toBeNull()
-    // AND NOTHING WAS EVER SAID ABOUT IT — no alert, and neither of the two
-    // sentences this story deleted: the deliberate reversal this story ships.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByText(/not letting the designer keep typefaces on this machine/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/went straight into this document/)).not.toBeInTheDocument()
-  })
+  // RETIRED (Story 16.9): the 3 → 1 store-unavailable degrade this drove by
+  // picking the dropdown's removed install-tier row for 'Kanit'. There is no
+  // route left from this control to a family that is not yet on this
+  // machine, so the scenario cannot be provoked here any more. See the
+  // retirement note on "still designs and still adds fonts when the store
+  // cannot be opened at all" further down this file for the gap this and
+  // that test both leave: neither this file nor `FontBrowser.test.tsx`
+  // drives the degrade to a completed embed through the font browser's own
+  // confirm flow, the one remaining door to an install.
 
-  // AND THE CAP IS APPLIED AFTER THE PARTITION, WHICH ONLY SHOWS WHEN THE
-  // INSTALLED GROUP IS BIGGER THAN THE CAP.
-  //
-  // With 31 committed faces and one stored family the two repairs are redundant
-  // — the repaired order puts all 32 inside the first 50 rows either way. This
-  // is the fixture that tells them apart: 25 stored families on top of the 31
-  // takes group 2 to 56, above `renderedFamilyLimit`. A cap over the union would
-  // paint 50 rows in total and NOTHING under AVAILABLE TO INSTALL, with both
-  // headings still drawn. It is also the measurement behind that group being
-  // deliberately uncapped, and behind the named trigger to revisit it.
-  it('renders every installed row even when the installed group is larger than the cap', async () => {
+  // AVAILABLE LOCALLY HAS NO CAP AT ALL (Story 16.9 removed the only other
+  // group, the one that ever had one). With 31 committed faces and one stored
+  // family the claim would be too easy to satisfy by accident, so the fixture
+  // pushes the installed group to 56 rows — well past the 50-row bound the
+  // removed group used to carry — and every one of them must still render.
+  it('renders every installed row, uncapped, even when the installed group is far larger than any cap this control ever had', async () => {
     const opened = await openFontStore(globalThis.indexedDB)
     if (!opened.ok) throw new Error(opened.reason)
     const from = Math.floor(webFamilies.length * 0.7)
@@ -701,8 +569,8 @@ describe('a fetched face stays on this machine', () => {
     await waitFor(() => expect(within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')).toHaveLength(catalogueFaces.length + deep.length))
     const local = within(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).getAllByRole('option')
     expect(local, 'every row under a heading promising the bytes are here must be drawn').toHaveLength(catalogueFaces.length + deep.length)
-    expect(local.length, 'the fixture must really exceed the cap, or this measures nothing').toBeGreaterThan(50)
-    expect(within(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).getAllByRole('option'), 'the third group keeps its own bound').toHaveLength(50)
+    expect(local.length, 'the fixture must really exceed any cap this control ever had, or this measures nothing').toBeGreaterThan(50)
+    expect(screen.queryByRole('group', { name: 'AVAILABLE TO INSTALL' }), 'there is no third group left to bound anything against').not.toBeInTheDocument()
   })
 
   // RETIRED, STORY 16.6: `it('draws the region both refusals name, and puts the
@@ -732,11 +600,18 @@ describe('a fetched face stays on this machine', () => {
   // BOTH HALVES ARE ASSERTED. The refetch must happen (a refusal would red the
   // embed assertion) AND the store must be healed (a fetch with no write back
   // would leave the next use fetching again for ever).
+  // TRIGGER CHANGED BY STORY 16.9: seeded directly into the store rather than
+  // reached by picking the dropdown's removed install-tier row.
   it('refetches and heals when a stored entry has gone missing, rather than refusing first use', async () => {
+    const seedKey = await storedFaceKey(kanitFace)
+    const seeded = await openFontStore(globalThis.indexedDB)
+    if (!seeded.ok) throw new Error(seeded.reason)
+    const seedWrite = await seeded.value.put({ ...storedOnly(seedKey, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(seedWrite.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     const request = commandRequest()
     mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitForStoredFamily('Kanit')
     const installed = await faceRecordsOnThisMachine()
     expect(installed.map((record) => record.family)).toEqual(['Kanit'])
@@ -759,49 +634,16 @@ describe('a fetched face stays on this machine', () => {
     await waitFor(async () => expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toEqual(['Kanit']))
   })
 
-  // MATRIX ROW: "Install a variable face | Fetched bytes carry an `fvar` table |
-  // REFUSED AT INSTALL, NAMED, NOTHING STORED".
-  //
-  // THE SECOND HALF IS THE HALF WITH TEETH. A refusal that had already written
-  // the record would satisfy every message assertion and leave a variable face
-  // sitting in AVAILABLE LOCALLY, offered for a first use that Go would then
-  // refuse — the exact dead end D-16.R.46 Q4 forbids. So the store is read back
-  // PAST the designer, through `openFontStore`, and must be empty.
-  //
-  // NOTHING BEFORE THE BYTES REFUSES THIS PICK, which is what makes it a claim
-  // about the `fvar` filter and not about some earlier guard: METADATA.pb
-  // resolves, the licence token classifies, the OFL.txt is served, and all three
-  // requests are made. Only then are the bytes looked at.
-  it('refuses a variable face at install, names it, and keeps nothing on this machine', async () => {
-    const bytes = variableFaceBytes()
-    const fetchStub = upstreamServingAVariableFace(bytes)
-    globalThis.fetch = fetchStub as never
-    const request = commandRequest()
-    mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-
-    // NAMED, AND THE CAUSE NAMED WITH IT. An author who is told only "could not
-    // be added" has nothing to act on.
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/^Kanit cannot be installed/)
-    expect(alert.textContent).toMatch(/VARIABLE font/)
-    expect(alert.textContent).toMatch(/`fvar` table/)
-    expect(alert.textContent, 'the refusal must say the machine was left alone').toMatch(/Nothing was kept on this machine/)
-
-    // THE WHOLE RESOLUTION RAN. Three round-trips: if the pick had been refused
-    // by the licence table or the metadata probe this would be fewer, and the
-    // assertions above would be about a different guard.
-    expect(fetchStub.mock.calls.map((call) => String(call[0]).split('/').pop())).toEqual(['METADATA.pb', 'OFL.txt', 'Kanit-Regular.ttf'])
-
-    // NOTHING STORED — read out of the store itself.
-    expect(await faceRecordsOnThisMachine()).toEqual([])
-    // AND NOTHING REACHED THE DOCUMENT EITHER.
-    expect(embedPayloads(request)).toEqual([])
-    // AND THE ROW STILL SAYS "INSTALL", because nothing was installed. A row
-    // that had moved to the already-downloaded note would mean a record survived.
-    fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })).toBeInTheDocument()
-  })
+  // RETIRED (Story 16.9): matrix row "Install a variable face" drove the
+  // refusal by picking a family from the dropdown's own (now removed)
+  // install-tier row — there is no route left from this control to a family
+  // that is not yet on this machine, so an install-time refusal can no
+  // longer be provoked here. The `fvar` filter itself is unit-tested
+  // directly, independent of any UI, in `font-variable-face-tie.test.ts`
+  // ("the install-time fvar filter, over the bytes Go embeds"). The font
+  // browser's own "Add fonts…" flow is the one remaining door to an install,
+  // and is untouched by this story; this end-to-end message wording is not
+  // re-verified there.
 
   // MATRIX ROW: "Late embed refusal, stored face | Engine refuses an installed
   // face | One sentence: refused, nothing written, face still on this machine —
@@ -820,7 +662,17 @@ describe('a fetched face stays on this machine', () => {
   // `folio-go/internal/fontset/licencesignature_test.go` over committed bytes.
   // What is unproven anywhere else — and what this owns — is what the DESIGNER
   // does with a refusal that arrives at first use.
+  // TRIGGER CHANGED BY STORY 16.9: 'Kanit' reaches AVAILABLE LOCALLY by being
+  // seeded straight into the store rather than by picking the dropdown's
+  // removed install-tier row — this test is about the refusal at FIRST USE,
+  // which is unaffected by that removal.
   it('says an installed face cannot be embedded, names no removal control, and leaves it installed', async () => {
+    const seedKey = await storedFaceKey(kanitFace)
+    const seeded = await openFontStore(globalThis.indexedDB)
+    if (!seeded.ok) throw new Error(seeded.reason)
+    const seedWrite = await seeded.value.put({ ...storedOnly(seedKey, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(seedWrite.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     const sent: Record<string, unknown>[] = []
     const contradiction = 'fonts: font "Kanit": the face\'s own name table records it under the SIL Open Font License while this document declares Apache-2.0'
@@ -836,12 +688,7 @@ describe('a fetched face stays on this machine', () => {
       return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
     })
     mount(request)
-
-    // INSTALLED FIRST, and the install is unaffected: this face passes every
-    // check that CAN run at install.
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitForStoredFamily('Kanit')
-    expect(sent, 'the install must not have sent anything for the engine to refuse').toEqual([])
 
     // FIRST USE — and this is where the refusal arrives.
     expect(pick('Kanit', /^Kanit$/)).toBe(true)
@@ -867,43 +714,14 @@ describe('a fetched face stays on this machine', () => {
     expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toEqual(['Kanit'])
   })
 
-  // MATRIX ROW 7: "Store write fails at install | Origin quota refuses the `put` |
-  // THE INSTALL FAILS AND SAYS SO | Refusal, not a silent success".
-  //
-  // THE ONLY ASSERTION THAT EXISTED FOR THIS ROW CALLED `storeWriteRefusal`
-  // DIRECTLY and checked the string — the module-level defect Row 5's own task
-  // forbids. Nothing drove a failing `put` through `installFamily` in a mounted
-  // designer, so `if (kept !== undefined) return refuse(...)` could be changed to
-  // `return undefined` and the whole suite stayed green while the install
-  // reported success and kept nothing.
-  //
-  // THE REFUSAL IS INJECTED INTO THE REAL PLUMBING at the exact place a browser
-  // raises it — `font-store.test.ts`'s own technique — so the transaction, the
-  // request and the store's error path are all genuinely exercised.
-  it('refuses the install when the origin will not take the face, and says so at the control', async () => {
-    globalThis.fetch = upstreamFetch() as never
-    const request = commandRequest()
-    mount(request)
-    const original = FakeIndexedDBObjectStore.prototype.put
-    FakeIndexedDBObjectStore.prototype.put = function refuse(): never { throw new DOMException('the origin has no room left for this face', 'QuotaExceededError') }
-    try {
-      expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-      // IT SAYS SO, AT THE CONTROL THE AUTHOR ACTED ON — not in a log, not
-      // nowhere. A silent success is what this row exists to forbid.
-      const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toMatch(/Kanit was not installed on this machine/)
-      expect(alert.textContent).toMatch(/no room left/)
-      expect(alert.textContent, 'nothing may claim a document changed: no command is sent at install').toMatch(/no document was changed/)
-      // AND IT OFFERS NO REMEDY (Story 16.6). It used to point at the panel's
-      // remove control as a way to free space; that panel is gone.
-      expect(alert.textContent, 'no remedy remains to offer: the removal control this once pointed at is deleted').not.toMatch(/remove/i)
-    } finally {
-      FakeIndexedDBObjectStore.prototype.put = original
-    }
-    // AND NOTHING WAS KEPT AND NOTHING WAS SENT.
-    expect(await faceRecordsOnThisMachine()).toEqual([])
-    expect(embedPayloads(request)).toEqual([])
-  })
+  // RETIRED (Story 16.9): matrix row 7 ("Store write fails at install")
+  // drove a failing `put` through `installFamily` by picking a family from
+  // the dropdown's own (now removed) install-tier row — there is no route
+  // left from this control to a family that is not yet on this machine, so
+  // an install-time refusal can no longer be provoked here at all. The font
+  // browser's own "Add fonts…" flow is the one remaining door to an install,
+  // and is untouched by this story; this scenario is not re-verified there.
+  // Owner: whoever next touches `installFamily`'s store-write refusal.
 
   // THE FAILED HEAL IS SILENT NOW (Story 16.6, reversing 16.2's
   // stated-degradation clause by owner decision).
@@ -914,11 +732,20 @@ describe('a fetched face stays on this machine', () => {
   // it: there is nowhere left for it to appear, so this test now asserts the
   // document keeps the face and the machine quietly does not, with nothing
   // said, rather than asserting what used to be said.
+  // TRIGGER CHANGED BY STORY 16.9: seeded directly into the store rather than
+  // reached by picking the dropdown's removed install-tier row — the scenario
+  // under test (a refetch at first use) starts from an already-installed
+  // family regardless of how it got there.
   it('silently fails to heal the store after a refetch, while the document keeps the face', async () => {
+    const seedKey = await storedFaceKey(kanitFace)
+    const seeded = await openFontStore(globalThis.indexedDB)
+    if (!seeded.ok) throw new Error(seeded.reason)
+    const seedWrite = await seeded.value.put({ ...storedOnly(seedKey, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(seedWrite.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     const request = commandRequest()
     mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitForStoredFamily('Kanit')
     const installed = await faceRecordsOnThisMachine()
     const opened = await openFontStore(globalThis.indexedDB)
@@ -986,7 +813,20 @@ describe('a fetched face stays on this machine', () => {
   // RESULT — so a stale commit is not a dropped response, it is
   // `updateComponentProperties` reaching the engine carrying the PREVIOUS
   // document's element ids.
+  //
+  // TRIGGER CHANGED BY STORY 16.9: 'Kanit' used to reach the machine by being
+  // picked from the dropdown's own (now removed) `AVAILABLE TO INSTALL` row.
+  // The scenario under test starts from a family already installed, so it is
+  // unaffected by that removal — the fixture is seeded directly into the
+  // store instead, exactly as `waitForStoredFamily`'s own callers already do
+  // elsewhere in this file.
   it('does not commit the property when the document is replaced while the embed is in flight', async () => {
+    const key = await storedFaceKey(kanitFace)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, kanitFace), family: 'Kanit', licenceText: kanitLicence, copyright: 'Copyright 2020 The Kanit Project Authors' })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
     globalThis.fetch = upstreamFetch() as never
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => { release = resolve })
@@ -1001,7 +841,6 @@ describe('a fetched face stays on this machine', () => {
       return { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } } }
     })
     mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
     await waitForStoredFamily('Kanit')
 
     holdTheEmbed = true
@@ -1068,43 +907,20 @@ describe('a fetched face stays on this machine', () => {
     }
   })
 
-  // STORAGE THAT CANNOT BE OPENED LEAVES A WORKING DESIGNER, SILENTLY — STORY
-  // 16.2's CONTRACT KEPT IN SUBSTANCE AND REVERSED IN VOICE (orchestrator
-  // ruling 2026-09-03; Story 16.6's deliberate reversal, D-16.R.82).
-  //
-  // BEHAVIOUR-CHANGED, THEN CORRECTED. This story first made an unopenable
-  // store REFUSE the install, on the ground that installing IS the store
-  // write. That was refused in review: it would mean a private window could
-  // add no font at all. But "install anyway, keep nothing" fails too — a face
-  // that can never be used, the dead end D-16.R.46 Q4 forbids. The third
-  // option is what is asserted here: this browser gets the OLD MODEL, the pick
-  // embeds directly — and Story 16.6 deletes the note that used to say so, the
-  // panel that rendered it being its only site.
-  //
-  // ONLY ONE CLAIM IS LOAD-BEARING NOW: the embed really happens. Story 16.2
-  // required a message too, so an author could tell why this browser behaves
-  // unlike the last one; the owner chose silence over that, knowingly.
-  it('still designs and still adds fonts when the store cannot be opened at all, and says nothing about it', async () => {
-    Reflect.deleteProperty(globalThis, 'indexedDB')
-    const fetchStub = upstreamFetch()
-    globalThis.fetch = fetchStub as never
-    const request = commandRequest()
-    mount(request)
-    // THE PICK STILL PUTS THE FONT IN THE DOCUMENT. IndexedDB is a convenience
-    // here and never a dependency.
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
-    expect(embedPayloads(request)[0]!['family']).toBe('Kanit')
-    // AND THE PROPERTY IS STILL NOT COMMITTED: this is the fork's SECOND arm
-    // running in its old shape, not the third. The degradation may not quietly
-    // fuse the two decisions Story 8.6 kept apart.
-    expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['embedFontFamily'])
-    // AND NOTHING IS SAID ABOUT WHICH MODEL THE AUTHOR IS IN — the deliberate
-    // reversal this story ships, asserted against the two sentences it deletes.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Kanit went straight into this document/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/not letting the designer keep typefaces on this machine/)).not.toBeInTheDocument()
-  })
+  // RETIRED (Story 16.9), WITH A GAP NAMED RATHER THAN HIDDEN. This drove the
+  // store-unavailable degrade (installing anyway, embedding directly, when
+  // IndexedDB cannot be opened — D-16.R.82) through the dropdown's own
+  // install-tier pick, which no longer exists. The neighbouring test
+  // "computes the degraded confirm warning from a store it really could not
+  // open" still proves the FONT BROWSER's confirm button carries the right
+  // degraded label in this state, but nothing here or in `FontBrowser.test.tsx`
+  // drives that confirm click through to a completed embed — `FontBrowser.
+  // test.tsx` mocks `onAddFamily` rather than exercising `installFamily`'s
+  // real degrade path. RETIRING RATHER THAN REWRITING: rebuilding this against
+  // the browser's confirm flow needs a correctness check of that flow this
+  // story did not do, and a wrong guess here would be a worse record than an
+  // honestly named gap. Owner: whoever next touches `installFamily`'s
+  // store-unavailable branch or the font browser's confirm handler.
 
   // THE MACHINE-SCOPED PREVIEW REGISTRATION, PINNED IN BOTH DIRECTIONS.
   //
@@ -1235,119 +1051,17 @@ describe('a fetched face stays on this machine', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// THE STALL, AND THE THREE THINGS THAT MUST BE TRUE OF IT (D-16.R.14/.15).
-//
-// A fetch that rejects releases the pick's hold through its `finally`. A fetch
-// that HANGS never settles, so the hold is never released and the font control
-// is disabled for the rest of the session, with no message and no way back. The
-// timeout turns that into an ordinary stated degradation — and the RELEASE is
-// the half that has to be red-proved, because it is invisible when it works.
-describe('a pick that stalls rather than failing', () => {
-  // (a) RELEASE. The timeout's rejection reaches the pick, the hold comes off,
-  // the control is usable again and the degradation is stated.
-  //
-  // RED-PROOF: delete the `holdFontChain(false)` in `pickCatalogueFamily`'s
-  // `finally` and this reds on the disabled combobox.
-  it('releases the hold and states the degradation when the fetch times out', async () => {
-    let stall: (() => void) | undefined
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) return new Promise<never>((_resolve, reject) => { stall = () => reject(timeoutError()) })
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    globalThis.fetch = fetchStub as never
-    mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(stall).toBeDefined())
-    // THE CONTROL IS HELD WHILE THE FETCH IS IN FLIGHT — which is the state
-    // that, without a timeout, would never end.
-    expect(screen.getByRole('combobox', { name: 'Font family' })).toBeDisabled()
-    stall!()
-    // AND THE HOLD COMES OFF.
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Font family' })).not.toBeDisabled())
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toMatch(/stopped responding/)
-    expect(alert.textContent).toMatch(/waited 30 seconds/)
-    // AND IT IS NOT THE OFFLINE SENTENCE, which this designer has no ground to
-    // say: a timeout does not establish that the network is down.
-    expect(alert.textContent).not.toMatch(/without a network connection/)
-    // NOR THE OPPOSITE CLAIM, which it has no ground for either. A timeout
-    // cannot know the network is reachable — the same abort fires on a
-    // blackholed link, a hanging DNS lookup and a connection merely too slow.
-    expect(alert.textContent, 'a timeout cannot diagnose the network in either direction').not.toMatch(/network is reachable/i)
-  })
-
-  // (b) THE SECOND CARRIER — the instance D-16.R.15 predicted. The hold is
-  // backed by BOTH a ref and React state, and the document-reset path once
-  // cleared only the state copy: replacing the document mid-stall left the ref
-  // stuck `true` for the session, with the control looking perfectly enabled
-  // while every later pick silently did nothing. Proving (a) alone re-proves a
-  // shape that was already fixed; this is the one that can regress.
-  //
-  // RE-ANCHORED BY STORY 16.5 (MECHANICAL). The witness for "the later pick
-  // really happened" used to be an embed command, because a pick embedded. A
-  // pick now INSTALLS, so the witness is the store row appearing — the same
-  // observable the install path actually produces. The claim is unchanged: a
-  // hold left behind by the replaced document would make the later pick do
-  // NOTHING, and doing nothing is exactly what a witness must be able to see.
-  it('is clear after the document is replaced mid-stall, so a later pick still installs', async () => {
-    let stall: (() => void) | undefined
-    let first = true
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) {
-        if (first) { first = false; return new Promise<never>((_resolve, reject) => { stall = () => reject(timeoutError()) }) }
-        return { ok: true, status: 200, text: async () => kanitMetadata }
-      }
-      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => kanitLicence }
-      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => kanitFace }
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    globalThis.fetch = fetchStub as never
-    const request = commandRequest()
-    mount(request)
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(stall).toBeDefined())
-
-    // THE DOCUMENT IS REPLACED WHILE THE PICK IS STILL STALLED.
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
-    await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
-    stall!()
-
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    const probesBefore = fetchStub.mock.calls.length
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/), 'the pick must still be offered in the new document').toBe(true)
-    // THE FACE REACHES THE MACHINE. A stuck hold returns before the fetch, so
-    // neither of these can be satisfied by a pick that silently did nothing.
-    await waitForStoredFamily('Kanit')
-    expect(fetchStub.mock.calls.length).toBeGreaterThan(probesBefore)
-  })
-
-  // (c) NO SILENT RETRY, WITH THE COUNT AS A LITERAL. A retry over a
-  // deterministic stall hides it — Story 16.0's `Never:` clause, same reasoning
-  // — and the count is written out rather than derived from the code path that
-  // drives the fetches, because a derived count agrees with any implementation.
-  it('makes exactly one request and never repeats it after the timeout', async () => {
-    let stall: (() => void) | undefined
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) return new Promise<never>((_resolve, reject) => { stall = () => reject(timeoutError()) })
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    globalThis.fetch = fetchStub as never
-    mount(commandRequest())
-    expect(pick('Kanit', /^Kanit\s*—\s*install on this machine$/)).toBe(true)
-    await waitFor(() => expect(stall).toBeDefined())
-    stall!()
-    await screen.findByRole('alert')
-    // ONE. The first probe stalled, so the chain ends there: no further probe,
-    // no licence read, no byte read, and no second attempt at the one that
-    // stalled.
-    expect(fetchStub).toHaveBeenCalledTimes(1)
-    // And still one a moment later, so "no retry" is a property of the code
-    // rather than of when the assertion happened to run.
-    await Promise.resolve()
-    expect(fetchStub).toHaveBeenCalledTimes(1)
-  })
-})
+// RETIRED (Story 16.9): this describe block, 'a pick that stalls rather
+// than failing', covered the 30s/180s stall hazard (D-16.R.14/.15) for a
+// pick made from the dropdown's removed `AVAILABLE TO INSTALL` group. That
+// hazard is DISCHARGED by this story, not merely untested: the group whose
+// pick could reach `fetchWebFamily` (and therefore stall against the
+// declared repository host) no longer exists in this control, so no
+// interaction with this dropdown can reach that fetch at all. The
+// underlying stall/timeout mechanism (`timedFetcher`, `fetchTimeoutMs`) is
+// still unit-tested in `font-source.test.ts`, independent of any UI, and
+// `App.test.tsx` now carries a fetch-spy assertion that opening and
+// filtering this dropdown reaches no third-party host at all.
 
 // STORY 16.7 — EVERY ROW SHOWS THE TYPEFACE IT NAMES, ONE TEST PER MATRIX ROW.
 //
@@ -1431,7 +1145,12 @@ describe('Story 16.7 — every row shows the typeface it names', () => {
     }
   })
 
-  it('matrix: web-tier row — no specimen, and the row is never fetched to draw one', async () => {
+  // RETITLED AND NARROWED BY STORY 16.9: the matrix row this used to witness —
+  // "a web-tier row draws no specimen" — no longer has a row to be true of.
+  // The dropdown offers no web-tier rows at all now, so the stronger and now
+  // correct claim is that the family is not offered here, period, never mind
+  // its specimen.
+  it('matrix: a family not on this machine is not offered by this dropdown at all', async () => {
     const family = webFamilies[0]?.family
     if (family === undefined) throw new Error('the web tier fixture is empty')
     const fetchSpy = vi.fn(async () => { throw new TypeError('Failed to fetch') })
@@ -1440,19 +1159,11 @@ describe('Story 16.7 — every row shows the typeface it names', () => {
     try {
       mount(commandRequest())
       const combobox = screen.getByRole('combobox', { name: 'Font family' })
-      // THE QUERY IS TYPED IN ONE EVENT, NEVER FOCUSED FIRST. Opening with an
-      // empty query would show every `AVAILABLE LOCALLY` row too — a true
-      // fact about THOSE rows this test is not about — and each would cost a
-      // real fetch of its own local URL, swamping the one assertion this test
-      // makes. `onChange` opens the dropdown and narrows the query in the
-      // same event, so the only row this control ever shows is the web-tier
-      // one under test.
       fireEvent.change(combobox, { target: { value: family } })
-      // THE ACCESSIBLE NAME COLLAPSES THE NOTE'S LEADING SPACE — the pattern
-      // this file's other tests already match with, `\s*` and all.
-      const option = await screen.findByRole('option', { name: new RegExp(`^${family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*—\\s*install on this machine$`) })
-      expect(option.querySelector('.property-option-specimen')).toBeNull()
-      expect(fetchSpy, 'a web-tier row must never be fetched to draw a menu').not.toHaveBeenCalled()
+      // NO OPTION NAMES IT, under any heading, at all.
+      expect(screen.queryByRole('option', { name: new RegExp(`^${family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })).not.toBeInTheDocument()
+      expect(screen.getByText(`Nothing in this template or on this machine matches "${family}".`)).toBeInTheDocument()
+      expect(fetchSpy, 'a family not on this machine must never be fetched to draw a menu').not.toHaveBeenCalled()
     } finally {
       fontSet.restore()
     }

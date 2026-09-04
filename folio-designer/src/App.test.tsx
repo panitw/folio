@@ -8,9 +8,6 @@ import type { EngineClient } from './engine-client'
 import type { CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
-import { sfntWithNames } from './test/sfnt-fixture'
-import { openFontStore } from './font-store'
-import { addableFamilyCount } from './font-index'
 import { catalogueFaces } from './generated/font-catalogue'
 import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 
@@ -23,13 +20,6 @@ import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 // factory for their own duration and put back whatever was there. It is scoped
 // per test rather than to the file, because the other hundred-odd tests here are
 // about a designer with no font store and must stay that way.
-// `select`'s shared engine mock is declared with no parameters, so TypeScript
-// sees its recorded calls as empty tuples. The arguments are read back through
-// one widened view rather than by changing that signature, which every test in
-// this file is written against — the same idiom the `sent` locals already use.
-const commandsSentBy = (request: { mock: { calls: unknown[][] } }): ReadonlyArray<readonly [string, ArrayBuffer]> =>
-  (request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>).filter((call) => call[0] === 'command')
-
 const withMachineStore = (): (() => void) => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB')
   Object.defineProperty(globalThis, 'indexedDB', { value: new FakeIndexedDBFactory(), configurable: true, writable: true })
@@ -37,28 +27,6 @@ const withMachineStore = (): (() => void) => {
     if (previous) Object.defineProperty(globalThis, 'indexedDB', previous)
     else Reflect.deleteProperty(globalThis, 'indexedDB')
   }
-}
-
-/**
- * WAITS UNTIL THE STORE REALLY HOLDS A FACE BY THIS FAMILY NAME.
- *
- * Story 16.6 deleted the machine-store panel, which the tests below used to
- * poll via `.machine-font-name` as their settle condition for "the install
- * finished" — the panel simply rendered whatever `storedFaces` held, so
- * waiting on its DOM was a proxy for waiting on the write. Reading the store
- * directly, past the designer, is the same wait with no deleted DOM to depend
- * on. (`App.font-store.test.tsx` carries the identical helper; this file does
- * not import from it, so it is repeated here rather than reached across.)
- */
-const waitForStoredFamily = async (familyName: string): Promise<void> => {
-  await waitFor(async () => {
-    const opened = await openFontStore(globalThis.indexedDB)
-    expect(opened.ok, 'the fake store must open, or reading it back asserts nothing').toBe(true)
-    if (!opened.ok) return
-    const listed = await opened.value.list()
-    expect(listed.ok).toBe(true)
-    expect(listed.ok ? listed.value.map((record) => record.family) : []).toContain(familyName)
-  })
 }
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
@@ -1193,11 +1161,9 @@ describe('application shell', () => {
 
   // THE LISTING IS PART OF THE EFFECT'S KEY, AND THIS IS THE CASE THAT PROVES
   // IT. `documentGenerationValue` advances only when the document is REPLACED
-  // — open a file, new template, undo/redo — and a font-chain command is none
-  // of those: applyFontChain commits through setCurrentSnapshot without
-  // clearing the document interaction, so the generation does not move. The
-  // author can nonetheless remove the entry that carries the face, from a
-  // control that is right there in the panel.
+  // — open a file, new template, undo/redo — and an ordinary property commit
+  // is none of those: it commits through setCurrentSnapshot without clearing
+  // the document interaction, so the generation does not move.
   //
   // Release is invisible in the DOM — the fragment simply stops asking for the
   // family — so the claim is made against the font set's own record.
@@ -1205,12 +1171,20 @@ describe('application shell', () => {
   // MUTATION PROOF, RUN AND RECORDED: reducing the effect's dependency array
   // to `[engine, documentGenerationValue]` reddens this test and leaves the
   // rest of the designer suite green.
-  it('releases a carried face when a chain edit drops it, though the document was never replaced', async () => {
+  //
+  // TRIGGER CHANGED BY STORY 16.9: this used to drop the carried entry through
+  // the chain editor's own 'Remove entry' control, which no longer exists —
+  // the story removed the UI, not the chain data or the property-commit path.
+  // The effect under test reacts to ANY snapshot update that narrows
+  // `fontChains`, regardless of which command produced it, so an ordinary
+  // Bold toggle (still available, still a same-document 'command') is used to
+  // deliver the identical projection change the removed control used to.
+  it('releases a carried face when a same-document commit drops the chain entry that carried it', async () => {
     const key = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     const fontSet = installStubFontSet()
     try {
       const carrying = carriedFaceCanvas(key)
-      const dropped = { ...carrying, fontChains: [{ name: 'body', entries: [face('Noto Sans')] }] }
+      const dropped = { ...carrying, fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], components: carrying.components.map((component) => ({ ...component, bold: true })) }
       const loaded = (revision: number, projection: typeof carrying) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection })
       const request = vi.fn(async (operation: string) => {
         if (operation === 'asset') return { snapshot: loaded(1, carrying), bytes: new Uint8Array([0, 1, 2, 3]).buffer }
@@ -1221,11 +1195,9 @@ describe('application shell', () => {
       await waitFor(() => expect(fontSet.added).toEqual([embeddedFaceFamily(key)]))
       expect(fontSet.removed).toEqual([])
       fireEvent.click(screen.getAllByLabelText(/text component e1/)[0]!)
-      fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-      // The carried entry is the second of the one chain, and this is the
-      // author-reachable control that drops it.
-      fireEvent.click(screen.getByRole('button', { name: 'Remove entry 2 of font chain 1' }))
-      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove entry 2 of font chain 1' })).not.toBeInTheDocument())
+      // Any same-document command that returns a narrowed `fontChains`
+      // exercises the same effect the deleted chain-editor control drove.
+      fireEvent.click(screen.getByRole('button', { name: 'Bold' }))
       await waitFor(() => expect(fontSet.removed).toEqual([embeddedFaceFamily(key)]))
       // And it was released rather than re-registered: the document was never
       // replaced, so nothing asked for those bytes a second time.
@@ -1535,20 +1507,20 @@ describe('typography controls over the engine-projected closed sets', () => {
     expect(screen.queryByRole('listbox', { name: 'Fonts' })).not.toBeInTheDocument()
   })
 
-  it('states a search that matches neither a declared chain nor the catalogue instead of offering to invent one', () => {
+  it('states a search that matches neither a declared chain nor a family on this machine, instead of offering to invent one', () => {
     select()
     const combobox = screen.getByRole('combobox', { name: 'Font family' })
     fireEvent.focus(combobox)
     fireEvent.change(combobox, { target: { value: 'Helvetica' } })
     expect(screen.queryByRole('option')).not.toBeInTheDocument()
-    // CORRECTED WITH THE CHANGE, NOT EDITED QUIETLY (Story 16.4). This pinned
-    // `Nothing in this document or the catalogue matches …` — a sentence naming
-    // ONE of the three places the control searches, written when the catalogue
-    // was the whole offer. D-16.1 made it one source of three, and the
-    // disk-font re-derivation in `App.tsx` argues that premise false in the same
-    // file, so the empty state was shipping a claim its own module refutes. The
-    // sentence now names the three groups drawn above it.
-    expect(screen.getByText('Nothing in this template, on this machine, or in the list you can install matches "Helvetica".')).toBeInTheDocument()
+    // CORRECTED WITH THE CHANGE, NOT EDITED QUIETLY (Story 16.4, narrowed by
+    // 16.9). This pinned `Nothing in this document or the catalogue matches …`
+    // — a sentence naming ONE of the three places the control searched at
+    // 16.4, written when the catalogue was the whole offer. Story 16.9 then
+    // dropped the control's own third place, "or in the list you can install"
+    // — this control no longer searches there at all, `Add fonts…` does — so
+    // the sentence names only the two groups drawn above it now.
+    expect(screen.getByText('Nothing in this template or on this machine matches "Helvetica".')).toBeInTheDocument()
   })
 
   // STORY 16.4 — THREE GROUPS, ON THE AXIS THE CODE ALREADY FORKS ON.
@@ -1561,59 +1533,145 @@ describe('typography controls over the engine-projected closed sets', () => {
   const dropdown = () => screen.getByRole('listbox', { name: 'Fonts' })
   const groupRows = (label: string) => within(screen.getByRole('group', { name: label })).getAllByRole('option').map(optionText)
 
-  it('draws the three groups, disjoint and complete, on the where-are-the-bytes axis', () => {
+  // STORY 16.9 NARROWED THIS FROM THREE GROUPS TO TWO: `AVAILABLE TO INSTALL`
+  // (the `web` arm, ~1,273 families not on this machine) is gone from this
+  // dropdown. `Add fonts…` is now the only door to that relationship; this
+  // control offers only what is usable now, with no network and no wait.
+  it('draws the two groups, disjoint and complete, on the where-are-the-bytes axis', () => {
     select()
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-    // THE ORDER IS THE MODEL: in the file, on the machine, on neither.
-    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
+    // THE ORDER IS THE MODEL: in the file, on the machine.
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY'])
     const template = groupRows('IN THIS TEMPLATE')
     const local = groupRows('AVAILABLE LOCALLY')
-    const install = groupRows('AVAILABLE TO INSTALL')
     // COMPLETE: every option the listbox owns sits in exactly one group.
-    expect(template.length + local.length + install.length).toBe(within(dropdown()).getAllByRole('option').length)
+    expect(template.length + local.length).toBe(within(dropdown()).getAllByRole('option').length)
     // DISJOINT: no family is offered twice under two different promises.
-    const names = [...template, ...local, ...install].map((text) => text.split(' — ')[0])
+    const names = [...template, ...local].map((text) => text.split(' — ')[0])
     expect(new Set(names).size).toBe(names.length)
     // AND EACH HEADING TELLS THE TRUTH ABOUT ITS OWN ROWS.
     expect(template).toEqual(['body', 'heading'])
     // STORY 16.7 (Design Note 2, narrowing D-16.R.72): the per-row note that
     // used to restate "needs no download" is now the specimen instead, so the
     // truthful claim left to make about AVAILABLE LOCALLY's OWN ROWS is that
-    // none of them still carries any note at all — the heading is the one
-    // carrier now, and the install group is the only row that still needs one.
+    // none of them still carries any note at all — every row this dropdown
+    // draws is one this machine already holds, so no row needs one any more.
     expect(local.every((text) => !text.includes(' — ')), `no AVAILABLE LOCALLY row may still carry a per-row note: ${local.slice(0, 3).join(' / ')}`).toBe(true)
-    expect(install.every((text) => /install on this machine/.test(text)), `every AVAILABLE TO INSTALL row must be one that is not here yet: ${install.slice(0, 3).join(' / ')}`).toBe(true)
     // THE SECOND GROUP IS POPULATED ON A FRESH MACHINE, which is the half of
     // D-16.R.72 a store-shaped reading of the heading would have got wrong: the
     // committed faces ship inside the release, so they are always on it.
     expect(local, 'the committed faces are on this machine whether or not anything was ever downloaded').toHaveLength(catalogueFaces.length)
   })
 
-  // THE CAP IS APPLIED AFTER THE PARTITION, NOT BEFORE IT. Under the old order
-  // it was `addable.slice(0, 50)` over the union, so the second group's tail
-  // fell off a heading promising the font was already on this machine.
-  it('renders the first two groups in full and caps only the third, whose note counts the third', () => {
+  // STORY 16.9 — THERE IS NO THIRD GROUP LEFT TO CAP. Both remaining groups
+  // render in full, unconditionally: neither is bounded any more, because
+  // the population that once needed a bound (~1,273 web-tier rows) is no
+  // longer offered here at all.
+  it('renders both remaining groups in full, with no cap and no "Showing N of M" note', () => {
     select()
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     expect(groupRows('IN THIS TEMPLATE')).toHaveLength(2)
     expect(groupRows('AVAILABLE LOCALLY')).toHaveLength(catalogueFaces.length)
-    const install = groupRows('AVAILABLE TO INSTALL')
-    expect(install, 'the web tier is the only group with a bound').toHaveLength(50)
-    const counted = /Showing (\d+) of (\d+) matching families you can install/.exec(screen.getByText(/families you can install/).textContent ?? '')
-    expect(counted, 'the capped group must say how much of itself it painted').not.toBeNull()
-    expect(Number(counted![1])).toBe(install.length)
-    // THE POPULATION IT NAMES IS ITS OWN. Group 2 plus group 3 is the whole
-    // addable union, so a note naming the union would be counting rows the cap
-    // never touched.
-    expect(Number(counted![2])).not.toBe(addableFamilyCount)
-    expect(Number(counted![2]) + groupRows('AVAILABLE LOCALLY').length).toBe(addableFamilyCount)
-    // AND THE CAP NOTE IS THE CAPPED GROUP'S DESCRIPTION, so it is announced
-    // with the group rather than read out as though it were a font.
-    expect(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' }).getAttribute('aria-describedby')).toBe(screen.getByText(/families you can install/).id)
+    expect(screen.queryByRole('group', { name: 'AVAILABLE TO INSTALL' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Showing \d+ of \d+/)).not.toBeInTheDocument()
+  })
+
+  // STORY 16.9 ALSO REMOVED TWO OTHER CONTROLS FROM THIS FIELD — THE CLEAR
+  // BUTTON, AND THE DISCLOSURE THAT REVEALED THE FONT-CHAIN EDITOR — AND
+  // UNTIL NOW NEITHER HAD A GUARD OF ITS OWN, ONLY A RETIREMENT COMMENT. A
+  // comment cannot fail a build; this can.
+  //
+  // POPULATION STATED BESIDE THE ZERO, PER STANDING RULE: with the combobox
+  // focused, this property renders exactly one button (`buttonNames` below) —
+  // the disclosure fixed by the chevron correction above. If either removed
+  // control ever came back it would be a SECOND or THIRD entry in that same
+  // array, not a query silently matching nothing; the assertions below are
+  // therefore not the only thing that would catch a regression, but they name
+  // the two controls this story specifically removed rather than leaving that
+  // to an incidental count.
+  it('offers no control to clear the family, and none to reveal a font-chain editor', () => {
+    select()
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    fireEvent.focus(combobox)
+    // SCOPED TO THIS FIELD, NOT THE WHOLE PAGE: the property panel around it
+    // carries its own buttons (Bold, alignment, Add fonts…) that have nothing
+    // to do with what this test is about. `.property-combobox` is the field's
+    // own wrapper, rendered by `FontFamilyProperty` itself.
+    const field = combobox.closest('.property-combobox')
+    if (!field) throw new Error('the font family combobox is no longer inside .property-combobox; re-scope this test rather than deleting it')
+    const buttonNames = within(field as HTMLElement).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)
+    // `.property-combobox` wraps the field AND its open overlay (the shell
+    // holding the listbox and, below it, `Add fonts…`), so both legitimate
+    // buttons appear here — the population is two, not one, and that is
+    // stated rather than assumed.
+    expect(buttonNames, 'the population this zero is measured against — every button this field renders with the dropdown open').toEqual(['Hide fonts', 'Add fonts… Browse and embed web fonts'])
+    expect(screen.queryByRole('button', { name: 'Clear Font family' }), 'text always has a typeface; there is no control to clear it').not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit font chains' }), '`FontChainEditor.tsx` and its render site are deleted').not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hide font chains' }), 'the same disclosure, in its other label').not.toBeInTheDocument()
+  })
+
+  // STORY 16.9 DISCHARGES A REGISTERED HAZARD: a pick from the removed
+  // `AVAILABLE TO INSTALL` group used to block up to 30s on a stall and 180s
+  // against a slow host, because the dropdown could trigger a fetch that only
+  // a web-tier row could reach (`fetchWebFamily`, against the one declared
+  // repository host). With no web row left in this control, no code path
+  // from opening or filtering the dropdown can reach that fetch at all —
+  // never mind stall or succeed.
+  //
+  // "NO REQUEST" MEANS NO REQUEST TO A THIRD PARTY, NOT LITERALLY ZERO CALLS
+  // TO `fetch`. `AVAILABLE LOCALLY`'s own specimens (Story 16.7) read their
+  // bytes from THIS RELEASE'S OWN bundle, over a relative URL, the same read
+  // `runtimeAssetUrls` assets get behind the service worker — offline-capable,
+  // no third party, and unrelated to the hazard this story closes. So this
+  // installs the same page-font stub the specimen tests use (`installStubFontSet`,
+  // above) rather than leaving `FontFace` undefined, which would make every
+  // specimen fetch silently never fire and prove nothing about THIS story's
+  // claim. The assertion is that among however many same-origin reads happen,
+  // NONE is an absolute URL — which is exactly what would change if a web-tier
+  // row, and the fetch it can reach, ever came back.
+  //
+  // THE OBSERVER IS PROVEN ALIVE, NOT ASSUMED (the "vacuous survivor" this
+  // suite has been burned by before): the same spy that records only
+  // same-origin calls from opening and filtering is proven capable of
+  // recording a call at all, from the very rows this dropdown draws.
+  it('reaches no third-party host opening and filtering the dropdown, though the same spy can see the local reads it does make', async () => {
+    const bundleAsset = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f]).buffer
+    const fetchStub = vi.fn(async (_url: string) => ({ ok: true, arrayBuffer: async () => bundleAsset }))
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    const fontSet = installStubFontSet()
+    try {
+      select()
+      const combobox = screen.getByRole('combobox', { name: 'Font family' })
+      fireEvent.focus(combobox)
+      // SETTLES ON A REAL SPECIMEN, so the assertions below run after
+      // whatever this dropdown is going to fetch has actually been asked
+      // for — never on a synchronous race that would pass by never giving
+      // the effect a chance to run.
+      await waitFor(() => expect(fetchStub).toHaveBeenCalled())
+      fireEvent.change(combobox, { target: { value: 'lora' } })
+      fireEvent.change(combobox, { target: { value: 'Kanit' } })
+      fireEvent.change(combobox, { target: { value: '' } })
+      await waitFor(() => expect(groupRows('AVAILABLE LOCALLY').length).toBeGreaterThan(0))
+      // THE CORE CLAIM: not one of however many calls happened names an
+      // external host. `fetchWebFamily` is the one function in this codebase
+      // that ever builds an absolute URL to the declared repository host, and
+      // nothing reachable from this dropdown calls it any more.
+      const urls = fetchStub.mock.calls.map((call) => String(call[0]))
+      expect(urls.length, 'the observer must have seen something, or the claim below is vacuous').toBeGreaterThan(0)
+      expect(urls.every((url) => !/^https?:\/\//.test(url)), `every request must be same-origin, never a third-party host: ${urls.filter((url) => /^https?:\/\//.test(url)).slice(0, 3).join(', ')}`).toBe(true)
+    } finally {
+      globalThis.fetch = restore
+      fontSet.restore()
+    }
   })
 
   // A HEADING IS SUPPRESSED ONLY WHEN ITS OWN GROUP IS EMPTY AFTER FILTERING —
   // never because another group emptied, and never while it still owns a row.
+  // STORY 16.9 removed the third group; 'sara' (Sarabun/Sarala) matches
+  // neither remaining group — it exists only in the web-tier snapshot this
+  // control no longer offers — so filtering it now empties the dropdown
+  // entirely rather than isolating a third heading.
   it('suppresses each heading only on its own empty group', () => {
     select()
     const combobox = screen.getByRole('combobox', { name: 'Font family' })
@@ -1621,40 +1679,42 @@ describe('typography controls over the engine-projected closed sets', () => {
     // A declared chain name that matches no typeface at all: group 1 alone.
     fireEvent.change(combobox, { target: { value: 'heading' } })
     expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['IN THIS TEMPLATE'])
-    // A family on this machine and one that is not, matching no chain: groups
-    // 2 and 3 stand while group 1 goes.
+    // A family on this machine, matching no declared chain: group 2 alone.
     fireEvent.change(combobox, { target: { value: 'lora' } })
-    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
-    // And the design's own example: nothing here yet, so only the third.
+    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['AVAILABLE LOCALLY'])
+    // A query matching neither remaining group empties the dropdown, rather
+    // than falling through to a group this control no longer draws.
     fireEvent.change(combobox, { target: { value: 'sara' } })
-    expect(within(dropdown()).getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual(['AVAILABLE TO INSTALL'])
+    expect(within(dropdown()).queryAllByRole('group')).toEqual([])
+    expect(screen.getByText('Nothing in this template or on this machine matches "sara".')).toBeInTheDocument()
   })
 
-  // THE KEYBOARD IS LINEAR EVEN THOUGH THE LIST IS NOT. Three groups is three
-  // headings interleaved into ONE option sequence, and 8.6's reason for the flat
-  // list survives unchanged — which is exactly why the heading interleave had to
-  // go: it was the one element of the walk that read a position semantically.
-  it('walks all three groups in one arrow-key sequence, and wraps', () => {
+  // THE KEYBOARD IS LINEAR EVEN THOUGH THE LIST IS NOT. Two groups is two
+  // headings interleaved into ONE option sequence, and 8.6's reason for the
+  // flat list survives unchanged — which is exactly why the heading
+  // interleave had to go: it was the one element of the walk that read a
+  // position semantically.
+  it('walks both groups in one arrow-key sequence, and wraps', () => {
     select()
     const combobox = screen.getByRole('combobox', { name: 'Font family' })
     fireEvent.focus(combobox)
     const owner = () => document.getElementById(combobox.getAttribute('aria-activedescendant') ?? '')?.closest('[role="group"]')?.getAttribute('aria-label') ?? undefined
     const total = within(dropdown()).getAllByRole('option').length
-    expect(total, 'a walk over an empty list would prove nothing').toBeGreaterThan(50)
+    expect(total, 'a walk over an empty list would prove nothing').toBeGreaterThan(2)
     const visited: Array<string | undefined> = []
     for (let step = 0; step < total; step += 1) {
       visited.push(owner())
       fireEvent.keyDown(combobox, { key: 'ArrowDown' })
     }
-    // ONE CONTIGUOUS RUN PER GROUP, IN THE ORDER THEY ARE DRAWN. Four runs would
-    // mean the walk crossed a group boundary and came back.
-    expect(visited.filter((label, index) => index === 0 || label !== visited[index - 1])).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY', 'AVAILABLE TO INSTALL'])
+    // ONE CONTIGUOUS RUN PER GROUP, IN THE ORDER THEY ARE DRAWN. Three runs
+    // would mean the walk crossed a group boundary and came back.
+    expect(visited.filter((label, index) => index === 0 || label !== visited[index - 1])).toEqual(['IN THIS TEMPLATE', 'AVAILABLE LOCALLY'])
     // AND THE SEQUENCE IS ONE SEQUENCE: the step past the last row is the first.
     expect(owner()).toBe('IN THIS TEMPLATE')
     // Backwards from the top lands on the last row of the last group, which is
     // the same walk read the other way.
     fireEvent.keyDown(combobox, { key: 'ArrowUp' })
-    expect(owner()).toBe('AVAILABLE TO INSTALL')
+    expect(owner()).toBe('AVAILABLE LOCALLY')
   })
 
   // STORY 8.6's DEFERRAL, CLOSED HERE RATHER THAN MULTIPLIED (it would have gone
@@ -1667,7 +1727,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     const listbox = dropdown()
     expect(listbox.querySelectorAll('[role="presentation"]'), 'a listbox may not own a presentational child').toHaveLength(0)
-    expect(Array.from(listbox.children).map((child) => child.getAttribute('role')), 'every child of the listbox is a group').toEqual(['group', 'group', 'group'])
+    expect(Array.from(listbox.children).map((child) => child.getAttribute('role')), 'every child of the listbox is a group').toEqual(['group', 'group'])
     for (const group of within(listbox).getAllByRole('group')) {
       for (const child of Array.from(group.children)) {
         expect(child.getAttribute('role') === 'option' || child.getAttribute('aria-hidden') === 'true', `${group.getAttribute('aria-label')} owns a child that is neither an option nor hidden from the tree: ${child.outerHTML.slice(0, 80)}`).toBe(true)
@@ -1680,7 +1740,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     // row in the list, and the list names the note that describes it.
     expect(listbox.getAttribute('aria-describedby'), 'with rows to show there is no note to describe them').toBeNull()
     fireEvent.change(screen.getByRole('combobox', { name: 'Font family' }), { target: { value: 'Helvetica' } })
-    const empty = screen.getByText(/Nothing in this template, on this machine, or in the list you can install matches/)
+    const empty = screen.getByText(/Nothing in this template or on this machine matches/)
     const emptied = dropdown()
     expect(emptied, 'the empty-state sentence is about the list and is not a row in it').not.toContainElement(empty)
     const notes = document.getElementById(emptied.getAttribute('aria-describedby') ?? '')
@@ -1728,20 +1788,16 @@ describe('typography controls over the engine-projected closed sets', () => {
     // index snapshot carries the plain note, because picking it fetches.
     const inter = screen.getByRole('option', { name: /^Inter$/ })
     expect(inter).toBeInTheDocument()
-    // STORY 16.4: THREE HEADINGS, ON THE AXIS `WHERE ARE THE BYTES`. The two
-    // 8.6 shipped — `In this document` and `Catalogue — not yet in this
-    // document` — named a WHEN and a source that is no longer the only one.
-    // They are corrected here rather than edited quietly: the group a row sits
-    // in is now a pure function of (declared?, `familyIsInstalled`?), and each
-    // heading is the accessible name of the group that owns those rows.
+    // STORY 16.4 DREW THREE HEADINGS ON THE AXIS `WHERE ARE THE BYTES`; STORY
+    // 16.9 NARROWED THE DROPDOWN BACK TO TWO. The two 8.6 shipped — `In this
+    // document` and `Catalogue — not yet in this document` — named a WHEN and
+    // a source that was never the only one; the group a row sits in is a pure
+    // function of (declared?, `familyIsInstalled`?), and each heading is the
+    // accessible name of the group that owns those rows. `AVAILABLE TO
+    // INSTALL` is gone from this control — `Add fonts…` is its door now.
     expect(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'AVAILABLE LOCALLY' })).toBeInTheDocument()
-    expect(screen.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).toBeInTheDocument()
-    // AND THE COUNT IS THE ADDABLE COUNT, WITH "LIVE" QUALIFIED. The list is a
-    // dated build-time snapshot — the endpoint that publishes it sends no
-    // CORS header and a browser cannot read it — and only the typeface is
-    // fetched at the moment of a pick. A control that let this read as a live
-    // font browser would be saying something untrue.
+    expect(screen.queryByRole('group', { name: 'AVAILABLE TO INSTALL' })).not.toBeInTheDocument()
     // RETIRED, NOT WEAKENED: the disclosure no longer renders in this dropdown
     // (OWNER, 2026-09-03 — the standing explanation above `Add fonts…` was cut).
     // `familyIndexDisclosure()` itself is unchanged and still ships in the font
@@ -1756,12 +1812,13 @@ describe('typography controls over the engine-projected closed sets', () => {
     // The declared group never carries the addition note: picking one of those
     // sets a property, and it is already in the file.
     expect(declaredOptions().map(optionText)).toEqual(['body', 'heading'])
-    // AND A SNAPSHOT-ONLY FAMILY IS REACHED BY TYPING, because the painted list
-    // is capped while the count is not: `Kanit` is in the published library and
-    // not among the 21, its row carries the PLAIN note because picking it
-    // fetches, and the cap notice states how much of the match set is painted.
+    // A SNAPSHOT-ONLY FAMILY IS NO LONGER REACHABLE BY TYPING HERE AT ALL
+    // (Story 16.9). `Kanit` is in the published web-tier snapshot and not
+    // among the 31 local/stored faces, so it is not offered by this control
+    // under any query — `Add fonts…` is the only door to it now.
     fireEvent.change(combobox, { target: { value: 'Kanit' } })
-    expect(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }), 'a snapshot-only family is offered, and its row does not claim to be on this machine').toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /^Kanit/ }), 'a family not on this machine is not offered by this dropdown at all').not.toBeInTheDocument()
+    expect(screen.getByText('Nothing in this template or on this machine matches "Kanit".')).toBeInTheDocument()
   })
 
   // STORY 8.6's AC1/AC3 AT THE BROWSER BOUNDARY, BEHAVIOUR-CHANGED BY STORY 16.5
@@ -1836,312 +1893,21 @@ describe('typography controls over the engine-projected closed sets', () => {
     }
   })
 
-  // STORY 16.1, THE WEB TIER, END TO END AT THE BROWSER BOUNDARY, BEHAVIOUR-
-  // CHANGED BY STORY 16.5: a snapshot family resolves into an INSTALL, not into
-  // a command.
-  //
-  // WHAT MOVED, AND WHERE IT MOVED TO. The twelve-field payload built from three
-  // different authorities — `licence` from METADATA.pb through the closed table,
-  // `licenceText` from the upstream licence file, `copyright` from nameID 0 of
-  // the bytes — is no longer produced at the pick, because the pick sends no
-  // command. It is produced at FIRST USE, out of the store, and that is asserted
-  // in `App.font-store.test.tsx`'s *"embeds a stored family in a second document
-  // with no network at all"*, which has a real store to read back from.
-  //
-  // WHAT STAYS HERE IS WHAT ONLY THIS TEST CAN SAY: the resolution really made
-  // its three round-trips, against the ONE DECLARED REPOSITORY HOST and never a
-  // stylesheet endpoint, and it committed NOTHING to the document while doing it.
-  it('resolves a snapshot family through METADATA.pb into an install, and commits nothing', async () => {
-    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
-    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
-    const licence = 'This Font Software is licensed under the SIL Open Font License, Version 1.1.'
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => metadata }
-      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => licence }
-      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    const restore = globalThis.fetch
-    const restoreStore = withMachineStore()
-    globalThis.fetch = fetchStub as never
-    try {
-      const request = select()
-      const combobox = screen.getByRole('combobox', { name: 'Font family' })
-      fireEvent.focus(combobox)
-      fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
-      // THE SETTLE CONDITION IS THE FACE ARRIVING ON THIS MACHINE. There is no
-      // command to wait on, and waiting on the absence of one would settle
-      // before the resolution had even started.
-      await waitForStoredFamily('Kanit')
-      // AND THE DOCUMENT DID NOT MOVE. No command means no revision, no history
-      // entry and no undo — the whole of what "installing is not embedding" buys.
-      expect(commandsSentBy(request)).toEqual([])
-      expect(screen.queryByRole('alert'), 'a successful install states nothing at the control').not.toBeInTheDocument()
-      // THREE ROUND-TRIPS, IN THIS ORDER, and every one of them to the DECLARED
-      // REPOSITORY HOST AND NEVER TO A STYLESHEET ENDPOINT: css2 serves woff2,
-      // which the engine refuses by design, split by unicode-range into
-      // per-script subsets. The host is spelled below with the scanner's marker,
-      // in code, on its own line — see scripts/forbidden-font-hosts.mjs.
-      const urls = fetchStub.mock.calls.map((call) => String(call[0]))
-      const repositoryHost = { host: 'raw.githubusercontent.com', declaration: 'folio:font-host-declaration' }.host
-      expect(urls.filter((url) => url.endsWith('METADATA.pb') || url.endsWith('OFL.txt') || url.endsWith('Kanit-Regular.ttf')).map((url) => url.split('/').pop())).toEqual(['METADATA.pb', 'OFL.txt', 'Kanit-Regular.ttf'])
-      expect(urls.every((url) => url.includes(repositoryHost))).toBe(true)
-      expect(urls.some((url) => /css2|woff2|googleapis|gstatic/.test(url))).toBe(false)
-      // THE ROW IT IS OFFERED AS AFTERWARDS IS THE PROOF THE RECORD LANDED
-      // WHOLE: `offeredFamilies` reads the store's own listing, so a family that
-      // moves from the install note to the already-downloaded one has a record
-      // the store accepted rather than bytes dropped on the floor.
-      fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      expect(screen.getByRole('option', { name: /^Kanit$/ })).toBeInTheDocument()
-    } finally {
-      globalThis.fetch = restore
-      restoreStore()
-    }
-  })
-
-  // ONE PICK AT A TIME, ACROSS THE WHOLE RESOLUTION AND NOT ONLY THE COMMAND.
-  // A web-tier pick awaits a chain of cross-origin round-trips before any
-  // command is sent — up to four METADATA.pb probes, then the licence file, then
-  // the bytes — so a second pick during that window used to pass the re-entry
-  // guard, resolve concurrently, and commit a SECOND embed of the same family.
-  // The guard is now taken before the fetch and held until the command returns.
-  //
-  // RE-ANCHORED BY STORY 16.5 (MECHANICAL). The witness for "it happened once"
-  // used to be one embed command; a pick installs now, so the witness is one
-  // RESOLUTION — a single `METADATA.pb` probe, which this test already counted —
-  // plus one store row. The re-entry guard, its window and the claim are
-  // unchanged; only what proves the guard held has moved to what the guarded
-  // path now produces.
-  it('holds one pick at a time across the whole web-tier resolution, so two overlapping picks install once', async () => {
-    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
-    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
-    // THE FIRST ROUND-TRIP IS HELD OPEN, which is what makes the second pick
-    // overlap the first rather than follow it.
-    let release: () => void = () => {}
-    const held = new Promise<void>((resolve) => { release = resolve })
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) { await held; return { ok: true, status: 200, text: async () => metadata } }
-      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => 'SIL Open Font License' }
-      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    const restore = globalThis.fetch
-    const restoreStore = withMachineStore()
-    globalThis.fetch = fetchStub as never
-    try {
-      const request = select()
-      const pick = () => {
-        const combobox = screen.getByRole('combobox', { name: 'Font family' })
-        fireEvent.focus(combobox)
-        fireEvent.change(combobox, { target: { value: 'Kanit' } })
-        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })
-        if (option) fireEvent.click(option)
-        return option !== null
-      }
-      expect(pick(), 'the first pick must be offered').toBe(true)
-      await waitFor(() => expect(fetchStub).toHaveBeenCalled())
-      // THE CONTROL SAYS SO WHILE IT IS WORKING: the combobox is disabled for
-      // the whole resolution, not only for the store write at the end of it.
-      expect(screen.getByRole('combobox', { name: 'Font family' })).toBeDisabled()
-      // A second pick inside the window, driven the same way the author would.
-      pick()
-      release()
-      await waitForStoredFamily('Kanit')
-      // EXACTLY ONE RESOLUTION, ONE STORED ROW, AND NO COMMAND AT ALL. Two
-      // resolutions would have written the same content-addressed record twice
-      // and, before 16.5, embedded the family twice. Read past the designer,
-      // rather than off the deleted panel, for the count.
-      expect(fetchStub.mock.calls.filter((call) => String(call[0]).endsWith('METADATA.pb'))).toHaveLength(1)
-      const opened = await openFontStore(globalThis.indexedDB)
-      if (!opened.ok) throw new Error(opened.reason)
-      const listed = await opened.value.list()
-      expect(listed.ok && listed.value.map((record) => record.family)).toEqual(['Kanit'])
-      expect(commandsSentBy(request)).toEqual([])
-    } finally {
-      globalThis.fetch = restore
-      restoreStore()
-    }
-  })
-
-  // THE HOLD IS ONE FLAG IN TWO PLACES, AND A DOCUMENT SWAP MUST CLEAR BOTH.
-  // The re-entry guard above is backed by a ref precisely because a React state
-  // read is stale inside a handler — but `setCurrentSnapshot`'s document-reset
-  // path clears the STATE copy only. A pick is now a chain of cross-origin
-  // round-trips, so "the document was replaced while a pick was in flight" is a
-  // real window: the pick's own `finally` declines to release a hold that no
-  // longer belongs to its generation, and the reset clears the half the guard
-  // does not read. The ref would then stay held for the rest of the session
-  // with the control looking perfectly enabled, and EVERY later pick would
-  // silently do nothing. Clearing one of two copies of a flag is the same
-  // defect class the ref was introduced to fix.
-  //
-  // RE-ANCHORED BY STORY 16.5, AND THE RE-ANCHORING MADE IT A BETTER TEST. The
-  // first pick's resolution finishes after the document was replaced, so Kanit
-  // is now ON THIS MACHINE — which means the second pick is FIRST USE and does
-  // commit, through the fork's third arm. The witness is therefore still a
-  // command, and the row the second pick is offered under is itself a claim: the
-  // note has to have moved from "install" to "already downloaded".
-  it('releases the pick hold when the document is replaced mid-resolution, so a later pick still commits', async () => {
-    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
-    const metadata = 'name: "Kanit"\nlicense: "OFL"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
-    let release: () => void = () => {}
-    const held = new Promise<void>((resolve) => { release = resolve })
-    let first = true
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) { if (first) { first = false; await held } return { ok: true, status: 200, text: async () => metadata } }
-      if (url.endsWith('/ofl/kanit/OFL.txt')) return { ok: true, status: 200, text: async () => 'SIL Open Font License' }
-      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    const restore = globalThis.fetch
-    const restoreStore = withMachineStore()
-    globalThis.fetch = fetchStub as never
-    try {
-      const componentCanvas = { ...canvas, components: [textComponent] }
-      const request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 3 : 2, byteLength: 3, canvas: componentCanvas } }))
-      render(<App engine={engine(request as never)} blankBytes={bytes} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
-      fireEvent.click(screen.getByLabelText('text component e1'))
-      const pick = () => {
-        const combobox = screen.getByRole('combobox', { name: 'Font family' })
-        fireEvent.focus(combobox)
-        fireEvent.change(combobox, { target: { value: 'Kanit' } })
-        const option = screen.queryByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ })
-        if (option) fireEvent.click(option)
-        return option !== null
-      }
-      expect(pick(), 'the first pick must be offered').toBe(true)
-      await waitFor(() => expect(fetchStub).toHaveBeenCalled())
-
-      // THE DOCUMENT IS REPLACED WHILE THE PICK IS STILL WAITING ON THE NETWORK.
-      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
-      await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
-      release()
-      await waitFor(() => expect(fetchStub.mock.calls.some((call) => String(call[0]).endsWith('Kanit-Regular.ttf'))).toBe(true))
-
-      // THE FIRST RESOLUTION LANDED ON THIS MACHINE even though its document had
-      // gone: installing is a machine action and has no document to be dropped
-      // against. The panel that lists it is only rendered while something is
-      // selected, and replacing the document cleared the selection, so the
-      // component is re-selected before the row is looked for.
-      fireEvent.click(screen.getByLabelText('text component e1'))
-      await waitForStoredFamily('Kanit')
-
-      // AND THE CONTROL IS STILL A CONTROL. A hold left behind by the replaced
-      // document would make this return silently with nothing to show the author
-      // why. The family is now installed, so this pick is FIRST USE and commits.
-      const embeds = () => commandsSentBy(request).length
-      const before = embeds()
-      expect(before, 'installing must not have committed anything').toBe(0)
-      const combobox = screen.getByRole('combobox', { name: 'Font family' })
-      fireEvent.focus(combobox)
-      fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit$/ }))
-      await waitFor(() => expect(embeds()).toBeGreaterThan(before))
-    } finally {
-      globalThis.fetch = restore
-      restoreStore()
-    }
-  })
-
-  // LAYOUT DIVERGENCE IS AN OBSERVATION, AND AN OBSERVATION NEEDS A READER.
-  // `fetchWebFamily` records that a family resolved in `ofl/` declares APACHE2 —
-  // METADATA.pb wins, `Apache-2.0` is admitted, and the pick is NOT refused
-  // (D-16.R.6). Recording it into a value nobody reads would make the record a
-  // claim about the code rather than something a person can see, so it reaches
-  // the browser's log.
-  //
-  // MECHANICAL (Story 16.5): the pick installs rather than embeds, so the
-  // settle condition is the face reaching this machine. The claim — an
-  // observation is logged, the pick is NOT refused, and the SPDX id that
-  // travels with the face is the one METADATA.pb declared — is unchanged.
-  it('reports a directory that disagrees with the declared token, and installs it anyway', async () => {
-    const face = sfntWithNames([{ platform: 3, nameID: 0, value: 'Copyright 2020 The Kanit Project Authors' }])
-    const metadata = 'name: "Kanit"\nlicense: "APACHE2"\nfonts {\n  style: "normal"\n  weight: 400\n  filename: "Kanit-Regular.ttf"\n}\n'
-    const fetchStub = vi.fn(async (url: string) => {
-      if (url.endsWith('/ofl/kanit/METADATA.pb')) return { ok: true, status: 200, text: async () => metadata }
-      if (url.endsWith('/ofl/kanit/LICENSE.txt')) return { ok: true, status: 200, text: async () => 'Apache License, Version 2.0' }
-      if (url.endsWith('/ofl/kanit/Kanit-Regular.ttf')) return { ok: true, status: 200, arrayBuffer: async () => face }
-      return { ok: false, status: 404, text: async () => '' }
-    })
-    const restore = globalThis.fetch
-    const restoreStore = withMachineStore()
-    const noted = vi.spyOn(console, 'info').mockImplementation(() => {})
-    globalThis.fetch = fetchStub as never
-    try {
-      const request = select()
-      const combobox = screen.getByRole('combobox', { name: 'Font family' })
-      fireEvent.focus(combobox)
-      fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
-      await waitForStoredFamily('Kanit')
-      const observed = noted.mock.calls.map((call) => String(call[0])).join('\n')
-      expect(observed).toContain('ofl/')
-      expect(observed).toContain('APACHE2')
-      expect(observed).toContain('the metadata is the authority on the terms')
-      // NOT A REFUSAL: the face is on this machine, carrying the id METADATA.pb
-      // declared, and nothing was said at the control.
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(commandsSentBy(request)).toEqual([])
-      // THE ID THAT TRAVELS WITH IT IS THE DECLARED ONE, read back out of the
-      // store the install wrote — which is where it now has to be checked,
-      // because there is no command payload at a pick any more.
-      const opened = await openFontStore(globalThis.indexedDB)
-      expect(opened.ok, 'the fake store must have opened, or this asserts nothing').toBe(true)
-      const held = opened.ok ? await opened.value.list() : undefined
-      expect(held?.ok).toBe(true)
-      expect(held?.ok === true ? held.value.find((entry) => entry.family === 'Kanit')?.licence : undefined).toBe('Apache-2.0')
-    } finally {
-      globalThis.fetch = restore
-      noted.mockRestore()
-      restoreStore()
-    }
-  })
-
-  // OFFLINE DEGRADES, NEVER BREAKS, AND THE REFUSAL IS LOCATED AT THE CONTROL
-  // THE AUTHOR ACTED ON. No network means no NEW family; it never means a
-  // document that will not render — the three shipped Noto faces are the
-  // coverage and an embedded face travels inside the `.folio`.
-  // NEUTRALISED VACUOUS SURVIVOR (Story 16.5). The last line used to be
-  // `expect(request).not.toHaveBeenCalled()`, which was a real claim while a
-  // pick embedded and became TRIVIALLY TRUE the moment a pick stopped sending
-  // commands at all: an install sends none whether it succeeds or fails, so a
-  // designer that had lost the ability to send any command whatsoever would
-  // have passed this line unchanged. Observing that the suite is green proves
-  // nothing here — a tautology is green too.
-  //
-  // THE CLAIM IS MADE FALSIFIABLE BY PROVING THE OBSERVER WORKS. The same spy,
-  // in the same mounted designer, immediately afterwards, MUST record the
-  // property command a declared chain commits. So `not.toHaveBeenCalled()` above
-  // now means "this control can send commands and this one did not", which is
-  // the thing the test was always trying to say.
-  it('states that a family cannot be installed right now when the network is down, and commits nothing', async () => {
-    const fetchStub = vi.fn(async () => { throw new TypeError('Failed to fetch') })
-    const restore = globalThis.fetch
-    globalThis.fetch = fetchStub as never
-    try {
-      const request = select()
-      const combobox = screen.getByRole('combobox', { name: 'Font family' })
-      fireEvent.focus(combobox)
-      fireEvent.change(combobox, { target: { value: 'Kanit' } })
-      fireEvent.click(screen.getByRole('option', { name: /^Kanit\s*—\s*install on this machine$/ }))
-      const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toMatch(/You cannot install a family without a network connection/)
-      expect(alert.textContent).toMatch(/faces this machine already holds are still offered/)
-      expect(request).not.toHaveBeenCalled()
-      // THE OBSERVER IS ALIVE. `body` is a chain this document declares, so
-      // picking it is a property commit and nothing else — the one arm of the
-      // fork that never depended on a network or a store.
-      fireEvent.focus(combobox)
-      fireEvent.change(combobox, { target: { value: 'body' } })
-      fireEvent.click(screen.getByRole('option', { name: 'body' }))
-      await waitFor(() => expect(commandsSentBy(request)).toHaveLength(1))
-      const committed = JSON.parse(new TextDecoder().decode((request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>)[0][1])) as Record<string, unknown>
-      expect(committed['kind'], 'the spy must be able to see a command, or the assertion above is a tautology').toBe('updateComponentProperties')
-    } finally {
-      globalThis.fetch = restore
-    }
-  })
+  // RETIRED (Story 16.9): five tests drove `AVAILABLE TO INSTALL` — the
+  // dropdown's third group, which no longer exists — by focusing the
+  // combobox, typing 'Kanit', and clicking the row labelled 'install on
+  // this machine'. That row is gone: 'Add fonts...' is now the only door to
+  // a family not on this machine, so the scenarios these tests drove
+  // (resolving METADATA.pb into an install; one pick at a time across the
+  // web-tier resolution; releasing the pick hold on a mid-resolution
+  // document replacement; a directory disagreeing with its declared
+  // licence token; installing with no network) can no longer be reached
+  // from this control at all. The underlying mechanism they exercised —
+  // `fetchWebFamily` / `timedFetcher`'s stall handling, the licence
+  // classification, the one-resolution-at-a-time guard — is unit-tested
+  // directly in `font-source.test.ts` and `font-licence.test.ts`, and is
+  // still reachable end to end through the font browser's own 'Add fonts...'
+  // flow, which this story does not touch.
 
   it('shows the engine\'s own default size for an element that commits none, as a placeholder and not a value', () => {
     select()
@@ -2872,569 +2638,15 @@ describe('canvas sheet stack', () => {
   })
 })
 
-// STORY 8.2. The chain editor is the first designer surface that EDITS the
-// document's own `fonts` map, and the whole of its correctness is that it
-// holds nothing: no list, no ordering, no rule, no sentence. Each test below
-// is written to fail if the panel starts holding one of them.
-describe('the font chain editor, where fonts are chosen', () => {
-  const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
-  type Chains = typeof canvas.fontChains
-  const chainSnapshot = (revision: number, chains: Chains) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: { ...canvas, fontFamilies: chains.map((chain) => chain.name), fontChains: chains, components: [textComponent] } })
-  const declared: Chains = canvas.fontChains
-  const commands = (request: { mock: { calls: unknown[][] } }) => commandsSentBy(request).map((call) => new TextDecoder().decode(call[1] as ArrayBuffer))
-  const open = (request: ReturnType<typeof vi.fn>, chains: Chains = declared) => {
-    render(<App engine={engine(request as never)} initialSnapshot={chainSnapshot(1, chains)} />)
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    return request
-  }
-  const accepts = (chains: Chains = declared) => vi.fn(async (operation: string) => operation === 'command' ? chainSnapshotResponse(chains) : { snapshot: chainSnapshot(1, declared) })
-  const chainSnapshotResponse = (chains: Chains) => ({ snapshot: chainSnapshot(2, chains) })
-  const refuses = (message: string, provenance: object = {}) => vi.fn(async (operation: string) => {
-    if (operation === 'command') throw Object.assign(new Error(message), provenance)
-    return { snapshot: chainSnapshot(1, declared) }
-  })
-
-  it('reveals the editor inside the typography section, never as a dialog, showing the projection\'s own chains', () => {
-    open(accepts())
-    // AC1: the same panel section. No dialog is opened, and the editor's own
-    // element is INSIDE the TYPOGRAPHY section it was revealed from.
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    const editor = screen.getByRole('group', { name: 'Font chains' })
-    expect(editor.closest('.property-section-typography')).not.toBeNull()
-    // The list is the projection's, name for name and entry for entry.
-    expect(screen.getAllByRole('textbox', { name: /^Font chain \d+ name$/ }).map((field) => (field as HTMLInputElement).value)).toEqual(['body', 'heading'])
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Noto Sans↑↓×'])
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Noto Sans↑↓×', 'Noto Sans Thai↑↓×'])
-    // The combobox this affordance sits beside keeps its accessible name,
-    // which is the one e2e witness addresses it by.
-    expect(screen.getByRole('combobox', { name: 'Font family' })).toBeInTheDocument()
-  })
-
-  // Story 8.3. The panel holds NO rule about which kind an entry is: the
-  // engine projects the discriminant (`assetKey`) and the display strings
-  // (`family`, `style`), and the panel places them. A named face still shows
-  // its name and nothing else.
-  const embedded = (assetKey: string, family: string, style: string) => ({ face: '', assetKey, family, style })
-
-  it('draws an embedded entry as its projected family and style, and a named face as its name', () => {
-    const key = 'c'.repeat(64)
-    open(accepts(), [{ name: 'body', entries: [face('Noto Sans'), embedded(key, 'Inter', 'Regular')] }])
-    const items = within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)
-    expect(items).toEqual(['Noto Sans↑↓×', 'Inter Regular↑↓×'])
-    // The asset key is never shown when the document named the face: the
-    // author reads a typeface, not a digest.
-    expect(screen.queryByText(key)).not.toBeInTheDocument()
-  })
-
-  it('shows the family alone when the embedded face declares no style', () => {
-    // Go projects the asset key AS the family when the document declares no
-    // `font.family`, so the panel always has a name and never has to decide
-    // what to draw for an empty one — the browser derives nothing either way.
-    const key = 'd'.repeat(64)
-    open(accepts(), [{ name: 'body', entries: [embedded(key, 'Inter', ''), embedded(key, key, '')] }])
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Inter↑↓×', `${key}↑↓×`])
-  })
-
-  // THE CHANGE SIGNATURE IS VALUE-BASED, and this is the snapshot that proves
-  // it. The two entries differ ONLY in a field `entries.join(' ')` would have
-  // flattened — both are embedded, so both stringify to `[object Object]` —
-  // so under the old signature the accepted edit would have read as "the list
-  // did not move" and focus would have stayed on the pressed control instead
-  // of following the entry.
-  it('reads a moved entry as a move even when only a projected field differs', async () => {
-    const one = 'a'.repeat(64)
-    const two = 'b'.repeat(64)
-    const three = 'c'.repeat(64)
-    // THREE entries, so the moved one lands in the MIDDLE and "move later" is
-    // still enabled there — the end-of-list fallback would otherwise mask
-    // which control focus actually went to.
-    const before: Chains = [{ name: 'body', entries: [embedded(one, 'Inter', 'Regular'), embedded(two, 'Lora', 'Italic'), embedded(three, 'Cardo', 'Bold')] }]
-    const after: Chains = [{ name: 'body', entries: [embedded(two, 'Lora', 'Italic'), embedded(one, 'Inter', 'Regular'), embedded(three, 'Cardo', 'Bold')] }]
-    const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, after) } : { snapshot: chainSnapshot(1, before) })
-    open(request, before)
-    const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 1 later' })
-    later.focus()
-    fireEvent.click(later)
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Lora Italic↑↓×', 'Inter Regular↑↓×', 'Cardo Bold↑↓×']))
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move entry 2 of font chain 1 later' }))
-  })
-
-  it('states an empty document rather than drawing a chain that is not there', () => {
-    open(accepts([]), [])
-    expect(screen.getByText('This document declares no font chains.')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /^Font chain \d+ name$/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add font chain' })).toBeInTheDocument()
-  })
-
-  it('dispatches each of the six commands, byte for byte, from its own control', async () => {
-    const request = open(accepts())
-    const step = async (act: () => void, expected: string, count: number) => {
-      act()
-      await waitFor(() => expect(commands(request)).toHaveLength(count))
-      expect(commands(request)[count - 1]).toBe(expected)
-    }
-    await step(() => {
-      fireEvent.change(screen.getByRole('textbox', { name: 'Font chain 1 name' }), { target: { value: 'text' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Rename font chain 1' }))
-    }, '{"kind":"renameFontChain","version":1,"name":"body","to":"text"}', 1)
-    await step(() => fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' })), '{"kind":"deleteFontChain","version":1,"name":"body"}', 2)
-    await step(() => {
-      fireEvent.change(screen.getByRole('textbox', { name: 'New entry for font chain 2' }), { target: { value: 'Noto Sans SC' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Add entry to font chain 2' }))
-    }, '{"kind":"addFontChainEntry","version":1,"name":"heading","index":2,"face":"Noto Sans SC"}', 3)
-    await step(() => fireEvent.click(screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })), '{"kind":"moveFontChainEntry","version":1,"name":"heading","from":0,"to":1}', 4)
-    await step(() => fireEvent.click(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 earlier' })), '{"kind":"moveFontChainEntry","version":1,"name":"heading","from":1,"to":0}', 5)
-    await step(() => fireEvent.click(screen.getByRole('button', { name: 'Remove entry 1 of font chain 2' })), '{"kind":"removeFontChainEntry","version":1,"name":"heading","index":0}', 6)
-    await step(() => {
-      fireEvent.change(screen.getByRole('textbox', { name: 'New font chain name' }), { target: { value: 'a"b\\c' } })
-      fireEvent.change(screen.getByRole('textbox', { name: 'First entry for the new font chain' }), { target: { value: 'Noto Sans' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Add font chain' }))
-    }, '{"kind":"addFontChain","version":1,"name":"a\\"b\\\\c","entries":["Noto Sans"]}', 7)
-  })
-
-  // THE DISCRIMINATING PROOF (AD-15). A test that types a value and reads the
-  // same value back cannot tell a re-projection from a local model: both pass.
-  // So the engine answers with a DIFFERENT name than the one typed, and the
-  // panel must show the engine's.
-  it('renders the name the engine returned, not the name the author typed', async () => {
-    const request = vi.fn(async (operation: string) => operation === 'command'
-      ? { snapshot: chainSnapshot(2, [{ name: 'engine-chose', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }]) }
-      : { snapshot: chainSnapshot(1, declared) })
-    open(request)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Font chain 1 name' }), { target: { value: 'typed-by-the-author' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Rename font chain 1' }))
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Font chain 1 name' })).toHaveValue('engine-chose'))
-    expect(screen.queryByDisplayValue('typed-by-the-author')).not.toBeInTheDocument()
-    // Exactly one command, and the revision the engine returned is the one on
-    // the status line: one edit, one revision, one undo entry.
-    expect(commands(request)).toHaveLength(1)
-    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2')
-  })
-
-  // AC: the string the author reads is `===` to the engine's `message` field,
-  // at the control that dispatched it. The three named refusals, each at its
-  // own control, and each one PROVED TO HAVE BEEN SENT — a passing "the error
-  // shows" assertion is satisfied just as well by a TypeScript copy of the
-  // rule, so the dispatch is what distinguishes them.
-  it('shows a duplicate-name refusal verbatim at the add control, having sent the command anyway', async () => {
-    const engineMessage = 'a font chain named "body" already exists'
-    const request = open(refuses(engineMessage, { dataPath: 'fonts.body' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'New font chain name' }), { target: { value: 'body' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'First entry for the new font chain' }), { target: { value: 'Noto Sans' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add font chain' }))
-    // ANTI-PRE-EMPTION: `body` is already declared and the command still goes.
-    await waitFor(() => expect(commands(request)).toEqual(['{"kind":"addFontChain","version":1,"name":"body","entries":["Noto Sans"]}']))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    const field = screen.getByRole('textbox', { name: 'New font chain name' })
-    expect(field).toHaveAttribute('aria-invalid', 'true')
-    expect(field.getAttribute('aria-errormessage')).toBe(alert.id)
-    // The document is unchanged — read off the PROJECTION, not off the name
-    // fields, which are uncontrolled and are still showing the author's draft.
-    // (`['body','heading']` in those fields would have looked identical had
-    // the add succeeded, so they are no evidence either way.)
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(1)
-    expect(screen.queryByRole('list', { name: 'Entries of font chain 3' })).not.toBeInTheDocument()
-  })
-
-  it('shows an orphaning-delete refusal verbatim at the delete control, with the engine\'s own id list', async () => {
-    const engineMessage = 'font chain "body" is still named by e1, e2 and 3 more'
-    const request = open(refuses(engineMessage, { dataPath: 'fonts.body' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' }))
-    await waitFor(() => expect(commands(request)).toEqual(['{"kind":"deleteFontChain","version":1,"name":"body"}']))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    const control = screen.getByRole('button', { name: 'Delete font chain 1' })
-    expect(control).toHaveAttribute('aria-invalid', 'true')
-    expect(control.getAttribute('aria-errormessage')).toBe(alert.id)
-  })
-
-  it('shows an emptying-remove refusal verbatim at that entry\'s remove control, having sent the command anyway', async () => {
-    const engineMessage = 'removing that entry would leave font chain "body" with no entries'
-    const request = open(refuses(engineMessage, { dataPath: 'fonts.body' }))
-    // ANTI-PRE-EMPTION: chain 1 holds exactly one entry and the remove is
-    // still dispatched. Nothing in the panel knows that emptying is refused.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove entry 1 of font chain 1' }))
-    await waitFor(() => expect(commands(request)).toEqual(['{"kind":"removeFontChainEntry","version":1,"name":"body","index":0}']))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    const control = screen.getByRole('button', { name: 'Remove entry 1 of font chain 1' })
-    expect(control).toHaveAttribute('aria-invalid', 'true')
-    expect(control.getAttribute('aria-errormessage')).toBe(alert.id)
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(1)
-  })
-
-  // The rename row of the matrix. Its refusal is the SAME sentence a duplicate
-  // create gets, but located at the DESTINATION — DataPath `fonts.<to>`, not
-  // `fonts.<name>` — because the destination key is the one that is taken. The
-  // panel must not care: it anchors by the control it dispatched from, so a
-  // located refusal lands at the rename control that asked, and the dataPath
-  // does not drag the message to some other row.
-  it('shows a rename-onto-a-declared-key refusal verbatim at the rename control, having sent the command anyway', async () => {
-    const engineMessage = 'a font chain named "heading" already exists'
-    const request = open(refuses(engineMessage, { dataPath: 'fonts.heading' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Font chain 1 name' }), { target: { value: 'heading' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Rename font chain 1' }))
-    // ANTI-PRE-EMPTION: `heading` is right there in the list the panel is
-    // drawing, and the panel still does not look. Renaming onto a declared key
-    // is the engine's rule, so the command goes and the engine answers.
-    await waitFor(() => expect(commands(request)).toEqual(['{"kind":"renameFontChain","version":1,"name":"body","to":"heading"}']))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    // Anchored at the RENAME control — the name field it was dispatched from.
-    const control = screen.getByRole('textbox', { name: 'Font chain 1 name' })
-    expect(control).toHaveAttribute('aria-invalid', 'true')
-    expect(control.getAttribute('aria-errormessage')).toBe(alert.id)
-    // The refusal located `fonts.heading` — chain 2 — and the message is still
-    // beside chain 1, which is what asked. Placement is the browser's
-    // knowledge, never the engine's DataPath.
-    expect(screen.getByRole('textbox', { name: 'Font chain 2 name' })).not.toHaveAttribute('aria-invalid')
-    expect(screen.getByRole('button', { name: 'Delete font chain 1' })).not.toHaveAttribute('aria-invalid')
-    // Exactly one alert. And the document is unchanged — asserted against the
-    // PROJECTION, because chain 1's name field is uncontrolled and is showing
-    // the author's typed draft: `['heading','heading']` in those two fields
-    // would have looked exactly the same had the rename SUCCEEDED, so they
-    // are no evidence either way. The entry lists and the declared-font list
-    // come from the snapshot.
-    expect(screen.getAllByRole('alert')).toHaveLength(1)
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem')).toHaveLength(2)
-    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
-    expect(declaredOptions().map(optionText)).toEqual(['body', 'heading'])
-  })
-
-  // The reorder row's ERROR cell. `fontChainIndex` refuses an out-of-range
-  // `from`/`to` with this exact sentence, located at `fonts.<name>`; the panel
-  // shows it at the move control that asked, unchanged and unprefixed.
-  it('shows an out-of-range reorder refusal verbatim at the move control', async () => {
-    const engineMessage = 'entry index is out of range'
-    const request = open(refuses(engineMessage, { dataPath: 'fonts.heading' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' }))
-    await waitFor(() => expect(commands(request)).toEqual(['{"kind":"moveFontChainEntry","version":1,"name":"heading","from":0,"to":1}']))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    const control = screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })
-    expect(control).toHaveAttribute('aria-invalid', 'true')
-    expect(control.getAttribute('aria-errormessage')).toBe(alert.id)
-    // The counterpart control on the same row did not dispatch, so it is not
-    // flagged; nor is the same-numbered entry of the other chain.
-    expect(screen.getByRole('button', { name: 'Move entry 1 of font chain 2 earlier' })).not.toHaveAttribute('aria-invalid')
-    expect(screen.getByRole('button', { name: 'Remove entry 1 of font chain 1' })).not.toHaveAttribute('aria-invalid')
-    // The order shown afterwards is still the projection's: a refused move
-    // moves nothing, because there was no local splice to undo. (The refused
-    // row carries the alert, so the faces are read off the head of each item
-    // rather than its whole text.)
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem').map((item) => item.textContent?.split('\u2191')[0])).toEqual(['Noto Sans', 'Noto Sans Thai'])
-  })
-
-  // An arity refusal, a projection-bound refusal and a serialize failure all
-  // reach the browser as ENGINE_REJECTED with NO dataPath. The anchor is what
-  // the panel asked, not what the engine returned, so they land identically.
-  it('shows an unlocated refusal at the control that dispatched it', async () => {
-    const engineMessage = 'folio: component command has unknown or missing fields'
-    const request = open(refuses(engineMessage))
-    fireEvent.click(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 earlier' }))
-    await waitFor(() => expect(commands(request)).toHaveLength(1))
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe(engineMessage)
-    expect(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 earlier' })).toHaveAttribute('aria-invalid', 'true')
-    // And it is not shown on the OTHER move control for the same entry.
-    expect(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 later' })).not.toHaveAttribute('aria-invalid')
-  })
-
-  it('reorders by keyboard alone and keeps the moved entry under the hand', async () => {
-    const three: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('A'), face('B'), face('C')] }]
-    const moved: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('B'), face('A'), face('C')] }]
-    const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, moved) } : { snapshot: chainSnapshot(1, three) })
-    open(request, three)
-    const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })
-    later.focus()
-    // Enter on a focused button is a click: the whole reorder is operable
-    // from the keyboard alone (UX-DR25), with no pointer anywhere in it.
-    fireEvent.click(later)
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['B↑↓×', 'A↑↓×', 'C↑↓×']))
-    // Focus followed the entry to its new position, so a second press moves
-    // the SAME entry again rather than whichever one slid under the cursor.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 later' }))
-  })
-
-  it('falls back to the counterpart control when the moved entry lands at an end', async () => {
-    const moved: Chains = [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans Thai'), face('Noto Sans')] }]
-    const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, moved) } : { snapshot: chainSnapshot(1, declared) })
-    open(request)
-    const later = screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' })
-    later.focus()
-    fireEvent.click(later)
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Entries of font chain 2' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Noto Sans Thai↑↓×', 'Noto Sans↑↓×']))
-    // The entry is now last, so "move later" is disabled there. Focus lands
-    // on the row's other move control rather than on the document body.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 earlier' }))
-  })
-
-  // P2. Pressing a control sets `busy`, which sets `disabled`, which blurs it
-  // in a real browser. On an ACCEPTED command the follow-up focus puts the
-  // hand back; on a REFUSED one nothing did, and the author was left on
-  // `document.body` — unable to Tab to the `role="alert"` they had just
-  // caused, with `aria-errormessage` hanging off a control they were no
-  // longer on. jsdom does not blur a control the moment it is disabled, so
-  // the browser's blur is applied explicitly here; the RESTORE is what is
-  // under test.
-  it('puts focus back on the refused control so the alert it points at is reachable', async () => {
-    let settle!: (value: unknown) => void
-    const request = vi.fn((operation: string) => operation === 'command'
-      ? new Promise((_resolve, reject) => { settle = () => reject(Object.assign(new Error('font chain "body" is still named by e1'), { dataPath: 'fonts.body' })) })
-      : Promise.resolve({ snapshot: chainSnapshot(1, declared) }))
-    open(request as unknown as ReturnType<typeof vi.fn>)
-    const control = screen.getByRole('button', { name: 'Delete font chain 1' })
-    control.focus()
-    fireEvent.click(control)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete font chain 1' })).toBeDisabled())
-    // Focus is demonstrably ELSEWHERE when the refusal lands — a real browser
-    // puts it on `document.body` when the pressed control is disabled; here it
-    // is moved to another control, which is the same starting position and is
-    // deterministic in jsdom.
-    const elsewhere = screen.getByRole('textbox', { name: 'Font size (pt)' })
-    elsewhere.focus()
-    expect(document.activeElement).toBe(elsewhere)
-    settle(undefined)
-    const alert = await screen.findByRole('alert')
-    const restored = screen.getByRole('button', { name: 'Delete font chain 1' })
-    expect(document.activeElement).toBe(restored)
-    expect(restored.getAttribute('aria-errormessage')).toBe(alert.id)
-  })
-
-  // P1. The follow-up focus target used to be cleared only when `chains`
-  // next changed. A refusal produces no new snapshot, so a refused move left
-  // its targets alive indefinitely and the NEXT re-projection from any
-  // unrelated cause — an ordinary property commit, an undo, a file load —
-  // stole focus to a move button the author never pressed.
-  it('does not steal focus on a later unrelated re-projection after a refused move', async () => {
-    let refuse = true
-    const request = vi.fn(async (operation: string) => {
-      if (operation !== 'command') return { snapshot: chainSnapshot(1, declared) }
-      if (refuse) throw Object.assign(new Error('entry index is out of range'), { dataPath: 'fonts.heading' })
-      // The property commit's response carries a DIFFERENT chain listing —
-      // the shape an undo or a file load has, delivered through a path that
-      // keeps the panel mounted so the theft is observable at all. A listing
-      // that did not change could not steal focus under any implementation,
-      // so a fixture that reused the same chains would test nothing.
-      return { snapshot: chainSnapshot(2, [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans SC')] }]) }
-    })
-    open(request)
-    fireEvent.click(screen.getByRole('button', { name: 'Move entry 1 of font chain 2 later' }))
-    await screen.findByRole('alert')
-    // The author moves on to an ordinary property edit, which re-projects.
-    refuse = false
-    const elsewhere = screen.getByRole('textbox', { name: 'Font size (pt)' })
-    elsewhere.focus()
-    fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
-    // Wait for the RE-PROJECTION, not for the dispatch: `mock.calls` grows the
-    // instant the command is sent, which is before the snapshot that would
-    // trigger the theft has been installed.
-    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
-    expect(document.activeElement).toBe(elsewhere)
-    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Move entry 2 of font chain 2 earlier' }))
-  })
-
-  // P9. A refusal is about the edit that caused it. applyFontChain already
-  // clears propertyError's sibling; the reverse was missing, so a refused
-  // chain edit stayed rendered in the TYPOGRAPHY section while the author went
-  // on committing font size and bold beside it.
-  it('clears a standing chain refusal when an ordinary property commit succeeds', async () => {
-    let refuse = true
-    const request = vi.fn(async (operation: string) => {
-      if (operation !== 'command') return { snapshot: chainSnapshot(1, declared) }
-      if (refuse) throw Object.assign(new Error('font chain "body" is still named by e1'), { dataPath: 'fonts.body' })
-      return { snapshot: chainSnapshot(2, declared) }
-    })
-    open(request)
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' }))
-    await screen.findByRole('alert')
-    refuse = false
-    fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
-    await waitFor(() => expect(commandsSentBy(request)).toHaveLength(2))
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'Delete font chain 1' })).not.toHaveAttribute('aria-invalid')
-  })
-
-  // P10. The add fields are uncontrolled, so an accepted add used to leave the
-  // author's text sitting in them. A second press then re-dispatched — and for
-  // an entry the engine has NO duplicate rule to refuse it with, so it would
-  // simply append the same face twice.
-  it('empties the add fields once the add has actually landed, and not before', async () => {
-    let accept = false
-    const grown = [{ name: 'body', entries: [face('Noto Sans'), face('Noto Sans SC')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }]
-    const request = vi.fn(async (operation: string) => {
-      if (operation !== 'command') return { snapshot: chainSnapshot(1, declared) }
-      if (!accept) throw Object.assign(new Error('font chain entry exceeds the projection bound'), { dataPath: 'fonts.body' })
-      return { snapshot: chainSnapshot(2, grown) }
-    })
-    open(request)
-    const field = screen.getByRole('textbox', { name: 'New entry for font chain 1' })
-    fireEvent.change(field, { target: { value: 'Noto Sans SC' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add entry to font chain 1' }))
-    // REFUSED: the text stays, so the author can correct it rather than retype.
-    await screen.findByRole('alert')
-    expect(screen.getByRole('textbox', { name: 'New entry for font chain 1' })).toHaveValue('Noto Sans SC')
-    accept = true
-    fireEvent.click(screen.getByRole('button', { name: 'Add entry to font chain 1' }))
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem')).toHaveLength(2))
-    // ACCEPTED: the field is empty, so a second press cannot silently append
-    // the same face again.
-    expect(screen.getByRole('textbox', { name: 'New entry for font chain 1' })).toHaveValue('')
-  })
-
-  it('empties both add-chain fields once the chain has actually landed', async () => {
-    const grown = [...declared, { name: 'display', entries: [face('Noto Sans')] }]
-    const request = vi.fn(async (operation: string) => operation === 'command' ? { snapshot: chainSnapshot(2, grown) } : { snapshot: chainSnapshot(1, declared) })
-    open(request)
-    fireEvent.change(screen.getByRole('textbox', { name: 'New font chain name' }), { target: { value: 'display' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'First entry for the new font chain' }), { target: { value: 'Noto Sans' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add font chain' }))
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Font chain 3 name' })).toHaveValue('display'))
-    expect(screen.getByRole('textbox', { name: 'New font chain name' })).toHaveValue('')
-    expect(screen.getByRole('textbox', { name: 'First entry for the new font chain' })).toHaveValue('')
-  })
-
-  // P3. applyFontChain refuses to dispatch while the FILE path is busy, so a
-  // control that stays enabled through a save or an open is a click that
-  // silently does nothing and says nothing.
-  it('disables every chain control while a file operation holds the document', async () => {
-    const files: FileAccess = { open: vi.fn(() => new Promise<never>(() => undefined)), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
-    const request = accepts()
-    render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={chainSnapshot(1, declared)} />)
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    expect(screen.getByRole('button', { name: 'Delete font chain 1' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
-    await waitFor(() => expect(files.open).toHaveBeenCalledOnce())
-    for (const name of ['Delete font chain 1', 'Rename font chain 1', 'Add font chain', 'Move entry 1 of font chain 2 later', 'Remove entry 1 of font chain 1']) {
-      expect(screen.getByRole('button', { name })).toBeDisabled()
-    }
-    expect(screen.getByRole('textbox', { name: 'Font chain 1 name' })).toBeDisabled()
-    expect(screen.getByRole('textbox', { name: 'New font chain name' })).toBeDisabled()
-  })
-
-  // P4. An accepted chain edit is a document mutation like any other: it makes
-  // a rendered PDF stale, and it carries the engine's own undo availability.
-  it('marks a rendered local PDF stale when a chain edit is accepted', async () => {
-    const request = vi.fn(async (operation: string) => {
-      if (operation === 'identity') return { snapshot: chainSnapshot(1, declared), preview: { revision: 1, identity: 'b'.repeat(64) } }
-      if (operation === 'serialize') return { snapshot: chainSnapshot(1, declared), bytes }
-      if (operation === 'render') return { snapshot: chainSnapshot(1, declared), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
-      if (operation === 'command') return { snapshot: chainSnapshot(2, declared) }
-      return { snapshot: chainSnapshot(1, declared) }
-    })
-    render(<App engine={engine(request as never)} initialSnapshot={chainSnapshot(1, declared)} initialSampleData={sample} />)
-    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Stale historical PDF/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' }))
-    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
-    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    // The admitted PDF is retained, and it is retained as STALE: the chain
-    // edit changed the document the exact PDF was produced from.
-    expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Current exact local production PDF/ })).not.toBeInTheDocument()
-  })
-
-  // Both halves of the same response, and deliberately at an UNCHANGED
-  // revision — which is what separates them. `setHistoryAvailability` runs on
-  // every accepted response; the snapshot install runs only when the revision
-  // ADVANCES, so a stale or replayed response cannot overwrite what is shown.
-  it('takes undo availability from the response but does not install a revision that has not advanced', async () => {
-    const other = [{ name: 'somewhere-else', entries: [face('Noto Sans')] }]
-    const request = vi.fn(async (operation: string) => operation === 'command'
-      ? { snapshot: { ...chainSnapshot(1, other), canUndo: true, canRedo: false } }
-      : { snapshot: chainSnapshot(1, declared) })
-    open(request)
-    expect(screen.getByRole('button', { name: /^Undo/ })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 2' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Undo/ })).toBeEnabled())
-    // The response's own chains are NOT shown: its revision (1) did not
-    // advance past the installed one (1), so it was never installed.
-    expect(screen.getAllByRole('textbox', { name: /^Font chain \d+ name$/ }).map((field) => (field as HTMLInputElement).value)).toEqual(['body', 'heading'])
-    expect(screen.queryByDisplayValue('somewhere-else')).not.toBeInTheDocument()
-    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 1')
-  })
-
-  // P5. The asset path's own red proof (see "does not install a
-  // setComponentAsset result that resolves after a document replacement"),
-  // applied to the chain path. Two things must survive it: the stale result
-  // must not be installed over the newer document, and `fontChainBusy` must
-  // not be left stuck true — its reset is generation-guarded, so the document
-  // replacement has to clear it or every chain control is dead for the session.
-  it('does not install a chain result that resolves after a document replacement, and leaves no control stuck', async () => {
-    const replaced = [{ name: 'from-the-undo', entries: [face('Noto Sans')] }]
-    let settle!: () => void
-    const held = new Promise((resolve) => { settle = () => resolve({ snapshot: chainSnapshot(2, declared) }) })
-    const request = vi.fn((operation: string) => {
-      if (operation === 'command') return held
-      if (operation === 'undo') return Promise.resolve({ snapshot: { ...chainSnapshot(50, replaced), canUndo: false, canRedo: true } })
-      return Promise.resolve({ snapshot: chainSnapshot(1, declared) })
-    })
-    render(<App engine={engine(request as never)} initialSnapshot={{ ...chainSnapshot(1, declared), canUndo: true, canRedo: false }} />)
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete font chain 1' })).toBeDisabled())
-
-    // A DOCUMENT REPLACEMENT lands while the chain command is still in flight.
-    fireEvent.click(screen.getByRole('button', { name: /^Undo/ }))
-    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 50'))
-
-    // NOW the stale command completes.
-    settle()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 50')
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-
-    // And the editor still works: the busy flag was reset by the replacement,
-    // not by the stale response's generation-guarded finally.
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    expect(screen.getByRole('textbox', { name: 'Font chain 1 name' })).toHaveValue('from-the-undo')
-    expect(screen.getByRole('button', { name: 'Delete font chain 1' })).toBeEnabled()
-  })
-
-  // The same replacement, with the stale command REFUSING rather than
-  // succeeding: the refusal belongs to a document that is no longer open, so
-  // it must not be rendered against a control in the one that is.
-  it('does not show a chain refusal that resolves after a document replacement', async () => {
-    // The replacing document declares a chain of the SAME NAME, so the stale
-    // refusal's control still EXISTS to be anchored to. A replacement that
-    // renamed everything would drop the message for the wrong reason — no
-    // matching control — and prove nothing about the generation guard.
-    const replaced = [{ name: 'body', entries: [face('Noto Sans SC')] }]
-    let settle!: () => void
-    const held = new Promise((_resolve, reject) => { settle = () => reject(Object.assign(new Error('font chain "body" is still named by e1'), { dataPath: 'fonts.body' })) })
-    const request = vi.fn((operation: string) => {
-      if (operation === 'command') return held
-      if (operation === 'undo') return Promise.resolve({ snapshot: { ...chainSnapshot(50, replaced), canUndo: false, canRedo: true } })
-      return Promise.resolve({ snapshot: chainSnapshot(1, declared) })
-    })
-    render(<App engine={engine(request as never)} initialSnapshot={{ ...chainSnapshot(1, declared), canUndo: true, canRedo: false }} />)
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete font chain 1' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete font chain 1' })).toBeDisabled())
-    fireEvent.click(screen.getByRole('button', { name: /^Undo/ }))
-    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 50'))
-    settle()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    fireEvent.click(screen.getByLabelText('text component e1'))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit font chains' }))
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Noto Sans SC↑↓×'])
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Delete font chain 1' })).not.toHaveAttribute('aria-invalid')
-  })
-
-  it('accepts a chain entry naming a face this build does not ship, displayed as the projection spells it', () => {
-    open(accepts(), [{ name: 'body', entries: [face('Helvetica'), face('Noto Sans')] }])
-    expect(within(screen.getByRole('list', { name: 'Entries of font chain 1' })).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Helvetica↑↓×', 'Noto Sans↑↓×'])
-  })
-})
+// RETIRED (Story 16.9): this file carried a ~560-line describe block,
+// 'the font chain editor, where fonts are chosen', covering every control
+// FontChainEditor.tsx drew — rename, delete, add/move/remove entry, the
+// empty-document state, undo/redo interaction, and the disclosure button
+// beside the family combobox that revealed it. `FontChainEditor.tsx` is
+// deleted along with its render site, so none of those controls exist to
+// assert any more. THE DATA THE EDITOR EDITED IS UNTOUCHED: a document's
+// `fonts` map still carries its fallback chains exactly as before — Thai
+// and CJK text still renders through them — and `engine-protocol.ts` still
+// names the six chain commands the editor used to issue; only the UI that
+// issued them is gone. Chain-command construction itself is still tested
+// directly in `font-chain-command.test.ts`, independent of any UI.

@@ -206,7 +206,10 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
    list overlays the rows beneath it rather than pushing them down, so the
    section keeps the design's height while it is open. */
 .property-combobox { position: relative; }
-.property-disclosure { font: var(--type-body); }
+/* The chevron is an SVG glyph now (Story 16.9's follow-up correction), not
+   text sized against a font, so this rule no longer sets one -- it is centred
+   structurally by `.property-inline-action`'s own `display: grid; place-items:
+   center`, the same way the mockup centres it with `align-items: center`. */
 /* The overlay is now a SHELL rather than the list itself (Story 16.4): it holds
    the `role="listbox"` and, beneath it, the notes that were wrongly inside it.
    Every box property it had stays here, so the surface is unchanged. */
@@ -221,12 +224,12 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
 .property-option-active { background: var(--color-active); color: var(--color-ink-high); }
 .property-option[aria-selected="true"] { color: var(--color-select); }
 /* STORY 16.7 — NAME LEFT, SPECIMEN RIGHT, ON ONE LINE. `:not(.property-option-
-   empty)` scopes this to an actual OPTION: `.property-option-empty` is the cap
-   note and the no-match sentences, which are `<p>` elements sharing this class
-   for their own reasons and keep their block layout, wrapping across as many
-   lines as the sentence needs. An option never grows past one line: both
-   children clip with an ellipsis rather than wrap, which is what keeps this
-   change from moving the 168px scroller's row count. */
+   empty)` scopes this to an actual OPTION: `.property-option-empty` is the
+   no-match sentence, a `<p>` element sharing this class for its own reasons
+   and keeping its block layout, wrapping across as many lines as the
+   sentence needs. An option never grows past one line: both children clip
+   with an ellipsis rather than wrap, which is what keeps this change from
+   moving the 168px scroller's row count. */
 .property-option:not(.property-option-empty) { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .property-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* THE SPECIMEN IS SET IN THE FACE IT NAMES, deliberately never in this
@@ -244,21 +247,13 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
    this project can red on it; the rule is written explicitly for that reason
    rather than inherited from the element it used to be. */
 .property-option-empty { margin: 0; color: var(--color-ink-low); font: var(--type-body); cursor: default; }
-/* THE THREE GROUPS (Story 16.4), IN THE TOKENS THE PANEL ALREADY SPEAKS.
-   `Font Browser.dc.html` separates its dropdown groups with a hairline in the
-   colour `--color-line` carries and sets each heading in the panel's own label
-   type, so both are transcribed rather than invented. */
+/* THE TWO GROUPS (Story 16.4, narrowed from three by Story 16.9), IN THE
+   TOKENS THE PANEL ALREADY SPEAKS. `Font Browser.dc.html` separates its
+   dropdown groups with a hairline in the colour `--color-line` carries and
+   sets each heading in the panel's own label type, so both are transcribed
+   rather than invented. */
 .property-option-heading { margin: 0; padding: var(--space-3) var(--space-3) var(--space-1); color: var(--color-ink-low); font: var(--type-label); letter-spacing: var(--tracking-label); }
 .property-option-group + .property-option-group .property-option-heading { border-top: var(--hairline) solid var(--color-line); }
-/* AND THE THIRD GROUP'S HEADING TAKES THE SELECT ACCENT, WHICH IS A DERIVATION
-   RATHER THAN A NEW IDEA. The design accents exactly one dropdown heading — the
-   web-font group, in the binding amber — and D-16.R.72 replaced that group with
-   AVAILABLE TO INSTALL. The amber is this product's BINDING vocabulary and
-   means nothing about fonts, so the accent is taken in the ramp that already
-   means "this does something the rows above it do not": the same
-   `--color-select` as the `Add fonts…` door directly beneath, which is the same
-   act — getting a typeface onto this machine. */
-.property-option-group-install .property-option-heading { color: var(--color-select); }
 /* The notes sit under the list, outside it. They are not options and not
    pickable; `.property-option-empty` already carries the default cursor. */
 .property-option-notes { border-top: var(--hairline) solid var(--color-line); }
@@ -270,29 +265,6 @@ textarea.property-value-prose { min-height: 72px; resize: vertical; }
    who scrolled past the heading. */
 .property-option-catalogue { color: var(--color-ink-low); font: var(--type-body); }
 .property-option-catalogue.property-option-active { color: var(--color-ink-high); }
-/* min-width/overflow/ellipsis match `.property-option-specimen`'s, now that
-   the row is a flex line the note shares with the name (Story 16.7): without
-   them the note could wrap onto a second line under a narrow panel, which is
-   exactly the row-height growth that rule is written to avoid. */
-.property-option-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink-low); font: var(--type-body); }
-/* THE CHAIN EDITOR, revealed inline under the family row it edits. It is a
-   disclosed section of the TYPOGRAPHY panel and not a dialog (AC1), so it
-   takes the panel's own vocabulary — the property row's field chrome, the
-   inline-action buttons, the same refusal card — rather than a shell of its
-   own. Entries are an ordered list drawn in the projection's order; nothing
-   here re-sorts, re-words or re-numbers what the engine sent. */
-.font-chain-editor { display: grid; gap: var(--space-2); margin-top: var(--space-2); padding-top: var(--space-3); border-top: var(--hairline) solid var(--color-line); }
-.font-chain-editor > .section-label { margin: 0; }
-.font-chain-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.font-chain { display: grid; gap: var(--space-1); padding: var(--space-2); border-left: 2px solid var(--color-line-strong); }
-.font-chain-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--space-2); align-items: center; }
-.font-chain-add-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
-.font-chain-new { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
-.font-chain-entries { display: grid; gap: var(--space-1); margin: var(--space-1) 0; padding: 0; list-style: none; }
-.font-chain-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: var(--space-1); align-items: center; }
-.font-chain-entry > .property-error { grid-column: 1 / -1; }
-.font-chain-entry-face { min-width: 0; overflow: hidden; color: var(--color-ink-high); font: var(--type-mono); text-overflow: ellipsis; }
-.font-chain-editor .property-inline-action:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 /* The fx marker: a field the engine reads as an expression carries it, in the
    same accent the canvas paints a placeholder run with, and it brightens once
    the field actually holds one. */

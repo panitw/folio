@@ -575,4 +575,24 @@ development_status:
   # 79e85140…) are different bytes under one name, and shipping the wrong one would render rather
   # than fail. A digest assertion is a task, not a note.
   16-8-a-new-document-opens-in-a-typeface-with-a-name: in-progress
+  # 16.9 added 2026-09-04 by OWNER, four items from the running panel: remove the font-chain
+  # EDITOR (the data stays -- it is what makes Thai and CJK fall through, and 16.8 just shipped it),
+  # remove Clear font family (text always has a typeface), remove a dropdown group, and centre the
+  # field's chevron. NOTE THE REVERSAL: the written request named AVAILABLE LOCALLY; the owner's
+  # answer named AVAILABLE TO INSTALL, and the answer is taken as the decision -- the browser is
+  # where installing happens, so the menu keeps what is usable now. Flagged for correction at the
+  # gate. This DISCHARGES the 30s/180s dropdown-block deferral: the pick that could block is gone.
+  16-9-the-typography-panel-offers-what-you-can-use: in-progress
+  # 16.10 added 2026-09-04 by OWNER: remove the disclosure paragraph from the FONT BROWSER header
+  # (FontBrowser.tsx:287), "follow the design strictly". MEASURED: the mockup contains NONE of that
+  # prose -- 0 occurrences of "families you can add" / "snapshot taken" / "variable file are not
+  # shown", against a positive control that hits. It is an invention, not a transcription. The same
+  # sentence was already cut from the dropdown, so this is its LAST production consumer:
+  # familyIndexDisclosure() becomes dead, and 16.9's own rule (deleted code is deleted) says the
+  # function and its tests go with it, plus the orphaned .font-browser-disclosure rule.
+  # DISCHARGES the registered familyIndexDisclosure count divergence (31 vs 31-plus-stored) -- the
+  # sentence that disagreed will not exist. Does NOT discharge the resultLine defect ("1274 of
+  # 1273"): resultLine reads addableFamilyCount and STAYS. Spec deliberately not written yet --
+  # 16.9 is moving the test files this story would anchor into, and stale anchors are D-16.R.28.
+  16-10-the-browser-header-says-what-the-design-says: backlog
   epic-16-retrospective: optional

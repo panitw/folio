@@ -120,7 +120,7 @@ describe('the build-time index snapshot', () => {
 })
 
 describe('the local face tier', () => {
-  // THE COMMITTED FACES SURVIVE EPIC 16 UNCHANGED. `pickCatalogueFamily`
+  // THE COMMITTED FACES SURVIVE EPIC 16 UNCHANGED. The family-pick path
   // gained a source; it did not swap one. It was 21 when Story 16.1 wrote this;
   // Story 16.1a's batch made it 31, and the count is deliberately not restated
   // here — the floor below is where the population is asserted, and a second

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
@@ -112,10 +113,14 @@ async function currentRevision(page: import('@playwright/test').Page): Promise<n
 //
 // STORY 16.7 REMOVED `LOCAL_NOTE` FROM THE ROW (Design Note 2): a specimen
 // replaced it, so a local-tier row's own text is now just its family name.
-// `WEB_NOTE` survives untouched — that group keeps its note — but the LOCAL
-// half of this measurement now has to find its rows by GROUP MEMBERSHIP and
-// read each one's name off `.property-option-name`, never off a note this
+// The LOCAL half of this measurement finds its rows by GROUP MEMBERSHIP and
+// reads each one's name off `.property-option-name`, never off a note this
 // group no longer carries.
+//
+// STORY 16.9 REMOVED THE SNAPSHOT TIER FROM THIS DROPDOWN ENTIRELY. The
+// control no longer offers "those PLUS families from the build-time index
+// snapshot" — that PLUS is gone, `Add fonts…` is its door now, and `WEB_NOTE`
+// below is asserted ABSENT rather than present.
 const WEB_NOTE = ' — install on this machine'
 
 test('the designer offers the whole local face tier, marked as needing no download', async ({ page }) => {
@@ -123,11 +128,13 @@ test('the designer offers the whole local face tier, marked as needing no downlo
   await page.getByRole('combobox', { name: 'Font family' }).click()
   const local = (await page.getByRole('group', { name: 'AVAILABLE LOCALLY' }).getByRole('option').locator('.property-option-name').allTextContents()).map((text) => text.trim())
   expect([...local].sort()).toEqual([...families].sort())
-  // AND THE SECOND TIER IS REALLY THERE, distinct from the first: rows that
-  // carry the install note are families whose bytes are not on this machine.
+  // AND THE THIRD TIER IS GONE (Story 16.9): the dropdown no longer offers a
+  // row for any family not on this machine at all — `Add fonts…` is the
+  // only door to one now — so no option may carry the install note.
   const options = await page.getByRole('listbox', { name: 'Fonts' }).getByRole('option').allTextContents()
   const web = options.filter((text) => text.includes(WEB_NOTE))
-  expect(web.length, 'the snapshot tier must contribute rows of its own').toBeGreaterThan(0)
+  expect(web.length, 'Story 16.9 removed the install-tier group; no row may carry its note').toBe(0)
+  await expect(page.getByRole('group', { name: 'AVAILABLE TO INSTALL' })).toHaveCount(0)
   // AND THE COUNT IS THE ADDABLE COUNT, WITH THE LIST'S STALENESS STATED. The
   // family list is a build-time snapshot — its endpoint sends no CORS header —
   // and only the typeface is fetched.
@@ -220,3 +227,68 @@ test('every catalogue family embeds, and no pick is answered by a boundary sente
   expect(rows.filter((row) => row.outcome !== 'EMBEDDED').map((row) => `${row.family}: ${row.outcome}`)).toEqual([])
   expect(rows).toHaveLength(families.length)
 })
+
+// THE DISCLOSURE CHEVRON IS THE MOCKUP'S OWN SVG, MEASURED IN A REAL BROWSER,
+// AND THE COMPARISON IS READ OUT OF THE MOCKUP RATHER THAN COPIED FROM IT.
+//
+// A first version of this button drew the chevron as a text character
+// (`▲`/`▼`), justified by a canvas ink-extent measurement showing it centred
+// in THIS font. That measurement was true and the conclusion was wrong: text
+// glyphs centre by font metrics, a UI typeface swap could silently reopen the
+// gap, and a filled triangle is the wrong shape next to the design's thin
+// stroked chevron in `Font Browser.dc.html:185`. The corrected button draws
+// that exact `<svg>` — one glyph, unconditionally, since the mockup's own
+// `dropdownOpen` flag there gates the menu panel, not the chevron — and
+// leans on `.property-inline-action`'s `display: grid; place-items: center`
+// for a BOX-level centering that cannot drift with the font, the same way
+// the mockup's `align-items: center` centres it in its row.
+//
+// The `viewBox`/`path d` this test compares against are read out of the
+// mockup file, not retyped here, for the same reason `families` above is read
+// out of `font-catalogue.json`: a hand-copied second source of truth goes
+// stale silently, while a read that finds nothing throws.
+const mockupPath = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '_bmad-output', 'planning-artifacts', 'ux-designs', 'ux-folio-2026-08-23', 'mockups', 'Font Browser.dc.html')
+const mockupSource = readFileSync(mockupPath, 'utf8')
+
+function readMockupChevron(source: string): Readonly<{ viewBox: string; path: string }> {
+  const match = /<svg width="8" height="8" viewBox="([^"]+)"[^>]*><path d="([^"]+)"><\/path><\/svg>/.exec(source)
+  if (!match) throw new Error('the mockup no longer draws the 8x8 chevron this test compares the field against at Font Browser.dc.html:185; re-derive the comparison rather than deleting the check')
+  return { viewBox: match[1], path: match[2] }
+}
+const mockupChevron = readMockupChevron(mockupSource)
+
+test('the disclosure chevron is the mockup\'s own SVG, centred structurally in both states', async ({ page }) => {
+  await placeAndSelectText(page)
+  const button = page.locator('button.property-disclosure')
+  const svg = button.locator('svg')
+
+  const measure = async () => {
+    const buttonBox = await button.boundingBox()
+    const svgBox = await svg.boundingBox()
+    if (!buttonBox || !svgBox) throw new Error('the disclosure button or its svg has no box; it is not laid out')
+    const deltaX = (svgBox.x + svgBox.width / 2) - (buttonBox.x + buttonBox.width / 2)
+    const deltaY = (svgBox.y + svgBox.height / 2) - (buttonBox.y + buttonBox.height / 2)
+    return { deltaX, deltaY, viewBox: await svg.getAttribute('viewBox'), path: await svg.locator('path').getAttribute('d') }
+  }
+
+  // CLOSED STATE.
+  await expect(button).toHaveAttribute('aria-label', 'Show fonts')
+  const closed = await measure()
+  expect(closed.viewBox, 'the rendered chevron must be the mockup\'s own viewBox, not a stand-in').toBe(mockupChevron.viewBox)
+  expect(closed.path, 'the rendered chevron must be the mockup\'s own path, not a stand-in').toBe(mockupChevron.path)
+  expect(Math.abs(closed.deltaX), `the chevron must be centred in the field; measured deltaX=${closed.deltaX}`).toBeLessThan(0.5)
+  expect(Math.abs(closed.deltaY), `the chevron must be centred in the field; measured deltaY=${closed.deltaY}`).toBeLessThan(0.5)
+
+  // OPEN STATE — SAME GLYPH, NO FLIP. The mockup draws one chevron regardless
+  // of `dropdownOpen`; a two-state flip here would be inventing state the
+  // design does not have. The accessible name still flips: that is
+  // screen-reader state the design does not govern.
+  await button.click()
+  await expect(button).toHaveAttribute('aria-label', 'Hide fonts')
+  const open = await measure()
+  expect(open.path, 'the design draws one chevron, not two; this button must not flip shape when open').toBe(closed.path)
+  expect(open.viewBox).toBe(closed.viewBox)
+  expect(Math.abs(open.deltaX), `the chevron must stay centred when open; measured deltaX=${open.deltaX}`).toBeLessThan(0.5)
+  expect(Math.abs(open.deltaY), `the chevron must stay centred when open; measured deltaY=${open.deltaY}`).toBeLessThan(0.5)
+})
+
