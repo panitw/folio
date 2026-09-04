@@ -8354,3 +8354,38 @@ whole contract preserving, arriving in the chrome instead of the file.
 - source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
   summary: Every CSS fact this story relies on is guarded by a first-match source-text regex, and the browser suite that could check the rendered result runs in no CI workflow.
   evidence: `property-prose-height.test.ts` and the two CSS rows in `App.test.tsx` match rules with patterns like `/^\.property-field-prose \{[^}]*\}/m`, which take the FIRST matching block. A later, more specific rule — a second `.property-field-prose { position: static }` block, or `resize: vertical !important` somewhere below — changes what the browser renders while the regex keeps reading the first block and staying green. This story closed the `!important` case on the base `textarea` rule specifically (a review patch), which is one instance of the class, not the class. The standing backstop would be `e2e/`, but `npm run test:e2e` appears in no workflow — CI runs only `npm run test:e2e:compile` — so no rendered CSS is ever a gate. Discharging it means either running the e2e suite in CI or replacing the first-match regexes with a real cascade check.
+
+---
+
+### DW-191 — every horizontal scroll of a zoomed preview destroys and re-rasterizes the PDF, today
+
+- source_spec: the Epics 11–14 survey of Epic 13's premises (2026-09-05).
+- **Found by:** the survey, while falsifying half of a premise the epic states as fact.
+  **PRE-EXISTING — not caused by any story in this run.** **Owner:** Story 13.2. **Severity:** MEDIUM.
+  **Status:** OPEN.
+
+**Evidence.** `preview/pdf-viewer.tsx:89` — the render effect's dependency array is
+`[bytes, label, page, scale, state, onError, onPageCount, onStateChange]`, and `state` is a **fresh object
+literal** produced by every `onStateChange({...state, …})` call. So any write to the view state re-runs the
+effect, which calls `dispose()`, destroys the `PDFDocumentProxy`, re-imports the module and re-rasterizes.
+
+**Why it fires today, which is the part the epic gets wrong.** Epic 13's prose says `.pdf-preview-scroll`
+has no height cap, therefore `scrollTop`/`scrollLeft` "can never be non-zero" and the restore effect is
+dead code. **That is true only on the vertical axis.** `App.css:368` sets `overflow: auto` — both axes —
+and `:369` sets `.pdf-preview-scroll canvas { max-width: none }`. At a zoom above fit, the canvas is wider
+than its grid column, the container scrolls **horizontally**, and `onScroll` fires with a real
+`scrollLeft`. So the tear-down is **live, not latent behind the height fix**.
+
+**Why no test sees it.** jsdom performs no layout, so nothing in this repository can distinguish a
+scrollable container from a non-scrollable one. The finding is a stylesheet reading confirmed against the
+code, not a measurement — and `npm run test:e2e` runs in **no** CI workflow, so no rendered CSS is ever a
+gate.
+
+**What this changes about Story 13.2.** The epic's ordering implies fixing the height cap first and the
+dependency array afterwards, as a consequence. It is the reverse: **the dependency array must be fixed
+before or with the cap**, or the cap turns an already-firing tear-down into one that fires on every
+vertical scroll as well.
+
+**What discharges it:** narrow the effect's dependencies to what rendering actually reads — `bytes`,
+`label`, `page`, `scale` — rather than the whole view-state object, with a test that a scroll write does
+not re-enter the render path.

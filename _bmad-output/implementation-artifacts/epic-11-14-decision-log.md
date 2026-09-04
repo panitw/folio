@@ -666,3 +666,50 @@ guard already carries — and it was relayed to 17.6's builder mid-flight.
 **How we'd know it was wrong.** A run where marking counts becomes ceremony — every number tagged CLOSED
 without a boundary actually being stated. The boundary is the substance; the label without it is worse than
 nothing, because it launders a sample as an enumeration.
+
+---
+
+### D-000.8 — Epic 13's premises, closed: nine of ten hold, and the tenth is half-false in the expensive direction
+**Orchestrator record** of the survey D-000.3 mandates, first half.
+
+**Why this was run.** The lead's Epic 13 findings were subagent-sourced and it had verified only two of
+them itself, flagging the rest **SAMPLED** under D-000.7. Five preview stories were about to be specced on
+them.
+
+**Verified and closed:** no PDF export path exists anywhere in the designer; the palette rail is a sibling
+of the design/preview ternary and so renders in preview mode; the evidence surface is a single `<p>`; zoom
+is clamped 0.5–2.0 in 0.1 steps with both readouts as `<output>`; the render effect depends on the whole
+view-state object; `previewOversample` is a constant and the `devicePixelRatio` ban behind it is
+**implementing code, not a comment** — `prohibited` carries the pattern and a red-proof mutation exercises
+it.
+
+**THE `@media` CLAIM IS TRUE AND IS MORE THAN A FACT — IT IS AN ENFORCED CONTRACT.** The lead flagged this
+as its most load-bearing sampled claim. Independently verified: `App.css` holds exactly three at-rules —
+one `@import`, one `@supports`, one `@media (prefers-reduced-motion: reduce)` — enumerated by matching the
+bare character `@` rather than the expected answer, with 217 `color` matches as the positive control that
+the file reads as text. The part nobody had: `canvas-authority-contract.test.ts` has a test named
+*"allows only the non-document reduced-motion media rule"* that asserts the extracted media-query list
+**equals** `['prefers-reduced-motion: reduce']`. So the single-`@media` state is not a stylistic accident;
+**any responsive breakpoint added by 13.2 or 13.3 turns that test red and must amend the contract
+deliberately.**
+
+**THE ONE HALF-FALSE PREMISE, AND IT COSTS ORDERING.** Epic 13 states that with no height cap,
+`scrollTop`/`scrollLeft` can never be non-zero and the restore effect is dead code. True vertically. False
+horizontally: `overflow: auto` is both axes and the canvas carries `max-width: none`, so a zoomed page
+already scrolls sideways and already writes `scrollLeft`. **The render effect's tear-down is therefore live
+today, not latent behind the height fix** — filed as **DW-191** — and 13.2 must fix the dependency array
+**before or with** the cap, not after it as the epic implies.
+
+**Three more corrections that would have produced wrong specs.**
+- **13.1 has two hardcodings, not one.** Both tiers force the name as well as the MIME
+  (`input-download.ts` at the blob type *and* through `folioName(...)`, mirrored in
+  `file-system-access.ts`). **A spec naming only the MIME ships a PDF saved as `.folio`.**
+- **13.4's gate is not a file.** It is parsed `SampleData` state, seeded as readily from a prop as from an
+  opened file, and `runPreview` additionally requires an engine and a snapshot. Entering preview mode is
+  **not** gated at all — only the render is.
+- **`preview-authority-contract.test.ts` forbids 13 tokens, not the 4 recorded**, and pins six positive
+  App.tsx literals plus three negatives — including the freshness `<p>`'s exact attribute spelling and
+  order. **Story 13.5 cannot rewrite that element without amending this contract in the same change.**
+
+**Consequences.** Two unflagged blockers now have owners rather than surfacing at a plan gate: the
+`@media` contract (13.2/13.3) and the freshness-element pin (13.5). DW-191 reorders 13.2 internally.
