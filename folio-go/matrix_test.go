@@ -1350,17 +1350,18 @@ func requireMandatoryBreakIsBroken(t *testing.T, target matrixTarget, raw []byte
 func requireShapedTextIsShaped(t *testing.T, target matrixTarget, raw []byte) {
 	t.Helper()
 
+	specs := threeScriptFixtureFaceSpecs(t)
 	programs := extractAllFontFile2Programs(t, raw)
-	if len(programs) != len(shippedFaceSpecs) {
+	if len(programs) != len(specs) {
 		t.Fatalf(
 			"target %s: the shaped-text fixture must embed exactly %d FontFile2 programs, got %d",
-			target.name, len(shippedFaceSpecs), len(programs),
+			target.name, len(specs), len(programs),
 		)
 	}
 	assertEmbeddedProgramsAreStaticRegular(t, "target "+target.name, programs, 400)
 
 	wantPS := map[string]bool{}
-	for _, spec := range shippedFaceSpecs {
+	for _, spec := range specs {
 		wantPS[spec.PostScriptName] = true
 	}
 	assertBaseFontNames(t, "target "+target.name, raw, wantPS)
@@ -1398,21 +1399,61 @@ func requireShapedTextIsShaped(t *testing.T, target matrixTarget, raw []byte) {
 	}
 }
 
+// threeScriptFixtureFaceKeys names the shipped faces that the two
+// three-script fixtures -- multi-script-fallback and shaped-text --
+// ACTUALLY exercise: each declares a Latin/Thai/CJK fallback chain and
+// mixes exactly those three scripts.
+//
+// This list is deliberately NOT shippedFaceSpecs. The two were equal
+// until Story 16.8 shipped Roboto as a fourth face, which neither
+// fixture names -- both guards below had been using the whole shipped
+// set as a PROXY for "the faces this document uses", and that proxy
+// broke the moment a shipped face stopped being a used one. Both the
+// count and the expected /BaseFont set are fixed expectations stated
+// here in advance, never counted back out of whatever the render
+// happened to emit.
+var threeScriptFixtureFaceKeys = []string{"Noto Sans", "Noto Sans Thai", "Noto Sans SC"}
+
+// threeScriptFixtureFaceSpecs resolves those keys against the shipped
+// spec table, so the PostScript names stay single-sourced. A key that no
+// longer resolves is a hard failure rather than a silently shorter
+// expectation: renaming a face must not be able to shrink this guard.
+func threeScriptFixtureFaceSpecs(t *testing.T) []shippedFaceSpec {
+	t.Helper()
+	byKey := map[string]shippedFaceSpec{}
+	for _, spec := range shippedFaceSpecs {
+		byKey[spec.Key] = spec
+	}
+	specs := make([]shippedFaceSpec, 0, len(threeScriptFixtureFaceKeys))
+	for _, key := range threeScriptFixtureFaceKeys {
+		spec, ok := byKey[key]
+		if !ok {
+			t.Fatalf(
+				"a three-script fixture names shipped face %q, which is no longer in shippedFaceSpecs -- "+
+					"the fixture and the shipped set have drifted apart", key,
+			)
+		}
+		specs = append(specs, spec)
+	}
+	return specs
+}
+
 // requireInstancedShippedFaces is AC8's OWN feature guard (V6): asserts
-// that raw (a captured multi-script leg) contains exactly the three
-// shipped faces' embedded programs, and that EACH ONE is genuinely
+// that raw (a captured multi-script leg) contains exactly the embedded
+// programs of the faces that fixture uses, and that EACH ONE is genuinely
 // INSTANCED — carries no fvar/gvar/avar table — never merely "contains
 // a FontFile2" (which requireFontFile2 alone would accept even from an
 // un-instanced, still-variable embedding, proving nothing about AC7's
 // actual hazard).
 func requireInstancedShippedFaces(t *testing.T, target matrixTarget, raw []byte) {
 	t.Helper()
+	specs := threeScriptFixtureFaceSpecs(t)
 	programs := extractAllFontFile2Programs(t, raw)
-	if len(programs) != len(shippedFaceSpecs) {
+	if len(programs) != len(specs) {
 		t.Fatalf(
 			"target %s: multi-script fixture must embed exactly %d FontFile2 programs (one per shipped face "+
 				"actually used), got %d (AC8 vacuity guard)",
-			target.name, len(shippedFaceSpecs), len(programs),
+			target.name, len(specs), len(programs),
 		)
 	}
 
@@ -1433,7 +1474,7 @@ func requireInstancedShippedFaces(t *testing.T, target matrixTarget, raw []byte)
 	// one six-letter subset tag, one '+', then the embedded program's own
 	// PostScript name (ISO 32000-1 §9.6.4 + Table 117).
 	wantPS := map[string]bool{}
-	for _, spec := range shippedFaceSpecs {
+	for _, spec := range specs {
 		wantPS[spec.PostScriptName] = true
 	}
 	assertBaseFontNames(t, "target "+target.name, raw, wantPS)

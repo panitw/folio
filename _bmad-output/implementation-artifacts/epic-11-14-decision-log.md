@@ -837,3 +837,54 @@ document, so the refusal must live where the document is written.
 **How we'd know it was wrong.** Authors hand-editing padding onto text boxes and asking why the designer
 will not round-trip it. That would mean padding-as-inset had real demand, and the answer would be to
 implement it properly in the engine's layout path rather than to relax the guard.
+
+---
+
+## D-000.11 — A build tag is a place where regressions go to hide, so the epic gate must name it
+
+**Decision.** The epic-boundary heavy test **must run the `matrix`-tagged suite explicitly**, on all four
+targets, as a named command in the gate — not as a consequence of `go test ./...`, which cannot see it.
+
+**What happened.** Story 16.8 (`4d2b27e`, 2026-09-04) shipped Roboto as a fourth face and grew
+`shippedFaceSpecs` from 3 to 4. Two guards in `folio-go/matrix_test.go` —
+`requireInstancedShippedFaces` and `requireShapedTextIsShaped` — were comparing their fixture's
+embedded-program count against `len(shippedFaceSpecs)`. Both fixtures render Latin+Thai+CJK and embed
+three programs. Both went red on all four targets the moment 16.8 landed, and the `Cross-target byte
+identity` workflow has been failing ever since: on `d546e2a`, `render-darwin-arm64`, `render-linux-amd64`,
+`render-linux-arm64` and `render-js-wasm` all **failure**, `compare-render-hashes` **skipped**.
+
+**Why nobody saw it.** `matrix_test.go` carries `//go:build matrix`. Measured over the 20 Epic 16/17 story
+artifacts: **3 name `-tags=matrix`** (16.0, 16.1, 16.1b) and 16.8 is not among them, against a positive
+control of **13 of 20** that run `go test` at all. Across all 110 artifacts, 61 do name the tag — so this
+is a well-known gate that Epic 16 simply stopped invoking. Epic 16 then closed **without a boundary gate**,
+which is the run parameter ("heavy test at the end of epic") that would have caught it.
+
+**The defect the guards actually had.** They used *the whole shipped set* as a **proxy** for *the faces this
+document uses*. The two quantities were equal for three faces and the proxy was invisible; it broke the
+instant a shipped face stopped being a used one. The guard's own comment said "one per shipped face
+**actually used**" and "exactly **the three** shipped faces" — the prose was right and the code had drifted
+out from under it. **A proxy that is currently accurate is still a proxy**, and nothing in the type system
+records which of the two things it meant.
+
+**The fix.** `threeScriptFixtureFaceKeys` names the three faces the two three-script fixtures exercise, and
+`threeScriptFixtureFaceSpecs` resolves them against `shippedFaceSpecs` so the PostScript names stay
+single-sourced. A key that no longer resolves is a hard failure, so renaming a face cannot silently shrink
+the expectation. Both the count and the `/BaseFont` coverage witness now derive from that named subset.
+Shipping a fifth unused face no longer breaks either guard; adding a face to a *fixture* without listing it
+here still does.
+
+**Red-proved, three mutations, each on darwin/arm64:** adding `"Roboto"` as a fourth key → RED ("must embed
+exactly 4 … got 3"); dropping `"Noto Sans Thai"` → RED ("exactly 2 … got 3"); renaming to a bogus
+`"Noto Sans TC"` → RED ("the fixture and the shipped set have drifted apart"). A first attempt at the
+add-Roboto mutation reported GREEN; that was a bug in my own mutation harness (the shell split the
+search string on `|`, so the edit was a no-op) and not a vacuous guard — **a mutation that does not change
+the file proves nothing, so a mutation harness needs its own positive control**, which is why the applied
+line is echoed back above each run.
+
+**Consequences.** Every epic-boundary gate from here names the matrix suite and its four targets
+explicitly. A story that edits `shippedFaceSpecs`, `fonts.Shipped()`, or any fixture template must run it
+regardless of cadence — those are the inputs the matrix guards close over.
+
+**How we'd know it was wrong.** If the matrix legs proved slow enough at every boundary that epics stopped
+gating at all. The four legs together ran in well under a minute locally with Docker available, so that
+cost is not real today.

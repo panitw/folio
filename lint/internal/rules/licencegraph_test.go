@@ -109,7 +109,11 @@ func TestNPMGraphFixtureScan(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(dir, "third-party-notices", "pdfjs-dist"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"NOTICE", "LICENSE-APACHE-2.0", "LICENSE-CMAPS", "LICENSE-LIBERATION"} { if err := os.WriteFile(filepath.Join(dir, "third-party-notices", "pdfjs-dist", name), []byte("license material"), 0o644); err != nil { t.Fatal(err) } }
+		for _, name := range []string{"NOTICE", "LICENSE-APACHE-2.0", "LICENSE-CMAPS", "LICENSE-LIBERATION"} {
+			if err := os.WriteFile(filepath.Join(dir, "third-party-notices", "pdfjs-dist", name), []byte("license material"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 		findings, err = ScanPDFJSNotice(dir)
 		if err != nil || len(findings) != 0 {
 			t.Fatalf("present pdfjs NOTICE must pass: findings=%v err=%v", findings, err)
