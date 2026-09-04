@@ -713,3 +713,83 @@ today, not latent behind the height fix** — filed as **DW-191** — and 13.2 m
 
 **Consequences.** Two unflagged blockers now have owners rather than surfacing at a plan gate: the
 `@media` contract (13.2/13.3) and the freshness-element pin (13.5). DW-191 reorders 13.2 internally.
+
+---
+
+### D-000.9 — Epics 12 and 14, closed per acceptance criterion: ten ACs would be actively wrong if specced as written
+**Orchestrator record** of the survey D-000.3 mandates, second half.
+
+All six of the lead's carried findings **CONFIRMED** against committed code, each with its population
+stated. The command surface is **25** (24 in `ApplyComponentCommand`'s dispatch plus
+`ApplyPageSetupCommand`), and none of the 25 writes a band height, a locale, a UTC offset, a table
+`headerHeight`, `altRowBackground` or `headerStyle`. Millimetres: **0** hits over 106 tracked files, with
+`localeCompare` matching in the same invocation as the positive control.
+
+**THE TEN THAT WOULD SHIP A WRONG STORY.** Recorded here so each spec inherits the correction rather than
+rediscovering it:
+
+1. **14.2 AC2** — "the border controls are not offered, because a filled bar has no edge set to draw."
+   **The reason is false.** `elementBoxDeclaration` is kind-agnostic and `borderPaints` returns true for a
+   present, non-null border with a non-empty edge set: **a border on a Line paints.** Hiding the control
+   removes a working capability, which collides with 14.2's own final AC (I-5).
+2. **14.3 AC2** — "a 1pt Line is 1.33 CSS pixels at 100%." `.canvas-component-line` already floors to
+   `max(2px, …)`. The AC also forbids padding that "changes what is drawn" — **the existing floor already
+   does.** Both halves need reconciling with shipped CSS.
+3. **14.7 AC8** — the millimetre ruling, framed as a live product-wide two-unit conflict. The product has
+   **zero** millimetres. It is a mockup-fidelity decision only, and a much smaller one.
+4. **14.6 AC1** — "rather than a concatenated `kind · count · preview · candidate` string". The value
+   **is already in that string**. This is a layout change, not the "the panel never renders them" the
+   preamble claims.
+5. **12.4 AC1** — offers the owner two rulings when **a third is already claimed** (see D-000.10).
+6. **Epic 12 preamble** — "the command layer accepts all four keys on any component, and the panel can
+   write it." First clause true; **second false** — no `FieldSpec` authors padding. Population: the 9
+   `FieldSpec` declarations, enumerated.
+7. **14.7 AC5** — asks for the sample's item count as read-only context. `TableColumns` carries no item
+   count and `candidates` carry no counts. **The story silently requires a new projection field it does
+   not name.**
+8. **14.10 AC1** — "that column is the selection" assumes a selection model that can hold a column.
+   `selected` is `ReadonlyArray<string>` of **element** ids and every consumer resolves them against
+   `canvas.components`. **Unnamed prerequisite, and a selection-model change.**
+9. **14.1 AC3** — "Align is three SVG icons." It is **four** for an all-text selection since justify
+   landed. The sweep will trip on it.
+10. **14.7 AC9** — reads as a preservation clause and is **the largest mechanical risk in the story**:
+    `cellCount = 11` is load-bearing for `focusCell`, `moveFocus`, Home/End and the post-reprojection
+    refocus. Reducing to six columns rewrites all four.
+
+**FOUR ACs ARE ALREADY SATISFIED and must be specced as preservation, not construction:** 14.6's roving
+tab stop and full arrow/Home/End/Enter navigation; 14.7's roving grid navigation and dialog Tab trap;
+14.4's "hidden controls preserve the underlying value" (true by architecture); and 12.3's alt-row and
+header-style cascade, which is entirely engine-side and needs no work at all.
+
+**One AC is satisfied trivially and cannot fail**: 12.1 AC5 and 12.2 AC4 ("unedited bytes unchanged") hold
+**because no writer exists**. They become real tests only once the writer does.
+
+**A blocker with a new owner:** `property-prose-height.test.ts` and `design-contract.test.ts` both assert
+over **raw source text**, and between them pin an exact allowlist of eight declarations on the prose
+handle, the absence of any hex/rgb/hsl literal in `App.css`, exact-once counts for two type tokens, and
+several verbatim CSS lines. **Any Epic 14 restyle fires them.**
+
+---
+
+### D-000.10 — The padding ruling exists only in a code comment, and 12.4 offers the owner the wrong two options
+**Orchestrator finding.** Escalated to the owner rather than ruled.
+
+**Situation.** Story 12.4's first AC asks the owner to rule padding one of two ways — *insets on every
+component*, or *table-only*. But `App.tsx:1714` already records a **third**: *"(owner's call, 2026-08-30):
+`style.padding` stays an engine property that a loaded document keeps and renders — the panel simply does
+not author it."*
+
+**Measured, because a comment is not a measurement.** Across all five decision logs, `padding` occurs 30
+times — 19 in the MVP log alone, against a `fontFamily` positive control that hits in every log. Reading
+them: every one concerns the **engine** side (table cell padding and row height, base64 padding, digit
+zero-padding). Filtering those 30 for `panel|author|inset|table-only` returns **nothing**. **There is no
+decision-log entry recording an owner ruling that the panel does not author padding.**
+
+**Why this cannot be resolved by ruling.** Either the comment records a real decision the log lost — in
+which case 12.4 as written re-opens a settled question — or it records something that was never an owner
+ruling, in which case it has been silently governing the panel's behaviour for six days on no authority.
+**Both are possible and the difference is the owner's memory, not the repository's.**
+
+**Consequence if guessed.** 12.4 is the **first** Epic 12 story in the build order, chosen precisely
+because it is ruling-first and settles what `padding` means before 14.8 writes a cell-padding control
+whose meaning depends on the answer. Guessing here mis-specs two stories, not one.
