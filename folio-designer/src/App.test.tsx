@@ -791,7 +791,7 @@ describe('application shell', () => {
     expect(screen.getByRole('textbox', { name: 'X (pt)' })).not.toHaveAttribute('readonly')
   })
 
-  it('toggles Shift-click selection once without engine traffic and clears it on an empty canvas click', () => {
+  it('toggles Shift-click selection once without engine traffic and clears it on a click on the page itself', () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80000, y: 0, width: 72000, height: 24000, resizable: true }] }
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
     render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
@@ -804,6 +804,135 @@ describe('application shell', () => {
     fireEvent.click(screen.getByLabelText('Report page with Page Header, Content, and Page Footer'))
     expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Resize e2')).not.toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // Story 17.2: THE BACKDROP IS THE GREY SPACE AROUND THE PAGE, and a click
+  // there used to clear the selection. It no longer does. The eight tests
+  // below are one per row of the story's I/O matrix, and most of them assert
+  // routes this story did NOT touch — the page surface, Escape, plain
+  // selection, shift-extension — so the diff can be read as one branch
+  // narrowed rather than the selection mechanism changed.
+  const selectionCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80000, y: 0, width: 72000, height: 24000, resizable: true }] }
+  const selectionSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: selectionCanvas }
+  const renderSelectable = () => {
+    const request = vi.fn(async () => ({ snapshot: selectionSnapshot }))
+    render(<App engine={engine(request)} initialSnapshot={selectionSnapshot} />)
+    return request
+  }
+  // Selection is taken on pointerdown, not click (App.tsx:2365), so a test
+  // that means "select this" has to say pointerdown.
+  const pointerSelect = (label: string, pointerId: number, extend = false) => {
+    const target = screen.getByLabelText(label)
+    fireEvent.pointerDown(target, { pointerId, clientX: 1, clientY: 1, shiftKey: extend })
+    fireEvent.pointerUp(target, { pointerId, clientX: 1, clientY: 1, shiftKey: extend })
+  }
+  const identityOf = (id: string, band: string) => `${id} · band: ${band}`
+
+  it('keeps a selected component selected when the click lands on the backdrop beside the page', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Canvas region'))
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    expect(screen.getByText(identityOf('e1', 'content'))).toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('does nothing at all when the backdrop is clicked with nothing selected', () => {
+    const request = renderSelectable()
+    expect(screen.getByRole('button', { name: 'Apply page setup' })).toBeInTheDocument()
+    // The positive control for the absence asserted in the last test below:
+    // this is what an empty selection puts in the inspector.
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Canvas region'))
+    expect(screen.getByRole('button', { name: 'Apply page setup' })).toBeInTheDocument()
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('still clears a single selection when the click lands on the page surface itself', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Report page with Page Header, Content, and Page Footer'))
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply page setup' })).toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('still clears the selection on Escape in the canvas region, which is now the deliberate way to', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    const region = screen.getByLabelText('Canvas region')
+    region.focus()
+    fireEvent.keyDown(region, { key: 'Escape' })
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply page setup' })).toBeInTheDocument()
+    // AND IT IS STILL NOT GATED ON THE TARGET TEST. The keydown above has
+    // target === currentTarget, so it would survive a gate; this one is raised
+    // on a descendant and must clear all the same.
+    pointerSelect('text component e1', 3)
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Escape' })
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('still moves the selection to another component when that component is clicked', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    pointerSelect('rect component e2', 2)
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Resize e2')).toBeInTheDocument()
+    expect(screen.getByText(identityOf('e2', 'content'))).toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('still extends the selection on a shift-click', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    pointerSelect('rect component e2', 2, true)
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resize e2')).toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // THE TABLE EDITOR'S FATE ON A BACKDROP CLICK (the question Story 17.2 left
+  // open). It stays. The revokeTableEditor call rode along with the clear because
+  // editor is bound to the one selected component and that binding is checked
+  // against `selectedRef` everywhere; the selection now survives the click, so
+  // the binding does too. Revoking anyway would make a stray click MORE
+  // destructive than the clear it replaced: it bumps `tableEditorSession`,
+  // which App.tsx:679-681 reads to decide whether an in-flight column commit
+  // may still re-project. That last part is a reading of the source, not
+  // something asserted here; what this test measures is that the dialog lives.
+  it('leaves an open table editor open when the backdrop is clicked', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    const request = vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot })
+    render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('dialog', { name: 'Table Editor' })
+    const opened = request.mock.calls.length
+    fireEvent.click(screen.getByLabelText('Canvas region'))
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+    expect(screen.getByText(identityOf('e7', 'content'))).toBeInTheDocument()
+    expect(request).toHaveBeenCalledTimes(opened)
+    expect(request.mock.calls.map((call) => call[0])).not.toContain('command')
+  })
+
+  it('does not swap the inspector to page setup on a backdrop click', () => {
+    const request = renderSelectable()
+    pointerSelect('text component e1', 1)
+    expect(screen.queryByRole('button', { name: 'Apply page setup' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Canvas region'))
+    expect(screen.queryByRole('button', { name: 'Apply page setup' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Component properties require a selection.')).not.toBeInTheDocument()
+    expect(screen.getByText(identityOf('e1', 'content'))).toBeInTheDocument()
     expect(request).not.toHaveBeenCalled()
   })
 

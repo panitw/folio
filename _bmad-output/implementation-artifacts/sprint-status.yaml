@@ -618,7 +618,7 @@ development_status:
   # what else relies on the clear -- Escape-to-deselect and keyboard navigation
   # are the likely dependents, and a test asserting the clear is a guard to
   # CORRECT, not to delete.
-  17-2-clicking-beside-the-page-keeps-the-selection: backlog
+  17-2-clicking-beside-the-page-keeps-the-selection: done
   # 17.3 OWNER DECISION: font size and leading show the DEFAULT AS A REAL VALUE
   # and it is WRITTEN INTO THE DOCUMENT, not merely displayed -- chosen over
   # display-only knowing it changes saved bytes.
