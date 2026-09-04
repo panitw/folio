@@ -664,3 +664,13 @@ development_status:
   # ONE DECISION LEFT TO THE BUILD, to be stated and tested rather than assumed:
   # whether an author's height survives a change of selection.
   17-5-the-content-box-resizes-from-its-bottom-edge: done
+  # 17.6 IS WAVE A OF THE EPICS 11-14 RUN, registered under Epic 17 because it is
+  # designer test infrastructure and this is the live designer epic. The epic
+  # title does not describe it; this comment is the pointer, not a rename.
+  # Ruled by the engineering lead as D-C (epic-11-14-decision-log.md): the AD-17
+  # corpus scan has been standing red since DW-152, so a SECOND violation changes
+  # the failure's CONTENTS and not its STATUS, and no gate reads contents.
+  # Fifteen stories of designer UI are about to land in exactly the population
+  # that scan polices. PREFERRED REPAIR is a named-owner exception, not a rewrite
+  # of the assertion -- see D-C's forbidden branch.
+  17-6-the-ad-17-scan-can-see-a-new-violation: backlog

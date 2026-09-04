@@ -475,3 +475,64 @@ gate. The cost of a stale address is a re-planning cycle.
 
 **Consequences.** Applies to every spec in this run, and to the survey D-000.3 mandates — which is run
 **per acceptance criterion and by symbol**, not per story and by line.
+
+---
+
+### D-000.5 — "Check the author" does not discriminate in this repository
+**Orchestrator decision**, and a correction to guidance I issued myself.
+
+**Verdict.** A commit's author field cannot tell you whether the orchestrator, an agent, or the owner made
+it. Establish authorship by the **timestamp band** against commits already known to be yours, by reading
+the message as a deliberate act, and by **asking** — never by author alone.
+
+**Situation.** After Story 17.5's builder wrongly reported that a subagent had committed against
+instruction, I told it the rule was "check the author and the message before concluding anything". It
+checked, and came back with the flaw: `1a56007`, `c366deb`, `f0fa858` and `d2f2a1e` all carry the same
+author *and* committer, because that is the machine's single configured `user.email`. Every commit made
+here — mine, an agent's, the owner's — is identical in that field.
+
+**In simple terms.** I told it to identify the driver by reading the licence plate, on a fleet where every
+car has the same plate.
+
+**Why the corrected rule works.** `00:18:59 → 00:33:54 → 00:35:00` is one continuous band of orchestrator
+commits, and `d2f2a1e` sits inside it. That is evidence; the author field is not. The version leaning on
+author would have failed **silently**, which is worse than the original error — it would have returned a
+confident wrong answer instead of an obviously unusable one.
+
+**Consequences.** Any agent told to watch for unexpected commits gets the timestamp-band rule, not the
+author rule. And the sequence on seeing HEAD move is: confirm nothing was pushed, confirm the file list,
+**re-run verification against the committed tree because HEAD is now what ships**, then report the move as
+an *observation* and ask — never offer a `git reset` before the diagnosis comes back.
+
+**What the builder did right, and it is the reason this was caught at all.** It re-measured
+`git rev-parse HEAD` rather than trusting `git status`, which read clean and would have said nothing. The
+instinct was correct; only the inference from it was wrong.
+
+---
+
+### D-000.6 — The AD-17 scan's `e2e/**` population is a default, not a recorded ruling
+**Orchestrator decision**, settling the one condition the lead flagged as able to flip D-C.
+
+**Verdict.** The lead's **preferred** branch stands: repair D-C with a **named-owner exception**, not by
+rewriting the assertion. Its stated flip condition does not hold.
+
+**Situation.** D-C's ruling prefers narrowing the AD-17 scan over changing
+`e2e/e9-5-border-no-ink.spec.ts`, but flagged one assumption that would reverse it: *if* the scan's
+inclusion of `e2e/**` was a deliberate, recorded ruling, then narrowing it reopens someone's decision.
+
+**Measured.** The population is built inside the test file itself —
+`canvas-authority-contract.test.ts:11-13`, a `readdirSync` over `e2e/` with a `.ts|.tsx` filter, sitting
+beside the identical constructions for `production` and `tests`. It is a construction choice in code, with
+no comment justifying the e2e arm specifically. Three decision logs mention `canvas-authority-contract`;
+reading the surrounding context in each, **none discusses why `e2e/` is scanned**. Positive control that
+the query works: those same greps returned substantive material about the scan — its comment-stripping
+requirement, and that it was red-proved in both directions — so the silence about `e2e/` is real silence
+and not a failed search.
+
+**Consequences.** The Wave A story may narrow the scan by a named-owner exception without reopening a
+prior decision. **The four existing exceptions are the shape to copy**: scoped to one named block in one
+named file, asserted present by the test itself so the carve-out cannot outlive its reason, rewriting only
+the offending spelling — never a directory-wide pass.
+
+**How we'd know it was wrong.** A decision surfacing later that recorded the e2e population deliberately;
+this entry is the pointer for whoever finds it.
