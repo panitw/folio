@@ -793,3 +793,47 @@ ruling, in which case it has been silently governing the panel's behaviour for s
 **Consequence if guessed.** 12.4 is the **first** Epic 12 story in the build order, chosen precisely
 because it is ruling-first and settles what `padding` means before 14.8 writes a cell-padding control
 whose meaning depends on the answer. Guessing here mis-specs two stories, not one.
+
+---
+
+### D-12.4.1 — Padding stays an engine property; the panel does not author it, and the command layer stops accepting it off a table
+**Owner decision**, taken at the terminal 2026-09-05, confirming the ruling that existed only as a comment.
+
+**Verdict.** The `App.tsx:1714` comment was right and is now recorded where it belongs. `style.padding`
+remains an engine property: **a loaded document keeps it and renders it**, and **the panel never offers a
+control for it**. In addition, the command layer stops accepting `padding*` on non-table kinds, which it
+currently accepts on any component.
+
+**In simple terms.** Padding already does a real job inside a table cell, and the engine will keep doing it
+for any document that arrives carrying it. What changes is that nothing in the designer will ever *write*
+one onto a text box or a line — and the command layer stops pretending it would honour it if you did.
+
+**Why the confirmation mattered more than the answer.** The ruling was being enforced in the product on the
+authority of a comment nobody could source. Measured across all five decision logs: `padding` occurs 30
+times, every occurrence concerns the engine side, and filtering for `panel|author|inset|table-only` returns
+nothing, against a `fontFamily` positive control hitting in every log. **A rule that governs behaviour and
+exists only as prose is one refactor away from being deleted as a stale comment** — which is precisely how
+a settled decision becomes an accidental regression.
+
+**What this does to the two stories that depended on it.**
+- **12.4 shrinks from a fork to a small, well-founded story:** record the ruling, and add the guard so the
+  command layer refuses `paddingTop|Right|Bottom|Left` on any kind that is not a table. Today
+  `applyPropertyChanges` accepts all four on **any** element, with no type guard — so the guard is a real
+  narrowing and needs a red-first test.
+- **14.8's cell-padding acceptance criterion is DROPPED.** It proposed a control whose basis this ruling
+  removes. Note the AC's own analysis was correct on the engine side — `table_render.go` is the only
+  consumer of `.Padding` on any render path — which is exactly why the control is unnecessary rather than
+  merely unwanted.
+
+**The narrowing has a cost, and it is accepted.** A hand-written document carrying padding on a text box
+still **loads and renders**; what it can no longer do is receive a padding command from the designer. That
+is the intended asymmetry: the engine honours what it is given, and the designer refuses to author what it
+cannot mean.
+
+**Consequences.** No `FieldSpec` may author a padding field. The guard belongs in Go's command layer, not
+in the panel, because the panel not offering a control is not a guarantee — AD-15 says the engine owns the
+document, so the refusal must live where the document is written.
+
+**How we'd know it was wrong.** Authors hand-editing padding onto text boxes and asking why the designer
+will not round-trip it. That would mean padding-as-inset had real demand, and the answer would be to
+implement it properly in the engine's layout path rather than to relax the guard.
