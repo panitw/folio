@@ -536,3 +536,82 @@ the offending spelling — never a directory-wide pass.
 
 **How we'd know it was wrong.** A decision surfacing later that recorded the e2e population deliberately;
 this entry is the pointer for whoever finds it.
+
+---
+
+### D-B — Weight and slope are carried by the font chain entry, on both arms
+**Engineering lead's ruling**, accepted with one correction to its supporting count (below). **No owner
+decision required, and that is the main reason this route was taken.**
+
+**Verdict.** The `(family, weight, slope) → face` mapping is declared on the **`FontChainEntry`** and
+nowhere else. An entry gains optional style-variant siblings — a face-name variant on the shipped arm, an
+asset-key variant on the embedded arm — using the existing `Presence` idiom, absent by default.
+`folio.FontSet` keeps its shape. **The public API does not change.**
+
+**Why this is not a new format axis.** `internal/template/serialize.go:204` `writeFontChain` **already**
+emits a chain entry as either a bare JSON string or an object — verified by reading the function, not its
+comment: an embedded entry goes through `writeObject`, a face entry through `appendJSONString`. So a
+document with no variants serialises byte-for-byte as it does today, and **AD-21's corpus-identity
+requirement is satisfied by construction rather than by care**: no corpus document declares bold, every
+corpus chain entry stays a bare string, and bare strings are emitted unchanged.
+
+**Resolution order — the thing the epic never settled and implementation would have guessed.** Per-rune
+**coverage decides the entry; style is resolved within that entry only.** A covering entry with no face at
+the requested weight renders that rune in **its own Regular** with a stated diagnostic — never in a
+*different* entry's bold. Falling down the chain to find a bold face would change the **typeface** to keep
+the **weight**, which is the worse substitution, and would make a Thai run silently change family because a
+CJK run asked for bold.
+
+**In simple terms.** You ask for bold. The Latin words find Roboto Bold. The Chinese characters are only
+carried by a family that has no bold, so they print in that family's Regular and the product *says so*.
+The alternative — hunting down the chain until something bold turns up — would print the Chinese in
+whatever face happened to have a bold, which is a different typeface entirely. Losing the weight is a
+smaller lie than changing the typeface.
+
+**This is what makes D-A's exclusion of Noto Sans SC safe.** A mixed line under bold prints Roboto Bold and
+Noto Sans SC Regular, with the shortfall named. Absence is a **first-class result** the caller must handle,
+not a nil-shaped silence that defaults to Regular — and because CJK is now a permanent shipped instance of
+it, the test proving that arm belongs in 11.2's main body, not an edge-case file.
+
+**Foreclosed explicitly, so no spec reopens them.** *Naming convention over `FontSet` keys* — dead: it
+would silently reinterpret a caller's already-legal key `"X Bold"`, cannot express absence (a missing key
+is indistinguishable from a typo), and cannot serve the embedded arm at all, whose keys are hex SHA-256
+with no name to append to. *A shape change to `FontSet`* — not this epic: it is an irreversible change to
+the product's primary public input taken under release-schedule pressure, and it is free only if Epic 11
+lands before Story 15.3 cuts the tag, which would make a font epic a release blocker. *Synthetic bold or
+oblique* — dead, per I-2.
+
+**ORCHESTRATOR CORRECTION TO THE RULING'S SUPPORTING COUNT.** The lead wrote that `Render`, `RenderTo` and
+`Validate` are "the **only three** channels by which caller-supplied font bytes reach the engine".
+Measured: exported functions in `folio-go` taking a `FontSet` also include `CanvasWithTextPaint`
+(`page_setup.go:784`) and `PreviewIdentity` (`preview_identity.go:14`) — **at least five, not three.**
+The ruling is unaffected and in fact **strengthened**: the argument was that no channel has room for a
+second font-shaped argument, and more channels means more break sites for the foreclosed `FontSet` route.
+Recorded because a count stated as exhaustive is load-bearing for whoever re-derives this later.
+
+**Guardrails carried into the specs.**
+- **The no-synthetic contract test is an ALLOWLIST of permitted paint properties, not a denylist.** A
+  denylist of `font-weight`/`font-style` — which 11.3's AC as written implies — cannot see
+  `font-synthesis`, `-webkit-text-stroke`, `text-shadow`, `paint-order`, or `transform: skewX()`, and a
+  skew is exactly how an oblique gets faked. **Second independent instance of this defect class in this
+  run** (17.5's review found a "paints nothing" denylist permitting `border-top` and `box-shadow`), which
+  is what makes it a standing rule: *a guard that enumerates what is forbidden cannot see what nobody
+  thought to forbid.*
+- **11.1 has two mechanisms, not one.** Re-derived: `tools/fontgen/instance_faces.py`'s `UPSTREAM` holds
+  exactly three keys — the three Noto families. So of D-A's in-scope set, **Noto Sans and Noto Sans Thai
+  are derivable and Roboto is not**, and the one derivable entry now out of scope is the CJK face.
+  `TestShippedRobotoMatchesDesignerCatalogue`'s one-cut discipline **extends to the new cuts** — do not
+  scope it to Regular, or two cuts of Roboto Bold under one name reproduce, at the weight axis, exactly the
+  defect that rule exists to prevent.
+- **No document is migrated on open.** A pre-epic document correctly reports "this family has no bold
+  face"; the remedy is an explicit author action, never a rewrite on load or selection (I-5).
+- **The canvas is told the resolved outcome, not the requested flag** — a projection field, not a format
+  field. The browser cannot discover that a family has no bold face without measuring (AD-17) or holding a
+  second model of the font set (AD-15).
+- **The B control is three states over two document states**, the third derived from the projection and
+  never stored. It must not write `bold: false` to mean "off" — that would reverse the 2026-09-04 toggle
+  change and dirty every document whose author touches it.
+
+**The assumption that would qualify this.** The lead assumes the designer can write chain variants through
+the existing font-chain command family without a new command kind. If not, 11.2 and 11.3 acquire a
+command-surface change and fall behind Story 15.2a in Wave A. **Check at 11.2's plan gate.**
