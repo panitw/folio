@@ -983,3 +983,93 @@ regardless of cadence — those are the inputs the matrix guards close over.
 **How we'd know it was wrong.** If the matrix legs proved slow enough at every boundary that epics stopped
 gating at all. The four legs together ran in well under a minute locally with Docker available, so that
 cost is not real today.
+
+---
+
+### D-000.12 — A guard whose denominator is its own input can only ever say "N of N"
+
+**The finding as first written was overstated, and the overstatement is recorded here rather than edited
+away.** The orchestrator reported that "the shipped Roboto binary has no recorded provenance." **That is
+false.** Roboto's provenance is recorded *and* machine-checked per-commit by a complete chain:
+`folio-go/fonts/roboto/NOTICE.md` carries the full idiom — upstream `googlefonts/roboto-3-classic`
+release `v3.016`, download URL, path inside the archive, fetch date, source sha256
+`e688a215…9355`, shipped sha256 (the same value), size 355,956 bytes, and the relation
+`copied unmodified, no derivation`; `font-catalogue.test.ts` asserts the committed binary's sha256 equals
+its own NOTICE's recorded digest; and `fonts_test.go`'s `TestShippedRobotoMatchesDesignerCatalogue`
+asserts the engine's embedded bytes are byte-identical to that verified catalogue file. Provenance
+transfers by asserted equality anchored on a digest, which is the correct construction.
+
+**CLOSED by execution, not by reading** (the lead flagged this as its own open assumption): mutating the
+last byte of `folio-designer/public/fonts/roboto/Roboto-Regular.ttf` turns `font-catalogue.test.ts` from
+6 passed to `1 failed | 5 passed` with *"roboto: the binary's sha256 is not the digest its own NOTICE.md
+records"*. The AC1 loop does execute over `roboto`. Binary restored.
+
+**A permanent record that overstates a defect makes the repair look bigger than it is and misdirects
+whoever reads it next** — which is why the correction is the first paragraph of the entry and not a
+footnote. The generalisation that caused it: reasoning from one vacuous guard to "the face is unverified"
+without measuring the other routes that might cover it.
+
+**What is actually wrong — two things, neither of them an unverified binary.**
+
+**(A) `fontgen`'s "3 of 3" is vacuous.** Its denominator is its own manifest, so it can only ever report
+`N of N`. Measured: `tools/fontgen/instance_faces.py` carries three entries; `fonts.Shipped()` returns
+four; a case-insensitive search for `roboto` across `tools/` returns nothing. The cost today is **not** an
+unverified Roboto — it is that **nothing forces a new shipped face into any accounting route at all.**
+
+**(B) One engine-side NOTICE is unpinned, and it is Roboto's.** `font-binary-identity.test.ts` iterates
+the **six wasm-declared browser families**; Roboto is not one of them, so
+`folio-go/fonts/roboto/NOTICE.md`'s digest table is the one engine-side provenance record nothing
+asserts. It is currently correct; it is a duplicate record free to drift.
+
+**Decision (lead, 2026-09-05).**
+
+1. **Reuse the existing idiom; do not invent one.** A static, non-derived face's provenance record *is*
+   its `NOTICE.md` table. Roboto already has all of it. **What is missing is the assertion, not the
+   record.** Do not add a second manifest, and do not bend `instance_faces.py`'s `src`/`out`/instancer
+   shape around a face with no derivation — *a route that has to lie about having an instancer step is
+   worse than a second named route.*
+2. **The coverage guard is Go-side, in `folio-go/fonts`, UNTAGGED**, modelled on
+   `TestShippedSpecCoversEverythingShipped` and failing in both directions. Two obligations, both TOTAL
+   over `fonts.Shipped()`: (a) every shipped face has a `NOTICE.md` beside it whose recorded shipped
+   digest equals the embedded bytes and whose recorded size equals their length — closing (B) by one rule
+   rather than three-plus-an-exception; (b) every shipped face is accounted for by **exactly one named
+   route**, `derived` (present in fontgen's manifest) or `static-upstream` (its NOTICE records
+   `copied unmodified, no derivation`), **with no fallback bucket and no default arm** — unaccounted is a
+   hard failure, and a face in *both* routes is also a failure.
+   **Untagged is the load-bearing half.** The accounting is pure file reading: no fontTools, no venv, no
+   network, so it runs per-commit. **Putting it behind the tag would re-create D-000.11 exactly** — a
+   cheap guard hiding in an expensive suite. The *reproduction* stays `matrix`-tagged because it genuinely
+   needs the pinned toolchain, and `TestShippedFacesReproduceFromUpstream` must take its denominator from
+   `fonts.Shipped()` and report *"derived and compared 3 of 4 shipped faces; 1 accounted static-upstream"*,
+   or refuse.
+3. **Scope: Epic 16's, not Epic 11's and not a deferred entry.** Story 16.8 grew the shipped set and
+   extended `shippedFaceSpecs` but not the accounting; that is 16.8's own defect, and Epic 16 is still
+   `in-progress`. **A repair may join an epic that has not closed; an extension may not** — and this is a
+   repair. One small story: the accounting guard, the fontgen denominator, the fourth NOTICE's digest pin,
+   red-proved in both directions. **It must land before Epic 11's first face:** six of D-A's nine are
+   derivable and three are static, so 11.1 is the first story to use the static route *as a route* rather
+   than as a one-off, and the route must exist and be enforced before it gains three more members.
+4. **The Epic 16 boundary gate cannot conclude "pass", and must not conclude "Roboto is unverified".**
+   It records (A) and (B), and Epic 16 closes once the guard in (2) exists. **Closing Epic 16 over a guard
+   that is vacuous about Epic 16's own headline face — the one it made the default typeface for every new
+   document — would make the gate ceremonial**, which is what D-000.1(3) traded per-story testing away to
+   avoid. The gate procedure must also record that `TestShippedFacesReproduceFromUpstream` needs Python
+   3.12.13 + fontTools 4.63.0 via `FOLIO_FONTGEN_PYTHON`, **which CI does not have and cannot acquire** —
+   a standing property of the gate, and a second argument for the accounting half being toolchain-free.
+
+**Grounding.** AD-26 and I-7 (every redistributed asset travels with its terms, upstream release URL and
+source sha256) are **already satisfied** for Roboto — which is why this is not an AD-21/AD-22 breach. AD-21
+is untouched: the shipped bytes are correct and unchanged, and nothing here moves a golden.
+
+**Guardrails.** No fallback or default arm — a face matching neither route must fail, not land in "other";
+*a two-option fork whose arms both leave a population uncovered is a false fork*. Every message the guard
+prints takes its denominator from `fonts.Shipped()` and names the unaccounted face rather than reporting a
+ratio. Do not restate Roboto's digest as a literal in Go — `fonts_test.go` already records why (a
+hardcoded digest proves only that someone typed the same string twice); add the NOTICE pin as a third
+comparison, not a fourth copy of the number. **The red-proof must include the direction that was silent:**
+add a fifth face to `Shipped()` with no NOTICE and no manifest entry and prove the guard goes red. A proof
+that only *removes* a face re-tests the direction that already failed loudly.
+
+**How we'd know it was wrong.** If the two named routes turn out not to partition the real world — a face
+that is neither derived nor copied unmodified, say one hand-subset in the repo. Then the fix is a third
+*named* route, never a fallback arm.
