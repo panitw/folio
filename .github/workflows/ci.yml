@@ -53,32 +53,6 @@ env:
   # which is the fail-safe direction. Verified both ways before this landed.
   KNOWN_RED_TEST: "^TestCorpusMeetsP6ExerciseFloors$"
 
-  # DW-171 / DW-152: the designer's OWN sanctioned red, given the same shape as
-  # the Go one above and for the same reason. `npm run test` exits 1 at HEAD
-  # and has since DW-152's red appeared, and GitHub Actions stops a job at its
-  # first failing step — so `typecheck`, `lint`, `build`, both offline-release
-  # verifications and the e2e compile have NEVER EXECUTED in this workflow.
-  # Six dark steps, not one noisy one, is what made this worth fixing.
-  #
-  # The red is canvas-authority-contract.test.ts's corpus scan, firing on
-  # `e2e/e9-5-border-no-ink.spec.ts`'s `getComputedStyle`. It is NOT fixed here:
-  # that file is owned by the Epic 9/10 lane (DW-152) and narrowing the AD-17
-  # scanner is that lane's decision, not this workflow's.
-  #
-  # A SCALAR, NOT A LIST, exactly as above: a second sanctioned red must change
-  # this file's SHAPE where appending a line would not.
-  #
-  # THE ANCHORS ARE LOAD-BEARING, and here they are the whole fail-safe.
-  # Measured, all three, with the exit code read directly and never through a
-  # pipe: the green step excluding this name exits 0 (659 passed, 1 skipped);
-  # the quarantined step matching it exits 1 (1 failed, 659 skipped); and a
-  # filter matching NOTHING exits 0 with 660 skipped. That last one is why the
-  # pair is written this way round — if the test is renamed, the negative
-  # lookahead stops excluding it, it runs in the GREEN step, and the green step
-  # reddens. The quarantine job going green is the surprising event; the green
-  # job going red is the alarm that actually fires.
-  DESIGNER_KNOWN_RED: "scans a non-vacuous production, unit-test, and e2e corpus for browser measurement authority"
-
 jobs:
   folio-go:
     runs-on: ubuntu-24.04
@@ -221,17 +195,23 @@ jobs:
       - name: npm ci (committed lockfile only)
         working-directory: folio-designer
         run: npm ci
-      # DW-171. `npm run test` is `npm run build:wasm && vitest run`; the wasm
-      # build is kept because vitest imports its output. The test step now asks
-      # the same ONE question the folio-go job asks — "is anything NEW broken?"
-      # — so the single sanctioned red is excluded BY NAME and nothing else is.
-      # No continue-on-error, here or anywhere: that would make every failure in
-      # this job non-fatal, which is the mechanism that grows.
-      - name: unit and contract tests (must be GREEN; excludes the one sanctioned red)
+      # STORY 17.6 (discharging DW-171 and DW-152). `npm run test` is
+      # `npm run build:wasm && vitest run`; the wasm build is kept because
+      # vitest imports its output.
+      #
+      # THE NAME FILTER IS GONE, and that is this step's whole point. The
+      # AD-17 corpus scan is green again, so the designer suite runs WHOLE and
+      # NO test is excluded from this job by name. There is no designer
+      # counterpart to KNOWN_RED_TEST any more, and there is no quarantined
+      # designer job for one to point at.
+      #
+      # No continue-on-error, here or anywhere: that would make every failure
+      # in this job non-fatal, which is the mechanism that grows.
+      - name: unit and contract tests (must be GREEN; the WHOLE suite, no name filter)
         working-directory: folio-designer
         run: |
           npm run build:wasm
-          npx vitest run -t "^(?!.*$DESIGNER_KNOWN_RED$).*"
+          npx vitest run
       - name: TypeScript check
         working-directory: folio-designer
         run: npm run typecheck
@@ -250,34 +230,3 @@ jobs:
       - name: compile deferred browser smoke suite (D-000.4)
         working-directory: folio-designer
         run: npm run test:e2e:compile
-
-  # RED BY DESIGN, and the job name is the disclosure — the designer's exact
-  # counterpart to folio-go-known-red above. Quarantined into a job of its own
-  # rather than skipped or silenced, so the AD-17 violation is reported in two
-  # places at once: this job's name and DW-152.
-  #
-  # No continue-on-error. Laundering this green would put an unenforced
-  # architecture rule behind a green badge.
-  #
-  # WHAT THIS JOB DOES NOT DO IS FIX THE MASKING. DW-152's real cost is that
-  # the scan is ALREADY failing, so a SECOND file adopting getComputedStyle
-  # changes the failure's contents and not its status, and no gate reads
-  # contents. Quarantining unblocks the six steps behind it; it does not make
-  # the second violation visible. That still needs the owning lane's decision.
-  folio-designer-known-red:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.16.0"
-          cache: npm
-          cache-dependency-path: folio-designer/package-lock.json
-      - name: npm ci (committed lockfile only)
-        working-directory: folio-designer
-        run: npm ci
-      - name: the AD-17 corpus scan (EXPECTED RED — DW-152)
-        working-directory: folio-designer
-        run: |
-          npm run build:wasm
-          npx vitest run -t "^.*$DESIGNER_KNOWN_RED$"

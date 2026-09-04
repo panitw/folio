@@ -170,8 +170,18 @@ function refusalViolations(files: readonly string[]): string[] {
 // The pointer-input exception runs FIRST, on raw text, because its seam was
 // written against the file as it stands and it asserts that seam is still
 // there.
+//
+// STORY 17.6 adds the painted-border readback exception LAST. It is a pure
+// additional transform: identity for every file but one, and inside that one
+// it rewrites a single spelling inside a single matched region. Nothing about
+// how the other prohibitions compose changes — in particular the three
+// ARITHMETIC rules at the end of `prohibited`
+// (`textPaint?.lines.length`, `lines.length` in a `*` or `/`, and
+// `contentWindowHeight`/`windowHeight` in a `*`) still apply everywhere,
+// including inside the exempted block, and
+// `keeps every other prohibition live inside the exempt block` is the proof.
 function scanned(file: string, source: string): string {
-  return withoutApprovedRuntimeFaceRegistration(file, withoutComments(withoutApprovedLocalPointerInput(file, source)))
+  return withoutApprovedPaintedBorderReadback(file, withoutApprovedRuntimeFaceRegistration(file, withoutComments(withoutApprovedLocalPointerInput(file, source))))
 }
 
 function violations(files: readonly string[]): string[] {
@@ -300,6 +310,173 @@ describe('canvas projection authority contract', () => {
   })
 })
 
+// STORY 17.6. ONE TEST PER ROW OF THE STORY'S I/O MATRIX — NINE ROWS, NINE
+// TESTS — driven through `violationsForFile`, the harness that addresses the
+// scan BY NAME so a file-scoped exception can be proved to hold there and to
+// hold nowhere else.
+//
+// The point of the whole block is that a failing alarm cannot get louder. The
+// corpus scan stood red on this one spec for weeks (DW-152), and while it was
+// red a second violation anywhere in `src/` or `e2e/` changed the failure's
+// CONTENTS and not its STATUS — and no gate reads contents. These are the
+// reds that prove it can fire again.
+describe('the AD-17 corpus scan can see a NEW violation (Story 17.6)', () => {
+  const exemptRelative = path.join('e2e', 'e9-5-border-no-ink.spec.ts')
+  const exemptSource = fs.readFileSync(path.join(designerRoot, exemptRelative), 'utf8')
+  // Referenced, not re-spelt: if `prohibited`'s entry is retuned these rows
+  // must fail for a behavioural reason, never a spelling one.
+  const measurement = String(prohibited[9])
+  const workflow = fs.readFileSync(path.join(designerRoot, '..', '.github', 'workflows', 'ci.yml'), 'utf8')
+
+  // ROW 1 — the scan, after the exception, against the repo as committed.
+  it('finds no violation at all in the repo as committed', () => {
+    const exempt = e2e.filter((file) => path.basename(file) === 'e9-5-border-no-ink.spec.ts')
+    expect(exempt).toHaveLength(1)
+    expect(violations(exempt)).toEqual([])
+    expect(violations([...production, ...tests, ...e2e])).toEqual([])
+  })
+
+  // ROW 2 — a NEW getComputedStyle in PRODUCTION. The `production` arm is the
+  // one that also carries `.css`, so the plant goes in a real `.ts` module it
+  // actually looks at.
+  it('reds on a NEW getComputedStyle planted in production source', () => {
+    expect(production.some((file) => path.basename(file) === 'component-command.ts')).toBe(true)
+    expect(violationsForFile('src/component-command.ts', 'const style = getComputedStyle(node)').map(String)).toEqual([measurement])
+  })
+
+  // ROW 3 — a NEW getComputedStyle in a DIFFERENT e2e spec. The exception is
+  // one FILE, not the folder: no `e2e/**` was waived.
+  it('reds on a getComputedStyle planted in another e2e spec — the exception is one file, not the folder', () => {
+    expect(e2e.some((file) => path.basename(file) === 'application-shell.spec.ts')).toBe(true)
+    expect(violationsForFile('e2e/application-shell.spec.ts', 'const style = getComputedStyle(box)').map(String)).toEqual([measurement])
+  })
+
+  // ROW 4 — a SECOND getComputedStyle in the exempt file, OUTSIDE the named
+  // block. The exception is one BLOCK, not the file.
+  it('reds on a second getComputedStyle in the exempt file, outside the named block', () => {
+    const stray = `${exemptSource}\nconst strayStyle = getComputedStyle(document.body)\n`
+    expect(stray).not.toEqual(exemptSource)
+    expect(violationsForFile(exemptRelative, stray).map(String)).toEqual([measurement])
+    // The control the red is measured against: the same file WITHOUT the stray.
+    expect(violationsForFile(exemptRelative, exemptSource)).toEqual([])
+  })
+
+  // ROW 5 — the exempt seam renamed or deleted. The exception asserts its own
+  // reason, so the carve-out cannot outlive the thing it exempts.
+  it('fails the exception’s OWN assertion when the exempt seam is gone', () => {
+    const renamed = exemptSource.replace('page.evaluate(', 'page.evaluateHandle(')
+    expect(renamed).not.toEqual(exemptSource)
+    // Pinned to the `toMatch` assertion: a bare `.toThrow()` would pass on a
+    // path error or any future refactor's TypeError.
+    expect(() => violationsForFile(exemptRelative, renamed)).toThrow(/to match/)
+    expect(() => violationsForFile(exemptRelative, exemptSource)).not.toThrow()
+  })
+
+  // ROW 6 — every OTHER prohibition inside the exempt block. Only the one
+  // spelling is rewritten; the block is not waived. The last line is one of
+  // the three ARITHMETIC rules, which are the easiest part of this guard to
+  // disturb by accident and are proved live here.
+  it('keeps every other prohibition live inside the exempt block', () => {
+    const readback = '    const style = getComputedStyle(box)\n'
+    expect(exemptSource).toContain(readback)
+    // EACH PLANT NAMES THE RULE IT MUST WAKE. `.not.toEqual([])` cannot tell
+    // thirteen live rules from twelve, and the three ARITHMETIC rules are the
+    // ones the lead flagged as easiest to disturb by accident. They are
+    // planted SEPARATELY here because the obvious single line
+    // (`textPaint.lines.length * advance`) matches rules 12 AND 13 at once —
+    // measured: rule 12 could be deleted outright with 18/18 still passing,
+    // because rule 13 covered for it. Each of the three now has a plant only
+    // it can answer.
+    for (const [line, rule] of [
+      ['const w = box.offsetWidth', prohibited[2]],
+      ['const rect = box.getBoundingClientRect()', prohibited[1]],
+      ['const observer = new ResizeObserver(() => undefined)', prohibited[4]],
+      ['const dpr = devicePixelRatio', prohibited[7]],
+      [`const width = ${['CanvasRenderingContext2D', 'measureText'].join('.')}("x")`, prohibited[0]],
+      // Rule 12 ALONE — no adjacent operator, so rule 13 cannot answer for it.
+      ['const height = component.textPaint.lines.length', prohibited[11]],
+      // Rule 13 ALONE — no `textPaint`/`paint` prefix, so rule 12 cannot.
+      ['const n = lines.length * 2', prohibited[12]],
+      // Rule 14 ALONE.
+      ['const top = canvas.contentWindowHeight * index', prohibited[13]],
+    ] as const) {
+      const planted = exemptSource.replace(readback, `${readback}    ${line}\n`)
+      expect(planted).not.toEqual(exemptSource)
+      expect(violationsForFile(exemptRelative, planted).map(String)).toContain(String(rule))
+    }
+  })
+
+  // ROW 7 — the population. It did not shrink, and the arms are still the
+  // asymmetric ones they were: `production` carries `.css`, `tests` and `e2e`
+  // are `.ts`/`.tsx` only.
+  it('leaves the scanned population and its three non-vacuity floors where they were', () => {
+    expect(production.length).toBeGreaterThan(10)
+    expect(tests.length).toBeGreaterThan(10)
+    expect(e2e.length).toBeGreaterThan(3)
+    expect(production.filter((file) => file.endsWith('.css')).length).toBeGreaterThan(0)
+    expect(tests.filter((file) => !/\.tsx?$/.test(file))).toEqual([])
+    expect(e2e.filter((file) => !/\.tsx?$/.test(file))).toEqual([])
+    // THE FLOORS ABOVE CANNOT SEE A SHRINK, WHICH IS THE FAILURE MODE THIS
+    // STORY EXISTS TO PREVENT — an exception that "works" by scanning fewer
+    // files. Measured: narrowing the `production` filter from `.ts|.tsx|.css`
+    // to `.ts|.css` drops all 8 `.tsx` files, INCLUDING `App.tsx` — the canvas
+    // projection itself, the file AD-17 is most about, and the very file the
+    // `placementPoint` carve-out below exists for — leaving 50 files, still
+    // over the floor of 10, with every other assertion in this row passing.
+    // 18/18 green over a corpus missing the code the rule is about.
+    //
+    // These are the counts enumerated at 995ec5c. `toBeGreaterThanOrEqual`,
+    // not `toBe`, so ordinary growth never churns the guard while any shrink
+    // reddens and has to be raised deliberately.
+    expect(production.length).toBeGreaterThanOrEqual(58)
+    expect(tests.length).toBeGreaterThanOrEqual(51)
+    expect(e2e.length).toBeGreaterThanOrEqual(15)
+    expect(production.filter((file) => file.endsWith('.tsx')).length).toBeGreaterThanOrEqual(8)
+    expect(production.filter((file) => file.endsWith('.css')).length).toBeGreaterThanOrEqual(3)
+    // AND NO e2e SPEC MAY BE EXCLUDED BY NAME. Excluding one by name is an
+    // established idiom in this very file (`tests` excludes this file at :15),
+    // so the e2e arm is compared against an INDEPENDENT walk of the directory
+    // rather than against its own filter.
+    const e2eOnDisk = fs.readdirSync(path.join(designerRoot, 'e2e'), { recursive: true })
+      .filter((entry): entry is string => typeof entry === 'string' && /\.tsx?$/.test(entry))
+    expect(new Set(e2e.map((file) => path.relative(path.join(designerRoot, 'e2e'), file)))).toEqual(new Set(e2eOnDisk))
+    expect(e2e.filter((file) => path.basename(file) === 'e9-5-border-no-ink.spec.ts')).toHaveLength(1)
+  })
+
+  // ROW 8 — `npm test` runs whole. No test is excluded by name any more,
+  // neither by the package script nor by the workflow step.
+  it('excludes no test by name — the designer suite runs whole', () => {
+    const scripts = (JSON.parse(fs.readFileSync(path.join(designerRoot, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts
+    // Positive control that this really is the script the suite runs under.
+    expect(scripts.test).toContain('vitest run')
+    expect(scripts.test).not.toMatch(/\s-t\s/)
+    expect(workflow).toMatch(/npx vitest run\n/)
+    // Every spelling of a name filter, not just `-t`.
+    expect(workflow).not.toMatch(/vitest run[^\n]*(?:-t\b|--testNamePattern|--exclude)/)
+    expect(scripts.test).not.toMatch(/--testNamePattern|--exclude/)
+    // AND THE THIRD FILE THAT CAN REMOVE A TEST FROM THE RUN. `package.json`
+    // and `ci.yml` are not the only doors: adding `exclude` to vite's `test`
+    // block drops a file from the suite without touching either — and the file
+    // it would most usefully drop is THIS one, taking the AD-17 corpus scan
+    // and all nine of these rows with it, silently and green.
+    const viteConfig = fs.readFileSync(path.join(designerRoot, 'vite.config.ts'), 'utf8')
+    expect(viteConfig).toMatch(/include:\s*\[/)
+    expect(viteConfig).not.toMatch(/exclude/)
+  })
+
+  // ROW 9 — ci.yml. The quarantine is gone; the Go one, which reports an
+  // honestly unmet exercise floor and is never to be "fixed", is untouched.
+  it('carries no quarantined designer job in ci.yml, and leaves folio-go-known-red alone', () => {
+    // POSITIVE CONTROLS FIRST, so the two absences below are real silence and
+    // not a failed read of the wrong file.
+    expect(workflow).toMatch(/^ {2}folio-designer:$/m)
+    expect(workflow).toMatch(/^ {2}folio-go-known-red:$/m)
+    expect(workflow).toMatch(/KNOWN_RED_TEST: "\^TestCorpusMeetsP6ExerciseFloors\$"/)
+    expect(workflow).not.toMatch(/folio-designer-known-red/)
+    expect(workflow).not.toMatch(/DESIGNER_KNOWN_RED/)
+  })
+})
+
 function violationsForSource(source: string): RegExp[] { return violationsForFile('src/an-ordinary-module.ts', source) }
 // The same scan a real file gets, addressed by NAME, so an exception that is
 // scoped to a file can be proved to hold there and to hold nowhere else.
@@ -367,4 +544,51 @@ function withoutApprovedLocalPointerInput(file: string, source: string): string 
   const seam = /export function placementPoint\(event: Pick<MouseEvent,[\s\S]*?\n}\nfunction pageStyle/
   expect(source).toMatch(seam)
   return source.replace(seam, 'function pageStyle')
+}
+
+// STORY 17.6. THE INSTRUMENT MAY READ WHAT THE BROWSER PAINTED; THE PRODUCT
+// MAY NOT.
+//
+// AD-17's subject is the PRODUCT: the canvas gets every text metric from the
+// engine and never measures. `e2e/e9-5-border-no-ink.spec.ts` is a Playwright
+// assertion that reads the borders the page actually painted and compares the
+// RESOLVED ink against an exact expected list of one. That is an instrument
+// measuring the product's output — the opposite of the product measuring
+// itself — and rewriting it to read the projection's own declared border back
+// to itself would make both sides of the assertion move together, so it would
+// pass through the very E9-5 defect it was written for.
+//
+// THE CARVE-OUT IS ONE SPELLING INSIDE ONE NAMED BLOCK IN ONE NAMED FILE, and
+// it is deliberately narrower than the `document.fonts.ready` rewrite above,
+// which is repo-wide and scoped to no owner at all. It is written in the shape
+// of the `embedded-face-registry.ts` sibling: scoped by `path.basename`,
+// bounded to a matched region rather than to the file, asserting the seam that
+// earns it is still present so the exception dies with its reason, and
+// rewriting ONLY `getComputedStyle`. Every other prohibition — `offsetWidth`,
+// `getBoundingClientRect`, `ResizeObserver`, `devicePixelRatio` and the three
+// pagination-arithmetic rules — is still live inside the block, and a SECOND
+// `getComputedStyle` anywhere else in the same file is still red.
+//
+// This is what makes the corpus scan an alarm again. It stood red on this one
+// file for weeks (DW-152), and while it was red a new violation anywhere in
+// the designer changed the failure's CONTENTS and not its STATUS.
+function withoutApprovedPaintedBorderReadback(file: string, source: string): string {
+  if (path.basename(file) !== 'e9-5-border-no-ink.spec.ts') return source
+  // THE SEAM IS THE WHOLE INSTRUMENT, NOT JUST THE READBACK. An earlier form
+  // of this ended at `}).sort())` — the close of `page.evaluate` — which meant
+  // the carve-out survived the assertion being gutted: replacing
+  // `expect.poll(...).toEqual([...])` with a bare `await page.evaluate(...)`
+  // left the seam matching and the whole suite green, so the one file allowed
+  // to call `getComputedStyle` kept that permission while asserting nothing.
+  // MEASURED, not reasoned: 18/18 passed with the comparison removed. The
+  // reason for the exception is that this compares RESOLVED ink against an
+  // exact expected list, so the comparison is now part of what must still be
+  // there for the exception to hold.
+  const seam = /expect\.poll\(\(\) => page\.evaluate\(\(\) => Array\.from\(document\.querySelectorAll\('\.canvas-box'\)\)[\s\S]*?\}\)\.sort\(\)\)\)\.toEqual\(\[[^\]]*\]\)/
+  expect(source).toMatch(seam)
+  // AND EXACTLY ONCE. A second `.canvas-box` readback block prepended above
+  // this one would otherwise be the region the lazy match selected, waiving a
+  // `getComputedStyle` the story exists to catch.
+  expect(source.match(new RegExp(seam, 'g')) ?? []).toHaveLength(1)
+  return source.replace(seam, (region) => region.replace(/\bgetComputedStyle\b/g, 'approvedPaintedBorderReadback'))
 }

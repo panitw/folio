@@ -2,7 +2,7 @@
 title: 'Story 17.6: The AD-17 scan can see a new violation'
 type: 'refactor'
 created: '2026-09-05'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '3d2e3f7'
 context:
@@ -126,15 +126,48 @@ why narrowing by exception reopens no prior decision.
 **The register**
 - `deferred-work.md` — DW-152 (the masking) and DW-171 (the halted job). Both discharged here.
 
+### Corrections to this Code Map (engineering lead, re-verified at `995ec5c` by enumeration)
+
+These correct the descriptions above. They do not change the intent contract.
+
+1. **`prohibited` has 14 entries** (enumerated: regex literals between `const prohibited = [` and its
+   closing `]`). **Entries 12, 13 and 14 are not measurement bans** — they police ARITHMETIC
+   (`textPaint?.lines.length`; `lines.length` in a `*` or `/`; `contentWindowHeight`/`windowHeight` in a
+   `*`), so nobody derives a page count or window position by multiplying instead of asking the engine.
+   **They are the easiest part of this guard to disturb by accident. The exception must not touch them.**
+   If any restructuring of `scanned` or `violations` would change how they apply, HALT and report.
+2. **There are FIVE exception sites, not three** — `.replace(` at `:318`, `:343`, `:353`, `:362`, `:369`
+   (8 `.replace(` calls in the file; `:343` and `:353` chain two each).
+3. **One of them is already a repo-wide carve-out.** `:318` rewrites `document.fonts.ready` **globally, in
+   every file, scoped to no owner at all.** A named-owner exception for one block in one e2e spec is
+   therefore **narrower than something this guard already carries** — the repair is a narrowing, not a
+   loosening. This licenses no widening; the four narrowness proofs stand exactly as specified.
+4. **The population arms are not symmetric.** `production` matches `.ts|.tsx|.css` (minus `*.test.*`);
+   `tests` and `e2e` are `.ts|.tsx` only. **Plant a violation where the arm under test actually looks.**
+
+**Measured at `995ec5c`, before any edit** (enumerated by mirroring the test's own filters):
+`production` = **58** files (3 of them `.css`), `tests` = **51**, `e2e` = **15**. Floors are
+`>10`, `>10`, `>3`. Baseline `npm test`: **757 tests, 756 passed, 1 failed**, 55 files, exit **1** —
+the single failure being `e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/` at
+`src/canvas-authority-contract.test.ts:190`. **The count must not fall below 757.**
+
+**Note on the sibling shapes.** Of the five sites, `:343` (region + named spellings) is the shape to copy.
+`:369` deletes the whole `placementPoint` body from the scanned text and therefore waives *every*
+prohibition inside it — that is the broad shape Story 8.4a repaired at `:343`, still live in the pointer
+helper. **Out of scope here; report it, do not fix it.**
+
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] Add the named-owner exception, in the sibling shape, asserting its own seam.
-- [ ] **Plant a violation and prove the scan reds**, in production and in a second e2e file; restore by
-      absolute path. **Say where each landed.**
-- [ ] Restore `npm test` to running whole: remove the `-t` filter, the env var and the quarantined job.
-- [ ] Discharge DW-152 and DW-171, naming this story.
-- [ ] Tests — one per matrix row (**9 rows**), driven through `violationsForFile`.
+- [x] Add the named-owner exception, in the sibling shape, asserting its own seam.
+      (`withoutApprovedPaintedBorderReadback`, `canvas-authority-contract.test.ts`.)
+- [x] **Plant a violation and prove the scan reds**, in production and in a second e2e file; restore by
+      absolute path. **Say where each landed.** (`folio-designer/src/component-command.ts:70` and
+      `folio-designer/e2e/application-shell.spec.ts:79`; both named in the red at
+      `src/canvas-authority-contract.test.ts:200`; both restored byte-identical from a pre-damage copy.)
+- [x] Restore `npm test` to running whole: remove the `-t` filter, the env var and the quarantined job.
+- [x] Discharge DW-152 and DW-171, naming this story.
+- [x] Tests — one per matrix row (**9 rows**), driven through `violationsForFile`.
 
 **Acceptance Criteria:**
 - Given the repo as committed, when `npm test` runs **with no name filter**, then it exits 0.
@@ -180,3 +213,72 @@ relative path.
 the population beside every zero and pair every absence claim with a positive control; **a comment is not a
 measurement**; **use `/usr/bin/grep -a`** — recursive `grep` returns false zeros here and may treat long
 files as binary.
+## Review Triage Log
+
+Three review layers (blind-hunter, edge-case-hunter, verification-gap). **No `intent_gap` and no
+`bad_spec`, so no loopback**; `review_loop_iteration` stays **0**.
+
+**Patched (7)** — each verified by me before triage, and each red-proofed after:
+1. **The exception outlived its own reason.** The seam ended at `}).sort())`, so replacing
+   `expect.poll(...).toEqual([...])` with a bare `await page.evaluate(...)` left the carve-out alive with
+   **18/18 green**. The seam now spans the comparison; that mutation reds **5 tests**.
+2. **The seam must match exactly once**, so a second `.canvas-box` block prepended above cannot become
+   the region the lazy match selects.
+3. **ROW 7 could not see a shrunk population** — the story's own central failure mode. Narrowing
+   `production` from `.ts|.tsx|.css` to `.ts|.css` drops all 8 `.tsx` files, **including `App.tsx`**, and
+   was **18/18 green**. Now reds.
+4. **ROW 6 could not tell which rule fired**, and `textPaint.lines.length * advance` matches arithmetic
+   rules 12 **and** 13 — so rule 12 could be **deleted outright with 18/18 green** (pre-existing, since
+   the old test at `:240` had the same shape). The three arithmetic rules now have plants only they answer.
+5. **ROW 5's bare `.toThrow()`** passed on any throw; pinned to the `toMatch` assertion.
+6. **ROW 8 missed the third door**: `vite.config.ts`'s `test.exclude` drops a file from the run without
+   touching `package.json` or `ci.yml` — and the file it would most usefully drop is the scan itself.
+   Also broadened to `--testNamePattern` / `--exclude`.
+7. **Record**: stale now-false present tense in DW-152/DW-171, and who authorised narrowing the scanner.
+
+**Deferred (4)** — DW-192 (the `placementPoint` carve-out still deletes a whole body), DW-193 (the e2e
+suite is compiled, never executed, so the assertion earning the carve-out never runs), DW-194 (nothing
+guards the six previously dark CI steps or forbids `continue-on-error`), DW-195 (the denylist lesson,
+third instance this run).
+
+**Rejected (4)** — the seam assertion throwing aborts the scan (the sanctioned sibling idiom; the gate
+still reds, so the alarm fires); status disagreement across spec/tracker/register (workflow ordering);
+branch-protection required-check (outside the repo, low confidence); ROW 2 near-duplication (cosmetic).
+
+## Suggested Review Order
+
+**The exception, and whether it is narrow**
+
+- The carve-out itself: one spelling, one region, one file, asserting its own reason.
+  [`canvas-authority-contract.test.ts:575`](../../folio-designer/src/canvas-authority-contract.test.ts#L575)
+- The seam now spans the comparison, so gutting the assertion kills the exception.
+  [`canvas-authority-contract.test.ts:587`](../../folio-designer/src/canvas-authority-contract.test.ts#L587)
+- A pure additional transform; nothing about how the other 13 rules compose changes.
+  [`canvas-authority-contract.test.ts:183`](../../folio-designer/src/canvas-authority-contract.test.ts#L183)
+- The seam being exempted — unmodified, still comparing resolved ink to an exact list.
+  [`e9-5-border-no-ink.spec.ts:64`](../../folio-designer/e2e/e9-5-border-no-ink.spec.ts#L64)
+
+**The proofs that the alarm can fire again**
+
+- Nine rows, nine tests, driven through the by-name harness.
+  [`canvas-authority-contract.test.ts:323`](../../folio-designer/src/canvas-authority-contract.test.ts#L323)
+- Exception is one BLOCK, not the file.
+  [`canvas-authority-contract.test.ts:356`](../../folio-designer/src/canvas-authority-contract.test.ts#L356)
+- The exception dies with its reason.
+  [`canvas-authority-contract.test.ts:366`](../../folio-designer/src/canvas-authority-contract.test.ts#L366)
+- Every other prohibition still live inside the block, each naming the rule it wakes.
+  [`canvas-authority-contract.test.ts:379`](../../folio-designer/src/canvas-authority-contract.test.ts#L379)
+
+**The population, which must not shrink**
+
+- Floors plus measured baselines plus an independent walk of the e2e arm.
+  [`canvas-authority-contract.test.ts:412`](../../folio-designer/src/canvas-authority-contract.test.ts#L412)
+
+**CI: the suite runs whole again**
+
+- The name filter is gone; the step runs the whole suite.
+  [`ci.yml:210`](../../.github/workflows/ci.yml#L210)
+- All three doors that could drop a test from the run.
+  [`canvas-authority-contract.test.ts:448`](../../folio-designer/src/canvas-authority-contract.test.ts#L448)
+- The quarantine is gone; the Go one is untouched.
+  [`canvas-authority-contract.test.ts:469`](../../folio-designer/src/canvas-authority-contract.test.ts#L469)

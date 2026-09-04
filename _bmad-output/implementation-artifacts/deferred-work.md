@@ -7086,19 +7086,45 @@ was never reached with a bad value.
 - **Deferred by:** Story 16.0 (2026-09-03), which verified it at baseline rather than assuming it and
   declined to close something outside its contract.
 - **Owner:** whoever owns `e2e/e9-5-border-no-ink.spec.ts` — the Epic 9/10 lane that wrote it.
-- **Trigger:** it is already firing, so **it cannot fire again**. That is the whole risk: a second
-  file adopting `getComputedStyle` would change the failure's *contents* and not its *status*, and no
-  gate reads contents.
+  **Who ruled, recorded because the deleted `ci.yml` comment reserved this to that lane:** narrowing the
+  AD-17 scanner was authorised by Story 17.6's approved, frozen intent contract, which names the
+  named-owner exception as the approach and forbids rewriting the flagged assertion. The Epic 9/10 lane
+  was not separately consulted; the assertion it owns is **unmodified** by this story.
+- **Trigger (as it stood, and no longer true):** it was already firing, so **it could not fire again**.
+  That was the whole risk: a second file adopting `getComputedStyle` changed the failure's *contents*
+  and not its *status*, and no gate reads contents. **Since Story 17.6 the scan is green, so a second
+  violation now changes its STATUS** — proved by planting one and watching it red.
 - **Severity:** MEDIUM — not for the violation, for the masking.
-- **Status:** OPEN.
+- **Status:** **DISCHARGED 2026-09-05 by Story 17.6** (`17-6-the-ad-17-scan-can-see-a-new-violation.md`)
+  — repaired, not reconciled. The masking is gone: the scan is green, so a new violation changes the
+  failure's STATUS and not merely its contents.
 
-`canvas-authority-contract.test.ts` fails at `:190` with `expected [ Array(1) ] to deeply equal []`,
+**How it was discharged.** `e2e/e9-5-border-no-ink.spec.ts` was granted a **named-owner exception** in
+`canvas-authority-contract.test.ts` — `withoutApprovedPaintedBorderReadback`, scoped by `path.basename`
+to that one file and bounded to the one `page.evaluate` region that reads border ink, rewriting **only**
+the `getComputedStyle` spelling and asserting (`expect(source).toMatch(seam)`) that the region earning
+the carve-out is still there, so the exception dies with its reason. The flagged assertion itself was
+**not** rewritten: it compares **resolved** border ink against an exact expected list of one, which is an
+instrument measuring the product's output rather than the product measuring itself, and making both sides
+read the projection's own declaration would let it pass through the very E9-5 defect it exists for.
+`prohibited` is unchanged, the `production`/`tests`/`e2e` population is unchanged (58 / 51 / 15,
+enumerated), the three non-vacuity floors still hold, and no directory was waived.
+
+**And the alarm was proved able to fire again, by planting.** `getComputedStyle` planted in
+`folio-designer/src/component-command.ts:70` and in `folio-designer/e2e/application-shell.spec.ts:79`
+turned the scan red naming **both** files, at
+`src/canvas-authority-contract.test.ts:200` — `expected [ …(2) ] to deeply equal []`. Both plants were
+restored by absolute path from a pre-damage copy and verified byte-identical. Nine tests, one per row of
+the story's I/O matrix, are in the file as the permanent guard.
+
+`canvas-authority-contract.test.ts` failed at `:190` with `expected [ Array(1) ] to deeply equal []`,
 the array being `"e2e/e9-5-border-no-ink.spec.ts: /\bgetComputedStyle\s*\(/"`. **Re-measured at close
 against the dispatch baseline `09ab97d` in a detached worktree: byte-identical failure, same line,
 same array** — neither the scanner nor the flagged file is in Story 16.0's diff. It is therefore not
-this story's regression, and it is recorded rather than inherited silently: `npm test` reads
-`1 failed | 436 passed` on a clean tree, and **every story from here on has to know which one red is
-allowed** or it will wave through a second.
+this story's regression, and it was recorded rather than inherited silently. **That standing
+instruction is now withdrawn:** `npm test` read `1 failed | 436 passed` on a clean tree when this was
+written and reads **`766 passed`, exit 0** since Story 17.6, so no story from here on has to know which
+one red is allowed — **there is none, and a new red is a real one.**
 
 ---
 
@@ -7867,24 +7893,42 @@ enumerated at that point, by re-running its measurement rather than by trusting 
 - source_spec: `_bmad-output/implementation-artifacts/16-2-a-fetched-face-stays-on-this-machine.md`
 - **Deferred by:** Story 16.2's review (2026-09-03). **Pre-existing, not caused by 16.2** — but 16.2 is
   the story that made the consequence expensive, because every gate it adds lands behind the stop.
-- **Owner:** the engineering lead. **Severity:** MEDIUM-HIGH. **Status:** OPEN.
+- **Owner:** the engineering lead. **Severity:** MEDIUM-HIGH.
+  **Status:** **DISCHARGED 2026-09-05 by Story 17.6**
+  (`17-6-the-ad-17-scan-can-see-a-new-violation.md`).
 
-**Evidence.** `.github/workflows/ci.yml` runs the `folio-designer` job as: `npm ci` → `npm run test` →
-`npm run typecheck` → `npm run lint` → `npm run build` → `npm run verify:offline:red` →
-`npm run verify:offline:wasm` → `npm run test:e2e:compile`, with **no `continue-on-error` on any step**.
-`npm run test` exits **1** at HEAD and has since DW-152's red appeared, and GitHub Actions stops a job at
-its first failing step. So the six steps after it have not executed for as long as that red has existed.
+**How it was discharged — and NOT by the split this entry proposed.** The split (a green step excluding
+the sanctioned red by name, plus a quarantined job running it) was the interim repair and it landed; this
+story **removed** it, because the red it was accommodating no longer exists. `DESIGNER_KNOWN_RED`, the
+green step's negative-lookahead `-t` filter, and the whole `folio-designer-known-red` job are gone from
+`ci.yml`, so the designer suite runs **whole** with no test excluded by name and the six previously dark
+steps run behind a green one. **`folio-go-known-red` and `KNOWN_RED_TEST` are untouched** — that job
+reports an honestly unmet exercise floor (D-000.17 / D-2.1.14 / D-000.57) and is never to be "fixed".
+`ci.yml` still parses (D-000.71), and the workflow's shape is asserted by two of the nine matrix tests in
+`canvas-authority-contract.test.ts`, so a re-introduced name filter or quarantine job reddens the suite.
 
-**Why it matters more now.** Story 16.2's store round trip, the 30 s timeout, the first-abort table, the
+**Evidence, as it stood when this was raised.** `.github/workflows/ci.yml` ran the `folio-designer` job
+as: `npm ci` → `npm run test` → `npm run typecheck` → `npm run lint` → `npm run build` →
+`npm run verify:offline:red` → `npm run verify:offline:wasm` → `npm run test:e2e:compile`, with **no
+`continue-on-error` on any step**. `npm run test` exited **1** from the moment DW-152's red appeared, and
+GitHub Actions stops a job at its first failing step. So the six steps after it did not execute for as
+long as that red existed. **`npm test` now exits 0 on a clean tree with no name filter** — measured, 766
+tests in 55 files — so the stop is gone rather than stepped around.
+
+**Why it mattered more then** (kept in past tense: the stop is gone as of Story 17.6). Story 16.2's
+store round trip, the 30 s timeout, the first-abort table, the
 four dependency conditions, the file-access exemption and the host-font scan are all inside
 `npm run test`; `npm run build` (hence `verify:offline` and the release manifest) is behind it. DW-152
 records only the narrower masking — that a *second* `getComputedStyle` violation would change the
 failure's contents rather than its status. It does not record that the job's later steps are dark, which
 is what makes this story's gates hand-run rather than merely noisy.
 
-**What discharges it:** the shape already exists in this repo — `ci.yml`'s `folio-go` /
-`folio-go-known-red` split with `KNOWN_RED_TEST`. The designer job needs the same: a green step that
-excludes the sanctioned red by name, and a separate quarantined step that runs it.
+**What discharge was expected to look like, recorded because it is not what happened:** the shape
+already existed in this repo — `ci.yml`'s `folio-go` / `folio-go-known-red` split with `KNOWN_RED_TEST` —
+and the designer job was given the same, a green step excluding the sanctioned red by name plus a
+separate quarantined job running it. That was an accommodation of the red, not a repair of it. Story 17.6
+repaired the red and therefore **deleted** the accommodation; the Go split stays, because the floor it
+reports is genuinely unmet.
 
 ---
 
@@ -8389,3 +8433,88 @@ vertical scroll as well.
 **What discharges it:** narrow the effect's dependencies to what rendering actually reads — `bytes`,
 `label`, `page`, `scale` — rather than the whole view-state object, with a test that a scroll write does
 not re-enter the render path.
+---
+
+### DW-192 — the pointer-input carve-out still deletes a whole function body, waiving every prohibition inside it
+
+- source_spec: `_bmad-output/implementation-artifacts/17-6-the-ad-17-scan-can-see-a-new-violation.md`
+- **Found by:** Story 17.6's review (2026-09-05). **PRE-EXISTING — not caused by this story**, which was
+  instructed by its own Code Map to report it and not fix it. **Severity:** MEDIUM. **Status:** OPEN.
+
+**Summary.** `canvas-authority-contract.test.ts`'s `withoutApprovedLocalPointerInput` removes the entire
+`placementPoint` → `pageStyle` region from `App.tsx`'s scanned text, so **every** AD-17 prohibition is
+waived inside it, not just the pointer-coordinate spellings it was written for.
+
+**Evidence.** The helper does `source.replace(seam, 'function pageStyle')` — a deletion, not a spelling
+rewrite. This is precisely the shape Story 8.4a diagnosed and repaired at the sibling font seam, whose
+own comment records that a body deletion "silently waived every OTHER prohibition inside the one function
+allowed to touch fonts at all — an AD-17 hole in exactly the place the contract is thinnest". The same
+hole is still open in the pointer helper, and it sits in `App.tsx`, which holds the canvas projection.
+Story 17.6's new exception was deliberately written in the *narrow* sibling shape instead.
+
+**What discharges it:** rewrite only the approved pointer spellings inside the matched region, keep the
+non-vacuity `toMatch`, and add a mutation proving a NON-exempt prohibition placed inside the region is
+still caught — the same three-part fix Story 8.4a applied to the font seam.
+
+---
+
+### DW-193 — the e2e suite is compiled but never executed in CI, so the assertion earning the AD-17 carve-out never runs
+
+- source_spec: `_bmad-output/implementation-artifacts/17-6-the-ad-17-scan-can-see-a-new-violation.md`
+- **Found by:** Story 17.6's review (2026-09-05). **PRE-EXISTING.** **Severity:** MEDIUM. **Status:** OPEN.
+
+**Summary.** The `folio-designer` job runs `npm run test:e2e:compile` (`tsc --noEmit`) and never
+`npm run test:e2e`. No workflow executes Playwright.
+
+**Evidence.** Enumerated over `.github/workflows/`: the only e2e-related step in any job is the compile.
+This matters to Story 17.6 specifically because the exception it grants is justified by what
+`e9-5-border-no-ink.spec.ts` *asserts* — that the border ink the page actually painted equals an exact
+list of one. That assertion is type-checked and never run, so the value earning the carve-out is not
+gated anywhere. Story 17.6 closed the half it could: the exception's seam now requires the comparison to
+still be present in the source, so the carve-out dies if the assertion is gutted. It cannot make the
+assertion execute.
+
+**What discharges it:** a CI step that runs the deferred browser smoke suite, or a recorded decision that
+compile-only is the accepted level of assurance for it.
+
+---
+
+### DW-194 — nothing guards the six previously dark steps in the `folio-designer` job, nor forbids `continue-on-error`
+
+- source_spec: `_bmad-output/implementation-artifacts/17-6-the-ad-17-scan-can-see-a-new-violation.md`
+- **Found by:** Story 17.6's review (2026-09-05). **Severity:** LOW-MEDIUM. **Status:** OPEN.
+
+**Summary.** Story 17.6 discharged DW-171 by removing the quarantine so the six steps behind the red now
+run. Nothing asserts they are still *there*, and nothing forbids `continue-on-error`.
+
+**Evidence.** Story 17.6's matrix pins the absence of the quarantine job and of `DESIGNER_KNOWN_RED`, and
+the presence of `folio-go-known-red` and `KNOWN_RED_TEST`. It does not pin the eight step names of the
+`folio-designer` job — so deleting `npm run typecheck`, `npm run lint`, `npm run build`,
+`verify:offline:red`, `verify:offline:wasm` or `test:e2e:compile` passes every test in the repository.
+`ci.yml`'s own surviving comment names `continue-on-error` as "the mechanism that grows", and no gate
+forbids it. This was outside 17.6's matrix, which is why it is filed rather than fixed.
+
+**What discharges it:** positive assertions on the job's step names plus a negative on
+`continue-on-error` within it.
+
+---
+
+### DW-195 — `prohibited` is a denylist, and this run now has three instances of a denylist that cannot see the obvious neighbour
+
+- source_spec: `_bmad-output/implementation-artifacts/17-6-the-ad-17-scan-can-see-a-new-violation.md`
+- **Found by:** Story 17.6, which its own Design Notes instructed to report this. **Severity:** MEDIUM.
+  **Status:** OPEN.
+
+**Summary.** A guard enumerating what is forbidden cannot see what nobody thought to forbid. Three
+independent instances have now appeared in this run, which is what makes it a class rather than an
+anecdote.
+
+**Evidence.** (1) Story 11.3's implied `font-weight` denylist cannot see `transform: skewX()`.
+(2) Story 17.5's "paints nothing" denylist permits `border-top` and `box-shadow`. (3)
+`canvas-authority-contract.test.ts`'s `prohibited` bans `getComputedStyle` but not, for example,
+`element.computedStyleMap()`, nor a `CSSStyleDeclaration` reached by any other route. Each was correct
+about what it listed and blind to an adjacent spelling of the same idea.
+
+**What discharges it:** a decision on whether these guards should be reshaped as allowlists over a known
+surface, or whether the denylists should be periodically re-derived from the platform API surface they
+police.

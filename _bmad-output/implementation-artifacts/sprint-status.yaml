@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 09-04-2026
+last_updated: 09-05-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -673,4 +673,4 @@ development_status:
   # Fifteen stories of designer UI are about to land in exactly the population
   # that scan polices. PREFERRED REPAIR is a named-owner exception, not a rewrite
   # of the assertion -- see D-C's forbidden branch.
-  17-6-the-ad-17-scan-can-see-a-new-violation: backlog
+  17-6-the-ad-17-scan-can-see-a-new-violation: done
