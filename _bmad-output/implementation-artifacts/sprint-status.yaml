@@ -596,3 +596,41 @@ development_status:
   # 16.9 is moving the test files this story would anchor into, and stale anchors are D-16.R.28.
   16-10-the-browser-header-says-what-the-design-says: done
   epic-16-retrospective: optional
+  # ==========================================================================
+  # EPIC 17 -- The designer's editing controls behave the way an editor behaves
+  # Four items raised by the OWNER on 2026-09-04 from using the running designer.
+  # None is font work; this is Epic 14's lane ("the designer's controls read as
+  # one product"), reopened as a new epic rather than reused -- Epic 14 is
+  # closed, and a closed epic's spec is not a place to add scope.
+  # ==========================================================================
+  epic-17: backlog
+  # 17.1 OWNER DECISION TAKEN AT THE GATE, and it is the cheap option knowingly:
+  # DEBOUNCE ~200ms AND SEND A REAL COMMAND. The canvas paints only the engine's
+  # projection -- AD-17 forbids the browser laying out text itself -- so "live"
+  # necessarily means a round trip. Three costlier options were put to the owner
+  # with their costs (a non-committing preview op; per-keystroke commands
+  # coalesced in undo; per-keystroke commands with one undo step each). Debounce
+  # was chosen. CONSEQUENCE TO HOLD AT THE GATE: the canvas updates shortly
+  # AFTER typing stops, not while typing, so the acceptance wording must not
+  # promise per-keystroke painting.
+  17-1-the-canvas-follows-the-content-field: backlog
+  # 17.2 Clicking the empty space around the page must KEEP the selection. Watch
+  # what else relies on the clear -- Escape-to-deselect and keyboard navigation
+  # are the likely dependents, and a test asserting the clear is a guard to
+  # CORRECT, not to delete.
+  17-2-clicking-beside-the-page-keeps-the-selection: backlog
+  # 17.3 OWNER DECISION: font size and leading show the DEFAULT AS A REAL VALUE
+  # and it is WRITTEN INTO THE DOCUMENT, not merely displayed -- chosen over
+  # display-only knowing it changes saved bytes.
+  # SAFETY PROPERTY THE SPEC MUST CARRY, assumed here and flagged for the gate:
+  # OPENING a document may never mutate it. The value is written when the author
+  # COMMITS the field, never on load, or every existing .folio rewrites itself
+  # on being looked at. The 24 golden digests carry their own input.folio and
+  # are not re-saved by the designer, so they must be UNMOVED -- that is the
+  # proof this stayed inside its lane.
+  17-3-size-and-leading-show-the-value-they-use: backlog
+  # 17.4 Up/down arrows step a number field. Note the internal representation:
+  # points are stored in THOUSANDTHS, so "the smallest meaningful step" is a
+  # decision per unit, not a constant -- 1pt and 0.1 leading are the likely
+  # answers, but the step must be derived from the field, not hardcoded once.
+  17-4-arrow-keys-step-a-number-field: backlog
