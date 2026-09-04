@@ -107,9 +107,26 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: go test -count=1 -run "$KNOWN_RED_TEST" (EXPECTED RED — D-000.17/D-2.1.14/D-000.57)
+      # The expectation is ASSERTED, not inherited. Running the known-red test
+      # and letting its own exit code become the job's made this job — and so
+      # the whole workflow — unconditionally red: 12 of 12 runs from 2026-08-26
+      # to 28cd225 concluded `failure`, and on 28cd225 this job was the SOLE
+      # cause while every other job passed. A workflow that has never been green
+      # cannot be distinguished from a broken one, so its red carried no
+      # information and a real gofmt breakage sat in it unnoticed.
+      #
+      # Inverting it makes BOTH directions informative: green while the
+      # quarantine holds, red the moment the known-red starts passing — which is
+      # the signal that the quarantine should be deleted, and which the previous
+      # form could never have delivered.
+      - name: "go test -count=1 -run \"$KNOWN_RED_TEST\" (EXPECTED RED, asserted — D-000.17/D-2.1.14/D-000.57)"
         working-directory: folio-go
-        run: go test -count=1 -run "$KNOWN_RED_TEST" ./internal/text/
+        run: |
+          if go test -count=1 -run "$KNOWN_RED_TEST" ./internal/text/; then
+            echo "::error::$KNOWN_RED_TEST PASSED, but this job exists because it is expected to FAIL. Either the known-red has been fixed — in which case delete this job and the KNOWN_RED_TEST env var — or the exercise floor it guards has been lowered. Do not silence this by widening the filter."
+            exit 1
+          fi
+          echo "$KNOWN_RED_TEST failed as expected; the quarantine still holds."
 
   hashmatrix:
     runs-on: ubuntu-24.04

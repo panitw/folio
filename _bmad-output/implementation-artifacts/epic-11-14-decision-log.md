@@ -1073,3 +1073,45 @@ that only *removes* a face re-tests the direction that already failed loudly.
 **How we'd know it was wrong.** If the two named routes turn out not to partition the real world — a face
 that is neither derived nor copied unmodified, say one hand-subset in the repo. Then the fix is a third
 *named* route, never a fallback arm.
+
+---
+
+### D-000.13 — A workflow that has never been green cannot be told from a broken one
+
+**Measured, CLOSED over every `ci.yml` run GitHub retains:** **12 of 12 runs concluded `failure`**, from
+`ec15d36` (2026-08-26) to `28cd225` (2026-09-04). `Build, vet, and guardrails` — the repository's main
+gate — **has never once passed.**
+
+**The mechanism, and it was mine.** Earlier in this run I quarantined the sanctioned known-red
+(`TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)`) into its own job, `folio-go-known-red`, and
+described that as making CI meaningful. The job ran the test and **let its exit code become the job's**.
+The test fails by design, so the step failed, so the job failed, so the workflow failed —
+**unconditionally, forever.** On `28cd225` this job was the **sole** failure; `folio-go`, `hashmatrix`,
+`lint` and `folio-designer` all passed.
+
+**What it cost.** A permanently-red workflow is indistinguishable from a broken one, so its red carries no
+information. That is precisely how a real `gofmt` breakage in `lint/internal/rules/licencegraph_test.go`
+sat in CI unnoticed, and why I first reported that job green from a misread local `&&` chain rather than
+from the workflow that was already telling me otherwise.
+
+**The fix: assert the expectation, do not inherit it.** The step now inverts — green while the known-red
+is red, and **red the moment the known-red starts passing**, which is the signal that the quarantine
+should be deleted and which the previous form could never have delivered. Red-proved locally in both
+directions before pushing (direction 1: the real filter → exit 0; direction 2: a filter standing in for a
+fixed known-red → exit 1).
+
+**A second defect the inversion closes for free.** `go test -run` with a filter matching **nothing** exits
+**0**. Under the old form a misspelled `KNOWN_RED_TEST` produced a green step and a **silently vacuous
+quarantine**; under the new form it goes red. This is the same shape as D-000.12's finding — *a guard
+whose denominator is its own input* — and the third distinct instance this run of a guard that could not
+fail.
+
+**Consequences.** No job may take an expected-red's exit code as its own verdict. A job that expects a
+specific failure asserts it and says what a pass would mean.
+
+**Scope.** This is a repair of my own quarantine, so it lands now rather than waiting. The broader
+subject — *what CI's red is allowed to mean* — remains **Story 15.2 ("CI's red means something")**, still
+`backlog` in the release-blocker epic, and this entry is evidence for it rather than a substitute.
+
+**Verification is only possible on GitHub.** A workflow change cannot be proved locally beyond its shell
+logic, so this one is pushed to be measured, and the result recorded against it.
