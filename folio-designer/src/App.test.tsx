@@ -147,7 +147,7 @@ const declaredOptions = () => {
   return group ? within(group).queryAllByRole('option') : []
 }
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -2066,10 +2066,17 @@ describe('typography controls over the engine-projected closed sets', () => {
   // AND ALL THREE ARE STILL REACHABLE END TO END through the font browser's
   // own 'Add fonts...' flow, which this story does not touch.
 
-  it('shows the engine\'s own default size for an element that commits none, as a placeholder and not a value', () => {
+  // STORY 17.3 TURNED THIS ROW OVER. It used to assert the engine's default
+  // arrived as a PLACEHOLDER and not a value — grey chrome the author could not
+  // read as fact, could not step, and could not commit. It is now the box's own
+  // text. The number is still the engine's and still arrives on the projection;
+  // only where it is painted changed.
+  it('shows the engine\'s own default size for an element that commits none, as the box\'s VALUE', () => {
     select()
     const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
-    expect(size).toHaveValue('')
+    expect(size).toHaveValue('12')
+    // The placeholder still spells the same number, for the one state the value
+    // does not cover: a box the author has emptied but not yet blurred.
     expect(size).toHaveAttribute('placeholder', '12')
   })
 
@@ -2120,15 +2127,18 @@ describe('typography controls over the engine-projected closed sets', () => {
   // UNQUOTED JSON number: Go's own decoder performs the x1000 to thousandths,
   // exactly as it does for a value written in a .folio file. Quoting it, or
   // pre-multiplying it here, is refused by the engine.
-  it('shows an unset ratio as a placeholder and commits a typed one as a raw unquoted number', async () => {
+  it('shows an unset ratio as the engine\'s own value and commits a typed one as a raw unquoted number', async () => {
     const sent: ArrayBuffer[] = []
     const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } } })
     render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [textComponent] } }} />)
     fireEvent.click(screen.getByLabelText('text component e1'))
     const leading = screen.getByRole('textbox', { name: 'Line spacing' })
-    // Empty is the leading the declared chain itself rules — a ratio of 1 —
-    // shown as a placeholder and never as a value.
-    expect(leading).toHaveValue('')
+    // STORY 17.3. The leading the declared chain itself rules — a ratio of 1 —
+    // read from `canvas.defaultLineSpacing` and carried as the box's VALUE.
+    // This file's `canvas` fixture sets it to 1000 thousandths, so the `1` below
+    // is the projection's number and not a constant in the component.
+    expect(canvas.defaultLineSpacing).toBe(1000)
+    expect(leading).toHaveValue('1')
     expect(leading).toHaveAttribute('placeholder', '1')
     expect(leading).toHaveAttribute('inputMode', 'decimal')
     fireEvent.change(leading, { target: { value: '1.5' } })
@@ -2539,23 +2549,76 @@ describe('Story 17.4: arrow keys step a number field', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  // THE FIRST OF THE TWO DELEGATED ROWS. An unset field has no value to step,
-  // and its placeholder is not one: leading's is `1`, border width's is
-  // `none`, and font size has no placeholder at all. Stepping one would need a
-  // per-field table of implied defaults, and would turn an inherited value into
-  // a pinned one on a keypress the author reads as a nudge.
-  it('does nothing on an UNSET field, and sends no command', async () => {
+  // RETIRED AND REPLACED BY STORY 17.3 (orchestrator ruling, 2026-09-04). This
+  // row used to read 'does nothing on an UNSET field, and sends no command',
+  // on the stated precondition that "an unset field has no value to step, and
+  // its placeholder is not one". Story 17.3 removed that precondition: leading
+  // and font size now carry the engine's own effective value as text, so the
+  // draft parses and the arrow steps it. The guard was correct for the world it
+  // shipped into; it is obsolete in the world 17.3 creates, and preserving it
+  // would have split the arrow from the keyboard on the same visible value —
+  // the exact special case `expect(stepped).toEqual(typed)` exists to forbid.
+  //
+  // ONLY the unset arm retired. The MIXED row below is untouched and still
+  // closed by the same predicate.
+  it('steps an UNSET field from the value the box shows, and sends what typing that value would send', async () => {
+    // TWO INDEPENDENT DRIVES OF THE SAME FIELD, compared whole — 17.4's own
+    // shape. If someone reinstates the unset guard, `stepped` goes empty while
+    // `typed` still carries a command, and this reddens on the equality alone.
+    const outcome = async (drive: (box: HTMLElement) => void) => {
+      const { sent, request } = recorder()
+      const view = render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+      select()
+      const box = screen.getByRole('textbox', { name: 'Line spacing' })
+      // The document sets NEITHER key, and the box still reads the engine's
+      // ratio rather than nothing.
+      expect(box).toHaveValue('1')
+      drive(box)
+      await waitFor(() => expect(sent).toHaveLength(1))
+      const captured = { commands: sent.length, wire: sent.map(wire), value: (box as HTMLInputElement).value }
+      view.unmount()
+      return captured
+    }
+    const stepped = await outcome((box) => { fireEvent.keyDown(box, { key: 'ArrowUp' }) })
+    const typed = await outcome((box) => { fireEvent.change(box, { target: { value: '1.1' } }); fireEvent.keyDown(box, { key: 'Enter' }) })
+    // THE PROPERTY THE RULING RESTS ON: the arrow and the keyboard are the same
+    // act on the same visible value.
+    expect(stepped).toEqual(typed)
+    // Non-vacuity for it — something really was sent, and it is the literal Go
+    // parses as a ratio and not pre-multiplied thousandths.
+    expect(stepped.commands).toBe(1)
+    expect(stepped.wire[0]).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"set","value":1.1}}}')
+    expect(stepped.value).toBe('1.1')
+  })
+
+  // The SIZE box takes the same key, one POINT at a time from the projected
+  // default, so the retirement is a property of both shown fields and not of
+  // leading alone.
+  it('steps an UNSET font size from the engine\'s projected default', async () => {
     const { sent, request } = recorder()
     render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
     select()
-    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
-    expect(leading).toHaveValue('')
-    expect(leading).toHaveAttribute('placeholder', '1')
-    // Unhandled, so the browser keeps its own caret behaviour in an empty box.
-    expect(fireEvent.keyDown(leading, { key: 'ArrowUp' })).toBe(true)
-    expect(leading).toHaveValue('')
-    fireEvent.keyDown(leading, { key: 'ArrowDown' })
-    expect(leading).toHaveValue('')
+    const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    expect(size).toHaveValue('12')
+    expect(fireEvent.keyDown(size, { key: 'ArrowUp' })).toBe(false)
+    expect(size).toHaveValue('13')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontSize":{"op":"set","value":13}}}')
+  })
+
+  // A field with NO projected default is unchanged by 17.3 and keeps 17.4's
+  // behaviour exactly: border width's placeholder is the word `none`, which is
+  // not a value, so its draft is still empty and its arrow still does nothing.
+  // This is the positive control for "only fontSize and lineSpacing moved".
+  it('still does nothing on an unset field the engine projects no default for', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const border = screen.getByRole('textbox', { name: 'Border width (pt)' })
+    expect(border).toHaveValue('')
+    expect(border).toHaveAttribute('placeholder', 'none')
+    expect(fireEvent.keyDown(border, { key: 'ArrowUp' })).toBe(true)
+    expect(border).toHaveValue('')
     await Promise.resolve()
     expect(sent).toHaveLength(0)
     expect(request).not.toHaveBeenCalled()
@@ -2797,6 +2860,245 @@ describe('Story 17.4: arrow keys step a number field', () => {
     await waitFor(() => expect(sent).toHaveLength(2))
     fireEvent.keyDown(stepping, { key: 'Escape' })
     expect(stepping).toHaveValue('40')
+  })
+})
+
+// STORY 17.3. SIZE AND LEADING SHOW THE VALUE THEY USE.
+//
+// The panel used to paint both defaults as grey placeholder chrome, so an
+// author could not tell 12pt from "nothing has been decided". Both boxes now
+// carry the real number and committing one writes it.
+//
+// THE SAFETY PROPERTY IS THE FIRST TEST BELOW AND IT IS NOT A FORMALITY:
+// opening a document must never mutate it. Every existing `.folio` would
+// silently rewrite itself on being looked at if the default were written
+// anywhere but on an author's commit, and the assertion that catches that is
+// `request` never having been called — not the box's text.
+//
+// THE NUMBERS ARE THE ENGINE'S. `defaultFontSize` and `defaultLineSpacing`
+// both arrive on the projection; `sourcedFromTheProjection` below drives the
+// panel with numbers no constant in App.tsx could produce, which is what stops
+// this control becoming a second authority on a default Go owns.
+describe('Story 17.3: size and leading show the value they use', () => {
+  const at = (over: Record<string, unknown>) => ({ ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', ...over }] })
+  const recorder = (answer?: CanvasProjection) => {
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, ...(answer ? { canvas: answer } : {}) } } })
+    return { sent, request }
+  }
+  const wire = (payload: ArrayBuffer) => new TextDecoder().decode(payload)
+  const select = () => fireEvent.click(screen.getByLabelText('text component e1'))
+  const boxes = () => ({ size: screen.getByRole('textbox', { name: 'Font size (pt)' }), leading: screen.getByRole('textbox', { name: 'Line spacing' }) })
+
+  // MATRIX ROWS 1 AND 2, AND THE STORY'S SAFETY PROPERTY IN ONE PLACE.
+  it('OPENS A DOCUMENT THAT SETS NEITHER KEY, shows both engine defaults, and SENDS NO COMMAND', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { size, leading } = boxes()
+    expect(size).toHaveValue('12')
+    expect(leading).toHaveValue('1')
+    // Rendering, selecting and re-rendering the panel are all reads. Nothing
+    // reached the engine, so nothing could have reached the document.
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // THE ANTI-SECOND-AUTHORITY TEST. Both numbers are driven from the
+  // projection to values NO literal in App.tsx spells — 10pt and a ratio of
+  // 1.25. If either box ever went back to reciting its own constant, one of
+  // these two assertions is the thing that reddens.
+  it('reads BOTH defaults off the projection and not off a constant in the panel', () => {
+    const projected = { ...canvas, defaultFontSize: 10_000, defaultLineSpacing: 1_250, components: at({}).components }
+    const { request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projected }} />)
+    select()
+    const { size, leading } = boxes()
+    expect(size).toHaveValue('10')
+    expect(leading).toHaveValue('1.25')
+    expect(size).toHaveAttribute('placeholder', '10')
+    expect(leading).toHaveAttribute('placeholder', '1.25')
+  })
+
+  // MATRIX ROW 3. The one row that would stay green under the tempting wrong
+  // implementation: fold the default into `committed` and `draft !== committed`
+  // is false, so committing the shown value sends NOTHING while the box still
+  // reads 12 and every other test passes.
+  it('WRITES THE SHOWN DEFAULT when the author commits it unchanged', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { size } = boxes()
+    expect(size).toHaveValue('12')
+    fireEvent.keyDown(size, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontSize":{"op":"set","value":12}}}')
+  })
+
+  it('WRITES THE SHOWN LEADING when the author commits it unchanged, as a raw ratio', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { leading } = boxes()
+    expect(leading).toHaveValue('1')
+    fireEvent.keyDown(leading, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    // `1`, not `1000`: Go's own decoder performs the x1000 to thousandths, and
+    // sending pre-multiplied thousandths is refused as a ratio of 1000.
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"set","value":1}}}')
+  })
+
+  // MATRIX ROW 4 — unchanged behaviour, asserted so the story cannot have
+  // broken it on the way past.
+  it('commits a CHANGED value exactly as it did before', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { size } = boxes()
+    fireEvent.change(size, { target: { value: '14' } })
+    fireEvent.keyDown(size, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontSize":{"op":"set","value":14}}}')
+  })
+
+  // MATRIX ROW 7.
+  it('shows the COMPONENT\'S OWN value where it sets one, and not the default', () => {
+    const { request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ fontSize: 9_000, lineSpacing: 1_500 }) }} />)
+    select()
+    const { size, leading } = boxes()
+    expect(size).toHaveValue('9')
+    expect(leading).toHaveValue('1.5')
+  })
+
+  // MATRIX ROW 5, THROUGH THE `×`. Clearing still sends `op:"clear"`, which is
+  // what makes Go store the zero Presence that OMITS the key from the file —
+  // this story adds a way to set the default explicitly, it does not remove
+  // the way to unset. The box then comes back to the value it inherits.
+  it('CLEARS to an omitted key, and the box returns to the engine default', async () => {
+    const { sent, request } = recorder(at({}))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ fontSize: 9_000 }) }} />)
+    select()
+    expect(boxes().size).toHaveValue('9')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Font size (pt)' }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontSize":{"op":"clear"}}}')
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Font size (pt)' })).toHaveValue('12'))
+  })
+
+  // `×` NOW APPEARS ON THESE TWO ROWS EVEN WHEN THE KEY IS ABSENT, because the
+  // box has a value to reset. Pressing it is idempotent — the key was already
+  // omitted and stays omitted — and the ROW MUST NOT GO BLANK behind it. There
+  // is no committed transition to fall back on here (`''` before, `''` after),
+  // so the reconciliation of the accepted command is the only thing that puts
+  // the value back.
+  it('clears an ALREADY-ABSENT key without blanking the row', async () => {
+    const { sent, request } = recorder(at({}))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    expect(boxes().size).toHaveValue('12')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Font size (pt)' }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontSize":{"op":"clear"}}}')
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Font size (pt)' })).toHaveValue('12'))
+  })
+
+  // MATRIX ROW 5, THROUGH THE KEYBOARD, on a key that is ALREADY absent. There
+  // is nothing to clear, so nothing is sent — and the row must not be left
+  // sitting blank beside a canvas that is still painting 12.
+  it('sends NOTHING when the author empties an already-unset box, and puts the default back', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { size } = boxes()
+    fireEvent.change(size, { target: { value: '' } })
+    expect(size).toHaveValue('')
+    fireEvent.blur(size)
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Font size (pt)' })).toHaveValue('12'))
+  })
+
+  // MATRIX ROW 6, AND THE SURVIVING HALF OF STORY 17.4'S GUARD. `inherited`
+  // deliberately does not fill a MIXED draft: the components genuinely
+  // disagree, a filled box would lie about them, and — because the arrow step
+  // reads the draft — it would put a flattening edit one nudge key away.
+  //
+  // THIS REDS IF THE `same &&` ARM IS DELETED: with it gone both boxes fill
+  // with the engine default over a disagreeing selection, the placeholder stops
+  // being `Mixed`, and the arrow starts sending a command.
+  it('leaves a MIXED selection MIXED — no default shown, no default written, no step', async () => {
+    const mixed = { ...canvas, components: [
+      { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', fontSize: 9_000, lineSpacing: 1_100 },
+      { id: 'e2', type: 'text' as const, band: 'content' as const, x: 80_000, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'World', fontSize: 11_000, lineSpacing: 1_400 },
+    ] }
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: mixed }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByLabelText('text component e2'), { shiftKey: true })
+    const { size, leading } = boxes()
+    expect(size).toHaveValue('')
+    expect(leading).toHaveValue('')
+    expect(size).toHaveAttribute('placeholder', 'Mixed')
+    expect(leading).toHaveAttribute('placeholder', 'Mixed')
+    // Unhandled, so the browser keeps its own caret behaviour in an empty box.
+    expect(fireEvent.keyDown(size, { key: 'ArrowUp' })).toBe(true)
+    expect(fireEvent.keyDown(leading, { key: 'ArrowUp' })).toBe(true)
+    expect(size).toHaveValue('')
+    expect(leading).toHaveValue('')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // MATRIX ROW 9. The engine's refusal path is untouched, and it is reached
+  // FROM the shown default: the author edits the number the box now carries,
+  // the engine says no, and the author's own text stays where they left it.
+  it('keeps the author\'s text on the existing refusal path', async () => {
+    const message = 'lineSpacing: lineSpacing must be between 1 and 1000000 thousandths (0.001 to 1000); 0 is outside that range'
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? Promise.reject(Object.assign(new Error(message), { elementId: 'e1', dataPath: 'component.lineSpacing' }))
+      : Promise.resolve({ snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 } }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { leading } = boxes()
+    expect(leading).toHaveValue('1')
+    fireEvent.change(leading, { target: { value: '0' } })
+    fireEvent.keyDown(leading, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(`e1: component.lineSpacing: ${message}`))
+    expect(leading).toHaveValue('0')
+    expect(leading).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  // ESCAPE reverts to what the row INHERITS, not to an empty box: the document
+  // still says nothing, so the honest state to return to is the engine's value.
+  it('reverts on Escape to the inherited value rather than to nothing', () => {
+    const { request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const { size } = boxes()
+    fireEvent.change(size, { target: { value: '30' } })
+    expect(size).toHaveValue('30')
+    fireEvent.keyDown(size, { key: 'Escape' })
+    expect(size).toHaveValue('12')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // POSITIVE CONTROL for every "no default is shown" claim above: the fields
+  // 17.3 does NOT touch keep their placeholder chrome and their empty draft, so
+  // the change really is scoped to fontSize and lineSpacing.
+  it('touches NO field beyond fontSize and lineSpacing', () => {
+    const { request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    for (const [name, placeholder] of [['Border width (pt)', 'none'], ['Text colour', 'black'], ['Visible if', 'always']] as const) {
+      const box = screen.getByRole('textbox', { name })
+      expect(box).toHaveValue('')
+      expect(box).toHaveAttribute('placeholder', placeholder)
+    }
+    expect(request).not.toHaveBeenCalled()
   })
 })
 

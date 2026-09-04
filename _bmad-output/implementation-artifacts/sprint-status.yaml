@@ -628,9 +628,25 @@ development_status:
   # on being looked at. The 24 golden digests carry their own input.folio and
   # are not re-saved by the designer, so they must be UNMOVED -- that is the
   # proof this stayed inside its lane.
-  17-3-size-and-leading-show-the-value-they-use: backlog
+  17-3-size-and-leading-show-the-value-they-use: done
   # 17.4 Up/down arrows step a number field. Note the internal representation:
   # points are stored in THOUSANDTHS, so "the smallest meaningful step" is a
   # decision per unit, not a constant -- 1pt and 0.1 leading are the likely
   # answers, but the step must be derived from the field, not hardcoded once.
+  # REVERSAL RECORDED 2026-09-04 (ruled by the ORCHESTRATOR on Story 17.3, not
+  # by the owner; flagged to the owner in 17.3's report). 17.4 shipped ONE
+  # predicate closing two rows -- an UNSET field and a MIXED selection both
+  # present as an empty draft, so neither steps and neither sends a command.
+  # 17.3 removed the precondition the UNSET half rested on: fontSize and
+  # lineSpacing now carry the engine's own effective value as text, so the
+  # draft parses and the arrow steps it. The unset arm is RETIRED, in 17.3's
+  # commit, with 17.4's test rewritten to the new behaviour. THE MIXED ARM
+  # SURVIVES UNCHANGED -- stepping a mixed selection still flattens every
+  # component onto one value, and 17.3 touches nothing about that. The reason
+  # the arm went is 17.4's own property: the arrow and the keyboard are the
+  # same act (expect(stepped).toEqual(typed)), and keeping the guard would have
+  # made typing 1.1 into a box reading 1 write 1.1 while ArrowUp on the same
+  # visible 1 wrote nothing. This is a guard retiring with its world, not a
+  # decision overturned; NOT recorded in epic-16-decision-log.md, which is
+  # Epic 16's.
   17-4-arrow-keys-step-a-number-field: done

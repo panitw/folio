@@ -8316,3 +8316,29 @@ tests. The risk is that those tests and these guards drift apart.
 - source_spec: `17-4-arrow-keys-step-a-number-field.md`
   summary: A typed draft already outside a field's bounds snaps to the bound on the first arrow press rather than stepping, so one nudge can move leading from 5000 to 1000.
   evidence: step() clamps the stepped value without first checking whether `current` was already in range. The result is always legal, which is the story's rule, but the size of the jump is not obviously what an author pressing an arrow once intends.
+
+---
+
+### DW-190 — the clear control now offers to clear a key the document does not carry
+
+- source_spec: `_bmad-output/implementation-artifacts/17-3-size-and-leading-show-the-value-they-use.md`
+- **Deferred by:** Story 17.3 (2026-09-04). **Reported by the builder as a behaviour change OUTSIDE the
+  matrix**, not discovered later. **Owner:** the next story touching the property row's chrome.
+  **Severity:** LOW. **Status:** OPEN.
+
+**Evidence.** `canClear` (`App.tsx`) keys off the box holding a value. Before 17.3 the size and leading
+boxes were empty when the document set neither key, so the `×` did not appear. They now always hold the
+effective value, so it always appears — visible in the story's browser screenshot as `12 pt ×` and
+`Leading 1 ×` while `Colour` and `Border` correctly show none.
+
+**What it does is harmless and that is the point.** Pressing it sends a `clear` for a key that is already
+absent: idempotent, and the key stays omitted from the file — `component_commands.go` and
+`presence.go` are untouched by this story, verified by diff against a positive control. So the defect is
+that the control **offers an action that has already happened**, not that it does the wrong thing.
+
+**Why it was not fixed here.** "Removing the `×` control" is on 17.3's own **Ask First** list, so the
+implementer correctly declined to act on it and covered the row-not-blanking with a test instead.
+
+**What discharges it:** an owner ruling on whether `canClear` should key off the DOCUMENT carrying the
+key rather than the box holding a value — which is the same unset-versus-set distinction 17.3 spent its
+whole contract preserving, arriving in the chrome instead of the file.

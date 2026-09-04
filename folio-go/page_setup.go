@@ -371,6 +371,16 @@ type CanvasProjection struct {
 	// engine's number, and a second copy of it in the designer would be a
 	// second authority on what an unset size means.
 	DefaultFontSize int64 `json:"defaultFontSize"`
+	// DefaultLineSpacing is the leading ratio the producer measures a text
+	// element with when its style carries no lineSpacing, in THOUSANDTHS —
+	// `defaultLineSpacing` in render.go, which is template.LineSpacingUnit
+	// and nothing else. It is dimensionless: 1000 here is a ratio of 1.0,
+	// not a length, and it travels beside DefaultFontSize for the same
+	// reason that one does. Story 17.3: the designer used to spell this
+	// number itself, as a hard-coded `'1'` in the inspector's line-spacing
+	// field, which was a SECOND authority on a number this engine owns —
+	// the two could disagree and neither would know.
+	DefaultLineSpacing int64 `json:"defaultLineSpacing"`
 	// ContentWindowHeight is ONE page's worth of content column, in
 	// millipoints: internal/layout's ContentHeight, which is the single
 	// function permitted to derive it (AD-13). It is the same number
@@ -765,7 +775,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,

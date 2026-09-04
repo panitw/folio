@@ -1475,7 +1475,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
@@ -1622,7 +1622,14 @@ type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent, gen
 // the exact fields that accept one, and never on a field where Go rejects a
 // placeholder outright.
 type FieldExpression = 'placeholder' | 'condition'
-type FieldSpec = Readonly<{ field: PropertyField; label: string; affix?: string; unit?: string; swatch?: true; prose?: true; empty?: string; fx?: FieldExpression }>
+// `empty` is what the row says when it holds NOTHING — 'none', 'black',
+// 'always', a grey word standing in for behaviour the document does not
+// author. STORY 17.3 adds `shown`, which says that string is not a stand-in at
+// all but the ENGINE'S OWN EFFECTIVE VALUE for this field, so the box carries
+// it as real text the author can read, step and commit. Only `fontSize` and
+// `lineSpacing` set it, and both take their string from the projection — never
+// from a literal in this file.
+type FieldSpec = Readonly<{ field: PropertyField; label: string; affix?: string; unit?: string; swatch?: true; prose?: true; empty?: string; shown?: true; fx?: FieldExpression }>
 const fxHint: Readonly<Record<FieldExpression, string>> = { placeholder: 'Accepts literal text, or {{ }} expressions', condition: 'Accepts a boolean data path or call, written without {{ }} — the grammar has no comparisons' }
 // A condition field IS the expression, so any text in it is one; a text field
 // holds an expression only where a placeholder is spelled.
@@ -1660,9 +1667,16 @@ function contentCommand(field: PropertyField, text: string): PropertyField { ret
 const fontSizeField: FieldSpec = { field: 'fontSize', label: 'Font size (pt)', unit: 'pt' }
 // Story 7.4. A dimensionless ratio, shown in the author's own units: the
 // engine carries thousandths and `points` already divides by 1000, so 1500
-// reads back as "1.5". Empty is the leading the declared font chain itself
-// rules, which is exactly a ratio of 1.
-const lineSpacingField: FieldSpec = { field: 'lineSpacing', label: 'Line spacing', affix: 'Leading', empty: '1' }
+// reads back as "1.5".
+//
+// STORY 17.3 TOOK THE `'1'` OUT OF THIS LINE. The neutral ratio is the
+// ENGINE'S number — `defaultLineSpacing` in render.go, which is
+// template.LineSpacingUnit — and spelling it here made the designer a second
+// authority on it: if the engine's default ever moved, this string would have
+// gone on claiming the old one and nothing would have reddened. It is now
+// projected (CanvasProjection.defaultLineSpacing) and supplied at the render
+// site, exactly as `defaultFontSize` already was for the size beside it.
+const lineSpacingField: FieldSpec = { field: 'lineSpacing', label: 'Line spacing', affix: 'Leading' }
 // Story 10.1: the ink, in TYPOGRAPHY where the rest of the type lives —
 // it colours the glyphs, not the box, so it belongs beside the family and
 // the size rather than beside Background. Empty is the engine's own
@@ -1697,7 +1711,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, carriedFaces, specimenBytes, defaultFontSize, onCommit, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; defaultFontSize: number; onCommit: CommitProperties; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, carriedFaces, specimenBytes, defaultFontSize, defaultLineSpacing, onCommit, onUseFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; defaultFontSize: number; defaultLineSpacing: number; onCommit: CommitProperties; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -1725,7 +1739,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize) })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor(lineSpacingField)}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -1797,11 +1811,31 @@ function draftThousandths(text: string): number | undefined {
   return parts[1] === '-' ? -magnitude : magnitude
 }
 function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, live, error }: { spec: FieldSpec; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; live?: string; error?: PropertyCommitError }) {
-  const { field, label, affix, unit, swatch, prose, empty, fx } = spec
+  const { field, label, affix, unit, swatch, prose, empty, shown, fx } = spec
   const values = components.map((component) => committedValue(component, field))
   const same = values.every((value) => value === values[0])
+  // `committed` IS THE DOCUMENT'S OWN VALUE AND MUST STAY SO — `''` when the
+  // key is absent. Story 17.3 puts the engine's default in the BOX, never in
+  // here: `commit()` below is `if (draft !== committed)`, so folding the
+  // default into `committed` would make that comparison false and committing
+  // the shown default would send NOTHING while every gate stayed green.
   const committed = same ? values[0] ?? '' : ''
-  const [draft, setDraft] = useState(committed)
+  // STORY 17.3. What the box READS when the document says nothing. For every
+  // field but two that is the empty string and this is the identity function;
+  // for `fontSize` and `lineSpacing` it is the engine's own effective value,
+  // arriving as `empty` from the projection with `shown` marking it real.
+  //
+  // NOT APPLIED TO A MIXED SELECTION. `same` is false there, the components
+  // genuinely disagree, and filling in one number would both lie about them
+  // and — through the arrow step, which reads the draft — put a flattening
+  // edit one nudge key away. Mixed keeps its empty draft and its `Mixed`
+  // placeholder.
+  //
+  // AND IT WRITES NOTHING BY ITSELF. This is display state: no command is sent
+  // until the author commits the field, which is the safety property the whole
+  // story rests on — opening a document may never mutate it.
+  const inherited = (text: string): string => text === '' && same && shown === true && empty !== undefined ? empty : text
+  const [draft, setDraft] = useState(inherited(committed))
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   // A canvas drag, resize or nudge commits geometry without this field ever
@@ -1809,9 +1843,9 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // engine has not accepted (a rejected commit leaves the value unchanged)
   // still survives, because nothing transitioned.
   const [lastCommitted, setLastCommitted] = useState(committed)
-  if (lastCommitted !== committed) { setLastCommitted(committed); setDraft(committed) }
+  if (lastCommitted !== committed) { setLastCommitted(committed); setDraft(inherited(committed)) }
   const selectionKey = ids.join(',')
-  const revert = () => setDraft(committed)
+  const revert = () => setDraft(inherited(committed))
   // `disable` is the ONE thing the arrow step varies, and it is not a second
   // commit path: the intent, the encoder, the reconciliation and the
   // single-flight `pendingRef` guard are all shared verbatim. `shared` carries
@@ -1838,9 +1872,20 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     const accepted = await onCommit(ids, intent, documentGeneration, selectionKey)
     pendingRef.current = false
     if (disable) setPending(false)
-    if (accepted && reconcileDraft) setDraft(canonicalValue(accepted, ids, field) ?? draft)
+    // Through `inherited` for the CLEAR case: the engine's answer for a
+    // cleared key is `''`, and the box must come back to the shown default
+    // rather than to an empty row. Without this wrapper the committed
+    // transition above would set the default and this line would immediately
+    // overwrite it with the empty string, whichever order they landed in.
+    if (accepted && reconcileDraft) setDraft(inherited(canonicalValue(accepted, ids, field) ?? draft))
   }
-  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true) }
+  // The `else` arm is Story 17.3's, and it is not a commit: emptying a box
+  // whose key is ALREADY absent leaves `draft === committed === ''`, so there
+  // is nothing to send — and nothing was sent before this story either. What
+  // changes is what the author is left looking at. The row must come back to
+  // the value it inherits, the same one it opened on, instead of sitting blank
+  // beside a canvas that is still painting 12.
+  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true); else setDraft(inherited(committed)) }
   // STORY 17.4: ARROWS STEP A NUMBER FIELD.
   //
   // THE NUMERIC SET IS THE ONE THE CONTROL ALREADY KNOWS. This predicate was
@@ -1877,16 +1922,26 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     // A drag owns the geometry fields: they are `readOnly`, typing does
     // nothing, and an arrow does nothing either.
     if (!numeric || live !== undefined) return false
-    // ONE PREDICATE CLOSES BOTH DELEGATED ROWS. An UNSET field and a MIXED
-    // selection both present as an empty draft, which the exact parser
-    // refuses — so neither steps and neither sends a command. Stepping a
-    // placeholder would need a per-field table of implied defaults (leading's
-    // is `1`, border width's is `none`, font size has none at all), which is
-    // the second authority this control must not grow; stepping a mixed
-    // selection would flatten every other component onto one of them, a
-    // destructive edit fired by a nudge key. A mixed field the author has
-    // TYPED into is no longer empty and steps like any other draft — they are
-    // stepping the value they just entered.
+    // ONE PREDICATE, NOW CLOSING ONE ROW. Story 17.4 wrote this guard to close
+    // TWO — an unset field and a mixed selection, both of which presented as an
+    // empty draft the exact parser refuses. STORY 17.3 DISSOLVED THE FIRST OF
+    // THEM, and the orchestrator retired that arm on 2026-09-04 rather than
+    // carving it out: `fontSize` and `lineSpacing` now carry the engine's own
+    // effective value as text, so an unset field HAS a value, it parses, and
+    // ArrowUp steps from it. The precondition 17.4 rested on — "an unset field
+    // has no value to step, and its placeholder is not one" — is simply no
+    // longer true of these two fields, and keeping the guard would have made
+    // typing `1.1` into a box reading `1` write 1.1 while ArrowUp on the same
+    // visible `1` wrote nothing. That is the special case 17.4's own
+    // `expect(stepped).toEqual(typed)` exists to forbid.
+    //
+    // 17.4's SECOND reason did not dissolve and this line still carries it. A
+    // MIXED selection also presents as an empty draft, and stepping it would
+    // flatten every component onto one value — a destructive edit fired by a
+    // nudge key, on a field the author has not touched. Nothing in 17.3
+    // reaches that: `inherited` above deliberately does not fill a mixed
+    // draft. A mixed field the author has TYPED into is no longer empty and
+    // steps like any other draft — they are stepping the value they entered.
     const current = draftThousandths(draft)
     if (current === undefined) return false
     const stepped = current + direction * stepThousandths
@@ -1908,9 +1963,16 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     void submit({ field, operation: 'set', value }, false, false)
     return true
   }
-  // The design draws an unset row as empty chrome, and there is nothing to
-  // clear on one: the reset action appears with the value it resets, and with a
-  // mixed selection, which also has committed values behind it.
+  // The reset action appears with the value it resets, and with a mixed
+  // selection, which also has committed values behind it. An unset row is
+  // otherwise empty chrome with nothing to clear on it.
+  //
+  // STORY 17.3 gives `fontSize` and `lineSpacing` a value even when the
+  // document is silent, so `×` now appears on those two rows unconditionally.
+  // That is the matrix's own reading of the control — the box says 12, so the
+  // row offers to reset it, and clearing an already-absent key lands back on
+  // the same 12. `clear` itself is untouched: it still sends `op:"clear"`, and
+  // Go still stores the zero Presence that omits the key from the file.
   const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression' && (!same || (live ?? draft) !== '')
   const canNull = field === 'visibleIf' || field === 'background'
   const errorId = error ? `property-error-${field}` : undefined

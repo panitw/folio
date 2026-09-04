@@ -54,6 +54,7 @@ var canvasProjectionWireKeys = []string{
 	"contentWindowHeight",
 	"contentWindowOrigins",
 	"defaultFontSize",
+	"defaultLineSpacing",
 	"fontChains",
 	"fontFamilies",
 	"gridIncrement",

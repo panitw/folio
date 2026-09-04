@@ -933,3 +933,45 @@ func lineSpacingReasonOf(t *testing.T, value string) string {
 	}
 	return err.Error()
 }
+
+// TestCanvasProjectionCarriesTheDefaultLineSpacing is Story 17.3's Go half.
+// The designer's line-spacing box used to spell the neutral ratio itself, as
+// a hard-coded `'1'`, which made the browser a SECOND authority on a number
+// this package owns. It now reads the projection, so the projection has to
+// carry it — and carry the producer's own constant rather than a literal
+// retyped beside it, which is why the want side of this comparison is
+// `defaultLineSpacing` and not `1000`.
+//
+// The template below declares NO lineSpacing anywhere, which is the whole
+// point: this is the number an element inherits when the document is silent.
+func TestCanvasProjectionCarriesTheDefaultLineSpacing(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(`{"version":"1.0","page":{"size":"A4","orientation":"portrait","margin":{"top":36,"right":36,"bottom":36,"left":36}},"bands":{"pageHeader":{"height":20,"elements":[]},"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":200,"height":40,"value":"Hello"}]},"pageFooter":{"height":20,"elements":[]}},"fonts":{"body":["Roboto-Regular"]},"locale":"en","utcOffset":"+00:00","assets":{},"nextId":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.DefaultLineSpacing != defaultLineSpacing {
+		t.Errorf("default line spacing = %d, want the producer's own %d", projection.DefaultLineSpacing, defaultLineSpacing)
+	}
+	// And that constant is template.LineSpacingUnit, not a second spelling of
+	// it: styleLineSpacing returns exactly this for an element with no style
+	// block, so what the panel shows is what the measurement uses.
+	if defaultLineSpacing != template.LineSpacingUnit {
+		t.Errorf("defaultLineSpacing = %d, want template.LineSpacingUnit %d", defaultLineSpacing, template.LineSpacingUnit)
+	}
+	if len(projection.Components) != 1 {
+		t.Fatalf("projected %d components, want 1", len(projection.Components))
+	}
+	// The element declares none, so the projection must not report one: the
+	// panel's "unset" state is exactly this absence, and if the projection
+	// filled it in the box would have nothing left to distinguish.
+	if projection.Components[0].LineSpacing != nil {
+		t.Errorf("component lineSpacing = %v, want absent for an element that declares none", *projection.Components[0].LineSpacing)
+	}
+	if got := styleLineSpacing(template.Presence[template.Style]{}); got != projection.DefaultLineSpacing {
+		t.Errorf("styleLineSpacing on an absent style = %d, want the projected default %d", got, projection.DefaultLineSpacing)
+	}
+}

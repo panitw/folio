@@ -157,7 +157,13 @@ export type CanvasProjection = Readonly<{
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
-	fontFamilies: ReadonlyArray<string>; defaultFontSize: number
+	//
+	// defaultLineSpacing (Story 17.3) is the same promise for LEADING: the
+	// ratio the producer measures an element with when its style declares
+	// none, in THOUSANDTHS, so 1000 is a ratio of 1.0. It is here because the
+	// inspector used to spell that `1` itself, and a designer-side copy of an
+	// engine-owned default is a second authority that can drift silently.
+	fontFamilies: ReadonlyArray<string>; defaultFontSize: number; defaultLineSpacing: number
 	// fontChains is the SAME set of chains, with the ordered ENTRIES behind each
 	// name: fontChains.map(c => c.name) is fontFamilies, entry for entry, and
 	// the validator asserts it rather than trusting it. Entry order is the
@@ -266,9 +272,9 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
-  if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
+  if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and
   // length like every other list on this projection, unique, and in the order
   // Go sent so the browser never re-sorts an engine-owned set. The ordering
