@@ -615,3 +615,54 @@ Recorded because a count stated as exhaustive is load-bearing for whoever re-der
 **The assumption that would qualify this.** The lead assumes the designer can write chain variants through
 the existing font-chain command family without a new command kind. If not, 11.2 and 11.3 acquire a
 command-surface change and fall behind Story 15.2a in Wave A. **Check at 11.2's plan gate.**
+
+---
+
+### D-000.7 — Every count is marked CLOSED or SAMPLED, with its population named
+**Orchestrator decision**, forced by two errors of the same shape in one day.
+
+**Verdict.** Any count stated in this run — by the lead, a builder, or me — says whether it was **CLOSED**
+(the population was enumerated, with the boundary of the enumeration stated) or **SAMPLED** (do not build
+on it without re-deriving). A number whose provenance cannot be told is a number the next reader must
+re-measure.
+
+**Situation.** The lead's D-B ruling said `Render`, `RenderTo` and `Validate` were "the **only three**
+channels by which caller-supplied font bytes reach the engine". Measured: five, plus a producer. Asked how
+it got there, it gave the mechanism rather than an apology, and the mechanism is the valuable part: it ran
+a grep that **named the four functions it expected to find**, then reported the result as a sweep of the
+population. **The query could not have found the two it missed no matter how many existed.**
+
+**In simple terms.** It is the difference between "I counted everyone in the room" and "I called out four
+names and four people answered". Both produce a number. Only one of them is a count. The tell was sitting
+in the pattern: it described the answers, not the population.
+
+**Why this is worth a standing rule rather than a note.** This is the second instance in two days of a
+measurement that was *shaped like* evidence and was not — the first being the grounding report's baseline,
+which reproduced the session's opening `gitStatus` block without re-measuring. Both were confidently
+stated, both survived their own author's review, and both were caught only because someone downstream
+re-ran them. A rule that makes provenance explicit at the point of statement is cheaper than a verification
+pass that assumes every number is wrong.
+
+**Consequences.** The lead now marks its counts, and has produced a ledger of the run so far. Three entries
+in it are **SAMPLED and load-bearing**, and must be re-derived before the stories that rest on them:
+- *"`App.css` contains exactly one `@media` query"* — never verified by the lead, subagent-sourced, and
+  **load-bearing for 13.3**, which cannot introduce a rail with a breakpoint if it is true. Story 17.5 has
+  since touched `App.css`, so it must be derived at 13.3's gate, not inherited.
+- The Epic 13 preview findings generally — eight of ten premises are uncorroborated by the lead itself.
+- *"37 families under `folio-designer/public/fonts`"* — an `ls | wc -l` of directories, with no check that
+  each is a family.
+
+One count was also **stated more tightly than the truth**: "the complete command registry is 24 kinds" is
+closed for `ApplyComponentCommand`'s dispatch, but `ApplyPageSetupCommand` is a separate exported entry
+point, so the command **surface** is 25. Nothing downstream is wrong — page setup was discussed separately
+— but anyone counting new commands against 24 would be off by one.
+
+**Verified independently before filing:** `prohibited` holds **14** regex entries, of which three police
+arithmetic rather than measurement; there are **5** exception sites, not four; and `:318` rewrites
+`document.fonts.ready` **repo-wide, scoped to no owner**. That last one is the strongest argument available
+that Story 17.6's named-owner exception is a *narrowing* — it is a smaller instance of a carve-out this
+guard already carries — and it was relayed to 17.6's builder mid-flight.
+
+**How we'd know it was wrong.** A run where marking counts becomes ceremony — every number tagged CLOSED
+without a boundary actually being stated. The boundary is the substance; the label without it is worse than
+nothing, because it launders a sample as an enumeration.
