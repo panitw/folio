@@ -390,6 +390,73 @@ control:** 11.1's face count and Roboto's derivation mechanism; 14.7's millimetr
 14.2's inert border; 14.6's three already-built ACs; and the epics doc's claim of "exactly three readers" of
 `Style.Bold` (there are four non-test files, and the fourth is the parser).
 
+
+### Re-grounding refresh — 2026-09-05 (second session)
+
+*Filed by the orchestrator from the lead's report. The first lead did not survive the session break; this
+is a re-grounding from this section and the rulings below it, not a re-derivation from the spine, the ADRs
+or the epics doc. Verified at HEAD `28cd225`, working tree clean, re-measured rather than inherited from
+the session's opening `gitStatus` — which is how the previous grounding acquired a stale baseline.*
+
+**Sources read, CLOSED:** this log in full (890 lines); `sprint-status.yaml` (676 lines);
+`deferred-work.md` §DW-191–195 plus the 195-entry index; `git log --oneline -25`; the diffstats of the four
+post-grounding code commits.
+
+**State.** All four epics of this run (11: 3 stories, 12: 5, 13: 5, 14: 10) are `backlog`; nothing in them
+is built. What has shipped since the run opened is Wave A's 17.6 plus the matrix repair.
+
+**Four of the five forks named at grounding are settled, and settling them shrank the run** — D-A (Epic 11
+at three families and nine faces; Noto Sans SC stays Regular, making it the permanent shipped instance of
+"this family has no face at this weight"), D-B (weight and slope ride `FontChainEntry`; the public API does
+not move; coverage first, style within the covering entry), D-12.4.1 (padding stays an engine property),
+and D-C/D-000.6 (the AD-17 scan repaired by named-owner exception). **The open fork is D-D — Story 15.2a's
+position and blast radius.**
+
+**Verified independently rather than taken from this log:** 17.6's fourth named exception
+`withoutApprovedPaintedBorderReadback` exists, is scoped to `e2e/e9-5-border-no-ink.spec.ts`, and asserts
+its own reason is still present (`canvas-authority-contract.test.ts:575–586`, five-row matrix). The
+`folio-designer-known-red` quarantine job is gone and the six previously-dark steps now run — **the
+masking hazard over Epics 13 and 14 is closed.** The matrix repair passes on `darwin/arm64`
+(`ok … 1.973s`) — **CLOSED for one leg only**; the other three are Docker/CI. `gofmt -l` empty in all
+three Go modules, CLOSED and enumerated.
+
+**Four new deferred items came out of 17.6**, one load-bearing for this run's largest epic: DW-192 (the
+pointer-input carve-out still deletes a whole `App.tsx` function body, waiving every AD-17 prohibition
+inside the file holding the canvas projection), DW-193 (the e2e suite is compiled and never executed in
+CI, so the assertion *earning* the new carve-out never runs), DW-194 (nothing pins the un-quarantined step
+names or forbids `continue-on-error`), DW-195 (`prohibited` is a denylist — the third instance of that
+class this run).
+
+**Story 17.5's provisional flags are resolvable.** It committed at `d2f2a1e`, so
+`property-prose-height.test.ts` is committed fact — but re-derive by symbol at each Epic 14 gate, since it
+is a source-text contract on the shared property row.
+
+**Three tensions raised, carried forward rather than closed here:**
+
+1. **D-000.11's wording under-runs its own gate.** Measured CLOSED, by matching a `//go:build …matrix`
+   constraint in the first three lines of every constrained `.go` file under `folio-go/`: the tag is on
+   **7 files and 12 test functions**, not one file and six. `matrix.yml` runs **2 of the 12** per leg,
+   name-filtered (`-run TestTargetRenderHash`, `-run TestTargetProbeHex`); `ci.yml` only *compiles* the
+   tag. So "the matrix suite" and "what CI runs" are different sets, and a gate that says the former while
+   pasting the latter's command **re-creates the exact blind spot D-000.11 was written about.** Among the
+   ten CI never runs is `TestShippedFacesReproduceFromUpstream`, which is the guard Epic 11's nine new
+   faces must satisfy. **Amended below.**
+2. **Two boundary gates are owed and unbooked.** Epics 16 and 17 have every story `done` and are still
+   `in-progress`. Epic 16 closed without a gate, and that is *why* the matrix regression hid.
+3. **15.2a collides with D-12.4.1.** `component-property-command.ts:7` routes ten fields through the
+   unquoted `rawNumberLiteral`, four of them `paddingTop|Right|Bottom|Left` — the exact set D-12.4.1 makes
+   the Go layer refuse. 15.2a runs before 12.4, so it must not entrench a designer-side padding write path
+   that 12.4 removes. Routed to the lead as **D-D.1**.
+
+**One correction absorbed:** D-B's supporting count — "the only three channels for caller-supplied font
+bytes" is at least five (`CanvasWithTextPaint`, `PreviewIdentity`). The ruling is strengthened, not
+weakened; recorded because it is the incident that forced D-000.7.
+
+**Open record discrepancy, unchanged:** `sprint-status.yaml` carries
+`15-0-a-catalogue-face-arrives-when-it-is-picked: backlog`, and `15.0` appears nowhere in `epics.md`
+(grep exit 1; positive control: `15.2a` matches once). A tracked story with no epic text is either a lost
+story or a phantom, and Epic 15 is the release-blocker set.
+
 ---
 
 ### D-A — Epic 11 realizes bold and italic for the Latin and Thai families only
@@ -840,10 +907,38 @@ implement it properly in the engine's layout path rather than to relax the guard
 
 ---
 
-## D-000.11 — A build tag is a place where regressions go to hide, so the epic gate must name it
+### D-000.11 — A build tag is a place where regressions go to hide, so the epic gate must name it
 
-**Decision.** The epic-boundary heavy test **must run the `matrix`-tagged suite explicitly**, on all four
-targets, as a named command in the gate — not as a consequence of `go test ./...`, which cannot see it.
+**Decision.** The epic-boundary heavy test **must run the `matrix`-tagged suite UNFILTERED** —
+`go test -count=1 -tags=matrix ./...` — on all four `FOLIO_MATRIX_TARGET` legs, as a named command in the
+gate. Not as a consequence of `go test ./...`, which cannot see the tag, and **not by pasting CI's
+name-filtered commands**.
+
+**AMENDED 2026-09-05, and the amendment is the load-bearing half.** As first written this ruling said
+"the `matrix`-tagged suite", which is a **proxy**, and the lead was right that a proxy is what caused the
+regression in the first place. Measured CLOSED, by matching `//go:build …matrix` in the first three lines
+of every `.go` file under `folio-go/`: the tag is on **7 files and 12 test functions**. CI's `matrix.yml`
+runs **2 of the 12** per leg, name-filtered (`-run TestTargetRenderHash`, `-run TestTargetProbeHex`);
+`ci.yml` only *compiles* the tag (`go build -tags=matrix ./...`). So "the matrix suite" and "what CI runs"
+are **different sets**, and a gate that says the former while pasting the latter's command re-creates the
+exact blind spot this ruling was written about. The twelve, enumerated so the difference cannot be
+paraphrased away:
+
+| Run per-commit by CI | Run by **no gate at all** |
+|---|---|
+| `TestTargetRenderHash` | `TestAssertFixturesShareToolchainRedProof` |
+| `TestTargetProbeHex` | `TestCrossTargetByteIdentity` |
+| | `TestEmbeddedFontTransferredReadingHolds` |
+| | `TestExpectedBreaksHumanSignOffIsRecorded` |
+| | `TestFMAProbeDiverges` |
+| | `TestHarnessExportsPins` |
+| | `TestShapedTextThaiSemanticSignOffIsRecorded` |
+| | `TestShippedFacesReproduceFromUpstream` |
+| | `TestStatementSemanticSignOffIsRecorded` |
+| | `TestThaiStackedMarksSemanticSignOffIsRecorded` |
+
+**What the gate uniquely buys is that right-hand column.** If a leg genuinely cannot afford the full run,
+the gate **names those ten explicitly** rather than falling back to the tag.
 
 **What happened.** Story 16.8 (`4d2b27e`, 2026-09-04) shipped Roboto as a fourth face and grew
 `shippedFaceSpecs` from 3 to 4. Two guards in `folio-go/matrix_test.go` —
