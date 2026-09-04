@@ -2,7 +2,7 @@
 title: 'Story 17.5: The CONTENT box resizes from its bottom edge'
 type: 'feature'
 created: '2026-09-04'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '3bacfec'
 context: []
@@ -299,3 +299,74 @@ a browser** — photograph both.
 **Standing rules — re-run, never cite:** the matrix audit reports **N rows, N results** (**11 rows**);
 state the population beside every zero, pair every absence claim with a positive control; **a comment is
 not a measurement**; **use `/usr/bin/grep`** — recursive `grep` returns false zeros here.
+
+## Suggested Review Order
+
+**The seam: the native grip off, the box's own edge on**
+
+- The one-line change the whole story exists for — the user agent's grip, turned off.
+  [`App.css:213`](../../folio-designer/src/App.css#L213)
+
+- The handle itself: a transparent full-width strip on the border, painting nothing.
+  [`App.css:230`](../../folio-designer/src/App.css#L230)
+
+- The containing block the strip needs, scoped to the prose row and no other.
+  [`App.css:199`](../../folio-designer/src/App.css#L199)
+
+**The drag, and the four guards review added to it**
+
+- The floor, in the one place a drag can read it; the CSS copy is tied to it by test.
+  [`App.tsx:1676`](../../folio-designer/src/App.tsx#L1676)
+
+- Press: primary button only, one gesture per pointer, anchor recorded BEFORE capture.
+  [`App.tsx:2324`](../../folio-designer/src/App.tsx#L2324)
+
+- Move: pure `clientY` against the press, clamped at the floor; a buttonless move ends it.
+  [`App.tsx:2365`](../../folio-designer/src/App.tsx#L2365)
+
+- The height as view state — `undefined` means resting, so no inline style until a drag.
+  [`App.tsx:2319`](../../folio-designer/src/App.tsx#L2319)
+
+- End: pointerup and pointercancel alike, and only from the pointer that owns the drag.
+  [`App.tsx:2386`](../../folio-designer/src/App.tsx#L2386)
+
+**The property the story is really about: a resize is not a write**
+
+- A drag sends no command — with the positive control that the same field's typing does.
+  [`App.test.tsx:4055`](../../folio-designer/src/App.test.tsx#L4055)
+
+- Story 17.1's pending debounce is neither flushed nor cancelled; it fires on its own clock.
+  [`App.test.tsx:3792`](../../folio-designer/src/App.test.tsx#L3792)
+
+- A drag across an in-flight commit leaves `queuedProse`/`toldEngine` alone; the queue drains.
+  [`App.test.tsx:3816`](../../folio-designer/src/App.test.tsx#L3816)
+
+- `preventDefault` is proved by `fireEvent`'s return value; jsdom cannot see focus at all.
+  [`App.test.tsx:3769`](../../folio-designer/src/App.test.tsx#L3769)
+
+**The decision the spec left to the build**
+
+- Each selection starts at the floor — the remount the `documentGeneration:selection` key already does.
+  [`App.test.tsx:3907`](../../folio-designer/src/App.test.tsx#L3907)
+
+- Its non-vacuous other half: the height survives typing and a committed debounce.
+  [`App.test.tsx:4093`](../../folio-designer/src/App.test.tsx#L4093)
+
+**The guard that was corrected rather than deleted**
+
+- Same shared-class purpose, new subject: `resize: none` instead of `resize: vertical`.
+  [`property-prose-height.test.ts:42`](../../folio-designer/src/property-prose-height.test.ts#L42)
+
+- An allowlist, not a denylist — a denylist cannot see a property nobody thought to forbid.
+  [`property-prose-height.test.ts:101`](../../folio-designer/src/property-prose-height.test.ts#L101)
+
+- The two 72s, in two languages, pinned to each other because nothing may measure the box.
+  [`property-prose-height.test.ts:131`](../../folio-designer/src/property-prose-height.test.ts#L131)
+
+- The shared-class exclusions and the non-vacuity pairing, both kept intact.
+  [`property-prose-height.test.ts:143`](../../folio-designer/src/property-prose-height.test.ts#L143)
+
+**Peripherals**
+
+- The remaining matrix rows: cursor, growth, clamp, cancel, combobox, keyboard.
+  [`App.test.tsx:3706`](../../folio-designer/src/App.test.tsx#L3706)

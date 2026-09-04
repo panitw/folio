@@ -389,3 +389,89 @@ pick-commits-immediately versus an explicit Connect button; 14.7's transaction m
 control:** 11.1's face count and Roboto's derivation mechanism; 14.7's millimetres; 14.7's Cancel/Apply;
 14.2's inert border; 14.6's three already-built ACs; and the epics doc's claim of "exactly three readers" of
 `Style.Bold` (there are four non-test files, and the fourth is the parser).
+
+---
+
+### D-A — Epic 11 realizes bold and italic for the Latin and Thai families only
+**Owner decision**, taken at the terminal 2026-09-05, on the payload arithmetic.
+
+**Verdict.** Noto Sans, Noto Sans Thai and Roboto gain **bold, italic and bold-italic**. **Noto Sans SC
+stays Regular.** Epic 11 exists and is smaller than written: **three families, nine new faces**, not four
+families and twelve.
+
+**The situation.** Bold and italic are stored (`Style.Bold`/`Style.Italic`), shown in the panel, and faked
+by the browser at `App.tsx` (`--text-font-weight: 700`) — and read by nothing on the render path. A bold
+document prints unbold. `render.go` and `table_render.go` are not among the four non-test files that read
+`.Bold`; the positive control on the same population is `FontFamily`, which *is* read by both. So the
+question was never "fix a bug"; it was "make this real, or stop offering it".
+
+**In simple terms.** The B button today is a light switch wired to nothing. You can press it, it lights up,
+the panel remembers you pressed it — and the printed page is identical either way. There were only ever two
+honest ends to that: run the wire, or take the switch off the wall.
+
+**What decided it: the arithmetic, not the principle.** The shipped faces total **11.1 MB**, and **Noto
+Sans SC alone is 10.35 MB** of that (Noto Sans 631 KB, Roboto 348 KB, Noto Sans Thai 47 KB — measured, not
+estimated). Three instances of the CJK face is roughly **31 MB**, taking the payload every user downloads,
+offline, from 11 MB to about **45 MB**. The Latin-and-Thai set adds about **3 MB**. Epic 16 spent an entire
+story arguing over a single 348 KB face; this was two orders of magnitude larger.
+
+**Options considered.** *All four families* — complete and consistent, and ~31 MB of that consistency buys
+bold for a script whose upstream generally publishes no italic at all. *Retire both* — folds Epic 11 into
+one acceptance criterion in 14.4, adds nothing to the payload, and makes an already-shipped user-facing
+string true; rejected because a document designer without bold is a hard sell. *Bold only, no italic* —
+halves the weight-resolution design since slope never needs an expression; rejected as too small a
+capability for the work either way.
+
+**Why this one wins.** It buys the capability where it is nearly free and declines it where it is
+ruinous, and — this is the part that makes it coherent rather than merely cheap — **Epic 11 already has to
+build the machinery for "this family has no face at this weight."** 11.2's requirement that the fallback be
+*stated, not silent* was written for edge cases. Under this ruling Noto Sans SC becomes a permanent,
+shipped instance of exactly that case, so the CJK path exercises the honest-fallback machinery as its
+ordinary behaviour rather than as a corner nobody hits.
+
+**Consequences.**
+- **I-2 is untouched and load-bearing**: no synthetic bold, on the canvas or at emit. `internal/text/shape.go:90`
+  records that the vendor exposes `SetSyntheticBold`/`SetSyntheticSlant` and that neither is called. Bold on
+  CJK text must *say so*, never fake it.
+- **11.3's B control needs three states over two document states.** A `clear` on `bold` writes
+  `Presence[bool]{}` — absent, not `false` — and `cleanupEmptyStyle` then drops an emptied style block, so
+  "off" and "never set" are the same bytes.
+- **11.1's mechanism fork inverts.** Roboto was the family that could not ride `instance_faces.py`'s
+  three-entry `UPSTREAM` derivation. Roboto is now *in* scope and Noto Sans SC is *out*, so the derivable
+  set and the in-scope set no longer coincide. 11.1 must either carry
+  `TestShippedRobotoMatchesDesignerCatalogue`'s one-cut discipline into the bold and italic cuts, or rule
+  explicitly that the one-Roboto rule is scoped to Regular. **In the spec, not at implementation.**
+- **A shipped string becomes false.** `font-browser-model.ts:379` tells authors
+  *"one upright Regular each, no bold or italic"*. Realizing bold makes that a lie the product tells; it
+  must change in the same epic.
+- **The starter template's default family is Roboto**, so the first family an author bolds is in scope. Good.
+
+**How we'd know it was wrong.** Authors setting Chinese text and reporting that bold "does nothing" — which
+would mean the stated-fallback surface is not carrying its weight, and the honest answer would be a clearer
+statement rather than the 31 MB.
+
+---
+
+### D-000.4 — Every Code Map in this run cites a symbol and a count, and re-derives the line at its plan gate
+**Orchestrator decision**, forced by the lead's own grounding report.
+
+**Verdict.** Line numbers are not addresses in this repository. A Code Map anchor must name a **symbol** and
+carry a **count** (occurrences, with a positive control); the line number is re-derived at the story's own
+plan gate and never inherited from an earlier document.
+
+**Situation.** The lead's grounding report cited `App.tsx` line numbers that were wrong for **both** the
+committed tree and the working tree — because `App.tsx` grew about forty lines *while the grounding was
+being written*. `function bandName` was filed at 2850; it is 2790 at HEAD and 2890 in the tree. The content
+claims behind those numbers all survived re-verification by symbol; the addresses did not.
+
+**In simple terms.** Citing a line number in a file under active edit is like giving directions by counting
+houses from the corner while someone is building a new one halfway down the street. The house is still
+there; the count is not.
+
+**Why this wins.** This run has now paid for line-number staleness **three times in two days** — Story
+17.5's Code Map, its Design Notes describing a hazard fixed hours earlier, and now the grounding document
+written expressly to prevent both. The cost of a symbol-plus-count anchor is one extra grep at the plan
+gate. The cost of a stale address is a re-planning cycle.
+
+**Consequences.** Applies to every spec in this run, and to the survey D-000.3 mandates — which is run
+**per acceptance criterion and by symbol**, not per story and by line.
