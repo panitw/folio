@@ -83,13 +83,13 @@ func storedFaceKeyTieFixture() []byte {
 	// The `name` table: format 0, one record, storage beginning just past the
 	// single 12-byte record.
 	name := make([]byte, 0, 6+12+len(storage))
-	name = be16(name, 0)          // format
-	name = be16(name, 1)          // count
-	name = be16(name, 6+1*12)     // stringOffset
-	name = be16(name, 3)          // platformID: Windows
-	name = be16(name, 1)          // encodingID: Unicode BMP
-	name = be16(name, 0)          // languageID
-	name = be16(name, 0)          // nameID 0: copyright
+	name = be16(name, 0)      // format
+	name = be16(name, 1)      // count
+	name = be16(name, 6+1*12) // stringOffset
+	name = be16(name, 3)      // platformID: Windows
+	name = be16(name, 1)      // encodingID: Unicode BMP
+	name = be16(name, 0)      // languageID
+	name = be16(name, 0)      // nameID 0: copyright
 	name = be16(name, len(storage))
 	name = be16(name, 0) // offset into storage
 	name = append(name, storage...)
