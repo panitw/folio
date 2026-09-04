@@ -556,7 +556,7 @@ development_status:
   # pending, because its owner was 'the first story that adds store maintenance' and there will
   # now be none. Sequenced AFTER 16.4 closes: 16.4 is in review with a frozen contract that does
   # not cover deleting a panel, and folding this in would invalidate the review just completed.
-  16-6-the-machine-store-panel-goes-away: in-progress
+  16-6-the-machine-store-panel-goes-away: done
   # 16.7 added 2026-09-03 by OWNER, from the design: each row shows the typeface it names -- name
   # left, specimen right, script-aware. The font browser already does this correctly and the menu
   # inherits its mechanism AND its rule that a sample is never set in a substitute face. Three
@@ -565,7 +565,7 @@ development_status:
   # per-row note in the first two groups (narrowing D-16.R.72's three carriers to two there), and a
   # declared chain shows the face it paints with. Needs a browser run: no test here can see whether
   # a specimen rendered in its own face.
-  16-7-every-row-shows-the-typeface-it-names: in-progress
+  16-7-every-row-shows-the-typeface-it-names: done
   # 16.8 added 2026-09-04 by OWNER: `body` is internal vocabulary standing where a typeface name
   # belongs. Offered three shapes -- rename the chain to Noto Sans (free), embed Roboto in the
   # starter (+348 KB per document), or SHIP Roboto in the engine -- the owner chose the third,
@@ -574,7 +574,7 @@ development_status:
   # THE RISK IS ONE ROBOTO: the catalogue cut (347.6 KB, e688a215…) and the testdata cut (167.7 KB,
   # 79e85140…) are different bytes under one name, and shipping the wrong one would render rather
   # than fail. A digest assertion is a task, not a note.
-  16-8-a-new-document-opens-in-a-typeface-with-a-name: in-progress
+  16-8-a-new-document-opens-in-a-typeface-with-a-name: done
   # 16.9 added 2026-09-04 by OWNER, four items from the running panel: remove the font-chain
   # EDITOR (the data stays -- it is what makes Thai and CJK fall through, and 16.8 just shipped it),
   # remove Clear font family (text always has a typeface), remove a dropdown group, and centre the
@@ -582,7 +582,7 @@ development_status:
   # answer named AVAILABLE TO INSTALL, and the answer is taken as the decision -- the browser is
   # where installing happens, so the menu keeps what is usable now. Flagged for correction at the
   # gate. This DISCHARGES the 30s/180s dropdown-block deferral: the pick that could block is gone.
-  16-9-the-typography-panel-offers-what-you-can-use: in-progress
+  16-9-the-typography-panel-offers-what-you-can-use: done
   # 16.10 added 2026-09-04 by OWNER: remove the disclosure paragraph from the FONT BROWSER header
   # (FontBrowser.tsx:287), "follow the design strictly". MEASURED: the mockup contains NONE of that
   # prose -- 0 occurrences of "families you can add" / "snapshot taken" / "variable file are not
@@ -594,5 +594,5 @@ development_status:
   # sentence that disagreed will not exist. Does NOT discharge the resultLine defect ("1274 of
   # 1273"): resultLine reads addableFamilyCount and STAYS. Spec deliberately not written yet --
   # 16.9 is moving the test files this story would anchor into, and stale anchors are D-16.R.28.
-  16-10-the-browser-header-says-what-the-design-says: review
+  16-10-the-browser-header-says-what-the-design-says: done
   epic-16-retrospective: optional
