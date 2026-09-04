@@ -8288,3 +8288,31 @@ this entry** — the equivalence is demonstrated, not asserted.
 
 **Why LOW today:** the panel that would host such a control is independently proven absent by structural
 tests. The risk is that those tests and these guards drift apart.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: A held arrow key leaves one undo entry and one document revision per step, so a two-second hold puts dozens of entries between the author and their previous state.
+  evidence: applyProperties' own comment records "one opaque command, one revision, one undo entry"; Story 17.4 makes that path repeat at key-repeat rate for the first time. Nothing coalesces consecutive steps on the same field.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: A step arriving while the previous step's command is in flight advances the draft but sends nothing, and is then discarded if the engine's answer wins the race.
+  evidence: step() calls setDraft before submit, and submit returns early on pendingRef. The committed transition at App.tsx (lastCommitted !== committed) then rewrites the draft to the engine's value. Measured consequence: a hold steps at the round-trip rate, not the repeat rate, and the last press before release can be lost. The browser run at 60ms spacing showed no drops against the in-process wasm engine, so the window is real but narrow locally.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: The stepping fields keep role="textbox" with no spinbutton semantics, so a screen reader is told nothing when an arrow changes the value or when it stops at a bound.
+  evidence: shared carries only aria-label/aria-description; there is no role="spinbutton", no aria-valuenow/valuemin/valuemax, and no live region announcing a clamp. The panel already has an honest-note idiom for statements of this kind.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: The page-setup numeric fields (page width/height and the four margins) do not step, so two visually identical inputMode="decimal" inputs in the same app now behave differently under the arrow keys.
+  evidence: the Field component in App.tsx renders inputMode="decimal" inputs with no onKeyDown at all. Story 17.4's contract scopes the numeric set to PropertyDraft, so this is a deliberate boundary, but nothing records the resulting asymmetry.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: While a step's command is in flight the field is deliberately left enabled, but its sibling controls (Clear, Set null, the colour swatch) stay enabled too and silently drop a click on pendingRef.
+  evidence: those controls are disabled on the `pending` state, which a step no longer raises. Before Story 17.4 every commit raised it, so the click could not be made; now it can, and it does nothing with no feedback.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: The arrow step does not check event.nativeEvent.isComposing, so an arrow used to navigate IME candidates inside a numeric field would also step the value.
+  evidence: keyDown routes ArrowUp/ArrowDown straight to step() after the modifier check. Low reachability on decimal fields, but the guard is one condition and the failure is a committed value the author never chose.
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+  summary: A typed draft already outside a field's bounds snaps to the bound on the first arrow press rather than stepping, so one nudge can move leading from 5000 to 1000.
+  evidence: step() clamps the stepped value without first checking whether `current` was already in range. The result is always legal, which is the story's rule, but the size of the jump is not obviously what an author pressing an arrow once intends.

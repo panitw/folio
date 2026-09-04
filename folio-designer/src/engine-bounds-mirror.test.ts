@@ -248,3 +248,145 @@ describe('band containment mirror', () => {
     expect(driftedClamp).not.toMatch(/BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\)/)
   })
 })
+
+// Go declares the rule as a disjunction inside the property command's length
+// arm; TypeScript declares it as a list the inspector reads. Both are resolved
+// to a set of KEY NAMES before comparison, because it is the CLAIM — which
+// fields the engine refuses at or below zero — that has to match, not the
+// spelling.
+function goPositiveLengthFields(source: string): ReadonlyArray<string> {
+  const clause = source.match(/^\t+if \((key == "\w+"(?: \|\| key == "\w+")*)\) && length <= 0 \{$/m)?.[1]
+  if (clause === undefined) return []
+  return [...clause.matchAll(/key == "(\w+)"/g)].map((match) => match[1] as string)
+}
+
+function tsPositiveLengthFields(source: string): ReadonlyArray<string> {
+  const list = source.match(/^export const POSITIVE_LENGTH_FIELDS: ReadonlyArray<PropertyField> = \[([^\]]*)\]$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry.length > 0)
+}
+
+// STORY 17.4's MIRROR, and the second one here that ties a PREDICATE.
+//
+// The invariant: which property keys the engine refuses at or below zero. Go
+// enforces it on the COMMAND path; the inspector's ARROW STEP reads it to know
+// where to stop, so that a keypress never proposes a value the command path
+// will refuse. The asymmetry is what makes a one-sided edit dangerous in BOTH
+// directions: adding a key in Go alone would let an arrow step a field into a
+// refusal the author reads as a mysteriously rejected nudge, and dropping one
+// in Go alone would leave the panel clamping a field the engine no longer
+// bounds. `x` and `y` are on NEITHER list, which is the reason the tie is over
+// a list at all rather than over "the numeric fields" — their own floor comes
+// from `containComponent` instead, tied in the describe below.
+describe('positive length rule mirror', () => {
+  const go = fs.readFileSync(goSources.componentCommands, 'utf8')
+  const ts = fs.readFileSync(path.join(sourceDir, 'component-property-command.ts'), 'utf8')
+  const panel = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+
+  it('reads a non-empty list from every side', () => {
+    // Non-vacuity first: a regex that quietly stops matching would make the
+    // equality below true and meaningless.
+    expect(goPositiveLengthFields(go)).toEqual(['width', 'height', 'fontSize', 'borderWidth'])
+    expect(tsPositiveLengthFields(ts)).toEqual(['width', 'height', 'fontSize', 'borderWidth'])
+  })
+
+  it('agrees on which property keys must stay positive', () => {
+    expect(goPositiveLengthFields(go)).toEqual(tsPositiveLengthFields(ts))
+    // x and y are on neither side of THIS rule. That does NOT make them
+    // unbounded, which is what an earlier reading concluded: they are bounded
+    // below at the band origin by `containComponent`, tied in the describe
+    // below. What these four assertions pin is only that x and y are not
+    // subject to the strictly tighter `> 0` rule.
+    expect(goPositiveLengthFields(go)).not.toContain('x')
+    expect(tsPositiveLengthFields(ts)).not.toContain('x')
+    expect(goPositiveLengthFields(go)).not.toContain('y')
+    expect(tsPositiveLengthFields(ts)).not.toContain('y')
+  })
+
+  it('consumes the list at the site it governs, and the line-spacing pair beside it', () => {
+    // A list nothing reads would tie a dead declaration to a live Go rule
+    // while the step kept its own inline spelling.
+    expect(go).toMatch(/if \(key == "width" \|\| key == "height" \|\| key == "fontSize" \|\| key == "borderWidth"\) && length <= 0 \{\n\t+return fmt\.Errorf\("%s must be positive", key\)$/m)
+    expect(panel).toMatch(/POSITIVE_LENGTH_FIELDS\.includes\(field\) \? 1 : /)
+    // The step's OTHER bound comes from the already-tied line-spacing pair
+    // rather than from two fresh literals in the panel.
+    expect(panel).toMatch(/field === 'lineSpacing' \? MIN_LINE_SPACING_THOUSANDTHS :/)
+    expect(panel).toMatch(/field === 'lineSpacing' \? MAX_LINE_SPACING_THOUSANDTHS :/)
+  })
+
+  it('turns a one-sided edit of the rule red', () => {
+    const driftedTs = ts.replace(/^export const POSITIVE_LENGTH_FIELDS: ReadonlyArray<PropertyField> = \[([^\]]*)\]$/m, "export const POSITIVE_LENGTH_FIELDS: ReadonlyArray<PropertyField> = ['width', 'height', 'fontSize']")
+    expect(driftedTs).not.toBe(ts)
+    expect(tsPositiveLengthFields(driftedTs)).not.toEqual(goPositiveLengthFields(go))
+    const driftedGo = go.replace(/if \(key == "width" \|\| key == "height" \|\| key == "fontSize" \|\| key == "borderWidth"\) && length <= 0 \{/, 'if (key == "width" || key == "height" || key == "fontSize" || key == "borderWidth" || key == "x") && length <= 0 {')
+    expect(driftedGo).not.toBe(go)
+    expect(goPositiveLengthFields(driftedGo)).not.toEqual(tsPositiveLengthFields(ts))
+  })
+})
+
+// THE SECOND BOUND ON THE PROPERTY PATH, added at Story 17.4's review.
+//
+// `updateComponentPropertiesInPlace` does not stop at the `> 0` rule above: it
+// calls `containComponent` on every id after applying the changes
+// (`component_commands.go:880`), and that predicate opens by refusing NEGATIVE
+// geometry. So `x` and `y` — absent from the `> 0` list, and therefore read as
+// "unbounded" when this story was planned — have a floor of ZERO on exactly the
+// path an arrow step uses. The panel mirrors that floor through
+// `ORIGIN_FLOOR_FIELDS` rather than restating a literal.
+//
+// ⚠ WHAT THIS TIE DELIBERATELY DOES NOT COVER: the same predicate also bounds
+// x, y, width and height ABOVE, against the band extents. The panel does not
+// clamp to those, so a step at the band edge still reaches the engine's own
+// located refusal. The ceiling is PER-COMPONENT — two components of equal width
+// at different x have different width ceilings — so a selection-wide clamp
+// needs a ruling this story does not carry. It is recorded as an open question
+// in the story's Spec Change Log, and named here so the omission is visible
+// rather than inferred from silence.
+function goNonNegativeGeometryFields(source: string): ReadonlyArray<string> {
+  const clause = source.match(/^\toutside := ((?:\w+ < 0 \|\| )+)/m)?.[1]
+  if (clause === undefined) return []
+  return [...clause.matchAll(/(\w+) < 0/g)].map((match) => match[1] as string)
+}
+
+function tsOriginFloorFields(source: string): ReadonlyArray<string> {
+  const list = source.match(/^export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = \[([^\]]*)\]$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry.length > 0)
+}
+
+describe('origin floor mirror', () => {
+  const go = fs.readFileSync(goSources.componentCommands, 'utf8')
+  const ts = fs.readFileSync(path.join(sourceDir, 'component-property-command.ts'), 'utf8')
+  const panel = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+
+  it('reads the negative-geometry refusal from Go and the floor list from the panel', () => {
+    // Non-vacuity: a regex that quietly stopped matching would make every
+    // comparison below true and meaningless.
+    expect(goNonNegativeGeometryFields(go)).toEqual(['x', 'y', 'width', 'height'])
+    expect(tsOriginFloorFields(ts)).toEqual(['x', 'y'])
+  })
+
+  it('mirrors exactly the fields whose floor comes from containment alone', () => {
+    // Go refuses four fields below zero. Two of them, width and height, are
+    // already held to a STRICTLY TIGHTER floor by the `> 0` rule, so the panel
+    // clamps them there instead; the remaining two are the origin-floor list.
+    // Stated as a partition, so a field moving between the two Go rules cannot
+    // leave both TypeScript lists satisfied.
+    expect([...tsOriginFloorFields(ts), ...tsPositiveLengthFields(ts)].filter((field) => goNonNegativeGeometryFields(go).includes(field)).sort())
+      .toEqual([...goNonNegativeGeometryFields(go)].sort())
+    expect(tsOriginFloorFields(ts).filter((field) => tsPositiveLengthFields(ts).includes(field))).toEqual([])
+  })
+
+  it('consumes the list at the site it governs', () => {
+    expect(panel).toMatch(/ORIGIN_FLOOR_FIELDS\.includes\(field\) \? 0 : undefined$/m)
+  })
+
+  it('turns a one-sided edit of the rule red', () => {
+    const driftedTs = ts.replace(/^export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = \[([^\]]*)\]$/m, "export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = ['x']")
+    expect(driftedTs).not.toBe(ts)
+    expect(tsOriginFloorFields(driftedTs)).not.toEqual(tsOriginFloorFields(ts))
+    const driftedGo = go.replace(/^\toutside := x < 0 \|\| y < 0 \|\| /m, '\toutside := x < 0 || ')
+    expect(driftedGo).not.toBe(go)
+    expect(goNonNegativeGeometryFields(driftedGo)).not.toEqual(goNonNegativeGeometryFields(go))
+  })
+})

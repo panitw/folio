@@ -16,6 +16,36 @@ const pointFields = new Set<PropertyField>(['x', 'y', 'width', 'height', 'fontSi
 // precisely so the inspector cannot mean something different from the file.
 const ratioFields = new Set<PropertyField>(['lineSpacing'])
 
+// STORY 17.4. The engine refuses a NON-POSITIVE length on exactly these four
+// keys — `component_commands.go` spells the rule `(key == "width" || key ==
+// "height" || key == "fontSize" || key == "borderWidth") && length <= 0`. `x`
+// and `y` are absent from it and are unbounded, negatives included.
+//
+// The inspector's arrow step reads this list to know where to STOP, so a
+// keypress can never propose a value the command path will refuse. That makes
+// it an invariant duplicated across the Go/TypeScript boundary, which D-7.4.5
+// says moves in one commit with a test that reads both sides:
+// `engine-bounds-mirror.test.ts` reads this declaration and Go's predicate and
+// asserts they name the same four keys.
+export const POSITIVE_LENGTH_FIELDS: ReadonlyArray<PropertyField> = ['width', 'height', 'fontSize', 'borderWidth']
+
+// STORY 17.4, ADDED AT REVIEW. THE `> 0` RULE ABOVE IS NOT THE ONLY BOUND ON
+// THE PROPERTY PATH, and the story's Code Map cited only that one.
+// `updateComponentPropertiesInPlace` calls `containComponent` on every id after
+// applying the changes (`component_commands.go:880` -> `:1912`), and that
+// predicate opens `x < 0 || y < 0 || width < 0 || height < 0`. So `x` and `y`
+// are NOT unbounded below, as an earlier reading of this file's neighbour
+// concluded — their floor is the band origin, zero. `width` and `height` are
+// bounded more tightly by the `> 0` rule above, so this list names only the two
+// fields whose floor comes from containment alone.
+//
+// `containComponent` ALSO bounds these fields ABOVE, against the band extents
+// (`x > band.Width`, `width > band.Width - x`, and in the vertically capping
+// bands `y > band.Height`, `height > band.Height - y`). Those are NOT mirrored
+// here and the arrow step does not clamp to them — see the story's Spec Change
+// Log, which records that as an open question rather than a settled omission.
+export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = ['x', 'y']
+
 export function updateComponentPropertiesCommand(ids: ReadonlyArray<string>, intent: PropertyIntent): ArrayBuffer {
   const change = intent.operation === 'clear' || intent.operation === 'null'
     ? `{"op":${quote(intent.operation)}}`

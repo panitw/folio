@@ -2321,6 +2321,485 @@ describe('Story 7.4: authoring a multi-paragraph clause', () => {
   })
 })
 
+// STORY 17.4: ARROW KEYS STEP A NUMBER FIELD.
+//
+// Fifteen tests: one per row of the story's eleven-row I/O matrix, plus four
+// the matrix does not reach — the leading CEILING and the in-flight `disabled`
+// decision (both found by mutation, which left the matrix rows green), the
+// ORIGIN FLOOR on x and y (found at review: `containComponent` refuses negative
+// geometry on this same command path), and the MODIFIED arrow. The trap the story exists
+// to avoid is ARITHMETIC, not keys: every value here is a decimal string Go
+// parses exactly and refuses beyond three places, passed through UNQUOTED. So
+// the assertions below read the WIRE LITERAL and not merely the box, and the
+// leading row is the one that would expose float arithmetic — but ONLY when it
+// steps more than once. Measured: `1 + 0.1` is exactly `1.1` in IEEE doubles,
+// while `1.1 + 0.1` is `1.2000000000000002`, which the engine rejects.
+describe('Story 17.4: arrow keys step a number field', () => {
+  const at = (over: Record<string, unknown>) => ({ ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', ...over }] })
+  // The engine answers without a canvas, so the panel keeps the projection it
+  // has and the draft under test is the only thing that moves. Where a test
+  // needs the COMMITTED value to follow, it hands back a canvas instead.
+  const recorder = (answer?: CanvasProjection) => {
+    const sent: ArrayBuffer[] = []
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, ...(answer ? { canvas: answer } : {}) } } })
+    return { sent, request }
+  }
+  const wire = (payload: ArrayBuffer) => new TextDecoder().decode(payload)
+  const select = (label = 'text component e1') => fireEvent.click(screen.getByLabelText(label))
+
+  it('steps a point field UP by one point, and the committed value follows', async () => {
+    const { sent, request } = recorder(at({ width: 13_000 }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    select()
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    expect(width).toHaveValue('12')
+    // The arrow is HANDLED, which is what stops the browser throwing the caret
+    // to the start of the field on every repeat of a hold.
+    expect(fireEvent.keyDown(width, { key: 'ArrowUp' })).toBe(false)
+    expect(width).toHaveValue('13')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":13}}}')
+    // And the engine's own answer is what the box ends up reading — the step
+    // does not leave a draft the document never accepted.
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Width (pt)' })).toHaveValue('13'))
+  })
+
+  it('steps a point field DOWN by one point', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    select()
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    fireEvent.keyDown(width, { key: 'ArrowDown' })
+    expect(width).toHaveValue('11')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":11}}}')
+  })
+
+  // THE FLOAT ROW, AND THE ONE ASSERTION IN THIS FILE THAT HAD TO BE MEASURED
+  // RATHER THAN REASONED.
+  //
+  // `1 + 0.1` is EXACTLY `1.1` in IEEE doubles — measured in node: `(1 + 0.1)
+  // === 1.1` is `true` and `String(1 + 0.1)` is `"1.1"`. So a SINGLE step up
+  // from `1` DOES NOT DISCRIMINATE: a float implementation passes it. This
+  // test originally stepped once, and mutation proved it worthless — the whole
+  // step path was rewritten to `Number(draft) + 0.1` and every test in this
+  // describe stayed green.
+  //
+  // The divergence begins at the SECOND step: `1.1 + 0.1` is
+  // `1.2000000000000002`, and it compounds (`1.3000000000000003`,
+  // `1.4000000000000004`, …). `decimal.go` refuses every one of those with
+  // "has more than three decimal places", and the literal travels UNQUOTED, so
+  // the author would see an arrow press rejected for no reason they could see.
+  // Stepping repeatedly is not thoroughness here — it is the only thing that
+  // makes this row falsifiable at all.
+  it('steps leading by a tenth repeatedly without ever spelling a float', async () => {
+    // A REAL ROUND TRIP, because a repeated step needs one. The other tests can
+    // answer without a canvas; this one cannot — when the engine answers with
+    // no canvas the inspector unmounts, so the second press lands on a detached
+    // node, does nothing, and the climb stalls at `1.1` looking green. The mock
+    // therefore echoes the committed literal back, read out of the wire by
+    // DIGIT GROUPS so the test's own bookkeeping introduces no float either.
+    const sent: ArrayBuffer[] = []
+    const echoed = (literal: string) => {
+      const [whole, fraction = ''] = literal.split('.')
+      return Number.parseInt(whole as string, 10) * 1000 + Number.parseInt(fraction.padEnd(3, '0') || '0', 10)
+    }
+    let committedThousandths = 1_000
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => {
+      if (payload) {
+        sent.push(payload)
+        const literal = /"value":([-0-9.]+)/.exec(new TextDecoder().decode(payload))?.[1]
+        if (literal !== undefined) committedThousandths = echoed(literal)
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: at({ lineSpacing: committedThousandths }) } }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ lineSpacing: 1_000 }) }} />)
+    select()
+    expect(screen.getByRole('textbox', { name: 'Line spacing' })).toHaveValue('1')
+    // `1.2` is the first value a float implementation gets wrong; the rest pin
+    // that it does not drift back into agreement further up.
+    const climb = ['1.1', '1.2', '1.3', '1.4', '1.5']
+    for (const [index, want] of climb.entries()) {
+      // RE-QUERIED every iteration, deliberately: a commit re-renders the panel
+      // and the handle taken before it is stale, so firing on it silently does
+      // nothing and the climb would stall at `1.1` while still reading green on
+      // a single-step assertion.
+      const box = screen.getByRole('textbox', { name: 'Line spacing' })
+      fireEvent.keyDown(box, { key: 'ArrowUp' })
+      expect(box).toHaveValue(want)
+      await waitFor(() => expect(sent).toHaveLength(index + 1))
+      expect(wire(sent[index]!)).toBe(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"set","value":${want}}}}`)
+    }
+    // And NO literal it ever sent can be one Go refuses: at most three decimal
+    // places, which is the whole of decimal.go's rule.
+    for (const payload of sent) expect(wire(payload)).toMatch(/"value":-?\d+(\.\d{1,3})?\}/)
+    // The engine ends up holding the value the box shows: five presses, five
+    // commits, and no drift between what was displayed and what was sent.
+    expect(committedThousandths).toBe(1_500)
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Line spacing' })).toHaveValue('1.5'))
+  })
+
+  // THE CEILING — a different guard from the floor, and one the matrix's two
+  // floor rows do NOT reach: deleting `Math.min(floored, highest)` left all ten
+  // of them green. `lineSpacing` is the only field with an upper bound
+  // (`MaxLineSpacingThousandths = 1000000`, a ratio of 1000).
+  it("clamps leading UP to the engine's ceiling rather than stepping past it", async () => {
+    const { sent, request } = recorder(at({ lineSpacing: 1_000_000 }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ lineSpacing: 999_950 }) }} />)
+    select()
+    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
+    expect(leading).toHaveValue('999.95')
+    // A tenth up from 999.95 is 1000.05, which the engine refuses. The step
+    // lands ON the ceiling instead. This arm MOVES, so it proves the cap
+    // clamps rather than merely declining to act.
+    fireEvent.keyDown(leading, { key: 'ArrowUp' })
+    expect(leading).toHaveValue('1000')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"lineSpacing":{"op":"set","value":1000}}}')
+    expect(wire(sent[0]!)).not.toContain('1000.05')
+    // AT the ceiling it stops dead: the key is still taken, but nothing changed
+    // and no second command is sent.
+    const settled = await screen.findByDisplayValue('1000')
+    expect(fireEvent.keyDown(settled, { key: 'ArrowUp' })).toBe(false)
+    expect(settled).toHaveValue('1000')
+    await Promise.resolve()
+    expect(sent).toHaveLength(1)
+  })
+
+  // THE DESIGN DECISION THE SPEC'S DESIGN NOTES RECORD, tied to a test so it
+  // cannot be undone silently. `shared` carries `disabled: pending`, and
+  // MEASURED IN CHROMIUM 1217, disabling a focused input moves
+  // `document.activeElement` to the body and re-enabling does NOT give focus
+  // back. Key repeat is delivered to the focused element, so raising `pending`
+  // on a step would end an arrow HOLD after exactly one press — the one thing
+  // this story's browser run exists to photograph. jsdom does not implement
+  // blur-on-disable, so the reachable assertion is the `disabled` attribute
+  // itself, asserted in BOTH directions against Enter, which still disables.
+  it('does not disable the field while a STEP is in flight, though Enter still does', async () => {
+    const sent: ArrayBuffer[] = []
+    let answer: (() => void) | undefined
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => {
+      if (payload) sent.push(payload)
+      await new Promise<void>((resolve) => { answer = resolve })
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: at({ width: 13_000 }) } }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    select()
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Width (pt)' }), { key: 'ArrowUp' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    // In flight, and still focusable: the hold survives.
+    expect(screen.getByRole('textbox', { name: 'Width (pt)' })).not.toBeDisabled()
+    answer!()
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Width (pt)' })).toHaveValue('13'))
+    // The contrast arm: a typed commit is not held, and disables exactly as it
+    // always has. Without it this test would pass over a control that never
+    // disables for any reason.
+    const typed = screen.getByRole('textbox', { name: 'Width (pt)' })
+    fireEvent.change(typed, { target: { value: '55' } })
+    fireEvent.keyDown(typed, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(2))
+    expect(screen.getByRole('textbox', { name: 'Width (pt)' })).toBeDisabled()
+    answer!()
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Width (pt)' })).not.toBeDisabled())
+  })
+
+  it('stops a point field at the smallest LEGAL value rather than stepping into a refusal', async () => {
+    const { sent, request } = recorder(at({ width: 1 }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 1_000 }) }} />)
+    select()
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    expect(width).toHaveValue('1')
+    // One point down from 1pt is 0, which `component_commands.go` refuses with
+    // "width must be positive". The step clamps to the smallest value the
+    // representation can spell instead of proposing zero.
+    fireEvent.keyDown(width, { key: 'ArrowDown' })
+    expect(width).toHaveValue('0.001')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":0.001}}}')
+    expect(wire(sent[0]!)).not.toContain('"value":0}')
+    // AT the floor it stops dead: the key is still taken, so the caret does not
+    // jump, but nothing changed and NO second command is sent.
+    const settled = await screen.findByDisplayValue('0.001')
+    expect(fireEvent.keyDown(settled, { key: 'ArrowDown' })).toBe(false)
+    expect(settled).toHaveValue('0.001')
+    await Promise.resolve()
+    expect(sent).toHaveLength(1)
+  })
+
+  it("stops leading at the engine's own floor and sends nothing", async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ lineSpacing: 1 }) }} />)
+    select()
+    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
+    expect(leading).toHaveValue('0.001')
+    fireEvent.keyDown(leading, { key: 'ArrowDown' })
+    expect(leading).toHaveValue('0.001')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // THE FIRST OF THE TWO DELEGATED ROWS. An unset field has no value to step,
+  // and its placeholder is not one: leading's is `1`, border width's is
+  // `none`, and font size has no placeholder at all. Stepping one would need a
+  // per-field table of implied defaults, and would turn an inherited value into
+  // a pinned one on a keypress the author reads as a nudge.
+  it('does nothing on an UNSET field, and sends no command', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    const leading = screen.getByRole('textbox', { name: 'Line spacing' })
+    expect(leading).toHaveValue('')
+    expect(leading).toHaveAttribute('placeholder', '1')
+    // Unhandled, so the browser keeps its own caret behaviour in an empty box.
+    expect(fireEvent.keyDown(leading, { key: 'ArrowUp' })).toBe(true)
+    expect(leading).toHaveValue('')
+    fireEvent.keyDown(leading, { key: 'ArrowDown' })
+    expect(leading).toHaveValue('')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // THE SECOND DELEGATED ROW, CLOSED BY THE SAME PREDICATE AND NOT A SECOND
+  // BRANCH. A mixed selection already presents as an empty draft, so "the
+  // draft does not parse" covers it. Stepping it would mean picking one
+  // component's width and flattening every other component onto it.
+  it('does nothing on a MIXED selection, and sends no command — until the author types a value into it', async () => {
+    const mixed = { ...canvas, components: [
+      { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true },
+      { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 80_000, y: 0, width: 90_000, height: 24_000, resizable: true },
+    ] }
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: mixed }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByLabelText('rect component e2'), { shiftKey: true })
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    expect(width).toHaveValue('')
+    expect(width).toHaveAttribute('placeholder', 'Mixed')
+    expect(fireEvent.keyDown(width, { key: 'ArrowUp' })).toBe(true)
+    expect(width).toHaveValue('')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    // A mixed field the author has TYPED into is no longer empty, and steps
+    // like any other draft. Note what this means, since the rationale above is
+    // easy to over-read: the guard is "the draft does not parse", NOT "never
+    // flatten a selection". Flattening stays one keystroke away and is reached
+    // here deliberately — typing a value into a mixed field and committing it
+    // to the whole selection is the control's shipped behaviour, and stepping
+    // that typed value is the same act. What the empty-draft rule buys is that
+    // a bare nudge on an untouched mixed field cannot do it by accident.
+    fireEvent.change(width, { target: { value: '20' } })
+    fireEvent.keyDown(width, { key: 'ArrowUp' })
+    expect(width).toHaveValue('21')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1","e2"],"changes":{"width":{"op":"set","value":21}}}')
+  })
+
+  it('does nothing while a DRAG owns the field, exactly as typing does nothing', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    const component = screen.getByLabelText('text component e1')
+    fireEvent.click(component)
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(component, { pointerId: 1, clientX: 13, clientY: 12 })
+    const x = screen.getByRole('textbox', { name: 'X (pt)' })
+    expect(x).toHaveAttribute('readonly')
+    expect(x).toHaveValue('3')
+    // Unhandled, and the live proposal is untouched: the pointer owns the
+    // value, and no command is sent behind its back.
+    expect(fireEvent.keyDown(x, { key: 'ArrowUp' })).toBe(true)
+    expect(x).toHaveValue('3')
+    fireEvent.keyDown(x, { key: 'ArrowDown' })
+    expect(x).toHaveValue('3')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+  })
+
+  it('leaves a NON-NUMERIC field to the browser, and steps exactly the fields the control already calls decimal', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({}) }} />)
+    select()
+    // The prose field and the colour field are both left alone.
+    const prose = screen.getByRole('textbox', { name: 'Text' })
+    expect(fireEvent.keyDown(prose, { key: 'ArrowUp' })).toBe(true)
+    expect(prose).toHaveValue('Hello')
+    const borderColour = screen.getByRole('textbox', { name: 'Border colour' })
+    fireEvent.change(borderColour, { target: { value: '12' } })
+    expect(fireEvent.keyDown(borderColour, { key: 'ArrowUp' })).toBe(true)
+    expect(borderColour).toHaveValue('12')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+
+    // THE NUMERIC SET IS THE ONE THE CONTROL ALREADY KNOWS. Rather than
+    // restate a list here — the second authority the story forbids — every
+    // textbox in the panel is given the same readable draft and the same
+    // arrow, and the set that MOVED is asserted against the set the control
+    // marks `inputmode="decimal"` for its own reasons.
+    const boxes = screen.getAllByRole('textbox').filter((box) => box.tagName === 'INPUT')
+    const decimal = boxes.filter((box) => box.getAttribute('inputmode') === 'decimal').map((box) => box.getAttribute('aria-label'))
+    const stepped: string[] = []
+    for (const box of boxes) {
+      fireEvent.change(box, { target: { value: '4' } })
+      fireEvent.keyDown(box, { key: 'ArrowUp' })
+      if ((box as HTMLInputElement).value !== '4') stepped.push(box.getAttribute('aria-label') as string)
+    }
+    expect(decimal).toEqual(['X (pt)', 'Y (pt)', 'Width (pt)', 'Height (pt)', 'Font size (pt)', 'Line spacing', 'Border width (pt)'])
+    expect(stepped).toEqual(decimal)
+  })
+
+  // FOUND AT REVIEW, NOT BY THE MATRIX. The story's Code Map cited only the
+  // `> 0` rule at `component_commands.go:1006`, so x and y were read as
+  // unbounded and stepped freely through zero. They are not:
+  // `updateComponentPropertiesInPlace` also calls `containComponent`
+  // (`:880` -> `:1912`), whose first clause refuses `x < 0 || y < 0`. A
+  // component dropped at the origin — which is every fixture in this file, and
+  // the common case in the app — would have answered one ArrowDown with an
+  // engine refusal the author never asked for. That is precisely the failure
+  // the story exists to prevent, so the floor is mirrored and asserted here.
+  it('stops x at the band origin rather than stepping to a negative the engine refuses', async () => {
+    const { sent, request } = recorder(at({ x: 0 }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ x: 1_000 }) }} />)
+    select()
+    const x = screen.getByRole('textbox', { name: 'X (pt)' })
+    expect(x).toHaveValue('1')
+    // One point down from 1pt is 0, which is legal and IS sent — the floor is
+    // the origin, not the first positive millipoint. This arm moves, so the
+    // test cannot pass by x being unsteppable.
+    fireEvent.keyDown(x, { key: 'ArrowDown' })
+    expect(x).toHaveValue('0')
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"x":{"op":"set","value":0}}}')
+    // AT the origin it stops dead. `-1` is what shipped before this guard.
+    // Re-queried by ROLE, not by display value: `Y (pt)` also reads `0`.
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'X (pt)' })).toHaveValue('0'))
+    const settled = screen.getByRole('textbox', { name: 'X (pt)' })
+    expect(fireEvent.keyDown(settled, { key: 'ArrowDown' })).toBe(false)
+    expect(settled).toHaveValue('0')
+    await Promise.resolve()
+    expect(sent).toHaveLength(1)
+    for (const payload of sent) expect(wire(payload)).not.toContain('"value":-')
+  })
+
+  // A MODIFIED arrow is not this story's to take. Inside a text input Shift+
+  // Arrow extends the selection and, on macOS, Cmd+Arrow and Alt+Arrow move the
+  // caret; stepping on those would remove three shipped editing gestures. This
+  // is the ABSENCE of modifier behaviour, which is different from the coarse/
+  // fine stepping the story puts out of scope — that would need asking for.
+  it('leaves a MODIFIED arrow to the browser and sends no command', async () => {
+    const { sent, request } = recorder()
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    select()
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    for (const modifier of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      expect(fireEvent.keyDown(width, { key: 'ArrowUp', ...modifier })).toBe(true)
+      expect(fireEvent.keyDown(width, { key: 'ArrowDown', ...modifier })).toBe(true)
+    }
+    expect(width).toHaveValue('12')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    expect(request).not.toHaveBeenCalled()
+    // Non-vacuity: the UNMODIFIED arrow on this very field still steps, so the
+    // eight presses above were declined for their modifier and not because the
+    // field was unsteppable.
+    fireEvent.keyDown(width, { key: 'ArrowUp' })
+    expect(width).toHaveValue('13')
+    await waitFor(() => expect(sent).toHaveLength(1))
+  })
+
+  // THE BAND EDGE, BY RULING. The browser does NOT clamp here, and the
+  // asymmetry with every floor above it is the whole point.
+  //
+  // A floor like `width > 0`, or `x >= 0`, is a property of the FIELD: those
+  // values are illegal whatever document is open and wherever the component
+  // sits. That fact is stable, so mirroring it in the browser cannot go stale
+  // in a way that matters. A BAND EDGE is a property of the LAYOUT — it depends
+  // on the component's position, on its band's extent, and on the page. For the
+  // browser to clamp there it would have to compute where the content band
+  // ends, which is geometry the engine owns and projects; that is the same
+  // authority boundary AD-17 draws for text, and a second copy of
+  // `containComponent` living in the inspector would quietly drift, all to save
+  // the author one error message.
+  //
+  // So the arrow SENDS, the engine refuses, and the panel's existing located
+  // alert renders. WHAT THIS TEST PINS is that the arrow is not a special case:
+  // same wire literal, same alert, same field state as TYPING that value — so
+  // that nobody later "fixes" the arrow into one. The containment rule itself
+  // is deliberately not reproduced here (that is the ruling), so the refusal
+  // driven below is the sentence the engine really returns: measured in
+  // Chromium 1217, committing an out-of-band value yields
+  // `e1: component.geometry: folio: component geometry must stay within content`.
+  it("sends a band-edge step and shows the engine's refusal, exactly as typing the same value does", async () => {
+    const refusal = 'folio: component geometry must stay within content'
+    const outcome = async (drive: (box: HTMLElement) => void) => {
+      const sent: ArrayBuffer[] = []
+      const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+        if (payload) sent.push(payload)
+        return operation === 'command'
+          ? Promise.reject(Object.assign(new Error(refusal), { elementId: 'e1', dataPath: 'component.geometry' }))
+          : Promise.resolve({ snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 } })
+      })
+      const view = render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+      select()
+      const box = screen.getByRole('textbox', { name: 'Width (pt)' })
+      drive(box)
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+      const captured = {
+        commands: sent.length,
+        wire: sent.map(wire),
+        alert: screen.getByRole('alert').textContent,
+        value: (box as HTMLInputElement).value,
+        invalid: box.getAttribute('aria-invalid'),
+      }
+      view.unmount()
+      return captured
+    }
+
+    const stepped = await outcome((box) => { fireEvent.keyDown(box, { key: 'ArrowUp' }) })
+    const typed = await outcome((box) => { fireEvent.change(box, { target: { value: '13' } }); fireEvent.keyDown(box, { key: 'Enter' }) })
+
+    // ONE ASSERTION CARRIES THE RULING: the arrow and the keyboard are the same
+    // act. Everything below is non-vacuity for it.
+    expect(stepped).toEqual(typed)
+    // The value really was SENT — the step did not clamp, swallow or skip it.
+    expect(stepped.commands).toBe(1)
+    expect(stepped.wire[0]).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":13}}}')
+    // And the engine's own located sentence really did reach the author.
+    expect(stepped.alert).toBe(`e1: component.geometry: ${refusal}`)
+    expect(stepped.invalid).toBe('true')
+    // The author's value is kept, exactly as a refused TYPED value is kept, so
+    // the next arrow steps from it rather than from a value that never landed.
+    expect(stepped.value).toBe('13')
+  })
+
+  it('leaves Enter and Escape exactly as they were', async () => {
+    const { sent, request } = recorder(at({ width: 40_000 }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: at({ width: 12_000 }) }} />)
+    select()
+    const width = screen.getByRole('textbox', { name: 'Width (pt)' })
+    // ESCAPE still reverts the box to the committed value, and sends nothing.
+    fireEvent.change(width, { target: { value: '99' } })
+    fireEvent.keyDown(width, { key: 'Escape' })
+    expect(width).toHaveValue('12')
+    await Promise.resolve()
+    expect(sent).toHaveLength(0)
+    // ENTER still commits the typed draft, with the literal it always sent.
+    fireEvent.change(width, { target: { value: '40' } })
+    fireEvent.keyDown(width, { key: 'Enter' })
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(wire(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":40}}}')
+    // And both keys still behave on a field the arrows have been stepping. A
+    // step is committed the moment it is taken, so Escape after one reverts to
+    // the value the engine now holds and not to what was there before it.
+    const stepping = await screen.findByDisplayValue('40')
+    fireEvent.keyDown(stepping, { key: 'ArrowUp' })
+    expect(stepping).toHaveValue('41')
+    await waitFor(() => expect(sent).toHaveLength(2))
+    fireEvent.keyDown(stepping, { key: 'Escape' })
+    expect(stepping).toHaveValue('40')
+  })
+})
+
 describe('Story 5.13: image asset selection', () => {
   const imageComponent = { id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 48_000, resizable: true, image: { mediaType: 'image/png', assetKey: 'a'.repeat(64), width: 300, height: 200, drawX: 6_000, drawY: 8_000, drawWidth: 60_000, drawHeight: 40_000 } }
   const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true, imageUnavailable: 'undecodable' as const }

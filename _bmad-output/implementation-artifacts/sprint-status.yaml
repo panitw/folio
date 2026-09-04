@@ -603,7 +603,7 @@ development_status:
   # one product"), reopened as a new epic rather than reused -- Epic 14 is
   # closed, and a closed epic's spec is not a place to add scope.
   # ==========================================================================
-  epic-17: backlog
+  epic-17: in-progress
   # 17.1 OWNER DECISION TAKEN AT THE GATE, and it is the cheap option knowingly:
   # DEBOUNCE ~200ms AND SEND A REAL COMMAND. The canvas paints only the engine's
   # projection -- AD-17 forbids the browser laying out text itself -- so "live"
@@ -633,4 +633,4 @@ development_status:
   # points are stored in THOUSANDTHS, so "the smallest meaningful step" is a
   # decision per unit, not a constant -- 1pt and 0.1 leading are the likely
   # answers, but the step must be derived from the field, not hardcoded once.
-  17-4-arrow-keys-step-a-number-field: backlog
+  17-4-arrow-keys-step-a-number-field: done

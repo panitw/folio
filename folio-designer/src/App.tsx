@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import type { CanvasProjection, EngineDiagnostic, EngineError, EngineSnapshot, TableColumns } from './engine-protocol'
+import { MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type EngineDiagnostic, type EngineError, type EngineSnapshot, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -11,7 +11,7 @@ import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
-import { updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
+import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { FontBrowser } from './FontBrowser'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { embedFontFamilyCommand } from './font-chain-command'
@@ -1766,6 +1766,36 @@ function committedValue(component: PanelComponent, field: PropertyField): string
   if (typeof value === 'number') return points(value)
   return typeof value === 'string' ? value : undefined
 }
+// STORY 17.4. THE EXACT INVERSE OF `points`, and the only reader on the arrow
+// step's path: a plain decimal with AT MOST THREE PLACES, read into INTEGER
+// thousandths.
+//
+// The trap this exists to close is arithmetic, not keys. Every value in the
+// inspector is a decimal string Go parses exactly and refuses beyond three
+// places (`internal/template/decimal.go`: `has more than three decimal
+// places`), and it is passed through UNQUOTED. So the decimal itself is never
+// added to: only its DIGIT GROUPS are read as integers, and every step, clamp
+// and comparison downstream is integer arithmetic on thousandths.
+//
+// MEASURED, because the obvious illustration of the hazard is wrong: `1 + 0.1`
+// is EXACTLY `1.1` in IEEE doubles, so a single step off a round number would
+// survive float arithmetic and prove nothing. The damage begins on the SECOND
+// step — `1.1 + 0.1` is `1.2000000000000002` — and compounds from there. That
+// is why the guard is the arithmetic itself rather than a check on the result,
+// and why the test that covers it steps repeatedly.
+//
+// A draft this refuses is NOT STEPPABLE and the arrow does nothing: an empty
+// box, a mixed selection (which presents as an empty draft), `abc`, a fourth
+// decimal place, `1e3`, or a magnitude past the exact-integer range. That
+// refusal IS the guard — there is no path on which a float could be produced,
+// and none on which an unreadable literal could be sent.
+function draftThousandths(text: string): number | undefined {
+  const parts = /^(-?)(\d+)(?:\.(\d{1,3}))?$/.exec(text)
+  if (!parts) return undefined
+  const magnitude = Number.parseInt(parts[2] as string, 10) * 1000 + Number.parseInt(((parts[3] ?? '') as string).padEnd(3, '0'), 10)
+  if (!Number.isSafeInteger(magnitude)) return undefined
+  return parts[1] === '-' ? -magnitude : magnitude
+}
 function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, live, error }: { spec: FieldSpec; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; live?: string; error?: PropertyCommitError }) {
   const { field, label, affix, unit, swatch, prose, empty, fx } = spec
   const values = components.map((component) => committedValue(component, field))
@@ -1782,16 +1812,102 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   if (lastCommitted !== committed) { setLastCommitted(committed); setDraft(committed) }
   const selectionKey = ids.join(',')
   const revert = () => setDraft(committed)
-  const submit = async (intent: PropertyIntent, reconcileDraft: boolean) => {
+  // `disable` is the ONE thing the arrow step varies, and it is not a second
+  // commit path: the intent, the encoder, the reconciliation and the
+  // single-flight `pendingRef` guard are all shared verbatim. `shared` carries
+  // `disabled: pending`, which exists so a keystroke cannot race a commit
+  // already in flight — but an arrow step IS that keystroke, and disabling a
+  // FOCUSED input moves focus to the body and does not give it back when the
+  // input is re-enabled (measured in Chromium 1217). Key repeat is delivered to
+  // the focused element, so raising `pending` here would end an arrow HOLD after
+  // exactly one step.
+  //
+  // A step that arrives mid-flight is still dropped by `pendingRef`, and what
+  // happens to it then is a RACE, not an accumulation: the draft has already
+  // advanced, so if the next repeat beats the engine's answer it carries the
+  // accumulated value, but if the answer wins, the committed transition below
+  // (`lastCommitted !== committed`) rewrites the draft to the engine's value
+  // and that press is lost. A hold therefore steps at the round-trip rate, not
+  // the repeat rate. Coalescing repeats into one command is the real fix and is
+  // out of this story's scope — it also bears on undo, since each step is its
+  // own revision and its own undo entry.
+  const submit = async (intent: PropertyIntent, reconcileDraft: boolean, disable = true) => {
     if (pendingRef.current) return
     pendingRef.current = true
-    setPending(true)
+    if (disable) setPending(true)
     const accepted = await onCommit(ids, intent, documentGeneration, selectionKey)
     pendingRef.current = false
-    setPending(false)
+    if (disable) setPending(false)
     if (accepted && reconcileDraft) setDraft(canonicalValue(accepted, ids, field) ?? draft)
   }
   const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true) }
+  // STORY 17.4: ARROWS STEP A NUMBER FIELD.
+  //
+  // THE NUMERIC SET IS THE ONE THE CONTROL ALREADY KNOWS. This predicate was
+  // computed inline for `inputMode`; it is hoisted rather than restated, so a
+  // field can never be typeable as a decimal and unsteppable, or the reverse.
+  // It is exactly x, y, width, height, fontSize, borderWidth and lineSpacing.
+  const numeric = unit === 'pt' || unit === undefined && (field === 'lineSpacing')
+  // THE STEP IS DERIVED FROM THE FIELD, NOT A CONSTANT. A point field steps by
+  // one POINT, the same increment the canvas nudge already uses; leading is a
+  // dimensionless RATIO and steps by a tenth. Both are written in the
+  // thousandths the arithmetic runs in. 0.001 is the floor of the
+  // representation, never a step.
+  const stepThousandths = field === 'lineSpacing' ? 100 : 1_000
+  // The bounds are the ENGINE'S OWN, read from the places that declare them
+  // rather than restated: `POSITIVE_LENGTH_FIELDS` is the four keys
+  // `component_commands.go` refuses at or below zero, so their smallest legal
+  // value is one thousandth; `ORIGIN_FLOOR_FIELDS` is `x` and `y`, which
+  // `containComponent` refuses BELOW ZERO on this same command path; and
+  // lineSpacing's pair is engine-protocol's mirror of `linespacing.go`.
+  //
+  // ⚠ THIS IS NOT THE WHOLE OF `containComponent`. It also bounds x, y, width
+  // and height ABOVE against the band extents, and the arrow step does NOT
+  // clamp to those — a step at the band edge still reaches the engine's own
+  // located refusal. That is an OPEN question recorded in the story's Spec
+  // Change Log, not a settled exclusion: the bound is per-component (two
+  // components with equal widths at different x have different width ceilings),
+  // so a selection-wide clamp needs a ruling this story does not carry.
+  const lowest = field === 'lineSpacing' ? MIN_LINE_SPACING_THOUSANDTHS : POSITIVE_LENGTH_FIELDS.includes(field) ? 1 : ORIGIN_FLOOR_FIELDS.includes(field) ? 0 : undefined
+  const highest = field === 'lineSpacing' ? MAX_LINE_SPACING_THOUSANDTHS : undefined
+  // Returns whether the arrow was HANDLED, which is what suppresses the
+  // browser's own caret jump — an unhandled arrow keeps it, on a non-numeric
+  // field, during a drag, and on a draft with no value in it to step.
+  const step = (direction: 1 | -1): boolean => {
+    // A drag owns the geometry fields: they are `readOnly`, typing does
+    // nothing, and an arrow does nothing either.
+    if (!numeric || live !== undefined) return false
+    // ONE PREDICATE CLOSES BOTH DELEGATED ROWS. An UNSET field and a MIXED
+    // selection both present as an empty draft, which the exact parser
+    // refuses — so neither steps and neither sends a command. Stepping a
+    // placeholder would need a per-field table of implied defaults (leading's
+    // is `1`, border width's is `none`, font size has none at all), which is
+    // the second authority this control must not grow; stepping a mixed
+    // selection would flatten every other component onto one of them, a
+    // destructive edit fired by a nudge key. A mixed field the author has
+    // TYPED into is no longer empty and steps like any other draft — they are
+    // stepping the value they just entered.
+    const current = draftThousandths(draft)
+    if (current === undefined) return false
+    const stepped = current + direction * stepThousandths
+    // Floored, THEN capped, each against its own bound and neither against the
+    // unclamped step: folding both into one expression let the absent ceiling
+    // fall back to `stepped` and quietly undo the floor.
+    const floored = lowest === undefined ? stepped : Math.max(stepped, lowest)
+    const next = highest === undefined ? floored : Math.min(floored, highest)
+    // Already at the bound: the arrow is still handled — the caret stays put —
+    // but nothing changed, so no command is sent.
+    if (next === current) return true
+    const value = points(next)
+    setDraft(value)
+    // `reconcileDraft` is false BY DESIGN. `points` already emits the
+    // canonical spelling, so there is nothing for the engine to normalise, and
+    // reconciling from a resolved step would overwrite a draft a later repeat
+    // had already advanced. The committed transition above
+    // (`lastCommitted !== committed`) is what lands the engine's answer.
+    void submit({ field, operation: 'set', value }, false, false)
+    return true
+  }
   // The design draws an unset row as empty chrome, and there is nothing to
   // clear on one: the reset action appears with the value it resets, and with a
   // mixed selection, which also has committed values behind it.
@@ -1810,6 +1926,16 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const keyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !prose) { event.preventDefault(); void commit() }
     if (event.key === 'Escape') { event.preventDefault(); revert(); event.currentTarget.blur() }
+    // Story 17.4. Enter and Escape above are untouched; the arrows are the
+    // only addition, and only where the step actually took the key.
+    //
+    // A MODIFIED arrow is left entirely alone. This is not modifier BEHAVIOUR,
+    // which the story puts out of scope — it is the absence of it: inside a
+    // text input Shift+Arrow extends the selection and (on macOS) Cmd+Arrow and
+    // Alt+Arrow move the caret, so stepping on a modified arrow would take
+    // three shipped editing gestures away from the author to no end. Adding a
+    // coarse or fine step on a modifier is the thing that needs asking for.
+    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) { if (step(event.key === 'ArrowUp' ? 1 : -1)) event.preventDefault() }
   }
   const proseField = useRef<HTMLTextAreaElement>(null)
   const proseCaret = useRef<number | undefined>(undefined)
@@ -1849,7 +1975,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: () => void commit(), onKeyDown: keyDown }
   return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
     ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} {...shared} onChange={(event) => setDraft(event.target.value)} onPaste={pasteProse} />
-    : <input className="property-value" {...shared} inputMode={unit === 'pt' || unit === undefined && (field === 'lineSpacing') ? 'decimal' : undefined} onChange={(event) => setDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { setDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => setDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${/^#[0-9a-fA-F]{6}$/.test(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { setDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
 function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
