@@ -1115,3 +1115,41 @@ subject — *what CI's red is allowed to mean* — remains **Story 15.2 ("CI's r
 
 **Verification is only possible on GitHub.** A workflow change cannot be proved locally beyond its shell
 logic, so this one is pushed to be measured, and the result recorded against it.
+
+---
+
+### D-000.14 — STANDING RULE: a guard that reads its own input as its verdict cannot fail
+
+**The rule.** Before trusting any guard, ask **where its expected value comes from**. If the expectation is
+derived from the same artifact the guard is checking, the guard can only ever return the answer it started
+with. State the *independent* source of the expectation, or the guard is decorative.
+
+**This is not a theory. It is the single most productive defect class found in this run — four instances,
+all real, all shipped, none caught by review:**
+
+| # | Guard | Its verdict came from | What it could never see |
+|---|---|---|---|
+| 1 | `requireInstancedShippedFaces` / `requireShapedTextIsShaped` | `len(shippedFaceSpecs)` — the *shipped set*, standing in for *the faces this fixture uses* | The two quantities diverging. They did, at 16.8. Loudly red for four days. |
+| 2 | `TestShippedFacesReproduceFromUpstream` | its own manifest — reports `3 of 3` while `fonts.Shipped()` returns 4 | A shipped face nobody added to the manifest. **Silently green.** |
+| 3 | `folio-go-known-red` CI job | the expected-red test's own exit code | Anything. The job was red unconditionally, 12 of 12 runs, so the whole gate's signal was worthless. |
+| 4 | a recursive `grep` naming its own answers | the pattern enumerated what it expected to find | Whatever nobody thought to enumerate — the denylist form of the same error. |
+
+**The two directions are not equally dangerous.** #1 failed *loudly* and was found in four days. #2 failed
+*silently* and nothing was ever going to find it. **A guard sized too large announces itself; a guard
+sized too small congratulates you.** When choosing which way to be wrong, prefer the loud one.
+
+**The tell.** Every one of these reads naturally and passes review. "Compare against the shipped set",
+"compare against the manifest", "run the known-red test", "grep for the forbidden patterns" are all
+sentences that sound like verification. **The defect is never visible in the guard's own text — only in
+the relationship between its expectation and its subject**, which is why it survives reading and dies to
+one question: *what would have to change for this to fail?*
+
+**Consequences.** A guard's expectation is stated independently of its subject, or the guard says out
+loud that it is a tautology and why that is acceptable. A count declares its denominator's origin
+(D-000.7's population rule, sharpened: it is not enough to name the population — name where the
+*expectation* came from). Every new guard is red-proved by mutating the **subject**, not the expectation;
+mutating the expectation only proves the guard reads its own input, which is precisely what is in
+question.
+
+**How we'd know it was wrong.** If applying it turned routine assertions into ceremony. It should not:
+the question is one sentence, and in four for four cases here it would have found the defect immediately.
