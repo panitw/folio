@@ -1363,3 +1363,42 @@ same kind of test, and that is precisely why the wrong member was never question
 **Consequence.** D-12.A's final paragraph is superseded by this entry. Its instruction — re-derive what
 those files assert at each plan gate rather than inheriting today's reading — stands and is, if anything,
 vindicated: 12.4's builder did exactly that and found the error.
+
+---
+
+### D-12.A.2 — Correction to D-12.A.1: the comment scanner DOES strip comments
+
+**My correction was itself wrong, in the opposite direction.** D-12.A.1 replaced one false claim about the
+designer's source-text contracts with another. It said `canvas-authority-contract.test.ts` *"scans raw
+text **without stripping comments**"*, and warned that 12.4's replacement comment could break it by naming
+a prohibited token.
+
+**False.** Verified: `withoutComments` is defined in that file and applied at **both** scan sites — the
+per-file scan and the composed exception chain. It is quote-aware. **A comment cannot trip the prohibited
+token list.** Found by Story 12.1's builder, which was told to re-derive rather than inherit and did.
+
+**Two further attributions in D-12.A.1 and the 12.1 dispatch were also wrong**, both verified now:
+- The **hex/rgb/hsl literal rule and the exact-once type-token counts live in `design-contract.test.ts`**,
+  not `property-prose-height.test.ts`. Which is doubly awkward, since D-12.A.1 exists to correct a claim
+  about `design-contract.test.ts` — I moved the file out of the picture and then attributed its rules to
+  its neighbour.
+- The `borderWidth` positive control is **6** designer files, not 7. The seventh was a compiled
+  `src/generated/runtime/*.wasm` blob matching under `grep -a`. The zero it controls for is still real and
+  CLOSED over 109 files. **A binary artifact inflated a control, which is the quieter half of the
+  false-zero family: a control that fires for the wrong reason licenses a zero it never tested.**
+
+**Also corrected, from the same report:** `internal/diag/diag.go` has **17** `Code =` declarations, not the
+19 recorded in D-12.A. Corroborated four ways. **No band-overflow code either way, so every conclusion
+drawn from it stands** — only the number was wrong.
+
+**What this says about the survey, and it is the useful part.** Three separate facts about the designer's
+source-text contracts have now been wrong in the record, and each was corrected by the *next* story that
+had to act on it. The pattern is not carelessness about any one file; it is that **a survey classifies by
+category and the category is where the error hides**. "Source-text contracts over the designer" is a true
+grouping whose members do materially different things, and every claim I made about the group was
+inherited by its members without being checked against any of them.
+
+**Consequence, sharper than D-12.A's original instruction.** Re-deriving at each plan gate is necessary
+and has now paid three times. But the rule it implies is stronger: **a claim about a group is not evidence
+about a member.** When a survey says "these files assert X", the spec that acts on it names the file and
+the line, and the builder confirms that file does X — not that the group does.
