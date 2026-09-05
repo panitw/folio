@@ -8757,3 +8757,18 @@ or tag with the tests excluded. Whoever cuts the tag decides which promise `foli
 about `go test ./...`.
 
 **What discharges it:** Story 15.3 reading this entry and recording the choice at the tag.
+
+### DW-199 — `App.test.tsx`'s self-count guard measures to end-of-file, so appending any `describe` reddens an unrelated test
+
+- **Deferred by:** Story 15.2a's implementation and independently confirmed by its builder (2026-09-05); outside 15.2a's scope, filed by the orchestrator after that story's commit so the register moved one writer at a time
+- **Owner:** unassigned — **wants one before the next story that appends to `App.test.tsx`**, which on the current build order is Epic 14's first designer story
+- **Severity:** **MEDIUM** — it does not ship a defect, it costs a gate run and misattributes the failure
+- **Status:** OPEN
+
+**The defect.** `folio-designer/src/App.test.tsx:4779` locates `describe('Story 17.1` and counts `\n  it(` **from there to end of file**. That is correct only while the Story 17.1 block is the file's last, so appending any new `describe` after it makes the count disagree and reddens a test whose failure message is about Story 17.1's header — pointing the reader at a story that has nothing to do with their change.
+
+**The guard's expectation is fine; its EXTENT is wrong.** It should count within its own block, not to EOF. This is [[D-000.14]]'s family — the boundary of what it measures is derived from the file rather than from the thing it is describing — though the mechanism is an unbounded range rather than a self-referential denominator.
+
+**Measured cost, already paid once:** Story 15.2a's implementer hit it, diagnosed it, and inserted its new block *above* the guard rather than touching another story's test. That was the right call and it is not a fix — the next person pays the same toll, and may instead "fix" the count, which silently re-anchors the guard to whatever block is last that week.
+
+**What discharges it.** Bound the count to the Story 17.1 describe's own extent, and red-prove it by appending a throwaway describe: before, an unrelated test goes red; after, it does not, while removing an `it(` from inside the 17.1 block still does.

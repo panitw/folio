@@ -1153,3 +1153,17 @@ question.
 
 **How we'd know it was wrong.** If applying it turned routine assertions into ceremony. It should not:
 the question is one sentence, and in four for four cases here it would have found the defect immediately.
+
+---
+
+### D-000.15 — `git grep` has its own false zero, and I gave the wrong advice three times
+
+**Correction to my own standing instruction.** Earlier in this run I told the builder, the lead and two implementers to use `git grep` **instead of** recursive `grep`, because recursive `grep` returns false zeros in this repository. That advice was incomplete in a way that matters: **`git grep` searches tracked files only.**
+
+**Found by Story 15.2a's implementer, on its own work.** `git grep -ln '"folio-designer"'` returned three files and missed a fourth — the implementer's own, because it was untracked. It needed `--untracked`.
+
+**This is worse than the trap it replaced, in one specific way.** Recursive `grep`'s false zero is arbitrary. `git grep`'s is *systematic and adversarially aimed*: it hides exactly the files a story has just created, which are the files most likely to be the answer to a question that story is asking. A survey of "does anything else do X?" run during implementation will reliably fail to see the thing the implementer wrote ten minutes earlier.
+
+**The rule.** Use `git grep --untracked` whenever new files could be in scope — which is always, during implementation — and **state which form was used beside the count**. A bare `git grep` zero is a claim about the tracked tree, not about the working tree, and those differ precisely when it matters.
+
+**The general lesson, which outlives both tools.** "Use tool X instead of tool Y" is never a complete answer to a measurement problem. **Every search tool has a population it cannot see**, and the population is the thing to state — not the tool. This is the third distinct false-zero mechanism found in this run (recursive `grep`'s, `git grep`'s tracked-only default, and a `-run` filter matching nothing and exiting 0), and they share no implementation, only the shape: *a zero that means "I did not look there" rendered identically to a zero that means "it is not there."*
