@@ -2502,3 +2502,23 @@ config is a one-line change; leaving it costs a round trip per story for the res
 and one that rejects everything are the same instrument, and neither is a measurement.** Before shipping
 a gate, measure the population it will judge — a floor nothing reaches and a ceiling everything exceeds
 are both decoration.
+
+### D-000.24.1 — the remedy, corrected before it was applied
+
+D-000.24 says the threshold *"belongs in `_bmad/custom/bmad-build.toml`"*. **I went to make that change
+and did not.** No such file exists; `_bmad/custom/` holds only `config.toml` and a gitignored
+`config.user.toml`, both empty of anything but comments. **And I do not know the key name.**
+
+**Guessing it would produce a config file that silently does nothing** — a file that looks like the
+problem is handled, changes no behaviour, and reports no error. That is this run's dominant defect class
+in a new location: **a remedy that cannot be distinguished from a working one.** Worse than the toll it
+was fixing, because the toll at least announces itself every story.
+
+**So the remedy is the one I fully control: pre-answer the gate in the dispatch.** Every dispatch from
+here says the token gate is answered `[K]` in advance, with the population measurement, and instructs the
+builder not to halt on it. Zero risk, no guessed key, and the reasoning travels to the agent that would
+otherwise have to re-derive it. If the real key surfaces later — from BMAD's own docs or a workflow
+source, **read, not inferred** — the config change becomes the better fix and this note is its trigger.
+
+**The general form, and it is the sharper half of D-000.24:** *when the obvious remedy requires a fact
+you do not have, the remedy that requires no facts is better than a plausible guess at the fact.*
