@@ -11,6 +11,7 @@ import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
+import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
 import { documentLocaleCommand, documentUTCOffsetCommand } from './document-settings-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
@@ -126,6 +127,25 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [zoom, setZoom] = useState(1)
   const [gridVisible, setGridVisible] = useState(true)
   const [snapEnabled, setSnapEnabled] = useState(true)
+  // STORY 12.5. THE BOUNDARY DRAG, and it is TRANSIENT UI STATE and nothing
+  // else (AD-15). No band rect is re-placed while it is live — the three
+  // .page-band sections keep the geometry the engine projected for the whole
+  // gesture (AD-24) — and no command is sent until release. What moves is one
+  // proposed line and one readout.
+  //
+  // The REF is what the handlers read, for the reason the prose resize records:
+  // a gesture must be IDENTIFIED, not merely "in progress", or a second
+  // pointer's press rebases the anchor under the first one's drag. The state is
+  // what renders.
+  const [boundaryDrag, setBoundaryDrag] = useState<BoundaryDrag>()
+  const boundaryDragRef = useRef<BoundaryDrag | undefined>(undefined)
+  // ONE ABORT, reachable without a pointer event, because three different
+  // things end a boundary gesture with nothing sent: pointercancel, Escape, and
+  // the document being replaced underneath it (undo, load, Start blank). The
+  // last is why clearInteraction below calls this: a release that commits
+  // against a projection the author has already left would send a height read
+  // off a document that is gone.
+  const abortBoundaryDrag = () => { boundaryDragRef.current = undefined; setBoundaryDrag(undefined) }
   const [placing, setPlacing] = useState<PaletteKind>()
   // Where the armed palette kind is following the pointer. One transient
   // client coordinate for chrome that never touches document geometry: it
@@ -627,7 +647,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) { previewNeedsFreshRender.current = false; setPreviewIssue(undefined); setPreviewStatus('current') }
   }, [])
   const changePreviewViewState = useCallback((next: PDFPreviewViewState) => setPreviewViewState((current) => samePDFPreviewViewState(current, next) ? current : next), [])
-  const clearInteraction = () => { setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined) }
+  const clearInteraction = () => { setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined); abortBoundaryDrag() }
   const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
     if (!engine || fileBusy) return
     setCommitError(undefined)
@@ -744,6 +764,124 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
     if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, snapEnabled))
   }
+  // THE ONE PLACE A BOUNDARY GESTURE BECOMES A COMMAND, and it sends exactly
+  // the command Story 12.1 shipped. `points()` spells the proposal in the same
+  // decimal the projection was read out of, so a gesture that returned to its
+  // start compares equal below and costs no round trip, no history entry and no
+  // dirty mark — the same send-only-if-changed rule the panel's typed path
+  // obeys, and what wasm/engine.go's byte-equality short circuit backs up.
+  const sendBandHeight = (band: CappingBand, proposed: number, original: number) => {
+    if (proposed === original) return
+    void commitComponent(bandHeightCommand(band, points(proposed), snapEnabled))
+  }
+  // THE FOUR POINTER GUARDS ARE 17.5's, taken from beginProseResize rather than
+  // from CanvasComponent's `begin`, which has none of them: primary button
+  // only, one pointer owns the gesture, preventDefault before focus moves, and
+  // the anchor recorded BEFORE setPointerCapture (which throws NotFoundError on
+  // an inactive pointerId and would otherwise swallow the press).
+  const beginBoundaryDrag = (band: CappingBand, event: PointerEvent<HTMLButtonElement>) => {
+    // A PALETTE PRESS IS NOT A RESIZE. Every other band pointer handler is
+    // gated on `placing` and this one must be too: the strip spans the whole
+    // page width plus 118px and lies over the band, so with a kind armed a
+    // placement press anywhere along the boundary would start a drag instead.
+    // RESIDUE, STATED: the press now does nothing rather than resizing. Routing
+    // it on to the placement underneath is not this patch — the band's own
+    // pointerup is gated on `event.currentTarget === event.target` and the
+    // press landed on the button, so the placement is lost either way. What is
+    // fixed here is the wrong action; the missing one is recorded.
+    if (placing) return
+    if (event.button !== 0) return
+    if (boundaryDragRef.current !== undefined && boundaryDragRef.current.pointerId !== event.pointerId) return
+    const projection = snapshotRef.current?.canvas
+    const original = projection ? projectedBandHeight(projection, band) : undefined
+    if (!projection || original === undefined) return
+    event.preventDefault()
+    const started: BoundaryDrag = { band, pointerId: event.pointerId, startClientY: event.clientY, original, limit: bandBoundaryCeiling(projection.bands, band), proposed: original, changed: false }
+    boundaryDragRef.current = started
+    setBoundaryDrag(started)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+  // Both endings of a gesture that sends nothing: pointercancel, and a move
+  // with no button held. Neither leaves drag state behind, and neither lets an
+  // unrelated pointer end someone else's drag.
+  const cancelBoundaryDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    if (boundaryDragRef.current?.pointerId !== event.pointerId) return
+    abortBoundaryDrag()
+  }
+  // THE ONE PIXEL-TO-MILLIPOINT CONVERSION IN THIS GESTURE, so the move and the
+  // release cannot disagree about what a given travel means. documentDelta is
+  // the shared mapping every other canvas drag uses; proposedBandHeight rounds
+  // the product back to a whole millipoint (see its own header for why).
+  const proposedFor = (from: BoundaryDrag, travel: number) => proposedBandHeight(from.band, from.original, canvasDisplay.documentDelta(travel, zoom) * 1000, from.limit)
+  // Pure clientY arithmetic against the press anchor, through
+  // canvasDisplay.documentDelta — never a measured box, and never an increment
+  // against the last event, which would accumulate rounding across a long drag.
+  const moveBoundaryDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const from = boundaryDragRef.current
+    if (from === undefined || event.pointerId !== from.pointerId) return
+    // A MOVE WITH NOTHING HELD DOWN IS A HOVER, NOT A DRAG, and it is checked
+    // AFTER the id so a second pointer hovering cannot tear down a live
+    // gesture. It ends the drag the way pointercancel does — the proposal is
+    // discarded and nothing is sent.
+    if (event.buttons === 0) { cancelBoundaryDrag(event); return }
+    const rawDY = event.clientY - from.startClientY
+    const next: BoundaryDrag = { ...from, changed: from.changed || Math.abs(rawDY) >= 2, proposed: proposedFor(from, rawDY) }
+    boundaryDragRef.current = next
+    setBoundaryDrag(next)
+  }
+  const finishBoundaryDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const from = boundaryDragRef.current
+    if (from === undefined || event.pointerId !== from.pointerId) return
+    abortBoundaryDrag()
+    // THE RELEASE'S OWN COORDINATE DECIDES, not the last pointermove's. A
+    // pointerup can carry the pointer somewhere new without an intervening
+    // move — a fast flick, a capture handed back, a coalesced sequence — and
+    // committing the stale proposal would write a height the author never saw
+    // the line at. It goes through exactly the same clamped path the move does,
+    // so the released value is still the one on screen.
+    const travel = event.clientY - from.startClientY
+    if (!(from.changed || Math.abs(travel) >= 2)) return
+    sendBandHeight(from.band, proposedFor(from, travel), from.original)
+  }
+  // THE GESTURE MUST NEVER BE THE ONLY WAY TO REACH THE VALUE. Arrow keys step
+  // the focused boundary by a point, Shift by ten, one command per press.
+  //
+  // stopPropagation IS LOAD-BEARING, not tidiness. The window `shortcut`
+  // handler's arrow-key arm is SELECTION-driven, not focus-driven, so with a
+  // component selected AND this handle focused both would fire: the boundary
+  // would move and so would the component (Matrix row 12). React's
+  // stopPropagation calls the native one, and React's listener sits on the root
+  // container, which is inside window — so the window handler never sees it.
+  const nudgeBoundary = (band: CappingBand, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    // A MODIFIED KEY BELONGS TO THE APPLICATION, NOT TO THE HANDLE. Save, undo,
+    // redo, duplicate, snap and the preview toggle all live on the window
+    // `shortcut` handler, and a control that swallowed them would take them
+    // away from the author for as long as focus sat on a 7px strip. Tab is left
+    // alone for the same reason: it is how focus leaves.
+    if (event.metaKey || event.ctrlKey || event.altKey || event.key === 'Tab') return
+    // EVERY OTHER KEY IS THE FOCUSED CONTROL'S, and stopping here is what makes
+    // that true rather than aspirational. Two things reach past this handle
+    // otherwise, and neither is the boundary's business: the window handler's
+    // arrow arm is SELECTION-driven, so ArrowLeft/ArrowRight move a selected
+    // component while focus is on the boundary; and the band <section>'s own
+    // onKeyDown treats Enter/Space as a PLACEMENT and drops an armed palette
+    // component at the band origin.
+    event.stopPropagation()
+    if (event.key === 'Escape') { abortBoundaryDrag(); return }
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+      // Swallow the default too for the keys that would otherwise DO something
+      // here — Enter and Space activate the button, which the page surface
+      // reads as a click and answers by clearing the selection.
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Enter' || event.key === ' ') event.preventDefault()
+      return
+    }
+    event.preventDefault()
+    const projection = snapshotRef.current?.canvas
+    const original = projection ? projectedBandHeight(projection, band) : undefined
+    if (!projection || original === undefined) return
+    const step = (event.shiftKey ? 10_000 : 1_000) * (event.key === 'ArrowDown' ? 1 : -1)
+    sendBandHeight(band, proposedBandHeight(band, original, step, bandBoundaryCeiling(projection.bands, band)), original)
+  }
   // STORY 12.1, WIDENED BY 12.2: APPLY IS A SEQUENCE, AND ITS HALVES REFUSE
   // DIFFERENTLY.
   //
@@ -844,7 +982,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const priorRevision = snapshotRef.current?.revision
         let result
         try {
-          result = await engine.request('command', bandHeightCommand(band, typed))
+          // `false`, ALWAYS, and it is what keeps this path byte-preserved
+          // (12.5's R3): the box is typed, so an author who types 83 gets 83.
+          // The Snap toggle governs GESTURES, and rounding a number somebody
+          // spelled out would be the panel answering a question they answered.
+          result = await engine.request('command', bandHeightCommand(band, typed, false))
         } catch (error) { if (documentGeneration.current === requestDocument) setCommitError(componentDiagnostic(error)); return }
         // THE DOCUMENT MAY HAVE BEEN REPLACED WHILE THAT WAS IN FLIGHT. The
         // command already landed — the engine holds whatever document it was
@@ -1564,7 +1706,33 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // node loses its pointer capture mid-gesture — only the clip is
         // lifted, on the one band that needs it.
         const dragging = occurrences.some((occurrence) => drag?.id === occurrence.component.id)
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (sheet.index === 0) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (sheet.index === 0) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        // ONE INTERACTIVE BOUNDARY PER DOCUMENT. The canvas draws 3N band
+        // sections for an N-page stack and the document has ONE page-header
+        // height, so the handle follows the `occurrence.home` idiom the
+        // repeating components already follow: it exists on the home sheet and
+        // nowhere else, and the other sheets' boundaries stay the inert
+        // pointer-events:none pseudo-elements they always were.
+        //
+        // The handle and the proposal are DIRECT CHILDREN of the band, outside
+        // `.band-window`: that div clips to one window, and anything inside it
+        // would be cut off — which is also why the boundary rule and the band
+        // tab live outside it today.
+        //
+        // AND THE PROPOSAL AND READOUT ARE <div>, NOT <span>, WHICH IS LOAD
+        // BEARING. App.css's band-tab rule is `.page-band > span` at
+        // specificity (0,1,1); a class rule is (0,1,0). A <span> here would
+        // therefore be PAINTED AS A BAND TAB — pinned at `top: 0` instead of
+        // the proposed offset, translated a tab's width off the page, bordered,
+        // tinted and uppercased — and jsdom, which applies no stylesheet, would
+        // never see it. The band tab itself is untouched; App.test.tsx asserts
+        // that no `.page-band > …` selector in the sheet can match these two.
+        const boundary = boundaryAbove(band.name)
+        // NOTHING IS PAINTED UNTIL THE GESTURE IS A DRAG. `changed` is the same
+        // 2px travel gate the release consults, so a press — or a 1px
+        // press-and-release — puts no line and no readout on the canvas that
+        // the gesture has already decided to discard.
+        const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (sheet.index === 0) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (sheet.index === 0) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}
     </section>
   }
@@ -3051,6 +3219,19 @@ function bandDraft(canvas: CanvasProjection, band: CappingBand): string | undefi
 // six-row change.
 function Field({ label, value, inputMode = 'decimal', onChange }: { label: string; value: string; inputMode?: 'decimal' | 'text'; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)} /></label> }
 function bandName(name: CanvasProjection['bands'][number]['name']): string { return name === 'pageHeader' ? 'Page Header' : name === 'pageFooter' ? 'Page Footer' : 'Content' }
+// THE BOUNDARY A BAND'S TOP EDGE IS. Two of the three bands have one: the top
+// of `content` is the header/content boundary, and the top of `pageFooter` is
+// the content/footer boundary. The top of `pageHeader` is the PAGE MARGIN — not
+// a band boundary at all — so it gets no handle and no resize affordance
+// (Matrix row 3).
+function boundaryAbove(name: CanvasProjection['bands'][number]['name']): CappingBand | undefined { return name === 'content' ? 'pageHeader' : name === 'pageFooter' ? 'pageFooter' : undefined }
+// The accessible name, and it deliberately does NOT reuse bandName. The regions
+// are already named `Page Header` / `Content` / `Page Footer`, and
+// application-shell.spec.ts and browser-native-roundtrip.spec.ts reach them by
+// those exact names under Playwright strict mode — a handle sharing one would
+// break two shipped specs on a duplicate match. It also names the ACT, which is
+// what a control is for: the tab beside it is a label and stays one.
+function boundaryLabel(band: CappingBand): string { return band === 'pageHeader' ? 'Resize the page header' : 'Resize the page footer' }
 function points(value: number): string { const negative = value < 0; const magnitude = Math.abs(value); const whole = Math.floor(magnitude / 1000); const fraction = String(magnitude % 1000).padStart(3, '0').replace(/0+$/, ''); return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}` }
 function draftFor(canvas?: CanvasProjection): Draft { return canvas ? { width: points(canvas.commandWidth), height: points(canvas.commandHeight), top: points(canvas.marginTop), right: points(canvas.marginRight), bottom: points(canvas.marginBottom), left: points(canvas.marginLeft), locale: canvas.locale, utcOffset: canvas.utcOffset, pageHeader: bandDraft(canvas, 'pageHeader'), pageFooter: bandDraft(canvas, 'pageFooter') } : { width: '', height: '', top: '', right: '', bottom: '', left: '', locale: '', utcOffset: '' } }
 // The canvas has one deliberately lossy display rounding rule. It maps only
@@ -3072,6 +3253,11 @@ function pageSetupDiagnostic(error: unknown): string { const received = error as
 function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: string; dataPath?: string; message: string }> { const received = error as { elementId?: string; dataPath?: string; message?: string }; return { ...(received.elementId ? { elementId: received.elementId } : {}), ...(received.dataPath ? { dataPath: received.dataPath } : {}), message: received.message ?? 'Component change was rejected.' } }
 function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
 
+// STORY 12.5's transient gesture record. `original` and `limit` are read ONCE,
+// at the press, off the projection that was in force then: re-reading them
+// mid-drag would let a snapshot arriving from elsewhere move the anchor under
+// the author's hand. `proposed` is the only field a move rewrites.
+type BoundaryDrag = Readonly<{ band: CappingBand; pointerId: number; startClientY: number; original: number; limit: number; proposed: number; changed: boolean }>
 type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
 function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, selected, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const selectedByPointer = useRef(false)

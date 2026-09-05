@@ -100,6 +100,42 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .page-band:focus-visible, .page-band-target { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .page-band > span { position: absolute; top: 0; left: calc(-1 * var(--band-x) - 8px); transform: translateX(-100%); padding: 3px 7px; border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); text-transform: uppercase; white-space: nowrap; }
 .page-band-pageHeader > span { top: calc(-1 * var(--band-y)); }
+/* STORY 12.5: THE BOUNDARY, MADE GRABBABLE. A transparent hit strip straddling
+   the dashed rule above — the line the eye already reads as the edge between
+   two bands — extended left to -104px so it spans the band TAB's horizontal
+   position as well as the rule itself. 104px is DESIGN.md's
+   band-tab.offsetFromPage: the AC asks for a gesture "on the CONTENT tab", and
+   the tab is a label 104px outside the page whose top merely happens to be
+   flush with the boundary, so the strip reaches it rather than the label
+   becoming a button that resizes the page when grabbed.
+   THE WIDTH IS 104 + 14 = 118 MORE THAN THE PAGE: 14px on the right is the
+   overhang the boundary rule itself already has (see .page-band-content::after
+   above), so the strip ends exactly where the line the author sees ends.
+   IT PAINTS NOTHING — no border, no background — so the canvas looks exactly
+   as it did; all it adds is the cursor and somewhere to press. `ns-resize` is
+   the shared idiom (.selection-handle-n/-s, .property-prose-resize), and the
+   7px hit height is the prose strip's own number: a strip spanning a whole page
+   width does not need the 12-24px depth of a corner grip.
+   `touch-action: none` is load-bearing: without it a touch press is taken as a
+   pan, the browser fires pointercancel, and the drag ends before it starts.
+   NOTE IT IS NOT INSIDE .band-window. That div clips to one window; a handle
+   inside it would be clipped and inert. */
+.band-boundary-handle { position: absolute; top: -3px; height: 7px; left: calc(-1 * var(--band-x) - 104px); width: calc(var(--page-display-width) + 118px); background: transparent; border: 0; padding: 0; cursor: ns-resize; touch-action: none; }
+.band-boundary-handle:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+/* The proposal: ONE LINE, at original ± Δ over one projected number, drawn on
+   the same overhang as the boundary rule it proposes to replace. No band rect
+   moves while it is up (AD-24) — the browser may show where a gesture has got
+   to, it may not compute what the document would become. */
+.band-boundary-proposal { position: absolute; left: calc(-1 * var(--band-x) - 14px); width: calc(var(--page-display-width) + 28px); top: var(--boundary-display-y); border-top: var(--hairline) solid var(--color-select); pointer-events: none; }
+/* THE PROPOSAL, IN POINTS, BESIDE THE LINE — and it is the PROPOSAL and not a
+   prediction of what will be written. With Snap on the engine rounds to the 6pt
+   grid, so the accepted height may differ from this number by up to half a
+   grid step; the canvas re-projects on release and what the author then reads
+   is what the document holds. The browser deliberately does NOT snap the
+   display: that would be a second spelling of SnapNearest in TypeScript, which
+   is the one thing AD-17 and this story's R1 forbid outright.
+   Mono, because it is a number the author could type into the Page Setup box. */
+.band-boundary-readout { position: absolute; right: 0; top: var(--boundary-display-y); padding: 2px 0 0; color: var(--color-select); font: var(--type-page-mono); white-space: nowrap; pointer-events: none; }
 .canvas-component { position: absolute; left: var(--component-x); top: var(--component-y); width: max(2px, var(--component-width)); height: max(2px, var(--component-height)); overflow: visible; background: transparent; color: var(--color-page-ink); font: var(--type-page-mono); cursor: move; user-select: none; }
 .canvas-component::after { content: ''; position: absolute; inset: 0; border: var(--hairline) dotted var(--color-page-outline-dot); pointer-events: none; }
 .canvas-component:not(.canvas-component-selected):has(.canvas-image-placeholder)::after { border-style: dashed; border-color: var(--color-page-outline-dash); }

@@ -138,6 +138,28 @@ export type LocaleTag = (typeof LOCALE_TAGS)[number]
 export type CappingBand = Exclude<CanvasProjection['bands'][number]['name'], 'content'>
 export const CAPPING_BANDS = BANDS_CAPPING_VERTICALLY as ReadonlyArray<CappingBand>
 
+// STORY 12.5: THE ONE NUMBER IN THE CONTENT-WINDOW CEILING THAT IS NOT
+// PROJECTED.
+//
+// Go's `bandContentWindowCeiling(other, innerH)` is `innerH - other - 1`: the
+// tallest a capping band may be beside a sibling of `other` in a printable
+// column of `innerH`, one millipoint short of the whole column because the
+// content region must be STRICTLY positive and a geom.Length is an integer
+// count of millipoints.
+//
+// Every input to that expression is already projected — `innerH` is the three
+// band heights summed, which `isCanvas`'s contiguity invariant makes exact, and
+// `other` is one of them. The `- 1` is not. It is a property of the ENGINE's
+// rule, not of this document, so it is mirrored here and tied to its Go
+// declaration by `engine-bounds-mirror.test.ts` rather than written into the
+// consumer as a bare literal.
+//
+// IT IS MIRRORED AT ALL ONLY BECAUSE A GESTURE CONSUMES IT (DW-36's standing
+// condition, applied by 12.5's R1). The band-height PANEL still holds no bound:
+// see band-height-command.ts's header for why a typed field and a pointer
+// gesture answer 17.4 differently.
+export const BAND_CONTENT_WINDOW_MARGIN = 1
+
 export type EngineError = Readonly<{
   code: string
   message: string

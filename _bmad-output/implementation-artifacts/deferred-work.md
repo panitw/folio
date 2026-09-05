@@ -9184,3 +9184,58 @@ Engine refusals from the three new arms surface only in the single `role="alert"
 **What discharges it.** A ruling on whether the loader should bound lengths at all (a format narrowing, and therefore not a story's call to make quietly), or a projection that can carry an out-of-bound value so the author can see and fix it.
 
 ---
+### DW-226 — `.page-seam` is out-specificitied by the band-tab rule and has never rendered where it is placed
+
+- source_spec: `_bmad-output/implementation-artifacts/12-5-a-band-boundary-is-dragged-on-the-canvas.md`
+- **Deferred by:** Story 12.5 (2026-09-06). **PRE-EXISTING (Story 7.6), found while fixing the identical defect in 12.5's own new elements.** **Severity:** MEDIUM. **Status:** OPEN
+
+`.page-seam` is a `<span>` direct child of `<section className="page-band …">`, so `App.css`'s `.page-band > span` — specificity **(0,1,1)** — beats `.page-seam` at **(0,1,0)**. Its `top: var(--seam-display-y)` loses to the tab rule's `top: 0`, and its `left: 0` loses to `left: calc(-1 * var(--band-x) - 8px)` with `transform: translateX(-100%)`. The multi-page seam indicator therefore paints at the band's top-left, translated off the page, wearing the band tab's border, tint and uppercase — not at the seam.
+
+**Why nothing caught it.** jsdom applies no stylesheet, so every executing test reads only the inline custom property React wrote. The e2e suite could see it and is run by no workflow (DW-193).
+
+**Why it is not fixed here.** Story 12.5 fixed its own two elements by making them `<div>`s and added a guard that gathers every `.page-band > …` selector and asserts the painted elements match none of them. `.page-band > span` is byte-unchanged and the seam is still a span child, so the cure was **not** inherited. Fixing it means touching Story 7.6's element, which is outside this story.
+
+**What discharges it.** Give the band tab its own class, scope `.page-band > span` to it, and extend 12.5's `node.matches(selector)` guard to cover `.page-seam`.
+
+---
+
+### DW-227 — An arrow-key nudge is inert whenever snapping is on, for components and for band boundaries alike
+
+- source_spec: `_bmad-output/implementation-artifacts/12-5-a-band-boundary-is-dragged-on-the-canvas.md`
+- **Deferred by:** Story 12.5 (2026-09-06). **PRE-EXISTING in `nudgeSelection`; 12.5's `nudgeBoundary` inherits it by faithfully copying the shipped idiom, as its spec required.** **Severity:** MEDIUM. **Status:** OPEN
+
+Both nudges step 1pt (`1_000`) unmodified and 10pt with Shift, and both send `snap: snapEnabled`, which defaults to `true`. `GridIncrement` is 6000mp. `SnapNearest` rounds to the nearest multiple, exact halves away from zero. So from any grid-aligned value a single arrow press sends 1pt away and the engine writes it straight back: the bytes do not move, `wasm/engine.go`'s byte-equality short circuit returns the same snapshot, and **nothing happens** — while a command round trip is still spent. Shift+Arrow moves **12pt, not the documented 10**. Once a value is grid-aligned — which any snapped drag guarantees — the unmodified arrow key is permanently inert.
+
+**Why this matters more than it looks.** UX-DR25 requires every interactive element to be keyboard *operable*, and Story 12.5's own AC calls the gesture "an affordance on top of the command, never the only way to reach the value". Under the default setting the keyboard route reaches nothing.
+
+**Why nothing caught it.** Every covering test asserts the command payload against an engine double whose projection never changes, so no test observes the *projected* value after a press.
+
+**What discharges it.** A ruling on which of the two a nudge is: send `snap: false` so a nudge always moves by its step, or step by the grid increment when snapping is on. Both are defensible; picking one quietly inside a story is not, because it changes a shipped component behaviour.
+
+---
+
+### DW-228 — `isCanvas` pins band contiguity but never anchors the stack to the printable column
+
+- source_spec: `_bmad-output/implementation-artifacts/12-5-a-band-boundary-is-dragged-on-the-canvas.md`
+- **Deferred by:** Story 12.5 (2026-09-06). **PRE-EXISTING protocol gap, surfaced by review of 12.5's ceiling arithmetic.** **Severity:** LOW. **Status:** OPEN
+
+`engine-protocol.ts`'s `isCanvas` checks `paint.y === prior.y + prior.height` plus `x`/`width` agreement, but never that `bands[0].y === marginTop` or that `bands[2].y + bands[2].height === height - marginBottom`. Contiguity alone does not pin the three bands to the printable column.
+
+**Consequence.** `bandBoundaryCeiling` sums the three projected band heights and calls that the printable column, citing contiguity as the warrant. The sum is correct because Go's `Canvas` builds it that way — not because the guard cited enforces it. The invariant holds by construction rather than by the check it is attributed to.
+
+**What discharges it.** Add the two anchoring clauses to `isCanvas`, or cross-check the sum against `height - marginTop - marginBottom` at the consuming site and correct the comment that cites contiguity.
+
+---
+
+### DW-229 — Canvas gestures expose no accessible value, and their feedback is `aria-hidden`
+
+- source_spec: `_bmad-output/implementation-artifacts/12-5-a-band-boundary-is-dragged-on-the-canvas.md`
+- **Deferred by:** Story 12.5 (2026-09-06). **PRE-EXISTING across every canvas handle; 12.5's boundary handle joins the pattern rather than creating it.** **Severity:** LOW. **Status:** OPEN
+
+The band-boundary handle is a bare `<button>` named for the act (`Resize the page header`), and both the proposal line and the points readout carry `aria-hidden="true"` — as do `.canvas-dimension` and the seven non-focusable selection handles. A screen-reader user pressing arrows on the handle is told nothing about the resulting height: there is no `role="separator"`, no `aria-valuenow`/`aria-valuemin`/`aria-valuemax`, and no live region. Story 12.5 proves a refusal is *rendered* in the canvas `role="alert"`, which is the first such proof in the repository, but rendering is not announcement.
+
+**Relation to the declared gap.** `EXPERIENCE.md` records "no screen-reader model exists for the canvas itself" as UX1, deliberate. This entry names the concrete shape that gap now takes for a value-bearing gesture, which is a stronger case than it was for pure placement.
+
+**What discharges it.** A ruling on whether canvas gestures get value semantics, and if so a single idiom applied to the boundary handle, the resize handle and the dimension readout together — not one control at a time.
+
+---

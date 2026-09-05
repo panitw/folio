@@ -1767,8 +1767,12 @@ describe('application shell', () => {
     // passes just as happily with the two rows crossed — which is exactly the
     // defect a key→edge map rotation produced elsewhere in this repository
     // while its table test stayed green.
-    expect(sent[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":80}')
-    expect(sent[1]).toBe('{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30}')
+    // `"snap":false` is the fifth field Story 12.5 added, and the panel passes
+    // it FALSE on every row: the box is typed, so an author who types 80 gets
+    // 80. That is what 12.1's byte-identity criterion preserved — the DOCUMENT
+    // bytes this path writes — while the command payload deliberately moved.
+    expect(sent[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":80,"snap":false}')
+    expect(sent[1]).toBe('{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30,"snap":false}')
     // And the band heights go BEFORE the page setup, so the common refusal
     // leaves the document wholly unchanged.
     expect(sent[2]).toContain('"kind":"pageSetup"')
@@ -1781,7 +1785,7 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
     const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
-    expect(sent.filter((command) => command.includes('setBandHeight'))).toEqual(['{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30}'])
+    expect(sent.filter((command) => command.includes('setBandHeight'))).toEqual(['{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30,"snap":false}'])
     expect(sent.some((command) => command.includes('"band":"pageHeader"'))).toBe(false)
   })
 
@@ -5133,6 +5137,684 @@ describe('a non-BMP key from a data file reaches the engine as the author\'s own
     // low unit dropped, which PARSES and so raised no error anywhere.
     expect(wire).not.toContain('\\ud83d')
     expect(wire).not.toContain('\\uD83D')
+  })
+})
+
+// STORY 12.5: A BAND BOUNDARY IS DRAGGED ON THE CANVAS.
+//
+// The behavioural half of the story's I/O matrix — rows 1-5 and 8-16. Rows 6
+// and 7 are the ENGINE's (folio-go/band_height_command_test.go pins that
+// snapping rounds and that snapping off does not); what is observable here is
+// the field reaching the wire, which is the row this file adds beside them.
+// Row 17 is byte identity, which lives in Go.
+//
+// WHAT THIS BLOCK IS ALSO FOR, and it is a gap this story measured rather than
+// assumed: BEFORE IT, NO TEST IN THIS REPOSITORY ASSERTED THE RENDERED TEXT OF
+// A CANVAS-GESTURE REFUSAL. `/usr/bin/grep -n 'commitError\|file-message'
+// src/App.test.tsx` returned zero hits, with `points(` as the positive control.
+// The story's whole safety argument is that a refusal reaches the author
+// legibly, and nothing proved any canvas refusal was displayed at all.
+//
+// RED PROOFS (D-000.14), each run by mutating PRODUCTION code and never an
+// expectation, and each recorded with the row it reddens:
+//
+//  1. DELETE THE FLOOR — band-boundary.ts's clamp low bound removed
+//     (`Math.min(…, limit)`): 'stops the proposal at zero rather than showing a
+//     negative band' FAILS here, and three rows of band-boundary.test.ts with
+//     it. Nothing else in this block moves.
+//  2. DELETE THE CEILING — the clamp's high bound replaced by
+//     Number.POSITIVE_INFINITY: 'stops the proposal at the mirrored ceiling and
+//     releases a legal height' FAILS.
+//  3. DELETE SEND-ONLY-IF-CHANGED — `if (proposed === original) return` removed
+//     from sendBandHeight: 'sends nothing when the pointer comes back to where
+//     the drag began' FAILS, on a command sent for a gesture that changed
+//     nothing — which in the running app is a history entry and a dirty mark
+//     for a drag the author cancelled by hand.
+//  4. DELETE THE stopPropagation — removed from nudgeBoundary: 'moves the
+//     boundary and NOT a selected component when both could answer the key'
+//     FAILS, because the window `shortcut` handler's SELECTION-driven arrow arm
+//     fires as well and one key moves two things.
+describe('Story 12.5: a band boundary is dragged on the canvas', () => {
+  // The projected geometry every row below is measured against. header 20pt +
+  // content 729.89pt + footer 20pt = 769.89pt of printable column, so the
+  // mirrored ceiling for either capping band is 769.89 - 20 - 0.001 =
+  // 749.889pt. Zoom is 1, so one pixel of pointer travel is one point.
+  const ceiling = '749.889'
+  const text = (id: string, band: 'pageHeader' | 'content' | 'pageFooter', y: number) => ({ id, type: 'text' as const, band, x: 0, y, width: 72_000, height: 12_000, resizable: true })
+  const withComponents = (...components: ReadonlyArray<ReturnType<typeof text>>) => ({ ...canvas, components })
+  const snapshotOf = (projection: CanvasProjection) => ({ documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: projection })
+  // One uniform double type, so every row below can hand `open` its own
+  // answer without the default's narrower inference fighting it.
+  const boundaryEngine = (answer: () => Promise<unknown>) => vi.fn(answer)
+  const open = (projection: CanvasProjection = canvas, request = boundaryEngine(async () => ({ snapshot: snapshot(2) }))) => {
+    const view = render(<App engine={engine(request as never)} initialSnapshot={snapshotOf(projection)} />)
+    return { view, request }
+  }
+  const sentCommands = (request: ReturnType<typeof boundaryEngine>) => (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+  const headerHandle = () => screen.getByRole('button', { name: 'Resize the page header' })
+  const footerHandle = () => screen.getByRole('button', { name: 'Resize the page footer' })
+  const readout = () => document.querySelector('.band-boundary-readout')?.textContent
+  const proposalOffset = () => (document.querySelector('.band-boundary-proposal') as HTMLElement | null)?.style.getPropertyValue('--boundary-display-y')
+  // The band rects, read as the CSS custom properties the projection wrote.
+  // AC: no `.page-band` moves for the duration of a gesture.
+  const bandGeometry = () => Array.from(document.querySelectorAll('.page-band')).map((band) => `${(band as HTMLElement).style.getPropertyValue('--band-y')}/${(band as HTMLElement).style.getPropertyValue('--band-height')}`)
+  const press = (handle: HTMLElement, clientY: number, pointerId = 1) => fireEvent.pointerDown(handle, { pointerId, button: 0, buttons: 1, clientY })
+  const drag = (handle: HTMLElement, clientY: number, pointerId = 1) => fireEvent.pointerMove(handle, { pointerId, buttons: 1, clientY })
+  const release = (handle: HTMLElement, clientY: number, pointerId = 1) => fireEvent.pointerUp(handle, { pointerId, buttons: 0, clientY })
+
+  // MATRIX ROW 1.
+  it('tracks the pointer with a proposal and sends one pageHeader command on release', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    const resting = bandGeometry()
+    press(handle, 100)
+    drag(handle, 140)
+    // The proposal, and only the proposal: the readout is the height the gesture
+    // PROPOSES — not a prediction of what will be written, because with Snap on
+    // the engine rounds it — and the line sits 40pt below the boundary's own
+    // place. Snap is off in no row here, so the two differ; the wire assertion
+    // below is what pins the proposal, and Go pins the rounding.
+    expect(readout()).toBe('60')
+    expect(proposalOffset()).toBe('40px')
+    // AC. No band rect was re-placed by the browser, and nothing was sent.
+    expect(bandGeometry()).toEqual(resting)
+    expect(request).not.toHaveBeenCalled()
+    release(handle, 140)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":60,"snap":true}')
+    // The proposal is gone: what the author sees after release is what the
+    // engine accepted, re-projected.
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+  })
+
+  // MATRIX ROW 2. The footer grows as the pointer RISES, which is the half a
+  // suite that only dragged the header would never see.
+  it('grows the page footer on an upward drag and sends one pageFooter command', async () => {
+    const { request } = open()
+    const handle = footerHandle()
+    press(handle, 400)
+    drag(handle, 375)
+    expect(readout()).toBe('45')
+    expect(proposalOffset()).toBe('-25px')
+    release(handle, 375)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageFooter","height":45,"snap":true}')
+  })
+
+  // MATRIX ROW 3. The edge above the PAGE HEADER tab is the page margin, not a
+  // band boundary, so there is nothing there to grab.
+  it('gives the page header band no handle, because its top edge is the page margin', () => {
+    open()
+    expect(document.querySelectorAll('.band-boundary-handle')).toHaveLength(2)
+    expect(document.querySelector('.page-band-pageHeader .band-boundary-handle')).toBeNull()
+    expect(document.querySelector('.page-band-content .band-boundary-handle')).not.toBeNull()
+    expect(document.querySelector('.page-band-pageFooter .band-boundary-handle')).not.toBeNull()
+    // AC: no accessible name collides with the three region names the shipped
+    // e2e specs reach for under Playwright strict mode.
+    expect(screen.getByLabelText('Page Header')).toBeInTheDocument()
+    expect(screen.getByLabelText('Content')).toBeInTheDocument()
+    expect(screen.getByLabelText('Page Footer')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Page Header' })).toBeNull()
+  })
+
+  // MATRIX ROW 4. The send-only-if-changed rule, which is also what keeps a
+  // no-op gesture out of undo history.
+  it('sends nothing when the pointer comes back to where the drag began', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 160)
+    expect(readout()).toBe('80')
+    drag(handle, 100)
+    expect(readout()).toBe('20')
+    release(handle, 100)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // MATRIX ROW 5. Under the 2px travel gate this is a press, not a drag — and
+  // it must not LOOK like one either. A line and a readout painted for a
+  // gesture that has already decided to send nothing is the canvas showing the
+  // author a proposal it will discard without telling them.
+  it('treats a press with sub-threshold travel as a press rather than a drag, and paints nothing', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    // The bare press: no travel at all, and nothing on the canvas.
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    expect(document.querySelector('.band-boundary-readout')).toBeNull()
+    drag(handle, 101)
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    expect(document.querySelector('.band-boundary-readout')).toBeNull()
+    release(handle, 101)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+    // NON-VACUITY: two more pixels and the same gesture DOES paint, so the
+    // absences above are the threshold and not a proposal that never renders.
+    press(handle, 200)
+    drag(handle, 203)
+    expect(document.querySelector('.band-boundary-proposal')).not.toBeNull()
+  })
+
+  // MATRIX ROW 8. A negative band height is a property of the FIELD and is
+  // never proposed, so the line stops at the band's own origin.
+  it('stops the proposal at zero rather than showing a negative band', () => {
+    open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 0)
+    expect(readout()).toBe('0')
+    expect(proposalOffset()).toBe('-20px')
+  })
+
+  // MATRIX ROW 9. The mirrored content-window ceiling. The pointer runs on; the
+  // boundary does not, and the value released is legal.
+  it('stops the proposal at the mirrored ceiling and releases a legal height', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 1000)
+    expect(readout()).toBe(ceiling)
+    // Further travel moves nothing: the clamp is a stop, not a scaling.
+    drag(handle, 4000)
+    expect(readout()).toBe(ceiling)
+    release(handle, 4000)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe(`{"kind":"setBandHeight","version":1,"band":"pageHeader","height":${ceiling},"snap":true}`)
+  })
+
+  // MATRIX ROW 10, AND THE FIRST ASSERTION IN THIS REPOSITORY THAT A CANVAS
+  // GESTURE'S REFUSAL IS RENDERED AT ALL. The engine refuses a band shortened
+  // past a component's lowest edge, with its own located sentence; the whole
+  // safety argument of this story is that the author reads it.
+  it('renders the engine\'s own refusal sentence in the canvas alert', async () => {
+    const refusing = boundaryEngine(async () => { throw { elementId: 'e1', dataPath: 'bands.pageHeader.height', message: 'a pageHeader height of 12pt would leave e1 outside the band: it reaches 62pt' } })
+    const { request } = open(withComponents(text('e1', 'pageHeader', 50_000)), refusing)
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 92)
+    release(handle, 92)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('e1: a pageHeader height of 12pt would leave e1 outside the band: it reaches 62pt')
+    expect(alert.className).toContain('file-message')
+    // The proposal is discarded either way: a refused gesture must not leave a
+    // line on the canvas claiming a height the document does not have.
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+  })
+
+  // MATRIX ROW 11.
+  it('resizes the focused boundary by a point on an arrow key and ten with shift', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    handle.focus()
+    fireEvent.keyDown(handle, { key: 'ArrowDown' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":21,"snap":true}')
+    fireEvent.keyDown(handle, { key: 'ArrowUp', shiftKey: true })
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(sentCommands(request)[1]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":10,"snap":true}')
+    // The FOOTER's arrows are the other direction of the same key, because the
+    // footer's height is measured upward.
+    fireEvent.keyDown(footerHandle(), { key: 'ArrowUp' })
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
+    expect(sentCommands(request)[2]).toBe('{"kind":"setBandHeight","version":1,"band":"pageFooter","height":21,"snap":true}')
+  })
+
+  // MATRIX ROW 12. The window `shortcut` handler's arrow arm is SELECTION
+  // driven, not focus driven, so without the handle's own stopPropagation both
+  // would fire and the author would move two things with one key.
+  it('moves the boundary and NOT a selected component when both could answer the key', async () => {
+    // The double echoes a projection that STILL CARRIES e1, because the
+    // contrast arm below needs a component to be there after the boundary
+    // command has landed — a snapshot with no components would make the second
+    // arrow key send nothing for a reason that has nothing to do with focus.
+    const projection = withComponents(text('e1', 'content', 0))
+    const { request } = open(projection, boundaryEngine(async () => ({ snapshot: snapshotOf(projection) })))
+    fireEvent.pointerDown(screen.getByLabelText('text component e1'), { pointerId: 3, clientX: 1, clientY: 1 })
+    fireEvent.pointerUp(screen.getByLabelText('text component e1'), { pointerId: 3, clientX: 1, clientY: 1 })
+    // The resize handles are the selection, rendered.
+    expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
+    const handle = headerHandle()
+    handle.focus()
+    fireEvent.keyDown(handle, { key: 'ArrowDown' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const sent = sentCommands(request)
+    expect(sent[0]).toContain('"kind":"setBandHeight"')
+    expect(sent.some((command) => command.includes('moveComponent'))).toBe(false)
+    // The contrast arm: with nothing of ours focused the same key DOES move the
+    // component, so the row above is a measurement of the guard rather than of
+    // a nudge path that never fires.
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(sentCommands(request)[1]).toContain('"kind":"moveComponent"')
+
+    // AND THE HORIZONTAL ARROWS, which the boundary has no use for and must
+    // still not hand on: they reach the same SELECTION-driven arm and would
+    // move the component sideways while focus sat on the strip.
+    handle.focus()
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    await act(async () => { await Promise.resolve() })
+    expect(request).toHaveBeenCalledTimes(2)
+
+    // A MODIFIER IS THE APPLICATION'S. Undo must still reach the window
+    // handler from a focused handle, or the strip becomes a keyboard trap for
+    // every shortcut in the product.
+    const shortcut = vi.fn()
+    window.addEventListener('keydown', shortcut)
+    fireEvent.keyDown(handle, { key: 'z', ctrlKey: true })
+    expect(shortcut).toHaveBeenCalledOnce()
+    window.removeEventListener('keydown', shortcut)
+  })
+
+  // P4's other half: Enter and Space on a focused handle reach the band
+  // <section>'s own onKeyDown, which treats them as a PLACEMENT and drops an
+  // armed palette component at the band origin.
+  it('swallows Enter and Space rather than placing an armed palette component', async () => {
+    const { request } = open()
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    const handle = headerHandle()
+    handle.focus()
+    fireEvent.keyDown(handle, { key: 'Enter' })
+    fireEvent.keyDown(handle, { key: ' ' })
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+    // NON-VACUITY: the same key on the BAND does place, so the row above
+    // measures the handle's guard and not a placement path that never fires.
+    fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toContain('"kind":"dropComponent"')
+  })
+
+  // P5. The strip spans the whole page width plus 118px and lies over the band,
+  // so with a palette kind armed a placement press anywhere along the boundary
+  // would start a resize. Every other band pointer handler is gated on
+  // `placing`; this one is too.
+  it('begins no drag while a palette placement is armed', async () => {
+    const { request } = open()
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 160)
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    release(handle, 160)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // P3. Escape is the established cancel for every other canvas interaction,
+  // and a boundary drag that survived it would leave a live gesture and a line
+  // on screen with nothing to end them.
+  it('abandons a live drag on Escape, and on the canvas-wide clear', () => {
+    open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 160)
+    expect(document.querySelector('.band-boundary-proposal')).not.toBeNull()
+    fireEvent.keyDown(handle, { key: 'Escape' })
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    // The same abort reached through clearInteraction, which is what a document
+    // replaced mid-drag (undo, load, Start blank) runs.
+    press(handle, 100)
+    drag(handle, 160)
+    expect(document.querySelector('.band-boundary-proposal')).not.toBeNull()
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'Escape' })
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+  })
+
+  // P12. A pointerup can carry the pointer somewhere new without an intervening
+  // move — a fast flick, a capture handed back, a coalesced sequence — and the
+  // release must commit where the author let go, not where the last move was.
+  it('commits the coordinate the pointer was released at, not the last move\'s', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 140)
+    expect(readout()).toBe('60')
+    release(handle, 190)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":110,"snap":true}')
+  })
+
+  // P2 (HIGH). THE ONE CONVERSION THE BROWSER OWNS IN THIS FEATURE, at the only
+  // zoom where it can go wrong. Every other row runs at zoom 1, where
+  // `documentDelta(px, 1) * 1000` is an integer by luck; the ladder's other
+  // rungs hand `points()` a float, and `points()` assumes whole millipoints.
+  //
+  // MEASURED: at zoom 1.1 a 36px upward drag on a 60pt header gives
+  // 27273.000000000004, which `points()` spells "27.273.00000000000364" — not a
+  // JSON number, so `jsonNumber` replaces it with `null` and the command goes
+  // out as `"height":null`. The author reads that string in the readout for the
+  // whole gesture and then the engine refuses the command.
+  it('keeps the proposal a whole millipoint at a zoom other than 1', async () => {
+    // A 60pt header, because the artifact needs a proposal that does not land
+    // on the floor: 60 - 32.727 = 27.273.
+    const tall = { ...canvas, bands: [{ name: 'pageHeader' as const, x: 36_000, y: 36_000, width: 523_276, height: 60_000 }, { name: 'content' as const, x: 36_000, y: 96_000, width: 523_276, height: 689_890 }, { name: 'pageFooter' as const, x: 36_000, y: 785_890, width: 523_276, height: 20_000 }] }
+    const { request } = open(tall)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('110%')
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 64)
+    // The readout the author actually reads. Without the rounding this is
+    // "27.273.00000000000364".
+    expect(readout()).toBe('27.273')
+    // AND IT IS THE ZOOM'S OWN ARITHMETIC: at zoom 1 the same 36px would be
+    // 36pt and the header would read 24. A conversion that ignored zoom would
+    // pass every other row in this block.
+    expect(readout()).not.toBe('24')
+    release(handle, 64)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":27.273,"snap":true}')
+    expect(sentCommands(request)[0]).not.toContain('null')
+  })
+
+  // MATRIX ROW 13. One interactive boundary per DOCUMENT, on the home sheet,
+  // following the occurrence.home idiom the repeating components already use.
+  it('draws exactly two handles for a three-sheet stack, both on the home sheet', () => {
+    open({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000] })
+    expect(document.querySelectorAll('.page-surface')).toHaveLength(3)
+    expect(document.querySelectorAll('.page-band-pageFooter')).toHaveLength(3)
+    // getByRole throws on more than one match, so these two calls ARE the
+    // uniqueness claim.
+    expect(headerHandle()).toBeInTheDocument()
+    expect(footerHandle()).toBeInTheDocument()
+    const handles = Array.from(document.querySelectorAll('.band-boundary-handle'))
+    expect(handles).toHaveLength(2)
+    const home = document.querySelectorAll('.page-surface')[0] as HTMLElement
+    expect(handles.every((handle) => home.contains(handle))).toBe(true)
+  })
+
+  // MATRIX ROW 14. A right-button press fires pointerdown like any other, and
+  // without the guard a context-menu click on the strip starts a drag.
+  it('begins no drag on a non-primary button', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 2, buttons: 2, clientY: 100 })
+    drag(handle, 160)
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    release(handle, 160)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // MATRIX ROW 15, both endings. A pointercancel and a move with nothing held
+  // down are the same ending: the proposal is discarded and nothing is sent.
+  it('discards the proposal when the pointer is cancelled or the button is released unseen', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 160)
+    expect(readout()).toBe('80')
+    fireEvent.pointerCancel(handle, { pointerId: 1, clientY: 160 })
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+    // The other ending: a move with buttons === 0 is a HOVER, not a drag, and
+    // it must not resize anything on the next bare pass across the strip.
+    press(handle, 100)
+    drag(handle, 160)
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 0, clientY: 200 })
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    fireEvent.pointerMove(handle, { pointerId: 1, buttons: 0, clientY: 400 })
+    expect(document.querySelector('.band-boundary-proposal')).toBeNull()
+    release(handle, 400)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  // MATRIX ROW 16. Without the id check a second finger's press REBASES the
+  // anchor under the first one's drag, and a second finger's move is accepted
+  // as if the first had made it.
+  it('lets the first pointer own the gesture and ignores a second', async () => {
+    const { request } = open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 140)
+    expect(readout()).toBe('60')
+    press(handle, 300, 2)
+    drag(handle, 340, 2)
+    expect(readout()).toBe('60')
+    release(handle, 340, 2)
+    await act(async () => { await Promise.resolve() })
+    expect(request).not.toHaveBeenCalled()
+    // The FIRST pointer still owns it, and still commits its own travel.
+    drag(handle, 150)
+    expect(readout()).toBe('70')
+    release(handle, 150)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toContain('"height":70')
+  })
+
+  // THE AFFORDANCE, WHICH IS A STYLESHEET FACT AND SO IS READ FROM THE SOURCE.
+  // jsdom applies no stylesheet, and the shipped Playwright suite is not run by
+  // any workflow (DW-193), so App.css's own text is the only place these are
+  // observable by anything that executes.
+  //
+  // COMMENT POLICY, DECLARED AND ASSERTED IN BOTH DIRECTIONS (D-000.27): these
+  // extractions are RAW — a commented-out rule counts as live — which is the
+  // policy property-prose-height.test.ts already uses over this same file. The
+  // extraction FAILS LOUDLY rather than passing vacuously when it finds
+  // nothing, because a guard that silently matched zero rules is quoted as
+  // evidence exactly like one that matched.
+  const appCss = () => fs.readFileSync('src/App.css', 'utf8')
+  const ruleFor = (source: string, selector: string) => source.match(new RegExp(`^\\${selector} \\{([^}]*)\\}`, 'm'))
+
+  it('declares the hit strip as a transparent ns-resize band on the boundary, and nothing that paints', () => {
+    const css = appCss()
+    const handle = ruleFor(css, '.band-boundary-handle')
+    expect(handle, 'App.css must declare a .band-boundary-handle rule').not.toBeNull()
+    // AN ALLOWLIST, WHICH IS THE ONLY WAY "IT PAINTS NOTHING" IS REAL. Review
+    // forced this move once already on .property-prose-resize, after a
+    // two-item denylist let `border-top`, `box-shadow` and `outline` through.
+    const declared = handle![1].split(';').map((one) => one.trim()).filter((one) => one !== '').map((one) => one.slice(0, one.indexOf(':')).trim())
+    expect([...declared].sort()).toEqual(['background', 'border', 'cursor', 'height', 'left', 'padding', 'position', 'top', 'touch-action', 'width'].sort())
+    expect(handle![0]).toMatch(/background:\s*transparent/)
+    expect(handle![0]).toMatch(/border:\s*0/)
+    expect(handle![0]).toMatch(/cursor:\s*ns-resize/)
+    // Load-bearing: without it a touch press is taken as a pan, the browser
+    // fires pointercancel, and the drag ends before it starts.
+    expect(handle![0]).toMatch(/touch-action:\s*none/)
+    // A hit height in the 6-8px band, straddling the rule rather than sitting
+    // wholly above or below it.
+    const hit = /height:\s*(\d+)px/.exec(handle![0])
+    expect(hit, 'the strip must declare a hit height').not.toBeNull()
+    expect(Number(hit![1])).toBeGreaterThanOrEqual(6)
+    expect(Number(hit![1])).toBeLessThanOrEqual(8)
+    expect(handle![0]).toMatch(/top:\s*-\d/)
+    // A generated box would paint without appearing in the rule at all.
+    expect(css).not.toMatch(/\.band-boundary-handle\s*::?(?:after|before)/)
+  })
+
+  // P1 (HIGH). THE DEFECT THIS ROW EXISTS FOR, and it shipped invisible because
+  // jsdom applies no stylesheet: App.css's band-tab rule is `.page-band > span`
+  // at specificity (0,1,1), and a class rule is (0,1,0). The proposal and the
+  // readout are DIRECT CHILDREN of the band, so as <span>s the TAB rule won —
+  // `top: 0` beating `top: var(--boundary-display-y)`, plus a border, a tint, a
+  // translate a tab's width off the page and text-transform: uppercase. The
+  // line would never have tracked the pointer in a real browser.
+  //
+  // They are <div>s now. This row pins BOTH halves: the rules say what they
+  // must say, and no `.page-band > …` selector the sheet declares can reach
+  // them — gathered FROM THE STYLESHEET rather than listed here, so a child
+  // rule added later is covered without anyone remembering to come back.
+  it('paints the proposal and the readout out of reach of the band-tab rule', () => {
+    const css = appCss()
+    for (const selector of ['.band-boundary-proposal', '.band-boundary-readout']) {
+      const rule = ruleFor(css, selector)
+      expect(rule, `App.css must declare a ${selector} rule`).not.toBeNull()
+      expect(rule![0]).toMatch(/top:\s*var\(--boundary-display-y\)/)
+      expect(rule![0]).toMatch(/pointer-events:\s*none/)
+    }
+    open()
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 140)
+    const painted = ['.band-boundary-proposal', '.band-boundary-readout'].map((selector) => document.querySelector(selector) as HTMLElement | null)
+    expect(painted.filter((node) => node !== null)).toHaveLength(2)
+    const childSelectors = [...css.matchAll(/^(\.page-band > [^{,]+?) \{/gm)].map((match) => (match[1] as string).trim())
+    expect(childSelectors, 'App.css must declare at least one .page-band child rule for this row to be about anything').not.toHaveLength(0)
+    for (const selector of childSelectors) {
+      for (const node of painted) expect(node!.matches(selector), `${selector} out-specificities the class rule and must not match .${node!.className}`).toBe(false)
+    }
+    // POSITIVE CONTROL. The same gathered selectors really do reach the band
+    // tab, so "does not match" above is a measurement rather than a regex that
+    // matched nothing. The tab is untouched by this story and must stay so.
+    const tab = document.querySelector('.page-band-content > span') as HTMLElement
+    expect(tab, 'the band tab must still be the band section\'s first span child').not.toBeNull()
+    expect(tab.textContent).toBe('Content')
+    expect(childSelectors.some((selector) => tab.matches(selector))).toBe(true)
+  })
+
+  // THE DESIGN RECORD IS FOUND, NOT SPELLED. Hard-coding `ux-folio-2026-08-23`
+  // would red a unit test on the next UX revision directory, so the revision is
+  // discovered and its uniqueness asserted — 0 or 2 is a THROW, never
+  // first-match-wins (the shape offline-release-contract.mjs already uses).
+  const designSource = () => {
+    const root = '../_bmad-output/planning-artifacts/ux-designs'
+    const revisions = fs.readdirSync(root).filter((entry) => fs.existsSync(`${root}/${entry}/DESIGN.md`))
+    if (revisions.length !== 1) throw new Error(`expected exactly one UX revision carrying a DESIGN.md under ${root}; found ${revisions.length}: ${revisions.join(', ')}`)
+    return fs.readFileSync(`${root}/${revisions[0]}/DESIGN.md`, 'utf8')
+  }
+  // EACH NUMERAL IS READ FROM ITS OWN BLOCK. An unscoped `/^\s+overhang:/m`
+  // takes the first match anywhere in a 500-line document, so a stray
+  // `overhang:` added above would silently retarget the width assertion below.
+  // `band-tab:` genuinely appears twice — once under typography and once under
+  // components — which is why the block is selected by the KEY it carries and
+  // a count other than one throws.
+  const designPixels = (source: string, block: string, key: string): string => {
+    const declaration = new RegExp(`^    ${key}: '(\\d+)px'$`, 'm')
+    const holding = [...source.matchAll(new RegExp(`^  ${block}:\\n((?:    \\S.*\\n)+)`, 'gm'))]
+      .map((match) => match[1] as string)
+      .filter((body) => declaration.test(body))
+    if (holding.length !== 1) throw new Error(`DESIGN.md must declare exactly one ${block} block carrying ${key}; found ${holding.length}`)
+    return (declaration.exec(holding[0] as string) as RegExpExecArray)[1] as string
+  }
+
+  it('reaches the band tab, at the offset DESIGN.md declares for it', () => {
+    // UX-DR25's "hit targets larger than their visual footprint", tied to the
+    // design record rather than to a number somebody liked: 104px is
+    // band-tab.offsetFromPage and 14px is band-boundary.overhang, so the strip
+    // spans the tab's horizontal position AND ends exactly where the dashed
+    // rule the author sees ends. 104 + 14 = 118.
+    const design = designSource()
+    const tabOffset = designPixels(design, 'band-tab', 'offsetFromPage')
+    const overhang = designPixels(design, 'band-boundary', 'overhang')
+    // BOTH numerals pinned, not one: an unpinned overhang lets the width
+    // assertion follow whatever the document happens to say.
+    expect(tabOffset).toBe('104')
+    expect(overhang).toBe('14')
+    const handle = ruleFor(appCss(), '.band-boundary-handle')
+    expect(handle, 'App.css must declare a .band-boundary-handle rule').not.toBeNull()
+    expect(handle![0]).toContain(`left: calc(-1 * var(--band-x) - ${tabOffset}px)`)
+    expect(handle![0]).toContain(`width: calc(var(--page-display-width) + ${Number(tabOffset) + Number(overhang)}px)`)
+    // The extraction's own non-vacuity, in both directions and on synthetic
+    // input: it finds the block that carries the key, and it THROWS rather than
+    // guessing when no block or two blocks do.
+    expect(designPixels("  band-tab:\n    offsetFromPage: '7px'\n  band-tab:\n    fontSize: '9px'\n", 'band-tab', 'offsetFromPage')).toBe('7')
+    expect(() => designPixels("  band-tab:\n    fontSize: '9px'\n", 'band-tab', 'offsetFromPage')).toThrow(/exactly one/)
+    expect(() => designPixels("  band-tab:\n    offsetFromPage: '7px'\n  band-tab:\n    offsetFromPage: '8px'\n", 'band-tab', 'offsetFromPage')).toThrow(/exactly one/)
+  })
+
+  // AC2's affordance distinction, and the extraction's own non-vacuity: the
+  // ONLY ns-resize the canvas grows is on the two real boundaries.
+  it('gives the page header band no resize cursor, and the extraction proves it can see one', () => {
+    const css = appCss()
+    expect(css).not.toMatch(/\.page-band-pageHeader[^{]*\{[^}]*ns-resize/)
+    // POSITIVE CONTROL. The same shape of match DOES fire on the selector that
+    // really carries the cursor, so the absence above is a measurement.
+    expect(css).toMatch(/\.band-boundary-handle[^{]*\{[^}]*ns-resize/)
+    // AND THE COMMENT POLICY, ASSERTED IN BOTH DIRECTIONS on synthetic input
+    // rather than by editing the file. RAW: a rule commented OUT at the start
+    // of a line is still seen, so nobody buys their way past this guard by
+    // wrapping the rule in `/* */`.
+    expect(ruleFor('/*\n.band-boundary-handle { cursor: ns-resize; }\n*/\n', '.band-boundary-handle')).not.toBeNull()
+    expect(ruleFor('.band-boundary-handle { cursor: ns-resize; }\n', '.band-boundary-handle')).not.toBeNull()
+    // The other direction, and the extraction's OWN limit stated rather than
+    // discovered later: it is line-anchored, so a rule that does not begin its
+    // line is invisible to it — including one tucked after an inline comment.
+    // That is why the allowlist row above fails loudly when it finds nothing.
+    expect(ruleFor('/* x */ .band-boundary-handle { cursor: ns-resize; }\n', '.band-boundary-handle')).toBeNull()
+    expect(ruleFor('.page-band > span { top: 0; }\n', '.band-boundary-handle')).toBeNull()
+  })
+
+  // MATRIX ROWS 6 AND 7, in the only place the browser can answer them: the
+  // engine snaps, and what this side owes is the field. Go's
+  // TestSetBandHeightSnapsToTheGridWhenAsked and
+  // TestSetBandHeightLeavesAnUnsnappedHeightAlone are the other end of it.
+  it('carries the canvas Snap toggle to the wire rather than rounding for itself', async () => {
+    const { request } = open()
+    fireEvent.click(screen.getByRole('button', { name: /^Snap on/ }))
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 141)
+    // 61 is not on the 6pt grid, and nothing in the browser moved it.
+    expect(readout()).toBe('61')
+    release(handle, 141)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":61,"snap":false}')
+  })
+
+  // P8. THE READOUT SHOWS THE PROPOSAL, NOT A PREDICTION OF WHAT WILL BE
+  // WRITTEN — and this row is what makes that a fact rather than a comment.
+  // With Snap ON the engine rounds 61 to the 6pt grid, and the browser must
+  // still show 61 and send 61: rounding the DISPLAY would mean a second
+  // spelling of SnapNearest in TypeScript, which is the one thing AD-17 and
+  // this story's R1 forbid outright. The accepted value reaches the author by
+  // re-projection on release, not by the browser guessing it.
+  it('shows the raw proposal under Snap-on rather than re-spelling the engine\'s grid', async () => {
+    const { request } = open()
+    expect(screen.getByRole('button', { name: /^Snap on/ })).toHaveAttribute('aria-pressed', 'true')
+    const handle = headerHandle()
+    press(handle, 100)
+    drag(handle, 141)
+    // 61 is one point off the grid. A browser that snapped the display would
+    // show 60 here, and would be re-implementing the engine's rule to do it.
+    expect(readout()).toBe('61')
+    expect(readout()).not.toBe('60')
+    release(handle, 141)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(sentCommands(request)[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":61,"snap":true}')
+  })
+
+  // P10. THE BLOCK'S OWN PLACEMENT, because the defect it closes was invisible
+  // to every guard in the file: the 12.5 block was first spliced between Story
+  // 17.1's header line and 17.1's body, so 17.1's documentation read as if it
+  // described 12.5 — and 17.1's self-count guard, which counts `it(`s from its
+  // describe to EOF, passed the whole time.
+  //
+  // EVERY MARKER BELOW IS MATCHED LINE-ANCHORED AND SPELLED AS A REGEX, never
+  // as a plain literal, and that is not style. A bare `indexOf("describe('Story
+  // 17" + ".1")` in THIS block would occur earlier in the file than the real
+  // one, so the row would slice its own source and pass on nothing — and worse,
+  // it would move Story 17.1's own self-count guard, which does exactly that
+  // indexOf, onto this block's text. (Measured: it did. That guard went red
+  // with `expected undefined to be defined` the moment this row was first
+  // written with literals.) Line anchors exclude both, because a marker quoted
+  // inside an expect is indented and a real one is at column 0.
+  it('leaves each story header whole and adjacent to its own describe', () => {
+    const source = fs.readFileSync('src/App.test.tsx', 'utf8')
+    const at = (pattern: RegExp, what: string) => {
+      const found = source.search(pattern)
+      if (found < 0) throw new Error(`App.test.tsx no longer carries ${what} at the start of a line; re-derive this extraction rather than deleting the check`)
+      return found
+    }
+    const header = at(/^\/\/ STORY 17\.1: THE CANVAS FOLLOWS THE CONTENT FIELD\.$/m, "Story 17.1's header")
+    const owner = at(/^describe\('Story 17\.1/m, "Story 17.1's describe")
+    expect(owner).toBeGreaterThan(header)
+    // Nothing else may sit between a header and the describe it introduces.
+    expect(source.slice(header, owner)).not.toMatch(/^describe\(/m)
+    expect(source.slice(header, owner)).not.toMatch(/^\/\/ STORY 12\.5:/m)
+    // And this block's own header is whole, immediately above its own describe.
+    const mine = at(/^\/\/ STORY 12\.5: A BAND BOUNDARY IS DRAGGED ON THE CANVAS\.$/m, "Story 12.5's header")
+    const myOwner = at(/^describe\('Story 12\.5/m, "Story 12.5's describe")
+    expect(myOwner).toBeGreaterThan(mine)
+    expect(source.slice(mine, myOwner)).not.toMatch(/^describe\(/m)
+    expect(source.slice(mine, myOwner)).not.toMatch(/^\/\/ STORY 17\.1:/m)
+    // The whole of this block sits before that header, which is the property
+    // the splice violated.
+    expect(myOwner).toBeLessThan(header)
   })
 })
 

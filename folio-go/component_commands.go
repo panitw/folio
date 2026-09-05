@@ -2167,6 +2167,19 @@ func bandHeightPath(name string) string {
 	return truncateAtRuneBoundary("bands."+name+".height", maxComponentDataPathBytes)
 }
 
+// bandSnapPath locates a malformed `snap` AT THE FIELD THAT IS ACTUALLY WRONG.
+// Reporting it at bands.<band>.height — which is what a shared path would do —
+// tells the author their height is bad when their boolean is, and sends them to
+// correct the one field the door had already accepted (D-000.25). It is bounded
+// the same way bandHeightPath is, and for the same reason: `band` arrives as a
+// free string on the wire and the host cuts DataPath by BYTES.
+func bandSnapPath(name string) string {
+	if name == "" {
+		return "bands"
+	}
+	return truncateAtRuneBoundary("bands."+name+".snap", maxComponentDataPathBytes)
+}
+
 // setBandHeight is the only writer of Band.Height outside the loader.
 //
 // IT VALIDATES BEFORE IT MUTATES, and the two things it validates are two
@@ -2190,10 +2203,14 @@ func bandHeightPath(name string) string {
 // sentence costs nothing under AD-14 because command refusals are error strings
 // routed by prefix rather than registry codes.
 //
-// The height is echoed back to the author IN THE LITERAL THEY SENT. It reached
-// lengthField as JSON and left it as a decimal with at most three places, so
-// what goes into the message is digits, one optional sign and one optional
-// point — never re-spelled, and never a second spelling of appendPoints.
+// The height is echoed back to the author IN THE LITERAL THEY SENT, unless
+// SNAPPING moved it. It reached lengthField as JSON and left it as a decimal
+// with at most three places, so what goes into the message is digits, one
+// optional sign and one optional point. When `snap` is true the value the
+// author sent is not the value that would be written, and a refusal naming the
+// discarded one would send them to correct a number the engine never held — so
+// the echo is re-spelled through template.FormatPoints, which IS appendPoints,
+// rather than through a second spelling of it.
 //
 // AND EVERY DERIVED QUANTITY BESIDE IT IS SPELLED IN THE SAME UNITS. The author
 // types POINTS into a box labelled "(pt)" and the engine's refusal echoes that
@@ -2204,7 +2221,7 @@ func bandHeightPath(name string) string {
 // exact-decimal spelling, the same one the file on disk uses — so a message and
 // the document agree by construction rather than by care.
 func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 4); err != nil {
+	if err := componentFields(raw, 5); err != nil {
 		return CanvasProjection{}, err
 	}
 	name, err := commandString(raw, "band")
@@ -2225,7 +2242,34 @@ func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	if err != nil {
 		return CanvasProjection{}, componentFailure("", bandHeightPath(name), err.Error())
 	}
+	// SNAPPING IS THE ENGINE'S, AND IT HAPPENS FIRST (Story 12.5, R3). Every
+	// other geometry command already carries `snap` and rounds here, through
+	// the one SnapToGrid there is; a browser that rounded for itself would be
+	// the first grid arithmetic in folio-designer and a fourth spelling of a
+	// rule stated once. The canvas boundary drag is the caller that needs it —
+	// the panel's typed box passes false, so an author who types 83 still gets
+	// 83 and no document the panel writes moves a byte.
+	snap, err := commandBool(raw, "snap")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", bandSnapPath(name), err.Error())
+	}
 	literal := string(raw["height"])
+	// AND IT HAPPENS BEFORE EVERY CHECK BELOW, so a refusal names the number
+	// that would actually have been written. Snapping after the checks would
+	// let a height pass the content-window bound and then be rounded past it;
+	// snapping before them and leaving `literal` at what the author sent would
+	// print a sentence about a value the engine had already discarded. So the
+	// echoed literal is RE-SPELLED here, and only here, in the format's own
+	// canonical decimal — the same appendPoints the file on disk uses. An
+	// unsnapped command still echoes the author's own bytes, untouched.
+	if snap {
+		snapped, valid := SnapToGrid(proposed)
+		if !valid {
+			return CanvasProjection{}, componentFailure("", bandHeightPath(name), fmt.Sprintf("a %s height of %spt overflows grid snapping", name, literal))
+		}
+		proposed = snapped
+		literal = template.FormatPoints(proposed)
+	}
 	if proposed < 0 {
 		return CanvasProjection{}, componentFailure("", bandHeightPath(name), fmt.Sprintf("a %s height of %spt is negative", name, literal))
 	}

@@ -63,6 +63,14 @@ const tsPath = path.join(sourceDir, 'engine-protocol.ts')
 // column reachable by command and not by hand. It reads the list; this test
 // reads it reading the list.
 const dragClampPath = path.join(sourceDir, 'resize-anchor.ts')
+// Story 12.5's mirrored bound, and the THIRD kind of thing this file ties: not
+// a numeral declared on both sides, and not a list, but ONE TERM lifted out of
+// a Go expression. `bandContentWindowCeiling` is `innerH - other - 1`; every
+// input to it is projected, and the `- 1` is not. DW-36's standing condition —
+// a browser-side bound must CONSUME the engine's declaration and be caught
+// doing so — is what makes the drag clamp above legal, and it is what makes
+// this one legal too.
+const bandBoundaryPath = path.join(sourceDir, 'band-boundary.ts')
 
 type GoSource = keyof typeof goSources
 type Pair = Readonly<{ go: string; source: GoSource; ts: string; sites: ReadonlyArray<RegExp> }>
@@ -296,6 +304,81 @@ describe('band containment mirror', () => {
     const driftedClamp = dragClamp.replace(/const limitHeight = limit && BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\) \? limit\.height : Number\.POSITIVE_INFINITY/, 'const limitHeight = limit ? limit.height : Number.POSITIVE_INFINITY')
     expect(driftedClamp).not.toBe(dragClamp)
     expect(driftedClamp).not.toMatch(/BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\)/)
+  })
+})
+
+// STORY 12.5. THE CONTENT-WINDOW CEILING, MIRRORED FOR A GESTURE AND FOR
+// NOTHING ELSE.
+//
+// The band-height PANEL still holds no bound (12.1's D-12.1-Q4, narrowed rather
+// than deleted by 12.5's R1): a typed field has 17.4's "consistency with
+// typing" to be consistent with, so an unmirrored clamp beside a keystroke that
+// sends-and-is-refused would make one box behave two ways. A canvas boundary
+// has no typed counterpart, so that property is vacuous there — and the OTHER
+// half of 17.4's objection, a quietly-drifting copy of the engine's rule, is
+// answered here rather than by prohibition. This describe is what makes the
+// copy not quiet.
+describe('content-window ceiling mirror', () => {
+  const go = fs.readFileSync(goSources.pageSetup, 'utf8')
+  const ts = fs.readFileSync(tsPath, 'utf8')
+  const boundary = fs.readFileSync(bandBoundaryPath, 'utf8')
+
+  // WRAP-FRAGILE AND LOUD ABOUT IT (D-000.27). Both extractions are
+  // line-anchored against one gofmt/prettier spelling, so a reformat that
+  // splits either line must produce a RED here rather than a vacuous pass —
+  // which is what the non-vacuity row below is for, and why every equality
+  // after it reads through these two helpers rather than through raw regexes.
+  const goMargin = (source: string): string | undefined =>
+    source.match(/^func bandContentWindowCeiling\(other, innerH geom\.Length\) geom\.Length \{\n\treturn innerH - other - (\d+)\n\}$/m)?.[1]
+  const tsMargin = (source: string): string | undefined =>
+    source.match(/^export const BAND_CONTENT_WINDOW_MARGIN = (\d+)$/m)?.[1]
+
+  it('reads the margin from both sides, or fails rather than passing vacuously', () => {
+    expect(goMargin(go), 'page_setup.go no longer declares bandContentWindowCeiling where this test can read it; re-derive the extraction rather than deleting the tie').toMatch(/^\d+$/)
+    expect(tsMargin(ts), 'engine-protocol.ts no longer declares BAND_CONTENT_WINDOW_MARGIN on one line').toMatch(/^\d+$/)
+  })
+
+  it('holds the engine\'s strict-positivity margin and its mirror at the same number', () => {
+    expect(tsMargin(ts)).toBe(goMargin(go))
+    // Pinned as a numeral too, so a silent joint edit still has to face the
+    // reason recorded in both files: a geom.Length is an integer count of
+    // millipoints and the content region must be STRICTLY positive.
+    expect(goMargin(go)).toBe('1')
+  })
+
+  it('keeps the ceiling the PREDICATE\'s own on the Go side', () => {
+    // bandsLeaveContentWindow is written in terms of the ceiling rather than
+    // restating the arithmetic, which is what makes one number worth mirroring
+    // at all. A second spelling in Go would leave this mirror tied to the
+    // spelling nobody checks against.
+    expect(go).toMatch(/^\treturn header >= 0 && footer >= 0 && header <= bandContentWindowCeiling\(footer, innerH\)$/m)
+  })
+
+  it('consumes the mirror at the one site that bounds a gesture', () => {
+    // A constant nothing reads would tie two dead declarations together while
+    // the clamp kept an inline literal — the same failure the pairs table's
+    // `sites` column exists to prevent.
+    expect(boundary).toMatch(/^import \{ BAND_CONTENT_WINDOW_MARGIN, CAPPING_BANDS, type CanvasProjection, type CappingBand \} from '\.\/engine-protocol'$/m)
+    expect(boundary).toMatch(/^  return innerH - otherHeight - BAND_CONTENT_WINDOW_MARGIN$/m)
+    // AND THE CENSUS STAYS CLOSED: the new module holds no copy of the capping
+    // band list either, it reads CAPPING_BANDS.
+    expect(boundary).toContain('CAPPING_BANDS')
+    expect(boundary).not.toMatch(/\['pageHeader', 'pageFooter'\]/)
+  })
+
+  it('turns a one-sided edit of the margin red', () => {
+    const driftedTs = ts.replace(/^export const BAND_CONTENT_WINDOW_MARGIN = (\d+)$/m, 'export const BAND_CONTENT_WINDOW_MARGIN = 0')
+    expect(driftedTs).not.toBe(ts)
+    expect(tsMargin(driftedTs)).not.toBe(goMargin(go))
+    const driftedGo = go.replace(/^\treturn innerH - other - (\d+)$/m, '\treturn innerH - other - 2')
+    expect(driftedGo).not.toBe(go)
+    expect(goMargin(driftedGo)).not.toBe(tsMargin(ts))
+    // And the consumer's own drift, which both declarations agreeing would
+    // hide: a ceiling that stopped reading the mirror and restated the
+    // strictness inline is the shape DW-36 named.
+    const driftedBoundary = boundary.replace(/return innerH - otherHeight - BAND_CONTENT_WINDOW_MARGIN/, 'return innerH - otherHeight - 1')
+    expect(driftedBoundary).not.toBe(boundary)
+    expect(driftedBoundary).not.toMatch(/^  return innerH - otherHeight - BAND_CONTENT_WINDOW_MARGIN$/m)
   })
 })
 

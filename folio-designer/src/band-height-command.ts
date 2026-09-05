@@ -15,7 +15,32 @@
 // typed, the engine refuses it with a located sentence, and the existing
 // role="alert" path renders that sentence. Consistency with typing is the
 // property the tests assert.
-import { commandBytes, jsonNumber, jsonString } from './command-json'
+//
+// STORY 12.5 NARROWS THAT RULING TO THE PANEL. It is a narrowing and not a
+// deletion: the typed field above still holds no bound, and the canvas
+// boundary drag (band-boundary.ts) holds two — a floor at 0 and the mirrored
+// content-window ceiling. THE REASON THE TWO DIFFER, because an asymmetry with
+// no reason attached is one the next reader will "fix" in whichever direction
+// they happen to prefer:
+//
+//   - 17.4's asserted property is CONSISTENCY WITH TYPING. The panel field is
+//     typed, so it has something to be consistent with: an arrow key that
+//     clamped where the keystroke beside it sends-and-is-refused would make
+//     one box behave two ways. A canvas boundary has NO typed counterpart, so
+//     that property is vacuous there and cannot be violated.
+//   - 17.4's other objection is a QUIETLY-DRIFTING copy of the engine's rule.
+//     DW-36 answered that half by condition rather than by prohibition: the
+//     browser bound must CONSUME the engine's own declaration and
+//     engine-bounds-mirror.test.ts must read it doing so. band-boundary.ts's
+//     ceiling is inside that census, so it is not a quiet copy.
+//
+// The discriminator, stated once so it can be reused: CLAMP A GESTURE AT
+// BOUNDS THAT CARRY NO INFORMATION; SEND, AND LET THE ENGINE REFUSE, WHERE THE
+// REFUSAL NAMES SOMETHING THE AUTHOR NEEDS. A ceiling says only "no further",
+// which a stopped pointer already says. The STRAND refusal names the element
+// in the way, so it is not clamped in the browser at all — in the panel or on
+// the canvas.
+import { commandBytes, jsonBoolean, jsonNumber, jsonString } from './command-json'
 import type { CappingBand } from './engine-protocol'
 
 // Only the bands that CAP VERTICALLY have a height a command may set. `content`
@@ -34,6 +59,15 @@ import type { CappingBand } from './engine-protocol'
 // the JSON number grammar and sends it byte for byte or sends `null` — an
 // emptied box becomes `null` and the engine names the field, exactly as page
 // setup already behaves. Nothing here re-computes it.
-export function bandHeightCommand(band: CappingBand, height: string): ArrayBuffer {
-  return commandBytes('setBandHeight', [['band', jsonString(band)], ['height', jsonNumber(height)]])
+//
+// `snap` is the fifth field Story 12.5 added, and it is the ENGINE that rounds
+// (R3). Every other geometry factory — create, drop, move, resize,
+// setComponentBounds, duplicate — already carries it, and SnapNearest's
+// exact-halves-away-from-zero rule is written down in exactly one place.
+// Rounding here would be the first grid arithmetic in folio-designer and a
+// fourth spelling of a rule stated once. The panel passes `false`, so the
+// DOCUMENT BYTES its typed path writes are unchanged; the command PAYLOAD is
+// not, and deliberately so — it gains `"snap":false`.
+export function bandHeightCommand(band: CappingBand, height: string, snap: boolean): ArrayBuffer {
+  return commandBytes('setBandHeight', [['band', jsonString(band)], ['height', jsonNumber(height)], ['snap', jsonBoolean(snap)]])
 }
