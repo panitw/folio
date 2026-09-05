@@ -5272,6 +5272,73 @@ so in the terms DW-23 sets
 **Then** the known-red job's purpose is unchanged and still visible: it stays red, it still names
 DW-11's unmet floor, and its going green is still the surprising event
 
+### Story 15.2b: The font-host scan sees the whole tree
+
+As a developer relying on the font-host scan,
+I want it to read the files a story just wrote,
+So that "clean" means it looked and found nothing, not that it could not look.
+
+**Covers:** AD-26, I-7 · D-000.21, D-15.2.1
+
+**Dispatch order: alongside Story 12.3, NOT with the rest of Epic 15.** It lives here by subject — this
+epic ships no feature and exists to make the others releasable — but every story dispatched before it
+carries the hole, so it must not wait for the tail.
+
+**The problem, stated as what the gate cannot say.** `scan:font-hosts` builds its population with
+`git ls-files` (`scripts/forbidden-font-hosts.mjs:253`), so it reads **tracked files only**. The script
+is honest about this — `:8-13` names *"a host in an untracked file"* as a known hole and words every
+message to claim only the scanned population. But because subagents in this run never stage, **every
+file a story creates stays untracked for that story's entire life**. Story 12.2 added four such files
+and the scan was green over a tree containing none of them. The gate today **cannot distinguish "no
+forbidden host found" from "I did not look at the four files you just wrote."**
+
+**What this story changes.** The population is widened to include untracked-but-not-ignored files
+(`git ls-files --others --exclude-standard` in addition to the tracked listing), so there is nothing in
+the non-ignored tree the scan did not read. **The property being bought is not a bigger number — it is
+the collapse of all-clear into couldn't-look.**
+
+**Measured before drafting, so the scope is known:** the build's generated artifacts are each
+individually gitignored — `src/generated/runtime/`, `offline-assets.ts`, `runtime-fonts.css`,
+`font-catalogue.ts`, `font-index.ts` (`.gitignore:68-75`) — so the emitted stylesheet and the font-index
+snapshot, which legitimately carries host-shaped strings, **stay out of the widened population**. The
+change is small. The repository currently holds **6** untracked-not-ignored files.
+
+**Acceptance Criteria:**
+
+**Given** a forbidden host planted in an **untracked, non-ignored** file
+**When** the scan runs
+**Then** it is **RED** — the existing positive control is over a tracked fixture and would stay green
+through a broken widening, so this arm must be red-proved on its own
+
+**Given** the widened population
+**When** the scan runs on a clean tree
+**Then** it is green, and the reported count is higher than the tracked-only count by exactly the number
+of untracked non-ignored files scanned
+
+**Given** the exemption list
+**When** it is re-checked against the widened population
+**Then** every generated artifact that carries host-shaped strings is still excluded, **verified by
+measurement rather than assumed** — and the check is recorded, because `.gitignore:68-75` ignores those
+artifacts **one file at a time, not by directory**, so the next emitted artifact joins the scanned
+population silently unless someone adds a line
+
+**Given** the population floor
+**When** the widening lands
+**Then** the floor still holds and any test asserting an exact count is updated **deliberately**, with
+the new number stated as a decision, rather than adjusted to whatever the scan now reports
+
+**Given** the compensating per-story grep that D-000.21 put in force
+**When** this story lands
+**Then** it is stood down — it was explicitly time-boxed to this story, so that it has a named end
+rather than becoming permanent by habit
+
+**The forward hazard this story must record, found while scoping it.** `src/generated/` is **not**
+gitignored as a directory; its five generated files are ignored **individually**, and one file in it —
+`pdfjs-assets.ts` — is tracked on purpose. That per-file pattern is deliberate and it is also a trap:
+under a tracked-only scan a new generated artifact was invisible either way, but **under the widened
+population an unignored new artifact enters the scan the moment it is emitted.** Say so in a comment
+beside the ignore block, or the first person to add a generated file will get a red they cannot explain.
+
 ### Story 15.2a: A component command means exactly what it names
 
 As an integrating developer,

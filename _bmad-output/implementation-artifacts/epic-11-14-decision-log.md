@@ -1940,3 +1940,79 @@ its own failure. **A grep that finds the right line and stops mid-sentence produ
 verifiable address and a false payload** — and the address is what makes reviewers trust it. It is the
 same failure as citing a symbol without checking what it does, and it was the form all three of this
 story's corrections took. **A citation must carry the boundary of the claim, not just its location.**
+
+---
+
+## D-15.2.1 — Widen the scan's population, and re-mark every `git grep` absence this run has leaned on
+
+**Story 15.2b created**, `epics.md` and tracker updated. The fix to [[D-000.21]]'s hole is **(b)** — widen
+`scan:font-hosts` to `git ls-files --others --exclude-standard` alongside the tracked listing — dispatched
+as **its own small story alongside 12.3**, not inside 12.2 and not deferred to 15.2.
+
+**Why not the compensating grep as the permanent answer.** *"Option (a) is not a workaround that happens
+to be manual; it is a **prose caveat in procedural form.** It discharges only if whoever dispatches the
+next story remembers, and this run has established what that is worth."* The interim check stays in force
+**time-boxed to 15.2b landing**, so it has a named end rather than becoming permanent by habit.
+
+**And the reason for (b) is not population size.** Today the scan reports *"clean over 625 files"* and
+**cannot distinguish "no forbidden host found" from "I did not look at the four files you just wrote."*"
+Widening does not merely raise the number — **it collapses all-clear into couldn't-look**, because there
+is then nothing in the non-ignored tree the scan did not read. That also disposes of (c), a CI-only gate:
+CI sees only what was committed, so it has the identical hole.
+
+**Placement.** Not 12.2 — its subject is locale and UTC offset, and moving a shipped guard's population
+as a side effect of an unrelated story is the scope creep this run polices. Not 15.2 — that is tail, which
+means roughly twenty more stories carrying the hole, and 15.2's subject is *CI's red means something*,
+which is signal integrity, a different property from a local gate's population.
+
+### The lead's blocker did not materialize, and the check found a worse one
+
+The lead flagged one assumption to measure first: if `src/generated/` is not gitignored, the emitted
+stylesheet and the font-index snapshot — which **legitimately carries host-shaped strings** — enter the
+widened population, and the story is bigger than one line. Measured:
+
+- **`git check-ignore folio-designer/src/generated` → rc 1. The directory is NOT ignored.**
+- **But every generated artifact in it is ignored individually** — `.gitignore:68-75` lists
+  `src/generated/runtime/`, `offline-assets.ts`, `runtime-fonts.css`, `font-catalogue.ts`, `font-index.ts`.
+- One file in that directory, `pdfjs-assets.ts`, is **tracked on purpose**.
+
+**So the blocker is cleared and the story stays small.** The condition is discharged by measurement, and
+the measurement is recorded in the story rather than the conclusion alone.
+
+**The worse thing is the pattern that clears it.** The ignores are **per file, not per directory**, and
+that is deliberate — it is what lets `pdfjs-assets.ts` stay tracked in a directory of generated output.
+Under a tracked-only scan a newly emitted artifact was invisible either way, so the pattern cost nothing.
+**Under the widened population, an unignored new artifact enters the scan the moment it is emitted** — and
+the person who added it will get a red they cannot explain, in a guard they did not touch. 15.2b must
+leave a comment beside the ignore block saying so. **Widening a population converts a dormant convention
+into a live constraint**, which is the kind of consequence that belongs in the story that causes it.
+
+### The standing rule, and it reaches backwards
+
+**`git grep` and `git ls-files` are tracked-only, and this run has used them for CLOSED counts throughout
+— mine, the lead's, and the builders'.** Combined with my prohibition on subagents staging, **every file a
+story creates is invisible to every git-based query for that story's entire life.** The lead probed it:
+`git grep -l` returns only the tracked file where `/usr/bin/grep -rl` returns both, and the repository
+holds **6** untracked-not-ignored files right now, four of them 12.2's new sources.
+
+**The bias is not occasional, it is structural, and it always points the same way — toward "absent" or
+"clean."** That is the direction that produces false confidence rather than false alarm.
+
+Under [[D-000.7]]:
+
+1. **A population built with `git grep` or `git ls-files` is SAMPLED, not CLOSED**, unless untracked files
+   are separately accounted for in the same measurement.
+2. **An absence claim must use a tool that sees untracked files** — `/usr/bin/grep -r`, or
+   `git grep --untracked` — or state the exclusion inside the claim. *Absence claims are where this bias
+   changes a conclusion; a presence count biased low is merely incomplete.*
+3. **Re-mark, do not re-run everything.** The ones to revisit are the exit-1 / zero-hit findings this run
+   has leaned on. The lead named two of its own by construction — the `containComponent` call-site
+   enumeration and the padding-caller absence in `App.tsx` — and did not pretend otherwise. Neither
+   conclusion moves: `App.tsx` is tracked, and the padding finding was about a tracked file's contents.
+   **But they were marked CLOSED on a tool that cannot see part of the tree, and the label was wrong even
+   where the answer was right.**
+
+**The sentence worth carrying out of this whole thread:** *a correct answer reached by a method that could
+not have detected the alternative is still a sample.* It is the grep-that-named-its-own-four-functions
+defect arriving through a different door — and this time the door was the version-control tool everyone
+reaches for first.
