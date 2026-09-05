@@ -454,7 +454,7 @@ development_status:
   epic-12: in-progress
   12-1-the-page-header-and-page-footer-take-the-height-the-author-s: done
   12-2-the-document-declares-its-locale-and-its-utc-offset: done
-  12-3-a-table-s-header-and-its-alternating-rows-are-authorable: review
+  12-3-a-table-s-header-and-its-alternating-rows-are-authorable: done
   12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is: review
   12-5-a-band-boundary-is-dragged-on-the-canvas: backlog
   epic-12-retrospective: optional

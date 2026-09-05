@@ -13,19 +13,22 @@ context: []
 *This section is background, not a requirement; the contract below governs. Rewritten at close to
 describe what actually shipped.*
 
-A table in Folio can already have a taller header row, a styled header row, and alternating row
-colours. The engine reads all three from the file, renders them, and has goldens proving it. What it
-does not have is any way for a person to set them: no button, no field, no command. The only way to
-get a striped table today is to save the file out of the designer and edit the JSON by hand.
+A table in Folio could already have a taller header row, a styled header row and alternating row
+colours. The engine read all three and rendered them, but nobody could set them without saving the
+document out and editing it by hand. That gap is now closed. Three new commands let the table editor
+write those values, the engine reports back what is set, and the editor has gained a small block of
+controls beside its column matrix.
 
-This story adds the missing half. Three new commands let the table editor write those values, the
-engine sends them back so the editor can show what is currently set, and the editor grows a small
-section of controls beside its column matrix.
+The subtle part worked as intended. A header style field left blank is not blank when the document
+prints — it falls back to the table's own style, and then to a documented default. Working that out in
+the browser would have been easy and wrong, so the engine now sends both the value that was set and
+the value that will actually be used, and the panel only displays them.
 
-The one subtle part: a header style field you leave blank is not blank when the document prints — it
-falls back to the table's own style, and then to a documented default. The editor has to show you the
-value that will actually be used. It would be easy to work that out in the browser, and that is
-exactly what this story must not do — the engine already knows the answer and now sends it.
+Three things a later reader may misread. Two engine tests fail, and they failed the same way before
+this story began; they belong to an unrelated corpus floor. A header border is still not settable —
+deliberately left for later. And a bold or italic header remains impossible, because the engine has
+nowhere to inherit those from yet; that is recorded as a consequence a later epic will meet, not an
+oversight here. The story also documented, without changing, a rule the format enforced in silence.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -698,3 +701,101 @@ follows the design.
 
 - Restores a scan this change had blinded by declaring the set through a builder.
   [`closedsets_test.go:768`](../../folio-go/internal/template/closedsets_test.go#L768)
+
+## Delivery Log
+
+### 2026-09-05 — done
+
+Baseline `f76b5bf`. Shipped as one commit, `56a903d` on `main`, 26 files, already pushed. Closed by the
+closer; the frozen intent block was not touched (verified byte-identical by sha256 before and after this
+entry: `5c60b158…bc19b938`, 91 lines / 7395 bytes).
+
+**What shipped, and where the thinking stayed.** Three command arms, a sixteen-member table projection,
+a first-ever wire pin on that projection, and a controls block in the table editor after the column
+matrix. The load-bearing decision was that **the cascade stays in the engine**. A header style field left
+absent falls back to the table's own `style`, then to that field's documented default; the projection
+therefore ships the *resolved value* beside the committed one rather than shipping the ingredients and
+letting TypeScript re-derive the answer. `resolveHeaderStyle` is called at the projection site and
+nowhere else. Had the ingredients gone over the wire instead, the cascade would exist twice, and the
+browser's copy would be the one nobody re-checked when the engine's changed.
+
+**Two members per property — except for two properties, deliberately.** Seven header-style fields carry
+a committed and a resolved member each; `altRowBackground` and `headerHeight` carry **one each**, for
+sixteen rather than eighteen. A resolved member answers *"what will be used when this is absent"*, and
+for these two the question has no content: `headerHeight` is required so it can never be absent, and
+`altRowBackground` is a flat override with no fallback level of its own, so absence resolves to nothing
+rather than to an inherited value. For both, committed **is** resolved. A second member would be a
+duplicate carried on every projection that some later reader has to keep in sync with itself. This
+asymmetry is intentional and is not to be "fixed".
+
+**The surface correction, and what it cost.** D-12.3.1's checklist named the document-level
+`CanvasProjection` and its five sites — inherited from Story 17.3, which picked a surface before
+measuring which one the table editor reads. **Its principle transferred unchanged** (project the resolved
+value, two members per property, projection and mirror in one commit); **its sites did not.** These
+properties are per-table and nothing restricts a document to one table; that projection's zero-value
+parity assertion forbids `omitempty` at its top level, so it cannot represent absence; and the table
+editor does not read it at all. The correct surface is `TableColumnsProjection`, and it cost *more*, not
+less: `hasExactKeys` is stricter in both directions than `hasOnly`, so the red-proof gained an arm.
+
+**12.3 is the first story to put load-bearing data on that surface, so adding the pin was part of the
+story.** The projection had shipped unpinned because nothing before this depended on its shape.
+Introducing the wire pin in `canvas_projection_wire_test.go` was not incidental tidying; without it the
+sixteen members would have been the only unguarded contract in the change.
+
+**The silent-drop fix in `engine-client.ts`, and why it outranked a guard mismatch.** `#settle` discarded
+table-level members before `App.tsx` ever saw them. That is the worse failure mode of the two available:
+a `hasOnly` mismatch at least kills the worker loudly and blanks the canvas, so somebody notices within
+one interaction. A silent drop returns a plausible panel showing stale or empty values, and nothing
+anywhere reports a fault. The fix landed in the same commit as the members it carries.
+
+**`headerHeight` marked Required in `folio-format.md` documents what already ships; it changes nothing.**
+`parse_bands.go` has always refused a table without it and `serialize.go` has always emitted it
+unconditionally — the field was required *by silence*, with no marker and no sentence saying why. Field,
+code and document version are all unchanged; only their documentation moved. Same move Story 12.2 made on
+the `utcOffset` row.
+
+**The finding that justified the whole review, and it came from mutation rather than reading.** Six guards
+were mutated at step-03 before any reviewer ran. Five reddened; one did not. `setTableHeaderHeight`'s
+clear/null refusal could be **deleted outright with the entire suite still green**, because the command
+then fell through to "headerHeight must be a positive length" — a *different* refusal, for a *different*
+reason, located at the *same* `table.headerHeight` DataPath. Every assertion keyed on the path, so the
+path kept matching and nothing noticed the sentence had changed. `refusalSaysWhy` now pins the sentence
+itself. The fix was verified by **re-running the identical mutation**: green before, red after. **A
+refusal asserted only by its DataPath is not asserted.**
+
+**Triage.** 22 patch (21 applied, 1 refused on measurement) · 6 defer (DW-220–DW-225) · 2 reject.
+`review_loop_iteration` stayed 0 — no `intent_gap`, no `bad_spec`, no loopback, no section re-derived. The
+one refused patch alleged a missing in-flight guard on the colour picker; instrumented, the handler is
+entered three times and exactly one command goes out, and the burst test was shown non-vacuous by
+removing both existing guards (three commands). DW-216 through DW-225 were filed by the builder and are
+already in this commit.
+
+**Process deviation, logged by the builder against itself.** Step-04 directs spawning all three review
+layers before reading any output; the builder launched one, read it, then launched the other two. It
+judged no contamination — the reviewers are context-free and it triaged nothing until all three had
+returned. Recorded here because the story's record carried it nowhere else.
+
+**Gates, measured at close on `24758aa`** (the two commits above `56a903d` touch only decision-log prose;
+`epics.md` and every source file are byte-identical to `56a903d`). `folio-go`: rc 1 with **exactly the two
+expected failures** — `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child — and **14
+packages `ok`** (14 is the count of packages passing; 15 is the count of packages *with* tests, one of
+which is the expected failure). `gofmt -l .` empty, `go vet` rc 0. `folio-designer`: `vitest` rc 0, **62
+files / 893 tests**, above the 61/866 floor; `tsc -b` and `tsc -b --force` both rc 0; `oxlint` rc 0 with
+**exactly 4** `only-export-components` warnings, and the set was confirmed **identical to baseline rather
+than merely equinumerous** — `pdf-viewer.tsx` is untouched since `f76b5bf`, and App.tsx from the first
+warning to EOF is byte-identical to baseline (sha256 `4cff49ad…8e6179e1`), so the two warnings there are
+the same `canvasDisplay` and `placementPoint` exports renumbered by the −2 line shift from four hunks all
+at or above line 2513. Scans: `scan:font-hosts` 635 files (635 tracked + 0 untracked), `scan:host-fonts`
+149 files (149 tracked + 0 untracked), 0 occurrences each. Both totals rose from baseline (631 / 146) by
+exactly the count of new files this story added in each scan's root — 4 repo-wide, 3 under
+`folio-designer/src` — and all of them now read as *tracked* rather than *untracked*, which is the
+widened population from Story 15.2b behaving as designed. `lint`: build, vet, gofmt clean, 4 packages
+`ok`. **Matrix and Playwright were not run** — end-of-epic cadence, owed at the Epic 12 boundary gate.
+
+**Deferred, with owners.** DW-216 (`headerStyle.border` unauthorable; trigger: Story 14.8's BORDERS
+section or the first request for a header border) · DW-217 (`resolveHeaderStyle` has no `Bold`/`Italic`
+arm, so a table header cannot be bold even after Epic 11 lands; keyed to Epic 11's resolution story) ·
+DW-218 (`folio-format.md` says the `fontSize` default is 10, the engine ships 12, and 12 is what every
+document already renders with — filed rather than fixed, because changing it is an AD-21 event that
+relocates the golden corpus) · DW-219 through DW-225 as filed. Story 14.8's seam is **ruled, not open**:
+it becomes a restyle story and the mockup is corrected to draw what exists.
