@@ -10,36 +10,27 @@ context: []
 
 ## In plain terms (read this first if you just want the gist)
 
-*This section is background, not a requirement; the contract below governs. Written while the story was in
-flight; the closer refreshes it to describe what actually shipped.*
+*This section is background, not a requirement; the contract below governs. Rewritten at close, to
+describe what actually shipped.*
 
-Every folio document already declares two things that decide how its dates and numbers are written: a
-locale — one of English, Thai, Simplified Chinese or Japanese — and a fixed UTC offset. The engine has
-always honoured both. Nothing in the designer has ever been able to set either, so anyone who wanted a
-Thai statement to print Thai dates had to open the file in a text editor and change it by hand, in a
-product whose whole reason to exist is Thai and CJK statements.
+Every folio document declares a locale — English, Thai, Simplified Chinese or Japanese — and a fixed
+UTC offset, which together decide how its dates and numbers are written. The engine always honoured
+both; nothing in the designer could set either, so a Thai statement meant hand-editing the file. Page
+setup now carries both, beside the margins: they show what the document says, send what the author
+chose, and judge nothing themselves. No new rendering behaviour was added — the engine already knew
+all four locales, Buddhist-era years included.
 
-This story adds the two missing controls to the page setup panel, beside the margins: a locale picker
-offering exactly those four values, and a box for the offset. Both show what the document currently says.
-It adds no new rendering behaviour whatsoever — the engine already knew how to format under all four
-locales, including Thai's Buddhist-era years. What was missing was a way to ask it to.
+The larger thing this story found was in the file loader, which accepted time-zone offsets that are not
+real times: ninety-nine hours and ninety-nine minutes passed, because only the shape was checked and
+never the numbers. Such a document opened happily, then drew no dates at all. Rather than make the new
+control stricter than the format, we repaired the format's own check, so the panel and the loader now
+ask one question where two quietly disagreed. **No version number was increased, and that was
+deliberate** — the format document now says why, and every test document still loads.
 
-The panel itself judges nothing. It sends what the author chose and shows whatever the engine says back,
-which is how every other field in that panel already behaves.
-
-**One decision the owner should see rather than be asked about.** While building this we found the file
-loader was accepting time-zone offsets that are not real times — `+99:99` passes, because the check only
-looked at the shape `±HH:MM` and never at the numbers. Such a document loads happily and then fails to
-draw every date in it, with an error pointing at the renderer rather than at the offset. We tightened the
-loader to mean what the format has always said it means. **We deliberately did not increase the format's
-version number.** No list of legal values was widened, no document that renders today is refused
-tomorrow, and the only files newly rejected are ones whose dates were already failing. All 28 test
-documents in the repository use `+00:00` or `+07:00`, so nothing real is touched. Increasing the version
-would also have restamped every fixture and moved its stored output, for a reason unrelated to time zones.
-
-Two things look wrong on purpose. One long-standing failure in an unrelated text corpus is deliberately
-left red and has nothing to do with this work. And the heavier cross-platform and browser suites are not
-re-run here — this project runs those once, at the end of the epic.
+Three things look wrong on purpose. The loader refuses a bare Z where the expression evaluator accepts
+it; they serve different things, and the reason is recorded at both. One long-standing failure in an
+unrelated text corpus stays red. The heavier cross-platform and browser suites were not re-run here;
+this project runs those once, at the end of the epic. Four smaller issues became follow-ups.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -733,3 +724,128 @@ No matrix suite and no Playwright run — end-of-epic cadence.
 
 - The non-increment, narrated where the file already narrates version events.
   [`folio-format.md:98`](../../_bmad-output/specs/spec-folio/folio-format.md#L98)
+
+## Delivery Log
+
+### 2026-09-05 — done
+
+Baseline `e2ff17a`. Shipped as one commit, `52d0509` on `main`, 27 files. Closed by the closer; the
+frozen intent block was not touched (verified byte-identical by sha256 before and after this entry).
+
+**What shipped, and the one thing that was not the panel.** Two rows in PAGE SETUP, two command arms
+(`setDocumentLocale`, `setDocumentUTCOffset`), the projection widened with `locale` and `utcOffset`
+across the Go struct, the recorded wire-key list and TypeScript's `hasOnly` mirror in a single commit.
+The interesting half was the loader. `setDocumentUTCOffset` was specified to accept whatever the loader
+accepts, and the loader's pattern admitted `+99:99` — a value that loaded and then failed to draw every
+date in the document. Of the three ways out, the ruling took the third: repair the pattern to the range
+`folio-format.md`'s `utcOffset` row always specified, and export `IsUTCOffset` as the **single**
+predicate both doors ask. `IsLocale` is its twin over the closed locale map. Command and loader now
+agree by construction rather than by care.
+
+**The red-proof of that is REACHABILITY, not the regexp** — a test asserting only that the pattern
+rejects a string proves the pattern changed, not that the defect closed. Reverting `utcOffsetPattern`
+to the pre-ruling `^[+-][0-9]{2}:[0-9]{2}$` reddens `TestUTCOffsetLoadRefusalIsReachableAndLocated`,
+`TestIsUTCOffsetMatchesTheLoader` and `internal/expr`'s
+`TestLoaderAdmitsNothingTheEvaluatorCannotParse`, while
+`TestSetDocumentUTCOffsetAgreesWithTheLoader` stays **green** — and that is the point, not a gap: the
+command test is written against the loader, so the two move together because they are one predicate.
+Eight numbered red-proofs are recorded in `document_settings_command_test.go`, each naming the
+production line mutated. The rotation proof is the load-bearing one: swapping the two arms' write
+targets reds eight tests, and only because every accepting test asserts the OTHER field is unchanged —
+a "some byte moved" assertion would have stayed green, which is how that same rotation shipped green
+twice earlier in this run.
+
+**`Z` stays in the evaluator and out of the loader, on ONE ground.** `folio-format.md`'s `utcOffset`
+row says *"Fixed offset, `±HH:MM`"*, and `Z` is not that; excluding it implements the format exactly as
+excluding `+99:99` does. `parseUTCOffsetMinutes` keeps admitting it because it serves a second
+population — offsets inside RFC 3339 timestamps arriving in report *data*, where `Z` is the canonical
+UTC spelling and is required. **The canonicalization argument that was first given for refusing `Z` is
+WITHDRAWN (D-12.C.4) and must not be restated as live**: the loader already admitted `-00:00`, which is
+exactly a second byte spelling of `+00:00`, so the argument condemned the very pattern D-12.C ruled
+correct — and it never bit, because values travel verbatim and there is no canonicalizer. A tombstone
+sits at the authority site in `closedsets.go`, because a reversed ruling whose only trace is its
+absence gets re-derived. The anti-divergence guard names `Z` as the one expected asymmetry with the
+reason inside the assertion, and lives in `internal/expr` because the stage-rank wall forbids
+`template` importing `expr`; that constraint is stated in the test file itself, where the next person
+to move it will be standing.
+
+**The non-increment is narrated, not silent.** `folio-format.md` gained a note in its version-rule
+blockquote cluster: the loader was tightened to the `±HH:MM` the field table already specifies and **no
+version increment was taken**, on three grounds — `utcOffset` is not one of the nine closed sets the
+MINOR rule enumerates; D-7.3.1's pre-reader test asks what an older reader does with a newer document
+and narrowing produces no new documents, only a stricter reader; and the file already records this
+reader-strictness principle. A bump would also have restamped every fixture and moved its goldens for a
+reason unrelated to time zones. The corpus figure was re-measured at close and reproduces exactly: 31
+`.folio` files under `git ls-files --others --cached`, 24× `+00:00` and 7× `+07:00`, **zero excluded**
+by the repair. (Under `--exclude-standard` it is 29/22/7 — the two extra are gitignored build copies of
+the same starter document. The comment's smaller 28/21/7 figure is the tracked-only population, and it
+says so.)
+
+**The widened census caught this story's own copy.** The mirror test's "the designer holds no copy of
+the tag list" check was widened from a remembered file list to a walk of all of `src/`, and it
+immediately found a hardcoded `'zh-Hans'` in one of **this story's own new test files**. The copy was
+fixed rather than the file exempted — the census would otherwise have shipped a fourth spelling of
+AD-12's set in the very story whose dispatch names second-authority spellings as the defect it keeps
+catching.
+
+**The stale-citation finding, and the sweep that answered it.** Three line-number citations this story
+wrote were **correct when written and false on arrival** — moved by the comment block that cited them.
+The response was not to re-anchor the three: every line-number citation the story wrote became a symbol
+reference, including the ones verified still accurate, because a citation that is accurate today and
+one that rotted are indistinguishable to the next reader. Closer's check: all 19 remaining
+`#L`-anchored links in `## Suggested Review Order` were re-resolved against HEAD and every one lands on
+its intended symbol (`App.tsx:1730` is a 2,155-character single-line JSX return that contains all three
+of `Document locale`, `Not set` and `UTC offset (±HH:MM)`).
+
+**Decisions applied by ID.** D-12.C (repair the pattern, then reuse it) with carried conditions
+D-12.C.1 (narrate the non-increment), D-12.C.2/D-12.C.3 (corpus measurement), D-12.C.4 (withdraw the
+canonicalization argument). Ruling B is discharged by D-12.C; the frozen block's Ask First clause
+recording the opposite working default is deliberately left unamended as a record of what was believed
+when the block was locked. D-7.4.5 (projection, wire record and mirror in one commit), D-000.10,
+D-000.14, D-000.21, AD-12, AD-17.
+
+**Findings triage.** Review pass 1 ran three layers (blind-hunter, edge-case-hunter, verification-gap)
+with `review_loop_iteration` staying 0 — **no `intent_gap`, no `bad_spec`, no loopback**, so nothing was
+reverted and no section re-derived. Two non-frozen amendments were applied as patches and recorded in
+the Spec Change Log: the offset row's label became `UTC offset (±HH:MM)` (the panel's convention puts
+the unit in the label, and without it the only route to the syntax was to be refused), and `App.tsx`
+gained a disabled `Not set` placeholder for the empty-locale draft — ruled a required pre-commit fix,
+because otherwise the browser paints the first tag while React's value is `''`, so the control asserts
+`en` for a document that has said nothing; behaviour was already safe, which is exactly why no command
+assertion could see it, and the display test added for it was red-proved by deleting the placeholder.
+**No numeric patched/deferred/rejected tally exists anywhere in this story's record, and the closer did
+not invent one** — what the record carries is the two amendments above plus the five register entries
+below.
+
+**Deferred, with owners.** DW-209 (`parseUTCOffsetMinutes` admits a signed hour or minute field —
+recorded rather than repaired), DW-210 (the command path is proved to reach the renderer for `en` and
+`th` only, never `ja` or `zh-Hans`), DW-211 (nothing observes that a document command marks the preview
+stale) and DW-212 (`tsc -b` does not typecheck `e2e/` either, so that suite is neither compiled locally
+nor ever executed) were filed by the builder, and DW-206 was re-priced LOW→MEDIUM ("Apply page setup"
+became a multi-command gesture, so it can apply partially). All five are in `deferred-work.md` inside
+`52d0509`; none is re-filed here.
+
+**Measured gates, re-run by the closer at `52d0509` on the committed tree.** `folio-go`
+`go test -count=1 ./...` rc 1 — 14 packages ok and **exactly two** failures,
+`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child, the mandated permanent red; no
+third. `gofmt -l .` empty, `go vet ./...` rc 0. `folio-designer` `npx vitest run` rc 0, **60 files /
+844 tests** passed. `npx tsc -b` rc 0 and `npx tsc -b --force` rc 0 (forced, because the incremental
+build can exit 0 having checked nothing). `npx oxlint` rc 0 with **exactly 4** `only-export-components`
+warnings, freshly measured at `preview/pdf-viewer.tsx:16,17` and `App.tsx:3061,3068` — the App.tsx pair
+moved from the spec's recorded `2988,2995` because this story's rows sit above them; no fifth warning.
+`lint` module: `go build ./...`, `go vet ./...`, `test -z "$(gofmt -l .)"` and `go test -count=1 ./...`
+all rc 0, 4 packages ok. `npm run scan:font-hosts` rc 0, **0 occurrences in 630 tracked source files**
+(floor 400).
+
+**The story's own declared blind spot is now CLOSED, and that is a measurement.** The scan discovers
+its population with `git ls-files`, so while the work was unstaged this story's five new source files
+were outside it and the green said nothing about them. They are committed now: the population rose
+625 → 630, and the diff of the two populations at `e2ff17a` and HEAD is **exactly** those five files
+and nothing else — `document-settings-command.ts`, `document-settings-command.test.ts`,
+`document_settings_command_test.go`, `formatlocale_command_test.go`, `offset_divergence_test.go`. The
+compensating grep was re-run anyway: 0 forbidden-host occurrences in each of the five under
+`/usr/bin/grep -a` by absolute path, with a positive control firing on every one.
+
+**Not run, and owed.** The cross-target matrix and the Playwright suite were not run — end-of-epic
+cadence, due at the Epic 12 boundary gate. `folio-designer/e2e/browser-native-roundtrip.spec.ts` is
+untouched, confirmed absent from the commit's file list.
