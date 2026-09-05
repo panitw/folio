@@ -2688,3 +2688,104 @@ says."*
 4. **Before editing a file, check the inventory.** `App.tsx`, `App.css`, `engine-protocol.ts`,
    `build-wasm.mjs` and `component_commands.go` are each read by several guards that do not strip
    comments and are line-anchored.
+
+---
+
+## D-12.5.1 — A ruling whose verdict was right and whose ground was too wide, corrected by the story it would have blocked
+
+**Story 12.5's plan gate, and the most consequential correction of the run** — because unlike the others,
+this one would have prevented correct work rather than merely misrecording why correct work was correct.
+
+### The correction
+
+I dispatched 12.5 asking whether its AC5 drag limit was the browser-side clamping Story 17.4 forbids. The
+builder read 17.4 in full rather than my summary and found three things:
+
+1. **17.4's ruling is about the INSPECTOR** — its closing clause says so, and the property it asserts is
+   *consistency with typing*. **A canvas boundary has no typing to be consistent with.**
+2. **A browser-side LAYOUT clamp on a pointer gesture already ships**, and I verified it:
+   `resize-anchor.ts` computes `limitHeight` from the band for the capping bands and clamps both `y` and
+   `bottom` against it. Its comment states AC5's rationale almost verbatim — *"a pointer that leaves the
+   band should leave the component against that edge … not hand Go a rectangle it can only reject — a
+   rejected drag lands the component back where it started, which reads as the drag having been thrown
+   away."* **17.4 itself preserved this split**: its arrow keys send and are refused, while the drag
+   clamps.
+3. **The quiet-second-copy objection has a named answer.** DW-36 permitted that clamp on the condition
+   that it *read* the engine's declaration rather than re-spell it, and `engine-bounds-mirror.test.ts`
+   declares `dragClampPath` at that file. **A copy inside the mirror census is not a quiet one.**
+
+**So [[D-12.B]]'s sentence — "the objection is the browser computing layout geometry at all" — was wrong.**
+It flattened 17.4's two load-bearing qualifiers, *"in the inspector"* and *"quietly-drifting"*. The lead
+owned the error rather than assigning it. **D-12.B's verdict survives untouched** — a typed band-height
+panel field is still given no floor — **but its ground did not**, and a ruling whose conclusion is right
+and whose reason is too wide is the most durable kind of wrong record: nothing ever fails to make you
+re-examine it.
+
+### The rule that replaces it, which is sharper than the one it corrects
+
+**Clamp a gesture at bounds that carry no information; send, and let the engine refuse, where the refusal
+names something the author needs.**
+
+That subsumes gesture-versus-field and explains why AC5's three bounds rule differently:
+
+| Bound | Kind | Ruling |
+|---|---|---|
+| Floor at 0 | property of the FIELD | **Clamp.** 17.4 authorises it directly. |
+| Ceiling at no content window | property of the LAYOUT | **Clamp**, via one new mirrored pair tying Go's `− 1` margin to the TS side with a one-sided-edit red proof. |
+| Floor at the lowest occupied edge (the strand) | property of the LAYOUT | **Do NOT build.** 12.1's Q4 already ruled it deliberately unbuilt. |
+
+**The strand floor is the one that makes the rule legible.** Its refusal is the only one carrying an
+**ElementID** — it names *which component is in the way*. A clamp would silently say "no further" and
+destroy exactly the information the author needs. **Two bounds of the same kind, in the same criterion,
+decided oppositely, and the discriminator is what the refusal would have told you.**
+
+Retiring 12.1's AC4 is approved **as a narrowing, not a deletion**: scope the comment to the panel and
+**state why the panel keeps no bound while the gesture gets one**, or the next reader finds a bare
+asymmetry and "fixes" it in whichever direction they prefer. That sentence is the whole value of the edit.
+
+### Two more approvals, and a sweep that found its own boundary
+
+**AC7 is discharged by 12.1's refusal.** The engine refuses rather than clipping — probe-measured, four
+shipped tests pin it — and FR44 has no vertical axis: 17 diagnostic codes, two clip codes, and
+`render.go` stating that D-2.8.1 *"fences the vertical axis out entirely."*
+
+**The lead asked for a sweep because this was the second story ambushed by one false premise. Measured:
+exactly two instances in `epics.md`, both vertical, 12.1's and 12.5's, and no third in Epics 13–14.** Both
+struck with the measurement beside them. **The useful half is what the sweep did NOT strike:** Story 7.3's
+clip-and-warn is about a justified line exceeding its declared **width**, which is exactly the axis where
+`TEXT_CLIPPED_WIDTH` exists. **A sweep that struck every mention of FR44 clipping would have destroyed a
+true criterion alongside the two false ones** — the premise was wrong only where it was applied vertically.
+
+**AC4's snap gets a fifth command field.** The alternative puts the **first** coordinate rounding in the
+browser, which is the actual AD-17 breach, and the precedent costs far more than an arity change on an
+internal, pre-tag command. Two conditions: the arity gate and all 22 payload literals move in **one**
+commit, and *"byte-preserved"* must say **document** bytes — the payload itself gains `"snap":false`, and
+an ambiguous claim there gets filed as a defect against a story that did exactly what it said.
+
+### Three warnings I gave that did not fire, all three corrected by measurement
+
+- **`trapDialog` focus order** — both copies scope to `dialog.current`; no existing test breaks.
+- **`property-prose-height.test.ts` "asserts the drag affordance is unique"** — it does not. Its three
+  uniqueness assertions are keyed to **class names**, and a new handle is invisible to all of them. **I
+  generalised "a guard about the resize handle" into "a guard about resize handles" without reading it**
+  — a real guard, correctly cited, described one scope too wide. The same move as [[D-12.C.1]] and
+  [[D-12.C.2]].
+- **"A drag handler is exactly the code that reaches for banned measurement APIs"** — a *delta* gesture
+  needs `clientY` only, and the ban covers `client(Width|Height|Left|Top)`. Both shipped drags already
+  work this way; `moveProseResize`'s comment says it outright. **The `offsetX/offsetY` seam exists for
+  absolute placement, not delta**, so this story needs no seam at all.
+
+**Three warnings, three misses, and every one found by checking rather than by routing around.** That is
+the behaviour asked for after the opposite instinct was overruled in 12.3, and it has now paid twice in
+two stories. **The general lesson is about my own warnings: a hazard asserted from memory of a guard is a
+citation without its boundary**, and it costs a builder real time to disprove — but a builder who builds
+around an unverified warning pays forever.
+
+### Standing expectation
+
+**A story citing a mockup states what it found there, including absence, with the positive control.**
+12.5 measured `ns-resize` and `grip` at **zero** across every mockup, and no cursor vocabulary in
+`DESIGN.md` or `EXPERIENCE.md` (rc 1 against a positive control of 47) — for a capability
+`EXPERIENCE.md` says exists. With [[D-14.8.1]], **the design record is now unreliable in both
+directions**: over-promising in one place, silent in another. Neither is discoverable without a stated
+measurement.
