@@ -8,6 +8,30 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*This section is background, not a requirement; the contract below governs. Written at close to describe
+what actually shipped.*
+
+An earlier story added a fourth typeface to the set this product ships, and made one of them the typeface
+a new document starts in. Four checks elsewhere were still written against the old arrangement. One
+noticed and complained; three did not, because each was checking a number it had worked out from itself,
+or a fact it had been told rather than looked up. A check that counts its own inputs can only ever report
+that everything is accounted for.
+
+This story rewrites all of them to work the answer out from the real source each time, so the next change
+to the shipped set makes them fail rather than quietly agree. The provenance record for each shipped
+typeface is now checked against the actual bytes, and every face must be accounted for by exactly one
+named route, with no catch-all. A stale assertion the product could no longer ever satisfy was deleted
+rather than left standing as an expected failure.
+
+No product behaviour changed, and nothing reported as broken turned out to be broken. An earlier report
+that the default typeface could not be chosen was wrong, and the record now says so.
+
+Two things look wrong on purpose. One long-standing text-corpus failure is deliberately left red and is
+unrelated to this work. And the heavier cross-platform and browser suites were not re-run at close — this
+project runs those once, at the end of the epic.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -385,6 +409,76 @@ stale `chromium-1208` header added 12 lines and silently invalidated `accounting
 `font-embed-boundary.spec.ts`, which a patch had *just* corrected. Re-derived to `:130-136` and swept
 repo-wide for others (one citation exists; it is right). The spec's own Code Map was also off by one on
 `wasm/engine.go` and now reads `:240-246`.
+
+### 2026-09-05 — done
+
+Baseline `d365fd4`; shipped at **`bc321d7`**, "Re-derive what closes over a moving set, instead of
+transcribing it". One commit, seven files, no production code and no product behaviour. One review loop.
+Triage **16 patched / 2 deferred / 5 rejected / 0 intent_gap / 0 bad_spec**, every route ruled by the
+orchestrator. **CI is green on `bc321d7`** — both `Build, vet, and guardrails` and `Cross-target byte
+identity` concluded success — which is the first time this epic's work has had any CI signal at all
+(DW-171 says nothing in Epic 16 is CI-verified; that remains true of the *e2e and reproduction* halves,
+not of the untagged accounting guard, which now runs in the per-commit Go suite).
+
+**Gates re-measured at close, on `bc321d7`, working tree clean before and after except this file and the
+tracker.** Each exit code captured on the command's own line (D-000.18 — `$?` is clobbered by any
+intervening command, `echo` included, and that produced a false green inside this very story):
+
+| gate | measured at close |
+|---|---|
+| `folio-designer` `npx vitest run` | rc=0 — **58 files / 806 tests passed**, 0 failed (baseline before this story: 804) |
+| `folio-designer` `npx tsc --noEmit` | rc=0 — "No errors found" |
+| `folio-go` `go test -count=1 ./...` | rc=1 — **1952 pass / 2 fail / 5 skip**, counted from `-json` events, not from a summary line |
+| — the two failures | `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child, in `internal/text`. **No third.** That is the one sanctioned red |
+| — `folio-go/fonts` | **ok**, untagged, inside that same run — the accounting guard executes per-commit as designed |
+| `lint` `go build ./...` | rc=0 |
+| `lint` `go vet ./...` | rc=0 |
+| `lint` `test -z "$(gofmt -l .)"` | rc=0 |
+| `lint` `go test -count=1 ./...` | rc=0 — four `ok` packages. Four separate commands, four separate exit codes, never chained |
+
+**Not re-run at close, by cadence, not by omission.** The heavy suites are on an **end-of-epic** cadence
+and come due at Epic 16's boundary gate: the `matrix` reproduction (`TestShippedFacesReproduceFromUpstream`
+on the pinned Python 3.12.13 / fontTools 4.63.0 venv) and Playwright
+(`e2e/font-embed-boundary.spec.ts`). Both were run and recorded by the builder on this same tree —
+Playwright rc=0, 3 passed, 30 ADVANCED and 1 UNCHANGED; the matrix run rc=0 emitting the new witness
+**`fontgen: derived and compared 3 of 4 shipped faces (Noto Sans, Noto Sans SC, Noto Sans Thai);
+1 accounted static-upstream`** beside fontgen's own unchanged internal `3 of 3`. Those two lines are the
+**builder's** measurement carried forward with attribution, not this closer's; `go vet -tags=matrix` and
+`npx oxlint` likewise stand on the builder's record.
+
+**Preserved deliberately: the defect this story committed against itself.** Correcting the stale
+`chromium-1208` header added 12 lines and silently rotted a citation in the new accounting guard that a
+review patch had *just* fixed. The builder re-derived it and swept the repo for others. A story whose whole
+subject is stale premises manufacturing one of its own is worth keeping in the record rather than tidying
+away, and it is the cheapest available argument for why the guards it ships derive rather than transcribe.
+
+**The coverage boundary stands as the builder wrote it, and is restated here so no later reader has to
+find it.** The `AVAILABLE LOCALLY` subtraction is asserted in a browser suite that **does not run
+per-commit** — measured by deleting the filter clause from `App.tsx:2604` and watching vitest, `tsc` and
+lint all stay green while only the unexecuted spec reddened. That is the same property that made the
+original defect invisible. The new vitest case closes it partly, where CI can see it; the browser-level
+half is **DW-193's**, not this story's.
+
+**Neither e2e failure was a product defect.** Both behaviours were correct. The orchestrator's earlier
+report that the default typeface could not be chosen was **wrong**, and this entry records that
+correction rather than leaving the stronger claim standing — a picked declared family sends its command,
+and the engine's stable snapshot is what holds the revision still.
+
+**Deferred, with owners — verified present in `deferred-work.md` at close, not merely in this spec.**
+Two were **filed by this story**: **DW-200** (the fontgen reproduction runs in no workflow; pre-existing,
+but 16.11 is what made it matter — owner **unassigned, properly Story 15.2's**, still `backlog`) and
+**DW-201** (two NOTICE parsers of differing strictness, neither citing the other — owner: the next story
+to change a `NOTICE.md` row shape on either side). The browser-level half of the coverage boundary above
+is carried by **DW-193**, which this story did **not** file — it was raised by Story 17.6's review,
+marked PRE-EXISTING, and is still OPEN and unassigned. Five findings were rejected with reasons,
+including "the new file is untracked" — a commit the builder is forbidden to make, and one that has
+since happened at `bc321d7`.
+
+**Epic 16 is NOT closed by this story.** `epic-16` stays `in-progress`. The boundary gate closes it, and
+still owes a characterisation of the third e2e failure (`browser-native-roundtrip.spec.ts`, "fresh
+authored sessions close exactly through admitted Preview and native Folio"): it reproduces standalone and
+exceeds its own 300 s budget, but has **not** been distinguished between genuinely hung and merely slower
+than that budget. Until it is, the gate has an unmeasured item, not a green one.
 
 ## Suggested Review Order
 

@@ -602,7 +602,7 @@ development_status:
   # a fourth assertion 16.10 made permanently unsatisfiable. Epic 16 closes once this guard exists
   # (D-000.12(4)) -- closing it over a guard vacuous about its own headline face would make the
   # gate ceremonial. No product behaviour changes.
-  16-11-what-closes-over-a-moving-set-is-re-derived: review
+  16-11-what-closes-over-a-moving-set-is-re-derived: done
   epic-16-retrospective: optional
   # ==========================================================================
   # EPIC 17 -- The designer's editing controls behave the way an editor behaves
