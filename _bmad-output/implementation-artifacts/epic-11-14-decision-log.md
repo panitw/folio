@@ -1634,6 +1634,23 @@ destroys the document's rendering; it was doing work only because the loader was
 (c)+(a) it is true in **substance**. That is the generalizable point: a constraint phrased against the
 mechanism can be met by a fix that misses the purpose.
 
+### D-12.C.3 — the corpus number, corrected by the story that used it
+
+**D-12.C records 28 `.folio` files, 21× `+00:00`, 7× `+07:00`.** 12.2's implementer re-measured over
+every `.folio` that `git ls-files --others --cached` reports and got **31 files, 24× `+00:00`, 7×
+`+07:00`, zero out of range** — the extra three are the designer's built copy, the generated runtime, and
+the Go example, and two malformed testdata files sit inside the 31.
+
+**Same conclusion, larger population, and the direction is the reassuring one:** the widened count adds
+only in-range values, so "nothing real is excluded" is now measured over more of the tree rather than
+less. The builder's note carries its own measurement and cross-references D-12.C's narrower count instead
+of overwriting it, which is right — **the narrower number was not wrong, it was a smaller population**,
+and that is the distinction [[D-15.2.1]] exists to preserve.
+
+Worth naming that the original 28 came from a tracked-only enumeration and the 31 from one that includes
+untracked files. **This is [[D-15.2.1]]'s bias caught in the act, in the same story that provoked the
+rule**, and it moved a number this run had already cited three times.
+
 ### D-12.C.1 — the clause is real; the ruling holds because it is inapplicable, not absent
 
 **Corrected the same day, by the builder whose citation I had just called imaginary.** I told it *"the
@@ -2102,3 +2119,54 @@ explanation; the assertion is what closes it.
 [[D-000.21]]'s compensating check. The pattern is stable enough to state as a rule: **if a document knows
 a fact and a program can read that document, the fact belongs in an assertion and the prose belongs
 beside it as the reason.**
+
+---
+
+## D-000.22 — An entire epic shipped without ever being written in the document builders read
+
+**Found while pre-measuring [[D-12.3.0]]'s projection fork.** The lead cited *"Story 17.3 is the shipped
+precedent"* for how a panel field shows a value the document has not set. I went to read it in
+`epics.md` and found nothing — then checked with a control rather than trusting the zero, per
+[[D-000.20]]:
+
+| Query | Result |
+|---|---|
+| `^### Story 17\.` in `epics.md` | **0**, rc 1 |
+| `^### Story ` in `epics.md` (control) | **114** |
+| `Epic 17` anywhere in `epics.md` | **0** |
+| `^  17-` in `sprint-status.yaml` | **6 stories, all `done`** |
+| Spec files `17-*.md` in implementation-artifacts | **6, all present and full** |
+
+**Epic 17 is six shipped stories with complete specs and no entry whatsoever in the planning document
+that builders resolve epic context from.** This is [[D-15.0]]'s defect **inverted**: there, a story had a
+tracker slot and no text and had not been built; here, six stories were built, reviewed, closed and
+cited as precedent while the planning record never learned they existed. **The two failures share a
+cause — the tracker and the epics doc are updated by different actors at different moments, and nothing
+reconciles them.**
+
+**Why it was not harmless.** Epic 17 being `done` means no dispatch depends on it, which is why it went
+unnoticed. But **two of its stories are live constraints on work still ahead**:
+
+- **17.3 decides the exact question [[D-12.3.0]] flagged as unresolved** — it replaced placeholder
+  defaults with the effective value and writes it *only on commit*, under *"opening a document may never
+  mutate it."* Story 12.3's AC1 (*"clearable back to absent"*) has to be reconciled against that, and a
+  builder resolving epic context from `epics.md` **would not have found the precedent at all**.
+- **17.4 carries the human ruling on bounds** — a floor and a ceiling are not the same kind of bound —
+  which forbids browser-side clamping even where the engine refuses, and binds every later control.
+
+**Written as a pointer, not reconstructed.** `epics.md` now carries an Epic 17 section listing the six
+stories, their spec files and their status, saying plainly that the specs are the primary record and
+this section is not. **Re-deriving acceptance criteria from shipped code would have manufactured a
+second, weaker source** that disagrees with the first in ways nobody would notice — which is the failure
+this entry exists to record, not one to repeat while fixing it.
+
+**Record hygiene, flagged not fixed:** `17-1`, `17-2` and `17-3` carry `status: in-review` /
+`in-progress` in their own frontmatter while the tracker says `done`. Same inconsistency Story 12.1's
+closer reconciled downward. Left for whoever next touches each file, with the tracker named as the
+authority.
+
+**The generalisation, and it is the one this run keeps arriving at from new directions:** *a record is
+checked by use, never by review.* Epic 17's absence survived six closes, an epic boundary gate and
+repeated citation of its own stories, because **nobody needed to look it up until somebody needed to
+look it up.** The only reason it surfaced now is that a decision required reading a precedent rather
+than citing it.

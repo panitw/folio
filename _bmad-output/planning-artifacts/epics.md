@@ -5929,3 +5929,38 @@ a listbox that already breaks its required-owned-elements rule four times
 **Given** the status bar
 **When** fonts have been added
 **Then** it states how many and which is selected, as the design's own status line does
+
+## Epic 17: The panel behaves like a panel
+
+**This epic shipped without ever being written here.** All six stories are `done` in
+`sprint-status.yaml` and each has a full spec in `_bmad-output/implementation-artifacts/`, but this
+document — the one builders resolve epic context from — recorded nothing. It is written now as a pointer
+rather than reconstructed, because the specs are the primary record and re-deriving acceptance criteria
+from shipped code would manufacture a second, weaker source. **Read the spec files, not this section.**
+
+| Story | Spec | Status |
+|---|---|---|
+| 17.1: The canvas follows the content field | `17-1-the-canvas-follows-the-content-field.md` | done |
+| 17.2: Clicking beside the page keeps the selection | `17-2-clicking-beside-the-page-keeps-the-selection.md` | done |
+| 17.3: Size and leading show the value they use | `17-3-size-and-leading-show-the-value-they-use.md` | done |
+| 17.4: Arrow keys step a number field | `17-4-arrow-keys-step-a-number-field.md` | done |
+| 17.5: The CONTENT box resizes from its bottom edge | `17-5-the-content-box-resizes-from-its-bottom-edge.md` | done |
+| 17.6: The AD-17 scan can see a new violation | `17-6-the-ad-17-scan-can-see-a-new-violation.md` | done |
+
+**Two of these are cited as governing precedent elsewhere and must not be treated as history.**
+
+- **Story 17.3 decides how a panel field shows a value the document has not set.** It replaced grey
+  placeholder defaults with the effective value, and it writes that value **only when the author commits
+  the field — never on load, never on selection, never on render**, under the safety property *"opening a
+  document may never mutate it."* Any later story adding a field with a documented default inherits this,
+  **Story 12.3 included**, where AC1's *"clearable back to absent"* and AC3's cascade have to be
+  reconciled against it.
+- **Story 17.4 carries a human ruling on bounds** — that a floor and a ceiling are not the same kind of
+  bound, because zero and negative are a property of the *field* while a band-edge ceiling is a property
+  of the *layout*. That ruling forbids browser-side clamping even where the engine refuses, and it is
+  binding on every later control.
+
+**Record hygiene, flagged not fixed:** `17-1`, `17-2` and `17-3` carry `status: in-review` /
+`in-progress` in their own frontmatter while the tracker says `done`. The tracker is the authority; the
+frontmatter is stale. Reconcile downward when each is next touched, the way Story 12.1's closer did.
+
