@@ -4,7 +4,10 @@
 // by `node` with nothing TypeScript-aware in the pipeline.
 export interface HostFontAccessApi { readonly name: string; readonly pattern: RegExp; readonly declaration: string }
 export interface HostFontFinding { readonly file: string; readonly api: string; readonly line: number; readonly text: string }
-export interface HostFontScanResult { readonly files: number; readonly floor: number; readonly findings: ReadonlyArray<HostFontFinding> }
+// `tracked` and `untracked` are Story 15.2b's split of the widened population,
+// mirrored here BY HAND — nothing checks this sidecar against the `.mjs`.
+// `files === tracked + untracked`.
+export interface HostFontScanResult { readonly files: number; readonly tracked: number; readonly untracked: number; readonly floor: number; readonly findings: ReadonlyArray<HostFontFinding> }
 
 export const HOST_FONT_ACCESS_APIS: ReadonlyArray<HostFontAccessApi>
 export const HOST_FONT_DECLARATION_MARKER: string

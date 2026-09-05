@@ -63,6 +63,36 @@ folio-go/.matrix-build/
 !lint/testdata/**/example.test/**
 
 # ── WASM build output ─────────────────────────────────────────────
+#
+# THESE ARE IGNORED ONE FILE AT A TIME ON PURPOSE, NOT BY FOLDER. It is what
+# lets folio-designer/src/generated/pdfjs-assets.ts — the one generated artifact
+# that is COMMITTED, so Vite keeps the PDF.js CMaps and standard fonts in its
+# immutable asset graph — stay tracked while everything beside it stays out.
+#
+# ⚠ SINCE STORY 15.2b A NEW EMISSION IS LIVE THE MOMENT IT IS WRITTEN. The
+# font-host scans (`npm run scan:font-hosts`, `npm run scan:host-fonts`) used to
+# populate themselves from `git ls-files` alone, so a generated file could never
+# reach them while it was untracked. They now also read
+# `git ls-files --others --exclude-standard`, so a generated artifact with no
+# line here walks straight into the scan and reds a guard its author never
+# touched. `folio-designer/src/generated/font-index.ts` is the concrete case:
+# its generated header comment carries a scanned font host, and only the line
+# below keeps it out of the population.
+#
+# folio-designer/src/build-wasm.test.ts IS WHAT ENFORCES THIS. It globs the
+# scripts that write into src/generated/, reads the set of paths they emit off
+# their own source, and asserts every one of them is git-ignored — except
+# pdfjs-assets.ts, which it asserts is tracked and names as the deliberate
+# exception. Add an emission without a line here and that test reds naming it.
+#
+# ⚠ THE runtime/ ENTRY BELOW IS A DIRECTORY PATTERN, AND THAT CHANGES HOW IT IS
+# PROBED. Measured 2026-09-05: with the directory absent from disk,
+# `git check-ignore -q -- folio-designer/src/generated/runtime` exits 1 (NOT
+# ignored) while the same path with a trailing slash exits 0 — a `dir/` pattern
+# only ever matches a directory, and git has nothing to tell it this path is one
+# until it exists. The test therefore probes directory emissions with a trailing
+# slash; without it, every tree where `npm run build:wasm` has not yet run
+# reports runtime/ as an unignored offender.
 *.wasm
 wasm_exec.js
 folio-designer/src/generated/runtime/

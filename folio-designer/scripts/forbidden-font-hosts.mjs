@@ -8,9 +8,19 @@ import { fileURLToPath } from 'node:url'
 // WHAT IT PROVES, AND THE SENTENCE IT MUST NEVER BE USED TO SAY (D-8.5.5).
 // It proves that no forbidden font host appears in the SCANNED POPULATION, and
 // nothing more. It is NOT a proof that "no request leaves the machine" — a
-// source scan cannot see a host assembled at runtime, a host in an untracked
-// file, a host in a dependency, or a request made by something this repository
-// did not write. Every message below is worded to claim the bounded thing.
+// source scan cannot see a host assembled at runtime, a host in a dependency,
+// or a request made by something this repository did not write. Every message
+// below is worded to claim the bounded thing.
+//
+// ⚠ STORY 15.2b AMENDED THIS BOUND, IT DID NOT DELETE IT. That list used to
+// name "a host in an untracked file" as a fourth hole, and it was a real one:
+// `scannedPopulation` read `git ls-files` alone, and because no story in this
+// project stages anything, every file a story wrote was invisible to this scan
+// for the story's whole life. The walk now unions
+// `git ls-files --others --exclude-standard` into the listing, so the untracked
+// clause is FALSE for this scan and has been struck from the sentence above.
+// The runtime, dependency and not-written-here clauses remain true and remain
+// written. See `splitPopulation`.
 //
 // WHY IT EXISTS. `SPEC.md`'s `## Non-goals` forbids a live font service, an
 // arbitrary URL and a download on first use, and D-8.5.12 declined the owner
@@ -239,29 +249,126 @@ const insideTheWalk = (path) => {
   return SCANNED_ROOTS.includes(segments[0])
 }
 
+/** The filters that turn a git listing into the population: inside the walk, scanned extension, really a file. */
+const insidePopulation = (root) => (path) => insideTheWalk(path)
+  && SCANNED_EXTENSIONS.includes(extname(path).toLowerCase())
+  && existsSync(join(root, path)) && statSync(join(root, path)).isFile()
+
 /**
- * The git-tracked files this scan reads, repo-root-relative.
+ * The files this scan reads, repo-root-relative, SPLIT BY WHICH GIT LISTING
+ * EACH CAME FROM — see `scannedPopulation` for the flat list every caller but
+ * `scanForbiddenFontHosts` wants.
  *
- * THROWS RATHER THAN RETURNING AN EMPTY LIST, in three places. A scan that
- * could not look must never read as an all-clear — that is the failure mode
- * this whole guard is shaped around, and returning `[]` here would make every
- * assertion downstream pass over a repository nothing ever opened.
+ * STORY 15.2b — WHY THERE ARE TWO LISTINGS. This walk read `git ls-files`
+ * alone, which is TRACKED FILES ONLY. In this project no story stages
+ * anything, so every file a story wrote was untracked for that story's entire
+ * life and this scan read straight past it: Story 12.2 added five files and the
+ * scan reported clean over a tree containing none of them
+ * (`epic-11-14-decision-log.md`'s D-000.21, *"A gate that states its own hole
+ * honestly"* — not the identically numbered D-000.21 in
+ * `folio-mvp-decision-log.md`, which is a different rule). The second listing,
+ * `git ls-files --others --exclude-standard`, adds the untracked-but-not-ignored
+ * files, so nothing in the non-ignored tree goes unread. THE POINT IS NOT A
+ * BIGGER NUMBER: it is that this scan can no longer confuse *"no forbidden host
+ * found"* with *"I did not look at the files you just wrote."*
+ *
+ * ⚠ THE LISTING IS ALL THAT WIDENED. `SCANNED_ROOTS`, `SCANNED_EXTENSIONS` and
+ * `insideTheWalk` are untouched, so an untracked file outside the declared trees
+ * still cannot enter.
+ *
+ * ⚠ AND THE WIDENING BROUGHT A NEW BOUND IN, WHICH IS WRITTEN HERE RATHER THAN
+ * LEFT IMPLIED. `--exclude-standard` is not just `.gitignore`: it also honours
+ * `.git/info/exclude` and the machine's `core.excludesFile`. So the
+ * untracked-but-not-ignored half is MACHINE-DEPENDENT — the same tree can yield
+ * two different populations on two laptops, and a file one developer's global
+ * excludes sweep up is a file this scan does not read there. The tracked half is
+ * not: it is whatever the index says, identically everywhere. This replaces the
+ * struck *"a host in an untracked file"* clause rather than leaving the bound
+ * list one clause shorter than the truth.
+ *
+ * THROWS RATHER THAN RETURNING AN EMPTY LIST, in six places now, and each refusal
+ * names what it could not obtain. A scan that could not look must never read as
+ * an all-clear — that is the failure mode this whole guard is shaped around, and
+ * returning `[]` here, OR QUIETLY FALLING BACK TO THE TRACKED LISTING when the
+ * second call fails, would make every assertion downstream pass over a tree
+ * nothing ever opened. The six: each listing's own `execFileSync` catch; an
+ * empty TRACKED half (an unreadable or empty index over a full worktree is not a
+ * population, and the untracked half alone must not stand in for the whole
+ * tree); both halves empty; a nested repository the untracked listing could not
+ * recurse into; and a population carrying no scanned extension.
  */
-export function scannedPopulation(root) {
-  let listing
-  try {
-    listing = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch (error) {
-    throw new Error(`forbidden font host scan could not look: \`git ls-files\` failed in ${root} (${String(error)}), and an unobtainable population must never read as all-clear`)
+function splitPopulation(root) {
+  const run = (args, half) => {
+    let listing
+    try {
+      listing = execFileSync('git', ['-C', root, 'ls-files', ...args, '-z'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      throw new Error(`forbidden font host scan could not look: \`${['git', 'ls-files', ...args].join(' ')}\` — the ${half} of the population — failed in ${root} (${String(error)}), and an unobtainable population must never read as all-clear. It must NOT degrade to the other listing.`)
+    }
+    return listing.split('\0').filter((entry) => entry !== '')
   }
-  const tracked = listing.split('\0').filter((entry) => entry !== '')
-  if (tracked.length === 0) throw new Error(`forbidden font host scan could not look: git tracks no file at all in ${root}`)
-  const files = tracked
-    .filter(insideTheWalk)
-    .filter((path) => SCANNED_EXTENSIONS.includes(extname(path).toLowerCase()))
-    .filter((path) => existsSync(join(root, path)) && statSync(join(root, path)).isFile())
-  if (files.length === 0) throw new Error(`forbidden font host scan could not look: no tracked file in ${root} under ${SCANNED_ROOTS.join(', ')} carries a scanned extension (${SCANNED_EXTENSIONS.join(' ')})`)
-  return files
+  // Two calls, two refusals. The second inherits the first's rule rather than
+  // being exempt from it: if the untracked half cannot be obtained, the scan
+  // has not looked at the whole tree and says so instead of reporting the
+  // tracked half as if it were everything.
+  const trackedListing = run([], 'tracked half')
+  const untrackedListing = run(['--others', '--exclude-standard'], 'untracked-but-not-ignored half')
+  if (trackedListing.length === 0 && untrackedListing.length === 0) {
+    throw new Error(`forbidden font host scan could not look: git reports no file at all in ${root}, neither tracked nor untracked-but-not-ignored`)
+  }
+  // THE TRACKED HALF BEING EMPTY IS ITS OWN REFUSAL, and it is here because the
+  // widening nearly deleted it. Before Story 15.2b this walk threw on an empty
+  // `git ls-files`; folding that into the both-halves-empty check above would let
+  // a repository with an empty or unreadable INDEX over a full worktree proceed,
+  // reporting `tracked: 0` and scanning the untracked half as if it were the
+  // tree. That is a scan that could not look reading as an all-clear by another
+  // door, with only `POPULATION_FLOOR` behind it.
+  if (trackedListing.length === 0) {
+    throw new Error(`forbidden font host scan could not look: git tracks no file at all in ${root}. An empty or unreadable index over a worktree that still has files in it is not a population, and the untracked-but-not-ignored half must never be reported as if it were the whole tree.`)
+  }
+  // A NESTED REPOSITORY IS LISTED AS A DIRECTORY AND NEVER RECURSED INTO, so its
+  // files would go unread while this guard claimed whole-tree coverage — the
+  // exact collapse Story 15.2b exists to close, arriving through the half that
+  // story added. Measured: `git ls-files --others --exclude-standard` emits an
+  // untracked nested repository as a single entry with a TRAILING SLASH and
+  // lists none of the files inside it; that entry then fails `insidePopulation`'s
+  // `isFile()` test and is dropped SILENTLY. Refuse instead, naming the path.
+  // Only entries inside the declared trees are refused: this guard's claim is
+  // bounded by `SCANNED_ROOTS`, so a nested repository it never claimed to read
+  // is not its failure to report.
+  const unrecursed = untrackedListing.filter((path) => path.endsWith('/') && insideTheWalk(path))
+  if (unrecursed.length > 0) {
+    throw new Error(`forbidden font host scan could not look: git listed ${unrecursed.join(', ')} in ${root} as an untracked NESTED REPOSITORY — a single directory entry it does not recurse into — so the files inside it were never read. A scan that skipped a subtree must not report the rest as a clean whole tree. Either track or ignore that repository, or scan it separately.`)
+  }
+  const keep = insidePopulation(root)
+  // Order-stable and duplicate-free IN BOTH HALVES. The tracked half is deduped
+  // against ITSELF as well as the untracked half against it: during an
+  // unresolved merge `git ls-files` emits a conflicted path once per stage, so a
+  // tracked half taken verbatim would read those files two or three times,
+  // inflate the reported count and duplicate every finding in them — and
+  // `files === tracked + untracked` would still hold, so the widening's own
+  // invariant cannot see it.
+  const seen = new Set()
+  const tracked = []
+  for (const path of trackedListing) {
+    if (seen.has(path) || !keep(path)) continue
+    seen.add(path)
+    tracked.push(path)
+  }
+  const untracked = []
+  for (const path of untrackedListing) {
+    if (seen.has(path) || !keep(path)) continue
+    seen.add(path)
+    untracked.push(path)
+  }
+  const files = [...tracked, ...untracked]
+  if (files.length === 0) throw new Error(`forbidden font host scan could not look: no file in ${root} under ${SCANNED_ROOTS.join(', ')} — tracked or untracked-but-not-ignored — carries a scanned extension (${SCANNED_EXTENSIONS.join(' ')})`)
+  return { files, tracked: tracked.length, untracked: untracked.length }
+}
+
+/** The flat population, tracked and untracked-but-not-ignored alike. See `splitPopulation`. */
+export function scannedPopulation(root) {
+  return splitPopulation(root).files
 }
 
 /**
@@ -269,28 +376,61 @@ export function scannedPopulation(root) {
  * true the moment the thing grows, so this is a FLOOR rather than an equality —
  * but a floor is what turns "the scan found nothing" into a claim.
  *
- * MEASURED AT STORY 8.5: 579 tracked files under `SCANNED_ROOTS` carry a
- * scanned extension — 578 before `.mts`/`.cts` joined `SCANNED_EXTENSIONS`,
- * plus the one `.mts` file in the repository, which is this module's own type
- * sidecar. The number `npm run scan:font-hosts` prints, re-measured
- * on the committed catalogue at the build gate rather than estimated. (An
- * earlier draft of this comment recorded 1,058; that figure matches neither the
- * scanned population nor the repository-wide extension count of 704, so it was
+ * MEASURED AT STORY 15.2b, 2026-09-05: **631** files under `SCANNED_ROOTS`
+ * carry a scanned extension — the number `npm run scan:font-hosts` prints,
+ * re-measured over this tree rather than estimated. THE MEASUREMENT IS THE
+ * TOTAL, 631, and it is the total on purpose: under Story 15.2b's widening both
+ * halves are read, so one population is what there is to count.
+ *
+ * THE SPLIT IS A PRE-COMMIT OBSERVATION, NOT A RECORDED MEASUREMENT, and is
+ * written down as one so it does not read as a false claim a week later. When
+ * the figure was taken the split was `630 tracked + 1 untracked-but-not-ignored`,
+ * the 1 being this story's own new test file. The moment this story is committed
+ * that same 631 becomes `631 + 0` — the split moves with the index while the
+ * total does not, which is exactly why the total is what is recorded here.
+ *
+ * (An earlier draft of this comment recorded "MEASURED AT STORY 8.5: 579
+ * tracked files", which was correct when written and had gone stale by 631; an
+ * earlier draft than that recorded 1,058, matching neither the scanned
+ * population nor the repository-wide extension count of 704. Both were
  * corrected to the measurement rather than carried forward. A count written
- * beside the thing it counts is a claim, and this one was checked.) The floor
- * sits well under the measurement on purpose: it must catch a walk that
- * collapsed, not fence in normal growth.
+ * beside the thing it counts is a claim, and this one was checked.)
+ *
+ * THE VALUE DOES NOT MOVE, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT.
+ * 400 is a floor, not a census: it exists to catch a walk that collapsed, not
+ * to fence in growth, and raising it because the population grew would be
+ * tuning a guard to whatever it currently reports. Measured at Story 15.2b's
+ * plan gate with a positive control: NO assertion anywhere in this repository
+ * pins this population to an exact number — both consumers use
+ * `toBeGreaterThan(POPULATION_FLOOR)` — so nothing else had to move with the
+ * measurement either.
  */
 export const POPULATION_FLOOR = 400
 
 export function scanForbiddenFontHosts(root, { floor = POPULATION_FLOOR } = {}) {
-  const files = scannedPopulation(root)
+  const { files, tracked, untracked } = splitPopulation(root)
   const findings = []
   for (const path of files) {
-    const source = readFileSync(join(root, path), 'utf8')
+    // TOCTOU: `insidePopulation` stat'd this path, and the read happens later.
+    // An UNTRACKED file — an editor temporary, a build scratch file, exactly the
+    // half Story 15.2b added — is far likelier to vanish in between than a
+    // tracked one. A file that no longer exists carries no host, so ENOENT is
+    // skipped; anything else is a read this scan could not do, and a guard must
+    // never read a broken read as a clean file.
+    let source
+    try {
+      source = readFileSync(join(root, path), 'utf8')
+    } catch (error) {
+      if (error && error.code === 'ENOENT') continue
+      throw error
+    }
     for (const occurrence of occurrencesIn(source, extname(path).toLowerCase())) findings.push({ file: path, ...occurrence })
   }
-  return { files: files.length, floor, findings }
+  // THE SPLIT IS A VALUE, NOT A PRINTED STRING (Story 15.2b). `files === tracked
+  // + untracked` is the widening's own invariant, and a test can only read it
+  // off the result — inferring it from the CLI sentence would be an assertion
+  // about a message rather than about the walk.
+  return { files: files.length, tracked, untracked, floor, findings }
 }
 
 export function assertNoForbiddenFontHosts(root, options = {}) {
@@ -328,6 +468,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // evidence is "it passed" says nothing about what it looked at. The claim is
   // bounded on purpose (D-8.5.5): about the scanned population, never about
   // what leaves the machine.
-  console.log(`forbidden font host scan: ${result.findings.length} occurrence(s) in ${result.files} tracked source files under ${relative(process.cwd(), root) || '.'} (floor ${result.floor}). `
+  // AND THE SENTENCE NO LONGER SAYS "tracked" (Story 15.2b). It said so
+  // truthfully for as long as the walk read `git ls-files` alone; the moment
+  // the untracked-but-not-ignored half joined the population, the word became
+  // the guard's own stale claim about itself. The split is printed rather than
+  // summed away, because "630 tracked + 1 untracked" is what says the scan read
+  // the files this story just wrote.
+  console.log(`forbidden font host scan: ${result.findings.length} occurrence(s) in ${result.files} source files under ${relative(process.cwd(), root) || '.'} `
+    + `(${result.tracked} tracked + ${result.untracked} untracked-but-not-ignored, floor ${result.floor}). `
     + 'This bounds the SCANNED POPULATION only; it is not a claim that no request leaves the machine.')
 }

@@ -5,7 +5,12 @@
 // under `scripts/` is `.mjs`.
 export interface ForbiddenFontHost { readonly host: string; readonly declaration: string }
 export interface FontHostFinding { readonly file: string; readonly host: string; readonly half: string; readonly line: number; readonly text: string }
-export interface FontHostScanResult { readonly files: number; readonly floor: number; readonly findings: ReadonlyArray<FontHostFinding> }
+// `tracked` and `untracked` are Story 15.2b's split of the widened population,
+// mirrored here BY HAND because nothing checks this sidecar against the `.mjs`:
+// `allowJs` is off and no tsconfig includes `scripts/`, so this file IS the
+// module to the compiler. A missing export is `TS2305` at the importer; a wrong
+// signature is accepted silently and fails at runtime. `files === tracked + untracked`.
+export interface FontHostScanResult { readonly files: number; readonly tracked: number; readonly untracked: number; readonly floor: number; readonly findings: ReadonlyArray<FontHostFinding> }
 
 export const FORBIDDEN_FONT_HOSTS: ReadonlyArray<ForbiddenFontHost>
 export const DECLARED_ONLY_FONT_HOSTS: ReadonlyArray<ForbiddenFontHost>

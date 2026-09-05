@@ -9005,3 +9005,44 @@ boundary gate, which carried it rather than repairing it.
 **What discharges it.** Adding `tsconfig.e2e.json` to the solution's `references` (making the local gate cover it), and separately, whatever discharges [[DW-193]]. The first is cheap and does not depend on the second.
 
 ---
+
+### DW-213 — Neither host scan's CLI block is exercised by any test, and 15.2b rewrote both sentences
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2b-the-font-host-scan-sees-the-whole-tree.md`
+- **Deferred by:** Story 15.2b's review (2026-09-05). **Surfaced, not caused, by 15.2b.** **Severity:** MEDIUM. **Status:** OPEN
+
+**What is true.** Both scanners' `console.log` sit inside `if (process.argv[1] === fileURLToPath(import.meta.url))`, which no test enters. 15.2b rewrote both sentences — dropping the now-false word "tracked" and adding the tracked/untracked split — with nothing pinning either.
+
+**Why it is real.** That printed sentence is the guard's public claim and the thing a story report quotes. The whole of D-000.21 (`epic-11-14-decision-log.md`, *"A gate that states its own hole honestly"*) is about a bounded claim becoming a false claim when somebody quotes it without its bound. The one string a human actually reads is the one string no test reads.
+
+**What discharges it.** A test that spawns `node scripts/<scanner>.mjs`, asserts rc 0, and asserts the sentence names both halves and does not call the population "tracked".
+
+---
+
+### DW-214 — Nothing detects a `.gitignore` line for an emission that no longer exists
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2b-the-font-host-scan-sees-the-whole-tree.md`
+- **Deferred by:** Story 15.2b's review (2026-09-05). **Caused by 15.2b in the sense that 15.2b created the forward direction.** **Severity:** LOW. **Status:** OPEN
+
+**What is true.** `src/build-wasm.test.ts` proves emitted ⊆ ignored and names `pdfjs-assets.ts` as the deliberate tracked exception. The inverse is unguarded: an ignore line for a deleted artifact accumulates silently.
+
+**Why it is real rather than tidiness.** Under the widened population each stale line is a path that would keep a *future* file of that name out of the scan — an exemption nobody decided, inherited from an artifact that no longer exists.
+
+**What discharges it.** The same closed-set discipline in the other direction: every generated-tree line in `.gitignore` must correspond to a current emission or be named as a deliberate reservation.
+
+---
+
+### DW-215 — The two host scanners now duplicate their whole population builder, and three of its behaviours are unverified
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2b-the-font-host-scan-sees-the-whole-tree.md`
+- **Deferred by:** Story 15.2b's review (2026-09-05). **Caused by 15.2b.** **Severity:** MEDIUM. **Status:** OPEN
+
+**What is true.** `splitPopulation`, its `run(args, half)` helper, the tracked-half dedupe, the nested-repository refusal and the `ENOENT` skip are now byte-similar in both `forbidden-font-hosts.mjs` and `host-font-access.mjs`, mirrored again by hand in two `.d.mts` sidecars that nothing checks against their implementations.
+
+**Three behaviours ship unverified, and the reasons are honest ones.** The tracked-half dedupe cannot be tested without an unresolved merge, and `git merge` is outside the ratified scratch-repo exception (`init`/`add`/`commit` only). The `ENOENT` skip needs a race that is not deterministically reproducible without making the scanner's file read injectable. And the `--others`-only failure arm works by prepending a `git` shim to `PATH` — safe under vitest's per-file isolation today, but a process global for the length of one block.
+
+**Why it is real.** 15.2b doubled the surface on which a fix must land, and a divergence between the two copies is exactly the asymmetry the story's own R1 ruling exists to prevent. Two of the three untested behaviours are refusals — the class this guard is shaped around.
+
+**What discharges it.** Extract one shared `scripts/scanned-population.mjs` with a single sidecar, and make its `git` invocation and file read injectable so the dedupe, the `ENOENT` skip and the per-half failure are all testable without a `PATH` shim.
+
+---

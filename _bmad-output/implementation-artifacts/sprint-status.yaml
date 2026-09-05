@@ -530,7 +530,7 @@ development_status:
   # construction rather than by a promise.
   # 15.2b added 2026-09-05 by D-15.2.1. Dispatched EARLY, alongside 12.3 -- it lives in Epic 15 by
   # subject but every story dispatched before it carries the tracked-only scan hole (D-000.21).
-  15-2b-the-font-host-scan-sees-the-whole-tree: backlog
+  15-2b-the-font-host-scan-sees-the-whole-tree: review
   15-2a-a-component-command-means-exactly-what-it-names: done
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional
