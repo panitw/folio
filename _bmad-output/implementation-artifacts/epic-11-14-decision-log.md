@@ -2219,3 +2219,56 @@ checked by use, never by review.* Epic 17's absence survived six closes, an epic
 repeated citation of its own stories, because **nobody needed to look it up until somebody needed to
 look it up.** The only reason it surfaced now is that a decision required reading a precedent rather
 than citing it.
+
+---
+
+## D-12.3.1 — 17.3 answers 12.3's fork, and the answer does not transfer unchanged
+
+**Pre-measured before dispatch, so [[D-12.3.0]]'s unresolved fork does not cost a CHECKPOINT 1 round
+trip.** The question was: when a header-style field is absent, does the control show empty or the value
+the document will use? The lead named Story 17.3 as the precedent. **It is, and reading it changes the
+answer.**
+
+**What 17.3 actually did — and it is not "show the resolved value".** It put the **engine's default** on
+the canvas projection beside the committed value — `defaultFontSize`, then `defaultLineSpacing` added by
+that story — and had the panel render the effective value by reading the default **off the projection**
+when the committed value is absent. Its Always clause is explicit that the default *"comes from the
+projection at the render site — never from a literal in `App.tsx`"*, and its red-proof mutates the Go
+constant to `999` to prove the panel is not re-minting it. **The browser composes; it does not compute.**
+
+**Why that does not transfer to 12.3 unchanged, and this is the operative point.** 17.3's fallback is
+**one level deep** — a field is set, or the engine's default applies — so shipping the default as a
+projection member leaves the browser doing nothing but choosing between two values it was handed. **12.3's
+fallback is a two-level cascade**: a header-style field falls back to *the table's own style* and then to
+*that field's documented default* ([[AC3]], the cascade Story 4.1 defines). Handing the browser both
+ingredients and letting it pick **is** implementing the cascade in TypeScript — the precise thing
+[[D-12.3.0]] identified AC2 and AC3 as prohibiting, and a violation of AD-15 and AD-17 besides.
+
+**So 12.3 projects the RESOLVED value, not the ingredients.** The engine already owns the cascade and
+already runs it; the projection carries its answer. That satisfies 17.3's principle — *the panel shows
+the value the document will use, sourced from the engine* — by the only route that does not put a second
+cascade in the browser. **The precedent's principle transfers; its mechanism does not, because the
+mechanism was shaped by a one-level fallback.**
+
+**This also resolves the one-field-versus-two question [[D-12.3.0]] raised.** It is **two projection
+members per property** — the committed value (so the control can tell set from unset, and so *clearable
+back to absent* remains meaningful) and the resolved value (so the control can show what will actually be
+used). One member cannot serve both: a single resolved value makes *absent* unrepresentable, and a single
+committed value forces the browser to resolve. Under [[D-7.4.5]] the projection and its `hasOnly` mirror
+move in one commit, so this is settled at the plan gate or paid for twice.
+
+**The protocol-site checklist 12.3 inherits, recorded by symbol rather than line number** — per
+[[D-12.C.4]]'s stale-citation finding, where the cited lines were moved by the comment block citing them.
+17.3 found that adding one projection member touches **five** sites and that its own Code Map had omitted
+one of them:
+
+1. the Go `CanvasProjection` struct;
+2. the `CanvasProjection{…}` construction in `page_setup.go`;
+3. the TypeScript projection type in `engine-protocol.ts`;
+4. **both** `hasOnly` *and* the typed-key validator in `engine-protocol.ts` — these are two edits at one
+   site and are what the omission was;
+5. the recorded sorted wire-key set in `canvas_projection_wire_test.go`.
+
+**12.3 adds two members per property across three properties, so this checklist runs six times.** A story
+whose Code Map omits site 4 will pass `tsc -b` and fail the wire-key record — which is the good outcome,
+and only because that record exists.
