@@ -1634,6 +1634,55 @@ destroys the document's rendering; it was doing work only because the loader was
 (c)+(a) it is true in **substance**. That is the generalizable point: a constraint phrased against the
 mechanism can be met by a fix that misses the purpose.
 
+### D-12.C.4 — the canonicalization argument against `Z` was false, and `-00:00` falsifies it
+
+**Caught by 12.2's review layers.** D-12.C argued that admitting `Z` at the loader would be worse than
+excluding it because *"two byte-spellings of one semantic offset is a canonicalization hazard in a
+byte-identity product — the serializer would have to pick one, and round-trip identity would depend on
+which."*
+
+**That hazard already exists and is already accepted.** Measured against the repaired pattern
+`^[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]$`:
+
+| Value | Admitted |
+|---|---|
+| `+00:00` | **yes** |
+| `-00:00` | **yes** |
+| `+07:00` | yes |
+| `+99:99` / `+24:00` / `Z` | no |
+
+**`+00:00` and `-00:00` are two byte-spellings of one semantic offset, and the loader takes both** — both
+before this story and after it. My argument therefore proves too much: taken seriously it would condemn
+the pattern D-12.C just ruled correct.
+
+**And the reason the hazard never materialised is the reason it was never a hazard.** This format's values
+travel **verbatim** — the serializer does not normalise an offset, so a document declaring `-00:00`
+round-trips as `-00:00` and byte identity is preserved without anything having to choose. **A
+canonicalization hazard requires a canonicalizer.** There isn't one, which is precisely why two spellings
+have coexisted unremarked.
+
+**The conclusion survives on the grounds it should have rested on all along:** `folio-format.md:49` says
+*"Fixed offset, `±HH:MM`"*, and `Z` is not that — so excluding it from the loader **implements the
+format**, exactly as excluding `+99:99` does. `Z` stays in the evaluator because RFC 3339 data requires
+it. Nothing about the outcome changes; a surplus argument that was wrong has been removed.
+
+### The pattern worth naming: four corrections to one ruling
+
+D-12.C has now been corrected four times — [[D-12.C.1]] (the compatibility clause exists), [[D-12.C.2]]
+(the version precedent exists, twice, and states the principle), [[D-12.C.3]] (the corpus was 31, not 28),
+and this one. **Every correction came from the party that had to act on the claim, and none from review of
+the claim itself.** The ruling's *outcome* has survived all four intact, which is the reassuring half. The
+worrying half is that **each wrong reason was independently sufficient-sounding**, and three of the four
+were mine.
+
+The common shape: I reached for an argument from a general principle — compatibility clauses, narration
+precedent, canonicalization — **without measuring whether the principle's precondition held in this
+codebase.** A canonicalization hazard needs a canonicalizer. A missing precedent needs the file read to
+the end. An absent clause needs a query in the document's own vocabulary. **Each time the general
+principle was sound and its applicability was assumed** — which is the same defect as
+[[D-12.C.2]]'s citation-without-its-boundary, arriving one level up: not a claim about a line, but a claim
+about a rule.
+
 ### D-12.C.3 — the corpus number, corrected by the story that used it
 
 **D-12.C records 28 `.folio` files, 21× `+00:00`, 7× `+07:00`.** 12.2's implementer re-measured over
