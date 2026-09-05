@@ -1402,3 +1402,77 @@ inherited by its members without being checked against any of them.
 and has now paid three times. But the rule it implies is stronger: **a claim about a group is not evidence
 about a member.** When a survey says "these files assert X", the spec that acts on it names the file and
 the line, and the builder confirms that file does X — not that the group does.
+
+---
+
+### D-12.B — Story 12.1: both halves of D-12.A's Fork 1 ruling were false, and the story got smaller
+
+**Falsified by 12.1's builder at its own plan gate, verified independently by the lead and by me.**
+
+**The engine half.** D-12.A ruled *"the engine refuses — `containComponent` already does this and needs no
+change."* Measured: all **11** call sites are in `component_commands.go`, every one a component command.
+**`Canvas` never calls it.** A band-height writer is not on that path. Proved by a throwaway module
+outside the repo (exported API only, deleted, tree verified clean): a `pageHeader` of 20pt holding `e1` at
+`y=50 h=30` gives `ParseTemplate` nil, `Canvas` nil, a well-formed projection, and the TS guard **admits
+it**. Nothing refuses the strand.
+
+**What is true is worse, and it strengthens the conclusion while destroying its mechanism.** On that
+stranded element: `moveComponent` refused; `resizeComponent` refused **even shrinking to `h=1`** (`y=50 >
+20` fails before the new size is considered); and `updateComponentProperties` setting only **`color`**
+refused with *"component geometry must stay within pageHeader"*, where the identical command succeeds on
+the unshortened document. **A strand poisons edits that carry no geometry at all.** Only
+`setComponentBounds` and `deleteComponent` still work.
+
+**The panel half.** D-12.A's floor was justified by an engine refusal that did not exist — and is
+independently forbidden. Story 17.4's item 5 was cited as an open question; **item 5 was amended in place
+the same day and answered by item 9**, which rules *do not clamp*. Its distinction is **not** *mirrored
+bound vs. only copy* — that was the orchestrator's misreading — but:
+
+> *"**The floor and the ceiling are not the same kind of bound, which is why one is mirrored and the other
+> must not be.** Zero and negative are values these fields can NEVER legally hold — whatever document is
+> open… That fact is a property of the FIELD… A band-edge ceiling is a property of the LAYOUT: it depends
+> on the component's position, its band's height, and the page."*
+
+A floor at `max(y + height)` is **layout-dependent by that definition's own terms.** Item 9 explicitly
+assumes the engine refuses and *still* forbids the clamp, because the objection is the browser computing
+layout geometry at all. **So the panel does not floor: it sends, the engine refuses, the existing
+`role="alert"` path renders it.** Consistency with typing is the property asserted.
+
+**RULING.** (1) Add the check to the **band-height writer**, reusing `containComponent` as the predicate
+over a candidate band — one new call site, the predicate itself unchanged, no new diag code. **The
+refusal must name the act and the stranded element, not "component geometry must stay within pageHeader";
+the author moved no component.** Reuse the predicate, not its sentence. (2) **A new `setBandHeight` arm on
+`ApplyComponentCommand`**, not a widened page setup — because `Canvas`'s invariant refusals begin `"folio:
+page setup "` (space) while the command door's own validations begin `"folio: page."` (dot), and
+`pageSetupDiagnostic` discards the message for anything not carrying `PAGE_SETUP_INVALID`. **The command
+door's validations are located; the projection's invariant checks are not.** Plus page setup's strict
+`len(raw) != 7` arity, which a new arm does not disturb. (3) The new command validates the content-window
+invariant and refuses located; `Canvas`'s bare refusal stays as the **hand-edit backstop** — two guards,
+two audiences, authoring versus loading. **Condition: both call ONE predicate.** Two implementations of an
+invariant is the drifting copy 17.4 warns about; two call sites of one function is not. (4) **The panel
+floor is deleted**, and with it D-12.A's D-7.4.5 mirror obligation and its unbuildable red-proof.
+
+**Two rules from the lead's own errors, each worth more than the correction.**
+
+**A predicate that guards N existing doors says nothing about a door that does not exist yet.** The
+forcing relation was asserted, never checked — and the tell was inside the story: **12.1 is the story that
+adds the writer**, so no existing call site could have been on its path. When a ruling says "X already
+handles this", the check is whether X is reachable from the *new* code, not whether X is thorough.
+
+**A code comment is a claim about a decision, never the decision.** The lead read
+`component-property-command.ts`'s comment calling 17.4's item 5 an open question and treated it as the
+record. That is **D-000.10's failure mode arriving inside a ruling that cites D-000.10.** When a comment
+says "open question", read the story's Spec Change Log before building on it.
+
+**Registered, not built:** `pageSetupDiagnostic` discards the engine's message — every `"folio: page setup
+"` refusal reaches the author as a fixed sentence about size and margins, the real reason thrown away.
+Independent of this story, and the reason the door choice was forced. And the strand-poisons-edits
+finding, **with its escape named** (`setComponentBounds` and `deleteComponent` still work), so it reads as
+a disclosed shortfall rather than a trap.
+
+**DW-143 does not fire here.** Its discriminator is off-*page* geometry; a component stranded in a
+shortened header renders **on** the page, overlapping content. Different defect. D-12.A's re-pricing
+instruction is struck, owner unchanged.
+
+**Implementation condition:** the candidate-band check must evaluate **every** component in the band, not
+a selected one. A check that examines one is the vacuity this run keeps finding.
