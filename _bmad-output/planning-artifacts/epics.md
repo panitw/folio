@@ -4907,6 +4907,23 @@ count, so it must not reduce what a keyboard can reach (UX-DR25)
 
 ### Story 14.8: The table editor carries the header, cell and border sections
 
+> **OWNER DECISION, 2026-09-05 — this story is now a RESTYLE, and the mockup is being corrected.**
+> `TableEditor.dc.html` draws five controls. Measured against the format and the rulings since this
+> story was written: **`Padding`** was ruled out of the panel (D-12.4.1); **`Row height`** and **`Repeat
+> on continuation pages`** are facts the engine *derives*, so a control would only restate them; and
+> **`Show header row`** and the **borders preset** have **no field in the file format at all**, which
+> this story's own AC4 forbids inventing. Meanwhile the three things Story 12.3 makes authorable —
+> header height, alternating-row colour, header text style — **are not drawn in that mockup.**
+>
+> **The owner chose to correct the drawing rather than build it.** A mockup that draws capabilities the
+> product does not have is a drawing to correct, not a specification to implement. So:
+> **14.8's remaining substance is presentation** — take the controls Story 12.3 ships in the existing
+> editor idiom and group them into the drawn HEADER / CELLS / BORDERS sections, so the table editor
+> reads as one designed thing, which is Epic 14's actual subject. **`Show header row` and the borders
+> preset are not coming**, and the mockup is to be edited to stop promising them. **No format change,
+> no version increment.** Rewrite the acceptance criteria against this before dispatch.
+
+
 As a template author,
 I want the table's header, cell and border settings beside its columns,
 So that a table is configured in one place rather than in a dialog plus a hand-edited file.

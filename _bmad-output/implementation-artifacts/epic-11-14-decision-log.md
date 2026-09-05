@@ -2430,3 +2430,75 @@ requirement has stopped being a guard.**
 Also re-keyed: **DW-199's trigger moves from "Epic 14's first designer story" to its PURPOSE** — the first
 story that adds a designer UI section. 12.3 dispatches first, so the epic-numbered trigger was already
 stale; a trigger keyed on a number goes stale every time dispatch order moves.
+
+---
+
+## D-14.8.1 — OWNER DECISION: 14.8 becomes a restyle, and the mockup is corrected rather than built (2026-09-05)
+
+**Owner decision**, taken at the terminal with the measurement in hand. Story 14.8 was written to add
+HEADER, CELLS and BORDERS sections to the table editor, following `TableEditor.dc.html`. **Four things
+happened after it was written, and together they emptied it.**
+
+| The mockup draws | Status |
+|---|---|
+| `Padding` | Ruled out of the panel by [[D-12.4.1]] |
+| `Row height` | A fact the engine **derives** — a control would restate it |
+| `Repeat on continuation pages` | Same |
+| `Show header row` | **No field exists in the format.** 14.8's own AC4 forbids inventing one |
+| borders preset | **No field exists in the format.** Same |
+
+And the three things Story 12.3 is making authorable — header height, alternating-row colour, header
+text style — **are not drawn in that mockup at all** (measured: alt-row/zebra 0, "Header height" 0,
+colour control 0, against positive controls of 108 hex literals and "Row height" 1 on the same file).
+**14.8's drawing and 14.8's available substance had almost no overlap.**
+
+**Ruled: option (1) — restyle, and correct the drawing.** 14.8's remaining substance is presentation:
+take the controls 12.3 ships in the existing editor idiom and group them into the drawn sections so the
+editor reads as one designed thing, **which is Epic 14's actual subject**. `Show header row` and the
+borders preset are **not coming**, and the mockup is edited to stop promising them. No format change, no
+version increment. `epics.md`'s 14.8 entry carries the decision and its acceptance criteria are to be
+rewritten against it before dispatch.
+
+**The principle the owner accepted, and it is worth keeping:** *a mockup that draws capabilities the
+product does not have is a drawing to correct, not a specification to implement.* The cost, stated
+plainly rather than buried: **two drawn controls are being withdrawn**, and the owner decided those
+promises were aspirational. Option (3) — growing the format to back them — was available and was
+declined; it would have taken a version increment and new render behaviour **near the release tag**, and
+would have stopped Epic 14 being a presentation epic.
+
+**Why this reached the owner at all.** The lead ruled 12.3's half and escalated only this, correctly:
+every way of answering it is defensible engineering, nothing in the architecture or the epics decides
+it, and it is a question about **what the product should be able to do**. It was also **not 12.3's
+blocker** — the answer changes not one line of that story — so it was framed and put to the owner
+without stopping the run. **That separation is the thing to repeat: escalate the part that is genuinely
+the owner's, and keep shipping the part that is not.**
+
+---
+
+## D-000.24 — A gate that fires on every instance is a toll, not a gate
+
+**12.3's builder declined to argue past the token gate and said so plainly:** *"the 1600 threshold is
+unreachable in this project and I will not claim otherwise."*
+
+Measured across this project's specs: 12.1 ~10,849 · 12.2 ~17,528 · 12.4 ~9,434 · 15.2b ~14,605 · 17.3
+~6,033 · **12.3 ~11,677**. The threshold is **1,600**. **Not one spec in the project has ever been under
+it, and none plausibly could be** — the bulk of every spec is the Code Map, which is the investigation
+the spec exists to preserve so the implementer never re-derives it.
+
+**So the gate discriminates nothing.** It halts every story, the answer is `[K]` every time, and the only
+thing it produces is a round trip and a paragraph of justification. **This run has already condemned
+exactly this shape once** — [[D-8.4d.2]] rejected an interim size ratchet because *"a gate that gets
+routinely bumped is not a gate; it is a chore that teaches people to bump gates."* A gate that is
+routinely waived teaches the same reflex, and worse: it trains a builder to treat a halt as a formality,
+which is precisely the instinct that must survive for the halts that matter.
+
+**Handled at the orchestration level, not by each story.** The threshold belongs in
+`_bmad/custom/bmad-build.toml` set to a figure this project's specs could actually cross — or the gate
+should be dropped and the split judgement left where it already lives, in the multi-goal check at
+step-01, which **is** discriminating (12.3's builder judged single-goal and said why). **Fixing it in
+config is a one-line change; leaving it costs a round trip per story for the rest of the run.**
+
+**The generalisation:** a threshold's value is in the cases it separates. **One that admits everything
+and one that rejects everything are the same instrument, and neither is a measurement.** Before shipping
+a gate, measure the population it will judge — a floor nothing reaches and a ceiling everything exceeds
+are both decoration.
