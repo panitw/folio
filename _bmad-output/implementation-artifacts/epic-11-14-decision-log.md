@@ -1329,3 +1329,37 @@ as verified, and said so unprompted. The near-miss is the useful artifact: the w
 *plausible and quiet*, and nothing downstream would have questioned it — the premise was one I had
 supplied and was expecting to see confirmed. **A measurement that confirms what the orchestrator already
 believes gets the least scrutiny and therefore needs the most.**
+
+---
+
+### D-12.A.1 — Correction to D-12.A: `design-contract.test.ts` does not read `App.tsx`
+
+**The claim was false and I propagated it.** D-12.A's closing paragraph states that
+`property-prose-height.test.ts` **and `design-contract.test.ts`** assert over the raw source text of
+`App.tsx` and `App.css`. The second half is wrong. Caught by Story 12.4's builder at its own plan gate,
+and verified here before correcting:
+
+`design-contract.test.ts` contains **zero** occurrences of `App.tsx` (grep rc=1). Its six handles are
+`DESIGN.md`, `tokens.css`, `App.css`, `package.json`, `package-lock.json` and `tsconfig.app.json` —
+enumerated, CLOSED. Positive control on the same file and the same query shape: `App.css` hits **3**
+times. So the zero is a measurement, not a dead grep.
+
+**The real constraint is narrower and sharper than the one I recorded**, and 12.4 would have been specced
+against the wrong hazard. The genuine `App.tsx` source-text readers are:
+
+- **`property-prose-height.test.ts`** — no assertion in it can fire on a comment rewrite.
+- **`canvas-authority-contract.test.ts`** — scans raw text **without stripping comments** against a fixed
+  prohibited-token list. **So a comment can break that scan.** 12.4 replaces a comment in `App.tsx`, and
+  the replacement must not spell `getComputedStyle(`, `measureText`, `offsetWidth`, `ResizeObserver` or
+  any other prohibited token — in prose that is *about* what the panel does not do, which is exactly the
+  prose most likely to name them.
+
+**How the error was made, because the mechanism matters more than the fact.** The survey classified two
+test files together because they occupy the same *category* — "source-text contracts over the designer" —
+and I carried the pairing forward without checking that both members had the property the category
+implied. **A category is not a measurement.** Neither is a plausible pairing: the two files really are the
+same kind of test, and that is precisely why the wrong member was never questioned.
+
+**Consequence.** D-12.A's final paragraph is superseded by this entry. Its instruction — re-derive what
+those files assert at each plan gate rather than inheriting today's reading — stands and is, if anything,
+vindicated: 12.4's builder did exactly that and found the error.
