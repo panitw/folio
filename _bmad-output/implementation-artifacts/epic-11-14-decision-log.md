@@ -2577,3 +2577,43 @@ several commands. **Instrumented: the handler is entered three times and exactly
 React flushes discrete events before the next. The builder refused the patch and kept a non-vacuous
 property test instead. **My premise was wrong, and evidence beat compliance.** A builder that implements
 a wrong instruction correctly has produced a defect with an alibi.
+
+---
+
+## D-000.26 — A story sat in `review` for four stories, and the census that named it was reported to me twice
+
+**Orchestration defect, mine.** Story 12.4 shipped in `fd4da07`. I never dispatched a closer for it: I
+went from 12.1's close straight into 12.2's dispatch and it fell in the gap. Measured today — spec
+frontmatter says `status: 'done'`, the tracker says `review`, and the story has **no `## Delivery Log` at
+all** (0 occurrences against a control of 9 `##` headings). Four stories shipped over the top of it.
+
+**The part worth recording is not that I missed it. It is that I was told, twice, in a format I had asked
+for.** 12.2's closer reported a tracker value census ending *"…3 in-progress, **2 review**, 1
+moved-to-epic-15, 1 deferred-to-epic-15"* — the two being 12.2 itself and 12.4. After 12.2 closed, the
+count went to **1 review**, and 12.4 was the one. **I read both numbers as totals and neither as a claim
+about a specific story.**
+
+**An aggregate is a claim about its members, and a total that changes tells you which member moved.** A
+census exists precisely so that an unexpected count is noticeable — and *"1 review"* while no story was in
+review was exactly that signal. I had asked for the census, received it, and used it only to confirm that
+nothing had been mangled. **A number checked for damage is not a number read for meaning.**
+
+**Why the usual defences did not catch it.** The tracker was never wrong — `12-4: review` was accurate the
+whole time. No gate failed, because a story that is built and committed breaks nothing by lacking a
+Delivery Log. **The record was internally consistent and incomplete**, which is the state no assertion in
+this run can detect: every guard here checks that a claim matches reality, and none checks that a claim
+exists. **This is the absence-needs-a-tripwire rule ([[D-15.0]]) turned on the orchestration layer, where
+I had not applied it.**
+
+**Standing correction, effective now: before dispatching any story, read the tracker's `review` set by
+NAME, not by count.** A story in `review` is a story whose code shipped and whose record did not, and it
+is invisible to every gate in the system. The check is one grep and it belongs in the same breath as
+confirming the tree is clean.
+
+**And a note for the close itself:** 12.4's closer is running under an explicit instruction that gates run
+today measure **today's** tree, not 12.4's, because 12.2, 15.2b and 12.3 have shipped over it. A late
+close is the one moment someone reads an old record against a new tree — **the temptation is to write a
+Delivery Log that implies a verification nobody performed**, and that would be a worse defect than the
+missing log it replaces. It has been told to attribute every figure to its era and to report, not repair,
+any drift it finds in 12.4's record. **D-12.4.1 is cited by both 12.2 and 12.3, so what that story
+actually shipped needs to be legible from its own file.**
