@@ -1167,3 +1167,93 @@ the question is one sentence, and in four for four cases here it would have foun
 **The rule.** Use `git grep --untracked` whenever new files could be in scope — which is always, during implementation — and **state which form was used beside the count**. A bare `git grep` zero is a claim about the tracked tree, not about the working tree, and those differ precisely when it matters.
 
 **The general lesson, which outlives both tools.** "Use tool X instead of tool Y" is never a complete answer to a measurement problem. **Every search tool has a population it cannot see**, and the population is the thing to state — not the tool. This is the third distinct false-zero mechanism found in this run (recursive `grep`'s, `git grep`'s tracked-only default, and a `-run` filter matching nothing and exiting 0), and they share no implementation, only the shape: *a zero that means "I did not look there" rendered identically to a zero that means "it is not there."*
+
+---
+
+### D-12.A — Epic 12's five stories, surveyed per acceptance criterion at `71627a5`
+
+**Populations CLOSED and named:** P-CMD (the command surface) = **25** — 24 `case` arms in
+`ApplyComponentCommand` plus `ApplyPageSetupCommand`, every arm read. P-PAD-GO (`.Padding` occurrences
+under `folio-go/`) = **25 across 5 files**. P-FS (`FieldSpec` declarations in `App.tsx`) = **9**. P-FOLIO
+(`.folio` files outside `node_modules`) = **31**. Positive controls fired: `borderWidth` hits 7 designer
+files in the same sweep where `paddingTop` hits 5 and **not** `App.tsx`, so the padding zero in `App.tsx`
+is real.
+
+**Two acceptance criteria would have shipped wrong, and they are one defect twice.** 12.1 AC4 and 12.5 AC7
+both promise a stranded component is *"accepted and clipped with FR44's existing diagnostic"*. Falsified
+two ways: `element_box.go` states verbatim *"the declared WIDTH is FR44's only clip bound"*, and the diag
+registry's **19** Code declarations contain no band-overflow code — **the AC cites an engine answer the
+engine does not have**; and `containComponent` (**10** call sites, *"the ONE band-extent validation in the
+designer command path"*) already refuses that state for the capping bands, so accepting it yields a
+document where every later command on the stranded element is refused and the TS mirror drops the whole
+snapshot.
+
+**RULING, Fork 1 — the correction is layered, and it is the pattern already shipped.** Not "refuse" versus
+"clamp" but both, one at each layer: **the engine refuses** (`containComponent`, unchanged, no new
+diagnostic, so AD-14's permanent-surface cost is never paid), and **the panel's control cannot propose
+it** — the band-height field's floor is the maximum of (y + height) over that band's components, derived
+from the projection the browser already holds. This is exactly what `POSITIVE_LENGTH_FIELDS` exists for,
+in its own words: *"a keypress can never propose a value the command path will refuse."* Band height is
+the same bound one axis over.
+
+**This dissolved the escalation.** The objection to refusing was that an author could not shorten a band
+without first moving things. Under the layered shape they can shorten it *to the lowest occupied edge,
+with the control stopping there visibly*. The epic's promise survives, so nothing is traded and there is
+nothing to put to the owner.
+
+Bounded deliberately: **only the vertically capping bands** (pageHeader, pageFooter) — the content band
+paginates and gets no floor. **12.1 and 12.5 share ONE derivation of that floor, written once and consumed
+twice** — identical text in two ACs drifts; one function called twice cannot. Story 17.4's Spec Change Log
+records `containComponent`'s upper bounds as an open question; **12.1 settles it for the band-height axis
+only** and is not licence to complete the mirror. The D-7.4.5 red-proof is required: move the Go bound
+without the TS floor and prove a keypress can propose a refusal.
+
+**RULING, Fork 2 — fold the projection widening into 12.2 and 12.3; do not split.** A story that widens
+`CanvasProjection` without its consumer has no observable behaviour and no red-proof — zero call sites is
+unbuilt — and D-7.4.5 requires the projection and its `hasOnly` mirror to move in one commit regardless,
+so the split would be a split of one commit. **The red-proof is the omission**: add the field without the
+`hasOnly` entry and assert the canvas blanks. A happy-path test cannot see the failure mode that makes
+this worth writing down — a mismatch does not degrade, it drops the snapshot, terminates the worker and
+blanks the canvas.
+
+**New run rule, from three instances (12.2 AC1, 12.3 AC1, 14.7 AC5):** *any AC of the form "the panel
+shows the engine's current X" is a projection-widening claim unless X is already projected.* Every such AC
+must say which, and name the field. One grep at spec time against a failure that blanks the canvas at
+runtime.
+
+**RULING, Fork 3 — dissolved. 12.5 AC6 is FOCUS, not selection.** Verified by reading `App.tsx`: the band
+renders as a `section` carrying `tabIndex={0}` and **its own `onKeyDown`** — already focusable, already
+handling keys. The arrow-key nudge is a *document-level* handler gated on `selectedRef.current.length ===
+1`; AC6 was only entangled with the selection model because it would have reused it. Extending the
+section's existing handler needs no selection model, and the event is handled at the focused element
+before reaching the document listener. **So this is not a second instance of 14.10's prerequisite — it is
+one story reaching for a mechanism it does not need.** 12.5 stays in Wave B. Conditions: the handler must
+`preventDefault`/`stopPropagation` on the arrows it consumes, and the discriminating test is *component
+selected, boundary focused, arrows move the boundary and the component does not move.* Without that
+assertion the two handlers are one regression from both firing.
+
+**Sequencing correction.** DW-143 names 12.5's drag as the trigger for the first story that can strand a
+component. It is **12.1** — the band-height *writer* strands it; the drag is a second door to the same
+act. Re-price at 12.1's gate.
+
+**Settled without escalation:** 12.4 is a **branch split, not a narrowing** — the four padding keys sit in
+one `allowed` branch naming all **5** members of the closed element-type set, and the located refusal
+already exists, with the four keys already in the canonical property order so the DataPath is right for
+free. Byte-neutral: of 31 `.folio` files, exactly **4** contain padding and all four have it on element
+`e8`, of type table. 12.2 AC2 is already satisfied engine-side (2 non-test format-context sites, its test
+file untagged). 12.3 AC2/AC3 already satisfied and genuinely gated (7 tests across two untagged files,
+checked by `head -3`).
+
+**One correction to an AC about to be specced.** A 12.3 red-first test asserting *"nothing writes
+`headerStyle`"* would be **false at this tree** — the font-chain rename cascade rewrites
+`HeaderStyle.FontFamily` at 2 sites. Scope it to *no command **authors** `headerStyle`*, and **name the
+rename cascade as the known writer inside the test**, so the next person to widen it trips on a named
+exception rather than a mystery. **An assertion that is false at the tree it ships on is not a red-first
+test; it is a red test.**
+
+**A gap in Epic 12's planning text, not a note.** `property-prose-height.test.ts` and
+`design-contract.test.ts` assert over **raw source text** of `App.tsx`/`App.css` — exact allowlists, no
+hex/rgb/hsl literal permitted in `App.css`, exact-once counts on two type tokens. D-000.9 filed that
+blocker against Epic 14; **12.1's panel rows and 12.5's drag CSS fire it just as hard** and Epic 12's text
+does not mention it. Re-derive what those files assert at each plan gate rather than inheriting today's
+reading — they are the least stable contracts in the repository.
