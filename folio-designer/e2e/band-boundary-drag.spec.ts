@@ -31,6 +31,32 @@ import { expect, test } from '@playwright/test'
 // The projected band rect, read as the two custom properties the projection
 // wrote. Nothing here measures the DOM: this is the browser reading back what
 // Go's numbers were painted as, which is exactly the claim under test.
+// THE PRESS POINT MUST BE INSIDE THE VIEWPORT, and this helper exists because
+// the first execution of this suite proved it is not free.
+//
+// `page.mouse.move()` does NOT scroll: it drives the pointer at raw viewport
+// coordinates. The default viewport is 720px tall and the page-footer handle
+// sits at y=880 on a resting A4 canvas, so the footer test pressed 160px BELOW
+// the window, `document.elementFromPoint` returned null, and no drag ever
+// began — the run reported `.band-boundary-proposal` count 0 while the feature
+// was working perfectly. The header handle is at y=213 and passed, which is
+// exactly why the defect looked like a footer-only product bug.
+//
+// Neither `toHaveCount(1)` nor a non-null `boundingBox()` can see this: an
+// off-screen element has both. So this helper scrolls first, then ASSERTS the
+// centre is inside the viewport — turning a silent miss into a named failure.
+const pressPoint = async (page: import('@playwright/test').Page, handle: import('@playwright/test').Locator) => {
+  await handle.scrollIntoViewIfNeeded()
+  const box = await handle.boundingBox()
+  expect(box, 'the handle must have a box to press').not.toBeNull()
+  const viewport = page.viewportSize()
+  expect(viewport, 'the run must declare a viewport').not.toBeNull()
+  const point = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  expect(point.y, 'the press point is below the viewport — mouse.move does not scroll').toBeLessThanOrEqual(viewport!.height)
+  expect(point.y, 'the press point is above the viewport — mouse.move does not scroll').toBeGreaterThanOrEqual(0)
+  return point
+}
+
 const bandGeometry = async (page: import('@playwright/test').Page): Promise<ReadonlyArray<string>> =>
   page.locator('.page-surface').first().locator('.page-band').evaluateAll((bands) =>
     bands.map((band) => `${(band as HTMLElement).style.getPropertyValue('--band-y')}/${(band as HTMLElement).style.getPropertyValue('--band-height')}`))
@@ -40,17 +66,16 @@ test('dragging the header/content boundary proposes, then commits through the re
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const handle = page.getByRole('button', { name: 'Resize the page header', exact: true })
   await expect(handle).toHaveCount(1)
-  const box = await handle.boundingBox()
-  expect(box).not.toBeNull()
+  const press = await pressPoint(page, handle)
   const resting = await bandGeometry(page)
 
   // PRESS AND MOVE, WITHOUT RELEASING. Two mouse.move calls, because one is
   // delivered as a single jump and a drag that only ever sees its endpoint is
   // not the gesture an author makes.
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.move(press.x, press.y)
   await page.mouse.down()
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + 20)
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + 40)
+  await page.mouse.move(press.x, press.y + 20)
+  await page.mouse.move(press.x, press.y + 40)
 
   // The proposal is up, the readout shows the PROPOSAL — not a prediction of the
   // accepted height, because Snap is on by default and the ENGINE rounds — and
@@ -87,17 +112,16 @@ test('dragging the content/footer boundary upward grows the page footer', async 
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const handle = page.getByRole('button', { name: 'Resize the page footer', exact: true })
   await expect(handle).toHaveCount(1)
-  const box = await handle.boundingBox()
-  expect(box).not.toBeNull()
+  const press = await pressPoint(page, handle)
   const before = Number(await page.getByRole('textbox', { name: 'Page footer height (pt)' }).inputValue())
   const resting = await bandGeometry(page)
 
   // A FOOTER GROWS AS THE POINTER RISES, which is the direction a suite that
   // only ever dragged the header would never exercise.
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.move(press.x, press.y)
   await page.mouse.down()
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 12)
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 - 24)
+  await page.mouse.move(press.x, press.y - 12)
+  await page.mouse.move(press.x, press.y - 24)
   await expect(page.locator('.band-boundary-proposal')).toHaveCount(1)
   expect(await bandGeometry(page)).toEqual(resting)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)

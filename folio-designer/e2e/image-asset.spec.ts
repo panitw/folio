@@ -235,7 +235,21 @@ test('a placed image component can be resized, and its painted box tracks both t
   await page.getByRole('button', { name: 'Choose image…' }).click()
   await expect(imageComponent.locator('img.canvas-image-paint')).toBeVisible()
   const paintedImage = imageComponent.locator('img.canvas-image-paint')
-  const handle = page.getByRole('button', { name: /^Resize / })
+  // SCOPED TO THE COMPONENT, and the prefix regex it replaces is why.
+  //
+  // This was `page.getByRole('button', { name: /^Resize / })` — page-wide, and
+  // relying on the selected component's SE handle being the only accessible
+  // name in the whole document beginning "Resize ". Story 12.5 added two band
+  // boundary handles named `Resize the page header` / `Resize the page footer`,
+  // and the locator resolved to three elements under strict mode.
+  //
+  // The handle names are not the defect: they are correct and descriptive, and
+  // they were deliberately chosen NOT to collide with the band region names.
+  // The defect is a locator that asked "any resize handle on the page" while
+  // meaning "this component's resize handle". Scoping it to `imageComponent`
+  // says the real thing, and it cannot be broken by any resize affordance added
+  // outside this component in future.
+  const handle = imageComponent.getByRole('button', { name: /^Resize / })
   await expect(handle).toBeVisible()
 
   // Resize: drag the handle and confirm the COMMITTED box grew (a new
