@@ -126,6 +126,15 @@ Top-level keys appear sorted, as does every object in the file — that is the s
 > log, and again in the `SupportedMajor` note below — *"Folio is unreleased; the format may be
 > broken (owner ruling, 2026-09-02), and breaking is free now and expensive after
 > `folio-go/v0.1.0`."* Both are cited here so the next reader finds whichever they reach first.
+>
+> **A FOURTH NON-EVENT: MARKING `headerHeight` **Required** WRITES DOWN A RULE THAT WAS ALREADY
+> ENFORCED (Story 12.3, D-12.3.2 Q2).** The table field table above now marks it Required and says
+> no command may clear it. Nothing about the format moved: `parse_bands.go` has always refused a
+> table without it (`missing required field for a table`) and `serialize.go` has always emitted it
+> unconditionally, so the field was required **by silence** — no optional marker, no default, and no
+> sentence saying why. The field, the code and the document version are all unchanged; only the
+> documentation of them is. This is the same move Story 12.2 made on the `utcOffset` row, and it is
+> recorded here rather than in the table because the table states rules, not their provenance.
 
 ### Alignment is three closed sets, partitioned by consumer
 
@@ -412,7 +421,7 @@ designer and the engine disagree.
 |---|---|
 | `bind` | The collection path, suffixed `[]`. |
 | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
-| `headerHeight` | Height of the repeated header row, in points. Accounted for on **every** continuation page. |
+| `headerHeight` | **Required.** Height of the repeated header row, in points. Accounted for on **every** continuation page. Because it is required, no command may clear it. |
 | `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. `columns[].align` is its **own** closed set — `left` · `center` · `right` — and does **not** admit `justify` (Story 7.3, D-7.3.1). Nor does a table's own `style.align` or its `headerStyle.align`, which feed the same cell alignment and therefore carry the same three values (Story 7.8). The sets are separate declarations so that extending one cannot legalise another by accident. |
 | `headerStyle` | *Optional.* A `Style` block governing the header row ONLY — the same vocabulary as an element's own `style` (below) **except for `align`**, which admits `left` · `center` · `right` here and never `justify`, because a header cell is a table cell (see *Alignment is three closed sets*, above). A table's own `style.align` carries the same three values, for the same reason — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |

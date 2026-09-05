@@ -161,9 +161,30 @@ func closedSetMessage(tokens []string) string {
 	return "not one of the closed set " + strings.Join(tokens, ", ")
 }
 
-var closedValigns = map[string]bool{
-	"top": true, "middle": true, "bottom": true,
-}
+// StyleValignTokens is the closed set `style.valign` and a table's
+// `headerStyle.valign` admit, in the order a refusal names them. One
+// declaration, exactly as the three align sets are: the loader's own
+// message below is DERIVED from it (closedSetMessage), and the command
+// door asks IsStyleValign rather than restating the triple.
+var StyleValignTokens = []string{"top", "middle", "bottom"}
+
+// closedValigns is StyleValignTokens as a lookup, built from the slice
+// so the set and the sentence that reports it cannot drift apart.
+var closedValigns = func() map[string]bool {
+	set := make(map[string]bool, len(StyleValignTokens))
+	for _, token := range StyleValignTokens {
+		set[token] = true
+	}
+	return set
+}()
+
+// IsStyleValign reports whether s is a member of the vertical-alignment
+// set. Exported for the command path (component_commands.go's Story
+// 12.3 header-style arm), which writes headerStyle.valign and owes the
+// author a located refusal drawn from the SAME source the loader reads
+// — never a second literal triple that could legalise a value the file
+// door still refuses.
+func IsStyleValign(s string) bool { return closedValigns[s] }
 
 var closedBorderEdges = map[string]bool{
 	"top": true, "right": true, "bottom": true, "left": true,

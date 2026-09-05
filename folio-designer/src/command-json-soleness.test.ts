@@ -95,7 +95,7 @@ describe('command JSON has exactly one author', () => {
     // THIS LIST IS SPELLED TWICE IN THIS FILE — here and in the sibling test
     // below — and BOTH must move together: a factory added to only one of them
     // is scanned but never named, and the other test's check never looks at it.
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts']
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts', 'table-style-command.ts']
     for (const factory of factories) {
       expect(productionFiles).toContain(factory)
       expect(fs.readFileSync(path.join(sourceDir, factory), 'utf8')).toContain(`from './${AUTHORITY.replace(/\.ts$/, '')}'`)
@@ -116,7 +116,7 @@ describe('command JSON has exactly one author', () => {
     // THE SECOND SPELLING OF THE SAME LIST (see the test above). BOTH must
     // move together: a factory added only to the list above is never reached by
     // the `\bString(` check below, and this file goes on reporting no offenders.
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts']
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts', 'table-style-command.ts']
     const offenders = factories.filter((factory) => /\bString\(/.test(withoutLineComments(fs.readFileSync(path.join(sourceDir, factory), 'utf8'))))
     expect(offenders).toEqual([])
     // Non-vacuity in both directions, because a regexp that matched nothing

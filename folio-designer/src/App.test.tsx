@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { act, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { shortcutHintsFor } from './shortcuts'
@@ -41,6 +41,17 @@ const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '
 // record for the panel to display. The key never becomes a family here — that
 // derivation is embedded-face-family.ts's alone (D-8.4.1).
 const carried = (assetKey: string) => ({ face: '', assetKey, family: 'Noto Sans Thai', style: 'Regular' })
+
+// STORY 12.3 — the sixteen TABLE-LEVEL members the table-columns projection
+// gained, as one fixture the table tests spread in.
+//
+// Two per header-style field: the bare name is what the DOCUMENT declares ('' or
+// 0 for absent) and the `…Resolved` twin is what the ENGINE says will actually
+// be used. This fixture is a table that declares no header style at all, so
+// every committed member is absent while every resolved one carries the
+// cascade's answer — which is the shape that makes "the panel shows the
+// resolved value" observable at all.
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left' }
 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
@@ -204,7 +215,7 @@ describe('application shell', () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const request = vi.fn(async (operation: string) => {
-      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
       return { snapshot: tableSnapshot }
     })
     render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
@@ -224,14 +235,43 @@ describe('application shell', () => {
   it('traps the focused matrix, closes on Escape, and restores its invoking control', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
-    render(<App engine={engine(vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot }))} initialSnapshot={tableSnapshot} />)
+    render(<App engine={engine(vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot }))} initialSnapshot={tableSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     const invoker = screen.getByRole('button', { name: 'Configure columns' })
     invoker.focus(); fireEvent.click(invoker)
     const header = await screen.findByRole('textbox', { name: 'Header for column 1' })
     expect(document.activeElement).toBe(header)
+    // STORY 12.3 AMENDED THIS ASSERTION, AND THE AMENDMENT IS THE DECISION
+    // (D-12.3.2). The new order: Close Table Editor, Root collection, Row alias,
+    // the one active matrix cell, then the HEADER AND ROWS controls in document
+    // order, ending at "Header alignment". The old line read like a forward tab
+    // and was in fact the WRAP branch — trapDialog filters to tabIndex >= 0,
+    // which excludes every non-active matrix cell, so the active cell happened
+    // to be last. Both ends of the list are asserted below.
+
+    // THE FORWARD HANDOFF, ASSERTED RATHER THAN ASSUMED. The amendment removed
+    // the old forward-reading line and did not replace it, so the matrix's
+    // handoff into the new section could regress in silence. jsdom moves focus
+    // for no Tab of its own, so the property is taken in the two halves that
+    // ARE observable here:
+    //
+    //   1. the trap DECLINES to intercept a forward Tab from the matrix cell —
+    //      true only while the cell is no longer last in its list, so putting
+    //      the section back above the matrix reds this line; and
+    //   2. the next tabbable control after the cell, in the trap's own document
+    //      order, is the header section's first control.
     fireEvent.keyDown(header, { key: 'Tab' })
+    expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(header)
+    const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
+    const tabbable = Array.from(dialogElement.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
+    expect(tabbable[tabbable.indexOf(header) + 1]).toBe(screen.getByRole('spinbutton', { name: 'Header height in points' }))
+
+    const lastControl = screen.getByRole('combobox', { name: 'Header alignment' })
+    lastControl.focus()
+    fireEvent.keyDown(lastControl, { key: 'Tab' })
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close Table Editor' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(lastControl)
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).not.toBeInTheDocument())
     expect(document.activeElement).toBe(invoker)
@@ -242,10 +282,10 @@ describe('application shell', () => {
     const first = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const second = { documentState: 'loaded' as const, revision: 2, byteLength: 4, canvas: { ...tableCanvas, components: [{ ...tableCanvas.components[0]!, width: 144000 }] } }
     let releaseProjection!: () => void
-    const delayedProjection = new Promise<{ snapshot: typeof second; tableColumns: { revision: number; table: { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; align: 'left'; binding: string; rowField: string; rowFieldEditable: boolean; footer: ''; footerOf: string; footerFormat: string }[] } } }>((resolve) => { releaseProjection = () => resolve({ snapshot: second, tableColumns: { revision: 2, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left', binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } }) })
+    const delayedProjection = new Promise<{ snapshot: typeof second; tableColumns: { revision: number; table: typeof tableHeaderProjection & { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; align: 'left'; binding: string; rowField: string; rowFieldEditable: boolean; footer: ''; footerOf: string; footerFormat: string }[] } } }>((resolve) => { releaseProjection = () => resolve({ snapshot: second, tableColumns: { revision: 2, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left', binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } }) })
     let queries = 0
     const request = vi.fn((operation: string) => {
-      if (operation === 'table-columns') { queries++; return queries === 1 ? Promise.resolve({ snapshot: first, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }) : delayedProjection }
+      if (operation === 'table-columns') { queries++; return queries === 1 ? Promise.resolve({ snapshot: first, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }) : delayedProjection }
       if (operation === 'command') return Promise.resolve({ snapshot: second })
       return Promise.resolve({ snapshot: first })
     })
@@ -258,6 +298,350 @@ describe('application shell', () => {
     releaseProjection()
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
     expect(screen.queryByRole('dialog', { name: 'Table Editor' })).not.toBeInTheDocument()
+  })
+
+  // STORY 12.3 — THE HEADER AND ROWS SECTION.
+  //
+  // The engine has always accepted, stored and rendered headerHeight,
+  // altRowBackground and headerStyle; until now nothing in the product could
+  // write any of them, so a striped table meant hand-editing the file the
+  // designer had just saved. These assertions are about the missing half.
+  // THE MOCK ANSWERS EACH `table-columns` CALL SEPARATELY, and that is not a
+  // convenience. It used to return ONE frozen projection for every request and
+  // reply to 'command' with the same revision, so no control in this section
+  // could ever change and every assertion below was about the FIRST render. A
+  // whole class of defect was therefore invisible: the colour rows are
+  // half-controlled — an uncontrolled text box beside a controlled chip — and a
+  // committed value that never moves can never desynchronise them. `after` is
+  // what the SECOND and later projections carry, exactly as the delayed-
+  // projection test above already does with its own `queries` counter.
+  const headerStyledTable = (over: Partial<typeof tableHeaderProjection> = {}, after?: Partial<typeof tableHeaderProjection>) => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    let queries = 0
+    const request = vi.fn(async (operation: string) => {
+      if (operation !== 'table-columns') return { snapshot: tableSnapshot }
+      queries++
+      const table = { ...tableHeaderProjection, ...over, ...(queries > 1 ? after ?? {} : {}) }
+      return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...table, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+    })
+    return { request, tableSnapshot }
+  }
+  const openHeaderSection = async (request: ReturnType<typeof headerStyledTable>['request'], tableSnapshot: ReturnType<typeof headerStyledTable>['tableSnapshot']) => {
+    render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('grid', { name: 'Table columns' })
+    request.mockClear()
+  }
+  const commandsSent = (request: ReturnType<typeof headerStyledTable>['request']) =>
+    (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+
+  it('offers the three table-level subjects and shows the engine\'s resolved value for each unset header field', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    // Committed: the fixture declares no header style at all, so every box is
+    // empty and every select sits on its own "Not set" option.
+    expect(screen.getByRole('spinbutton', { name: 'Header height in points' })).toHaveValue(12)
+    expect(screen.getByRole('textbox', { name: 'Alternating row background' })).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: 'Header font family' })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: 'Header alignment' })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: 'Header vertical alignment' })).toHaveValue('')
+    // RESOLVED: what the document will actually use, and it is here because the
+    // ENGINE sent it. The panel composes nothing — these strings are the
+    // projection's `…Resolved` members, and a browser that worked them out
+    // would be running a second copy of the engine's cascade.
+    expect(screen.getByLabelText('Resolved Header font family')).toHaveTextContent('Using: body')
+    expect(screen.getByLabelText('Resolved Header font size (pt)')).toHaveTextContent('Using: 12pt')
+    expect(screen.getByLabelText('Resolved Header line spacing')).toHaveTextContent('Using: 1')
+    expect(screen.getByLabelText('Resolved Header alignment')).toHaveTextContent('Using: left')
+    expect(screen.getByLabelText('Resolved Header vertical alignment')).toHaveTextContent('Using: top')
+    // An empty RESOLVED value is a real answer — the cascade found nothing to
+    // resolve from — and is spelled as one rather than as a blank. It is not
+    // the SAME answer for every field, though, and one sentence for all of them
+    // was wrong for the ink: a header with no resolved background paints
+    // nothing, but a header with no resolved COLOUR still draws, in the
+    // renderer's own default. "Using: nothing" claimed the one thing that
+    // cannot happen.
+    expect(screen.getByLabelText('Resolved Header background')).toHaveTextContent('Using: nothing — no fill is painted')
+    expect(screen.getByLabelText('Resolved Header text colour')).toHaveTextContent("Using: the renderer's default ink")
+    expect(screen.getByLabelText('Resolved Header text colour')).not.toHaveTextContent('Using: nothing')
+    // And the section is a NAMED group. An aria-label on a bare div with no
+    // role is dropped by the accessibility tree, so it named nothing at all.
+    expect(screen.getByRole('group', { name: 'Table header and rows' })).toBeInTheDocument()
+    // Neither number advertises a value both arms refuse: setTableHeaderHeight
+    // and the fontSize arm each require a POSITIVE length, so `min="0"` offered
+    // the author a value the engine would send straight back.
+    expect(screen.getByRole('spinbutton', { name: 'Header height in points' })).toHaveAttribute('min', '1')
+    expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveAttribute('min', '0.5')
+    expect(screen.getByRole('spinbutton', { name: 'Header line spacing' })).toHaveAttribute('min', '0.1')
+  })
+
+  it('shows the engine\'s fallback for a field the document does not declare, with nothing on the wire to derive it from', async () => {
+    // The table declares `style.fontSize: 8` and no headerStyle, so the engine
+    // resolves 8pt. The committed member is 0 (absent) and NOTHING else in this
+    // projection carries the table's own style — so a panel showing 8pt can only
+    // be reading the engine's answer. A browser that composed the fallback
+    // itself would have nothing here to compose it from, which is the point.
+    const { request, tableSnapshot } = headerStyledTable({ headerFontSize: 0, headerFontSizeResolved: 8000 })
+    await openHeaderSection(request, tableSnapshot)
+    expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveValue(null)
+    expect(screen.getByLabelText('Resolved Header font size (pt)')).toHaveTextContent('Using: 8pt')
+  })
+
+  it('renders an unset colour as unset rather than as black', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    // `swatchColor('')` returns #000000 — the picker accepts nothing else — so
+    // an absent colour without the dashed treatment reads as a colour the
+    // author chose. This is invisible to every command assertion.
+    const unset = screen.getByLabelText('Pick Header background')
+    expect(unset).toHaveValue('#000000')
+    expect(unset.className).toContain('property-swatch-unset')
+    expect(screen.getByLabelText('Pick Alternating row background').className).toContain('property-swatch-unset')
+  })
+
+  it('marks a committed colour as set', async () => {
+    const { request, tableSnapshot } = headerStyledTable({ headerBackground: '#101010', headerBackgroundResolved: '#101010' })
+    await openHeaderSection(request, tableSnapshot)
+    const chip = screen.getByLabelText('Pick Header background')
+    expect(chip).toHaveValue('#101010')
+    expect(chip.className).not.toContain('property-swatch-unset')
+  })
+
+  it('commits the header height, the alternating row background and one header-style field on blur', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    const height = screen.getByRole('spinbutton', { name: 'Header height in points' })
+    fireEvent.blur(height, { target: { value: '18' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"setTableHeaderHeight","version":1,"id":"e7","height":18}')
+  })
+
+  it('sends the engine a set for a typed colour and a clear for an emptied one', async () => {
+    const { request, tableSnapshot } = headerStyledTable({ altRowBackground: '#DDEEFF' })
+    await openHeaderSection(request, tableSnapshot)
+    const alt = screen.getByRole('textbox', { name: 'Alternating row background' })
+    fireEvent.blur(alt, { target: { value: '' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"setTableAltRowBackground","version":1,"id":"e7","op":"clear"}')
+  })
+
+  it('passes a malformed colour to the engine rather than inventing a second validation', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Alternating row background' }), { target: { value: 'not-a-colour' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    // Go's parseHexColor is the gate and its located sentence is what the author
+    // reads. A panel that refused this locally would own a rule it cannot keep
+    // in step with the file door.
+    expect(commandsSent(request)[0]).toBe('{"kind":"setTableAltRowBackground","version":1,"id":"e7","op":"set","value":"not-a-colour"}')
+  })
+
+  it('clears a header-style field from its own control and offers no clear for the required header height', async () => {
+    const { request, tableSnapshot } = headerStyledTable({ headerAlign: 'center', headerAlignResolved: 'center' })
+    await openHeaderSection(request, tableSnapshot)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Header alignment' }), { target: { value: '' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"align","op":"clear"}')
+    // headerHeight is REQUIRED — `parse_bands.go` hard-errors on its absence —
+    // so no clear affordance is rendered for it, while its clearable neighbours
+    // all have one.
+    expect(screen.queryByRole('button', { name: 'Clear Header height (pt)' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear Header height in points' })).toBeNull()
+    for (const label of ['Alternating row background', 'Header font family', 'Header font size (pt)', 'Header line spacing', 'Header background', 'Header text colour']) {
+      expect(screen.getByRole('button', { name: `Clear ${label}` })).toBeInTheDocument()
+    }
+  })
+
+  // THE COLOUR ROW IS HALF-CONTROLLED, AND THE TWO HALVES MUST NOT DRIFT.
+  //
+  // The text box is uncontrolled (`defaultValue`) while the chip beside it is
+  // controlled (`value`). After a swatch pick committed and re-projected, the
+  // chip moved and the BOX KEPT THE OLD HEX — so the author's next blur on that
+  // box compared stale DOM text against the new committed value, found them
+  // different, and sent `op: "set"` with the OLD colour, silently undoing the
+  // pick they had just made. This test is only possible because the mock now
+  // answers each projection request separately; against one frozen projection
+  // nothing could ever move and the defect was invisible.
+  it('keeps a colour box in step with its chip after a swatch pick re-projects', async () => {
+    const { request, tableSnapshot } = headerStyledTable(
+      { headerBackground: '#101010', headerBackgroundResolved: '#101010' },
+      { headerBackground: '#20c020', headerBackgroundResolved: '#20c020' },
+    )
+    await openHeaderSection(request, tableSnapshot)
+    expect(screen.getByRole('textbox', { name: 'Header background' })).toHaveValue('#101010')
+    fireEvent.change(screen.getByLabelText('Pick Header background'), { target: { value: '#20c020' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"background","op":"set","value":"#20c020"}')
+    await waitFor(() => expect(screen.getByLabelText('Pick Header background')).toHaveValue('#20c020'))
+    expect(screen.getByRole('textbox', { name: 'Header background' })).toHaveValue('#20c020')
+    // AND THE PROOF THAT IT MATTERS: blurring the untouched box now sends
+    // nothing. While it held the stale hex it sent a set for the OLD colour.
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Header background' }))
+    await Promise.resolve()
+    expect(commandsSent(request)).toHaveLength(1)
+  })
+
+  // AND THE SAME AFTER A CLEAR, which is the other commit that moves the chip.
+  it('empties a colour box when its × clear re-projects the field as absent', async () => {
+    const { request, tableSnapshot } = headerStyledTable(
+      { headerColor: '#c81e1e', headerColorResolved: '#c81e1e' },
+      { headerColor: '', headerColorResolved: '' },
+    )
+    await openHeaderSection(request, tableSnapshot)
+    expect(screen.getByRole('textbox', { name: 'Header text colour' })).toHaveValue('#c81e1e')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Header text colour' }))
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"color","op":"clear"}')
+    await waitFor(() => expect(screen.getByLabelText('Pick Header text colour').className).toContain('property-swatch-unset'))
+    expect(screen.getByRole('textbox', { name: 'Header text colour' })).toHaveValue('')
+    // The box that kept '#c81e1e' after the clear would have re-SET it on the
+    // author's next blur, putting back the colour they had just removed.
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Header text colour' }))
+    await Promise.resolve()
+    expect(commandsSent(request)).toHaveLength(1)
+  })
+
+  // THE `set` PATH, AND THE POINTS <-> MILLIPOINTS ROUND TRIP IN BOTH
+  // DIRECTIONS. Everything asserted above was a clear, the alt-row pair or the
+  // header height; nothing asserted that typing into a header-style field emits
+  // `updateTableHeaderStyle … op:"set"`, and the unit conversion was unasserted
+  // at the UI in either direction — a committed 14000 rendering as 14, and a
+  // typed 16 travelling as 16 for Go to multiply.
+  it('renders committed millipoints as points and sends the author\'s points back for each header-style field', async () => {
+    const { request, tableSnapshot } = headerStyledTable({ headerFontSize: 14000, headerFontSizeResolved: 14000, headerLineSpacing: 1500, headerLineSpacingResolved: 1500, headerFontFamily: 'body', headerFontFamilyResolved: 'body' })
+    await openHeaderSection(request, tableSnapshot)
+    // DIRECTION ONE: what the engine committed, as the author reads it.
+    expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveValue(14)
+    expect(screen.getByRole('spinbutton', { name: 'Header line spacing' })).toHaveValue(1.5)
+    expect(screen.getByRole('textbox', { name: 'Header font family' })).toHaveValue('body')
+    // DIRECTION TWO: what the author types, as the engine receives it. The
+    // panel multiplies nothing — `16` travels as `16` and Go makes it 16000.
+    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Header font size (pt)' }), { target: { value: '16' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"fontSize","op":"set","value":16}')
+  })
+
+  it('sends a set for line spacing, for a font family and for a picked swatch', async () => {
+    for (const [label, act, wire] of [
+      ['Header line spacing', () => fireEvent.blur(screen.getByRole('spinbutton', { name: 'Header line spacing' }), { target: { value: '2' } }), '{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"lineSpacing","op":"set","value":2}'],
+      ['Header font family', () => fireEvent.blur(screen.getByRole('textbox', { name: 'Header font family' }), { target: { value: 'display' } }), '{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"fontFamily","op":"set","value":"display"}'],
+      ['Pick Header background', () => fireEvent.change(screen.getByLabelText('Pick Header background'), { target: { value: '#20c020' } }), '{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"background","op":"set","value":"#20c020"}'],
+      ['Pick Alternating row background', () => fireEvent.change(screen.getByLabelText('Pick Alternating row background'), { target: { value: '#ddeeff' } }), '{"kind":"setTableAltRowBackground","version":1,"id":"e7","op":"set","value":"#ddeeff"}'],
+      ['Header vertical alignment', () => fireEvent.change(screen.getByRole('combobox', { name: 'Header vertical alignment' }), { target: { value: 'middle' } }), '{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"valign","op":"set","value":"middle"}'],
+    ] as ReadonlyArray<[string, () => void, string]>) {
+      const { request, tableSnapshot } = headerStyledTable()
+      await openHeaderSection(request, tableSnapshot)
+      act()
+      await waitFor(() => expect(commandsSent(request), `${label} sent nothing`).toHaveLength(1))
+      expect(commandsSent(request)[0], label).toBe(wire)
+      cleanup()
+    }
+  })
+
+  // ONE COMMAND PER DRAG.
+  //
+  // <input type="color"> fires `onChange` continuously while the author drags,
+  // and every one of those would be an engine command and an undo entry;
+  // commitTableColumn's revision-mismatch branch also calls
+  // revokeTableEditor(), so a burst could close the panel out from under the
+  // author. The property is pinned here rather than left to the mechanism that
+  // currently supplies it.
+  //
+  // TWO GUARDS SUPPLY IT and either one is enough: TableEditor's own `busy`
+  // check, and App.tsx:commitTableColumn's `tableEditorBusy`. Removing either
+  // alone still yields one command; removing BOTH yields three, which is what
+  // shows this assertion is not vacuous. The events are dispatched inside a
+  // SINGLE act() — the most batching-friendly shape available — precisely so
+  // this is a real test rather than one the harness wins for free.
+  it('dispatches one command for a burst of picker changes, not one per change', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    const chip = screen.getByLabelText('Pick Header background') as HTMLInputElement
+    const nativeValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      for (const value of ['#111111', '#222222', '#333333']) {
+        nativeValue.call(chip, value)
+        chip.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request), 'a drag must not become one engine command and one undo entry per frame').toHaveLength(1)
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"background","op":"set","value":"#111111"}')
+  })
+
+  // A BLUR THAT LANDS WHILE A COMMAND IS IN FLIGHT MUST NOT VANISH.
+  //
+  // `if (busy) return` dropped the edit with no visual restore, so the box was
+  // left holding text the document does not hold and never would — the author
+  // saw their value sitting in the field with nothing to tell them it had gone
+  // nowhere. The committed value goes back into the box instead.
+  it('restores the committed value when a blur lands while a command is in flight', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    const projection = { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, headerFontFamily: 'body', headerFontFamilyResolved: 'body', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+    let releaseCommand!: () => void
+    const request = vi.fn((operation: string) => {
+      if (operation === 'table-columns') return Promise.resolve(projection)
+      if (operation === 'command') return new Promise<{ snapshot: typeof tableSnapshot }>((resolve) => { releaseCommand = () => resolve({ snapshot: tableSnapshot }) })
+      return Promise.resolve({ snapshot: tableSnapshot })
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={tableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('grid', { name: 'Table columns' })
+    request.mockClear()
+    // A command starts and does not finish, so the panel is busy.
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Alternating row background' }))
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    // The author's blur on a DIFFERENT box lands mid-flight.
+    const family = screen.getByRole('textbox', { name: 'Header font family' })
+    fireEvent.blur(family, { target: { value: 'display' } })
+    // Nothing was sent for it — that part was already true — and the box no
+    // longer claims the document holds "display". The node is re-keyed, so this
+    // re-queries rather than reusing the reference above.
+    expect(commandsSent(request)).toHaveLength(1)
+    expect(screen.getByRole('textbox', { name: 'Header font family' }), 'a discarded edit must not be left on screen looking committed').toHaveValue('body')
+    releaseCommand()
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Header font family' })).not.toBeDisabled())
+  })
+
+  // A NUMBER INPUT REPORTING `badInput` MUST NOT DELETE THE FIELD. Browsers
+  // report an unparseable number input's value as '', which the blur handler
+  // read as an emptied box and therefore as a CLEAR — so typing garbage into
+  // the font size silently removed it from the document.
+  it('commits nothing when a number input cannot parse what the author typed', async () => {
+    const { request, tableSnapshot } = headerStyledTable({ headerFontSize: 14000, headerFontSizeResolved: 14000 })
+    await openHeaderSection(request, tableSnapshot)
+    const size = screen.getByRole('spinbutton', { name: 'Header font size (pt)' })
+    // jsdom does not compute validity from typed text, so `badInput` is staged
+    // directly: the browser condition this guard exists for is exactly "the
+    // element reports badInput and reports its value as ''".
+    Object.defineProperty(size, 'validity', { configurable: true, value: { badInput: true } })
+    fireEvent.blur(size, { target: { value: '' } })
+    await Promise.resolve()
+    expect(commandsSent(request), 'garbage in a number box must not be read as a clear').toEqual([])
+    // And a genuinely emptied box — one the browser CAN parse — still clears.
+    Object.defineProperty(size, 'validity', { configurable: true, value: { badInput: false } })
+    fireEvent.blur(size, { target: { value: '' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"fontSize","op":"clear"}')
+  })
+
+  it('leaves the matrix untouched: eleven columns and its arrow navigation still work with the new section present', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    const grid = screen.getByRole('grid', { name: 'Table columns' })
+    expect(grid).toHaveAttribute('aria-colcount', '11')
+    const header = screen.getByRole('textbox', { name: 'Header for column 1' })
+    header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(header)
+    // And nothing was committed by merely opening the panel: an author who
+    // changes nothing must leave the document alone.
+    expect(commandsSent(request)).toEqual([])
   })
 
   it('replaces the canvas with Preview, cancels an older render, and never dirties or installs its late PDF', async () => {
@@ -914,7 +1298,7 @@ describe('application shell', () => {
   it('leaves an open table editor open when the backdrop is clicked', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
-    const request = vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot })
+    const request = vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot })
     render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))

@@ -151,7 +151,38 @@ export type EngineDiagnostic = Readonly<{ severity: 'warning'; code: string; ele
 export type PreviewEvidence = Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<EngineDiagnostic> }>
 export type ParameterReferences = Readonly<{ revision: number; names: ReadonlyArray<string> }>
 export type TableColumn = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; binding: string; rowField: string; rowFieldEditable: boolean; footer: '' | 'sum' | 'avg' | 'count'; footerOf: string; footerFormat: string }>
-export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; columns: ReadonlyArray<TableColumn> }> }>
+// STORY 12.3 — the table's own header and row properties, beside its columns.
+//
+// TWO MEMBERS PER HEADER-STYLE FIELD, and the pair is the whole point. The bare
+// name (`headerAlign`) is what the DOCUMENT DECLARES — '' or 0 when the key is
+// absent — so a control can tell set from unset and offer to clear back to
+// absent. The `…Resolved` twin is what the document WILL USE, which for an
+// absent field is the table's own `style.<field>` and then that field's
+// documented default.
+//
+// THE RESOLVED HALF IS THE ENGINE'S ANSWER AND IS NEVER RECOMPUTED HERE. Go's
+// resolveHeaderStyle is the one cascade in this program; it runs at the
+// projection's construction site and its result travels on the wire. Handing
+// the browser the committed field plus the table's own style and letting it
+// choose IS implementing the cascade in the browser — forbidden by AD-15 and
+// AD-17 and by this story's own AC2 and AC3.
+//
+// `headerHeight` AND `altRowBackground` CARRY ONE MEMBER EACH. Neither has a
+// cascade to resolve through — the first is required so it is never absent, the
+// second is a flat override with no fallback level of its own — so committed IS
+// resolved and a second member would be ceremony: a duplicate of the committed
+// value, carried on every projection, that a later reader has to keep agreeing
+// with itself.
+export type TableHeaderStyle = Readonly<{
+  headerFontFamily: string; headerFontFamilyResolved: string
+  headerFontSize: number; headerFontSizeResolved: number
+  headerLineSpacing: number; headerLineSpacingResolved: number
+  headerBackground: string; headerBackgroundResolved: string
+  headerColor: string; headerColorResolved: string
+  headerValign: string; headerValignResolved: string
+  headerAlign: string; headerAlignResolved: string
+}>
+export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
 // boundary. These types describe transport, not the .folio file format.
@@ -322,8 +353,47 @@ const isDiagnostic = (value: unknown): value is EngineDiagnostic => isRecord(val
 const isPreview = (value: unknown): value is PreviewEvidence => isRecord(value) && hasOnly(value, ['revision', 'identity', 'pdfSha256', 'diagnostics']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.identity === 'string' && /^[a-f0-9]{64}$/.test(value.identity) && ((value.pdfSha256 === undefined && value.diagnostics === undefined) || (typeof value.pdfSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.pdfSha256) && Array.isArray(value.diagnostics) && value.diagnostics.length <= MAX_ENGINE_DIAGNOSTICS && value.diagnostics.every(isDiagnostic)))
 const isParameterReferences = (value: unknown): value is ParameterReferences => isRecord(value) && hasExactKeys(value, ['revision', 'names']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && Array.isArray(value.names) && value.names.length <= MAX_ENGINE_PARAMETER_REFERENCES && value.names.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_ENGINE_PARAMETER_NAME_LENGTH && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) && new Set(value.names).size === value.names.length && value.names.every((name, index, names) => index === 0 || names[index - 1]! < name)
 const isTableColumns = (value: unknown): value is TableColumns => {
-  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'columns'])) return false
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'columns'])) return false
   const table = value.table
+  // THE TYPED CLAUSES FOR STORY 12.3's SIXTEEN MEMBERS. Every one is REQUIRED
+  // and never optional: hasExactKeys above already refuses a response that
+  // omits one, and the Go side has no `omitempty` for exactly that reason
+  // (canvas_projection_wire_test.go's fifth record pins both directions).
+  //
+  // ADMITTING A VALUE IS NOT ADJUDICATING IT. These bounds exist so a malformed
+  // response cannot reach React, not so the browser can second-guess the
+  // engine: a value Go committed is a value Go already ruled on. '' and 0 are
+  // admitted throughout because that is how this projection spells ABSENT.
+  const headerString = (key: keyof TableHeaderStyle | 'altRowBackground') => typeof table[key] === 'string' && (table[key] as string).length <= MAX_CANVAS_PROPERTY_STRING
+  // THE GUARD MUST ADMIT EXACTLY WHAT THE FILE DOOR ADMITS, and for these two
+  // lengths the file door admits a NEGATIVE one. `internal/template/decimal.go`
+  // negates on `sign < 0` and neither `parse_bands.go` (`t.HeaderHeight = hh`)
+  // nor the style decoder (`st.FontSize = present(v)`) bounds the result, so a
+  // hand-authored `"headerHeight": -5` loads and renders today. A guard
+  // requiring `>= 0` therefore refused a document the engine had already
+  // accepted — and the symptom was not a warning: parseInbound returns
+  // undefined, engine-client terminates the worker with no re-spawn, and on a
+  // FIRST table-editor open nothing is shown at all, because the panel that
+  // would render the error never mounts.
+  //
+  // The bound is relaxed HERE rather than added at the loader on purpose:
+  // bounding the loader is a format narrowing, and this story's Never list
+  // forbids one. DW-26 already records those lengths as unbounded at load.
+  const headerLength = (key: keyof TableHeaderStyle | 'headerHeight') => typeof table[key] === 'number' && Number.isSafeInteger(table[key])
+  // The line-spacing pair keeps `>= 0`, because for IT the file door really
+  // does bound: DecodeLineSpacingRaw refuses anything outside
+  // [MinLineSpacingThousandths, MaxLineSpacingThousandths] = [1, 1000000], and
+  // 0 is this projection's spelling of absent.
+  const headerRatio = (key: keyof TableHeaderStyle) => headerLength(key) && (table[key] as number) >= 0
+  if (!(['altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved'] as const).every(headerString)) return false
+  if (!(['headerHeight', 'headerFontSize', 'headerFontSizeResolved'] as const).every(headerLength)) return false
+  if (!(['headerLineSpacing', 'headerLineSpacingResolved'] as const).every(headerRatio)) return false
+  // A COMMITTED alignment may be '' — that is what absent looks like — while a
+  // RESOLVED one never is: resolveHeaderStyle seeds `left` and `top` before it
+  // cascades anything, so an empty resolved value would mean the engine skipped
+  // its own default.
+  if (!['', 'left', 'center', 'right'].includes(table.headerAlign as string) || !['left', 'center', 'right'].includes(table.headerAlignResolved as string)) return false
+  if (!['', 'top', 'middle', 'bottom'].includes(table.headerValign as string) || !['top', 'middle', 'bottom'].includes(table.headerValignResolved as string)) return false
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {

@@ -290,6 +290,12 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return setDocumentLocale(t, raw)
 	case "setDocumentUTCOffset":
 		return setDocumentUTCOffset(t, raw)
+	case "setTableHeaderHeight":
+		return applyTableColumnCommand(t, raw, setTableHeaderHeight)
+	case "setTableAltRowBackground":
+		return applyTableColumnCommand(t, raw, setTableAltRowBackground)
+	case "updateTableHeaderStyle":
+		return applyTableColumnCommand(t, raw, updateTableHeaderStyle)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -2426,6 +2432,341 @@ func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasPr
 		return CanvasProjection{}, err
 	}
 	return updated, nil
+}
+
+// ---------------------------------------------------------------------------
+// STORY 12.3: A TABLE'S HEADER AND ITS ALTERNATING ROWS, AS COMMANDS.
+//
+// Three kinds that write the three table properties the engine has always
+// accepted, stored and rendered and that no command could reach: HeaderHeight,
+// AltRowBackground and the HeaderStyle block. Until this story the only way to
+// author any of them was to hand-edit the file the designer had just saved.
+//
+// WHY THREE TOP-LEVEL KINDS AND NOT THREE KEYS ON applyPropertyChanges.
+// setComponentAsset's doc comment already rules the shape: anything the
+// {op,value} grammar cannot express, or where CLEAR must stay inexpressible,
+// becomes its own kind. `headerHeight` is exactly that — required, a plain
+// geom.Length, never absent, so there is no clear arm for it to have — and
+// applyPropertyChanges' 23 keys are a flat list that reaches element.Style and
+// never element.Table, with no nesting a headerStyle block could occupy.
+//
+// THEY ROUTE THROUGH applyTableColumnCommand, like the seven column arms, so a
+// header edit is serialize -> reparse -> apply -> serialize -> reparse ->
+// project -> install: one atomic mutation, one undo entry, and a candidate that
+// fails format validation never reaches the caller's template.
+//
+// CLEARING IS THE ZERO Presence, NEVER AN EXPLICIT NULL, and the spelling
+// matters more than it looks. `Set:true, Null:true` serializes the key back as
+// `"key": null` — which is still the key in the file: it changes the bytes,
+// burns an undo entry and raises the document's required format version, and
+// for altRowBackground the serializer has no null branch at all, so it would
+// write `""` and the loader would then refuse the document it just wrote. The
+// zero Presence removes the key. `op: "null"` is refused by all three arms.
+
+// tableHeaderStyleFields is the closed set of headerStyle fields a command may
+// author, in the order a refusal names them.
+//
+// SEVEN, AND THE FOUR ABSENTEES ARE EACH A RULING (D-8.1.2's map, stated in
+// full in the story's Design Notes). `border` is deferred — the resolver arm
+// exists but it is a nested block the cascade treats block-granularly, and it
+// waits on Story 14.8's BORDERS section. `padding` is forbidden outright by
+// D-12.4.1: the panel never authors padding, on a table or anywhere else.
+// `bold` and `italic` have NOWHERE TO RESOLVE FROM — resolveHeaderStyle has no
+// Bold arm and no Italic arm, so a header style declaring either would be
+// stored, serialized, and read by nothing.
+var tableHeaderStyleFields = []string{"fontFamily", "fontSize", "lineSpacing", "background", "color", "valign", "align"}
+
+// tableCommandTarget repeats the two-line gate all seven column arms share:
+// the element must exist and it must be a table. It is the same pair of
+// sentences, from one place rather than ten.
+func tableCommandTarget(t *Template, id string) (CanvasBand, *template.Element, error) {
+	_, band, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasBand{}, nil, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasBand{}, nil, componentFailure(id, "table.id", "component is not a table")
+	}
+	return band, element, nil
+}
+
+// tableCommandOp reads the {op[,value]} grammar at the TOP LEVEL of a command,
+// where applyPropertyChanges reads it inside a per-key object. The rules are
+// the same rules: `clear` carries no value, `set` carries exactly one, and the
+// arity is counted so a surplus key is refused rather than ignored.
+//
+// `null` IS REFUSED HERE, ONCE, FOR ALL THREE ARMS. It is not offered for any
+// field in this story: an explicit null is a key in the file, and every field
+// these arms write either must be absent or must not exist at all.
+func tableCommandOp(raw map[string]json.RawMessage, id, path string, base int) (string, json.RawMessage, error) {
+	op, err := commandString(raw, "op")
+	if err != nil {
+		return "", nil, componentFailure(id, path, "op must be set or clear")
+	}
+	switch op {
+	case "set":
+		if err := componentFields(raw, base+1); err != nil {
+			return "", nil, componentFailure(id, path, "a set operation requires exactly one value")
+		}
+		value, ok := raw["value"]
+		if !ok {
+			return "", nil, componentFailure(id, path, "a set operation requires exactly one value")
+		}
+		return op, value, nil
+	case "clear":
+		if err := componentFields(raw, base); err != nil {
+			return "", nil, componentFailure(id, path, "a clear operation cannot carry a value")
+		}
+		return op, nil, nil
+	case "null":
+		return "", nil, componentFailure(id, path, "null is not an operation this field accepts; clear removes it")
+	default:
+		return "", nil, componentFailure(id, path, "op must be set or clear")
+	}
+}
+
+// setTableHeaderHeight is the only writer of TableExt.HeaderHeight outside the
+// loader and createComponentInBand's seed.
+//
+// IT OFFERS NO CLEAR, and that is the format speaking rather than a preference:
+// parse_bands.go pre-seeds `headerHeight` into `consumed` and hard-errors on a
+// missing key ("missing required field for a table"), and serialize.go emits it
+// unconditionally. A cleared header height is a document that cannot be
+// reopened.
+//
+// IT RE-CHECKS CONTAINMENT, exactly as updateTableColumn's width case does and
+// for the same reason: projectedSize derives a TABLE's height from
+// HeaderHeight — that IS the table's projected height — so growing it can push
+// the table out of a band that caps vertically. Without this check an author
+// could grow a table out of its page header.
+//
+// THE TABLE GATE IS ASKED FIRST, before the arity and before the op refusal,
+// and all three arms agree on that order (Finding P8): a refusal must not name
+// a field on an element that does not exist, so `{"id":"nope","op":"bogus"}` is
+// "table was not found" on table.id rather than a sentence about headerHeight.
+//
+// AND THE ARITY REFUSAL IS LOCATED (Finding P7). componentFields returns a bare
+// fmt.Errorf; returning it unwrapped made this the ONE refusal in the whole
+// change that reached the author as an unlocated ENGINE_REJECTED with no field
+// to look at. Every other refusal across the three arms goes through
+// componentFailure, and now so does this one.
+func setTableHeaderHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	band, element, err := tableCommandTarget(t, id)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if _, refused := raw["op"]; refused {
+		return CanvasProjection{}, componentFailure(id, "table.headerHeight", "headerHeight is required: it accepts neither a clear nor a null")
+	}
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.headerHeight", "setTableHeaderHeight takes exactly kind, version, id and height")
+	}
+	height, err := propertyLength(raw["height"], "height")
+	if err != nil || height <= 0 {
+		return CanvasProjection{}, componentFailure(id, "table.headerHeight", "headerHeight must be a positive length")
+	}
+	element.Table.Value.HeaderHeight = height
+	width, projected := projectedSize(*element)
+	if err := containComponent(band, element.X, element.Y, width, projected); err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.headerHeight", err.Error())
+	}
+	return Canvas(t)
+}
+
+// setTableAltRowBackground writes the one colour Story 4.8 already renders on
+// odd zero-based collection indexes. This story adds NO rendering rule: the
+// paint decision stays the six inline lines in collectBandTableRuns, untouched.
+//
+// THE COLOUR IS VALIDATED BY THE ENGINE'S OWN PREDICATE, parseHexColor via
+// validPropertyColor — the same one style.background and style.color are
+// validated by. The panel invents no second validation and shows this
+// sentence.
+//
+// THE TABLE GATE IS ASKED BEFORE THE OP GRAMMAR (Finding P8), the same order
+// its two siblings now use.
+func setTableAltRowBackground(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	_, element, err := tableCommandTarget(t, id)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	op, value, err := tableCommandOp(raw, id, "table.altRowBackground", 4)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if op == "clear" {
+		element.Table.Value.AltRowBackground = template.Presence[string]{}
+		return Canvas(t)
+	}
+	colour, err := propertyString(value)
+	if err != nil || !validPropertyColor(colour) {
+		return CanvasProjection{}, componentFailure(id, "table.altRowBackground", "altRowBackground must be a #RRGGBB colour")
+	}
+	element.Table.Value.AltRowBackground = template.Presence[string]{Set: true, Value: colour}
+	return Canvas(t)
+}
+
+// updateTableHeaderStyle writes ONE field of the header-only Style block, and
+// it is the second non-test writer of any HeaderStyle field — renameFontChain,
+// which rewrites HeaderStyle.FontFamily when a chain is renamed, is the first
+// and was the only one before this story.
+//
+// EVERY FIELD VALIDATES THROUGH THE SAME PREDICATE THE LOADER ASKS, never a
+// second literal beside it: template.IsTableStyleAlign for align (the table
+// triple — `justify` is refused here exactly as the file door refuses it),
+// template.IsStyleValign for valign, template.DecodeLineSpacingRaw for
+// lineSpacing, knownFontFamily for fontFamily and validPropertyColor for the
+// two colours. A command door that admitted what the file door refuses could
+// stamp out a document the designer cannot reopen.
+//
+// CLEARING THE LAST FIELD REMOVES THE BLOCK. An empty `headerStyle: {}` is a
+// key in the file that means nothing, so cleanupEmptyHeaderStyle drops it — the
+// same move cleanupEmptyStyle makes for element.Style.
+func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	// THE TABLE GATE IS ASKED FIRST (Finding P8). Naming a headerStyle field on
+	// an element that does not exist is a refusal that points the author at the
+	// wrong thing; all three arms now reach this gate at the same point.
+	_, element, err := tableCommandTarget(t, id)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	field, err := commandString(raw, "field")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.headerStyle", err.Error())
+	}
+	if !slices.Contains(tableHeaderStyleFields, field) {
+		return CanvasProjection{}, componentFailure(id, "table.headerStyle", "headerStyle field must be one of "+strings.Join(tableHeaderStyleFields, ", "))
+	}
+	path := "table.headerStyle." + field
+	op, value, err := tableCommandOp(raw, id, path, 5)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	// CLEARING A FIELD OF A BLOCK THAT IS NOT THERE MUST MOVE NO BYTES (Finding
+	// P9), and it is checked BEFORE headerStyleFor rather than inside it,
+	// because a SET legitimately needs the block materialised. headerStyleFor
+	// replaces an explicit `"headerStyle": null` with a real block, and
+	// cleanupEmptyHeaderStyle then drops the whole key — null -> {} -> absent,
+	// three states walked for a command asked to remove a field that was
+	// ALREADY absent. The document would change and an undo entry would burn,
+	// and the author would have got nothing for either. An absent or null block
+	// has no field to clear, so this is a no-op, and wasm/engine.go's
+	// canonical-bytes short-circuit then reports it as the silent success it is.
+	if op == "clear" && (!element.Table.Value.HeaderStyle.Set || element.Table.Value.HeaderStyle.Null) {
+		return Canvas(t)
+	}
+	style := headerStyleFor(element)
+	if op == "clear" {
+		switch field {
+		case "fontFamily":
+			style.FontFamily = template.Presence[string]{}
+		case "fontSize":
+			style.FontSize = template.Presence[geom.Length]{}
+		case "lineSpacing":
+			style.LineSpacing = template.Presence[int64]{}
+		case "background":
+			style.Background = template.Presence[string]{}
+		case "color":
+			style.Color = template.Presence[string]{}
+		case "valign":
+			style.Valign = template.Presence[string]{}
+		case "align":
+			style.Align = template.Presence[string]{}
+		}
+		cleanupEmptyHeaderStyle(element)
+		return Canvas(t)
+	}
+	switch field {
+	case "fontSize":
+		size, err := propertyLength(value, "fontSize")
+		if err != nil || size <= 0 {
+			return CanvasProjection{}, componentFailure(id, path, "fontSize must be a positive length")
+		}
+		style.FontSize = template.Presence[geom.Length]{Set: true, Value: size}
+	case "lineSpacing":
+		thousandths, err := template.DecodeLineSpacingRaw(value)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, path, err.Error())
+		}
+		style.LineSpacing = template.Presence[int64]{Set: true, Value: thousandths}
+	default:
+		text, err := propertyString(value)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, path, err.Error())
+		}
+		if stringsContainsPlaceholder(text) {
+			return CanvasProjection{}, componentFailure(id, path, field+" must not contain a placeholder")
+		}
+		switch field {
+		case "fontFamily":
+			if !knownFontFamily(t, text) {
+				return CanvasProjection{}, componentFailure(id, path, "fontFamily must name a declared non-empty font chain")
+			}
+			style.FontFamily = template.Presence[string]{Set: true, Value: text}
+		case "background":
+			if !validPropertyColor(text) {
+				return CanvasProjection{}, componentFailure(id, path, "background must be a #RRGGBB colour")
+			}
+			style.Background = template.Presence[string]{Set: true, Value: text}
+		case "color":
+			if !validPropertyColor(text) {
+				return CanvasProjection{}, componentFailure(id, path, "color must be a #RRGGBB colour")
+			}
+			style.Color = template.Presence[string]{Set: true, Value: text}
+		case "valign":
+			if !template.IsStyleValign(text) {
+				return CanvasProjection{}, componentFailure(id, path, "valign must be one of "+strings.Join(template.StyleValignTokens, ", "))
+			}
+			style.Valign = template.Presence[string]{Set: true, Value: text}
+		case "align":
+			if !template.IsTableStyleAlign(text) {
+				return CanvasProjection{}, componentFailure(id, path, "align must be one of "+strings.Join(template.TableStyleAlignTokens, ", "))
+			}
+			style.Align = template.Presence[string]{Set: true, Value: text}
+		}
+	}
+	return Canvas(t)
+}
+
+// headerStyleFor is styleFor's header-only twin: it materialises the optional
+// block so a field can be written into it, replacing an explicit null with a
+// real block rather than writing through one.
+func headerStyleFor(element *template.Element) *template.Style {
+	table := &element.Table.Value
+	if !table.HeaderStyle.Set || table.HeaderStyle.Null {
+		table.HeaderStyle = template.Presence[template.Style]{Set: true}
+	}
+	return &table.HeaderStyle.Value
+}
+
+// cleanupEmptyHeaderStyle is cleanupEmptyStyle's header-only twin, and it is
+// what makes "clear the last header-style field" leave NO headerStyle key
+// rather than an empty object. Extra is consulted for the same reason
+// cleanupEmptyStyle consults it: unknown keys ride opaquely through a load and
+// a save, and dropping a block that still carries one would delete an author's
+// data. The four fields this story cannot author (bold, italic, border,
+// padding) are checked too — a hand-authored block that still declares one is
+// not empty.
+func cleanupEmptyHeaderStyle(element *template.Element) {
+	table := &element.Table.Value
+	if !table.HeaderStyle.Set || table.HeaderStyle.Null {
+		return
+	}
+	style := table.HeaderStyle.Value
+	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Color.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.LineSpacing.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
+		table.HeaderStyle = template.Presence[template.Style]{}
+	}
 }
 
 // ---------------------------------------------------------------------------

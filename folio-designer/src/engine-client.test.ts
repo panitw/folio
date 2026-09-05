@@ -144,7 +144,7 @@ describe('engine client protocol and lifecycle', () => {
     worker.ready()
 			const payload = operation === 'render' ? { template: new Uint8Array([1]).buffer, data: new Uint8Array([2]).buffer, params: new Uint8Array([3]).buffer } : operation === 'identity' ? { data: new Uint8Array([1]).buffer, params: new Uint8Array([2]).buffer } : operation === 'command' || operation === 'asset' ? new Uint8Array([1]).buffer : undefined
 			const pending = client.request(operation, payload)
-			const base = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response' as const, requestId: 'request-1', ok: true as const, snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [] } } }
+			const base = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response' as const, requestId: 'request-1', ok: true as const, snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] } } }
 			worker.emit(operation === 'render' ? { ...base, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'a'.repeat(64), pdfSha256: 'b'.repeat(64), diagnostics: [] } } : operation === 'identity' ? { ...base, preview: { revision: 1, identity: 'a'.repeat(64) } } : operation === 'serialize' || operation === 'asset' ? { ...base, bytes: new Uint8Array([9]).buffer } : operation === 'parameter-references' ? { ...base, parameterReferences: { revision: 1, names: [] } } : base)
 			await expect(pending).rejects.toMatchObject({ code: 'PROTOCOL_OPERATION_MISMATCH' })
 			expect(client.state).toBe('failed')
@@ -156,9 +156,45 @@ describe('engine client protocol and lifecycle', () => {
 		const client = new EngineClient(worker)
 		worker.ready()
 		const pending = client.request('table-columns', new TextEncoder().encode('{"id":"e7"}').buffer)
-		worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', columns: [] } }, parameterReferences: { revision: 1, names: [] } })
+		worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] } }, parameterReferences: { revision: 1, names: [] } })
 		await expect(pending).rejects.toMatchObject({ code: 'PROTOCOL_OPERATION_MISMATCH' })
     expect(client.state).toBe('failed')
+  })
+
+  // STORY 12.3 — THE SILENT DROP, AND ITS TEST.
+  //
+  // #settle used to hand-enumerate the table object's four members. Columns rode
+  // a spread and survived; a table-LEVEL member passed isTableColumns, reached
+  // #settle, and was DISCARDED before App.tsx ever saw it — no protocol failure,
+  // no console line, nothing in the DOM. A guard mismatch at least kills the
+  // worker loudly. This failed quietly, which is worse, and NOTHING covered it:
+  // every table assertion in the suite reads `columns`.
+  //
+  // The claim is therefore made against the SETTLED RESULT rather than against
+  // any rendering of it, and it is made member by member so a partial
+  // re-enumeration cannot pass.
+  it('carries every table-level projection member through the settle path', async () => {
+    const worker = new FakeWorker()
+    const client = new EngineClient(worker)
+    worker.ready()
+    const pending = client.request('table-columns', new TextEncoder().encode('{"id":"e7"}').buffer)
+    const table = { tableId: 'e7', collection: 'items[]', alias: 'row', headerHeight: 16000, altRowBackground: '#DDEEFF', headerFontFamily: 'body', headerFontFamilyResolved: 'body', headerFontSize: 14000, headerFontSizeResolved: 14000, headerLineSpacing: 1500, headerLineSpacingResolved: 1500, headerBackground: '#101010', headerBackgroundResolved: '#101010', headerColor: '#FFFFFF', headerColorResolved: '#FFFFFF', headerValign: 'middle', headerValignResolved: 'middle', headerAlign: 'center', headerAlignResolved: 'center', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] }
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 10 }, tableColumns: { revision: 1, table } })
+    const settled = await pending
+    // EVERY member, compared as a whole object: naming a subset here would
+    // reproduce the very defect — a hand-written member list that a later
+    // widening walks past.
+    expect(settled.tableColumns?.table).toEqual(table)
+    expect(Object.keys(settled.tableColumns!.table)).toEqual(Object.keys(table))
+    // It is still a COPY and still frozen: nothing the worker sent stays
+    // reachable through the result, and the result cannot be edited in place.
+    expect(settled.tableColumns?.table).not.toBe(table)
+    expect(settled.tableColumns?.table.columns[0]).not.toBe(table.columns[0])
+    expect(Object.isFrozen(settled.tableColumns)).toBe(true)
+    // Red proof for the copy half: mutating the worker's own object afterwards
+    // must not reach the settled result.
+    table.headerFontSize = 99
+    expect(settled.tableColumns?.table.headerFontSize).toBe(14000)
   })
 
   it('rejects singleton startup failure and clears listeners on every terminal state', async () => {

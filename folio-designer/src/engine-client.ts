@@ -110,7 +110,23 @@ export class EngineClient {
     const bytes = message.bytes ? copyBytes(message.bytes) : undefined
 		const preview = message.preview ? deepFreeze({ revision: message.preview.revision, identity: message.preview.identity, ...(message.preview.pdfSha256 ? { pdfSha256: message.preview.pdfSha256, diagnostics: message.preview.diagnostics!.map((diagnostic) => ({ ...diagnostic })) } : {}) }) : undefined
 		const parameterReferences = message.parameterReferences ? deepFreeze({ revision: message.parameterReferences.revision, names: [...message.parameterReferences.names] }) : undefined
-		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { tableId: message.tableColumns.table.tableId, collection: message.tableColumns.table.collection, alias: message.tableColumns.table.alias, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
+		// THE TABLE OBJECT IS SPREAD, NOT RE-ENUMERATED, and that is a FIX
+		// rather than a tidy-up (Story 12.3).
+		//
+		// This line used to name the table's four members one at a time:
+		// `{ tableId, collection, alias, columns: [...] }`. Columns rode a spread
+		// and survived; a new table-LEVEL member did not. It passed
+		// `isTableColumns`, reached here, and was DROPPED — silently, before
+		// App.tsx ever saw it, with no protocol failure and nothing in the DOM to
+		// say so. A guard mismatch at least kills the worker loudly; this failed
+		// quietly, which is worse, and no test covered it. All sixteen of Story
+		// 12.3's projection members ride this path.
+		//
+		// The copy is still a COPY — the object is rebuilt and every column
+		// cloned, so nothing the worker sent stays reachable through the frozen
+		// result — but its member list is now the response's own, so the next
+		// story that widens the projection does not have to find this line.
+		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { ...message.tableColumns.table, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
 		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }))
   }
 

@@ -78,6 +78,7 @@ var declaredTableBehaviourSuite = []string{
 	"table_footer_test.go",          // Story 4.5 — footer aggregates, orphan avoidance
 	"table_row_clip_test.go",        // Story 4.6 — a row taller than the page
 	"table_alternating_row_test.go", // Story 4.8 — odd collection-index alternate fills
+	"table_header_style_test.go",    // Story 12.3 — the header/alt-row authoring commands and the headerStyle writer census
 }
 
 // TestTableBehaviourSuiteIsNotSupersededByTheGolden asserts every

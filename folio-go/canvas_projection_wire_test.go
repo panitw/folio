@@ -443,3 +443,159 @@ func extractedKeyList(literal string) []string {
 	slices.Sort(keys)
 	return keys
 }
+
+// tableColumnsProjectionWireKeys is the FIFTH record on this seam, and the
+// first one that is not part of CanvasProjection at all.
+//
+// WHY IT EXISTS ONLY NOW. TableColumnsProjection is the surface the TABLE
+// EDITOR reads — per table, requested by element id when the editor opens —
+// and until Story 12.3 it carried four keys that no story had reason to move:
+// measured at 12.3's baseline, `isTableColumns` appeared in ZERO Go files and
+// `TableColumnsProjection` in ZERO Go test files, against 12 and 38 for their
+// canvas counterparts. So it was pinned by NOTHING while the canvas projection
+// was pinned four ways. 12.3 puts sixteen load-bearing members on it, which
+// makes it the first story that can break it, which makes adding the pin part
+// of that story.
+//
+// ITS GUARD IS hasExactKeys, WHICH REJECTS IN BOTH DIRECTIONS — stricter than
+// isCanvas's `hasOnly`, which is a subset check and accepts a key Go stops
+// sending. So a member added in Go and not here, AND a key listed here that Go
+// never sends, both fail.
+//
+// AND THE FAILURE IS NOT A BLANK CANVAS. The header comment at the top of this
+// file describes isCanvas's symptom; this guard's is different and worse.
+// Guard false -> parseInbound returns undefined -> engine-client.ts's
+// #fail('PROTOCOL_INVALID') -> state `failed`, handlers detached,
+// worker.terminate(), every pending request rejected, and NO RE-SPAWN EXISTS.
+// On a FIRST table-editor open it is completely silent: openTableEditor's catch
+// sets tableEditorError, which renders only inside <TableEditor>, which never
+// mounts because the editor never opened. The session is dead and nothing says
+// so.
+var tableColumnsProjectionWireKeys = []string{
+	"alias",
+	"altRowBackground",
+	"collection",
+	"columns",
+	"headerAlign",
+	"headerAlignResolved",
+	"headerBackground",
+	"headerBackgroundResolved",
+	"headerColor",
+	"headerColorResolved",
+	"headerFontFamily",
+	"headerFontFamilyResolved",
+	"headerFontSize",
+	"headerFontSizeResolved",
+	"headerHeight",
+	"headerLineSpacing",
+	"headerLineSpacingResolved",
+	"headerValign",
+	"headerValignResolved",
+	"tableId",
+}
+
+// tableProjectionGuardKeyList extracts the key list engine-protocol.ts's
+// isTableColumns guard passes to hasExactKeys for the TABLE object.
+//
+// Anchored on `value.table` rather than on a bare parameter name, deliberately:
+// `hasExactKeys(value, [...])` is this file's whole idiom, and the two existing
+// nested extractors are anchored on the identifiers `chain` and `fragment`
+// ALONE. Reusing either name in a new guard would silently point an existing
+// regexp at the wrong list — a green test asserting the wrong thing, which is
+// the exact defect this file exists to prevent.
+var tableProjectionGuardKeyList = regexp.MustCompile(`hasExactKeys\(value\.table, \[(.*?)\]\)`)
+
+// projectedTableForWireKeys builds a REAL table projection — through
+// ApplyComponentCommand and TableColumns, the same path the editor takes — and
+// puts a header style on it, so the recorded set is checked against what the
+// engine actually emits for a table that uses these members rather than against
+// a struct literal.
+//
+// IT SETS ALL SEVEN HEADER-STYLE FIELDS, not one. It used to set only
+// `altRowBackground` and `fontSize` while its own comment claimed a table "that
+// uses these members", leaving five committed members zero-valued in the very
+// fixture the wire-key record is measured against. The key SET does not depend
+// on the values — nothing here carries `omitempty`, which is the property the
+// zero-value comparison below exists to hold — but a fixture that says it
+// exercises the members and does not is a fixture that will be believed by the
+// next reader.
+func projectedTableForWireKeys(t *testing.T) TableColumnsProjection {
+	t.Helper()
+	tpl := componentTemplate(t)
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatalf("project the fixture before creating a table: %v", err)
+	}
+	after, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatalf("create a table: %v", err)
+	}
+	table := newProjectedComponent(t, before, after)
+	for _, command := range []string{
+		`{"kind":"addTableColumn","version":1,"id":"` + table.ID + `","index":0}`,
+		`{"kind":"setTableHeaderHeight","version":1,"id":"` + table.ID + `","height":18}`,
+		`{"kind":"setTableAltRowBackground","version":1,"id":"` + table.ID + `","op":"set","value":"#DDEEFF"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"fontFamily","op":"set","value":"body"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"fontSize","op":"set","value":14}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"lineSpacing","op":"set","value":1.5}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"background","op":"set","value":"#101010"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"color","op":"set","value":"#c81e1e"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"valign","op":"set","value":"middle"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"align","op":"set","value":"center"}`,
+	} {
+		if _, err := ApplyComponentCommand(tpl, []byte(command)); err != nil {
+			t.Fatalf("apply %s: %v", command, err)
+		}
+	}
+	projection, err := TableColumns(tpl, table.ID)
+	if err != nil {
+		t.Fatalf("project the table columns: %v", err)
+	}
+	// AND THE CLAIM ABOVE IS CHECKED RATHER THAN ASSERTED IN PROSE: every
+	// committed member this fixture says it exercises is non-zero. A comment
+	// that outlives the commands it describes is how the fixture drifted the
+	// first time.
+	if projection.HeaderHeight == 0 || projection.AltRowBackground == "" ||
+		projection.HeaderFontFamily == "" || projection.HeaderFontSize == 0 ||
+		projection.HeaderLineSpacing == 0 || projection.HeaderBackground == "" ||
+		projection.HeaderColor == "" || projection.HeaderValign == "" || projection.HeaderAlign == "" {
+		t.Fatalf("the wire-key fixture leaves a committed member zero-valued, so the record is measured against a table that does not use it: %#v", projection)
+	}
+	return projection
+}
+
+// TestTableColumnsProjectionWireKeysAreTheRecordedSet is the Go half of the
+// fifth record: what encoding/json actually emits for a real projection, and
+// for the zero value, because the two can differ only if a member acquires an
+// `omitempty` that would drop a key for exactly the documents that do not set
+// it — which under hasExactKeys is a dead session for exactly those documents.
+func TestTableColumnsProjectionWireKeysAreTheRecordedSet(t *testing.T) {
+	projected := marshalledObjectKeys(t, mustMarshal(t, projectedTableForWireKeys(t)))
+	if !reflect.DeepEqual(projected, tableColumnsProjectionWireKeys) {
+		t.Errorf("TableColumnsProjection marshals the keys\n\t%v\nand the recorded protocol set is\n\t%v", projected, tableColumnsProjectionWireKeys)
+	}
+	zero := marshalledObjectKeys(t, mustMarshal(t, TableColumnsProjection{}))
+	if !reflect.DeepEqual(zero, projected) {
+		t.Errorf("a zero TableColumnsProjection marshals\n\t%v\nand a projected one\n\t%v — a key that appears only sometimes is a key the browser's exact-key guard rejects only sometimes, and the symptom is a terminated worker on exactly those documents", zero, projected)
+	}
+}
+
+// TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts is the
+// TypeScript half. isTableColumns checks the table object with hasExactKeys, so
+// this pins BOTH directions at once: a member Go adds and the guard does not
+// list, and a key the guard lists that Go does not send.
+func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T) {
+	path := filepath.Join(repoRootFromTest(t), "folio-designer", "src", "engine-protocol.ts")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the designer's protocol guard: %v", err)
+	}
+	match := tableProjectionGuardKeyList.FindSubmatch(source)
+	if match == nil {
+		t.Fatal("engine-protocol.ts no longer checks the projected TABLE object's keys where this test can read it; if isTableColumns was restructured, re-derive this extraction rather than deleting the check")
+	}
+	keys := extractedKeyList(string(match[1]))
+	if !reflect.DeepEqual(keys, tableColumnsProjectionWireKeys) {
+		t.Errorf("the designer's isTableColumns guard accepts the table keys\n\t%v\nand the recorded protocol set is\n\t%v — one side of this seam has moved and the other has not, and the symptom is not a blank canvas: parseInbound returns undefined, engine-client terminates the worker, and a FIRST table-editor open shows nothing at all because the panel that would render the error never mounts", keys, tableColumnsProjectionWireKeys)
+	}
+}

@@ -443,7 +443,7 @@ describe('canvas projection protocol guard', () => {
     for (const align of ['middle', 'JUSTIFY', 'flush', '']) expect(response(component(align))).toBeUndefined()
 
     // The COLUMN set stays the triple, on its own projection.
-    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
+    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
     expect(columns('right')).toBeDefined()
     expect(columns('justify')).toBeUndefined()
 
@@ -706,10 +706,83 @@ describe('canvas projection protocol guard', () => {
     const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'table-1', operation: 'table-columns', payload }
     expect(parseRequest(request)).toBeDefined()
     expect(parseRequest({ ...request, payload: undefined })).toBeUndefined()
-    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, revision: 6 } })).toBeUndefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, table: { ...response.tableColumns.table, columns: [{ ...response.tableColumns.table.columns[0], bind: 'row.amount' }] } } })).toBeUndefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, table: { ...response.tableColumns.table, columns: [{ ...response.tableColumns.table.columns[0], width: 0 }] } } })).toBeUndefined()
+  })
+
+  // STORY 12.3 — THE TABLE OBJECT'S KEY SET, RED-PROVED IN BOTH DIRECTIONS.
+  //
+  // `hasExactKeys` is a LENGTH check AND a membership check, so it rejects a
+  // key Go stops sending exactly as hard as one it starts sending. Only the
+  // second direction was possible under `hasOnly`, which is what isCanvas uses,
+  // so both arms are asserted here rather than assumed from the canvas guard.
+  //
+  // WHAT A FAILURE COSTS, because it is not the blank canvas the wire test's
+  // header describes: parseInbound returns undefined, engine-client raises
+  // PROTOCOL_INVALID, the worker is TERMINATED and every pending request
+  // rejected, and no re-spawn exists. On a FIRST table-editor open it is
+  // silent — openTableEditor's catch sets an error that renders only inside
+  // <TableEditor>, which never mounts. So the assertion is on parseInbound's
+  // RETURN VALUE and never on a visual symptom.
+  it('refuses a table projection with a missing member and one with a surplus key alike', () => {
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] }
+    const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
+    expect(parseInbound(responseFor(table))).toBeDefined()
+    // DIRECTION ONE — a projected member the guard's list does not name. Modelled
+    // as the guard being BEHIND Go: the response carries a seventeenth member.
+    expect(parseInbound(responseFor({ ...table, headerBorder: '' }))).toBeUndefined()
+    // DIRECTION TWO — a guard key with no projected member, one per member, so
+    // the proof is not carried by whichever key happens to be checked first.
+    for (const key of Object.keys(table)) {
+      const missing: Record<string, unknown> = { ...table }
+      delete missing[key]
+      expect(parseInbound(responseFor(missing)), `dropping ${key} must be refused`).toBeUndefined()
+    }
+    // And the typed clauses behind the key list, so a member of the right NAME
+    // and the wrong shape is refused too.
+    expect(parseInbound(responseFor({ ...table, headerHeight: '12000' }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerFontSize: 12.5 }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerAlignResolved: '' }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerValignResolved: 'centre' }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerAlign: 'justify' }))).toBeUndefined()
+    // A COMMITTED alignment of '' is ABSENT and must stay admissible: refusing
+    // it would make an unstyled table's own projection unparseable.
+    expect(parseInbound(responseFor({ ...table, headerAlign: '', headerValign: '' }))).toBeDefined()
+  })
+
+  // A NEGATIVE LENGTH THE FILE DOOR ADMITS MUST NOT KILL THE WORKER.
+  //
+  // The guard used to require `>= 0` for every projected length, but the loader
+  // bounds NEITHER headerHeight NOR style.fontSize: decimal.go negates on
+  // `sign < 0`, parse_bands.go assigns `t.HeaderHeight = hh` unchecked, and the
+  // style decoder assigns `st.FontSize = present(v)` the same way. So a
+  // hand-authored `"headerHeight": -5` loads and renders TODAY, and after this
+  // story opening its table editor failed the guard — parseInbound undefined,
+  // PROTOCOL_INVALID, worker.terminate(), no re-spawn, and on a first open
+  // nothing shown at all because <TableEditor> never mounts to carry the error.
+  //
+  // The remedy is here rather than at the loader on purpose: bounding the
+  // loader would narrow the format, which the story forbids itself. The guard's
+  // job is to admit exactly what the file door admits.
+  it('admits the negative lengths the loader itself admits, and still refuses a negative line spacing', () => {
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] }
+    const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
+    // The document that loads today: a negative headerHeight, and the negative
+    // fontSize that cascades into its resolved twin.
+    expect(parseInbound(responseFor({ ...table, headerHeight: -5000 }))).toBeDefined()
+    expect(parseInbound(responseFor({ ...table, headerFontSize: -4000, headerFontSizeResolved: -4000 }))).toBeDefined()
+    // THE LINE-SPACING PAIR IS NOT RELAXED, because for it the file door really
+    // does bound: DecodeLineSpacingRaw refuses anything outside [1, 1000000]
+    // thousandths, so a negative one cannot come from a loaded document and
+    // admitting it would only widen the guard past its source.
+    expect(parseInbound(responseFor({ ...table, headerLineSpacing: -1 }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerLineSpacingResolved: -1000 }))).toBeUndefined()
+    // And the shape clauses still hold on the relaxed members: a length is
+    // still an INTEGER count of millipoints and still a number.
+    expect(parseInbound(responseFor({ ...table, headerHeight: -5.5 }))).toBeUndefined()
+    expect(parseInbound(responseFor({ ...table, headerFontSizeResolved: null }))).toBeUndefined()
   })
 })

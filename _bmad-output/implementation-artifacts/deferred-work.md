@@ -9046,3 +9046,141 @@ boundary gate, which carried it rather than repairing it.
 **What discharges it.** Extract one shared `scripts/scanned-population.mjs` with a single sidecar, and make its `git` invocation and file read injectable so the dedupe, the `ENOENT` skip and the per-half failure are all testable without a `PATH` shim.
 
 ---
+
+### DW-216 — `headerStyle.border` is renderable and unauthorable, and 12.3 shipped the other seven without it
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05), by the story's own contract — the field is named in its Design Notes map as *deferred*, not as out of scope. **Severity:** LOW. **Status:** OPEN
+
+**What is true.** `resolveHeaderStyle` has a `Border` arm, `decodeStyle` reads `headerStyle.border`, and `serialize.go` round-trips it. So a header border loads, cascades and renders today. What 12.3 added was commands for seven of the resolver's **nine** arms (DW-217 counts them); `border` and `padding` are the two left unauthorable, and they are unauthorable for different reasons — `border` is DEFERRED, on the trigger below, while `padding` is FORBIDDEN outright by D-12.4.1 and is not waiting on anything.
+
+**Why it was left out rather than added.** It is a nested block (`color`, `width`, `edges`) and the cascade treats it BLOCK-granularly: `headerStyle.border` wins whole or loses whole, so a per-edge control would imply a granularity the resolver does not have. Authoring it well means deciding what a partial border block means at the header level, which is a design question 12.3 had no drawn surface for — its own mockup section belongs to a different field set.
+
+**Trigger, and it is a real one rather than a date:** Story 14.8's BORDERS section, or the first request for a header border, whichever comes first. Registered here so 14.8 meets it as a named prerequisite rather than discovering it.
+
+**What discharges it.** A `border` arm on `updateTableHeaderStyle` with a decided granularity, plus its projection members and the control 14.8 draws.
+
+---
+
+### DW-217 — `resolveHeaderStyle` has no `Bold` and no `Italic` arm, so a table header will still not be able to be bold after Epic 11 lands
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Found by 12.3, caused by neither 12.3 nor Epic 11.** **Severity:** MEDIUM. **Status:** OPEN
+
+**What is true, measured.** `template.Style` carries `Bold` and `Italic`. `resolveHeaderStyle` (`folio-go/table_render.go`) has NINE arms — FontFamily, FontSize, LineSpacing, Border, Background, Color, Padding, Valign, Align — and **no Bold arm and no Italic arm**. A table's `style.bold` is settable through the property command today and serializes; the header cascade never reads it, and neither `style.bold` nor a `headerStyle.bold` can reach a header cell.
+
+**Why it matters now rather than whenever.** Epic 11 is about to make bold and italic real on the render path. When it lands, every other element will honour them and **a table's header row still will not**, because the cascade has nowhere to resolve them from. That will read as an Epic 11 defect and will not be one.
+
+**Why 12.3 did not fix it.** Adding two arms to `resolveHeaderStyle` is a RENDERING change — it would alter what a document with `style.bold` draws — and 12.3 forbids itself any new rendering rule (its AC2 is a prohibition, not a feature). 12.3 authors the seven fields the cascade already reads and no more.
+
+**Trigger:** Epic 11's resolution story (11.2), so it is met as a named consequence rather than as a surprise.
+
+**What discharges it.** Two arms in `resolveHeaderStyle` matching its seven siblings, a golden move recorded as such, and — if the header is to be authorable in bold — two more entries in `tableHeaderStyleFields` with their projection members.
+
+---
+
+### DW-218 — `folio-format.md` says the `fontSize` default is 10 and the engine ships 12, and the engine is what every document already renders with
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Pre-existing; surfaced because 12.3 is the first surface that PRESENTS the default to an author.** **Severity:** MEDIUM. **Status:** OPEN
+
+**The disagreement, with both sources named.** `folio-format.md`'s Style table documents a `fontSize` default of **10**. `folio-go/render.go:defaultFontSizePt` is **12000** millipoints, `resolveHeaderStyle` seeds from it, and `CanvasProjection.DefaultFontSize` already ships **12** to the browser. **What ships today is 12.** Story 12.3's table editor now shows `Using: 12pt` for a header whose size nothing declares, which is the first place the number is put in front of a person.
+
+**Why it is filed rather than fixed, and why that is not inconsistent with D-12.C.** D-12.C tightened a loose piece of code because doing so moved no rendered bytes. This is the opposite case: `defaultFontSizePt` seeds the RENDER path, so "fixing" the code to 10 changes every document that does not declare a size — an AD-21 event that relocates the whole golden corpus. Fixing the DOCUMENT instead is a one-word edit that costs nothing, but it is a decision about which source is authoritative and it belongs to whoever owns the format text, not to a story about table authoring.
+
+**The trap this entry exists to disarm:** a future reader finds "the format says 10", concludes the code is the bug, and edits `defaultFontSizePt`. **It is 12 that ships.** Whichever way the disagreement is settled, the settlement has to start from that.
+
+**What discharges it.** An owner ruling on which number is correct, then either the one-word edit to `folio-format.md` or an AD-21 corpus relocation — never the code edit made quietly.
+
+---
+
+### DW-219 — [[DW-199]]'s owner is keyed to an epic number that has already been overtaken, and the trigger should be a purpose
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Re-keys [[DW-199]]; does not replace it.** **Severity:** LOW. **Status:** OPEN
+
+**What is stale.** [[DW-199]] names its owner as *"the next story that appends to `App.test.tsx`, which on the current build order is Epic 14's first designer story"*. **Story 12.3 dispatched first and appended to `App.test.tsx`**, so the trigger fired against a story that had not been written down as its owner. 12.3 paid the toll the entry predicts — it appended its new `it(`s ABOVE the Story 17.1 describe rather than touching another story's guard — which is now the SECOND time that workaround has been chosen (15.2a was the first). An entry whose trigger is an epic number goes stale the moment the build order moves; D-000.73 already rules that an owner which is an EVENT stops existing when the event passes, and an owner which is a POSITION IN A PLAN is the same defect with a different face.
+
+**The re-key.** [[DW-199]]'s trigger is henceforth **the first story that adds a designer UI section** — a purpose, which cannot be overtaken by re-ordering — and it remains due on any story that appends a `describe` to `App.test.tsx`. The defect and the fix in [[DW-199]] are unchanged and are not restated here.
+
+**Why a new entry rather than an edit in place.** This file is append-only and marks items done in place; re-writing another story's entry would hide that the trigger fired twice before anyone changed it. The count now stands at two paid tolls, recorded.
+
+**What discharges it.** [[DW-199]]'s own remedy — bound the count to the Story 17.1 describe's extent — after which this entry closes with it.
+
+---
+
+### DW-220 — The header font family is a free-text box over a set the engine keeps closed per document
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Caused by 12.3; assigned to Story 14.8 by [[D-14.8.1]], which owns this dialog's presentation.** **Severity:** MEDIUM. **Status:** OPEN
+
+`headerStyle.fontFamily` is validated by `knownFontFamily` — the value must name a declared, non-empty font chain in THIS document — and the inspector's own `style.fontFamily` control is a search-and-select over `canvas.fontFamilies` with specimens. Story 12.3's header row offers a bare text input with no datalist and no chooser, and `TableEditor` is not even passed the family list. Every typo is therefore a round trip to a refusal, while the two enum fields beside it (valign, align) get proper selects.
+
+**Why it is deferred rather than fixed here.** The owner ruled at [[D-14.8.1]] that 14.8 is a restyle story taking the controls 12.3 ships and grouping them into the drawn sections. A chooser is presentation, and building it twice is the duplication that ruling exists to prevent. The value is correct today and the refusal is located; what is missing is the affordance.
+
+**What discharges it.** Story 14.8 passing the document's font-chain list into the table editor and giving the field the same search-and-select the inspector already has.
+
+---
+
+### DW-221 — A refused header value has no per-field error association
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Caused by 12.3; assigned to Story 14.8 by [[D-14.8.1]].** **Severity:** MEDIUM. **Status:** OPEN
+
+Engine refusals from the three new arms surface only in the single `role="alert"` banner at the bottom of the dialog. None of the new controls carries `aria-invalid` or `aria-errormessage`, unlike `App.tsx:PropertyDraft`, which binds the error to the offending field. A colour rejected by `parseHexColor` leaves its own box looking accepted while the explanation sits several controls away — and for a screen-reader user the association is absent entirely.
+
+**Why it is deferred.** Reaching `PropertyDraft`'s parity means threading per-field diagnostics through `commitTableColumn`, which currently carries one dialog-level error string. That is a change to the dialog's error model, which is 14.8's surface.
+
+**What discharges it.** Per-field diagnostic routing in the table editor, with the located `dataPath` the arms already return (`table.headerStyle.<field>`, `table.altRowBackground`, `table.headerHeight`) selecting the control to mark.
+
+---
+
+### DW-222 — The sixteen-member table projection is re-spelled inline in three test files
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Caused by 12.3.** **Severity:** LOW. **Status:** OPEN
+
+`App.test.tsx` extracted a `tableHeaderProjection` helper, but `engine-client.test.ts` and `engine-protocol.test.ts` each spell the whole member list out again at their own sites. This is the same "one list, several spellings" hazard `command-json-soleness.test.ts` polices by hand in its own comments, and the next projection widening will have to find every copy.
+
+**Why it is a real cost and not tidiness.** The `isTableColumns` guard uses `hasExactKeys`, which rejects in BOTH directions, so a widening that misses one fixture does not degrade — that fixture's every assertion fails at once, and the failure names the guard rather than the stale literal.
+
+**What discharges it.** One shared fixture module the three test files import, so the next widening moves once.
+
+---
+
+### DW-223 — Three near-identical copies of one control shape in `TableEditor.tsx`
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **Caused by 12.3; overlaps Story 14.8's restyle.** **Severity:** LOW. **Status:** OPEN
+
+`styleColour` and `styleNumber` cover five of the seven header-style fields, but the header-height row, the alternating-row colour row and the font-family row each re-implement the same text-input + optional-swatch + clear-button + `<output>` structure inline, and the alt-row row duplicates `commitStyleText`'s set/clear branch verbatim. The helpers are one parameter — the commit callback — away from serving all three.
+
+**What discharges it.** Story 14.8's restyle, which rebuilds these rows anyway, collapsing them onto one helper.
+
+---
+
+### DW-224 — `applyPropertyChanges`' `valign` arm has no closed-set check, and the predicate that would fix it now exists
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **PRE-EXISTING, not caused by 12.3.** **Severity:** MEDIUM. **Status:** OPEN
+
+`component_commands.go:applyPropertyChanges`' `valign` arm writes `st.Valign` with no membership check, while its `align` neighbour asks `template.IsStyleAlign`/`IsTableStyleAlign`. The value is not persisted — `wasm/engine.go` reparses the canonical bytes before installing — so the failure mode is a `ParseTemplate` error with no element id and no field path, rather than the located refusal the sibling arm produces. No test sends an out-of-set `valign` through `updateComponentProperties`.
+
+**Why this entry exists now.** Story 12.3 exported `template.IsStyleValign` for exactly this shape of check and scoped it to the new header arm. **The fix is now a one-line call to an existing predicate** — it was not, before this story.
+
+**What discharges it.** `applyPropertyChanges` asking `IsStyleValign`, plus a test asserting the located refusal.
+
+---
+
+### DW-225 — A document with a negative `style.fontSize` loads but cannot be projected
+
+- source_spec: `_bmad-output/implementation-artifacts/12-3-a-table-s-header-and-its-alternating-rows-are-authorable.md`
+- **Deferred by:** Story 12.3 (2026-09-05). **PRE-EXISTING, found incidentally while proving 12.3's projection bound.** **Severity:** MEDIUM. **Status:** OPEN
+
+`decodePoints` negates on a leading `-` and nothing bounds `style.fontSize` at load, so a hand-authored negative size loads and renders. `Canvas` then refuses it with *"component fontSize exceeds the projection bound"*, so `findComponent` cannot see the element and the designer cannot reach it to repair it.
+
+**How it differs from the hazard 12.3 fixed.** Story 12.3's review found the mirror case on `headerHeight`, where a NEW browser-side bound would have killed the worker outright with no message; that was fixed by making the guard admit exactly what the file door admits. This one is older, and its failure mode is a located editor error rather than a dead worker — which is why it is filed rather than folded in.
+
+**What discharges it.** A ruling on whether the loader should bound lengths at all (a format narrowing, and therefore not a story's call to make quietly), or a projection that can carry an out-of-bound value so the author can see and fix it.
+
+---

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_RENDER_PDF_BYTES, type EngineDiagnostic, type EngineError, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_RENDER_PDF_BYTES, type EngineDiagnostic, type EngineError, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns } from './engine-protocol'
 import { EngineRequestAdmission } from './engine-worker-admission'
 import { EngineWorkerQueue } from './engine-worker-queue'
 import { runtimeAssetUrls } from './generated/offline-assets'
@@ -8,7 +8,13 @@ import { runtimeAssetUrls } from './generated/offline-assets'
 declare const Go: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): void }
 
 type WasmHost = { handle(request: string): string }
-type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; align: 'left' | 'center' | 'right'; binding: string; rowField: string; rowFieldEditable: boolean; footer: '' | 'sum' | 'avg' | 'count'; footerOf: string; footerFormat: string }[] }; tableColumnsRevision?: number }
+// The WASM host's own reply shape. `tableColumns` is the PROTOCOL type's table
+// object, not a fourth structural copy of it: this line used to re-declare the
+// ten column keys inline, so every record that widened the projection — the Go
+// struct, the guard's key list, engine-client's settle path — missed it, and it
+// went stale silently because nothing here is checked against anything (Story
+// 12.3). Naming the shared type is what makes it impossible to miss again.
+type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: TableColumns['table']; tableColumnsRevision?: number }
 
 const worker = self as unknown as DedicatedWorkerGlobalScope
 let host: WasmHost | undefined

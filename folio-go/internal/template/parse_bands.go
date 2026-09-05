@@ -630,7 +630,7 @@ func decodeStyle(elementID string, elementType ElementType, raw json.RawMessage,
 			return Style{}, newLoadError(fieldPrefix+".valign", elementID, string(r), "must be a string: "+err.Error())
 		}
 		if !closedValigns[s] {
-			return Style{}, newLoadError(fieldPrefix+".valign", elementID, s, "not one of the closed set top, middle, bottom")
+			return Style{}, newLoadError(fieldPrefix+".valign", elementID, s, closedSetMessage(StyleValignTokens))
 		}
 		st.Valign = present(s)
 	}

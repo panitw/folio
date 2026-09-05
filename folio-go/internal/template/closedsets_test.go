@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -33,16 +34,84 @@ const closedSetsSource = "closedsets.go"
 // scanClosedSets parses path and returns the name of every package-level
 // var whose declared name starts with "closed" (this package's
 // closed-set naming convention — closedLocales, closedElementTypes, and
-// so on), together with every string literal key found inside each such
-// var's map-literal initializer (so a mediaType set added under an
-// EXISTING, more generically-named var would still be caught by its
-// contents, not just by a new var's name).
+// so on), together with every string literal found inside each such
+// var's initializer (so a mediaType set added under an EXISTING, more
+// generically-named var would still be caught by its contents, not just
+// by a new var's name).
+//
+// IT FOLLOWS A SET DECLARED THROUGH ANOTHER NAME, and that is not a
+// refinement — it is the difference between the contents arm working and
+// not. Story 12.3 rewrote closedValigns from a map literal into a builder
+// over a named slice:
+//
+//	var StyleValignTokens = []string{"top", "middle", "bottom"}
+//	var closedValigns = func() map[string]bool { ...range StyleValignTokens... }()
+//
+// which is a GOOD change — one declaration, and the loader's refusal
+// sentence is derived from it rather than restated — but it took the set's
+// members out of the composite literal this scanner used to read, so the
+// second arm of TestClosedSetsNeverIncludeMediaType (catch a media-type key
+// by CONTENTS under an existing var) silently stopped seeing them. The
+// named slice is not itself scanned, because `StyleValignTokens` has no
+// `closed` prefix.
+//
+// So the walk is now: every string literal anywhere in the initializer's
+// subtree, and every identifier in that subtree resolved against this
+// file's own package-level var and const declarations and walked in turn.
+// `visited` bounds the recursion against a cycle. The widening is
+// deliberate and one-directional — it can only find MORE keys, never
+// fewer, and a guard that admits too much of its own file is the safe
+// error here.
 func scanClosedSets(path string) (setNames []string, allKeys []string, err error) {
 	fset := token.NewFileSet()
 	file, perr := parser.ParseFile(fset, path, nil, 0)
 	if perr != nil {
 		return nil, nil, perr
 	}
+
+	// Every package-level var and const in the file, by name, so an
+	// initializer that merely NAMES its members can be followed to them.
+	declared := map[string][]ast.Expr{}
+	for _, decl := range file.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || (gd.Tok != token.VAR && gd.Tok != token.CONST) {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, ident := range vs.Names {
+				if i < len(vs.Values) {
+					declared[ident.Name] = append(declared[ident.Name], vs.Values[i])
+				}
+			}
+		}
+	}
+
+	visited := map[string]bool{}
+	var collect func(expr ast.Expr)
+	collect = func(expr ast.Expr) {
+		ast.Inspect(expr, func(node ast.Node) bool {
+			switch n := node.(type) {
+			case *ast.BasicLit:
+				if n.Kind == token.STRING {
+					allKeys = append(allKeys, strings.Trim(n.Value, `"`))
+				}
+			case *ast.Ident:
+				if visited[n.Name] {
+					return true
+				}
+				visited[n.Name] = true
+				for _, value := range declared[n.Name] {
+					collect(value)
+				}
+			}
+			return true
+		})
+	}
+
 	for _, decl := range file.Decls {
 		gd, ok := decl.(*ast.GenDecl)
 		if !ok || gd.Tok != token.VAR {
@@ -59,20 +128,7 @@ func scanClosedSets(path string) (setNames []string, allKeys []string, err error
 			}
 			setNames = append(setNames, name)
 			for _, val := range vs.Values {
-				cl, ok := val.(*ast.CompositeLit)
-				if !ok {
-					continue
-				}
-				for _, elt := range cl.Elts {
-					kv, ok := elt.(*ast.KeyValueExpr)
-					if !ok {
-						continue
-					}
-					if lit, ok := kv.Key.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						unquoted := strings.Trim(lit.Value, `"`)
-						allKeys = append(allKeys, unquoted)
-					}
-				}
+				collect(val)
 			}
 		}
 	}
@@ -691,5 +747,67 @@ func TestUTCOffsetLoadRefusalIsReachableAndLocated(t *testing.T) {
 				t.Fatalf("refusal for %q reads %q, want it to carry %s", probe.value, loadErr.Reason, UTCOffsetSyntax)
 			}
 		})
+	}
+}
+
+// TestClosedSetsSeeAMemberDeclaredThroughAnotherName is the review patch set's
+// red proof for the hole Story 12.3 opened in the CONTENTS arm above.
+//
+// 12.3 rewrote closedValigns from a map literal into a builder over the named
+// slice StyleValignTokens. That is the right shape — one declaration, and the
+// loader's refusal sentence is derived from it — but the scanner only read a
+// `*ast.CompositeLit` initializer, so the set's members stopped being scanned
+// at all, and `StyleValignTokens` is not scanned under its own name either
+// because it carries no `closed` prefix. The guard's stated second arm — catch
+// a media-type key by CONTENTS, under an EXISTING var — had a hole in it, and
+// the suite was green.
+//
+// This plants a media-type key into the NAMED SLICE the real builder reads and
+// asserts the scanner surfaces it. Under the pre-patch scanner it does not,
+// which is the proof.
+func TestClosedSetsSeeAMemberDeclaredThroughAnotherName(t *testing.T) {
+	real, err := os.ReadFile(closedSetsSource)
+	if err != nil {
+		t.Fatalf("read %s: %v", closedSetsSource, err)
+	}
+	// The plant goes into StyleValignTokens itself — the slice closedValigns is
+	// built FROM — so the only way to see it is to follow the builder through
+	// the name.
+	const original = `var StyleValignTokens = []string{"top", "middle", "bottom"}`
+	planted := `var StyleValignTokens = []string{"top", "middle", "bottom", "image/png"}`
+	if !strings.Contains(string(real), original) {
+		t.Fatalf("red-proof precondition: %s no longer declares StyleValignTokens as this test expects; re-derive the plant rather than deleting the check", closedSetsSource)
+	}
+	mutated := strings.Replace(string(real), original, planted, 1)
+
+	dir := t.TempDir()
+	scratch := filepath.Join(dir, "closedsets.go")
+	if err := os.WriteFile(scratch, []byte(mutated), 0o644); err != nil {
+		t.Fatalf("write scratch closedsets.go: %v", err)
+	}
+
+	setNames, allKeys, err := scanClosedSets(scratch)
+	if err != nil {
+		t.Fatalf("scan mutated closedsets.go: %v", err)
+	}
+	if len(setNames) == 0 {
+		t.Fatal("vacuity guard: mutated scratch file produced zero set names")
+	}
+	if !slices.Contains(setNames, "closedValigns") {
+		t.Fatalf("vacuity guard: closedValigns is not among the scanned sets %v, so this proves nothing", setNames)
+	}
+	if !slices.Contains(allKeys, "image/png") {
+		t.Fatalf("the scanner cannot see a member of a closed set declared through another name: planted \"image/png\" into StyleValignTokens, which closedValigns is built from, and the extracted keys are %v", allKeys)
+	}
+	// AND THE REAL FILE IS CLEAN, which is the same claim
+	// TestClosedSetsNeverIncludeMediaType makes — asserted here too so the
+	// widened scanner is exercised against the shipping file and not only
+	// against a plant.
+	_, realKeys, err := scanClosedSets(closedSetsSource)
+	if err != nil {
+		t.Fatalf("scan %s: %v", closedSetsSource, err)
+	}
+	if !slices.Contains(realKeys, "top") {
+		t.Fatalf("vacuity guard: the widened scanner reads no valign member out of the shipping file, got %v", realKeys)
 	}
 }
