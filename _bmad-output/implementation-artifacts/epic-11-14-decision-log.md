@@ -2522,3 +2522,58 @@ source, **read, not inferred** — the config change becomes the better fix and 
 
 **The general form, and it is the sharper half of D-000.24:** *when the obvious remedy requires a fact
 you do not have, the remedy that requires no facts is better than a plausible guess at the fact.*
+
+---
+
+## D-000.25 — A refusal asserted only by its DataPath is not asserted
+
+**Story 12.3's highest-value finding, produced by mutation at step-03 before any reviewer ran.** The
+builder mutated six guards; five reddened and one did not.
+
+**`setTableHeaderHeight`'s "headerHeight cannot be cleared" refusal could be deleted outright with the
+entire suite still green.** With the check gone the command fell through to *"headerHeight must be a
+positive length"* — **a different refusal, for a different reason, located at the same
+`table.headerHeight`** — and the shared test helper compared only DataPaths. Both refusals landed on the
+same path, so both satisfied the assertion. The test proved the command refused *something about that
+field*, never that it refused **this** thing for **this** reason.
+
+The fix is `refusalSaysWhy`, and it was verified the only way that counts: **the identical mutation, run
+again. Green before, red after.**
+
+**Why this is worse than an ordinary weak assertion.** A refusal has two payloads — *that* it refused,
+and *why*. The DataPath carries the first. Asserting only the path means **every refusal at a given field
+is interchangeable with every other**, so a story can delete a rule and inherit its neighbour's error
+message as camouflage. **The wrong behaviour and the right one produce identical evidence** — this run's
+dominant defect, now found in the shape of the assertion rather than the shape of the guard.
+
+**And it generalises past refusals.** Any assertion keyed on *where* something happened rather than
+*what* happened admits every sibling outcome at that location. The rule: **an assertion about an error
+must pin the reason, not only the address.** A located message has two halves and a test that reads one
+of them is testing half a guard.
+
+**The method deserves as much credit as the finding.** Nothing in three review layers found this — the
+builder found it by mutating its own guards before submitting them, and the one mutation that stayed
+green is the only one that mattered. **Five green mutations were the cost of finding the sixth**, which
+is the correct price and worth paying every time.
+
+### Two more from the same story, kept because each is a class
+
+**A browser guard stricter than the file door kills the worker.** A hand-authored **negative**
+`headerHeight` loads fine — `decodePoints` negates on `sign < 0` and nothing bounds it — and 12.3's new
+`>= 0` browser guard would have **silently terminated the worker on first table-editor open**. The guard
+now admits exactly what the file door admits. **A browser bound tighter than the loader's is not defence
+in depth; it is a crash reachable by a legal document**, and it echoes Story 17.4's ruling that a floor
+and a ceiling are not the same kind of bound.
+
+**A test mock that returns one frozen value for every request hides state bugs by construction.** The
+colour text box was uncontrolled beside a controlled swatch, so a picked colour was reverted by the next
+blur — invisible because the mock answered every projection request with the same object. **A mock that
+cannot represent change cannot fail a test about change.**
+
+### One refused patch, recorded because the refusal was right
+
+I ordered a synchronous in-flight ref for the colour picker, on the premise that a drag would emit
+several commands. **Instrumented: the handler is entered three times and exactly one command goes out** —
+React flushes discrete events before the next. The builder refused the patch and kept a non-vacuous
+property test instead. **My premise was wrong, and evidence beat compliance.** A builder that implements
+a wrong instruction correctly has produced a defect with an alibi.
