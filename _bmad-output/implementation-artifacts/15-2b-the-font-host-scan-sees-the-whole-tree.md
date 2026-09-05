@@ -12,24 +12,29 @@ context:
 
 ## In plain terms (read this first if you just want the gist)
 
-There is a build check that greps the source for two banned Google Fonts URLs (and two more
-that are allowed in exactly one file). It decides *which files to read* by asking git for the
-list of tracked files. Files that have been written but never `git add`ed are not on that
-list — so the check reads straight past them and prints "clean".
+*This section is background, not a requirement; the contract below governs. Rewritten at close, to
+describe what actually shipped.*
 
-In this project no story stages anything, so **every file a story creates is invisible to that
-check for the story's entire life**. Story 12.2 wrote five files and the check reported clean
-over a tree containing none of them.
+Two build checks scan the source for banned font-provider addresses. Both chose what to read by
+asking version control for its list of known files, which omits anything written but never
+registered — and no story in this run registers its own work. So every file a story created was
+invisible to both checks. One earlier story added five files, and the checks reported clean over a
+tree holding none of them.
 
-This story asks git for the untracked-but-not-ignored files too. Nothing in the tree goes
-unread. The number barely moves; the point is that "clean" starts meaning *I looked*.
+Neither script was dishonest: each bounded its verdict to what it had read, and one already named
+this very hole in its own opening comment. The fault was in the quoting. What this buys is not a
+bigger number — the checks could not tell "I looked and found nothing" from "I never looked at what
+you just wrote", and now they can.
 
-One side effect has to be handled in the same story. The build writes six generated files into
-`src/generated/`, and they are kept out of git one filename at a time rather than by folder —
-with one file, `pdfjs-assets.ts`, deliberately kept in. Once the check reads untracked files,
-the next generated file someone adds walks straight into the scan and reds a guard they never
-touched. So the story also adds an assertion that everything the build emits is on the ignore
-list, naming the offender when it is not.
+Both now read the whole tree bar what is deliberately excluded. That opens one trap: build-generated
+files are excluded one name at a time, so a new one would trip a guard nobody touched. A new test
+closes it, naming any emission that is not excluded.
+
+Review found three real defects, all fixed — chiefly that the headline property was untested in both
+checks, and that a nested repository was skipped in silence: this story's own bug, returning through
+its own fix. The manual per-story workaround this replaced now stands down. One unrelated text
+failure stays deliberately red; the heavier cross-platform and browser suites run only at the end of
+the epic.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -596,6 +601,143 @@ the guard.
 **Out of scope by ruling, and left alone deliberately:** `.gitignore` patterns (comment only);
 `SCANNED_ROOTS` / `SCANNED_EXTENSIONS`; both floor values; any guard beyond the two named; and
 `epics.md`'s bare cross-log citation, which **R3** assigns to the owner separately.
+
+### 2026-09-05 — done
+
+Baseline `314ad06`; shipped at **`3c4abcb`**, *"Let the host scans read the files a story just
+wrote"*, one commit, 12 files, on `main` and already pushed. Closed by the story closer; the section
+above is the builder's own delivery record and is left as written — this entry adds what it could not
+know, and corrects two of its figures that the commit itself made stale.
+
+**Neither script was lying, and that is the whole point of the story.** Both bounded every claim they
+made to the population they had actually read, and the forbidden-host scanner went further: it named
+*"a host in an untracked file"* as a known hole **in its own module header**. Nothing in either guard
+was dishonest. **The defect was in the consumer** — in the one sentence *"the host scans are clean"*,
+quoted downstream without the bound that made it true. A bounded claim becomes a false claim the
+moment somebody drops its bound, and the guard cannot stop that from the inside.
+
+**What the story bought is not a bigger number.** The population moved by one file. The property is
+that **"no forbidden host found" and "I did not look at the files you just wrote" stopped being the
+same output.** Before this, those two states were indistinguishable at the call site; the gate could
+collapse *all-clear* into *couldn't-look* and print the same green. That collapse is what closed. Any
+count in this record is incidental to it.
+
+**Why the sibling could not be deferred.** `host-font-access.mjs` runs in the same `npm run build`
+chain and had the structurally identical tracked-only population. Two facts made deferral untenable
+rather than merely untidy. Its `POPULATION_FLOOR` docblock **records having been misled by this exact
+bias** — a figure it had to correct because six of that story's own new files were still untracked
+when it was measured, written down in the guard's own comment. And its refusal message **already
+states this story's thesis in the guard's own words**: *"an unobtainable population must never read
+as all-clear."* A guard that has articulated the principle, and written down being fooled by its
+absence, and still has the hole, is not a deferral candidate — fixing only the measured half would
+have relocated the drift rather than discharged it, because the consumer sentence would keep
+inheriting the identical false green through the other door.
+
+**The three things the review caught.** All three were verified before being acted on, and all three
+are patched in `3c4abcb`.
+
+1. **The headline property was not actually tested — in either scanner.** Both refusal arms invoked
+   the population builder against a non-repository path, but **the tracked call throws first**, so
+   the `--others` refusal was never on the path the arm exercised; the tests then fell back to
+   grepping the scanner's own source text. A catch that silently swallowed the untracked listing
+   would have left both arms green. Fixed with a `PATH` git shim that fails **only** on `--others`,
+   red-proved in both suites. This is the sharpest finding in the story: the arm written to prove the
+   new refusal could not have failed if the new refusal had been absent.
+2. **An untracked nested repository is listed as a single directory entry and was dropped in
+   silence.** `git ls-files --others` does not recurse into a nested repository; it emits one
+   directory entry, which then failed the `isFile` filter and vanished — a whole subtree unread while
+   the guard claimed the tree. **That is this story's own defect re-entering through its own
+   widening**, and it would have shipped inside the fix for it. Both scanners now refuse on such an
+   entry rather than skipping it.
+3. **`build-wasm.test.ts` would have reddened on any fresh clone.** `git check-ignore` returns 1 for
+   a directory pattern when the directory does not exist, so the ignore probe for the generated
+   `runtime/` directory fails before a build has created it. Local and CI runs survived only
+   because `build:wasm` runs ahead of `vitest` in both. Fixed at the probe.
+
+**The compensating per-story font-host grep STANDS DOWN, effective this story, and the reason is on
+the record.** `epic-11-14-decision-log.md`'s **D-000.21 — *"A gate that states its own hole
+honestly"*** (**not** `folio-mvp-decision-log.md`'s identically numbered D-000.21 *"Assert on the
+produced thing"*, a different rule; per **R3** `D-000.x` is a per-log namespace) imposed a manual
+grep over each story's new files, explicitly time-boxed to *"15.2b landing, so it has a named end
+rather than becoming permanent by habit."* That end is here. **The reason it stands down is that the
+scanned population now includes untracked-but-not-ignored files**, so the gap the manual grep was
+compensating for no longer exists — not because anyone tired of running it. The bounds that remain —
+a host assembled at runtime, a host inside a dependency, a request from code this repository did not
+write — are unchanged, still true, and still written into the guard. No further story needs the grep.
+
+**Two figures in the section above went stale when the commit landed, and are corrected here rather
+than edited there.** Both were correct when the builder measured them, at a moment when this story's
+own new test file was still untracked:
+
+| Claim above | Measured then (pre-commit) | Measured at close on `3c4abcb` |
+|---|---|---|
+| `scan:font-hosts` split | `631 = 630 tracked + 1 untracked` | **`631 = 631 tracked + 0 untracked`** |
+| `scan:host-fonts` split | `146 = 145 tracked + 1 untracked` | **`146 = 146 tracked + 0 untracked`** |
+| `vitest` | 61 files / **853** tests | **61 files / 866 tests** (+13 from the review patches) |
+
+**The changed split is not a regression — it is the proof the widening works.** `build-wasm.test.ts`
+was the `+1 untracked` before the commit and is the `+1 tracked` after it; the *total* is 631 in both
+readings, and it is 631 in both readings **only because the widened listing counted the file while it
+was unstaged.** A tracked-only scan would have reported 630 then and 631 now. `git ls-files --others
+--exclude-standard | wc -l` returns **0** on this tree, which is why the untracked half is now empty.
+
+**Gates re-measured at close on `3c4abcb`**, tree clean before the run, each exit code captured on the
+command's **own** line (`$?` is clobbered by any intervening command, `echo` included), and no `cd`
+inside a compound command:
+
+| gate | measured at close |
+|---|---|
+| `folio-designer` `npm run scan:font-hosts` | **rc 0** — `0 occurrence(s) in 631 source files under .. (631 tracked + 0 untracked-but-not-ignored, floor 400)` |
+| `folio-designer` `npm run scan:host-fonts` | **rc 0** — `146 files scanned … (146 tracked + 0 untracked-but-not-ignored), floor 86, 0 occurrences of 4 spellings` |
+| `folio-designer` `npx vitest run` | **rc 0 — 61 files / 866 tests passed**, 0 failed |
+| `folio-designer` `npx tsc -b` | **rc 0**, no output |
+| `folio-designer` `npx tsc -b --force` | **rc 0**, no output — run because plain `-b` is incremental and can exit 0 having checked nothing |
+| `folio-designer` `npx oxlint` | **rc 0 — exactly 4** `only-export-components` warnings, 0 errors, freshly counted (not carried forward) |
+| `folio-go` `go test -count=1 ./...` | **rc 1 — exactly two failures**: `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child, the one sanctioned red. **No third.** |
+| `folio-go` `gofmt -l .` | **rc 0**, zero lines |
+| `folio-go` `go vet ./...` | **rc 0** |
+| `lint` `go build ./...` / `go vet ./...` / `gofmt -l .` / `go test -count=1 ./...` | **rc 0 / rc 0 / rc 0, zero lines / rc 0** (4 packages ok) |
+
+**Not run, and deliberately so:** the Go cross-target matrix suite and the Playwright browser suite.
+This run's heavy-test cadence is **end of epic**; they come due at Epic 15's catch-up run, before
+`epic-15` may be marked `done`. Nothing in this story touched engine output or browser behaviour.
+
+**Manual checks re-run at close.** `/usr/bin/grep -rlE` for all four scanned spellings across the
+working tree (excluding `node_modules`, `.git`, `dist`) names **only pre-existing carriers** — the
+scanner, its test, `src/font-source.ts` and its test, the gitignored `src/generated/font-index.ts`,
+and the `_bmad-output/`, `docs/` and UX-mockup occurrences that `SCANNED_ROOTS` excludes by design.
+**A positive control fired** on a scratch file outside the repository. No file this story created
+carries a host. `git ls-files --others --exclude-standard` returns 0, so nothing was left behind.
+
+**The frozen block is byte-identical.** Lines 34–150, `<frozen-after-approval>` through
+`</frozen-after-approval>`, 9195 bytes, **sha256
+`90e04a0a04f08e4f2b7c83890b09462799879ff6b639cdddef264f722e8eaf03`** before this entry was written
+and the same sha256 after. Only the plain-terms opener — which sits **outside** the block precisely
+so it can be rewritten after approval — and this Delivery Log entry were changed in this file.
+
+**Review-order anchors re-checked at close.** All **17** `file#Lnnn` links in *Suggested Review Order*
+were resolved by printing the cited line at `3c4abcb`; every one lands on the construct its caption
+names. No anchor rotted.
+
+**Deferrals.** Three, all filed by the builder and already in `3c4abcb`, not re-priced here:
+[[DW-213]] (neither host scan's CLI block is exercised by any test, and this story rewrote both
+sentences), [[DW-214]] (nothing detects a `.gitignore` line for an emission that no longer exists),
+and [[DW-215]] (the two scanners now duplicate their whole population builder, three of its
+behaviours unverified). **DW-215 is the story's own edge, not pre-existing** — the widening is what
+doubled the duplicated surface — and DW-213 is sharpened by it, because this story rewrote exactly
+the untested sentences.
+
+**Triage route counts are not recorded anywhere in this story's record, and none is invented here.**
+`review_loop_iteration` is `0` and the spec has no findings section; the three findings above are
+reconstructed from the commit message, where they are stated in full. What can be said as measured:
+**3 findings patched, 3 items deferred with DW numbers, 0 `intent_gap`, 0 `bad_spec`** (the *Spec
+Change Log* is empty, and says so). **No rejection tally exists** — so none is quoted, rather than a
+zero being implied.
+
+**Out of scope by ruling and left alone:** `.gitignore` patterns (comment only); `SCANNED_ROOTS` and
+`SCANNED_EXTENSIONS`; both floor values, which did not move; any guard beyond the two named; and
+`epics.md`'s bare cross-log citation, which **R3** assigns to the owner separately — that one has
+since been corrected at `314ad06`, this story's baseline.
 
 ## Suggested Review Order
 
