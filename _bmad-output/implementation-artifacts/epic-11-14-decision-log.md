@@ -1825,3 +1825,60 @@ The lead ruled the owner's intent determined **by D-8.4d.1 as amended by the sec
 draft reaches a point where those two records *disagree* about what 15.0 should do — rather than merely
 layering — that specific conflict is escalated to the owner, not reconciled. **Two reversals of one
 Non-goal in a single day is where an unrecorded third intent would hide.**
+
+---
+
+## D-12.C.2 — Three of us argued a version question without reading the document that governs versions
+
+**Closing [[D-12.C]] / [[D-12.C.1]].** I ruled that `folio-format.md` narrates version *events* but has
+no precedent for a version *non-event*, and asked 12.2 to write the first one. **That was wrong too.**
+12.2's builder measured it, and I verified every line before accepting:
+
+- **`:90-93` narrates a non-event** — *"**The trigger is the ENTRY, not the asset.** A document that
+  carries a font asset no chain references still declares whatever its other content requires … so
+  raising it would orphan a document from readers that can in fact read it."*
+- **`:573-591` narrates another**, headed *"**THE VERSION TRIGGER AND `SupportedMajor` DO NOT MOVE, and
+  the derivation is here rather than asserted.**"*
+- **`:575` states the governing test**, which I had reconstructed from first principles: *"would a
+  pre-`2.0` reader refuse this file, or render it wrong?"*
+- **`:585-587` states my own principle in the document's own voice**, this case with the nouns swapped:
+  *"Making the reader stricter about `2.0` documents is not a version trigger: a document has no way to
+  declare 'I am missing licence text', so this is **reader strictness**, and **version describes the
+  document, never the writer**."*
+
+**So the note 12.2 writes applies a recorded principle instead of deriving a new one**, cross-referencing
+`:585-587` rather than restating it. Its genuinely new contribution is narrow and should be stated as
+such: the principle extends to a **pattern-constrained string**, not only to reader-strictness about
+absent metadata, and this particular tightening excluded nothing real (28 files, 21× `+00:00`,
+7× `+07:00`).
+
+**A fourth ground none of us used, sitting at `:589-591`:** a bump *"would also make every document
+declare `3.0`, including the twenty-two fixtures that make no font choice at all, moving their bytes and
+their goldens for a reason unrelated to fonts."* **This one bites 12.2 directly** — its acceptance
+already requires that no golden hash moves, so **an increment would have failed the story on its own
+terms**, by a mechanism nobody in the thread had connected to the version question.
+
+**And a standing owner ruling that is in neither decision log**, recorded only inside the format file at
+`:585-591`: *"Folio is unreleased; the format may be broken (owner ruling, 2026-09-02), and breaking is
+free now and expensive after `folio-go/v0.1.0`."* That is [[D-7.8.3]]'s rule — *narrowing what is
+accepted is free exactly once* — **stated independently, by the owner, in the document that governs the
+thing being narrowed.** Two records of one ruling that had never been cross-referenced, which is why the
+whole argument was possible.
+
+### The finding
+
+**Three parties — the builder, the lead, and me — argued a format-version question through the decision
+logs, and `folio-format.md` held the answer, the test, two precedents, a fourth argument, and the owner's
+standing ruling the entire time.** Every error in this thread has the same shape: the builder cited the
+file and misread it; I searched the file with a vocabulary it does not use and declared the clause absent;
+the lead ran the same query and reported the sample as an enumeration; and I then asserted a precedent was
+missing from a file I still had not read end to end. **Four failures, one cause — the file was treated as
+something to query rather than something to read.**
+
+**Standing rule: a question about what a document permits is answered by reading that document, and the
+decision logs are the secondary source.** A log records why a choice was made; the spec records what is
+true. When they are in tension the spec wins, and when the log is silent the spec is usually not. The
+practical form: **before escalating a question about a governing document, read the governing document's
+relevant section in full** — not a grep of it, and not the log entries that cite it. Grep finds what you
+already know to name, which is exactly the wrong instrument for discovering that your question has already
+been answered.
