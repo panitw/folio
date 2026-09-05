@@ -5278,7 +5278,9 @@ As a developer relying on the font-host scan,
 I want it to read the files a story just wrote,
 So that "clean" means it looked and found nothing, not that it could not look.
 
-**Covers:** AD-26, I-7 · D-000.21, D-15.2.1
+**Covers:** AD-26, I-7 · D-15.2.1 and `epic-11-14-decision-log.md`'s D-000.21 (*"A gate that states
+  its own hole honestly"*) — **not** `folio-mvp-decision-log.md`'s D-000.21, which is a different rule;
+  `D-000.x` is numbered per log, so a bare cross-log citation names two things
 
 **Dispatch order: alongside Story 12.3, NOT with the rest of Epic 15.** It lives here by subject — this
 epic ships no feature and exists to make the others releasable — but every story dispatched before it

@@ -2272,3 +2272,44 @@ one of them:
 **12.3 adds two members per property across three properties, so this checklist runs six times.** A story
 whose Code Map omits site 4 will pass `tsc -b` and fail the wire-key record — which is the good outcome,
 and only because that record exists.
+
+---
+
+## D-000.23 — `D-000.x` is numbered per log, so a bare cross-log citation names two rules
+
+**Found by 15.2b's builder at its plan gate**, reported as a numbering collision. It is not one, and the
+correct diagnosis changes the fix from "renumber" to "cite differently."
+
+**Measured across every decision log:** `D-000.x` is a **per-log namespace**. Each run-scoped log numbers
+its own series from 1, and **27 numbers are defined in more than one log, deliberately**:
+
+| Number | `folio-mvp-decision-log.md` | `epic-8-15-decision-log.md` | `epic-11-14-decision-log.md` |
+|---|---|---|---|
+| D-000.1 | build order is numeric | scope: all of Epics 8–15 | the run's five standing parameters |
+| D-000.4 | heavy tests at each epic boundary | heavy-test cadence: per-epic | every Code Map cites a symbol and a count |
+| D-000.21 | **assert on the produced thing** | — | a gate that states its own hole honestly |
+
+**So nothing here is misnumbered and nothing gets renumbered.** Renumbering would break the convention
+and orphan every intra-log citation — the fix would cost more than the defect and introduce a worse one.
+
+**What is genuinely defective is the bare cross-log citation.** Inside a log, `D-000.21` is unambiguous.
+From a story spec in `implementation-artifacts/`, or from `epics.md`, it names **two different rules** —
+and the MVP log's is *"Assert on the produced thing, never on the thing you asked for"*, one of the
+most-cited rules in the project, with a sharpened successor and twenty-odd references. A reader grepping
+the bare number lands on the wrong one, **and lands on a real, plausible, load-bearing rule** rather than
+on nothing. **That is what makes it dangerous: the wrong answer looks exactly like the right one.**
+
+**Rule, effective now: a citation that leaves its log names the log.** `epics.md`'s Story 15.2b entry is
+corrected accordingly. Intra-log citations stay bare — the convention is fine where it was designed to
+work, and the failure is entirely at the boundary.
+
+**Not swept.** Every existing bare cross-log `D-000.x` citation is left as it stands. A global rewrite
+across shipped specs and closed stories is a large edit whose only benefit is to readers who have not yet
+been confused, and this run has learned that a large mechanical edit to records is how a correct record
+becomes a wrong one. **Filed as a convention going forward, with a named trigger:** correct any bare
+cross-log citation *in a file you are already editing for another reason*.
+
+**The shape, one more time.** [[D-12.C.2]] recorded that a citation must carry the **boundary** of its
+claim. This is the same rule at the level of the identifier: **a citation must carry enough of its
+namespace to resolve.** A number that resolves in the room where it was written and misresolves
+everywhere else is a citation that works exactly until someone takes it seriously enough to look it up.
