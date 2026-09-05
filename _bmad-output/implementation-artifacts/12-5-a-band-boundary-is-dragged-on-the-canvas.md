@@ -11,13 +11,25 @@ context:
 
 ## In plain terms (read this first if you just want the gist)
 
-Story 12.1 gave the page header and page footer a height you can type into the Page Setup panel. This
-story lets you grab the line between two bands on the canvas and drag it, so fitting a letterhead is a
-gesture instead of a number you guess and retype. While you drag, nothing is committed: a proposed
-line follows your pointer and the height reads out in points beside it. When you let go, the designer
-sends the one command 12.1 already built, and the canvas redraws from whatever the engine accepted.
-The same boundary can be reached with the Tab key and nudged with the arrow keys, because a gesture
-must never be the only way to reach a value.
+*Not normative, and rewritten after the fact: the frozen Intent below governs implementation, while
+this section says what actually shipped.*
+
+You can now grab the line between two bands on the canvas and drag it, so fitting a letterhead is a
+gesture instead of a number you guess and retype. Nothing is committed while you drag: a proposed line
+follows your pointer and the height reads out in points beside it. When you let go, the designer sends
+the one command Story 12.1 already built, and the canvas redraws from whatever the engine accepted.
+The same boundary is reachable with the Tab key and nudged with the arrow keys, because a gesture must
+never be the only way to reach a value.
+
+The drag stops by itself at zero and at the point where no content area would be left. It deliberately
+does **not** stop short of a component standing in the way — that proposal is sent, so the engine can
+refuse it and name the component. A silent stop there would throw away the one thing the author needs
+to know.
+
+Two defects were caught before release that nothing running could see, because the tests apply no
+stylesheet and stay at the default zoom: the proposed line would have painted in the wrong place
+entirely, and at any other zoom the height sent would have been malformed. A whole-browser test of the
+gesture was written, but no workflow runs that suite, so it is not coverage.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -746,3 +758,147 @@ story, so the boundary gate falls immediately after this commit.
 
 - WRITTEN, NEVER RUN: no workflow executes this suite (DW-193). Compiles only.
   [`band-boundary-drag.spec.ts:38`](../../folio-designer/e2e/band-boundary-drag.spec.ts#L38)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `cfa4263`. Shipped in **`dff158d`** on `main` — 16 files, +2565 / −89 — which was already
+pushed before this close, so nothing here was folded into it. This closer touched only the story file
+(opener + this log) and `sprint-status.yaml`, and staged nothing.
+
+**The rule this story settled, and it is the reusable half.** *Clamp a gesture at bounds that carry no
+information; send, and let the engine refuse, where the refusal names something the author needs.* That
+single sentence is why one acceptance criterion produced three different answers. The floor at zero and
+the content-window ceiling say only *no further*, which a stopped pointer already communicates, so
+clamping there costs the author nothing. **The strand floor is deliberately NOT clamped**: its refusal
+is the only one in this feature that carries an `ElementID` — it names *which component is in the way*,
+and at what depth it reaches — and a silent drag limit would destroy exactly that. The information
+content of the refusal, not the taxonomy of the bound, is what decides. Gesture-versus-field was the
+near-miss formulation; this is the one that survives.
+
+**D-12.B's GROUND was corrected, not its verdict.** The lead corrected its own earlier sentence — *"the
+objection is the browser computing layout geometry at all"* — as over-broad, and it would have blocked
+correct work. What stands unchanged is D-12.B's **conclusion**: a typed band-height panel field still
+gets **no floor**. 17.4 forbids an unmirrored clamp in a control that has a typed counterpart; it does
+not forbid a mirrored clamp on a gesture that has none. The narrowing landed as an amended header
+comment on the encoder — scoped to the panel, never deleted — carrying the reason attached, so the next
+reader meets the asymmetry with its justification rather than "fixing" it in whichever direction they
+prefer.
+
+**The fifth `snap` field, and "byte-preserved" said precisely.** `setBandHeight` went from arity 4 to 5
+with the 22 payload literals and the strict-arity gate in one commit, per R3's first condition. The
+**command payload DOES change** — it gains `"snap":false` — and the byte-exact wire expectations moved
+with it, deliberately. What is preserved is the **DOCUMENT bytes the panel's typed path produces**: the
+panel passes `false`, so an author who types 83 still gets 83, no shipped control changes behaviour and
+no golden moves. Written the other way round, a reviewer sees the payload move against a byte-identity
+claim and files a defect against a story that did exactly what it said.
+
+**A file the task list never named, disclosed rather than smuggled.** `engine-protocol.ts` was edited —
+one new mirrored constant, the content-window ceiling's strict-positivity margin — and it appears in no
+task line. It belongs there and nowhere else: that module is the declared **authority** for every
+mirrored engine bound in the designer (the capping-band list, the locale tags, the line-spacing and
+payload limits all live there), and the mirror census explicitly exempts it from the "no file hand-copies
+a bound" walk that every other source file is held to. Spelling the margin in the consuming module
+instead would have put a bare literal outside the census — the precise thing DW-36's standing condition
+forbids. The consuming site reads the constant by name and the census red-proofs a one-sided edit on
+each side.
+
+**Three review findings worth carrying forward, all invisible to every executing gate.**
+
+- **P1 — the proposal line was visually inert and would have shipped that way.** The proposed boundary
+  and its readout were direct `<span>` children of the band, and the band-tab rule `.page-band > span`
+  at specificity **(0,1,1)** beats a class rule's **(0,1,0)**. `top: 0` would have won over the proposed
+  offset; the elements would have painted at the band's top-left, translated a tab's width off the page,
+  wearing the tab's border, tint and `text-transform: uppercase`. The line would never have tracked the
+  pointer in a real browser — **with all 938 tests green, because jsdom applies no stylesheet.** They are
+  `<div>`s now, and the replacement guard's shape is the durable part: it **gathers every `.page-band > …`
+  selector out of the stylesheet** rather than listing them, asserts neither painted element matches any
+  of them, and uses **the band tab as a positive control** — the same gathered selectors must reach the
+  tab, so "does not match" is a measurement rather than a regex that matched nothing. A child rule added
+  later is covered without anyone remembering to come back.
+- **P2 — at any zoom but 1 the delta was not integral.** Every other row runs at zoom 1, where the
+  pixel-to-millipoint conversion is a whole number by luck. Measured at zoom 1.1: a 36px drag on a 60pt
+  header yields `27273.000000000004`, which the points formatter spells `"27.273.00000000000364"` — a
+  string with two decimal points. `JSON_NUMBER` rejects it, so the command went out as `"height":null`
+  while the author read the malformed string in the readout for the whole gesture. **The zoom-ignoring
+  mutation left all 929 tests green**, which is why the row asserts the zoom's own arithmetic (the same
+  drag must not read `24`) and not merely that the readout is well-formed.
+- **P10 — a self-referential guard anchored on bare literals.** The 12.5 block was first spliced between
+  Story 17.1's header line and 17.1's body, so 17.1's documentation read as if it described 12.5, and
+  17.1's self-count guard — which counts from its describe to EOF — passed the whole time. Writing the
+  new placement guard with plain literals made it worse: its own quoted markers occur **earlier in the
+  file than the real ones**, so it sliced its own text and passed on nothing, *and* it dragged 17.1's
+  self-count guard onto this block (measured: that guard went red with `expected undefined to be
+  defined`). Every marker is now matched line-anchored as a regex, which excludes both, because a marker
+  quoted inside an expect is indented and a real one sits at column 0.
+
+**The e2e spec is WRITTEN, NEVER RUN.** `e2e/band-boundary-drag.spec.ts` exists, compiles, and pins the
+gesture's intent. **It is not coverage.** No workflow executes that suite, it is not in `npm test`, and
+the only gate that looked at it proves it typechecks. Its own header says so and cites **DW-193**, which
+is about the runner, not the spec.
+
+**Measured gates at this close, re-run against the shipped tree.**
+
+- `folio-go`: `go test -count=1 ./...` **rc 1**, **exactly two** `--- FAIL:` lines —
+  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child (mandated permanent red; P6g got
+  7, needs ≥ 20). **No third.** `gofmt -l .` empty **rc 0**; `go vet ./...` **rc 0**, silent.
+- `folio-designer`: `npx vitest run` **rc 0**, **63 files / 938 tests passed**. `npx tsc -b` **rc 0** and
+  `npx tsc -b --force` **rc 0** (`tsc --noEmit` typechecks zero files here — DW-207 — and is not cited).
+  `npx tsc -p tsconfig.e2e.json --noEmit` **rc 0**: this is the only gate that looks at the new e2e spec
+  at all, and it proves the file **compiles**, not that it passes.
+- `npx oxlint` **rc 0**, exactly **4** `only-export-components` warnings. **The SET is proved by symbol,
+  not counted**: `App.tsx`'s exported-symbol list is byte-identical between `cfa4263` and `dff158d`
+  (five `^export ` declarations, `diff` rc 0), the two warned symbols are the same two non-component
+  exports as before, and `pdf-viewer.tsx` is not in the commit at all. *Deviation worth recording:* the
+  Verification section's alternative method — *"byte-identity from the first `App.tsx` warning site to
+  EOF, every diff hunk above it"* — **would not have held**. A hunk lands at `+3256`, below the first
+  warning site at line 3240. The symbol-set diff is the method that actually discriminates here.
+- `npm run scan:font-hosts` **rc 0**: 0 occurrences in **638** source files (**638 tracked + 0
+  untracked**, floor 400). `npm run scan:host-fonts` **rc 0**: 0 occurrences of 4 spellings across
+  **152** files (**152 tracked + 0 untracked**, floor 86). Both rose by exactly 3 from the spec's 635 /
+  149 — this story's three new files, now committed, so the whole rise sits on the tracked side of the
+  split. The totals moved; the split did not repartition.
+- `lint`: `go build ./...`, `go vet ./...`, `gofmt -l .`, `go test -count=1 ./...` — **rc 0 / rc 0 /
+  empty / rc 0**, four `ok` lines. `hashmatrix`: `go vet ./...` **rc 0**, `gofmt -l .` empty,
+  `go test -count=1 ./...` **rc 0**.
+
+**Suites NOT run, and when they come due.** The **cross-target matrix** and **Playwright** were out of
+scope by this epic's heavy-test cadence, which is **end of epic**. Epic 12 is now five stories done, so
+they fall due **immediately**, at the **Epic 12 boundary gate**, which the orchestrator runs next — they
+are owed for all five stories, not for 12.5 alone. Playwright last measured **32 pass / 1 fail**, the
+failure being `browser-native-roundtrip.spec.ts` › *fresh authored sessions close exactly through
+admitted Preview and native Folio*, which **hangs** (measured at both 300 s and 1500 s budgets, ~27 min
+wall at 9% CPU — it waits, it is not slow). That red is carried in, not this story's.
+
+**Triage: no tally exists in the record, and this closer did not invent one.** There is no
+`## Implementation Notes` or triage section in this file, and no count of patched / deferred / rejected
+was written anywhere the build loop reached — so a later reader should read that as an **absence**, not
+as an omission here. What is measurable: **seven** review findings left a numbered marker in the shipped
+code — P1, P2, P3, P5, P8, P10, P12 — and the highest marker is **P12**, so the review population was at
+least twelve. That is a floor on the population, not a triage split.
+
+**Deferred, four entries, all filed by the builder inside `dff158d` and all classified PRE-EXISTING.**
+
+- **DW-226** (MEDIUM, open, unassigned) — `.page-seam` is out-specificitied by the same band-tab rule
+  P1 hit, and has never rendered where it is placed. Story 7.6's element; 12.5's cure did not transfer
+  because `.page-band > span` is byte-unchanged.
+- **DW-227** (MEDIUM, open, **needs a ruling**) — an arrow-key nudge is inert whenever snapping is on,
+  for components and band boundaries alike, and Shift+Arrow moves 12pt rather than the documented 10.
+  Two defensible fixes; picking one quietly inside a story would change a shipped component's behaviour.
+  **Owner: engineering lead.**
+- **DW-228** (LOW, open, unassigned) — `isCanvas` pins band contiguity but never anchors the stack to
+  the printable column, so the ceiling's sum is correct by construction rather than by the check the
+  comment cites.
+- **DW-229** (LOW, open, **needs a ruling**) — canvas gestures expose no accessible value and their
+  feedback is `aria-hidden`. Names the concrete shape `EXPERIENCE.md`'s standing UX1 gap now takes for a
+  value-bearing gesture. **Owner: engineering lead**, with the owner behind them.
+
+**Housekeeping at this close.** Frozen block **byte-identical**, proved by `sha256` before and after
+(`10db520dadf262f90c953f8e41d85b0c02231f5e3e6e58bad4a37009e2a2ec6e`, with a one-line-short window as
+negative control). Tracker: `12-5…` moved `review` → `done`; **`epic-12` deliberately left
+`in-progress`** pending its boundary gate. Output tree swept: nothing moved, nothing removed, no
+untracked files under `_bmad-output`, and every shape-suspicious artifact checked individually and found
+referenced. All six context caches carry the right header and are non-empty; the only planning artifact
+newer than any of them is `epics.md`, whose last change (`f6416c3`) edited **only** the Epic 12 section,
+and `epic-12-context.md` was recompiled after it inside `dff158d`.
