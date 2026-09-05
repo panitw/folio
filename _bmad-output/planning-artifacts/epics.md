@@ -4088,10 +4088,18 @@ page's inner height
 **Then** it is refused with a located message naming the quantity and the space available, and the
 document is unchanged, because a document with no content band is not a document
 
-**Given** a band height reduced below the content its band already holds
-**When** the command is applied
-**Then** it is accepted and the overflow is clipped with the diagnostic FR44 already defines — the
-engine's existing answer to content taller than its box, not a second one
+> ~~**Given** a band height reduced below the content its band already holds · **When** the command is
+> applied · **Then** it is accepted and the overflow is clipped with the diagnostic FR44 already
+> defines~~
+>
+> **STRUCK — the engine REFUSES, and Story 12.1 shipped the refusal.** D-12.B ruled this at 12.1's own
+> checkpoint and the text was never corrected. Measured: shortening a header to 20pt with an element at
+> y=50 h=30 gives *"a pageHeader height of 20pt would leave e1 outside the band: it reaches 80pt"*.
+> Partial overflow refuses too; four shipped tests pin it. **FR44 has no vertical axis** — `diag.go`
+> declares 17 codes and only `TEXT_CLIPPED_WIDTH` and `TABLE_ROW_CLIPPED_HEIGHT` are clip codes, while
+> `render.go` states that D-2.8.1 *"fences the vertical axis out entirely"*. Building this literally
+> would require minting a diagnostic code, adding render behaviour, and lifting `isCanvas`'s band
+> clause.
 
 **Given** a document whose band heights are not edited
 **When** it is serialized
@@ -4240,10 +4248,15 @@ is enforced as a drag limit, so an impossible document is never proposed
 UX-DR25 sets — the drag is an affordance on top of Story 12.1's command, never the only way to reach
 the value
 
-**Given** components already placed in a band
-**When** that band is made shorter than the content it holds
-**Then** they are clipped with FR44's existing diagnostic and are never moved, deleted or reflowed
-(AD-24)
+> ~~**Given** components already placed in a band · **When** that band is made shorter than the content
+> it holds · **Then** they are clipped with FR44's existing diagnostic and are never moved, deleted or
+> reflowed (AD-24)~~
+>
+> **STRUCK for the same reason as Story 12.1's, above — this is the second instance of one false
+> premise.** The engine refuses rather than clipping. Discharged by 12.1's shipped refusal and restated
+> in 12.5's spec as a matrix row: the release is refused, located, carrying the ElementID, and the
+> document's bytes are unchanged. **The never-moved-never-reflowed half (AD-24) survives and is not in
+> question** — it is the clip half that was never true.
 
 ## Epic 13: A template author can read, navigate and keep the exact PDF
 
