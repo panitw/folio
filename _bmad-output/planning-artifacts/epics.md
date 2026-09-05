@@ -5305,10 +5305,26 @@ change is small. The repository currently holds **6** untracked-not-ignored file
 
 **Acceptance Criteria:**
 
-**Given** a forbidden host planted in an **untracked, non-ignored** file
+**Given** a forbidden host planted in an **untracked, non-ignored** file **in a throwaway repository
+built in a temp directory** — `git init`, one file committed, a second left untracked carrying the host —
+with the scan invoked against that root
 **When** the scan runs
 **Then** it is **RED** — the existing positive control is over a tracked fixture and would stay green
 through a broken widening, so this arm must be red-proved on its own
+
+**The red-proof must be hermetic, and this is a requirement rather than a preference.** After this story
+widens the population, *an untracked file containing a forbidden host is exactly what the scan is designed
+to catch* — and the red-proof plants one. Run inside this repository it would turn any concurrent story's
+scan red for a reason unconnected to that story, and if the prover is ever interrupted the file persists
+and poisons every scan afterwards. **A mutating prover must not share a tree with another story's gates**;
+contamination of this kind arrives as a plausible intermittent, which is the most expensive way to find it.
+A fixture directory inside this repository cannot serve, because the one property under test — being
+untracked — is the property a committed fixture cannot have. Invoking the scan against a supplied root is
+already precedented by the existing positive control.
+
+**Note the symmetry, because it is the same hazard twice.** This is exactly the *"a red they cannot
+explain, in a guard they never touched"* problem this story records for a future contributor — arriving
+immediately, between two concurrent stories, rather than months later.
 
 **Given** the widened population
 **When** the scan runs on a clean tree
@@ -5332,12 +5348,21 @@ the new number stated as a decision, rather than adjusted to whatever the scan n
 **Then** it is stood down — it was explicitly time-boxed to this story, so that it has a named end
 rather than becoming permanent by habit
 
+**Given** the set of artifacts `build-wasm.mjs` emits and the set `.gitignore` ignores
+**When** the build runs
+**Then** an assertion proves the **emitted set is a subset of the ignored set**, failing with a message
+that names the new artifact and tells the author to ignore it or justify tracking it — with
+`pdfjs-assets.ts` **named in the assertion as the deliberate tracked exception**, rather than merely
+absent from the emission list
+
 **The forward hazard this story must record, found while scoping it.** `src/generated/` is **not**
 gitignored as a directory; its five generated files are ignored **individually**, and one file in it —
 `pdfjs-assets.ts` — is tracked on purpose. That per-file pattern is deliberate and it is also a trap:
 under a tracked-only scan a new generated artifact was invisible either way, but **under the widened
-population an unignored new artifact enters the scan the moment it is emitted.** Say so in a comment
-beside the ignore block, or the first person to add a generated file will get a red they cannot explain.
+population an unignored new artifact enters the scan the moment it is emitted.** A comment beside the ignore block is
+not enough on its own: **prose discharges only if someone finds it**, and `build-wasm.mjs` knows exactly
+what it emits while `.gitignore` states exactly what is ignored — so the relationship is assertable, and
+the criterion above asserts it. The comment stays as the explanation; the assertion is what closes it.
 
 ### Story 15.2a: A component command means exactly what it names
 

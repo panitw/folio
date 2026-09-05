@@ -2016,3 +2016,89 @@ Under [[D-000.7]]:
 not have detected the alternative is still a sample.* It is the grep-that-named-its-own-four-functions
 defect arriving through a different door — and this time the door was the version-control tool everyone
 reaches for first.
+
+---
+
+## D-12.3.0 — 12.3's AC2 and AC3 are prohibitions, and I was about to dispatch them as finished work
+
+**Recorded before dispatch, which is the only reason it is cheap.** I had 12.3 down as the easy next
+story on the strength of [[D-000.9]]: *"12.3's alt-row and header-style cascade, which is entirely
+engine-side and needs no work at all."* **That sentence is true of the rendering and false of the story.**
+
+Read at the source rather than through the summary:
+
+- **AC2's operative clause** — *"this story adds no rendering rule and **no second implementation of the
+  cascade**"*
+- **AC3's operative clause** — *"which is the cascade **Story 4.1 already defines**"*
+
+**Neither is a satisfied feature. Both are constraints on what 12.3 may build.** Filing them as "already
+satisfied, spec as preservation" inverts their function: a builder told they are discharged writes a
+preservation test over the engine cascade, ticks them, and **loses the constraint at the exact moment it
+binds**.
+
+**And it binds on AC1.** AC1 is the construction work — panel, command arm, projection — and the
+tempting way to show a header-style field's fallback is to **compute the effective value in TypeScript**.
+That is a second implementation of the cascade, in the browser, violating AC2 and AC3 and also
+[[AD-15]] and [[AD-17]]. **AC2 and AC3 are what shape AC1's implementation**, and they must be spec'd as
+live constraints on the panel rather than as engine-side preservation.
+
+**This is [[D-12.C]]'s charter shape almost exactly, one story later.** There, a constraint phrased
+against the mechanism was satisfiable in letter by a fix that missed the purpose. Here, a constraint
+phrased as a description of the engine reads as a finished fact, and its force as a prohibition is
+invisible unless you notice it is written in the negative. **Both times the danger was a clause that
+looked like a statement about the world and was actually a rule about the story.**
+
+### The fork no acceptance criterion resolves, and it decides the projection's shape
+
+AC1 says each field shows *"the engine's committed value"* and is *"clearable back to absent."* AC3 says
+an absent field **falls back through the cascade**. So: **when the field is absent, does the control show
+empty, or the resolved value the document will actually use?**
+
+Those are different controls with different projections — **one field per property versus two** — and
+under [[D-7.4.5]] a projection and its `hasOnly` mirror move in **one commit**, so choosing wrong means a
+second projection change later. **Story 17.3 is the shipped precedent and it points away from AC1's
+wording:** it made size and leading *show the value they use*. Cite 17.3 at the plan gate so the builder
+settles this deliberately rather than re-litigating a settled question or silently contradicting it.
+
+**Also carried from D-12.A:** a red-first test phrased *"nothing writes `headerStyle`"* is **false at this
+tree** — the font-chain rename cascade rewrites `HeaderStyle.FontFamily` at two sites. Scope it to *no
+command **authors** it*, and **name the rename cascade inside the test as a known writer**.
+
+### 15.2b's red-proof must be hermetic, and sequencing is the weaker fix
+
+The two stories cannot share a tree. After 15.2b widens the population, **an untracked file containing a
+forbidden host is exactly what the scan is designed to catch — and 15.2b's red-proof plants one.** A
+concurrent 12.3 gate would go red for a reason unconnected to 12.3, and an interrupted prover leaves the
+file behind to poison every later scan. **A mutating prover must not share a tree with another story's
+gates**; contamination of this kind arrives as a plausible intermittent, the most expensive way to find
+anything.
+
+**But the fix is the prover's construction, not the schedule:** build a throwaway repository in a temp
+directory — `git init`, commit one file, leave a second untracked carrying the host — and invoke the scan
+against that root. That removes the shared-tree hazard, the interruption hazard and the concurrency
+question together. A fixture directory inside this repository **cannot** serve, because the one property
+under test is *being untracked*, which a committed fixture cannot have.
+
+**Sequence 15.2b first regardless**, for an independent reason: 12.3's own new files then sit inside the
+scanned population, and the compensating grep **stands down for 12.3** instead of being carried through
+it.
+
+**And the symmetry is worth naming.** 15.2b's own text warns a future contributor about *"a red they
+cannot explain, in a guard they never touched."* Run concurrently, that hazard arrives **immediately,
+between two live stories**, rather than months later. The story now carries that observation, because a
+hazard a story documents and then commits is not a hazard it understood.
+
+### The prose-into-guard move, for the third time
+
+15.2b's per-file ignore hazard was going to ship as a comment beside the ignore block. **Prose discharges
+only if someone finds it.** `build-wasm.mjs` knows exactly what it emits and `.gitignore` states exactly
+what is ignored, so the relationship is **assertable**: the emitted set must be a subset of the ignored
+set, failing with a message that names the new artifact and tells the author to ignore it or justify
+tracking it, with `pdfjs-assets.ts` **named in the assertion as the deliberate tracked exception** rather
+than merely absent from the emission list. Now an acceptance criterion. The comment stays as the
+explanation; the assertion is what closes it.
+
+**That is the third time this run has converted a warning into a guard**, after [[D-15.0]]'s tripwire and
+[[D-000.21]]'s compensating check. The pattern is stable enough to state as a rule: **if a document knows
+a fact and a program can read that document, the fact belongs in an assertion and the prose belongs
+beside it as the reason.**
