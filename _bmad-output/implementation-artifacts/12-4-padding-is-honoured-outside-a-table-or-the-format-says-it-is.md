@@ -8,6 +8,30 @@ baseline_commit: '75e5e24892c5f5763f33ba7f3c488f3466d89003'
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative, and rewritten after the story shipped. The frozen Intent below governs the
+implementation; this section only says what came of it.*
+
+A page's layout language has a setting called padding — the breathing room between the edge of a thing
+and its contents. The engine accepted that setting on all five kinds of thing an author can place on a
+page, but only one of them, a table, ever does anything with it. On the other four the value went into
+the author's file, stayed there, and was read by nothing. The designer could persist a number that could
+not mean anything.
+
+This story stopped the designer writing that number, and stopped only that. A padding value aimed at a
+text box, an image, a line or a rectangle is now refused, and the refusal names both the setting and the
+kind of thing it was aimed at. Aimed at a table, it works exactly as before.
+
+What the story deliberately did **not** do is make the engine stricter about reading. A hand-written file
+already carrying padding on a text box still opens, still keeps the value when saved again, and still
+accepts every other edit to that same element. The lopsidedness is the point, and it is the owner's
+ruling rather than an oversight: the engine honours whatever it is handed, while the designer declines to
+author what it knows is meaningless.
+
+The record moved with the code — the format document now says where padding is honoured and where it is
+merely tolerated. Two follow-ups were banked rather than fixed here.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -480,3 +504,113 @@ table, the disagreement is itself the halt.**
 
 - Tracker: the pre-ruling comment replaced, epic-12 lifted, 12.4 in flight.
   [`sprint-status.yaml:454`](sprint-status.yaml#L454)
+
+## Delivery Log
+
+### 2026-09-05 — done
+
+Baseline `75e5e24`. Shipped as **one commit, `fd4da07`**, "Stop the designer authoring padding it cannot
+mean" — already on `main` and already pushed. **Closed late.** No closer was dispatched when the story
+shipped; it slipped between 12.1's close and 12.2's dispatch, and this entry is written after `52d0509`
+(12.2), `56a903d` (12.3) and `3c4abcb` (15.2b) had all landed on top of it. **Every figure below is
+labelled with the tree it was measured on.** Nothing here was measured at `fd4da07` by running anything —
+no worktree was created and no revision was checked out — so the 12.4-era figures are static reads of the
+commit object, and the gate figures are today's tree at `68e21ac`.
+
+**What shipped, and what it means — the short version for anyone arriving from a D-12.4.1 citation.**
+D-12.4.1 is **not** "padding is forbidden". It is an asymmetry with two halves, and both halves shipped:
+
+- **The engine keeps honouring what it is given.** The loader, the serializer, the canvas projection and
+  the table's cell chrome were **not touched** — `git show fd4da07 --stat` names eight files and none of
+  them is on a load, render or projection path. A hand-authored document carrying `style.padding` on a
+  `text` element still parses, still round-trips with the padding intact, still projects `paddingTop`, and
+  still accepts unrelated property commands on that same element.
+- **The designer stops authoring what it cannot mean.** The command layer's all-kinds `allowed` branch was
+  **split in two**: `background`/`borderWidth`/`borderColor`/`borderEdges` stay granted on all five kinds,
+  and the four padding keys moved to a table-only branch. **Padding on an `ElementTable` is still an
+  accepted, applied command** — that is the point of the split, and it is what
+  `TestPaddingPropertyCommandsAreGrantedOnATableAlone`'s table arm asserts. The refusal covers the four
+  non-table kinds only.
+
+So a later story that reads D-12.4.1 as barring padding everywhere is reading it too widely; what the
+ruling bars everywhere is a **panel control**, and what it bars in the command layer is padding **off a
+table**. The ruling explicitly rejected the framing that "the command must not be stricter than the
+loader" — that is **not this project's rule**. The engine and the designer are allowed to disagree, and
+here they deliberately do.
+
+**Decisions applied.** `D-12.4.1` (owner, 2026-09-05, `epic-11-14-decision-log.md`) — executed in full,
+and now cited by id in three places rather than by an undated comment: the Go branch's rationale comment,
+the designer's `borderFields` comment, and the format's `padding` row. The epic's AC1 two-way fork
+(padding-as-inset vs. table-only) is **dead**; the table-only arm is the one that shipped. `DW-202` and
+`DW-203` were both **filed by this story** rather than fixed by it.
+
+**12.4-era figures — static reads of the commit object, not runs.** `git show fd4da07 --stat`: **8 files,
++939 / −9**. Production surface is small and the test surface is not: `component_commands.go` **+13/−1**
+(the branch split and its seven-line rationale comment), `App.tsx` **+3/−3** (the comment replacement,
+with `git show 75e5e24:…App.tsx | wc -l` and `git show fd4da07:…App.tsx | wc -l` both **3157**, so the
+"exactly four lines, no line-number shift" constraint held and the ~13 line-number citations in
+`App.test.tsx` did not rot), `folio-format.md` **one line changed** with its first cell byte-identical
+(`cut -d'|' -f2 | od -c` gives the identical 14-byte dump either side of the commit),
+`component_properties_test.go` **+342** carrying **four** new top-level tests
+(`…AreGrantedOnATableAlone`, `…LeavesTheBoxKeysAndAnAlreadyLoadedPaddingAlone`,
+`…CommandOpsFollowTheSameTableOnlyGrant`, `…RefusalAcrossAMixedSelectionIsTransactional`). The remaining
+four files are `_bmad-output` records.
+
+**Review, and the finding that actually mattered.** One round, three layers (blind-hunter, edge-case,
+verification-gap), no loopback — `review_loop_iteration` stayed **0**. **8 patched / 1 deferred / 6
+rejected**, per the Spec Change Log above; those counts are the build's own and are **transcribed here,
+not re-derived** — this close did not re-open triage. The finding worth remembering is the one the
+reviewer *demonstrated*: the table arm originally asserted only "accepted, and some byte moved", so
+rotating the key-to-edge map left the entire suite **green** — a table commanded to a 5pt top inset would
+have taken a 5pt bottom inset and shipped clean. The patch reads the edge back by name and also asserts
+the fixture's *other* authored edges are undisturbed, which is the half that catches a rotation rather
+than a drop. A first draft of that read-back used `map[string]float64` and tripped
+`internal/arch_test.go`'s `TestNoFloat64UnderModule`, which scans `_test.go` files too; it was reworked to
+`json.Number`. **This module has no float escape hatch, not even in tests.**
+
+**Gates — measured today, 2026-09-05, on `68e21ac`, a clean tree. These are NOT 12.4's gates.** Three
+stories have landed since `fd4da07`, so these numbers describe the tree 12.4 lives in now, not the tree it
+shipped into; the build's own contemporaneous claim was 1956 Go passes and 806 designer tests, and that
+claim is left as the build's, unverified by this close.
+
+- `folio-go`: `go test -count=1 ./...` → **rc 1**, **2105 pass / 2 fail / 5 skip**, **14 packages ok**,
+  1 package failing. The two failures are the single sanctioned permanent red —
+  `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child. No third failure. Counted from
+  `-json` events, since `go test ./...` prints no pass/skip totals.
+- `folio-go`: `gofmt -l .` → **empty**. `go vet ./...` → **rc 0**.
+- `folio-designer`: `npx vitest run` → **rc 0**, **62 files / 893 tests**, all passing.
+- `folio-designer`: `npx tsc -b --force` → **rc 0**. (`--force` deliberately: `tsc -b` alone can exit 0
+  off the incremental cache without typechecking, and `npx tsc --noEmit` typechecks zero files in this
+  project.)
+- `folio-designer`: `npx oxlint` → **rc 0**, **exactly 4** `only-export-components` warnings
+  (`preview/pdf-viewer.tsx:16,17`; `App.tsx:3059,3066` — the line numbers moved since the spec was
+  written, the count and the rule did not).
+- `lint`: `go build ./...` **rc 0** · `go vet ./...` **rc 0** · `test -z "$(gofmt -l .)"` **rc 0** ·
+  `go test -count=1 ./...` **rc 0**, four `ok` lines.
+
+**Suites NOT run, and when they come due.** The matrix suite and Playwright were out of scope by this
+epic's heavy-test cadence, which is **end of epic**. They remain owed at the **Epic 12 boundary gate**,
+which cannot be reached yet: 12.5 is still `backlog`. They were not run at `fd4da07` either, so no run of
+them has ever covered this change.
+
+**Deferred, both still OPEN and both unassigned.**
+
+- **`DW-202`** — `propertyPath` locates a refusal at the first key present in canonical order, not at the
+  key actually refused, so a mixed change set reports the wrong `DataPath`. Latent and unreachable from
+  the product: `component-property-command.ts`'s `PropertyIntent` carries a single `field`, so every
+  emitted change set has exactly one key. **Re-checked at close: still single-field at `68e21ac`, so the
+  deferral's unreachability premise still holds.**
+- **`DW-203`** — "No `FieldSpec` may author a padding field" is enforced only by a behavioural test that
+  checks labels for the one element it selects. A padding row offered **only when a table is selected**
+  would satisfy Go's new grant and red nothing. **Sharpened by this story, not caused by it** — before
+  the split, any padding row would have "worked". **Re-checked at close and it has become less
+  hypothetical:** `epics.md`'s Story 14.8 section still carries an unstruck acceptance criterion
+  instructing exactly that control, underneath a newer owner preamble that rules it out. Flagged to the
+  orchestrator; not this story's to reconcile.
+
+**Housekeeping done at close.** The plain-terms opener did not exist and was **written**, not rewritten.
+The tracker key moved `review` → `done`; `epic-12` stays `in-progress` because 12.5 is `backlog`. The
+frozen block was verified byte-identical across these edits by sha256 either side
+(`0631cfbc54e1662397161eefb1815aed26f0c21fdcb18d9c984c73c756b9865f`). Nothing was committed — every
+version-control verb is reserved to the human on this run, so the two files this close touched are left
+dirty in the working tree.
