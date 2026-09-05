@@ -616,7 +616,12 @@ development_status:
   # one product"), reopened as a new epic rather than reused -- Epic 14 is
   # closed, and a closed epic's spec is not a place to add scope.
   # ==========================================================================
-  epic-17: in-progress
+  # epic-17 closed 2026-09-06. All six stories done; NO story defers anything to a boundary gate
+  # (measured: 0 mentions across all six specs, against a control of 6 in 12.5's). It never had a
+  # gate artifact and none is owed. Epic 12's gate ran the matrix and Playwright at a HEAD that
+  # contains all Epic 17 work, so its code is covered incidentally rather than by its own gate --
+  # recorded because that is weaker than every other closed epic's evidence. See D-000.29.
+  epic-17: done
   # 17.1 OWNER DECISION TAKEN AT THE GATE, and it is the cheap option knowingly:
   # DEBOUNCE ~200ms AND SEND A REAL COMMAND. The canvas paints only the engine's
   # projection -- AD-17 forbids the browser laying out text itself -- so "live"

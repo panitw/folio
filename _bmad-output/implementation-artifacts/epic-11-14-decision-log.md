@@ -2838,3 +2838,33 @@ not a reason to select from it.
 Re-run unfiltered. **The corrected result, and not the filtered one, is what Epic 12's gate will record —
 along with this entry, because a gate that hides its own false start is worth less than one that shows
 it.**
+
+---
+
+## D-000.29 — A second epic was sitting closed-but-open, and the tracker said so the whole time
+
+**Found while deriving the next target from the tracker rather than from my own program list** — which is
+the practice [[D-000.26]] imposed after Story 12.4 sat in `review` for four stories. It caught a second
+instance immediately, one level up.
+
+**`epic-17` was `in-progress` with all six of its stories `done`.** Epic 17 is the epic that
+[[D-000.22]] already found had shipped without ever being written in `epics.md`; its tracker state was
+the other half of the same neglect, and neither half was visible to any gate.
+
+**Closed, and the evidence backing the close is stated because it is weaker than every other epic's.**
+Measured: **zero** boundary-gate deferrals across all six specs, against a positive control of **6** in
+12.5's — so no heavy suite is owed and no gate artifact is missing in the sense that matters. But Epic 17
+**never had a gate at all**, where ten other epics do. What covers its code is incidental: Epic 12's gate
+ran the unfiltered matrix and the full Playwright suite at a HEAD that contains every Epic 17 commit.
+**That is real coverage and it is not the same thing as having been gated**, and the tracker comment says
+so rather than letting a later reader assume parity.
+
+**The pattern, now twice: a `done`-in-substance item stays open in the tracker because nothing ever asks
+it to close.** A story lands, its code ships, gates pass — and the one remaining transition is a
+bookkeeping act with no owner and no failing check behind it. **Every guard in this project verifies that
+a claim matches reality; none verifies that a claim was made.**
+
+**The standing check is now two lines, not one.** Before dispatching any story: read the tracker's
+`review` set **by name**, and read the epic-level states **by name** for any epic whose stories are all
+`done`. Both are one grep, both belong beside confirming the tree is clean, and both have now caught
+something the first time they were run.
