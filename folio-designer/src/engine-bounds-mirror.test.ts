@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { BANDS_CAPPING_VERTICALLY, CAPPING_BANDS, type CappingBand } from './engine-protocol'
+import { BANDS_CAPPING_VERTICALLY, CAPPING_BANDS, LOCALE_TAGS, type CappingBand } from './engine-protocol'
 
 // D-7.4.5 / DW-25, AS WIDENED BY STORY 7.5.
 //
@@ -48,6 +48,12 @@ const goSources = {
   // Go file. Reading it here is the point: a tie list that only ever reaches
   // the files it already knew about is the audit's blind spot restated.
   componentCommands: path.resolve(sourceDir, '../../folio-go/component_commands.go'),
+  // Story 12.2's mirror is a CLOSED SET OF STRINGS, and it lives in a fourth Go
+  // file. AD-12's four locale tags are spelled exactly once in Go — as the
+  // right-hand sides of four named constants in this file — and exactly once
+  // here, in engine-protocol.ts's LOCALE_TAGS. Nothing but the describe block
+  // at the foot of this file stands between them.
+  locale: path.resolve(sourceDir, '../../folio-go/internal/template/locale.go'),
 } as const
 const tsPath = path.join(sourceDir, 'engine-protocol.ts')
 // Story 7.6's THIRD consumer of the band-containment tie. The drag clamp used
@@ -94,7 +100,7 @@ function tsConstant(source: string, name: string): string | undefined {
 }
 
 describe('canvas projection bounds mirror', () => {
-  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8') }
+  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8'), locale: fs.readFileSync(goSources.locale, 'utf8') }
   const goValue = (pair: Pair) => goConstant(sources[pair.source], pair.go)
   const ts = fs.readFileSync(tsPath, 'utf8')
 
@@ -432,5 +438,126 @@ describe('origin floor mirror', () => {
     const driftedGo = go.replace(/^\toutside := x < 0 \|\| y < 0 \|\| /m, '\toutside := x < 0 || ')
     expect(driftedGo).not.toBe(go)
     expect(goNonNegativeGeometryFields(driftedGo)).not.toEqual(goNonNegativeGeometryFields(go))
+  })
+})
+
+// Go declares AD-12's closed locale set through named constants, so the
+// identifiers are resolved before comparison — exactly as
+// goBandsCappingVertically does for the band list. `[]string{LocaleEN, LocaleTH,
+// LocaleZhHans, LocaleJA}` and `['en', 'th', 'zh-Hans', 'ja']` are the same
+// CLAIM spelled two ways, and it is the claim that has to match, not the text.
+function goLocaleTags(source: string): ReadonlyArray<string> {
+  const names = new Map<string, string>()
+  for (const match of source.matchAll(/^[ \t]*(Locale[A-Za-z]+)\s+= "([^"]+)"$/gm)) names.set(match[1] as string, match[2] as string)
+  const list = source.match(/^var LocaleTags = \[\]string\{([^}]*)\}$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0).map((entry) => names.get(entry) ?? entry)
+}
+
+function tsLocaleTags(source: string): ReadonlyArray<string> {
+  const list = source.match(/^export const LOCALE_TAGS = \[([^\]]*)\] as const$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry.length > 0)
+}
+
+// STORY 12.2's MIRROR, and the second here that ties a CLOSED SET rather than a
+// numeral.
+//
+// The invariant: which locale tags a `.folio` document may declare. Go enforces
+// it on the FILE path (parse.go, through template.IsLocale) and on the COMMAND
+// path (setDocumentLocale, through the same predicate), and TypeScript enforces
+// it again on the PROJECTION path (isCanvas) while OFFERING it in the panel.
+// The offering is what makes a one-sided edit dangerous in a new way: the two
+// existing selects in PAGE SETUP — preset and orientation — hardcode their
+// options with no tie to Go at all, and copying that here would have made
+// AD-12's four tags a fourth un-tied spelling in the one story whose whole
+// subject is a set with one authority.
+//
+// What a stale copy costs is the same as every other one on this boundary: a
+// tag Go projects and this side does not list makes isCanvas return false,
+// parseInbound return undefined, and engine-client terminate the worker — the
+// canvas permanently blank, with no element id and nothing to attribute it to.
+describe('locale tag mirror', () => {
+  const go = fs.readFileSync(goSources.locale, 'utf8')
+  const ts = fs.readFileSync(tsPath, 'utf8')
+
+  it('reads a non-empty list from every side', () => {
+    // Non-vacuity first: a regex that quietly stops matching would make every
+    // equality below true and meaningless.
+    expect(goLocaleTags(go)).toEqual(['en', 'th', 'zh-Hans', 'ja'])
+    expect(tsLocaleTags(ts)).toEqual(['en', 'th', 'zh-Hans', 'ja'])
+    // And the RUNTIME array, not only its source text: the guard, the panel and
+    // the command factory all read this object.
+    expect([...LOCALE_TAGS]).toEqual(tsLocaleTags(ts))
+  })
+
+  it('agrees on the closed set a document may declare', () => {
+    expect(goLocaleTags(go)).toEqual(tsLocaleTags(ts))
+    // ORDER IS PART OF THE CLAIM. Go pins LocaleTags' exact sequence
+    // (TestLocaleTagsExactOrder) because the refusal messages are joined from
+    // it and the panel lists its options in it; comparing as sets would let the
+    // two sides disagree about what the author sees first.
+    expect(goLocaleTags(go)).not.toEqual([])
+    expect([...LOCALE_TAGS].sort()).toEqual([...goLocaleTags(go)].sort())
+  })
+
+  it('consumes the list at the sites it governs, in every consumer', () => {
+    // A list nothing reads would tie dead declarations together while the real
+    // gates kept their own inline spellings.
+    expect(go).toMatch(/^func IsLocale\(s string\) bool \{ return closedLocales\[s\] \}$/m)
+    expect(ts).toMatch(/if \(!LOCALE_TAGS\.includes\(value\.locale as LocaleTag\)\) return false/)
+    expect(ts).toMatch(/^export type LocaleTag = \(typeof LOCALE_TAGS\)\[number\]$/m)
+  })
+
+  it('lets no consumer hold a copy of its own', () => {
+    // THE CENSUS IS THE WHOLE OF src/, NOT A LIST OF FILES SOMEONE REMEMBERED.
+    // It used to grep exactly two files, App.tsx and the command factory, while
+    // the comment above claimed "everything on this side reads this array" and
+    // "a copy outside that census is the only kind that can go stale
+    // unnoticed" — so the one case it worried about, a NEW file spelling a tag
+    // for itself, was precisely the case it could not see. A named-file list is
+    // the defect; a directory walk is the fix.
+    //
+    // `zh-Hans` is the probe because it is the one tag nothing in this codebase
+    // spells for another reason — `en`, `th` and `ja` appear in fixtures, font
+    // names, language attributes and ordinary English, and would make this
+    // assertion fire on text that is not a second copy of the set.
+    //
+    // engine-protocol.ts is the ONE exemption, because it is the authority.
+    // This file is exempt too: the assertions here quote the expected list, and
+    // a guard that reddened on its own expectation would be unwritable.
+    const scanned = fs.readdirSync(sourceDir, { recursive: true })
+      .filter((entry): entry is string => typeof entry === 'string' && /\.(ts|tsx)$/.test(entry))
+      .filter((entry) => entry !== 'engine-protocol.ts' && entry !== 'engine-bounds-mirror.test.ts')
+    // Non-vacuity: a walk that returned nothing, or a handful, would make the
+    // loop below pass while looking like a census. The tree carried well over a
+    // hundred .ts/.tsx files when this was written.
+    expect(scanned.length).toBeGreaterThan(80)
+    expect(scanned).toContain('App.tsx')
+    expect(scanned).toContain('document-settings-command.ts')
+    const holders = scanned.filter((entry) => /'zh-Hans'/.test(fs.readFileSync(path.join(sourceDir, entry), 'utf8')))
+    expect(holders).toEqual([])
+    // And the two consumers read the authority rather than merely not spelling
+    // it — "holds no copy" is satisfied vacuously by a file that uses no tags
+    // at all, so the positive half is asserted too.
+    const app = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+    const factory = fs.readFileSync(path.join(sourceDir, 'document-settings-command.ts'), 'utf8')
+    expect(app).toContain('LOCALE_TAGS')
+    expect(factory).toMatch(/^import type \{ LocaleTag \} from '\.\/engine-protocol'$/m)
+    // And the Go side holds exactly one spelling too: the tag literal appears
+    // only as the right-hand side of its constant, never in closedLocales or
+    // LocaleTags, which are both built from the constants. Null-safe, so a
+    // literal that has been RENAMED reports what is missing instead of
+    // "expected null to have length 1".
+    expect(go.match(/"zh-Hans"/g) ?? []).toEqual(['"zh-Hans"'])
+  })
+
+  it('turns a one-sided edit of the set red', () => {
+    const driftedGo = go.replace(/^\tLocaleJA     = "ja"$/m, '\tLocaleJA     = "ja-JP"')
+    expect(driftedGo).not.toBe(go)
+    expect(goLocaleTags(driftedGo)).not.toEqual(tsLocaleTags(ts))
+    const driftedTs = ts.replace(/^export const LOCALE_TAGS = \[([^\]]*)\] as const$/m, "export const LOCALE_TAGS = ['en', 'th', 'zh-Hans'] as const")
+    expect(driftedTs).not.toBe(ts)
+    expect(tsLocaleTags(driftedTs)).not.toEqual(goLocaleTags(go))
   })
 })

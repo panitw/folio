@@ -337,8 +337,22 @@ type CanvasImagePaint struct {
 const maxCanvasBindingString = 256
 
 type CanvasProjection struct {
-	Width         int64             `json:"width"`
-	Height        int64             `json:"height"`
+	Width  int64 `json:"width"`
+	Height int64 `json:"height"`
+	// Locale and UTCOffset are the DOCUMENT's two declared formatting
+	// authorities (Story 12.2), projected so the panel can show what the
+	// engine holds instead of a default of its own. Both are top-level
+	// document fields, both are REQUIRED at load, and neither is derived
+	// here: Locale is one of AD-12's four tags and UTCOffset is the
+	// loader's ±HH:MM string, carried verbatim.
+	//
+	// NEITHER CARRIES omitempty, and that is a protocol requirement rather
+	// than a style: TestCanvasProjectionWireKeysAreTheRecordedSet marshals
+	// the ZERO CanvasProjection as well as a real one and demands the same
+	// key set from both, because a key that appears only sometimes is a key
+	// the browser's guard rejects only sometimes.
+	Locale        string            `json:"locale"`
+	UTCOffset     string            `json:"utcOffset"`
 	Orientation   string            `json:"orientation"`
 	Preset        string            `json:"preset"`
 	MarginTop     int64             `json:"marginTop"`
@@ -813,7 +827,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,

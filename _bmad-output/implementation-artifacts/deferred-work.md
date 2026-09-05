@@ -8889,6 +8889,8 @@ The caller at `:1043-1045` wraps every refusal from `applyPropertyChanges` as `c
 
 **What discharges it.** An engine-side batch that applies an ordered list of commands all-or-nothing and pushes one undo entry, red-proved by a list whose last member is refused and asserting the document is byte-identical to its pre-image — not merely that the refusal was reported.
 
+**RE-PRICED AT STORY 12.2's REVIEW (2026-09-05). Severity LOW -> MEDIUM.** The clause above asked for this at 12.2's *plan* gate and I missed it there; recording that rather than back-dating it. **12.2 does commit `locale` and `utcOffset` through this same button**, so the gesture now carries **up to five commands** — locale, UTC offset, page-header height, page-footer height, page setup — against the two it carried when this was priced LOW. Every one is individually atomic and the sequence still stops at the first refusal, so the *likely* failure still leaves the document unchanged. What widened is the residue: **an accepted `setDocumentLocale` now stands when any of the four commands behind it is refused**, and a locale is a document-wide formatting change, not a single band's height — the author sees one located refusal and every date in the document already reformatted. That is a more visible residue than 12.1's, which is why the severity moves even though the mechanism did not. **What discharges it is unchanged**, and the batch primitive still discharges 12.1's and 12.2's versions together.
+
 ### DW-207 — `npx tsc --noEmit` is a vacuous gate, and it has been the stated typecheck in story dispatches
 
 - source_spec: `_bmad-output/implementation-artifacts/12-1-the-page-header-and-page-footer-take-the-height-the-author-s.md`
@@ -8946,5 +8948,60 @@ test does not discharge it** — that converts an unverified guarantee into an u
 
 **Related:** [[DW-193]] (the suite never runs in CI, which is why this was invisible), and the Epic 16
 boundary gate, which carried it rather than repairing it.
+
+---
+
+### DW-209 — `parseUTCOffsetMinutes` admits a signed hour or minute field, and it is recorded rather than repaired
+
+- source_spec: `_bmad-output/implementation-artifacts/12-2-the-document-declares-its-locale-and-its-utc-offset.md`
+- **Deferred by:** Story 12.2's review (2026-09-05), confirmed by the engineering lead as the correct call, not merely tolerated.
+- **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN
+
+**What is true.** `parseUTCOffsetMinutes` guards with `hh > 23 || mm > 59` and reads both fields with `strconv.Atoi`, which accepts a leading sign. So `"++7:00"`, `"+-7:00"`, `"+00:-1"` and `"+07:+0"` parse rather than erroring. The function's own test file declares them in `utcOffsetEvaluatorLaxity`, deliberately kept **separate** from `utcOffsetAsymmetry`.
+
+**Why recorded and not repaired, and why that separation is the load-bearing part.** Both populations that reach this function are already gated upstream — the RFC 3339 data path by `rfc3339Pattern`'s capture, the document path by `IsUTCOffset` — so no reachable input exercises it. It is also **the harmless direction: the evaluator is laxer than the loader**, which cannot produce a document that loads and then fails to render; the reverse direction is what Story 12.2 existed to close. D-12.C authorised exactly one edit to this function (its doc comment) and forbade touching `Z`; repairing an unrequested behaviour in a function that also serves report data would have been scope creep into the one function the story was told to leave alone. **Keeping the laxity list separate from the asymmetry list is what makes deferring it safe** — it preserves `Z` as the single declared *semantic* asymmetry between the two doors instead of letting four unreachable parse quirks dilute that claim.
+
+**What discharges it.** `hh < 0 || mm < 0` added to the guard, which deletes the exemption map and its essay — plus a test proving the four strings now error. Cheap; it waits only because nothing reaches it.
+
+---
+
+### DW-210 — the command path is proved to reach the renderer for `en` and `th` only, never `ja` or `zh-Hans`
+
+- source_spec: `_bmad-output/implementation-artifacts/12-2-the-document-declares-its-locale-and-its-utc-offset.md`
+- **Deferred by:** Story 12.2's review (2026-09-05). **Severity:** LOW. **Status:** OPEN
+
+**What is covered and what is not.** `formatlocale_test.go` renders all four locales end to end and gates on their outputs differing, so **the renderer is proved for four tags**. Story 12.2 adds `TestSetDocumentLocaleChangesWhatTheRendererDraws`, which proves a *command* reaches the formatter — but only for `en -> th`, where the Buddhist-era year does the discriminating work. `ja` and `zh-Hans` appear in the mirror, the guard, the factory and the command tests, and at **no** render assertion reached through a command.
+
+**Why it is real and why it is LOW.** A locale-blind fallback confined to the command path would pass every test this story added. It is LOW because the renderer half is independently proved, the command writes one string with no per-tag branch, and `ja` and `zh-Hans` are byte-identical in output by construction (they share `zhHansMonthNames`), so the two are hard to discriminate from each other in any case.
+
+**Also true of the designer half, and worth stating once:** every TypeScript assertion in 12.2 runs against a hand-rolled engine fake — `App.test.tsx` never executes `isCanvas` or `parseInbound` — and the only place designer-authored bytes meet the real engine is `browser_roundtrip_witness_test.go`, which skips unless `FOLIO_ROUNDTRIP_DIR` is set by the deferred Playwright run. See [[DW-193]].
+
+**What discharges it.** One command-to-render assertion for `zh-Hans`, discriminating against `en` rather than against `ja`.
+
+---
+
+### DW-211 — nothing observes that a document command marks the preview stale
+
+- source_spec: `_bmad-output/implementation-artifacts/12-2-the-document-declares-its-locale-and-its-utc-offset.md`
+- **Deferred by:** Story 12.2's review (2026-09-05). **Pre-existing pattern, extended by this story to the call site where it matters most.** **Severity:** MEDIUM. **Status:** OPEN
+
+**What is true.** `applyPageSetup` calls `invalidatePreview()` at three sites when the revision moves — the document-settings arm, the band-height arm and the `pageSetup` call. **No test observes any of the three.** The staleness assertions in `App.test.tsx` are all driven by `identity`/`render` operations in preview mode; none issues a document command. `preview-authority-contract.test.ts` is a source-text scan and never runs the code.
+
+**Why 12.2 makes it acute rather than merely inheriting it.** `locale` and `utcOffset` are precisely the two fields that change what `formatDate` and `formatNumber` draw — a Go test exists solely to show the glyphs change. Delete the `invalidatePreview()` call in the new arm and a rendered preview stays labelled *current* while showing English Gregorian dates for a document that now declares `th`. **A stale preview that announces itself as fresh is the failure mode Story 5.11 exists to prevent**, and this is the change that makes it reachable by a control rather than by a file edit.
+
+**What discharges it.** One test per call site: drive the existing preview harness to a current preview, apply the change, assert the stale control returns.
+
+---
+
+### DW-212 — `tsc -b` does not typecheck `e2e/` either, so the suite is neither compiled locally nor ever executed
+
+- source_spec: `_bmad-output/implementation-artifacts/12-2-the-document-declares-its-locale-and-its-utc-offset.md`
+- **Deferred by:** Story 12.2's plan gate (2026-09-05). **Surfaced, not caused, by 12.2.** **Severity:** MEDIUM. **Status:** OPEN
+
+**What is true.** `folio-designer/tsconfig.json` is a solution file referencing only `tsconfig.app.json` (`include: ["src"]`) and `tsconfig.node.json` (`include: ["vite.config.ts"]`). **`tsconfig.e2e.json` is referenced by neither**, so `npm run typecheck` / `npx tsc -b` never looks at `e2e/`. CI compiles it in a separate step, and `playwright test` appears in no workflow.
+
+**Why it is more than a config nit.** Combined with [[DW-193]], the e2e suite is **inert in both directions**: not type-checked by the gate a developer runs, and not executed by CI. Fifteen spec files read as coverage and produce no outcome at all. A change that breaks an e2e spec is invisible locally, and a change that breaks what an e2e spec *asserts* is invisible everywhere. This is the same shape as [[DW-207]] — a gate whose green means less than its name — and it was found the same way, by checking what the gate's population actually is rather than trusting the command's name.
+
+**What discharges it.** Adding `tsconfig.e2e.json` to the solution's `references` (making the local gate cover it), and separately, whatever discharges [[DW-193]]. The first is cheap and does not depend on the second.
 
 ---

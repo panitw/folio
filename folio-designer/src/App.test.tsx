@@ -7,7 +7,7 @@ import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
-import type { CanvasProjection } from './engine-protocol'
+import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { catalogueFaces } from './generated/font-catalogue'
@@ -149,7 +149,7 @@ const declaredOptions = () => {
   return group ? within(group).queryAllByRole('option') : []
 }
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
 
@@ -1550,6 +1550,253 @@ describe('application shell', () => {
     await act(async () => { releaseBandHeight?.({ snapshot: snapshot(2) }) })
     // One band height, one page setup, and nothing from the two extra presses.
     expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(2)
+  })
+
+  // -------------------------------------------------------------------------
+  // STORY 12.2: THE DOCUMENT LOCALE AND UTC OFFSET ROWS.
+  //
+  // `locale` and `utcOffset` had no writer anywhere in the product, and were
+  // not even projected. These tests are about the two rows that now write them,
+  // and each asks the same question of itself as 12.1's: what would have to
+  // change for this to fail? A bare "a document-settings command was sent"
+  // passes just as happily with the two commands crossed.
+
+  it('shows the engine\'s own locale and offset, and offers exactly the four tags', () => {
+    render(<App engine={engine()} initialSnapshot={snapshot(1)} />)
+    // FROM THE PROJECTION AND FROM NOTHING ELSE. The fixture declares `en` and
+    // `+07:00`; a default of `en`/`+00:00` in the panel would agree with the
+    // first and disagree with the second, which is why they differ here.
+    expect(screen.getByRole('combobox', { name: 'Document locale' })).toHaveValue('en')
+    expect(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' })).toHaveValue('+07:00')
+    // THE OPTIONS ARE AD-12'S CLOSED SET, and the assertion is exact in both
+    // directions: a fifth option is as wrong as a missing fourth, because the
+    // panel may only propose values the loader will accept.
+    const options = within(screen.getByRole('combobox', { name: 'Document locale' })).getAllByRole('option')
+    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual([...LOCALE_TAGS])
+    // The VISIBLE text is the tag itself, not a display name: the `.folio` file
+    // says `zh-Hans`, and a display-name map would be a fifth artifact keyed by
+    // the tag set, needing a tie of its own.
+    expect(options.map((option) => option.textContent)).toEqual([...LOCALE_TAGS])
+  })
+
+  it('does not assert a locale for a document that has said nothing', () => {
+    // NO CANVAS. `draftFor(undefined)` seeds `locale: ''`, and no tag option
+    // carries that value — so without the disabled placeholder the browser
+    // paints the FIRST option and the control reads `en` for a document that
+    // does not exist.
+    //
+    // WHAT WOULD HAVE TO CHANGE FOR THIS TO FAIL: delete the placeholder from
+    // PageSetup. Nothing else in the suite would notice, because the BEHAVIOUR
+    // is already safe here — Apply is disabled and applyPageSetup returns early
+    // — so no command assertion can see it. That is exactly why the display
+    // needs its own test: this is Story 17.3's defect (a control showing a
+    // default the document never chose) wearing a select instead of a number.
+    render(<App engine={engine()} />)
+    const locale = screen.getByRole('combobox', { name: 'Document locale' })
+    expect(locale).toHaveValue('')
+    expect(locale).not.toHaveValue('en')
+    // The placeholder exists, is first, and cannot be chosen — a selectable
+    // placeholder would let the author propose `''`, which the loader refuses.
+    const options = within(locale).getAllByRole('option')
+    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual(['', ...LOCALE_TAGS])
+    expect((options[0] as HTMLOptionElement).disabled).toBe(true)
+    // And the offset row shows emptiness rather than a fabricated `+00:00`.
+    expect(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' })).toHaveValue('')
+  })
+
+  it('sends exactly the locale command when only the locale changed', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'th' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    // PINNED TO THE BYTE. "A locale command was sent" passes with the two rows
+    // crossed, and with a tag the panel invented.
+    expect(sent[0]).toBe('{"kind":"setDocumentLocale","version":1,"locale":"th"}')
+    // AND NO OFFSET COMMAND AT ALL: the offset row was not touched, so it is
+    // worth no command, no round trip and no history entry.
+    expect(sent.some((command) => command.includes('setDocumentUTCOffset'))).toBe(false)
+    expect(sent[1]).toContain('"kind":"pageSetup"')
+  })
+
+  it('sends exactly the offset command when only the offset changed', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' }), { target: { value: '+09:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    expect(sent[0]).toBe('{"kind":"setDocumentUTCOffset","version":1,"utcOffset":"+09:00"}')
+    expect(sent.some((command) => command.includes('setDocumentLocale'))).toBe(false)
+    expect(sent[1]).toContain('"kind":"pageSetup"')
+  })
+
+  it('sends both, locale first, when both rows changed', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'ja' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' }), { target: { value: '+09:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    // TWO COMMANDS, ONE FIELD EACH, in order — and both pinned, because a
+    // single arm carrying both fields is exactly the shape Story 15.2a forbids
+    // and the shape "a command was sent" cannot distinguish.
+    expect(sent[0]).toBe('{"kind":"setDocumentLocale","version":1,"locale":"ja"}')
+    expect(sent[1]).toBe('{"kind":"setDocumentUTCOffset","version":1,"utcOffset":"+09:00"}')
+    expect(sent[2]).toContain('"kind":"pageSetup"')
+  })
+
+  it('sends no document-settings command at all when only a margin changed', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const only = new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])
+    expect(only).toContain('"kind":"pageSetup"')
+    expect(only).not.toContain('setDocument')
+  })
+
+  it('re-selecting the locale already in force sends nothing', async () => {
+    // The projection says `en`; selecting `en` again is not a change. The
+    // comparison is between two strings the ENGINE spelled, so an untouched row
+    // is byte-equal by construction.
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'en' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toContain('"kind":"pageSetup"')
+  })
+
+  it('renders the engine\'s own located offset refusal, never the fixed page-setup sentence', async () => {
+    // NO BROWSER-SIDE VALIDATION (Story 17.4 item 9, D-12.B). ±HH:MM is the
+    // engine's rule — one predicate its loader and its command door share
+    // (D-12.C) — so the panel sends `+99:99`, the engine refuses it in its own
+    // words, and the existing role="alert" path prints those words. Routing it
+    // through pageSetupDiagnostic instead would throw the sentence away and
+    // print one about size and margins, neither of which the author touched.
+    const refusal = 'utcOffset must match ±HH:MM'
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? Promise.reject(Object.assign(new Error(refusal), { dataPath: 'utcOffset' }))
+      : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' }), { target: { value: '+99:99' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(`utcOffset: ${refusal}`))
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Page setup is invalid. Check the selected size and margins.')
+    // THE SEQUENCE STOPPED at the first refusal: the band heights and the
+    // pageSetup command that would have followed were never sent, so the
+    // document is wholly unchanged.
+    expect(request).toHaveBeenCalledOnce()
+    // AND THE REFUSED VALUE STAYS IN THE BOX exactly as typed. A panel that
+    // restored the projected offset would show the author a value they did not
+    // enter beside a refusal about the one they did.
+    expect(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' })).toHaveValue('+99:99')
+    expect(screen.getByRole('textbox', { name: 'Top margin (pt)' })).toHaveValue('37')
+  })
+
+  it('abandons the rest of an Apply when the document is replaced while a locale command is in flight', async () => {
+    // THE GENERATION GUARD, ON THE NEW ARM. `abandons the rest of an Apply when
+    // the document is replaced mid-sequence` above does this for the BAND-HEIGHT
+    // loop — but it changes only a header height and a margin, so the
+    // document-settings loop `continue`s past both rows without ever awaiting,
+    // and the new arm's own generation re-check is never executed by it.
+    //
+    // Here the hang is on setDocumentLocale, so the replacement lands while the
+    // FIRST await of the sequence is outstanding. Deleting the new arm's
+    // `if (documentGeneration.current !== requestDocument) return` reddens this.
+    let releaseLocale: ((value: unknown) => void) | undefined
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'undo') return Promise.resolve({ snapshot: { ...snapshot(9), canUndo: false } })
+      if (operation !== 'command') return Promise.resolve({ snapshot: snapshot(1) })
+      if (new TextDecoder().decode(payload as ArrayBuffer).includes('setDocumentLocale')) return new Promise((resolve) => { releaseLocale = resolve })
+      return Promise.resolve({ snapshot: snapshot(3) })
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ ...snapshot(1), canUndo: true }} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'th' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' }), { target: { value: '+09:00' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page header height (pt)' }), { target: { value: '80' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(releaseLocale).toBeDefined())
+    // The document is replaced while the locale command is still in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled())
+    await act(async () => { releaseLocale?.({ snapshot: snapshot(2) }) })
+    const commands = request.mock.calls.filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload as ArrayBuffer))
+    // NOTHING AFTER THE LOCALE WAS SENT — not the offset, not the band height,
+    // not the pageSetup. Without the guard all four would have landed on a
+    // document the author has already left, carrying values read from one that
+    // is gone.
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toContain('setDocumentLocale')
+  })
+
+  it('keeps the typed margin standing when a locale is accepted and the page setup that follows is refused', async () => {
+    // keepNewerDraft ON THE NEW ARM. The band loop's
+    // `setCurrentSnapshot(result.snapshot, true)` is pinned by `keeps the typed
+    // margin standing when a band height is accepted…` above; the
+    // document-settings loop passes the same `true` and nothing pinned it.
+    //
+    // The locale command is ACCEPTED, so a snapshot comes back and is installed
+    // MID-GESTURE; the pageSetup that follows is then REFUSED. If that install
+    // reseeded the drafts, the margin the author typed — and the tag they
+    // picked — would be wiped out of their controls by a command that never
+    // carried the margin at all. Flipping that `true` to `false` reddens this.
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation !== 'command') return Promise.resolve({ snapshot: snapshot(1) })
+      return new TextDecoder().decode(payload as ArrayBuffer).includes('setDocumentLocale')
+        ? Promise.resolve({ snapshot: snapshot(2) })
+        : Promise.reject(new Error('the engine said something about page setup'))
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'th' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    // The PAGE-SETUP sentence, because the second half of the gesture is a
+    // pageSetup command and pageSetupDiagnostic has no engine message to show
+    // for an unlocated rejection.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Page setup is invalid. Check the selected size and margins.'))
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('textbox', { name: 'Top margin (pt)' })).toHaveValue('37')
+    expect(screen.getByRole('combobox', { name: 'Document locale' })).toHaveValue('th')
+  })
+
+  it('gives every numeric page-setup row the numeric keypad and the offset row none', () => {
+    // Field's `inputMode` DEFAULT, asserted. Story 12.2 turned a hardcoded
+    // `inputMode="decimal"` into a prop defaulting to 'decimal' so the offset
+    // row — a `±HH:MM` string — could opt out. That comment makes a claim about
+    // six other rows, and nothing checked it: flipping the default to 'text'
+    // changes all six silently, and flipping the offset row to 'decimal' hands
+    // an author a keypad with no `+`, `-` or `:` on it.
+    render(<App engine={engine()} initialSnapshot={{ ...snapshot(1), canvas: { ...canvas, preset: 'custom' as const } }} />)
+    const numeric = ['Width (pt)', 'Height (pt)', 'Top margin (pt)', 'Right margin (pt)', 'Bottom margin (pt)', 'Left margin (pt)', 'Page header height (pt)', 'Page footer height (pt)']
+    // Non-vacuity: every row named above must actually be on screen, or the
+    // loop asserts nothing about the ones that are missing.
+    for (const label of numeric) expect(screen.getByRole('textbox', { name: label })).toHaveAttribute('inputmode', 'decimal')
+    expect(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' })).not.toHaveAttribute('inputmode', 'decimal')
+  })
+
+  it('renders the engine\'s own located locale refusal and stops before the offset command', async () => {
+    const refusal = 'locale must be one of en, th, zh-Hans, ja (AD-12)'
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? Promise.reject(Object.assign(new Error(refusal), { dataPath: 'locale' }))
+      : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Document locale' }), { target: { value: 'th' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' }), { target: { value: '+09:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(`locale: ${refusal}`))
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Page setup is invalid. Check the selected size and margins.')
+    // THE OFFSET COMMAND WAS NEVER SENT. A sequence that carried on would apply
+    // half a gesture to a document whose first half was refused.
+    expect(request).toHaveBeenCalledOnce()
+    expect(screen.getByRole('combobox', { name: 'Document locale' })).toHaveValue('th')
+    expect(screen.getByRole('textbox', { name: 'UTC offset (±HH:MM)' })).toHaveValue('+09:00')
   })
 
   it('keeps component drafts local, sends exactly one Enter/Blur commit, and locates a Go diagnostic', async () => {

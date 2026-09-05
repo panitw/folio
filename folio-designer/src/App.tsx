@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import { CAPPING_BANDS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type TableColumns } from './engine-protocol'
+import { CAPPING_BANDS, LOCALE_TAGS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -11,6 +11,7 @@ import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
+import { documentLocaleCommand, documentUTCOffsetCommand } from './document-settings-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { FontBrowser } from './FontBrowser'
@@ -741,14 +742,24 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
     if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, snapEnabled))
   }
-  // STORY 12.1: APPLY IS NOW A SEQUENCE, AND ITS TWO HALVES REFUSE DIFFERENTLY.
+  // STORY 12.1, WIDENED BY 12.2: APPLY IS A SEQUENCE, AND ITS HALVES REFUSE
+  // DIFFERENTLY.
   //
-  // The band heights are sent FIRST, as component commands, and the sequence
-  // stops at the first refusal — so the common failure leaves the document
-  // wholly unchanged. The residue is disclosed rather than designed away: a
-  // band height that is ACCEPTED before a page setup that is then refused
-  // stands. Each command is individually atomic, which is what the engine
-  // guarantees; this gesture is not, and nothing here claims it is.
+  // THE ORDER IS: the two DOCUMENT-SETTINGS commands (locale, then utcOffset),
+  // then the two BAND HEIGHTS, then the pageSetup command. The first four are
+  // component commands and refuse LOCATED, through componentDiagnostic; the
+  // last is a page-setup command and refuses through pageSetupDiagnostic's
+  // fixed sentence. The sequence stops at the first refusal, so the common
+  // failure leaves the document wholly unchanged.
+  //
+  // THE RESIDUE IS DISCLOSED RATHER THAN DESIGNED AWAY, and Story 12.2 makes it
+  // WIDER rather than narrower, so the disclosure is widened with it: any
+  // command of this sequence that is ACCEPTED before a later one is REFUSED
+  // STANDS. Concretely — a `setDocumentLocale` that lands stays landed when the
+  // offset, a band height, or the pageSetup that follows is refused; a band
+  // height that lands stays landed when the pageSetup is refused. Each command
+  // is individually atomic, which is what the engine guarantees; this gesture
+  // is not, and nothing here claims it is.
   //
   // A ROW IS SENT ONLY WHEN IT DIFFERS FROM THE PROJECTED VALUE, and that is
   // not an optimisation. Re-sending a band height that has not changed is not
@@ -759,17 +770,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // comparison is two strings, both of them the engine's own spelling of its
   // own numbers; it is not a layout computation and it is not a bound.
   //
-  // A REFUSAL FROM A BAND-HEIGHT COMMAND GOES THROUGH componentDiagnostic,
-  // never pageSetupDiagnostic: the latter discards the engine's message for
-  // anything not carrying PAGE_SETUP_INVALID, and the engine's own located
-  // sentence — the height it refused, the element it would have stranded — is
-  // the entire point of refusing at the command door.
+  // A REFUSAL FROM ANY OF THE FOUR COMPONENT COMMANDS GOES THROUGH
+  // componentDiagnostic, never pageSetupDiagnostic: the latter discards the
+  // engine's message for anything not carrying PAGE_SETUP_INVALID, and the
+  // engine's own located sentence — the height it refused and the element it
+  // would have stranded, or the field and the legal values for a locale or an
+  // offset — is the entire point of refusing at the command door.
   //
   // AND BECAUSE IT IS NOW A SEQUENCE, IT IS GUARDED LIKE ONE. Before Story 12.1
   // this function awaited once and its `!engine || !canvas || fileBusy` test was
   // taken once, which was the whole of the check it needed. It now awaits up to
-  // three times with the Apply button live throughout, so between two of those
-  // awaits the author can open a file, start a blank template, or undo — every
+  // FIVE times — locale, utcOffset, the two band heights, pageSetup (Story 12.1
+  // made it three; 12.2 added the first two) — with the Apply button live
+  // throughout, so between any two of those awaits the author can open a file,
+  // start a blank template, or undo — every
   // one of which REPLACES the document and advances documentGeneration — or
   // simply press Apply again. Neither must be able to land a later command of
   // this sequence on a document that is no longer the one the drafts were read
@@ -784,6 +798,39 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const requestDocument = documentGeneration.current
     pageSetupInFlight.current = true
     try {
+      // THE TWO DOCUMENT-SETTINGS ROWS GO FIRST, before the band heights and
+      // before the pageSetup command, for the same reason the band heights go
+      // before pageSetup: the sequence stops at the first refusal, so the
+      // cheapest and most independent writes are attempted first and a common
+      // refusal leaves the document wholly unchanged.
+      //
+      // ONE COMMAND PER CHANGED ROW, and NOTHING for a row the author left
+      // alone. Both comparisons are between two strings the ENGINE spelled —
+      // the draft was seeded from the projection and nothing here rewrites it —
+      // so an untouched row is byte-equal by construction and is worth no
+      // command, no round trip and no history entry. Nothing here validates:
+      // AD-12's closed set and ±HH:MM are the engine's rules, asked through one
+      // exported predicate each, and a refusal arrives located on `locale` or
+      // `utcOffset` and is rendered by componentDiagnostic — never by
+      // pageSetupDiagnostic, which would discard the engine's sentence and
+      // print one about size and margins that the author never touched.
+      for (const [typed, projected, build] of [
+        [draft.locale, canvas.locale, () => documentLocaleCommand(draft.locale as LocaleTag)],
+        [draft.utcOffset, canvas.utcOffset, () => documentUTCOffsetCommand(draft.utcOffset)],
+      ] as ReadonlyArray<readonly [string, string, () => ArrayBuffer]>) {
+        if (typed === projected) continue
+        const priorRevision = snapshotRef.current?.revision
+        let result
+        try {
+          result = await engine.request('command', build())
+        } catch (error) { if (documentGeneration.current === requestDocument) setCommitError(componentDiagnostic(error)); return }
+        if (documentGeneration.current !== requestDocument) return
+        if (result.snapshot.revision !== priorRevision) invalidatePreview()
+        // Mid-gesture, so the drafts are KEPT: the margins and heights the
+        // author typed have not been sent yet and must not be wiped out of
+        // their boxes by a snapshot from a command that never carried them.
+        setCurrentSnapshot(result.snapshot, true)
+      }
       for (const band of CAPPING_BANDS) {
         const projected = projectedBandHeight(canvas, band)
         const typed = draft[band]
@@ -1680,7 +1727,7 @@ function scanJSONValue(raw: string, cursor: number): number | undefined {
 }
 
 function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraft, onApply, disabled }: { preset: string; orientation: string; draft: Draft; onPreset: (value: string) => void; onOrientation: (value: string) => void; onDraft: (key: keyof Draft, value: string) => void; onApply: () => void; disabled: boolean }) {
-  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/>{draft.pageHeader !== undefined && <Field label="Page header height (pt)" value={draft.pageHeader} onChange={(value) => onDraft('pageHeader', value)}/>}{draft.pageFooter !== undefined && <Field label="Page footer height (pt)" value={draft.pageFooter} onChange={(value) => onDraft('pageFooter', value)}/>}<button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences; document undo is available in the document bar.</p></>
+  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label><label>Locale<select aria-label="Document locale" value={draft.locale} onChange={(event) => onDraft('locale', event.target.value)}>{draft.locale === '' && <option value="" disabled>Not set</option>}{LOCALE_TAGS.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label><Field label="UTC offset (±HH:MM)" value={draft.utcOffset} inputMode="text" onChange={(value) => onDraft('utcOffset', value)}/>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/>{draft.pageHeader !== undefined && <Field label="Page header height (pt)" value={draft.pageHeader} onChange={(value) => onDraft('pageHeader', value)}/>}{draft.pageFooter !== undefined && <Field label="Page footer height (pt)" value={draft.pageFooter} onChange={(value) => onDraft('pageFooter', value)}/>}<button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences; document undo is available in the document bar.</p></>
 }
 
 type PanelComponent = CanvasProjection['components'][number]
@@ -2970,7 +3017,25 @@ function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, er
 // THEY ARE OPTIONAL because a band the projection does not carry has no height
 // to seed a row from, and `0` is a legal-looking height rather than an absence.
 // Absent means the row is not shown and nothing is sent for it.
-type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string; pageHeader?: string; pageFooter?: string }
+// `locale` and `utcOffset` are the DOCUMENT's two declared formatting
+// authorities (Story 12.2), and they are REQUIRED rather than optional: unlike
+// the two band keys above, every projection carries both — the loader refuses a
+// document that declares neither — so an absent one is a channel fault, not a
+// row that has nothing to show. They are strings like every other member here,
+// including the locale, which the <select> constrains to LOCALE_TAGS at the
+// point it is offered rather than by a type this record could rotate.
+// THE EMPTY-LOCALE PLACEHOLDER IS NOT COSMETIC. `draftFor(undefined)` seeds
+// `locale: ''`, and no tag option carries that value — so without the disabled
+// `Not set` option the browser paints the FIRST option while React's value is
+// `''`, and the panel asserts `en` for a document that has said nothing. The
+// behaviour was already safe (Apply is disabled and applyPageSetup returns
+// early), which is exactly what made it easy to leave: a control that shows a
+// plausible wrong value in a state it can reach is Story 17.3's defect wearing
+// a select instead of a number field. `locale === ''` iff there is no canvas —
+// the select can only emit a LOCALE_TAGS member and the placeholder is
+// disabled — but the label says `Not set` rather than `No document` so it stays
+// honest if a later change makes the empty draft reachable some other way.
+type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string; locale: string; utcOffset: string; pageHeader?: string; pageFooter?: string }
 // The height the ENGINE says a band has, or `undefined` when the projection
 // carries no such band. It is read off the projection and never measured, and
 // it is the only number the difference test in applyPageSetup compares a draft
@@ -2978,10 +3043,18 @@ type Draft = { width: string; height: string; top: string; right: string; bottom
 // left alone and send a band-height command built on a number nobody projected.
 function projectedBandHeight(canvas: CanvasProjection, band: CappingBand): number | undefined { return canvas.bands.find((candidate) => candidate.name === band)?.height }
 function bandDraft(canvas: CanvasProjection, band: CappingBand): string | undefined { const height = projectedBandHeight(canvas, band); return height === undefined ? undefined : points(height) }
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode="decimal" value={value} onChange={(event) => onChange(event.target.value)} /></label> }
+// `inputMode` DEFAULTS to 'decimal' and is a prop rather than a second
+// component: every row this panel had before Story 12.2 is a number and must
+// keep the numeric keypad, and the UTC offset is a `±HH:MM` string that must
+// not get one. Duplicating Field to change one attribute would have put two
+// nearly identical rows in the census that counts them. App.test.tsx asserts
+// the split — every numeric row still carries inputMode="decimal" and the
+// offset row does not — because flipping this default is otherwise a silent
+// six-row change.
+function Field({ label, value, inputMode = 'decimal', onChange }: { label: string; value: string; inputMode?: 'decimal' | 'text'; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)} /></label> }
 function bandName(name: CanvasProjection['bands'][number]['name']): string { return name === 'pageHeader' ? 'Page Header' : name === 'pageFooter' ? 'Page Footer' : 'Content' }
 function points(value: number): string { const negative = value < 0; const magnitude = Math.abs(value); const whole = Math.floor(magnitude / 1000); const fraction = String(magnitude % 1000).padStart(3, '0').replace(/0+$/, ''); return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}` }
-function draftFor(canvas?: CanvasProjection): Draft { return canvas ? { width: points(canvas.commandWidth), height: points(canvas.commandHeight), top: points(canvas.marginTop), right: points(canvas.marginRight), bottom: points(canvas.marginBottom), left: points(canvas.marginLeft), pageHeader: bandDraft(canvas, 'pageHeader'), pageFooter: bandDraft(canvas, 'pageFooter') } : { width: '', height: '', top: '', right: '', bottom: '', left: '' } }
+function draftFor(canvas?: CanvasProjection): Draft { return canvas ? { width: points(canvas.commandWidth), height: points(canvas.commandHeight), top: points(canvas.marginTop), right: points(canvas.marginRight), bottom: points(canvas.marginBottom), left: points(canvas.marginLeft), locale: canvas.locale, utcOffset: canvas.utcOffset, pageHeader: bandDraft(canvas, 'pageHeader'), pageFooter: bandDraft(canvas, 'pageFooter') } : { width: '', height: '', top: '', right: '', bottom: '', left: '', locale: '', utcOffset: '' } }
 // The canvas has one deliberately lossy display rounding rule. It maps only
 // Go-owned millipoints plus local zoom; viewport, DPR, font metrics and DOM
 // geometry are not inputs to painting or hit/drag proposals.

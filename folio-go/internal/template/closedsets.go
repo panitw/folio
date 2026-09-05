@@ -173,5 +173,65 @@ var closedFooterKinds = map[string]bool{
 	"sum": true, "count": true, "avg": true,
 }
 
-// utcOffsetPattern is ±HH:MM (AC5).
-var utcOffsetPattern = regexp.MustCompile(`^[+-][0-9]{2}:[0-9]{2}$`)
+// UTCOffsetSyntax is the ONE spelling of what `utcOffset` must look
+// like. The loader's own refusal and the command door's both render it
+// (parse.go, component_commands.go's setDocumentUTCOffset), so the
+// sentence the author reads cannot drift from the pattern below by a
+// re-typing. The phrase comes from folio-format.md's own
+// `utcOffset` row in the top-level field table: "utcOffset | Fixed
+// offset, ±HH:MM." (Cited by NAME rather than by line: this story
+// edits that file, and a line number a story's own edit can move is
+// the failure mode D-12.C.4's generalisation names.)
+const UTCOffsetSyntax = "±HH:MM"
+
+// utcOffsetPattern is ±HH:MM (AC5), AND IT ENFORCES THE RANGE (D-12.C).
+//
+// It used to be `^[+-][0-9]{2}:[0-9]{2}$`, which admitted `+99:99` — a
+// value no clock has and internal/expr's parseUTCOffsetMinutes then
+// refused, so the document LOADED and every formatDate in it failed at
+// render with `expr: invalid UTC offset "+99:99"`. D-12.C ruled that
+// repairing this is implementing folio-format.md's `utcOffset`
+// field-table row rather than
+// narrowing it: `+99:99` is not a fixed offset, and the format's
+// compatibility rules are recorded as explicitly undefined pending a
+// policy (SPEC.md's open-questions list; epics.md's NFR6).
+//
+// NOTHING REAL IS EXCLUDED (D-12.C.3): measured over every `.folio`
+// file `git ls-files --others --cached` reports — 31 of them — 24
+// declare `+00:00`, 7 declare `+07:00`, and ZERO are excluded by the
+// repair. D-12.C's own table says 28/21/7; that was a smaller
+// population (tracked files only), not a different answer.
+//
+// HH is an hour (00–23) and MM a minute (00–59), so `+24:00` is refused
+// too.
+//
+// `Z` IS NOT ADMITTED HERE, ON ONE GROUND: it is not `±HH:MM`.
+// folio-format.md's `utcOffset` field-table row states the field's
+// syntax and `Z` does not match
+// it, so excluding it IMPLEMENTS the format exactly as excluding
+// `+99:99` does. `Z` is RFC 3339's UTC spelling and belongs to report
+// DATA, where internal/expr's parseUTCOffsetMinutes serves it (D-12.C).
+//
+// `-00:00` IS ADMITTED, and the contrast is worth naming because it
+// looks like an inconsistency and is not: `-00:00` IS `±HH:MM` and `Z`
+// is not. Syntax is the whole test. (An earlier draft of this comment
+// argued `Z` out on the ground that a second byte spelling of one
+// semantic offset is a hazard in a byte-identity product. D-12.C.4
+// WITHDRAWS that argument: it proves too much — it would condemn
+// `-00:00`, and so the very pattern D-12.C ruled correct — and it was
+// never true here anyway, because values travel VERBATIM. The
+// serializer normalises no offset, so `-00:00` round-trips as
+// `-00:00`; a canonicalization hazard needs a canonicalizer, and this
+// product has none.)
+var utcOffsetPattern = regexp.MustCompile(`^[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]$`)
+
+// IsUTCOffset reports whether s is a legal `utcOffset` — the SINGLE
+// predicate both doors ask. The loader calls it (parse.go) and so does
+// the command path (component_commands.go's setDocumentUTCOffset),
+// under the same obligation and for the same reason as IsStyleAlign and
+// IsLocale: a command whose accept-set differs from the loader's, in
+// either direction, is a document the engine can stamp and then refuse
+// to reopen — or a value the file admits and the panel cannot restate.
+//
+// D-12.C: command and loader agree BY CONSTRUCTION, not by care.
+func IsUTCOffset(s string) bool { return utcOffsetPattern.MatchString(s) }

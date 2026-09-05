@@ -40,6 +40,18 @@ const (
 	pageSetupCommandPath = "page.setup"
 )
 
+// documentLocalePath and documentUTCOffsetPath are the DataPaths the two
+// document-settings refusals carry. Each command names no element and no band —
+// it writes ONE top-level document field — so ElementID stays empty and the
+// path is the field's own name, which is also the key parse.go's own load error
+// locates. Unlike bandHeightPath and fontChainPath they need no bound: nothing
+// from the wire is interpolated into them, so neither can arrive at the host's
+// 256-byte DataPath cut.
+const (
+	documentLocalePath    = "locale"
+	documentUTCOffsetPath = "utcOffset"
+)
+
 // EACH DOOR'S REFUSAL CARRIES ITS OWN DIAGNOSTIC CODE, and the two are reached
 // by different machinery at the host.
 //
@@ -274,6 +286,10 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return applyFontChainCommand(t, raw, embedFontFamily)
 	case "setBandHeight":
 		return setBandHeight(t, raw)
+	case "setDocumentLocale":
+		return setDocumentLocale(t, raw)
+	case "setDocumentUTCOffset":
+		return setDocumentUTCOffset(t, raw)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -2308,6 +2324,105 @@ func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	updated, err := Canvas(t)
 	if err != nil {
 		band.Height = previous
+		return CanvasProjection{}, err
+	}
+	return updated, nil
+}
+
+// ---------------------------------------------------------------------------
+// STORY 12.2: THE DOCUMENT'S LOCALE AND ITS UTC OFFSET, AS COMMANDS.
+//
+// Document.Locale and Document.UTCOffset had a loader, two consumers (render.go's
+// two expr.NewFormatContext sites) and NO WRITER: every author who wanted Thai
+// dates hand-edited the file the designer had just saved. These are the writers.
+//
+// TWO FIELDS, TWO ARMS, ONE FIELD EACH (Story 15.2a: a command names exactly
+// what it changes). setBandHeight carries a `band` discriminator because a band
+// is one field on three interchangeable structures; `locale` and `utcOffset`
+// are two independent top-level fields with no shared shape and no shared
+// validation, so a single arm would have to branch its DataPath and could
+// refuse a good locale because of a bad offset. Two arms give each refusal a
+// fixed DataPath and no discriminator to rotate. The seven font-chain arms are
+// the shipped precedent for one document-level structure served by several
+// narrowly-named commands.
+//
+// THERE IS NO BACKSTOP HERE, AND THAT IS THE ASYMMETRY WITH STORY 12.1.
+// Canvas(t) reads neither Locale nor UTCOffset — all of its refusal sites are
+// geometry, component or font-chain checks — so the trailing Canvas(t) call
+// that caught a content-window violation on its own in 12.1 catches nothing at
+// all here. THE ARM'S OWN VALIDATION IS THE ONLY REFUSAL before the wasm
+// layer's reparse: a validation gap in this arm is not a locatedness
+// regression, it is an unrefused write.
+
+// setDocumentLocale is the only writer of Document.Locale outside the loader.
+//
+// It validates through template.IsLocale — the SAME predicate parse.go asks —
+// rather than against a second copy of AD-12's four tags, and derives the
+// legal-value list in its refusal from template.LocaleTags, exactly as
+// updateComponentProperties derives its align refusal from StyleAlignTokens. A
+// command stricter or looser than its loader is a document the engine can stamp
+// and then refuse to reopen.
+func setDocumentLocale(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 3); err != nil {
+		return CanvasProjection{}, err
+	}
+	// commandString refuses a missing key, a non-string and the empty string in
+	// one call, and its plain error is re-phrased here so the refusal is LOCATED
+	// on the field the author has to change.
+	tag, err := commandString(raw, documentLocalePath)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", documentLocalePath, "locale must be a non-empty string")
+	}
+	if !template.IsLocale(tag) {
+		return CanvasProjection{}, componentFailure("", documentLocalePath, fmt.Sprintf("locale must be one of %s (AD-12)", strings.Join(template.LocaleTags, ", ")))
+	}
+	// Atomic on ONE field: the previous value is held, the new one written, and
+	// the projection decides whether it stands. Nothing else in the document has
+	// been touched by the time this line runs, so a restored value restores the
+	// document byte for byte. UTCOffset is not read and not written here.
+	previous := t.doc.Locale
+	t.doc.Locale = tag
+	updated, err := Canvas(t)
+	if err != nil {
+		t.doc.Locale = previous
+		return CanvasProjection{}, err
+	}
+	return updated, nil
+}
+
+// setDocumentUTCOffset is the only writer of Document.UTCOffset outside the
+// loader.
+//
+// It validates through template.IsUTCOffset — the SAME predicate parse.go asks
+// — and renders template.UTCOffsetSyntax rather than re-typing the ±HH:MM
+// phrase, so the sentence the author reads and the pattern that refused them
+// cannot drift apart.
+//
+// D-12.C IS WHY THIS IS A ONE-LINE REUSE RATHER THAN A RANGE CHECK OF ITS OWN.
+// The loader's pattern used to admit `+99:99`, which internal/expr then refused
+// at render, and the fork — command reuses a loose predicate, command is
+// stricter than its loader, or the loader is repaired — was dissolved by
+// repairing the loader. The command is therefore not stricter than the file
+// door and not looser: it is the same predicate, and they agree by construction
+// rather than by care.
+func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 3); err != nil {
+		return CanvasProjection{}, err
+	}
+	offset, err := commandString(raw, documentUTCOffsetPath)
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", documentUTCOffsetPath, "utcOffset must be a non-empty string")
+	}
+	if !template.IsUTCOffset(offset) {
+		return CanvasProjection{}, componentFailure("", documentUTCOffsetPath, fmt.Sprintf("utcOffset must match %s", template.UTCOffsetSyntax))
+	}
+	// Atomic on ONE field, exactly as the locale arm is. Locale is not read and
+	// not written here.
+	previous := t.doc.UTCOffset
+	t.doc.UTCOffset = offset
+	updated, err := Canvas(t)
+	if err != nil {
+		t.doc.UTCOffset = previous
 		return CanvasProjection{}, err
 	}
 	return updated, nil

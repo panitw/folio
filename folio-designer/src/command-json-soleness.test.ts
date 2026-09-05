@@ -92,7 +92,10 @@ describe('command JSON has exactly one author', () => {
     // BY NAME, and page-setup-command.ts by name in particular: it was the one
     // encoder with no escaping and no test file at all, so "the scan found
     // nothing" must not be able to mean "the scan never looked at it".
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts']
+    // THIS LIST IS SPELLED TWICE IN THIS FILE — here and in the sibling test
+    // below — and BOTH must move together: a factory added to only one of them
+    // is scanned but never named, and the other test's check never looks at it.
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts']
     for (const factory of factories) {
       expect(productionFiles).toContain(factory)
       expect(fs.readFileSync(path.join(sourceDir, factory), 'utf8')).toContain(`from './${AUTHORITY.replace(/\.ts$/, '')}'`)
@@ -110,7 +113,10 @@ describe('command JSON has exactly one author', () => {
     //
     // `\bString\(` does not match `jsonString(`: there is no word boundary
     // between `n` and `S`. The mutation cases below prove both directions.
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts']
+    // THE SECOND SPELLING OF THE SAME LIST (see the test above). BOTH must
+    // move together: a factory added only to the list above is never reached by
+    // the `\bString(` check below, and this file goes on reporting no offenders.
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts', 'document-settings-command.ts']
     const offenders = factories.filter((factory) => /\bString\(/.test(withoutLineComments(fs.readFileSync(path.join(sourceDir, factory), 'utf8'))))
     expect(offenders).toEqual([])
     // Non-vacuity in both directions, because a regexp that matched nothing

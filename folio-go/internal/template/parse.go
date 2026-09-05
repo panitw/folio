@@ -82,8 +82,16 @@ func ParseDocument(b []byte) (*Document, error) {
 		if err != nil {
 			return nil, newLoadError("locale", "", string(raw), "must be a string: "+err.Error())
 		}
-		if !closedLocales[s] {
-			return nil, newLoadError("locale", "", s, "not one of the closed set en, th, zh-Hans, ja (AD-12)")
+		if !IsLocale(s) {
+			// DERIVED, NEVER HAND-WRITTEN (Story 12.2). The tail used to be a
+			// literal listing the four tags, which made this the SECOND place
+			// the closed set was spelled for an author to read — the command
+			// door derives its own list from LocaleTags, and a set that gained
+			// or lost a member would have shipped two refusals disagreeing
+			// about what is legal. closedSetMessage over LocaleTags produces
+			// byte-identical output to the literal it replaced, so no test and
+			// no golden moves.
+			return nil, newLoadError("locale", "", s, closedSetMessage(LocaleTags)+" (AD-12)")
 		}
 		doc.Locale = s
 	} else {
@@ -97,8 +105,8 @@ func ParseDocument(b []byte) (*Document, error) {
 		if err != nil {
 			return nil, newLoadError("utcOffset", "", string(raw), "must be a string: "+err.Error())
 		}
-		if !utcOffsetPattern.MatchString(s) {
-			return nil, newLoadError("utcOffset", "", s, "must match ±HH:MM")
+		if !IsUTCOffset(s) {
+			return nil, newLoadError("utcOffset", "", s, "must match "+UTCOffsetSyntax)
 		}
 		doc.UTCOffset = s
 	} else {

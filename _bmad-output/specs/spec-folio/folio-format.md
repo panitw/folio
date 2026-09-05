@@ -91,6 +91,41 @@ Top-level keys appear sorted, as does every object in the file — that is the s
 > references still declares whatever its other content requires: an unreferenced asset rides through
 > a `1.x` reader as ordinary passthrough and renders correctly, so raising it would orphan a
 > document from readers that can in fact read it.
+>
+> **A THIRD NON-EVENT: TIGHTENING THE `utcOffset` LOADER TAKES NO INCREMENT (Story 12.2, D-12.C /
+> D-12.C.1).** The loader's pattern was `^[+-][0-9]{2}:[0-9]{2}$` and admitted `+99:99`, which the
+> evaluator then refused at render — so the file opened, saved, and drew no dates at all. It has
+> been tightened to the `±HH:MM` the field table above already specifies, and **no version increment
+> was taken.**
+>
+> Three grounds, in order of force. **(i) `utcOffset` is not one of the nine closed sets the MINOR
+> rule enumerates above** — it is a pattern-constrained string, so the closed-set clause never
+> reached it. **(ii) D-7.3.1's pre-reader test asks what an OLDER reader does with a NEWER document,
+> and narrowing produces no new documents** — only a stricter reader, a direction the rule is silent
+> in. **(iii) The document already records the governing principle**, in the `SupportedMajor` note
+> below: *"Making the reader stricter about `2.0` documents is not a version trigger … version
+> describes the document, never the writer."* What this case adds is only that the principle covers
+> a **pattern-constrained string** as well as a missing-record rule, and that this particular
+> tightening excluded nothing real. **Measured at this tree, over every `.folio` file `git ls-files
+> --others --cached` reports (31: the 25 golden fixtures, the starter template, the designer's
+> generated runtime and built copy, the Go example, and two deliberately malformed testdata files):
+> 24 declare `+00:00`, 7 declare `+07:00`, and ZERO are excluded by the repair.** (D-12.C's own
+> table says 28/21/7, counted over the golden corpus alone; the wider walk here reaches the same
+> conclusion with three more files.) The only documents the repair excludes are ones whose every
+> `formatDate` already fails at render.
+>
+> **And an independent proof that reaches the same answer.** The `SupportedMajor` note below records
+> that a bump *"would also make every document declare `3.0`, including the twenty-two fixtures that
+> make no font choice at all, moving their bytes and their goldens for a reason unrelated to
+> fonts."* Story 12.2's own acceptance forbids a golden hash from moving, so **taking an increment
+> would have failed that story on its own gate** — by a mechanism entirely separate from the
+> closed-set clause, and one that holds even if every argument about that clause had gone the other
+> way.
+>
+> The owner ruling this rests on is recorded **twice, independently**: as D-7.8.3 in the decision
+> log, and again in the `SupportedMajor` note below — *"Folio is unreleased; the format may be
+> broken (owner ruling, 2026-09-02), and breaking is free now and expensive after
+> `folio-go/v0.1.0`."* Both are cited here so the next reader finds whichever they reach first.
 
 ### Alignment is three closed sets, partitioned by consumer
 

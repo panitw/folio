@@ -43,3 +43,34 @@ func TestLocaleTagsExactOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestIsLocaleMatchesLocaleTags ties the EXPORTED PREDICATE to the set
+// it claims to read, on TestClosedLocalesMatchesLocaleTags' shape and
+// with the same presence precondition. IsLocale is the one authority
+// the loader (parse.go) and the command door
+// (component_commands.go's setDocumentLocale) both ask, and a
+// predicate nothing ties can drift from the set it claims to read —
+// silently, because both callers would agree with each other while
+// disagreeing with LocaleTags, which is what the refusal messages are
+// derived from.
+func TestIsLocaleMatchesLocaleTags(t *testing.T) {
+	if len(LocaleTags) == 0 {
+		t.Fatal("presence precondition (D-000.9): LocaleTags is empty")
+	}
+	for _, tag := range LocaleTags {
+		if !IsLocale(tag) {
+			t.Errorf("IsLocale(%q) = false, but %q is in LocaleTags", tag, tag)
+		}
+	}
+	// The other direction, which the loop above cannot state: a
+	// predicate that simply returned true would satisfy every row of
+	// it. `fr` and `EN` are near-misses rather than nonsense — a
+	// legitimate BCP-47 tag outside AD-12's set, and a case variant of
+	// a member — because those are the two shapes a widened predicate
+	// would let through first.
+	for _, tag := range []string{"", "fr", "EN", "th-TH", "zh-Hant", "en ", " en"} {
+		if IsLocale(tag) {
+			t.Errorf("IsLocale(%q) = true, but %q is not in LocaleTags %v", tag, tag, LocaleTags)
+		}
+	}
+}

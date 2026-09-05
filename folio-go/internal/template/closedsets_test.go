@@ -1,6 +1,7 @@
 package template
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -548,5 +549,147 @@ func assertLocatedTableAlignRefusal(t *testing.T, err error, field string) {
 	}
 	if strings.Contains(msg, AlignJustify+",") || strings.Contains(msg, ", "+AlignJustify) {
 		t.Errorf("the refusal must not name justify among the legal values for a table, got: %s", msg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// STORY 12.2 / D-12.C: THE OFFSET'S ONE PREDICATE, AND THE GAP IT CLOSES.
+
+// utcOffsetProbes is the shared candidate table. Both tests below read
+// it, so the predicate tie and the loader tie cannot disagree about
+// what the answer is supposed to be — which is the whole point of
+// having one predicate.
+//
+// THE OUT-OF-RANGE ROWS ARE IN THE REFUSE COLUMN BY RULING (D-12.C).
+// `+99:99` and `+24:00` are not fixed offsets, folio-format.md's `utcOffset`
+// field-table row says it is a fixed offset spelled ±HH:MM, and the repaired
+// pattern implements that rather than narrowing it — 0 of the 31
+// `.folio` files in the corpus is excluded (D-12.C.3; D-12.C's own
+// table says 28, a smaller population, not a different answer).
+//
+// THIS TABLE IS READ BY THE COMMAND DOOR'S TEST TOO. `package folio`'s
+// document_settings_command_test.go extracts these rows out of this
+// file's SOURCE TEXT and drives setDocumentUTCOffset with them, so a
+// row added here reaches the command door without an edit there. That
+// is the repo's own idiom for a fixture two packages must share
+// (canvas_projection_wire_test.go reads engine-protocol.ts the same
+// way); the alternative — a second list beside the command test — is
+// exactly the clerical drift that lets one door be probed over a
+// strictly smaller set than the door it claims to match.
+//
+// `Z` is refused HERE and admitted by internal/expr's
+// parseUTCOffsetMinutes; that asymmetry is deliberate, is the one
+// expected one, and is asserted with its reason at
+// internal/expr/offset_divergence_test.go.
+var utcOffsetProbes = []struct {
+	value string
+	admit bool
+	why   string
+}{
+	{"+00:00", true, "UTC, the corpus's own commonest value (24 of the 31 .folio files, D-12.C.3)"},
+	{"-00:00", true, "negative zero is a legal spelling of the same offset and the format does not forbid it"},
+	{"+07:00", true, "Bangkok; the corpus's only other value (7 of the 31 .folio files, D-12.C.3)"},
+	{"-05:30", true, "a half-hour offset, negative"},
+	{"+14:00", true, "Kiritimati, the largest real offset"},
+	{"-12:00", true, "the smallest real offset"},
+	{"+23:59", true, "the last value HH:MM can spell"},
+	{"+99:99", false, "D-12.C: no clock has it; it LOADED before Story 12.2 and then failed at render"},
+	{"+24:00", false, "HH is an hour; 24 is not one"},
+	{"+00:60", false, "MM is a minute; 60 is not one"},
+	{"Z", false, "it is not ±HH:MM, the syntax folio-format.md's `utcOffset` field-table row states; it is RFC 3339's UTC spelling and belongs to report DATA (D-12.C). That is the whole ground — -00:00 above is admitted because it IS ±HH:MM, and the two rows differ by syntax and nothing else (D-12.C.4)"},
+	{"+7:00", false, "one hour digit"},
+	{"+0700", false, "no colon"},
+	{"07:00", false, "no sign"},
+	{"", false, "absent is a different refusal; empty is this one"},
+	{"+07:00 ", false, "trailing space"},
+	{" +07:00", false, "leading space"},
+	{"+07:0a", false, "a non-digit where a digit must be"},
+}
+
+// TestIsUTCOffsetMatchesTheLoader ties the EXPORTED PREDICATE to the
+// loader that consumes it, on TestClosedLocalesMatchesLocaleTags'
+// shape. IsUTCOffset is the one authority the loader (parse.go) and the
+// command door (component_commands.go's setDocumentUTCOffset) both ask,
+// and a predicate nothing ties can drift from the rule it claims to
+// enforce — silently, because both callers would agree with each other.
+func TestIsUTCOffsetMatchesTheLoader(t *testing.T) {
+	if len(utcOffsetProbes) == 0 {
+		t.Fatal("presence precondition (D-000.9): the probe table is empty")
+	}
+	// Non-vacuity in BOTH directions, so a predicate stuck at true or at
+	// false cannot pass this file.
+	admits, refuses := 0, 0
+	for _, probe := range utcOffsetProbes {
+		if probe.admit {
+			admits++
+		} else {
+			refuses++
+		}
+		if IsUTCOffset(probe.value) != probe.admit {
+			t.Errorf("IsUTCOffset(%q) = %v, want %v — %s", probe.value, !probe.admit, probe.admit, probe.why)
+		}
+	}
+	if admits == 0 || refuses == 0 {
+		t.Fatalf("the probe table has %d admit rows and %d refuse rows; both must be non-zero", admits, refuses)
+	}
+	// AND THE PHRASE, spelled once. The loader's refusal renders it and
+	// so does the command's, so a re-typing here is the drift the
+	// constant exists to prevent.
+	if UTCOffsetSyntax != "±HH:MM" {
+		t.Errorf("UTCOffsetSyntax = %q, want ±HH:MM — folio-format.md's own utcOffset field-table row", UTCOffsetSyntax)
+	}
+}
+
+// TestUTCOffsetLoadRefusalIsReachableAndLocated is D-12.C's RED-PROOF,
+// and it is deliberately about REACHABILITY rather than about the
+// regexp. A test asserting only that the pattern rejects `+99:99`
+// proves the pattern changed; it does not prove the defect closed.
+//
+// The defect: before Story 12.2 a document declaring `"+99:99"` LOADED,
+// and every formatDate in it then failed at render with
+// `expr: invalid UTC offset "+99:99"` — a refusal the author reached
+// only by rendering, attributed to nothing they could see. It must now
+// be refused AT LOAD, with the field named.
+func TestUTCOffsetLoadRefusalIsReachableAndLocated(t *testing.T) {
+	base := string(minimalDocWithElements(nil, 1))
+	// The fixture precondition, stated rather than assumed: the
+	// unmodified document LOADS, so a refusal below is attributable to
+	// the offset and not to the fixture.
+	if _, err := ParseDocument([]byte(base)); err != nil {
+		t.Fatalf("fixture precondition: the base document must load: %v", err)
+	}
+	for _, probe := range utcOffsetProbes {
+		t.Run(probe.value, func(t *testing.T) {
+			bad := strings.Replace(base, `"utcOffset": "+00:00",`, `"utcOffset": "`+probe.value+`",`, 1)
+			// The one row where the substitution is legitimately a
+			// no-op is the base document's own value; every other row
+			// must actually have changed the bytes, or it would be
+			// measuring the fixture instead of the probe.
+			if bad == base && probe.value != "+00:00" {
+				t.Fatal("fixture substitution did not match anything")
+			}
+			_, err := ParseDocument([]byte(bad))
+			if probe.admit {
+				if err != nil {
+					// +00:00 substituted for itself is a no-op and is
+					// the one row that cannot reach here.
+					t.Fatalf("the loader refused %q, which IsUTCOffset admits: %v — the two doors have drifted", probe.value, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("the loader ADMITTED %q — %s", probe.value, probe.why)
+			}
+			var loadErr *LoadError
+			if !errors.As(err, &loadErr) {
+				t.Fatalf("refusal for %q is %T (%v), want a *LoadError naming the field", probe.value, err, err)
+			}
+			if loadErr.Field != "utcOffset" {
+				t.Fatalf("refusal for %q names field %q, want utcOffset — an unlocated refusal is the gap this test exists for", probe.value, loadErr.Field)
+			}
+			if !strings.Contains(loadErr.Reason, UTCOffsetSyntax) {
+				t.Fatalf("refusal for %q reads %q, want it to carry %s", probe.value, loadErr.Reason, UTCOffsetSyntax)
+			}
+		})
 	}
 }

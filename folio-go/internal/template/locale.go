@@ -45,3 +45,17 @@ var LocaleTags = []string{LocaleEN, LocaleTH, LocaleZhHans, LocaleJA}
 var closedLocales = map[string]bool{
 	LocaleEN: true, LocaleTH: true, LocaleZhHans: true, LocaleJA: true,
 }
+
+// IsLocale reports whether s is a member of AD-12's closed locale set.
+// Exported for the COMMAND path (component_commands.go's
+// setDocumentLocale), which writes Document.Locale from a command and
+// must validate it against the same single source the loader does
+// rather than against a second literal — the obligation IsStyleAlign
+// and IsTableStyleAlign already carry, for the same reason and in the
+// same shape. Without it the designer's engine could stamp a document
+// with a tag the loader would then refuse to reopen, and the refusal
+// would arrive one save later with nothing to attribute it to.
+//
+// parse.go calls this too, so the load door and the command door are
+// ONE implementation, not two callers of two copies.
+func IsLocale(s string) bool { return closedLocales[s] }

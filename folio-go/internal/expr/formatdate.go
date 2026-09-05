@@ -20,10 +20,38 @@ var rfc3339Pattern = regexp.MustCompile(
 )
 
 // parseUTCOffsetMinutes parses "Z" or "±HH:MM" into a signed minute
-// count. Used both for a document's own required `utcOffset` field
-// (already syntax-checked at load, internal/template/parse.go) and
-// for an RFC 3339 string's own embedded offset (checked here, since
-// Parse/Check never see report data).
+// count.
+//
+// ONE FUNCTION, TWO POPULATIONS, AND IT ADMITS THE UNION OF WHAT ITS
+// TWO CALLERS NEED (D-12.C):
+//
+//   - the DOCUMENT's own required `utcOffset` field — the call in
+//     evalFormatDate, which passes fc.UTCOffset — which IS
+//     syntax-checked at load, by internal/template's IsUTCOffset — and
+//     which, since Story 12.2, is range-checked there too. The claim
+//     used to be made here and was FALSE: template's pattern was
+//     `^[+-][0-9]{2}:[0-9]{2}$`, so `+99:99` loaded and then failed
+//     HERE, at render, for every formatDate in the document. This
+//     comment is what made that gap invisible; it became true with
+//     Story 12.2's repair of the loader's predicate, and D-000.10
+//     applies to accurate-SOUNDING comments as much as to stale
+//     rulings. The check below stays anyway: Canvas(t) reads no
+//     UTCOffset (D-12.1), so there is no backstop, and a redundant
+//     check INSIDE one package is cheap — what this project refuses is
+//     a redundant check across an authority boundary.
+//   - an RFC 3339 string's own embedded offset — the two calls that pass
+//     m[8], in ParseRFC3339 and instantMsFromValue — which is
+//     report DATA and is checked only here, since Parse/Check never
+//     see it.
+//
+// "Z" IS FOR THE SECOND CALLER AND IS NOT A DIVERGENCE. It is RFC
+// 3339's canonical UTC spelling and the data path requires it; the
+// document field refuses it on one ground — it is not `±HH:MM`, the
+// syntax folio-format.md's `utcOffset` field-table row states
+// (D-12.C). Nothing
+// about byte identity is involved: template's own pattern admits
+// `-00:00` as readily as `+00:00`, and offsets travel verbatim. The tie
+// in offset_divergence_test.go asserts exactly that asymmetry, by name.
 func parseUTCOffsetMinutes(s string) (int, error) {
 	if s == "Z" {
 		return 0, nil

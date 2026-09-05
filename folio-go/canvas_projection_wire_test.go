@@ -59,12 +59,14 @@ var canvasProjectionWireKeys = []string{
 	"fontFamilies",
 	"gridIncrement",
 	"height",
+	"locale",
 	"marginBottom",
 	"marginLeft",
 	"marginRight",
 	"marginTop",
 	"orientation",
 	"preset",
+	"utcOffset",
 	"width",
 }
 

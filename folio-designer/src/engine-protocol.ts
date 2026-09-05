@@ -91,6 +91,33 @@ export const MAX_LINE_SPACING_THOUSANDTHS = 1000000
 // canvas blank — with no element id and no attributable error.
 export const BANDS_CAPPING_VERTICALLY = ['pageHeader', 'pageFooter']
 
+// AD-12's CLOSED LOCALE SET, ONCE — the same discipline, for the same reason,
+// on a different invariant.
+//
+// Go spells each of these four tags EXACTLY ONCE, as the right-hand side of a
+// named constant in `folio-go/internal/template/locale.go`, and builds both
+// `LocaleTags` and `closedLocales` from those constants so the set cannot drift
+// by a spelling mistake. This is the browser's single spelling of the same set,
+// tied to Go's by `engine-bounds-mirror.test.ts` on the same idiom the band
+// list uses — it resolves Go's named constants before comparing, so
+// `[]string{LocaleEN, LocaleTH, …}` and `['en', 'th', …]` are compared as the
+// same CLAIM rather than as the same text.
+//
+// EVERYTHING ON THIS SIDE READS THIS ARRAY: the isCanvas guard's typed clause,
+// the panel's <option> list, and the command factory's parameter type. A tag
+// written out anywhere else would be a fourth spelling standing outside that
+// census, which is the only place a stale copy can hide — and the cost of a
+// stale copy here is the cost of every other one: isCanvas returns false,
+// parseInbound returns undefined, the worker is terminated and the canvas is
+// permanently blank with nothing to attribute it to.
+//
+// A FIFTH TAG IS NOT ADDED HERE. Widening the set is a MAJOR change under
+// folio-format.md's MINOR-increment rule — every existing library validates it as a load error —
+// so it is Go's decision and an owner's, and it reaches this file through the
+// mirror rather than by an edit that starts here.
+export const LOCALE_TAGS = ['en', 'th', 'zh-Hans', 'ja'] as const
+export type LocaleTag = (typeof LOCALE_TAGS)[number]
+
 // THE SAME LIST, ONCE AS A TYPE AND ONCE AS AN ARRAY A CALLER MAY ITERATE —
 // and neither of them is a second copy of it.
 //
@@ -149,6 +176,14 @@ export type EngineSnapshot = Readonly<{
 // millipoints and are never used to derive a browser document layout.
 export type CanvasProjection = Readonly<{
 	width: number; height: number; orientation: 'portrait' | 'landscape'; preset: 'A4' | 'Letter' | 'custom'
+	// The DOCUMENT's two declared formatting authorities (Story 12.2). `locale`
+	// is one of AD-12's four tags and decides how every formatDate and
+	// formatNumber in the document renders — including the Buddhist-era year
+	// under `th`; `utcOffset` is the ±HH:MM string those dates are resolved in.
+	// Both come from Go and neither is defaulted, derived or validated here: the
+	// panel shows what the engine holds, proposes what the author typed, and
+	// lets the engine refuse it in the engine's own sentence.
+	locale: LocaleTag; utcOffset: string
 	marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; gridIncrement: number; commandWidth: number; commandHeight: number
 	// contentWindowHeight is ONE page's worth of content column, and
 	// contentWindowCount is how many of those windows the column occupies —
@@ -292,7 +327,24 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  // THE TWO DOCUMENT-SETTINGS CLAUSES ARE LOAD-BEARING, and `hasOnly` above
+  // cannot stand in for them: it is a SUBSET check, so a key Go simply failed
+  // to send passes it and reaches the panel as `undefined` — a locale row with
+  // no value and an offset row that would send the string "undefined" back.
+  // Only a typed clause catches an ABSENT key, which is the failure this story
+  // could otherwise ship in silence.
+  //
+  // `locale` is checked against LOCALE_TAGS, the browser's one spelling of
+  // AD-12's closed set, exactly as `preset` and `orientation` are checked
+  // against theirs on the line above. `utcOffset` is checked only for shape —
+  // a non-empty string within the projection's ordinary string bound. ITS
+  // GRAMMAR IS NOT RESTATED HERE: ±HH:MM is the engine's rule
+  // (template.IsUTCOffset, the one predicate the loader and the command door
+  // both ask), and a browser-side copy of it would be a second authority that
+  // could refuse a document Go admits.
+  if (!LOCALE_TAGS.includes(value.locale as LocaleTag)) return false
+  if (typeof value.utcOffset !== 'string' || value.utcOffset.length === 0 || value.utcOffset.length > MAX_CANVAS_PROPERTY_STRING) return false
   const integer = (key: string, positive = false) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && (positive ? value[key] > 0 : value[key] >= 0)
   if (!['width', 'height', 'gridIncrement', 'commandWidth', 'commandHeight', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount'].every((key) => integer(key, true)) || !['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].every((key) => integer(key))) return false
   // The declared font chain names, as Go sorted them: bounded in count and

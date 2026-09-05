@@ -1,14 +1,62 @@
 import { describe, expect, it } from 'vitest'
-import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_ENGINE_FONT_CHAIN_ENTRIES, MAX_ENGINE_FONT_FAMILIES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, LOCALE_TAGS, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_ENGINE_FONT_CHAIN_ENTRIES, MAX_ENGINE_FONT_FAMILIES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
 const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', locale: 'th', utcOffset: '+07:00', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
+  // STORY 12.2: THE DOCUMENT'S TWO DECLARED FORMATTING AUTHORITIES.
+  //
+  // The projection gained `locale` and `utcOffset` so the PAGE SETUP panel can
+  // show what the engine holds. `hasOnly` cannot carry them: it is a SUBSET
+  // check, so a key Go simply failed to send passes it and arrives at the panel
+  // as `undefined` — a locale row with no value, and an offset row that would
+  // send the string "undefined" straight back to the engine. THE ABSENCE CASES
+  // BELOW ARE THE ONLY THING THAT CATCHES THAT, and they are the failure this
+  // story could otherwise have shipped in silence.
+  it('requires both document-settings fields, and requires the locale to be one of AD-12\'s four tags', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    // The positive control first: the fixture as it stands is accepted, so
+    // every rejection below is attributable to the patch and not to the base.
+    expect(projection(canvas)).toBeDefined()
+    // EVERY TAG IN THE CLOSED SET IS ACCEPTED, enumerated from LOCALE_TAGS
+    // rather than written out again — a guard narrowed to one tag would blank
+    // the canvas for the documents this story exists to make authorable.
+    expect(LOCALE_TAGS.length).toBeGreaterThan(0)
+    for (const tag of LOCALE_TAGS) expect(projection({ ...canvas, locale: tag })).toBeDefined()
+    // ABSENT. Neither key can be caught by hasOnly.
+    const { locale: _locale, ...noLocale } = canvas
+    const { utcOffset: _offset, ...noOffset } = canvas
+    expect(projection(noLocale)).toBeUndefined()
+    expect(projection(noOffset)).toBeUndefined()
+    // ILLEGAL. A tag outside AD-12's set — one Go's loader would refuse — and
+    // an empty offset, which is what an emptied box would round-trip as if the
+    // engine ever echoed one back.
+    expect(projection({ ...canvas, locale: 'fr' })).toBeUndefined()
+    expect(projection({ ...canvas, locale: 'EN' })).toBeUndefined()
+    expect(projection({ ...canvas, locale: '' })).toBeUndefined()
+    expect(projection({ ...canvas, locale: 7 })).toBeUndefined()
+    expect(projection({ ...canvas, locale: null })).toBeUndefined()
+    expect(projection({ ...canvas, utcOffset: '' })).toBeUndefined()
+    expect(projection({ ...canvas, utcOffset: 7 })).toBeUndefined()
+    expect(projection({ ...canvas, utcOffset: null })).toBeUndefined()
+    expect(projection({ ...canvas, utcOffset: 'x'.repeat(MAX_CANVAS_PROPERTY_STRING + 1) })).toBeUndefined()
+    // AND THE OFFSET'S GRAMMAR IS NOT RESTATED HERE. ±HH:MM is the engine's
+    // rule, asked through the one predicate its loader and its command door
+    // share; a browser-side copy could refuse a snapshot Go legitimately sent,
+    // and the symptom would be a permanently blank canvas. So a value this side
+    // cannot judge is ACCEPTED on shape alone.
+    expect(projection({ ...canvas, utcOffset: '+99:99' })).toBeDefined()
+    expect(projection({ ...canvas, utcOffset: 'Z' })).toBeDefined()
+    // The extra-key direction, on the two new keys' own account: a THIRD
+    // document-settings key Go started sending drops the snapshot.
+    expect(projection({ ...canvas, timeZone: 'Asia/Bangkok' })).toBeUndefined()
+  })
+
   it('accepts and deeply freezes the exact three bounded bands', () => {
     const inbound = parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas } })
     expect(inbound).toBeDefined()
