@@ -4958,10 +4958,20 @@ into the format as its own story or dropped from the panel. `headerHeight`, `hea
 `style.border.edges` exist; "show header row" and a three-way border preset do **not**, and inventing
 a control the format cannot carry is how this epic's defects were made in the first place
 
-**Given** cell padding in this panel
-**When** it is edited
-**Then** it writes the table's `style.padding`, which the cell chrome already consumes — the one
-element kind for which padding is not in question (Story 12.4)
+> ~~**Given** cell padding in this panel · **When** it is edited · **Then** it writes the table's
+> `style.padding`, which the cell chrome already consumes — the one element kind for which padding is
+> not in question (Story 12.4)~~
+>
+> **STRUCK by D-12.4.1 and the owner's 14.8 decision above.** Found unstruck during Story 12.4's late
+> close, four stories after the ruling that killed it. **It survived because it is right about the
+> engine and wrong only about the panel** — padding on a table *is* still an accepted command, so
+> every clause here reads as true, and the single false premise is the unstated one: that the panel
+> should offer it. D-12.4.1 says the panel never authors padding, on a table or anywhere else.
+>
+> **This is DW-203's predicted failure mode, written down as an instruction.** A padding control
+> offered only when a table is selected would satisfy the engine's grant and red nothing — no gate in
+> the project would catch it, because the command it sends is legal. The only thing standing between
+> that defect and the tree was this paragraph, and it was still telling someone to build it.
 
 **Given** any section this story cannot back with a format field
 **When** the editor is shown
