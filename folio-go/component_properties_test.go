@@ -660,3 +660,345 @@ func TestAPropertyCommandCannotStampATableDocumentAt2_0(t *testing.T) {
 		t.Errorf("a justified TEXT element must still raise the document to 2.0 — narrowing by consumer is not a ban:\n%s", textBytes)
 	}
 }
+
+func serializedBytes(t *testing.T, tpl *Template) []byte {
+	t.Helper()
+	document, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document
+}
+
+// serializedPaddingEdges reads one element's style.padding back out of the
+// canonical bytes as edge -> points. A test that only compares whole
+// documents cannot see WHICH edge a command moved, and a key->edge map wired
+// to the wrong edge still moves a byte, so the read-back is the assertion
+// that matters. The edges come back as json.Number and are compared by their
+// canonical spelling: AD-23 bans binary floating point everywhere under the
+// module root, and arch_test.go's scanner reads the test files too.
+func serializedPaddingEdges(t *testing.T, document []byte, id string) map[string]json.Number {
+	t.Helper()
+	var doc struct {
+		Bands map[string]struct {
+			Elements []struct {
+				ID    string `json:"id"`
+				Style struct {
+					Padding map[string]json.Number `json:"padding"`
+				} `json:"style"`
+			} `json:"elements"`
+		} `json:"bands"`
+	}
+	if err := json.Unmarshal(document, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, band := range doc.Bands {
+		for _, element := range band.Elements {
+			if element.ID == id {
+				return element.Style.Padding
+			}
+		}
+	}
+	t.Fatalf("element %s is not in the document", id)
+	return nil
+}
+
+// subjectIDForKind names the element a property command is aimed at for one
+// kind: the shared fixture already carries a text (e1) and a table (e2), and
+// the remaining three kinds are created the way component_commands_test.go
+// does. The fixture is edited by other stories and byte-locked to
+// folio-format.md's worked example, so the two borrowed ids are CHECKED
+// rather than assumed — an e1 that stopped being a text would leave the
+// callers green while asserting nothing about a text element. Named for the
+// kind, not for padding: the box-key test uses it for background and the
+// three border keys, where no padding is involved.
+func subjectIDForKind(t *testing.T, tpl *Template, kind string) string {
+	t.Helper()
+	const fixture = "testdata/template/golden/worked-example.json"
+	borrowed := map[string]string{"text": "e1", "table": "e2"}[kind]
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if borrowed != "" {
+		for _, component := range before.Components {
+			if component.ID != borrowed {
+				continue
+			}
+			if component.Type != kind {
+				t.Fatalf("%s now holds %s as a %s, not a %s — this test would assert nothing about a %s", fixture, borrowed, component.Type, kind, kind)
+			}
+			return borrowed
+		}
+		t.Fatalf("%s no longer holds %s at all — this test would assert nothing about a %s", fixture, borrowed, kind)
+	}
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"`+kind+`","band":"content","x":12,"y":12,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatalf("create %s: %v", kind, err)
+	}
+	created := newProjectedComponent(t, before, projection)
+	if created.Type != kind {
+		t.Fatalf("createComponent %s produced a %s", kind, created.Type)
+	}
+	return created.ID
+}
+
+// D-12.4.1 (2026-09-05, epic-11-14-decision-log.md): style.padding stays an
+// ENGINE property — a loaded document keeps and round-trips it on any kind,
+// and renders it where a table's cell chrome consumes it — but the command
+// layer grants paddingTop/Right/Bottom/Left on ElementTable ALONE.
+// Four non-table kinds x four keys = the 16 refusals asserted here; the table
+// keeps all four. The full message is asserted, not the "not editable"
+// substring, because the unkeyed refusal a few lines above the located one
+// carries that substring too and a substring match cannot tell them apart.
+func TestPaddingPropertyCommandsAreGrantedOnATableAlone(t *testing.T) {
+	paddingKeys := []string{"paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	for _, kind := range []string{"text", "image", "table", "line", "rect"} {
+		for _, key := range paddingKeys {
+			tpl := componentTemplate(t)
+			id := subjectIDForKind(t, tpl, kind)
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, cmdErr := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+id+`"],"changes":{"`+key+`":{"op":"set","value":5}}}`))
+			after, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "table" {
+				if cmdErr != nil {
+					t.Fatalf("%s on a %s must still be accepted: %v", key, kind, cmdErr)
+				}
+				if bytes.Equal(before, after) {
+					t.Fatalf("%s on a %s was accepted but changed no canonical byte", key, kind)
+				}
+				// The command must land on the edge its key NAMES. Byte
+				// inequality alone is blind to a rotated key->edge map:
+				// every command would still move a byte, just the wrong
+				// one, and mis-inset table cells would ship green.
+				edge := map[string]string{"paddingTop": "top", "paddingRight": "right", "paddingBottom": "bottom", "paddingLeft": "left"}[key]
+				edges := serializedPaddingEdges(t, after, id)
+				if edges[edge].String() != "5" {
+					t.Fatalf("%s wrote the wrong edge: padding = %v, want %q = 5", key, edges, edge)
+				}
+				// The fixture authors e2 with left: 3 and right: 3. A
+				// command aimed at one edge must leave the others alone.
+				for authored, points := range map[string]string{"left": "3", "right": "3"} {
+					if authored == edge {
+						continue
+					}
+					if edges[authored].String() != points {
+						t.Fatalf("%s disturbed the authored %q edge: padding = %v, want %q = %v", key, authored, edges, authored, points)
+					}
+				}
+				continue
+			}
+			if cmdErr == nil {
+				t.Fatalf("%s on a %s was ACCEPTED; the command layer must refuse padding off a table (D-12.4.1)", key, kind)
+			}
+			var located *ComponentCommandError
+			if !errors.As(cmdErr, &located) {
+				t.Fatalf("%s on a %s: error is %T, want *ComponentCommandError", key, kind, cmdErr)
+			}
+			if want := "property " + key + " is not editable for " + kind; located.Message != want {
+				t.Errorf("%s on a %s: Message = %q, want %q", key, kind, located.Message, want)
+			}
+			if want := "component." + key; located.DataPath != want {
+				t.Errorf("%s on a %s: DataPath = %q, want %q", key, kind, located.DataPath, want)
+			}
+			if located.ElementID != id {
+				t.Errorf("%s on a %s: ElementID = %q, want %q", key, kind, located.ElementID, id)
+			}
+			if !bytes.Equal(before, after) {
+				t.Errorf("%s on a %s was refused but moved the canonical bytes:\n%s", key, kind, after)
+			}
+		}
+	}
+}
+
+// Both halves below are GREEN before the padding guard exists. They are here
+// because they are the two ways to implement it wrong.
+//
+//   - (a) would go red if the guard NARROWED the existing all-kinds
+//     disjunction instead of SPLITTING it: background and the three border
+//     keys would be stripped off the four non-table kinds along with padding.
+//   - (b) would go red if the guard keyed off the ELEMENT'S EXISTING STYLE
+//     rather than off the changes map: a text element already carrying
+//     style.padding would then be refused an unrelated `x` command, and the
+//     loaded-document half of D-12.4.1 would be gone.
+func TestPaddingGuardLeavesTheBoxKeysAndAnAlreadyLoadedPaddingAlone(t *testing.T) {
+	// (a) The four box keys the split does NOT move, on all five kinds.
+	for _, kind := range []string{"text", "image", "table", "line", "rect"} {
+		for _, box := range []struct{ key, change string }{
+			{"background", `{"op":"set","value":"#eeeeee"}`},
+			{"borderWidth", `{"op":"set","value":2}`},
+			{"borderColor", `{"op":"set","value":"#123456"}`},
+			{"borderEdges", `{"op":"set","value":["top"]}`},
+		} {
+			tpl := componentTemplate(t)
+			id := subjectIDForKind(t, tpl, kind)
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+id+`"],"changes":{"`+box.key+`":`+box.change+`}}`)); err != nil {
+				t.Fatalf("%s on a %s must remain editable on ALL FIVE kinds: %v", box.key, kind, err)
+			}
+			after, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Equal(before, after) {
+				t.Fatalf("%s on a %s was accepted but changed no canonical byte", box.key, kind)
+			}
+		}
+	}
+
+	// (b) A hand-authored document declaring style.padding on a TEXT element:
+	// it loads, it round-trips with the padding intact, it projects paddingTop
+	// onto the canvas, and it still accepts an unrelated property command with
+	// the padding surviving. The engine honours what it is given.
+	authored := []byte(`{"assets":{},"bands":{"content":{"elements":[{"id":"e1","type":"text","x":10,"y":10,"width":100,"height":20,"value":"hand authored","style":{"padding":{"top":4,"left":2}}}]},"pageFooter":{"elements":[],"height":40},"pageHeader":{"elements":[],"height":60}},"fonts":{},"locale":"en","nextId":2,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"1.0"}`)
+	tpl, err := ParseTemplate(authored)
+	if err != nil {
+		t.Fatalf("a text element carrying style.padding must still LOAD: %v", err)
+	}
+	roundTripped, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(roundTripped, []byte(`"top": 4`)) || !bytes.Contains(roundTripped, []byte(`"left": 2`)) {
+		t.Fatalf("the round trip dropped the authored padding:\n%s", roundTripped)
+	}
+	projection, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projected *CanvasComponent
+	for i := range projection.Components {
+		if projection.Components[i].ID == "e1" {
+			projected = &projection.Components[i]
+		}
+	}
+	if projected == nil {
+		t.Fatal("the authored text element did not project")
+	}
+	if projected.PaddingTop == nil || *projected.PaddingTop != 4000 {
+		t.Errorf("paddingTop projection = %v, want 4000 millipoints", projected.PaddingTop)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"x":{"op":"set","value":20}}}`)); err != nil {
+		t.Fatalf("an UNRELATED command on a padded text element must still be accepted: %v", err)
+	}
+	afterUnrelated, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(afterUnrelated, []byte(`"x": 20`)) {
+		t.Errorf("the unrelated command did not reach the canonical bytes:\n%s", afterUnrelated)
+	}
+	if !bytes.Contains(afterUnrelated, []byte(`"top": 4`)) || !bytes.Contains(afterUnrelated, []byte(`"left": 2`)) {
+		t.Errorf("the unrelated command dropped the authored padding:\n%s", afterUnrelated)
+	}
+}
+
+// A padding command is a padding command whatever its op, so D-12.4.1's
+// table-only grant is asserted across all three. Each arm below is MEASURED
+// behaviour, not a preference:
+//
+//   - `clear` and `null` on a non-table are refused by exactly the located
+//     refusal `set` gets. Refusing `clear` off a table is DELIBERATE, not an
+//     oversight: the designer neither authors padding nor clears it, so a
+//     document carrying dead padding on a text element is cleaned by
+//     hand-editing the file, never by command.
+//   - `clear` on a table is accepted, and clearing the last authored edge
+//     prunes `style.padding` away entirely (cleanupEmptyStyle) — a pruning
+//     path now reachable through a table alone, and unasserted before this.
+//   - `null` on a table still reaches padding's own pre-existing arm,
+//     `paddingLeft does not support null`. The new branch must not shadow it;
+//     that message quietly became the table-only refusal off a table, and
+//     nothing was pinning it.
+func TestPaddingCommandOpsFollowTheSameTableOnlyGrant(t *testing.T) {
+	for _, op := range []string{`{"op":"clear"}`, `{"op":"null"}`} {
+		tpl := componentTemplate(t)
+		id := subjectIDForKind(t, tpl, "text")
+		before := serializedBytes(t, tpl)
+		_, cmdErr := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+id+`"],"changes":{"paddingTop":`+op+`}}`))
+		if cmdErr == nil {
+			t.Fatalf("paddingTop %s on a text was ACCEPTED; every op is refused off a table (D-12.4.1)", op)
+		}
+		var located *ComponentCommandError
+		if !errors.As(cmdErr, &located) {
+			t.Fatalf("paddingTop %s on a text: error is %T, want *ComponentCommandError", op, cmdErr)
+		}
+		if want := "property paddingTop is not editable for text"; located.Message != want {
+			t.Errorf("paddingTop %s on a text: Message = %q, want %q", op, located.Message, want)
+		}
+		if want := "component.paddingTop"; located.DataPath != want {
+			t.Errorf("paddingTop %s on a text: DataPath = %q, want %q", op, located.DataPath, want)
+		}
+		if !bytes.Equal(before, serializedBytes(t, tpl)) {
+			t.Errorf("a refused paddingTop %s moved the canonical bytes", op)
+		}
+	}
+
+	nullTpl := componentTemplate(t)
+	nullID := subjectIDForKind(t, nullTpl, "table")
+	_, nullErr := ApplyComponentCommand(nullTpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+nullID+`"],"changes":{"paddingLeft":{"op":"null"}}}`))
+	if nullErr == nil {
+		t.Fatal("paddingLeft null on a table unexpectedly succeeded")
+	}
+	var nullLocated *ComponentCommandError
+	if !errors.As(nullErr, &nullLocated) {
+		t.Fatalf("paddingLeft null on a table: error is %T, want *ComponentCommandError", nullErr)
+	}
+	if want := "paddingLeft does not support null"; nullLocated.Message != want {
+		t.Errorf("paddingLeft null on a table: Message = %q, want %q — the table-only branch must not shadow padding's own arm", nullLocated.Message, want)
+	}
+
+	clearTpl := componentTemplate(t)
+	clearID := subjectIDForKind(t, clearTpl, "table")
+	authored := serializedPaddingEdges(t, serializedBytes(t, clearTpl), clearID)
+	if len(authored) != 2 {
+		t.Fatalf("the fixture no longer authors exactly two padding edges on %s: %v — the pruning assertion below would be vacuous", clearID, authored)
+	}
+	if _, err := ApplyComponentCommand(clearTpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+clearID+`"],"changes":{"paddingLeft":{"op":"clear"},"paddingRight":{"op":"clear"}}}`)); err != nil {
+		t.Fatalf("clearing padding on a table must be accepted: %v", err)
+	}
+	if remaining := serializedPaddingEdges(t, serializedBytes(t, clearTpl), clearID); len(remaining) != 0 {
+		t.Errorf("clearing every authored edge left style.padding behind: %v", remaining)
+	}
+}
+
+// The one behavioural change a MIXED SELECTION can see. A selection holding a
+// table and a text used to set padding on both members; it is now refused
+// whole, at the text, and the refusal is transactional — the table member is
+// not written on the way past. That is the guarantee worth pinning: a
+// half-applied selection would be a far worse regression than the refusal.
+func TestPaddingRefusalAcrossAMixedSelectionIsTransactional(t *testing.T) {
+	tpl := componentTemplate(t)
+	tableID := subjectIDForKind(t, tpl, "table")
+	textID := subjectIDForKind(t, tpl, "text")
+	before := serializedBytes(t, tpl)
+	_, cmdErr := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["`+tableID+`","`+textID+`"],"changes":{"paddingTop":{"op":"set","value":5}}}`))
+	if cmdErr == nil {
+		t.Fatal("a selection holding a text was ACCEPTED for a padding command")
+	}
+	var located *ComponentCommandError
+	if !errors.As(cmdErr, &located) {
+		t.Fatalf("mixed selection: error is %T, want *ComponentCommandError", cmdErr)
+	}
+	if want := "property paddingTop is not editable for text"; located.Message != want {
+		t.Errorf("mixed selection: Message = %q, want %q", located.Message, want)
+	}
+	if located.ElementID != textID {
+		t.Errorf("mixed selection: ElementID = %q, want the refusing text %q", located.ElementID, textID)
+	}
+	after := serializedBytes(t, tpl)
+	if !bytes.Equal(before, after) {
+		t.Errorf("the refused mixed selection wrote the TABLE member before refusing at the text:\n%s", after)
+	}
+	if edges := serializedPaddingEdges(t, after, tableID); edges["top"] != "" {
+		t.Errorf("the table member kept a paddingTop from a refused selection: %v", edges)
+	}
+}

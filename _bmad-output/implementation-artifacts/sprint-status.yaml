@@ -447,13 +447,15 @@ development_status:
   11-3-the-canvas-paints-the-weight-the-engine-resolved: backlog
   epic-11-retrospective: optional
 
-  # 12.4 is a RULING story: the owner decides whether padding insets a non-table element
-  # or is documented table-only, and the ruling is recorded BEFORE any code is written.
-  epic-12: backlog
+  # 12.4's ruling is SETTLED: D-12.4.1 (owner, 2026-09-05, epic-11-14-decision-log.md).
+  # style.padding stays an engine property — a loaded document keeps and renders it, the panel
+  # never authors it, and the Go command layer refuses padding* on non-table kinds. The old
+  # two-way fork (insets vs table-only) is dead, and 14.8's cell-padding AC is dropped with it.
+  epic-12: in-progress
   12-1-the-page-header-and-page-footer-take-the-height-the-author-s: backlog
   12-2-the-document-declares-its-locale-and-its-utc-offset: backlog
   12-3-a-table-s-header-and-its-alternating-rows-are-authorable: backlog
-  12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is: backlog
+  12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is: review
   12-5-a-band-boundary-is-dragged-on-the-canvas: backlog
   epic-12-retrospective: optional
 

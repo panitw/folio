@@ -8798,3 +8798,44 @@ about `go test ./...`.
 **Why that asymmetry is defensible today and still worth recording.** The strict form is correct for the Go side: all four engine NOTICEs use the `(produced)` spelling, and a silent reword should fail rather than be absorbed — that is the whole point of `exactlyOneRow`. The hazard is only that the two readers cover overlapping populations with different tolerances and **neither file cites the other**, so someone normalising NOTICE wording will satisfy one and hard-fail the other without warning.
 
 **What discharges it.** A cross-reference comment in each pointing at the other and stating which tolerance is deliberate, or a single shared statement of the row grammar both cite. Do not loosen the Go parser to match: the looser one is the one carrying the risk.
+
+### DW-202 — `propertyPath` locates a refusal at the first key present, not at the key that was actually refused
+
+- source_spec: `_bmad-output/implementation-artifacts/12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is.md`
+- **Deferred by:** Story 12.4's plan gate (2026-09-05), on the coordinator's instruction to file it now rather than let a step-04 reviewer re-derive it. **Pre-existing, and NOT created by 12.4** — see the `width`-on-a-table clause below, which is the same defect on a rule that shipped long before this story.
+- **Owner:** unassigned. **Severity:** LOW while the precondition below holds. **Status:** OPEN
+
+**The defect.** `folio-go/component_commands.go:1054-1063` — `propertyPath(changes)` walks the fixed canonical order and returns the **first key present in the changes map**, not the key whose refusal actually fired:
+
+```go
+for _, key := range []string{"x", "y", "width", "height", … "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+	if _, ok := changes[key]; ok {
+		return key
+	}
+}
+```
+
+The caller at `:1043-1045` wraps every refusal from `applyPropertyChanges` as `componentFailure(id, "component."+propertyPath(changes), err.Error())`, so the `Message` names the offending key while the `DataPath` names whichever key sorts first. A mixed change set `{"x": …, "paddingTop": …}` on a text element refuses at `paddingTop` and reports `DataPath = "component.x"` — the message and the location disagree.
+
+**It is latent today, independently of Story 12.4.** The same disagreement is already reachable for `width` on a table (`:1115-1117`, the `element.Type != template.ElementTable` branch) and for the typography set on a `rect`/`line`/`image` (`:1127-1134`, Story 10.1's `color` arm). 12.4 adds a fourth kind-conditional branch and therefore a fourth way to reach it; it does not introduce it.
+
+**Why it is not worth fixing yet, and the clause that will make someone re-check it.** **It is currently unreachable from the designer.** `folio-designer/src/component-property-command.ts:19` types `PropertyIntent` with a single `field`, so every `changes` object the product can emit has **exactly one key**, and with one key the first-present key and the offending key are the same key. The defect is reachable only by a hand-written command. **The day someone widens `PropertyIntent` to carry more than one field, this stops being latent and becomes a wrong diagnostic location on a real user path — re-price it then.**
+
+**What discharges it.** Have `applyPropertyChanges` return the offending key alongside the error (or return a typed error carrying it) so the caller locates on the key that was actually refused, and red-prove it with a two-key change set whose first canonical key is legal and whose second is not. A fix must not disturb the single-key DataPath, which Story 12.4's acceptance depends on.
+
+### DW-203 — "No `FieldSpec` may author a padding field" is enforced by one narrow test, and a TABLE padding row would satisfy every guard
+
+- source_spec: `_bmad-output/implementation-artifacts/12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is.md`
+- **Deferred by:** Story 12.4's review (2026-09-05). **Surfaced, not caused, by 12.4** — but 12.4 is the story that made it matter, because it is the story that makes padding-on-a-table a *granted* command.
+- **Owner:** unassigned. **Severity:** MEDIUM.
+- **Status:** OPEN
+
+**The gap.** D-12.4.1's stated consequence is *"No `FieldSpec` may author a padding field."* The only thing enforcing it is `folio-designer/src/App.test.tsx:1432`, which asserts the four labels `Padding top/right/bottom/left (pt)` are absent from the document — **for whichever element that test happens to select**, which is the text element `e1`. It is a behavioural check on one element kind, not a statement about the `FieldSpec` set.
+
+**Why 12.4 sharpens it.** Before this story the command layer accepted padding on all five kinds, so any padding row would have "worked" and the rule was purely a matter of taste. After it, `paddingTop|Right|Bottom|Left` is *granted on `ElementTable`* — so the plausible future mistake is a padding row offered **only when a table is selected**, which would satisfy Go's new grant, leave `App.test.tsx:1432` green (it selects a text), and still violate D-12.4.1. Nothing in either language would red.
+
+**The repo already has the right shape for this.** D-7.4.5 requires a duplicated Go/TS invariant to move in one commit with a test that reads both sides, and `folio-designer/src/engine-bounds-mirror.test.ts:264,352` is the working precedent — it reads a declaration out of the TypeScript source with an anchored single-line regex and drift-proves it by substitution.
+
+**Why it was not patched in 12.4.** A source-text guard over `App.tsx`'s `FieldSpec` declarations is a new cross-boundary contract, not a patch to this story's diff, and 12.4's own Boundaries put the designer's field set behind an Ask First gate. It also touches the same file family as `engine-bounds-mirror.test.ts`, whose anchored regexes 12.4 was explicitly forbidden to disturb.
+
+**What discharges it.** A test asserting that no `FieldSpec` declaration in `App.tsx` carries a `field:` value matching `padding*`, red-proved by adding one, and worded so it is a statement about the declaration set rather than about any one rendered panel.

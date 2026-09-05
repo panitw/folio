@@ -1120,7 +1120,19 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 		allowed["expression"] = true
 	}
 	if element.Type == template.ElementText || element.Type == template.ElementImage || element.Type == template.ElementTable || element.Type == template.ElementLine || element.Type == template.ElementRect {
-		for _, key := range []string{"background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+		for _, key := range []string{"background", "borderWidth", "borderColor", "borderEdges"} {
+			allowed[key] = true
+		}
+	}
+	if element.Type == template.ElementTable {
+		// D-12.4.1: `padding` is consumed by a table's cell chrome and by
+		// nothing else on any render path, so a table is the only kind that
+		// may be commanded to change it. The asymmetry is deliberate: a
+		// loaded document KEEPS and round-trips padding on any kind, and
+		// RENDERS it where a table consumes it — the engine honours what it
+		// is given — while the designer refuses to author, on the four kinds
+		// that would never paint it, a value nothing would ever read.
+		for _, key := range []string{"paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
 			allowed[key] = true
 		}
 	}

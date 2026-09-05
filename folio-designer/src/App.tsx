@@ -1710,9 +1710,9 @@ const lineSpacingField: FieldSpec = { field: 'lineSpacing', label: 'Line spacing
 // behaviour with no colour declared: the PDF's initial fill, black.
 const colorField: FieldSpec = { field: 'color', label: 'Text colour', affix: 'Colour', swatch: true, empty: 'black' }
 // BOX: a Border row, the edge set, then the Background and Visibility rows the
-// design shows as label-and-value. The four padding rows are deliberately not
-// here (owner's call, 2026-08-30): style.padding stays an engine property that
-// a loaded document keeps and renders — the panel simply does not author it.
+// design shows as label-and-value. No padding rows, per D-12.4.1 in the epic
+// 11-14 decision log: style.padding stays an engine property a loaded document
+// keeps and renders, and Go's command layer now refuses it off a table.
 const borderFields: ReadonlyArray<FieldSpec> = [{ field: 'borderWidth', label: 'Border width (pt)', affix: 'Border', unit: 'pt', empty: 'none' }, { field: 'borderColor', label: 'Border colour', affix: 'Border colour', swatch: true, empty: 'none' }]
 const backgroundField: FieldSpec = { field: 'background', label: 'Background', affix: 'Background', swatch: true, empty: 'none' }
 const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visibility', empty: 'always', fx: 'condition' }
