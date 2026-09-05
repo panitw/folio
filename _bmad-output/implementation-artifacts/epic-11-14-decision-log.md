@@ -1476,3 +1476,45 @@ instruction is struck, owner unchanged.
 
 **Implementation condition:** the candidate-band check must evaluate **every** component in the band, not
 a selected one. A check that examines one is the vacuity this run keeps finding.
+
+---
+
+### D-000.19 — Epic 16's third e2e failure is a HANG, not a slow test. Measured, and the gate can now conclude.
+
+**The gate's last open item is closed.** `e2e/browser-native-roundtrip.spec.ts` — *"fresh authored
+sessions close exactly through admitted Preview and native Folio"* — was failing at its own
+`test.setTimeout(300_000)`, and nothing distinguished *genuinely deadlocked* from *merely slower than its
+budget*. That distinction decides whether it is a defect or a configuration line, so it was worth one
+measurement rather than a story (the lead's ruling, and it was right).
+
+**Measured by raising the test's own timeout — the CLI cannot override `test.setTimeout`, so the file was
+edited, run, and restored from an absolute-path backup; `git status` confirms it clean.**
+
+| budget | result |
+|---|---|
+| 300 s (shipped) | FAIL, timeout |
+| **1500 s (5× the budget)** | **FAIL, timeout** |
+
+**And the resource profile names the mechanism.** Over 27 minutes of wall clock the run consumed **152 s
+user + 5 s system — 9% CPU**. A test that is merely slow burns CPU; this one **waits**. It is blocked on
+something that never arrives, not grinding through work it will eventually finish.
+
+The captured page snapshot puts it in DESIGN mode with *"Unsaved local changes"* — mid-authoring, before
+the save/preview/native-render comparison the test exists to perform.
+
+**Why this matters beyond one test.** It is the heaviest end-to-end assertion in the repository — it
+builds the Go CLI, authors two full documents through the real UI, saves both, renders each in the browser
+*and* natively, compares the PDFs byte-for-byte, and runs a Go witness test. **It is the only thing that
+proves the browser and the native binary agree on a document a human actually authored.** While it hangs,
+that guarantee is unverified, and DW-193 (the e2e suite is compiled in CI and never executed) means
+nothing was ever going to tell us.
+
+**What is NOT yet known, stated so the next reader does not over-read this:** where it blocks. The
+snapshot places it mid-authoring but the trace was not decomposed to the failing action, and no bisection
+of the authoring helpers was run. **"It hangs" is measured; "it hangs at X" is not.**
+
+**Consequence for the Epic 16 boundary gate.** The gate can now conclude, and it concludes with three
+findings rather than two: the accounting guard was vacuous (fixed, 16.11), two assertions had gone stale
+(fixed, 16.11), and **the deepest cross-boundary test in the repository is hung** — pre-existing, not
+Epic 16's doing, and not repaired here. The gate does **not** pass. Filing the entry and naming an owner
+is Epic 16's obligation; fixing it is not.
