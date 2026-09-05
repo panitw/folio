@@ -5102,10 +5102,16 @@ So that the release I install is not carrying thirty-one typefaces I may never u
 shipped since. Most of what its originating decision describes now exists, and the parts of that decision
 quoted in older records have been **struck**. Build against this boundary, not against D-8.4d.1's text.
 
-- **What is true today.** The catalogue's **31 families are bundled and precached** —
-  `brotli.catalogue.totalBytes` is **3,151,569** of a **16,850,005**-byte first load, **18.7%**. The
-  precache slot budget (`maximumCacheAssets = 64`) is self-imposed, and its remaining margin is real
-  *only because this story has not landed*.
+- **What is true today, and the second consumer is the one that bites.** The catalogue's **31 families
+  are bundled and precached** — `brotli.catalogue.totalBytes` is **3,151,569** of a **16,850,005**-byte
+  first load, **18.7%**. The precache slot budget (`maximumCacheAssets = 64`) is self-imposed, and its
+  remaining margin is real *only because this story has not landed*. **But the bytes have two consumers,
+  not one.** `scripts/build-wasm.mjs:410` also emits **one `@font-face` rule per catalogue face** into
+  `runtime-fonts.css`, `src: url('./runtime/<filename>')` — 31 rules. Its own comment at `:340-346` says
+  the catalogue faces *"reached Vite only through the `url()` in the emitted stylesheet. They still do
+  for the CSS"*. **Unprecaching the bytes without removing those rules leaves 31 `@font-face`
+  declarations pointing at URLs that are no longer on the machine**, and a `@font-face` rule fetches
+  lazily — at the moment its family is used to paint, which under AD-17 is exactly what the canvas does.
 - **What Epic 16 already built, and this story must not rebuild.** A face arrives from the web with its
   terms attached (16.1), stays on this machine once fetched (16.2), is offered by a family control that
   names three sources (16.4), and is installed without being embedded (16.5). **The fetch tier exists.**
@@ -5114,7 +5120,15 @@ quoted in older records have been **struck**. Build against this boundary, not a
   `font-catalogue.md` have **both** been struck and annotated for the live-source reversal. The
   paired-amendment obligation D-8.4d.1 created is **discharged**.
 - **What this story changes.** The catalogue's 31 families stop being bundled and precached, and are
-  obtained on first pick instead.
+  obtained on first pick instead — **and the 31 emitted `@font-face` rules go with them.** Catalogue
+  faces are registered at runtime by the same `FontFace` path that carried and fetched faces already
+  use.
+- **The accepted cost is inherited, and its weight has changed even though its truth has not.**
+  D-8.4d.1 accepted *"you cannot pick that family right now"* for a curated palette of 21. The same
+  sentence now covers 31 families plus Epic 16's open library, so it describes the ordinary state of
+  most families rather than a rare inconvenience. **The mitigant is unchanged**: the three shipped Noto
+  faces are the coverage (D-8.5.1) and a face already embedded travels inside the `.folio` (Story 8.6),
+  so an unfetched family never degrades to a document that will not render.
 
 **Design:** `ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html` — no new surface. The catalogue
 group is already drawn and already shipped by Story 16.4; only where its bytes come from changes.
@@ -5131,6 +5145,11 @@ the catalogue's own subtotal — reported as a measured before-and-after, not as
 **Then** its bytes arrive, it is usable, and it stays on this machine for the next session — by the same
 path Story 16.2 already established, with no second mechanism introduced
 
+**One mechanism means one path for byte arrival and face registration — it does not mean one provenance.**
+The catalogue's curated licence text and its build-time allowlist are a difference in *what is known
+about* a face, not in *how its bytes arrive and are registered*. **The catalogue keeps its own
+provenance**; only the transport is shared.
+
 **Given** a catalogue family that has not been picked before, and no network
 **When** the author picks it
 **Then** they are told they cannot pick that family right now, and **no document fails to render** — the
@@ -5138,8 +5157,17 @@ three shipped Noto faces are the coverage, and a face already embedded in a `.fo
 file
 
 **Given** a document that already embeds a catalogue face
-**When** it is opened after this story
-**Then** it renders byte-identically to before, with no fetch attempted
+**When** it is opened after this story with the network blocked or instrumented
+**Then** **zero network requests are made for catalogue assets**, and it renders byte-identically to
+before — the byte comparison alone proves only the engine-side half, which was never at risk, and would
+pass on a machine whose old bundle is still cached
+
+**Given** the release built by this story
+**When** its emitted stylesheet is read
+**Then** **no `@font-face` rule declares a catalogue family from a build-time URL**, and the collision
+guard that keeps a catalogue entry from redeclaring a shipped family — `catalogueFamilies`, seeded from
+`shippedFamilies` at `build-wasm.mjs:195` — still covers the hazard in its new form, with its comment at
+`:399` rewritten to describe runtime registration rather than a second CSS rule
 
 **Given** the tripwire this story is required to discharge (see below)
 **When** the suite runs after this story
@@ -5149,7 +5177,9 @@ file
 having happened must carry an executable assertion of that absence, not a prose caveat. A test must assert
 that **no path fetches a catalogue face on pick**, keyed on the capability rather than on a proxy such as
 a sprint-status value or a filename, and its failure message must name what it invalidates and what must
-be re-decided. It passes today because the capability does not exist; it goes red the moment this story
+be re-decided — **including `16-1a-…:911`**, whose measured payload figures are correct only while the
+catalogue is precached, so that it is named at the moment the assertion fires and not only in a list
+somebody has to go and read. It passes today because the capability does not exist; it goes red the moment this story
 lands, and cannot be merged around in silence.
 
 **Discharge list — this story is not done until each is re-taken or amended with the reason:**
@@ -5162,6 +5192,14 @@ lands, and cannot be merged around in silence.
    it was a budget call"*. Amend it with the reason it was actually made.
 5. `deferred-work.md:7585` and `:7731`, and `16-1a-…:380` and `:911` — every entry whose figures assume
    the catalogue is precached.
+6. `scripts/forbidden-font-hosts.mjs`'s docstring — *"The hosts a bundled-and-precached catalogue must
+   never reach for."* **This story does not invert that guard's premise**: Story 16.1 already amended it,
+   and the two hosts stay forbidden for a measured reason about what `css2` serves, not because the
+   catalogue is bundled. But the docstring still describes the catalogue as bundled-and-precached, which
+   this story falsifies. One line.
+7. `build-wasm.mjs:340-346`'s comment — *"the pick reads bytes already on the machine and fetches
+   nothing."* That stops being true, and it is load-bearing prose sitting directly above the code it
+   describes.
 
 **Note for 8.4d, which is unanswerable before this story.** D-8.4d.1 recorded that removing the catalogue
 still leaves ~13.5 MB. On today's larger catalogue the figure is **~13.70 MB** — still about 1.5× the
