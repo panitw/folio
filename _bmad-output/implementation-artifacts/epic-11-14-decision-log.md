@@ -2789,3 +2789,52 @@ around an unverified warning pays forever.
 `EXPERIENCE.md` says exists. With [[D-14.8.1]], **the design record is now unreliable in both
 directions**: over-promising in one place, silent in another. Neither is discoverable without a stated
 measurement.
+
+---
+
+## D-000.28 — I ran the matrix gate with a `-run` filter and got a green from two tests that assert nothing
+
+**Epic 12's boundary gate, first attempt, and the defect is mine.** I invoked
+`go test -tags=matrix -count=1 -run 'TestTargetRenderHash|TestTargetProbeHex' -v .` and got **`PASS`,
+`ok`, rc 0.** Both named tests ran. Both passed. **Neither asserted anything.**
+
+The tests say so themselves, at length, in the output I received:
+
+> *"FOLIO_MATRIX_TARGET not set: this test asserts NOTHING and is a deliberate no-op — it is CI's
+> single-target entry point (AC1, AC13), not one of the four counted legs AC11 governs. …
+> **`TestCrossTargetByteIdentity` exercises all four targets from one process and is what the D-000.4
+> local gate runs.** CI itself never reaches this no-op path, because every render-* job in matrix.yml
+> sets `FOLIO_MATRIX_TARGET` explicitly."*
+
+**I chose the filter by reading `matrix.yml` and copying the test names CI invokes.** That was the wrong
+source: CI's per-leg jobs each set `FOLIO_MATRIX_TARGET` and are *entry points for one target*, whereas
+the local gate is a different pair of functions that drive all four targets in one process. **The names
+in the workflow are the right names for the workflow and the wrong names for a laptop**, and nothing but
+the test's own runtime message says so.
+
+**This is the `-run`-filter false zero — the third mechanism in this run's own catalogue — executed by
+the person who catalogued it.** A `-run` filter that matches nothing exits 0; a `-run` filter that
+matches only no-ops exits 0 more convincingly, because two tests genuinely ran and genuinely passed.
+
+**Three things make it worse than a slip, and all three are the interesting part:**
+
+1. **The guard was maximally cooperative and I still got it wrong.** It did not fail silently — it
+   printed a paragraph naming itself a no-op, naming the environment variable, naming the correct test,
+   and naming why CI never hits the path. **The most honest guard in the repository, and a filtered
+   invocation still produced a green I could have pasted into a boundary gate.** A message only helps if
+   the reader is looking for a reason to doubt.
+2. **It would have gone into a gate artifact as a matrix pass**, on an epic where — as 12.4's close
+   established — *no run of the matrix or Playwright has ever covered anything*. The first-ever coverage
+   of five stories would have been a vacuous one.
+3. **The correct invocation is the unfiltered one.** The whole tagged package is the gate; narrowing it
+   is what created the hole. **A filter is a claim that you know which tests matter, and at a boundary
+   gate that claim is exactly the thing you do not yet have.**
+
+**Standing rule: a boundary gate runs its suite unfiltered.** No `-run`, no `-short`, no narrowing of any
+kind — the gate's purpose is to discover what a story-level run could not, and every filter is a
+pre-judgement of the answer. If a suite is too slow to run whole, that is a fact to record in the gate,
+not a reason to select from it.
+
+Re-run unfiltered. **The corrected result, and not the filtered one, is what Epic 12's gate will record —
+along with this entry, because a gate that hides its own false start is worth less than one that shows
+it.**
