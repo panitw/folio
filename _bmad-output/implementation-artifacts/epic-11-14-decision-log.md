@@ -1882,3 +1882,61 @@ practical form: **before escalating a question about a governing document, read 
 relevant section in full** — not a grep of it, and not the log entries that cite it. Grep finds what you
 already know to name, which is exactly the wrong instrument for discovering that your question has already
 been answered.
+
+---
+
+## D-000.21 — A gate that states its own hole honestly, and an orchestrator rule that holds it permanently open
+
+**Found by 12.2's builder while assembling its commit-boundary report.** `npm run scan:font-hosts`
+returns rc 0 and reports *"0 occurrence(s) in 625 **tracked** source files under .. (floor 400)"*. The
+population comes from `git ls-files -z` at `forbidden-font-hosts.mjs:253`. **Story 12.2 creates four new
+files, and my standing prohibition on subagents staging anything means all four are untracked for the
+entire life of the story.** The scan is green over a tree containing none of the files the story wrote.
+
+**This is not a dishonest guard, and that distinction matters — it is the first of the run's false-green
+findings where the tool is blameless.** `forbidden-font-hosts.mjs:8-13` states the hole before anyone
+hits it:
+
+> *"It proves that no forbidden font host appears in the SCANNED POPULATION, and nothing more. It is NOT
+> a proof that 'no request leaves the machine' — a source scan cannot see a host assembled at runtime,
+> **a host in an untracked file**, a host in a dependency, or a request made by something this repository
+> did not write. Every message below is worded to claim the bounded thing."*
+
+The guard names untracked files explicitly, bounds its own claim, and even says its messages are worded
+to keep that bound. **Every one of the nine prior instances of this run's dominant defect was a guard
+that could not distinguish a correct outcome from a plausible wrong one. This one can, and says so.**
+The defect would have been entirely in the **consumer** — a report saying "font-host scan clean" about a
+tree missing the only files the story wrote. *A bounded claim becomes a false claim at the moment
+somebody quotes it without its bound.*
+
+**And the cause is mine, not the tool's.** The prohibition on subagents staging exists so the
+orchestrator makes every commit, and it is worth keeping. But it converts a hole the script describes as
+occasional — *a host in an untracked file* — into a **structural certainty for every new file in every
+story**. A rule that is right on its own terms can hold a second rule's exception permanently open, and
+neither rule is wrong where it is written.
+
+**Handled correctly by the builder without being asked:** the caveat is written into the spec's
+Verification section *beside the command*, and the implementer runs an explicit compensating grep over
+the four new files by absolute path — for `fonts.googleapis.com`, `fonts.gstatic.com` and the
+`DECLARED_ONLY_FONT_HOSTS` entries at `:41-44` — with the file list stated and a positive control that
+fires, **reported as a separate measurement rather than folded into the scan's number**. Two
+measurements that cover different populations must be reported as two, or the narrower one inherits the
+broader one's authority.
+
+**This is the second time `git`'s tracked-only default has produced a false zero in this run**, after
+`git grep`'s. Both times the default was documented and neither time was it front of mind.
+
+### The builder's sharpening, which is better than the rule it refines
+
+[[D-12.C.2]] concluded *"a question about what a document permits is answered by reading that document."*
+The builder corrected the diagnosis of its own error:
+
+> *"My error wasn't failing to read `folio-format.md` — it was grepping it, finding line 68, and citing
+> it **without reading the sentence to its end**. Grep is worse than useless when it half-answers,
+> because a real line number makes a wrong claim look measured."*
+
+**That is the sharper statement and it supersedes mine.** A grep that finds nothing at least announces
+its own failure. **A grep that finds the right line and stops mid-sentence produces a citation with a
+verifiable address and a false payload** — and the address is what makes reviewers trust it. It is the
+same failure as citing a symbol without checking what it does, and it was the form all three of this
+story's corrections took. **A citation must carry the boundary of the claim, not just its location.**
