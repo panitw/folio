@@ -8772,3 +8772,29 @@ about `go test ./...`.
 **Measured cost, already paid once:** Story 15.2a's implementer hit it, diagnosed it, and inserted its new block *above* the guard rather than touching another story's test. That was the right call and it is not a fix — the next person pays the same toll, and may instead "fix" the count, which silently re-anchors the guard to whatever block is last that week.
 
 **What discharges it.** Bound the count to the Story 17.1 describe's own extent, and red-prove it by appending a throwaway describe: before, an unrelated test goes red; after, it does not, while removing an `it(` from inside the 17.1 block still does.
+
+### DW-200 — `TestShippedFacesReproduceFromUpstream` runs in no CI workflow, so the `derived` route's real assurance is never exercised automatically
+
+- source_spec: `_bmad-output/implementation-artifacts/16-11-what-closes-over-a-moving-set-is-re-derived.md`
+- **Deferred by:** Story 16.11's review (2026-09-05). **Pre-existing, not caused by 16.11** — but 16.11 is the story that made it matter, because it moved this test's denominator onto `fonts.Shipped()` and then discovered the test itself is unreachable from CI.
+- **Owner:** unassigned — properly Story 15.2's ("CI's red means something"), still `backlog`. **Severity:** MEDIUM.
+- **Status:** OPEN
+
+**The gap, measured.** `ci.yml` only *compiles* the tag (`go build -tags=matrix ./...`, `go vet -tags=matrix ./...`); `matrix.yml` runs two name-filtered tests (`-run TestTargetRenderHash`, `-run TestTargetProbeHex`). `TestShippedFacesReproduceFromUpstream` is in neither. Its sole invocation in the repository is `Makefile:39,45`. This is D-000.11's enumerated right-hand column — the ten matrix tests no gate runs — restated for the one test 16.11 changed.
+
+**Why it is not 16.11's to close.** D-000.12(4) records that the reproduction genuinely needs Python 3.12.13 + fontTools 4.63.0 via `FOLIO_FONTGEN_PYTHON`, **which CI does not have and cannot acquire** — a standing property, and the reason 16.11 was required to keep the *accounting* half toolchain-free and untagged. The untagged guard in `folio-go/fonts` now runs per-commit and is what actually stops a new shipped face going unaccounted; what stays unautomated is the stronger claim that the committed bytes still reproduce from upstream.
+
+**What discharges it.** Either a CI job that provisions the pinned toolchain, or an explicit recorded decision that this test is a human-run gate only, named in the epic-boundary procedure so its absence from CI is a choice on the record rather than an accident of the tag.
+
+### DW-201 — Two parsers read the same NOTICE rows with different strictness, and neither file knows about the other
+
+- source_spec: `_bmad-output/implementation-artifacts/16-11-what-closes-over-a-moving-set-is-re-derived.md`
+- **Deferred by:** Story 16.11's review (2026-09-05). **Pre-existing divergence**, surfaced because 16.11 added the second reader.
+- **Owner:** the next story to change a `NOTICE.md` row shape on either side. **Severity:** LOW-MEDIUM.
+- **Status:** OPEN
+
+**The divergence.** `folio-designer/src/font-catalogue.test.ts:139-152` reads the shipped-digest row with a loose pattern (`^\|[^|\n]*sha256 of the SHIPPED[^|\n]*\|`), deliberately accommodating both `**sha256 of the SHIPPED file**` and `**sha256 of the SHIPPED (produced) file**` (its own red-proof at `font-binary-identity.test.ts:1229-1249` pins that tolerance). Story 16.11's `folio-go/fonts/accounting_test.go` reads the engine-side row with a strict line-anchored pattern requiring exactly `**sha256 of the SHIPPED (produced) file**`.
+
+**Why that asymmetry is defensible today and still worth recording.** The strict form is correct for the Go side: all four engine NOTICEs use the `(produced)` spelling, and a silent reword should fail rather than be absorbed — that is the whole point of `exactlyOneRow`. The hazard is only that the two readers cover overlapping populations with different tolerances and **neither file cites the other**, so someone normalising NOTICE wording will satisfy one and hard-fail the other without warning.
+
+**What discharges it.** A cross-reference comment in each pointing at the other and stating which tolerance is deliberate, or a single shared statement of the row grammar both cite. Do not loosen the Go parser to match: the looser one is the one carrying the risk.

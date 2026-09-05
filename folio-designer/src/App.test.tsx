@@ -2234,6 +2234,142 @@ describe('typography controls over the engine-projected closed sets', () => {
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
     expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"bold":{"op":"set","value":true}}}')
   })
+
+  // PICKING THE FAMILY A COMPONENT ALREADY HAS — AD-15, ON A PROPERTY COMMIT.
+  //
+  // `choose` (App.tsx:2688-2692) sends the command UNCONDITIONALLY. There is no
+  // comparison against `committed` anywhere in that path, and there must not be
+  // one: `:3096-3109` is a deliberate ruling the other way for the same class of
+  // control, whose comment names the no-send behaviour "the tempting wrong
+  // implementation". THIS TEST IS NOT A NO-SEND GUARD. It asserts the send, and
+  // then asserts that the ENGINE is what makes the send harmless.
+  //
+  // The engine's half is `folio-go/wasm/engine.go:240-246` — canonical bytes
+  // that did not move return the stable snapshot, "not committed mutations:
+  // preserve revision, dirty state, preview authority, and both history branches
+  // exactly as they were". So the property that matters is a UI property: given
+  // that snapshot back, the designer must not invent a revision, a dirty flag or
+  // an Undo entry of its own.
+  //
+  // NOTHING COVERED THIS BEFORE. `:665-672` is the model — the same shape, on
+  // page setup — and it is the only stable-snapshot test in this file; no test
+  // anywhere covered a property commit, and none covered `fontFamily`. The gap
+  // is what let Story 16.8's starter rename reach an e2e run before anything
+  // said what a declared-family pick is supposed to do.
+  //
+  // THE DOCUMENT IS OPENED RATHER THAN RENDERED, because "stays non-dirty" is
+  // otherwise unobservable: `App.tsx:1399` reads dirty as `savedRevision ===
+  // undefined || snapshot.revision !== savedRevision`, and only a load or a save
+  // ever establishes `savedRevision`.
+  it('sends the command when the author picks the family a component already has, and the engine\'s stable snapshot leaves the revision, the dirty flag and Undo exactly where they were', async () => {
+    // THE PANEL RENDERS ITS OWN CANVAS, WITH THE COMPONENT ALREADY CARRYING A
+    // DECLARED FAMILY. `select()` above answers every command with a snapshot
+    // that has NO canvas, and App.tsx:1227 replaces the snapshot wholesale — the
+    // inspector would unmount after the first command and a later query could
+    // pass because the panel had vanished rather than because anything held.
+    const picked = { ...canvas, components: [{ ...textComponent, fontFamily: 'body' }] }
+    const stable = { documentState: 'loaded' as const, revision: 7, byteLength: 3, canvas: picked, canUndo: false, canRedo: false }
+    const moved = { ...stable, revision: 8, canvas: { ...canvas, components: [{ ...textComponent, fontFamily: 'heading' }] }, canUndo: true }
+    const sent: ArrayBuffer[] = []
+    // THE ENGINE DECIDES WHAT IS A MUTATION, NOT THE UI (AD-15), so the mock
+    // forks on the payload's own value rather than on the call count: the same
+    // command shape gets the stable snapshot when it changes nothing and an
+    // advanced one when it does.
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        sent.push(payload)
+        return { snapshot: new TextDecoder().decode(payload).includes('"value":"heading"') ? moved : stable }
+      }
+      return { snapshot: stable, ...(operation === 'serialize' ? { bytes } : {}) }
+    })
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={stable} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+    await waitFor(() => expect(screen.getByText('Saved local file')).toBeInTheDocument())
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 7')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const combobox = screen.getByRole('combobox', { name: 'Font family' })
+    expect(combobox).toHaveValue('body')
+    fireEvent.focus(combobox)
+    // The row is taken from the DECLARED group, which is the whole subject: a
+    // declared row takes the plain-commit branch, never `commitFirstUse`.
+    expect(declaredOptions().map(optionText)).toEqual(['body', 'heading'])
+    fireEvent.click(within(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).getByRole('option', { name: 'body' }))
+
+    // THE SEND, ASSERTED FIRST. If this ever reddens because someone added a
+    // `draft !== committed` guard to `choose`, the fix is to remove the guard.
+    await waitFor(() => expect(sent).toHaveLength(1))
+    expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontFamily":{"op":"set","value":"body"}}}')
+    // AND THE THREE THINGS THE STABLE SNAPSHOT MUST LEAVE ALONE.
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 7')
+    expect(screen.getByText('Saved local file')).toBeInTheDocument()
+    expect(screen.queryByText('Unsaved local changes')).not.toBeInTheDocument()
+    // BOTH HISTORY BRANCHES, because that is what the engine comment quoted
+    // above actually promises. Measuring Undo alone would leave half the
+    // sentence unasserted, and `stable` carries `canRedo: false` already.
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled()
+
+    // THE POSITIVE CONTROL, IN THIS TEST RATHER THAN A NEIGHBOURING ONE. Every
+    // assertion above is an absence, and a panel that had stopped sending
+    // anything at all would satisfy all of them. Picking a DIFFERENT declared
+    // chain must send exactly one command carrying the changed value, and the
+    // engine's answer to that one must move the document.
+    fireEvent.focus(combobox)
+    fireEvent.click(within(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).getByRole('option', { name: 'heading' }))
+    await waitFor(() => expect(sent).toHaveLength(2))
+    const changed = sent.map((payload) => new TextDecoder().decode(payload)).filter((command) => command.includes('"value":"heading"'))
+    expect(changed).toEqual(['{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"fontFamily":{"op":"set","value":"heading"}}}'])
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 8'))
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  })
+
+  // A DECLARED CATALOGUE FAMILY IS OFFERED ONCE — ASSERTED WHERE CI ACTUALLY
+  // RUNS IT.
+  //
+  // `App.tsx:2604`'s `!families.includes(source.family)` is the whole of that
+  // property: a family the document already declares has moved into the first
+  // group and must not be offered again in the second. Story 16.8 made the
+  // starter declare a catalogue family for the first time, so the clause stopped
+  // being decorative and started being load-bearing on the very first document a
+  // user opens.
+  //
+  // ITS ONLY GUARD WAS A SUITE NOBODY EXECUTES. `e2e/font-embed-boundary.spec.ts`
+  // measures it in a real browser, and CI runs `npm run test:e2e:compile` — which
+  // is `tsc -p tsconfig.e2e.json --noEmit` and nothing else (`ci.yml:249`);
+  // `playwright test` appears in no workflow. Measured, not assumed: deleting that
+  // clause leaves the entire vitest suite, the typecheck and oxlint green and
+  // reddens only the spec that never runs. A property whose sole guard is
+  // unexecuted is guarded by a comment.
+  //
+  // `Arimo` is a COMMITTED local-tier face — it is in `catalogueFaces`, so it is
+  // in the offered population with no network at all — and declaring a chain of
+  // that name is what puts one family on both sides of the declared/installed
+  // question. It is the same fixture as the font-browser block's
+  // `withArimoDeclared`, which is block-scoped there and cannot be reached from
+  // here; both derive their counts from `catalogueFaces` rather than a numeral,
+  // so neither can rot into a floor while the other moves.
+  it('offers a declared CATALOGUE family under IN THIS TEMPLATE only, and subtracts it from AVAILABLE LOCALLY', () => {
+    const declaredCatalogue = { ...canvas, components: [textComponent], fontFamilies: ['body', 'Arimo'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'Arimo', entries: [face('Noto Sans')] }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }))
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: declaredCatalogue }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    // PRESENT in the first group, in the document's own declaration order.
+    expect(groupRows('IN THIS TEMPLATE')).toEqual(['body', 'Arimo'])
+    const local = groupRows('AVAILABLE LOCALLY')
+    // ABSENT from the second — the half a deleted filter breaks.
+    expect(local, 'a family the document declares must not also be offered as one to take from this machine').not.toContain('Arimo')
+    // AND THE COUNT, DERIVED, so "absent" cannot be satisfied by an empty group:
+    // the local tier is every committed face EXCEPT the one now declared.
+    expect(local).toHaveLength(catalogueFaces.length - 1)
+    // POSITIVE CONTROL FOR THE POPULATION: a catalogue family this document does
+    // NOT declare is still offered there, so the subtraction took exactly one.
+    expect(local).toContain('Roboto')
+  })
 })
 
 // Story 7.4: authoring body text in the designer. The CONTENT control was an

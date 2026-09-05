@@ -595,6 +595,14 @@ development_status:
   # 1273"): resultLine reads addableFamilyCount and STAYS. Spec deliberately not written yet --
   # 16.9 is moving the test files this story would anchor into, and stale anchors are D-16.R.28.
   16-10-the-browser-header-says-what-the-design-says: done
+  # 16.11 added 2026-09-05 as a REPAIR, under D-000.12(3): a repair may join an epic that has not
+  # closed, an extension may not. Story 16.8 grew fonts.Shipped() to four and made a catalogue
+  # family the starter's only declared chain; four things closed over the old state. One failed
+  # loudly and is fixed (28cd225); this story re-derives the other three from their sources, plus
+  # a fourth assertion 16.10 made permanently unsatisfiable. Epic 16 closes once this guard exists
+  # (D-000.12(4)) -- closing it over a guard vacuous about its own headline face would make the
+  # gate ceremonial. No product behaviour changes.
+  16-11-what-closes-over-a-moving-set-is-re-derived: review
   epic-16-retrospective: optional
   # ==========================================================================
   # EPIC 17 -- The designer's editing controls behave the way an editor behaves
