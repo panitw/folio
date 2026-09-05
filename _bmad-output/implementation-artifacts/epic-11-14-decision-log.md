@@ -2617,3 +2617,74 @@ Delivery Log that implies a verification nobody performed**, and that would be a
 missing log it replaces. It has been told to attribute every figure to its era and to report, not repair,
 any drift it finds in 12.4's record. **D-12.4.1 is cited by both 12.2 and 12.3, so what that story
 actually shipped needs to be legible from its own file.**
+
+---
+
+## D-000.27 — The guard census, and the one measured case where a line break made two guards both say PASS
+
+**Filed as `source-text-guard-inventory.md`.** An exhaustive census of every test that reads a source file
+and matches its **text**, classified by the two properties that decide whether such a guard can be
+trusted: does it strip comments, and does it break when a line wraps.
+
+**The finding that justifies the whole exercise is already written in this repository**, in
+`matrixdocs_source_test.go`: two guards shared one regex `(?m)^\s*slug:\s*"([^"]+)"`, and *"a seventh
+entry written as a single-line composite literal … is gofmt-clean, compiles under `-tags matrix`, and
+**BOTH guards report PASS**."* **That is this run's dominant defect produced by formatting alone** — no
+bug, no bad edit, just a legal way of writing the same data that the parser could not see. And the fix
+was the right one: **remove the parsing assumption by moving to AST, rather than widen the regex.**
+
+### Comment stripping is inconsistent, and not all of it is deliberate
+
+Three files carry **independent copies of the same quote-aware comment scanner**, duplicated on purpose so
+no suite depends on another's helper. Eight more strip via a shared `blankComments`. Every AST guard in
+`folio-go` and `lint` is comment-blind by construction — **9 of lint's 11 scanners**, and the larger half
+of folio-go's.
+
+But a long list **does not strip**, including **all 24 tests in `engine-bounds-mirror.test.ts`** — the
+Go↔TS mirror that pins eight numeric bounds and four list identities across the language boundary — where
+a mention in a comment counts as a live copy.
+
+**Three places record what not stripping already cost, in the repo's own words:**
+- `font-binary-identity.test.ts`: with three rules commented out, *"every test in this file stayed green
+  while the emitted stylesheet dropped to three rules, which is the exact state that shipped the reported
+  Thai overlap."*
+- `canvas-font-stack.test.ts`: a comment spelling `new FontFace` made a raw scan report the seam as
+  registering **after the registration had been removed.**
+- `file-access-contract.test.ts`: an earlier whole-file skip also dropped `localStorage` — the very
+  prohibition D-16.2 names at that module.
+
+**And one unreconciled disagreement worth a ruling: `font-catalogue.test.ts` does NOT strip while
+`font-binary-identity.test.ts` DOES, over the same generator file.** Two guards, one subject, opposite
+policies, and the stripping one is the one that measured a real defect.
+
+**Two scanners read raw text deliberately and are tested for it** — `forbidden-font-hosts.mjs` and
+`host-font-access.mjs` treat a host or an API call in a comment as a finding, and blank comments *only*
+for the declaration exemption, **so nobody can buy an exemption by writing a comment.** That is the model:
+not "strip" or "don't", but **choose, state the reason, and assert the behaviour in both directions.**
+
+### Line-break fragility is concentrated — and, to the repo's credit, almost always fails loudly
+
+The heaviest concentration is `engine-bounds-mirror.test.ts`, whose every extraction is `^…$` against an
+exact one-line gofmt or prettier spelling. **But in nearly every fragile case a broken extraction produces
+a RED** — a non-vacuity floor, a `t.Fatal`, or a `throw`. The `*RedProof` tests that locate an injection
+point by exact literal all fail with *"this red-proof's injection point is stale."*
+`offline-release-contract.mjs` treats 0 **or 2** matches as a throw, never first-match-wins, and proves it
+on both a commented-out and an indented occurrence.
+
+**That is the difference between fragile and dangerous.** A fragile guard that fails loudly costs a
+maintainer ten minutes. A fragile guard that fails *open* is the matrix-slug case: two green checks over a
+tree nobody had checked. **The property to preserve is not robustness — it is that the failure mode of
+not-understanding is red.**
+
+Only **two** places neutralise wraps before matching, and both say why. `statement_golden_fixture_test.go`
+puts it best: *"a guard that missed it would be checking the paragraph's line breaks rather than what it
+says."*
+
+### Standing rules
+
+1. **Prefer AST over regex for any new source guard.** The repo already knows this and wrote down why.
+2. **Declare the comment policy and prove it**, in whichever direction — both directions asserted.
+3. **A wrap-fragile extraction must fail loudly**, never first-match-wins.
+4. **Before editing a file, check the inventory.** `App.tsx`, `App.css`, `engine-protocol.ts`,
+   `build-wasm.mjs` and `component_commands.go` are each read by several guards that do not strip
+   comments and are line-anchored.
