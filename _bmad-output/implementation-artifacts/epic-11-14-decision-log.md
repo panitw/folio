@@ -1257,3 +1257,39 @@ hex/rgb/hsl literal permitted in `App.css`, exact-once counts on two type tokens
 blocker against Epic 14; **12.1's panel rows and 12.5's drag CSS fire it just as hard** and Epic 12's text
 does not mention it. Re-derive what those files assert at each plan gate rather than inheriting today's
 reading — they are the least stable contracts in the repository.
+
+---
+
+### D-000.17 — An instruction to a subagent can be lost in delivery, and only the subagent can notice
+
+**What happened.** I sent Story 16.11's builder a correction withdrawing a settled decision. The tool
+confirmed it queued for delivery. **It never appeared in the builder's transcript.** The builder then
+wrote a spec, referred in passing to "your correction's arm-2 assertion", and I replied *accepting that
+description* — agreeing with a paraphrase of my own message rather than with the message. The builder
+caught it, said plainly *"there is no such correction message anywhere in my transcript … I should not
+have spoken as though I had read it"*, and marked the affected task as its own reconstruction rather than
+as instructed work.
+
+**Why it did not cost anything this time, and why that is luck rather than process.** The builder had
+independently derived the same shape from measurement, and its reasoning reached the sharper half I had
+not written: priming the element to another family can only pick an `AVAILABLE LOCALLY` row, every one of
+which carries a `source` and therefore *embeds* — so priming both breaks the fixture's no-confound rule
+and records `EMBEDDED` for a family that took the plain-commit branch. Two independent derivations agreed.
+**Had they disagreed, I would have approved a spec believing it carried a ruling it did not.**
+
+**The failure mode is specific and nasty: a paraphrase reads exactly like a receipt.** "Your correction's
+arm-2 assertion" is what an agent writes whether it read the correction or reconstructed it, and the
+orchestrator cannot tell the difference from the outside. Confirmation of *queuing* is not confirmation of
+*delivery*, and delivery is not readership.
+
+**Consequences.**
+- **A ruling that withdraws or reverses an earlier instruction must be echoed back before it is acted
+  on.** Not paraphrased — quoted, or at least summarised in the agent's own words *with the instruction
+  named*, so a reconstruction cannot pass for a receipt.
+- **When an agent refers to an instruction, check it against what was actually sent** rather than against
+  what it plausibly was. I did not, and the builder rescued it.
+- A subagent that flags a discrepancy in its own inputs is doing the highest-value thing available to it.
+  This one did it twice in one story — here, and on the false "issues no command" premise.
+
+**How we'd know it was wrong.** If echo-backs became ceremony on routine instructions. Scope it to
+withdrawals and reversals, which are the ones where acting on the stale version is silently wrong.
