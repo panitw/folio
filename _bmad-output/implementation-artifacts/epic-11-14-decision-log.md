@@ -1293,3 +1293,39 @@ orchestrator cannot tell the difference from the outside. Confirmation of *queui
 
 **How we'd know it was wrong.** If echo-backs became ceremony on routine instructions. Scope it to
 withdrawals and reversals, which are the ones where acting on the stale version is silently wrong.
+
+---
+
+### D-000.18 — `$?` is clobbered by ANY intervening command, including `echo`
+
+**A sharpening of D-000.15's family, found by 16.11's builder on its own work, in the story about false
+zeros.** The standing rule so far was *read exit codes from `$?` directly, never through a pipe.* That is
+necessary and not sufficient. `$?` holds the status of **the immediately preceding command** — so this
+reports the status of the `echo`, not the search:
+
+```
+git grep ... :!_bmad-output
+echo "--- results above ---"
+rc=$?          # <- this is echo's 0, not git grep's 128
+```
+
+The builder's `git grep` had **exited 128** — `:!` is "unimplemented pathspec magic" in this git — and the
+harness printed `rc=0`. **A search that failed to run reported success with no output**, which is
+indistinguishable from a search that ran and found nothing. It re-ran with `:(exclude)` and the exit code
+read immediately, and only then had a measurement.
+
+**This is the same defect as the three false-zero mechanisms already recorded, arriving by a fourth
+route.** Recursive `grep`'s arbitrary misses, `git grep`'s tracked-only default, a `-run` filter matching
+nothing and exiting 0, and now **a status silently overwritten between the command and the read**. None
+share an implementation; all four render *"I did not look"* identically to *"it is not there."*
+
+**The rule.** Capture the status on the same line or the very next one, before anything else runs —
+`cmd; rc=$?` — and prefer `if cmd; then … else … fi`, which cannot be clobbered at all. When a search
+returns zero, **the zero is only a measurement if the command's own status was 0**; a non-zero status
+means the search did not answer the question, whatever it printed.
+
+**Why it is worth its own entry rather than a footnote.** The agent nearly reported an unverified premise
+as verified, and said so unprompted. The near-miss is the useful artifact: the wrong reading was
+*plausible and quiet*, and nothing downstream would have questioned it — the premise was one I had
+supplied and was expecting to see confirmed. **A measurement that confirms what the orchestrator already
+believes gets the least scrutiny and therefore needs the most.**
