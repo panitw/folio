@@ -5090,6 +5090,84 @@ This epic ships no feature. It is the difference between a repository and a prod
 **Also lands:** AD-21, AD-22 and AD-26 enforced rather than extended; C6 and DW-23 discharged; DW-4's
 remaining engineering-lead checkpoint closed
 
+### Story 15.0: A catalogue face arrives when it is picked
+
+As a template author,
+I want the catalogue's families to download the first time I pick one,
+So that the release I install is not carrying thirty-one typefaces I may never use.
+
+**Covers:** NFR7, AD-19 · D-8.4d.1 as amended by D-16.1 · sequenced 15.0 → 8.4d → 15.3 (D-8.4d.2)
+
+**Read this before the acceptance criteria.** This story was created on 2026-09-02 and three epics have
+shipped since. Most of what its originating decision describes now exists, and the parts of that decision
+quoted in older records have been **struck**. Build against this boundary, not against D-8.4d.1's text.
+
+- **What is true today.** The catalogue's **31 families are bundled and precached** —
+  `brotli.catalogue.totalBytes` is **3,151,569** of a **16,850,005**-byte first load, **18.7%**. The
+  precache slot budget (`maximumCacheAssets = 64`) is self-imposed, and its remaining margin is real
+  *only because this story has not landed*.
+- **What Epic 16 already built, and this story must not rebuild.** A face arrives from the web with its
+  terms attached (16.1), stays on this machine once fetched (16.2), is offered by a family control that
+  names three sources (16.4), and is installed without being embedded (16.5). **The fetch tier exists.**
+  This story does not invent fetching; it moves the catalogue onto machinery that is already shipped.
+- **What is already amended, and must not be amended again.** `SPEC-fonts` `## Non-goals` and
+  `font-catalogue.md` have **both** been struck and annotated for the live-source reversal. The
+  paired-amendment obligation D-8.4d.1 created is **discharged**.
+- **What this story changes.** The catalogue's 31 families stop being bundled and precached, and are
+  obtained on first pick instead.
+
+**Design:** `ux-designs/ux-folio-2026-08-23/mockups/Font Browser.dc.html` — no new surface. The catalogue
+group is already drawn and already shipped by Story 16.4; only where its bytes come from changes.
+
+**Acceptance Criteria:**
+
+**Given** a release built with this story
+**When** the offline release manifest is read
+**Then** the catalogue's faces are not among the precached assets, and `brotli.totalBytes` has fallen by
+the catalogue's own subtotal — reported as a measured before-and-after, not as an estimate
+
+**Given** a catalogue family that has not been picked before, and a working network
+**When** the author picks it
+**Then** its bytes arrive, it is usable, and it stays on this machine for the next session — by the same
+path Story 16.2 already established, with no second mechanism introduced
+
+**Given** a catalogue family that has not been picked before, and no network
+**When** the author picks it
+**Then** they are told they cannot pick that family right now, and **no document fails to render** — the
+three shipped Noto faces are the coverage, and a face already embedded in a `.folio` travels inside the
+file
+
+**Given** a document that already embeds a catalogue face
+**When** it is opened after this story
+**Then** it renders byte-identically to before, with no fetch attempted
+
+**Given** the tripwire this story is required to discharge (see below)
+**When** the suite runs after this story
+**Then** it has been **replaced** by an assertion of the new behaviour — never deleted
+
+**Before this story is dispatched — the tripwire.** A decision whose correctness depends on something not
+having happened must carry an executable assertion of that absence, not a prose caveat. A test must assert
+that **no path fetches a catalogue face on pick**, keyed on the capability rather than on a proxy such as
+a sprint-status value or a filename, and its failure message must name what it invalidates and what must
+be re-decided. It passes today because the capability does not exist; it goes red the moment this story
+lands, and cannot be merged around in silence.
+
+**Discharge list — this story is not done until each is re-taken or amended with the reason:**
+
+1. `font-catalogue.md:182` re-run trigger 2 — the goal-set may be re-derived once the slot constraint
+   dissolves.
+2. `epic-16-decision-log.md:787` — the 20-slot precache margin, which this story dissolves.
+3. `epic-16-decision-log.md:966` — "D-8.4d.1 is a policy with no implementation", which stops being true.
+4. `epic-16-decision-log.md:1427` — the warning that a future reader will reverse a decision *"believing
+   it was a budget call"*. Amend it with the reason it was actually made.
+5. `deferred-work.md:7585` and `:7731`, and `16-1a-…:380` and `:911` — every entry whose figures assume
+   the catalogue is precached.
+
+**Note for 8.4d, which is unanswerable before this story.** D-8.4d.1 recorded that removing the catalogue
+still leaves ~13.5 MB. On today's larger catalogue the figure is **~13.70 MB** — still about 1.5× the
+`~9 MB` `epics.md` records, so **the conclusion is unchanged and the number is not**. 8.4d sets its
+threshold against the payload this story leaves behind, measured, once.
+
 ### Story 15.1: The golden report's moved hash is explained
 
 As a Go developer depending on this library,

@@ -1740,3 +1740,88 @@ correctly (positive control: `Font Browser.dc.html` returns 1): **no mockup cont
 CONTENT / BANDS / COMPONENTS and no PAGE SETUP. 12.2's builder had already found this independently and
 filed it in the spec at line 454. **The pointer is stale; the acceptance criterion it appears to support
 is not** — the panel exists in the product, just not in the drawing. Correct the pointer, leave the AC.
+
+---
+
+## D-15.0 — Epic 15 is five stories, not two, and 15.0's spec predates three epics
+
+**Ruled by the lead, verified by me against the tracker and the decision logs before acting.** Story
+15.0 (`a catalogue face arrives when it is picked`) has a tracker slot, an OWNER DECISION behind it
+(D-8.4d.1, 2026-09-02), a recorded position in the build sequence, and **no text in `epics.md`** — no
+user story, no Covers line, no acceptance criteria. Five record files already depend on it landing.
+
+### The tail was short by three, and the tracker says so plainly
+
+I had been carrying Epic 15 as **15.2 and 15.3**. Re-derived from `sprint-status.yaml` rather than from
+my own program list:
+
+| Key | Status |
+|---|---|
+| `15-0-a-catalogue-face-arrives-when-it-is-picked` | `backlog` |
+| `15-2-ci-s-red-means-something` | `backlog` |
+| `15-3-folio-go-v0-1-0-is-cut` | `backlog` |
+| `8-4d-the-size-budget-is-a-number-something-checks` | **`moved-to-epic-15`** |
+| `8-4k-a-licence-exception-is-read-and-checked` | **`deferred-to-epic-15`** |
+
+**Five.** The two I was missing hid behind *two different non-`backlog` statuses*, neither of which
+carries the string `15-` in its key — so every list I had built by looking for Epic 15's stories was
+structurally incapable of finding them. The tracker's own definitions are unambiguous:
+`deferred-to-epic-<N>` is *"Terminal HERE, open THERE. The work is still owed, by a later epic."*
+**A status that reads as closed in one place and open in another is only visible from the second place,
+and nobody was standing there.** Re-derive the open set from the tracker, never from a program list,
+and do it once more before 15.3 — an epic that has absorbed two stories from another epic is exactly
+where a third hides.
+
+**The sequence binds, and for a stated reason:** 15.0 → 8.4d → 15.3. 8.4d's subject *is* the size
+budget, and 15.0 removes ~2.2 MB from the payload; setting the threshold first would set it against a
+number known to be about to change. D-8.4d.1 says so outright — removing the catalogue still leaves
+~13.5 MB and *"a threshold still has to be set, and the `~9 MB` figure still has to be superseded."*
+**8.4d is not merely after 15.0; it is unanswerable before it.** 15.3 cuts the tag and is genuinely last.
+
+### Do not draft 15.0 from the decision that created it
+
+D-8.4d.1's surviving sentence — *"no Google Fonts API and no arbitrary URL — the catalogue remains the
+only source, and nothing is fetched from a third party"* — is **explicitly struck** by a later reversal
+in the same log, which permits three named hosts and says in terms that the sentence *"does not survive
+this decision and must be amended in the same edit."* Drafting from D-8.4d.1 would **reinstate a struck
+clause**. Worse, Epic 16 has since shipped a fetch tier for web faces, so a draft written from the
+2026-09-02 record would re-specify work that already exists.
+
+**So 15.0's spec must open with a boundary statement** — what the catalogue tier does *today* (bundled,
+precached, 20-slot margin), what Epic 16's web tier *already* does, and what 15.0 *changes*. Without it
+the builder cannot tell which half is built. **This is the stale-anchor failure at its worst case: a
+story whose specification predates three epics.** Drafting is mine, gating is the lead's; the owner is
+not needed, because the policy is determined and only the text is missing.
+
+### The standing rule this produces
+
+**A decision whose correctness depends on something NOT having happened must carry an executable
+assertion of that absence, not a prose caveat.** `epic-16-decision-log.md:1427` already warns that
+someone will later reverse a decision *"believing it was a budget call."* That warning is prose, and
+**prose discharges only if a future reader happens to find it** — which is precisely what failed today,
+twice, in [[D-000.20]] and [[D-12.C.1]]: a clause that was true when written, a query that could not see
+it, and nothing obliging either party to notice.
+
+Before 15.0 is dispatched it must carry a **tripwire**: a test asserting that no path fetches a
+catalogue face on pick, **keyed on the capability rather than on a proxy** like a sprint-status value or
+a filename, whose failure message names the two Epic 16 decisions it invalidates (`:789`'s precache
+margin, `:1427`'s not-a-budget-call warning) and states what must be re-decided. It passes today because
+the capability does not exist. **The moment 15.0 adds it, the tripwire goes red and cannot be merged
+around silently.**
+
+**15.0 discharges it by replacement, never by deletion** — its acceptance includes re-taking the
+precache margin with the new payload in hand and amending `:1427` with the reason the decision was
+actually made. *A tripwire deleted rather than replaced converts a caught event into an uncaught one,
+and the deletion will look like cleanup to whoever does it.* The discharge list goes into 15.0's spec
+**before** dispatch, enumerated from the five dependent records, so the builder discharges a list rather
+than discovering one.
+
+**Absence is a testable state right up until it stops being one, and that transition is exactly the
+moment you need to be told about.**
+
+### One reservation, carried deliberately
+
+The lead ruled the owner's intent determined **by D-8.4d.1 as amended by the second reversal**. If the
+draft reaches a point where those two records *disagree* about what 15.0 should do — rather than merely
+layering — that specific conflict is escalated to the owner, not reconciled. **Two reversals of one
+Non-goal in a single day is where an unrecorded third intent would hide.**
