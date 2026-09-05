@@ -534,7 +534,7 @@ development_status:
 
   # Epic 16 added 2026-09-02 by OWNER DECISION D-16.1; its rulings, measurements and
   # reversals are in epic-16-decision-log.md, and each story states its own in its spec.
-  epic-16: in-progress
+  epic-16: done
   16-0-the-embed-boundary-stops-throwing: done
   16-1b-the-binary-is-asked-what-it-says-about-itself: done
   16-1-a-font-arrives-from-the-web-with-its-terms-attached: done

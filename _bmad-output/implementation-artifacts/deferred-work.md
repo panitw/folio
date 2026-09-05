@@ -8903,3 +8903,48 @@ The caller at `:1043-1045` wraps every refusal from `applyPropertyChanges` as `c
 **Note the near-miss in the diagnosis, because it is the same class as the gate.** The agent that found this reported the eight errors as **pre-existing**. They were not: every one sits inside the 194-line hunk this story added (`git diff -U0` shows the single hunk `@@ -1360,0 +1361,194 @@`), and repairing only those four sites took the count to **0**, which also proves the baseline was clean. *A failure is only pre-existing if it was measured at the baseline.*
 
 **What discharges it.** Change the stated gate to `npx tsc -b` (or `npm run typecheck`) in the dispatch template and in every spec's Verification section, and consider a guard asserting that the typecheck command actually type-checks — the same "a scan that never looked" shape the command-JSON soleness allowlist exists to prevent. A cheap red-proof for such a guard already exists: the injected-error probe above.
+
+### DW-208 — `browser-native-roundtrip.spec.ts` hangs, and it is the only test proving the browser and the native binary agree on a human-authored document
+
+- **Found by:** Epic 16's boundary gate (2026-09-05), the first execution of the e2e suite in this
+  programme. **Pre-existing** — not in the blast radius of Story 16.8's shipped-set or starter changes.
+- **Owner:** **unassigned — this entry exists to get it one.** It is not Epic 16's to fix and not
+  Epics 11–15's to absorb.
+- **Severity:** **HIGH** — not because a test is red, but because of which guarantee stops being checked.
+- **Status:** OPEN
+
+**Measured, not inferred.**
+
+| budget | result |
+|---|---|
+| 300 s (the test's own `test.setTimeout`) | FAIL, timeout |
+| 1500 s (5×, measured by editing the file and restoring it) | FAIL, timeout |
+
+**The resource profile names the mechanism: 152 s user + 5 s system across 27 minutes of wall clock — 9%
+CPU.** A slow test burns CPU; this one **waits**. It is blocked on something that never arrives.
+
+**Where it is when it dies:** the captured page snapshot shows DESIGN mode with *"Unsaved local changes"* —
+mid-authoring, before the save/preview/native-render comparison the test exists to perform.
+
+**What is NOT known.** Where it blocks. A 42 MB trace was captured but not decomposed to the failing
+action, and the authoring helpers were not bisected. **"It hangs" is measured; "it hangs at X" is not** —
+whoever takes this starts there, and should not inherit a conclusion this entry did not earn.
+
+**Why it outranks its redness.** It is the heaviest assertion in the repository: it builds the Go CLI,
+authors two full documents through the real UI, saves both, renders each in the browser **and** natively,
+compares the PDFs **byte-for-byte**, and runs a Go witness test. **It is the only thing that proves the
+browser and the native binary agree on a document a human actually authored.** Every other cross-target
+guarantee is about fixtures. While this hangs, the human-authored one is unverified.
+
+**Why nobody noticed.** [[DW-193]] — the e2e suite is compiled in CI and never executed. Combined with the
+`@playwright/test` pin whose browser could not be fetched (dropped at `71627a5`), the suite had never run
+in this programme at all.
+
+**What discharges it.** Either a fix with the blocking action named, or a measurement showing the hang is
+environmental and a statement of which environments it does not reproduce in. **Deleting or skipping the
+test does not discharge it** — that converts an unverified guarantee into an unstated one.
+
+**Related:** [[DW-193]] (the suite never runs in CI, which is why this was invisible), and the Epic 16
+boundary gate, which carried it rather than repairing it.
+
+---
