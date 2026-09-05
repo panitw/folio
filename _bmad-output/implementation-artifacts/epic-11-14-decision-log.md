@@ -2313,3 +2313,120 @@ cross-log citation *in a file you are already editing for another reason*.
 claim. This is the same rule at the level of the identifier: **a citation must carry enough of its
 namespace to resolve.** A number that resolves in the room where it was written and misresolves
 everywhere else is a citation that works exactly until someone takes it seriously enough to look it up.
+
+---
+
+## D-12.3.2 — Story 12.3's four forks, two corrections to my own rulings, and a guard that had become a layout requirement
+
+**12.3 halted at step-02 rather than guessing, and the investigation was worth the stop.** Four forks
+ruled below; the fifth question — whether Story 14.8 survives — is **escalated to the owner** and is
+**not 12.3's blocker**, because the answer changes not one line of the story.
+
+### Q1 — [A]. 12.3 ships command, projection AND working controls
+
+*"This story presents Story 12.3's capability and adds no second way to **store** it"* (14.8's AC1) is
+about **storage ownership, not about who first renders a control.** 12.3's own AC1 is a UI criterion in
+its own Given/When/Then, FR60 says *"from the table editor"*, and the traceability table puts FR60 in
+Epic 12. The storage-only reading makes 12.3's AC1 untestable — and **a story whose acceptance criterion
+cannot be run is not a smaller story, it is a broken one.**
+
+### Q2 — [A]. Exempt `headerHeight`, amend the criterion, and mark the format Required
+
+`headerHeight` **cannot** be cleared back to absent, and AC1 said every field could be. Measured: the
+loader hard-errors *"missing required field for a table"* — one of only three, with `bind` and `columns`;
+the serializer writes it unconditionally, unlike its two neighbours; `folio-format.md` marks
+`as`/`headerStyle`/`altRowBackground` Optional and gives this one **no optional marker and no default**;
+all 31 corpus files match every table 1:1 with one. **Nothing in five decision logs, the planning
+artifacts, the format spec or the deferral register addressed the collision.**
+
+**Making the key optional is not merely a format change — it is a MAJOR one.** New documents could omit
+it and an existing reader would refuse the file, failing the same pre-reader test that `justify` and the
+`{"asset":…}` chain entry both failed, and both of those took the 2.0 increment. **A table-editor story
+does not take a MAJOR format increment.**
+
+So the criterion was wrong, not the product: `x`, `y`, `width`, `height` and `value` are **already**
+non-clearable. AC1 now reads *clearable back to absent **where the format permits absence***.
+**And `folio-format.md` marks the field Required** — today it is required **by silence**, a rule enforced
+by code and documented by omission. That is not a format change; it is the document describing what
+ships. Same move as 12.2's `utcOffset` row.
+
+### Q3 — seven style fields, and a forward finding nobody had
+
+`template.Style` has **11** presence fields; `resolveHeaderStyle` has arms for **9** — **Bold and Italic
+have no arm at all.** AC1's own wording is the bound: *"the fields the engine already resolves."* Minus
+`padding` (forced by [[D-12.4.1]] — projecting it would offer a value nothing can write) and `border` (a
+nested block the cascade treats block-granularly, deferred **with a named trigger**) leaves **seven
+scalars**: fontFamily, fontSize, lineSpacing, background, color, valign, align. **14 projection members,
+plus `altRowBackground` and `headerHeight`.**
+
+**My D-12.3.1 priced this as "two members per property across three properties." It treated `headerStyle`
+as one property.** At nine fields it would have been eighteen members. The estimate was off by the size
+of the story.
+
+**The forward finding, and it is the most valuable thing the investigation produced: `resolveHeaderStyle`
+has no Bold and no Italic arm.** Epic 11 is about to make bold and italic real on the render path. When
+it lands, **a table's header row still will not be able to be bold**, because the cascade has nowhere to
+resolve it from. Nobody had this on any list. Registered with a trigger keyed on Epic 11's resolution
+story, so 11.2 meets it as a **named consequence rather than a surprise**.
+
+The spec also carries an **11-row `Style` mapping** — every field marked in-scope, forbidden, deferred, or
+*no arm exists* — which discharges `epic-7-8-decision-log.md`'s D-8.1.2 (*any story walking a `style.X`
+must state whether it walks `headerStyle.X`, and why*) permanently for this area. **12.3 is that rule's
+archetype and its inverse.**
+
+### Q4 — my own ruling's mechanism was wrong, and the correction upgrades the story
+
+[[D-12.3.1]]'s five-site checklist named the **document-level** `CanvasProjection`, inherited from 17.3.
+But these three properties are **per-table**, nothing restricts a document to one table, and **the table
+editor does not read that projection at all.** It reads `TableColumnsProjection`, requested by element id,
+which already carries table-level non-column data. **I picked the surface before anyone measured which
+projection the table editor reads.** The principle — project the resolved value, two members per property,
+projection and mirror in one commit — survived intact; only the sites were wrong.
+
+Three consequences that make this more than a surface swap:
+
+- **`hasExactKeys` is stricter in both directions than `hasOnly`, so the red-proof gains an arm.** Prove
+  RED for a projected member missing from the guard **and** for a guard key with no projected member.
+  Under `hasOnly` only the first was possible.
+- **The surface is pinned by nothing** — `isTableColumns` in any `.go` = **0** against a positive control
+  of `isCanvas` = 12; `TableColumnsProjection` in any `_test.go` = **0** against `CanvasProjection` = 38.
+  **12.3 is the first story to put load-bearing data on an unguarded surface, so adding the pin is part of
+  the story**, not an adjacent improvement.
+- **`engine-client.ts:#settle` hand-enumerates the table object's members**, so a new table-LEVEL member
+  passes the guard and is then **silently dropped** before `App.tsx` sees it. Columns survive only because
+  they ride a spread. This is the most dangerous thing in the section: it fails **quietly**, where a
+  `hasOnly` mismatch at least blanks the canvas loudly. All nine properties ride that path.
+
+### Two corrections to my rulings
+
+**[[D-12.3.0]] said the rename cascade writes `HeaderStyle.FontFamily` at two sites. It is one.** The
+only non-test writer is `renameFontChain`; the second reference is `fontChainReferences`, a **read** used
+by `deleteFontChain`. Checked at the ruling's own tree with `git show` — identical there, so **it was an
+over-count when written, not drift**, and that distinction matters because drift would have implied
+something changed. The test names it singular; **two writers would be false in the other direction, which
+is how a correction over-corrects.**
+
+**AC3's "documented default" walks into a live format-vs-code disagreement.** `folio-format.md` documents
+`fontSize` **10**; `defaultFontSizePt` is **12000**, `resolveHeaderStyle` seeds from it, and
+`CanvasProjection.DefaultFontSize` **already ships 12 to the browser today**. Filed, not fixed — and the
+entry must say why, because it looks inconsistent with [[D-12.C]]. **There, the code was loose and the fix
+moved no rendered bytes. Here, `defaultFontSizePt` seeds the render path, so "fixing" it to 10 moves every
+document that does not declare a size — an AD-21 event relocating the whole golden corpus.** The entry
+names both sources and **states which one ships (12)**, or a future reader finds "the format says 10" and
+treats the code as the bug.
+
+### A guard that had quietly become a layout requirement
+
+The builder found that `trapDialog` builds its focus list in document order, so placing the new controls
+**after** the matrix — where the design draws them — breaks `App.test.tsx`'s Tab-wrap assertion, while
+placing them **before** keeps it green. It proposed placing them before.
+
+**Overruled, and the lead's reasoning is the general form: choosing a layout to keep a test green is
+letting a test dictate the product.** Place the controls where the design says and **amend the assertion
+deliberately, stating the new focus order as the decision.** That it breaks *silently* is an argument for
+making the break visible and deciding it, not for routing around it. **A guard that has quietly become a
+requirement has stopped being a guard.**
+
+Also re-keyed: **DW-199's trigger moves from "Epic 14's first designer story" to its PURPOSE** — the first
+story that adds a designer UI section. 12.3 dispatches first, so the epic-numbered trigger was already
+stale; a trigger keyed on a number goes stale every time dispatch order moves.
