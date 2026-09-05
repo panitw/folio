@@ -11,6 +11,29 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-8-decision-log.md'
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*This section is background, not a requirement; the contract below governs. Rewritten at close to
+describe what actually shipped.*
+
+Every edit you make in the design tool is sent to the rendering engine as a small typed instruction —
+make this box this wide, point this field at that column of your data. Those instructions were being
+assembled by pasting your own text straight into the message. A value with the right punctuation could
+close the instruction early and open a different one, so a command that said it was changing one
+component could quietly change a different one instead, and neither side objected. The same habit
+mangled characters outside the basic alphabet — which matters, because those turn up in the column
+names of your own data file. You could connect a field by clicking it, type nothing at all, and the
+tool would still send a name your file never held.
+
+This story closes both halves in one change. The tool now builds every instruction through one piece of
+shared code that quotes text properly and passes numbers through untouched, and the engine now refuses
+any instruction that names the same thing twice rather than silently taking the last one. Both of the
+engine's entry points were tightened, not only the one that was reported.
+
+Two things here are not faults. One long-standing failure in the text-corpus test is deliberately left
+red and is unrelated to this work. And the heavier cross-platform suites were not run — this project
+runs those once, at the end of the epic.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -854,3 +877,80 @@ only**, so a newly created file is invisible — and those are exactly the files
 
 - The document-originated leg: a non-BMP JSON key, through the real gesture.
   [`App.test.tsx:4146`](../../folio-designer/src/App.test.tsx#L4146)
+
+## Delivery Log
+
+### 2026-09-05 — done
+
+Baseline `3c7e226` (revision `e8ff6e6`). Shipped in one commit, `b4a5372` *"Make a component command
+mean the component it names"*, pushed by the orchestrator before close. Both halves landed together as
+the frozen block required: six designer encoders routed through a single command-JSON authority, and a
+shared duplicate-key scan narrowing **both** exported engine doors, `ApplyComponentCommand` and
+`ApplyPageSetupCommand`. Closes DW-32, DW-73 and DW-75. Files DW-196 (Story 15.3's before-the-tag
+ledger entry), DW-197 and DW-198.
+
+**Rulings applied.** D-D.2 (the encoder is total; validity stays in Go; one Go diagnostic split) —
+carried, but with its *prescribed mechanism* superseded at review loop 1; see below. D-D.1 (the
+forbidden four-field string) held throughout. D-000.15 was **raised by this story**, not applied to it,
+and was recorded separately at `c3b8a26`.
+
+**The diagnostic was wrong on BOTH doors, and only one door was in the report.** The `parseMillipoints`
+branch split was specified as a page-setup fix. Executed at baseline, the *component* door also
+returned `width overflows millipoints` for a null value; it now returns `width must be a number` with
+`DataPath component.width`. Nobody predicted this, and it is the story's most transferable lesson: the
+defect lived in shared code that had only ever been examined through one of its two doors, so the
+report described half of what was broken. Flagged explicitly by the builder for this log. Where a fix
+is specified against shared code, the second caller is a place to *look*, not to assume.
+
+**One review loop, and its cause was an intent gap inside the frozen block itself.** The Approach
+prescribed `JSON.stringify(Number(v))` while the Never clause forbade exactly what that expression
+does — make the browser a second authority on what a number is. Both clauses were frozen at approval,
+so the implementer followed the spec exactly and still widened the accept-set of both doors in a story
+whose entire purpose is to narrow them. The signature was a width typed `1e3` silently becoming 1000pt
+while `1e21` stayed refused: **one input class splitting two ways is never designed behaviour, only
+ever an artifact.** Resolved by amending the frozen block under the orchestrator's explicit
+authorisation — to a JSON-number-grammar passthrough — and **not** by reverting the implementation. The
+same amendment logged an earlier, previously unrecorded reopening of the block (the `validateElementID`
+reachability correction). A spec defect, not an implementation defect, and the record says so.
+
+**Triage: 1 intent_gap · 13 patch · 3 defer · 1 reject**, across three review layers plus a Matrix Test
+Audit against the full 186KB diff. The most serious patch was the duplicate-key scanner
+*desynchronising its decoder* at the depth bound — found independently by three reviewers, and fixed by
+draining rather than refusing, because a depth problem must not report a duplicate-key cause.
+
+**The rejection is recorded because believing it would have been expensive.** A reviewer reported that
+`pageSetupCommand` has no production caller. That is false: `App.tsx:12` imports it and `App.tsx:744`
+calls it. Accepting it would have gutted DW-73's severity and written a non-existent front door into
+the register — a **false closure**, which is worse than an open entry, because an open entry invites
+another look and a false closure stops anyone looking again.
+
+**Deferred, with owners.** DW-197 (`parseMillipoints` overflow off-by-one) — verified pre-existing at
+the baseline commit, so this story neither introduced nor fixed it; owner in the register is *whoever
+next changes that arithmetic*, explicitly **not** Story 15.3.
+DW-198 (`go test ./...` against a tagged `folio-go/v0.1.0` outside the monorepo) — addressed to **Story
+15.3 by name**, and filed with its measurement rather than its finding: 4 cross-language
+source-reading files, but 79 `repoRootFromTest` call sites across 50 files are the larger and entirely
+pre-existing half. DW-199 (the `App.test.tsx` self-count guard whose expectation is right and whose
+*extent* is wrong) — filed by the orchestrator at `c3b8a26`, deliberately not here, to avoid two
+writers on one entry.
+
+**Measured gates, re-run by the closer on the delivered tree at `c3b8a26` (working tree carrying only
+the orchestrator's Playwright bump).** Designer `npx vitest run`: **58 files / 804 tests passed, exit
+0** — up from 55 / 766 at baseline `e8ff6e6`. `npx tsc --noEmit`: no errors, exit 0. `npm run lint`
+(oxlint): **exactly 4** `only-export-components` warnings at the four expected sites, 0 errors, exit 0
+— no fifth. `go test -count=1 ./...` in `folio-go`, counted from `-json` test-level actions:
+**1950 pass / 2 fail / 5 skip, exit 1** — up from 1915 passing; the two failures are
+`TestCorpusMeetsP6ExerciseFloors/P6g_(opaque_names)` and its enclosing parent, the one sanctioned red,
+and there is no third. `lint`: `go build ./...`, `go vet ./...` and `test -z "$(gofmt -l .)"` run as
+**three separate commands with three separate exit codes**, all 0 — never chained, because a chain that
+stops early has already been misread as success on this run. `gofmt -l folio-go` from the repo root:
+empty listing, exit 0.
+
+**Not run, by cadence.** The heavy cross-target matrix suite and the e2e Playwright gate are on this
+run's **end-of-epic** cadence and were not run at this close. They come due at the end of Epic 15, after
+Stories 15.0, 15.2 and 15.3. No count from them is claimed here.
+
+**Two false-zero traps bit this story, and they share only a shape.** Recursive `grep` returns false
+zeros in this repo — the known one. `git grep` has a second, different mechanism: it searches **tracked
+files only**, so it is blind to exactly the files a story has just created. Use `git grep --untracked`
+whenever the question could involve new files, and say which you used. Recorded as D-000.15.
