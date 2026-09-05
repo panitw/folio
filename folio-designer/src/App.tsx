@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import { MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type EngineDiagnostic, type EngineError, type EngineSnapshot, type TableColumns } from './engine-protocol'
+import { CAPPING_BANDS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -10,6 +10,7 @@ import { LoadScreen } from './LoadScreen'
 import type { BindingErrorScope } from './DataPanel'
 import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
+import { bandHeightCommand } from './band-height-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
 import { FontBrowser } from './FontBrowser'
@@ -169,6 +170,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [tableEditorError, setTableEditorError] = useState<string>()
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
+  // ONE APPLY AT A TIME. bindingInFlight is the shipped precedent; this one
+  // exists because Apply became a SEQUENCE of commands rather than a single
+  // one, and two interleaved sequences would send band heights derived from
+  // drafts either of them may already have superseded.
+  const pageSetupInFlight = useRef(false)
   const draftGeneration = useRef(0)
   const documentGeneration = useRef(0)
   const [documentGenerationValue, setDocumentGenerationValue] = useState(0)
@@ -735,16 +741,86 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
     if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, snapEnabled))
   }
+  // STORY 12.1: APPLY IS NOW A SEQUENCE, AND ITS TWO HALVES REFUSE DIFFERENTLY.
+  //
+  // The band heights are sent FIRST, as component commands, and the sequence
+  // stops at the first refusal — so the common failure leaves the document
+  // wholly unchanged. The residue is disclosed rather than designed away: a
+  // band height that is ACCEPTED before a page setup that is then refused
+  // stands. Each command is individually atomic, which is what the engine
+  // guarantees; this gesture is not, and nothing here claims it is.
+  //
+  // A ROW IS SENT ONLY WHEN IT DIFFERS FROM THE PROJECTED VALUE, and that is
+  // not an optimisation. Re-sending a band height that has not changed is not
+  // a no-op: on a hand-edited document that already strands a component, the
+  // engine would refuse the height ALREADY IN FORCE, and an author who touched
+  // only a margin could never apply anything again. The engine's own
+  // unchanged-bytes short-circuit does not help — it runs after the door. This
+  // comparison is two strings, both of them the engine's own spelling of its
+  // own numbers; it is not a layout computation and it is not a bound.
+  //
+  // A REFUSAL FROM A BAND-HEIGHT COMMAND GOES THROUGH componentDiagnostic,
+  // never pageSetupDiagnostic: the latter discards the engine's message for
+  // anything not carrying PAGE_SETUP_INVALID, and the engine's own located
+  // sentence — the height it refused, the element it would have stranded — is
+  // the entire point of refusing at the command door.
+  //
+  // AND BECAUSE IT IS NOW A SEQUENCE, IT IS GUARDED LIKE ONE. Before Story 12.1
+  // this function awaited once and its `!engine || !canvas || fileBusy` test was
+  // taken once, which was the whole of the check it needed. It now awaits up to
+  // three times with the Apply button live throughout, so between two of those
+  // awaits the author can open a file, start a blank template, or undo — every
+  // one of which REPLACES the document and advances documentGeneration — or
+  // simply press Apply again. Neither must be able to land a later command of
+  // this sequence on a document that is no longer the one the drafts were read
+  // from. This is exactly the guard applyProperties, applyImageAsset and the
+  // binding commit already take, in the shape they take it: a generation
+  // captured before the first await and re-read after every one, plus an
+  // in-flight flag so a second press cannot start a second sequence.
   const applyPageSetup = async () => {
-    if (!engine || !canvas || fileBusy) return
+    if (!engine || !canvas || fileBusy || pageSetupInFlight.current) return
     setCommitError(undefined)
+    const requestGeneration = draftGeneration.current
+    const requestDocument = documentGeneration.current
+    pageSetupInFlight.current = true
     try {
-      const requestGeneration = draftGeneration.current
+      for (const band of CAPPING_BANDS) {
+        const projected = projectedBandHeight(canvas, band)
+        const typed = draft[band]
+        // A band the projection does not carry has no row and no draft, and a
+        // row the author left alone is worth no command, a round trip or a
+        // history entry. Nothing here computes a bound: it compares two
+        // strings, both of them the engine's own spelling of its own number.
+        if (typed === undefined || projected === undefined || typed === points(projected)) continue
+        const priorRevision = snapshotRef.current?.revision
+        let result
+        try {
+          result = await engine.request('command', bandHeightCommand(band, typed))
+        } catch (error) { if (documentGeneration.current === requestDocument) setCommitError(componentDiagnostic(error)); return }
+        // THE DOCUMENT MAY HAVE BEEN REPLACED WHILE THAT WAS IN FLIGHT. The
+        // command already landed — the engine holds whatever document it was
+        // asked about — but nothing of this sequence may go on: neither the
+        // snapshot, which would install a projection of a document the author
+        // has left, nor the commands that would follow it.
+        if (documentGeneration.current !== requestDocument) return
+        if (result.snapshot.revision !== priorRevision) invalidatePreview()
+        // The draft is deliberately KEPT here rather than reseeded: the
+        // gesture is not finished, and reseeding would wipe the margins the
+        // author typed out of the boxes before the page-setup command that
+        // carries them has even been sent.
+        setCurrentSnapshot(result.snapshot, true)
+      }
       const priorRevision = snapshotRef.current?.revision
-      const result = await engine.request('command', pageSetupCommand(preset, orientation, preset === 'custom' ? draft.width : '0', preset === 'custom' ? draft.height : '0', draft))
+      let result
+      try {
+        result = await engine.request('command', pageSetupCommand(preset, orientation, preset === 'custom' ? draft.width : '0', preset === 'custom' ? draft.height : '0', draft))
+      } catch (error) { if (documentGeneration.current === requestDocument) setCommitError(pageSetupDiagnostic(error)); return }
+      if (documentGeneration.current !== requestDocument) return
       if (result.snapshot.revision !== priorRevision) invalidatePreview()
       setCurrentSnapshot(result.snapshot, draftGeneration.current !== requestGeneration)
-    } catch (error) { setCommitError(pageSetupDiagnostic(error)) }
+    } finally {
+      pageSetupInFlight.current = false
+    }
   }
   const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
     if (!engine || fileBusy) return undefined
@@ -1604,7 +1680,7 @@ function scanJSONValue(raw: string, cursor: number): number | undefined {
 }
 
 function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraft, onApply, disabled }: { preset: string; orientation: string; draft: Draft; onPreset: (value: string) => void; onOrientation: (value: string) => void; onDraft: (key: keyof Draft, value: string) => void; onApply: () => void; disabled: boolean }) {
-  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/><button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences; document undo is available in the document bar.</p></>
+  return <><p className="section-label">PAGE SETUP</p><p className="honest-note">Component properties require a selection.</p><label>Preset<select aria-label="Page preset" value={preset} onChange={(event) => onPreset(event.target.value)}><option value="A4">A4</option><option value="Letter">Letter</option><option value="custom">Custom</option></select></label><label>Orientation<select aria-label="Page orientation" value={orientation} onChange={(event) => onOrientation(event.target.value)}><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></label>{preset === 'custom' && <><Field label="Width (pt)" value={draft.width} onChange={(value) => onDraft('width', value)}/><Field label="Height (pt)" value={draft.height} onChange={(value) => onDraft('height', value)}/></>}<Field label="Top margin (pt)" value={draft.top} onChange={(value) => onDraft('top', value)}/><Field label="Right margin (pt)" value={draft.right} onChange={(value) => onDraft('right', value)}/><Field label="Bottom margin (pt)" value={draft.bottom} onChange={(value) => onDraft('bottom', value)}/><Field label="Left margin (pt)" value={draft.left} onChange={(value) => onDraft('left', value)}/>{draft.pageHeader !== undefined && <Field label="Page header height (pt)" value={draft.pageHeader} onChange={(value) => onDraft('pageHeader', value)}/>}{draft.pageFooter !== undefined && <Field label="Page footer height (pt)" value={draft.pageFooter} onChange={(value) => onDraft('pageFooter', value)}/>}<button type="button" className="file-button" onClick={onApply} disabled={disabled}>Apply page setup</button><p className="honest-note">Grid and snap are editor preferences; document undo is available in the document bar.</p></>
 }
 
 type PanelComponent = CanvasProjection['components'][number]
@@ -2885,11 +2961,27 @@ function SegmentedProperty({ label, field, segments, components, ids, onCommit, 
 }
 function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}{(edges.length > 0 || !same) && <button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" onClick={() => void update([])}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div> }
 
-type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string }
+// STORY 12.1 adds `pageHeader` and `pageFooter`, and they are DELIBERATELY
+// named for the bands themselves rather than for their position in the panel:
+// applyPageSetup reads each row by the band name it sends, so there is no
+// key-to-band map to rotate. `height` above is the PAGE's height and has
+// nothing to do with either of them.
+//
+// THEY ARE OPTIONAL because a band the projection does not carry has no height
+// to seed a row from, and `0` is a legal-looking height rather than an absence.
+// Absent means the row is not shown and nothing is sent for it.
+type Draft = { width: string; height: string; top: string; right: string; bottom: string; left: string; pageHeader?: string; pageFooter?: string }
+// The height the ENGINE says a band has, or `undefined` when the projection
+// carries no such band. It is read off the projection and never measured, and
+// it is the only number the difference test in applyPageSetup compares a draft
+// against — so a fabricated `0` here would differ from any draft the author
+// left alone and send a band-height command built on a number nobody projected.
+function projectedBandHeight(canvas: CanvasProjection, band: CappingBand): number | undefined { return canvas.bands.find((candidate) => candidate.name === band)?.height }
+function bandDraft(canvas: CanvasProjection, band: CappingBand): string | undefined { const height = projectedBandHeight(canvas, band); return height === undefined ? undefined : points(height) }
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode="decimal" value={value} onChange={(event) => onChange(event.target.value)} /></label> }
 function bandName(name: CanvasProjection['bands'][number]['name']): string { return name === 'pageHeader' ? 'Page Header' : name === 'pageFooter' ? 'Page Footer' : 'Content' }
 function points(value: number): string { const negative = value < 0; const magnitude = Math.abs(value); const whole = Math.floor(magnitude / 1000); const fraction = String(magnitude % 1000).padStart(3, '0').replace(/0+$/, ''); return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}` }
-function draftFor(canvas?: CanvasProjection): Draft { return canvas ? { width: points(canvas.commandWidth), height: points(canvas.commandHeight), top: points(canvas.marginTop), right: points(canvas.marginRight), bottom: points(canvas.marginBottom), left: points(canvas.marginLeft) } : { width: '', height: '', top: '', right: '', bottom: '', left: '' } }
+function draftFor(canvas?: CanvasProjection): Draft { return canvas ? { width: points(canvas.commandWidth), height: points(canvas.commandHeight), top: points(canvas.marginTop), right: points(canvas.marginRight), bottom: points(canvas.marginBottom), left: points(canvas.marginLeft), pageHeader: bandDraft(canvas, 'pageHeader'), pageFooter: bandDraft(canvas, 'pageFooter') } : { width: '', height: '', top: '', right: '', bottom: '', left: '' } }
 // The canvas has one deliberately lossy display rounding rule. It maps only
 // Go-owned millipoints plus local zoom; viewport, DPR, font metrics and DOM
 // geometry are not inputs to painting or hit/drag proposals.

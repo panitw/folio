@@ -91,6 +91,26 @@ export const MAX_LINE_SPACING_THOUSANDTHS = 1000000
 // canvas blank — with no element id and no attributable error.
 export const BANDS_CAPPING_VERTICALLY = ['pageHeader', 'pageFooter']
 
+// THE SAME LIST, ONCE AS A TYPE AND ONCE AS AN ARRAY A CALLER MAY ITERATE —
+// and neither of them is a second copy of it.
+//
+// Story 12.1 first shipped `settableBands` in App.tsx and `SettableBand` in
+// band-height-command.ts, each spelling the two names out again. That made four
+// and five copies of a list whose whole safety property is that
+// engine-bounds-mirror.test.ts reads it on BOTH sides of the Go/TypeScript
+// boundary and refuses to let it drift: two of the five were outside that
+// census, which is the only place a stale copy can hide.
+//
+// CAPPING_BANDS is the SAME ARRAY OBJECT, narrowed to the element type; the
+// union is taken out of the projection's own band-name union, which
+// canvas_projection_wire_test.go pins against Go, minus the one band that has
+// no height to cap with. Both are tied back to Go's list by name in
+// engine-bounds-mirror.test.ts — the union through a Record whose keys must be
+// exactly the union's, so a member gained or lost on either side is a
+// compile-time error and a red test rather than a silent widening.
+export type CappingBand = Exclude<CanvasProjection['bands'][number]['name'], 'content'>
+export const CAPPING_BANDS = BANDS_CAPPING_VERTICALLY as ReadonlyArray<CappingBand>
+
 export type EngineError = Readonly<{
   code: string
   message: string

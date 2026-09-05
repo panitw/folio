@@ -92,7 +92,7 @@ describe('command JSON has exactly one author', () => {
     // BY NAME, and page-setup-command.ts by name in particular: it was the one
     // encoder with no escaping and no test file at all, so "the scan found
     // nothing" must not be able to mean "the scan never looked at it".
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts']
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts']
     for (const factory of factories) {
       expect(productionFiles).toContain(factory)
       expect(fs.readFileSync(path.join(sourceDir, factory), 'utf8')).toContain(`from './${AUTHORITY.replace(/\.ts$/, '')}'`)
@@ -110,7 +110,7 @@ describe('command JSON has exactly one author', () => {
     //
     // `\bString\(` does not match `jsonString(`: there is no word boundary
     // between `n` and `S`. The mutation cases below prove both directions.
-    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts']
+    const factories = ['page-setup-command.ts', 'component-command.ts', 'component-asset-command.ts', 'component-property-command.ts', 'table-column-command.ts', 'font-chain-command.ts', 'band-height-command.ts']
     const offenders = factories.filter((factory) => /\bString\(/.test(withoutLineComments(fs.readFileSync(path.join(sourceDir, factory), 'utf8'))))
     expect(offenders).toEqual([])
     // Non-vacuity in both directions, because a regexp that matched nothing

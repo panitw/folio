@@ -1358,6 +1358,200 @@ describe('application shell', () => {
     expect(top).toHaveValue('')
   })
 
+  // -------------------------------------------------------------------------
+  // STORY 12.1: THE BAND-HEIGHT ROWS.
+  //
+  // Band.Height had no writer anywhere in the product. These four tests are
+  // about the two rows that now write it, and each asks the Story 12.4
+  // question of itself: what would have to change for this to fail?
+
+  it('shows the engine\'s own band heights and sends each row to the band it names', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    const header = screen.getByRole('textbox', { name: 'Page header height (pt)' })
+    const footer = screen.getByRole('textbox', { name: 'Page footer height (pt)' })
+    // The rows show what the ENGINE projected (20000 millipoints for both
+    // bands), never a default and never a browser measurement.
+    expect(header).toHaveValue('20')
+    expect(footer).toHaveValue('20')
+    fireEvent.change(header, { target: { value: '80' } })
+    fireEvent.change(footer, { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3))
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    // THE ROW→BAND MAP, PINNED TO THE BYTE. "A band-height command was sent"
+    // passes just as happily with the two rows crossed — which is exactly the
+    // defect a key→edge map rotation produced elsewhere in this repository
+    // while its table test stayed green.
+    expect(sent[0]).toBe('{"kind":"setBandHeight","version":1,"band":"pageHeader","height":80}')
+    expect(sent[1]).toBe('{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30}')
+    // And the band heights go BEFORE the page setup, so the common refusal
+    // leaves the document wholly unchanged.
+    expect(sent[2]).toContain('"kind":"pageSetup"')
+  })
+
+  it('sends nothing for a band-height row the author did not change', async () => {
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page footer height (pt)' }), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    expect(sent.filter((command) => command.includes('setBandHeight'))).toEqual(['{"kind":"setBandHeight","version":1,"band":"pageFooter","height":30}'])
+    expect(sent.some((command) => command.includes('"band":"pageHeader"'))).toBe(false)
+  })
+
+  it('sends no band-height command at all when only a margin changed', async () => {
+    // AC2. A row the author did not touch is worth no command, no round trip
+    // and no history entry, and when NEITHER band-height row was touched the
+    // Apply is exactly the one command it was before Story 12.1. Nothing here
+    // computes a bound; it compares the engine's own spelling of its own
+    // number against the box beside it.
+    //
+    // THIS TEST USED TO CLAIM MORE THAN IT COULD. Its name and its comment said
+    // it kept an ALREADY-STRANDED hand-edited document editable — a scenario
+    // that cannot occur: engine-protocol.ts's isCanvas rejects a projection
+    // carrying a stranded component, so such a document terminates the worker
+    // when it is opened and is never edited at all. The test was green only
+    // because it mocks the engine and never runs that guard. The property below
+    // is real and is all that is asserted.
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const only = new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])
+    expect(only).toContain('"kind":"pageSetup"')
+    expect(only).not.toContain('setBandHeight')
+  })
+
+  it('renders the engine\'s own located band-height refusal, never the fixed page-setup sentence', async () => {
+    // The refusal names the ACT and the element: the height that was refused,
+    // and what would have been stranded by it. Routing it through
+    // pageSetupDiagnostic instead would throw all of that away and print a
+    // sentence about size and margins, neither of which the author touched.
+    const refusal = 'a pageHeader height of 79pt would leave e1 outside the band: it reaches 80000mp'
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? Promise.reject(Object.assign(new Error(refusal), { elementId: 'e1', dataPath: 'bands.pageHeader.height' }))
+      : Promise.resolve({ snapshot: snapshot(1) }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page header height (pt)' }), { target: { value: '79' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(`e1: ${refusal}`))
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Page setup is invalid. Check the selected size and margins.')
+    // The sequence STOPPED at the first refusal: the pageSetup command that
+    // would have followed was never sent, so the document is wholly unchanged.
+    expect(request).toHaveBeenCalledOnce()
+    // NO BROWSER-SIDE FLOOR (Story 17.4 item 9): the refused value stays in the
+    // box exactly as typed. A panel that clamped it would have shown the author
+    // a number they did not enter beside a refusal about the one they did.
+    expect(screen.getByRole('textbox', { name: 'Page header height (pt)' })).toHaveValue('79')
+  })
+
+  it('shows no row and sends no command for a band the projection does not carry', async () => {
+    // ABSENT IS NOT ZERO. projectedBandHeight returns undefined for a band the
+    // engine did not project, and a `?? 0` there would seed the row with a
+    // legal-looking height nobody projected — which then DIFFERS from any draft
+    // and sends a band-height command built on the fabricated number.
+    const footerless = { ...canvas, bands: canvas.bands.filter((band) => band.name !== 'pageFooter') }
+    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
+    render(<App engine={engine(request)} initialSnapshot={{ ...snapshot(1), canvas: footerless }} />)
+    expect(screen.queryByRole('textbox', { name: 'Page footer height (pt)' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Page header height (pt)' })).toHaveValue('20')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toContain('"kind":"pageSetup"')
+  })
+
+  it('keeps the typed margin standing when a band height is accepted and the page setup that follows is refused', async () => {
+    // THE RESIDUE THE SPEC DISCLOSES, AND THE ONE PLACE THE MID-SEQUENCE
+    // SNAPSHOT'S keepNewerDraft FLAG IS OBSERVABLE. The band height is
+    // ACCEPTED, so a snapshot comes back and is installed mid-gesture; the
+    // pageSetup command that follows is then REFUSED. If that install reseeded
+    // the drafts, the margin the author typed would be wiped out of its box by
+    // a command that never carried it — beside a refusal telling them the page
+    // setup was rejected. Flipping the `true` in applyPageSetup's
+    // setCurrentSnapshot(result.snapshot, true) to `false` reddens exactly this
+    // test.
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation !== 'command') return Promise.resolve({ snapshot: snapshot(1) })
+      return new TextDecoder().decode(payload as ArrayBuffer).includes('setBandHeight')
+        ? Promise.resolve({ snapshot: snapshot(2) })
+        : Promise.reject(new Error('the engine said something about page setup'))
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page header height (pt)' }), { target: { value: '80' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    // THE PAGE-SETUP SENTENCE, not a component one: the second half of the
+    // gesture is a pageSetup command and its refusal is phrased by
+    // pageSetupDiagnostic, which has no engine message to show for an
+    // unlocated rejection.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Page setup is invalid. Check the selected size and margins.'))
+    expect(request).toHaveBeenCalledTimes(2)
+    // AND THE BOXES STILL HOLD WHAT THE AUTHOR TYPED. The margin never reached
+    // the document, so the panel must not pretend it did or that it never
+    // existed.
+    expect(screen.getByRole('textbox', { name: 'Top margin (pt)' })).toHaveValue('37')
+    expect(screen.getByRole('textbox', { name: 'Page header height (pt)' })).toHaveValue('80')
+  })
+
+  it('abandons the rest of an Apply when the document is replaced mid-sequence', async () => {
+    // APPLY IS A SEQUENCE OF UP TO THREE AWAITED ROUND TRIPS and the Apply
+    // button stays live throughout, so the author can undo, open a file or
+    // start a blank template between two of them — each of which REPLACES the
+    // document. A later command of this sequence landing on that document would
+    // carry heights and margins read from a document that is gone. Every other
+    // async path in this file guards exactly this (applyProperties,
+    // applyImageAsset, the binding commit) and so does this one.
+    let releaseBandHeight: ((value: unknown) => void) | undefined
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'undo') return Promise.resolve({ snapshot: { ...snapshot(9), canUndo: false } })
+      if (operation !== 'command') return Promise.resolve({ snapshot: snapshot(1) })
+      if (new TextDecoder().decode(payload as ArrayBuffer).includes('setBandHeight')) return new Promise((resolve) => { releaseBandHeight = resolve })
+      return Promise.resolve({ snapshot: snapshot(3) })
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ ...snapshot(1), canUndo: true }} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page header height (pt)' }), { target: { value: '80' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(releaseBandHeight).toBeDefined())
+    // The document is replaced while the band height is still in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled())
+    await act(async () => { releaseBandHeight?.({ snapshot: snapshot(2) }) })
+    const commands = request.mock.calls.filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload as ArrayBuffer))
+    // THE pageSetup COMMAND WAS NEVER SENT. Without the generation guard it
+    // would have been, against a document the author has already left.
+    expect(commands).toHaveLength(1)
+    expect(commands[0]).toContain('setBandHeight')
+  })
+
+  it('starts no second Apply while the first is still in flight', async () => {
+    let releaseBandHeight: ((value: unknown) => void) | undefined
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation !== 'command') return Promise.resolve({ snapshot: snapshot(1) })
+      if (new TextDecoder().decode(payload as ArrayBuffer).includes('setBandHeight')) {
+        if (releaseBandHeight) return Promise.resolve({ snapshot: snapshot(2) })
+        return new Promise((resolve) => { releaseBandHeight = resolve })
+      }
+      return Promise.resolve({ snapshot: snapshot(3) })
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Page header height (pt)' }), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    await waitFor(() => expect(releaseBandHeight).toBeDefined())
+    // A second press while the first sequence is mid-flight: two interleaved
+    // sequences would send band heights derived from drafts either of them may
+    // already have superseded, and would double every history entry.
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
+    expect(request).toHaveBeenCalledTimes(1)
+    await act(async () => { releaseBandHeight?.({ snapshot: snapshot(2) }) })
+    // One band height, one page setup, and nothing from the two extra presses.
+    expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(2)
+  })
+
   it('keeps component drafts local, sends exactly one Enter/Blur commit, and locates a Go diagnostic', async () => {
     const componentCanvas = { ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', fontFamily: 'body', fontSize: 12_000, borderEdges: ['bottom' as const] }] }
     const request = vi.fn((operation: string) => operation === 'command' ? Promise.reject(Object.assign(new Error('must fit the content band'), { elementId: 'e1', dataPath: 'component.x' })) : Promise.resolve({ snapshot: snapshot(1) }))

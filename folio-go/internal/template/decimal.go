@@ -253,6 +253,19 @@ func appendPoints(dst []byte, v geom.Length) []byte {
 	return dst
 }
 
+// FormatPoints spells a geom.Length the way the FORMAT spells it on disk
+// (appendPoints — the canonical exact-decimal spelling), so a diagnostic can
+// quote a length in the AUTHOR'S units: an author who typed `80` is told about
+// `80`, never about `80000mp`.
+//
+// Exported for the same reason FormatLineSpacing is: the command doors live in
+// the module root (folio-go/component_commands.go) and must word a length the
+// way this package words it, and a second spelling of appendPoints in the root
+// package is exactly the drift appendPoints exists to prevent.
+func FormatPoints(v geom.Length) string {
+	return string(appendPoints(nil, v))
+}
+
 // appendPlainInt appends the plain decimal digits of a non-negative
 // int64 to dst (used for both appendPoints' integer part and NextID).
 func appendPlainInt(dst []byte, v int64) []byte {

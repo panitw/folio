@@ -700,6 +700,44 @@ func canvasPageGeometry(t *Template) (layout.PageGeometry, error) {
 	}, nil
 }
 
+// bandsLeaveContentWindow is THE content-window invariant, in ONE place, and
+// it is asked by TWO callers with two different audiences (Story 12.1, Q3).
+//
+// Canvas asks it while LOADING: a document whose two capping bands eat the
+// whole printable column cannot be laid out at all, and its refusal is the
+// bare sentence it always was. setBandHeight asks it while AUTHORING, of a
+// CANDIDATE height the author just typed, and owes a located message naming
+// that height — a different sentence about the same arithmetic.
+//
+// The arithmetic is therefore written down once. Two callers phrasing their
+// own refusals over one predicate is the shape Q3's ruling required; two
+// spellings of `header >= innerH-footer` is the shape it forbade, because the
+// version that drifts is always the one the author never reaches.
+//
+// The content region must be STRICTLY positive: header+footer == innerH is
+// refused, because a content band of zero height is a document with nowhere
+// for content to be, not a document with a very short one.
+//
+// THE BOUND IT ACCEPTS UP TO IS PART OF THE PREDICATE, not a number a caller
+// re-derives to put in a sentence. setBandHeight has to TELL the author which
+// numbers are left, and a message that computed `innerH-other` for itself
+// would be a second spelling of this arithmetic living inside the one function
+// whose job was to call it — the drift would show up only as a refusal quoting
+// a bound the check does not hold. So the ceiling is named here and the
+// predicate is written in terms of it; bandContentWindowCeiling is the LARGEST
+// height this returns true for, and nothing else may say what that is.
+func bandsLeaveContentWindow(header, footer, innerH geom.Length) bool {
+	return header >= 0 && footer >= 0 && header <= bandContentWindowCeiling(footer, innerH)
+}
+
+// bandContentWindowCeiling is the tallest a capping band may be beside a
+// sibling of `other` in a printable column of `innerH`: one millipoint short
+// of the whole column, because the content region must be strictly positive
+// and a geom.Length is an integer count of millipoints.
+func bandContentWindowCeiling(other, innerH geom.Length) geom.Length {
+	return innerH - other - 1
+}
+
 // Canvas returns immutable paint geometry. It intentionally exposes neither
 // template fields nor elements, canonical bytes, or browser measurements.
 //
@@ -743,7 +781,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 		}
 	}
 	innerW, innerH := w-m.Left-m.Right, h-m.Top-m.Bottom
-	if header < 0 || footer < 0 || header >= innerH-footer {
+	if !bandsLeaveContentWindow(header, footer, innerH) {
 		return CanvasProjection{}, fmt.Errorf("folio: page setup leaves no positive content region")
 	}
 	preset := "custom"

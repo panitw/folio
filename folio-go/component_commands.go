@@ -272,6 +272,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return applyFontChainCommand(t, raw, removeFontChainEntry)
 	case "embedFontFamily":
 		return applyFontChainCommand(t, raw, embedFontFamily)
+	case "setBandHeight":
+		return setBandHeight(t, raw)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -2113,6 +2115,202 @@ func containEdgeY(band CanvasBand, value, limit geom.Length) geom.Length {
 		return value
 	}
 	return containEdge(value, limit)
+}
+
+// ---------------------------------------------------------------------------
+// STORY 12.1: THE HEIGHT OF A CAPPING BAND, AS A COMMAND.
+//
+// Band.Height had no writer anywhere in the product. The loader accepted it,
+// the renderer and the canvas both consumed it, and nothing set it — so a
+// letterhead's header was whatever the starter file declared and changing it
+// meant hand-editing the file the designer had just saved.
+//
+// It is an ARM ON THIS DOOR rather than two more keys on ApplyPageSetupCommand
+// because that door gates on `len(raw) != 7` and every caller's shape is that
+// arity. The seven font-chain arms are the shipped precedent for a
+// document-level mutation reached through the component door.
+
+// bandHeightPath is the DataPath every band-height refusal carries. The command
+// names a BAND rather than an element, so ElementID stays empty on every
+// refusal except the strand — the one refusal that has an element to name.
+//
+// Bounded the way fontChainPath is bounded and for the same reason: `band`
+// arrives as a free string on the wire, the host cuts DataPath at
+// maxComponentDataPathBytes BY BYTES, and a path arriving split through the
+// middle of a rune locates nothing.
+func bandHeightPath(name string) string {
+	if name == "" {
+		return "bands"
+	}
+	return truncateAtRuneBoundary("bands."+name+".height", maxComponentDataPathBytes)
+}
+
+// setBandHeight is the only writer of Band.Height outside the loader.
+//
+// IT VALIDATES BEFORE IT MUTATES, and the two things it validates are two
+// different failures with two different audiences:
+//
+//   - THE CONTENT WINDOW. A header and a footer that between them eat the whole
+//     printable column leave the document with nowhere for content to be. The
+//     arithmetic is bandsLeaveContentWindow's, in page_setup.go, and it is
+//     CALLED here rather than restated: Canvas asks the same predicate while
+//     LOADING and phrases its own bare refusal, this asks it of a CANDIDATE
+//     height while AUTHORING and owes a located one.
+//   - THE STRAND. Shortening a capping band can leave a component that is
+//     inside it today outside it afterwards. containComponent is the predicate
+//     — reused, unchanged, one new call site — and it is asked of EVERY element
+//     in the band, not of a selected one, because the author selected nothing.
+//
+// THE REFUSAL NAMES THE ACT, NOT THE OBJECT, which is why containComponent's
+// own sentence is not borrowed. "component geometry must stay within pageHeader"
+// answers a command the author did not send: they set a height, they did not
+// move anything. The predicate is right and the words are not, and a new
+// sentence costs nothing under AD-14 because command refusals are error strings
+// routed by prefix rather than registry codes.
+//
+// The height is echoed back to the author IN THE LITERAL THEY SENT. It reached
+// lengthField as JSON and left it as a decimal with at most three places, so
+// what goes into the message is digits, one optional sign and one optional
+// point — never re-spelled, and never a second spelling of appendPoints.
+//
+// AND EVERY DERIVED QUANTITY BESIDE IT IS SPELLED IN THE SAME UNITS. The author
+// types POINTS into a box labelled "(pt)" and the engine's refusal echoes that
+// literal back with "pt" on it; a bound or a reach quoted in millipoints beside
+// it would be four digits wider than the number it is about, and the one
+// quantity that tells the author what to type next would be the one they cannot
+// type. template.FormatPoints is appendPoints — the format's own canonical
+// exact-decimal spelling, the same one the file on disk uses — so a message and
+// the document agree by construction rather than by care.
+func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	name, err := commandString(raw, "band")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "bands", "band must be a non-empty string")
+	}
+	// Only the members of bandsCappingVertically have a height to set. The
+	// content band is refused HERE, which is what keeps `height` absent from it
+	// in every serialized document: writeBand emits the key on Set alone, so a
+	// content band that was ever written would carry one forever.
+	if !slices.Contains(bandsCappingVertically, name) {
+		if name == bandContent {
+			return CanvasProjection{}, componentFailure("", bandHeightPath(name), "the content band's height is derived from the page and the two bands that cap it, and cannot be set")
+		}
+		return CanvasProjection{}, componentFailure("", bandHeightPath(name), "only pageHeader and pageFooter have a height a command may set")
+	}
+	proposed, err := lengthField(raw, "height")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", bandHeightPath(name), err.Error())
+	}
+	literal := string(raw["height"])
+	if proposed < 0 {
+		return CanvasProjection{}, componentFailure("", bandHeightPath(name), fmt.Sprintf("a %s height of %spt is negative", name, literal))
+	}
+	band, otherName := &t.doc.Bands.PageHeader, bandPageFooter
+	if name == bandPageFooter {
+		band, otherName = &t.doc.Bands.PageFooter, bandPageHeader
+	}
+	// The document as it stands, projected once. Everything the checks below
+	// need is read off it rather than recomputed: the band's width, the other
+	// band's height, and the printable column.
+	//
+	// THE COLUMN IS SUMMED, NOT SUBTRACTED. `pageHeight − marginTop −
+	// marginBottom` is band placement, and AD-24 gives that to internal/layout
+	// alone. WHAT THE ARCH GUARD ACTUALLY CHECKS IS NARROWER THAN THAT RULE, and
+	// saying otherwise would be claiming an enforcement nobody has:
+	// internal/bandcomposition_arch_test.go walks every non-method function in
+	// this package and flags a subtraction one of whose operand identifiers is
+	// one of seven hardcoded band-height NAMES (PageHeaderHeight,
+	// PageFooterHeight, their lower-case forms, headerHeight, footerHeight,
+	// usableHeight) or MarginTop/MarginBottom. It catches the derivation as it
+	// is ordinarily written; arithmetic over differently named variables —
+	// this function's own `innerH` and `other` among them — is outside its
+	// reach. The summing below is a discipline the guard corroborates, not one
+	// it imposes. The three bands PARTITION the printable column exactly
+	// (internal/layout's BandOrigins: "the partition is exact"), so their
+	// projected heights add up to it, and adding up what layout.ContentHeight
+	// already derived is not a second derivation of it.
+	projection, err := Canvas(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	var innerH, other geom.Length
+	var projected CanvasBand
+	found := false
+	for _, existing := range projection.Bands {
+		innerH += geom.Length(existing.Height)
+		switch existing.Name {
+		case name:
+			projected, found = existing, true
+		case otherName:
+			other = geom.Length(existing.Height)
+		}
+	}
+	// REFUSE LOUDLY RATHER THAN PASS SILENTLY. If the band this command names is
+	// missing from the projection, `projected` is the zero CanvasBand and its
+	// Name is "" — which is in no list at all, so containComponent below would
+	// skip the vertical test for every element and the strand check would report
+	// nothing while reading exactly like a check that passed. A vacuous guard is
+	// worse than no guard, because it is quoted as evidence.
+	//
+	// It is UNREACHABLE as the code stands: Canvas builds Bands from the three
+	// fixed names on every call, and TestSetBandHeightSeesEveryBandItMaySet
+	// asserts that both settable names are always there. The guard is against a
+	// future Canvas, not against a document, and it stays because the failure it
+	// prevents is invisible.
+	if !found {
+		return CanvasProjection{}, componentFailure("", bandHeightPath(name), fmt.Sprintf("the %s band is not in this document's projection, so a height for it cannot be checked", name))
+	}
+	header, footer := proposed, other
+	if name == bandPageFooter {
+		header, footer = other, proposed
+	}
+	if !bandsLeaveContentWindow(header, footer, innerH) {
+		// THE BOUND IS THE PREDICATE'S OWN. bandContentWindowCeiling is what
+		// bandsLeaveContentWindow accepts up to; naming anything else here —
+		// `innerH-other`, say — would be a second spelling of the arithmetic
+		// inside the very function whose job is to CALL it, and the only symptom
+		// of the drift would be a refusal quoting a number the check rejects.
+		return CanvasProjection{}, componentFailure("", bandHeightPath(name), fmt.Sprintf("a %s height of %spt leaves no content band: %s takes %spt of the %spt between the page margins, so %s must be at most %spt", name, literal, otherName, template.FormatPoints(other), template.FormatPoints(innerH), name, template.FormatPoints(bandContentWindowCeiling(other, innerH))))
+	}
+	// The band as it WOULD BE, in the three fields containComponent reads:
+	// Name selects the vertical cap, Width bounds the horizontal extent, Height
+	// is the number under test. X and Y are deliberately absent rather than
+	// copied — the page footer's origin moves with its height, and a candidate
+	// carrying the old one would be a coordinate this command has not derived.
+	candidate := CanvasBand{Name: projected.Name, Width: projected.Width, Height: int64(proposed)}
+	for _, element := range band.Elements {
+		_, height := projectedSize(element)
+		// ONLY THE VERTICAL AXIS IS THIS COMMAND'S BUSINESS. containComponent
+		// enforces the horizontal bound too, and a height cannot change whether
+		// a component hangs off the SIDE of its band — so asking the whole
+		// predicate would make one horizontally overflowing element refuse every
+		// band-height change there is, under a sentence naming a vertical reach
+		// it never measured. That is a wrong message for a real defect somewhere
+		// else, and it is not this command's to report.
+		//
+		// The predicate is still CALLED, not re-implemented: x=0 and width=0
+		// satisfy every horizontal term of containComponent for any band width,
+		// leaving exactly the vertical cap plus the representational y<0 and
+		// height<0 terms. Weakening the vertical test is what would not be
+		// allowed, and nothing here does.
+		if containComponent(candidate, 0, element.Y, 0, height) != nil {
+			return CanvasProjection{}, componentFailure(string(element.ID), bandHeightPath(name), fmt.Sprintf("a %s height of %spt would leave %s outside the band: it reaches %spt", name, literal, element.ID, template.FormatPoints(element.Y+height)))
+		}
+	}
+	// Atomic on ONE field: the previous Presence is held, the new one written,
+	// and the projection is what decides whether it stands. Nothing else in the
+	// document has been touched by the time this line runs, so a restored
+	// Presence restores the document byte for byte.
+	previous := band.Height
+	band.Height = template.Presence[geom.Length]{Set: true, Value: proposed}
+	updated, err := Canvas(t)
+	if err != nil {
+		band.Height = previous
+		return CanvasProjection{}, err
+	}
+	return updated, nil
 }
 
 // ---------------------------------------------------------------------------

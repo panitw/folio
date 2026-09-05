@@ -8839,3 +8839,67 @@ The caller at `:1043-1045` wraps every refusal from `applyPropertyChanges` as `c
 **Why it was not patched in 12.4.** A source-text guard over `App.tsx`'s `FieldSpec` declarations is a new cross-boundary contract, not a patch to this story's diff, and 12.4's own Boundaries put the designer's field set behind an Ask First gate. It also touches the same file family as `engine-bounds-mirror.test.ts`, whose anchored regexes 12.4 was explicitly forbidden to disturb.
 
 **What discharges it.** A test asserting that no `FieldSpec` declaration in `App.tsx` carries a `field:` value matching `padding*`, red-proved by adding one, and worded so it is a statement about the declaration set rather than about any one rendered panel.
+
+### DW-204 — `pageSetupDiagnostic` discards the engine's message, so every projection-level page-setup refusal reaches the author as a sentence about size and margins
+
+- source_spec: `_bmad-output/implementation-artifacts/12-1-the-page-header-and-page-footer-take-the-height-the-author-s.md`
+- **Deferred by:** Story 12.1's plan gate (2026-09-05). **Surfaced, not caused, by 12.1** — it is the defect that forced 12.1's door choice, and it is independent of this story.
+- **Owner:** unassigned. **Severity:** MEDIUM as a user-visible loss of the engine's own words; **not a correctness defect**.
+- **Status:** OPEN
+
+**The gap.** `folio-designer/src/App.tsx:2908` returns a fixed string — `"Page setup is invalid. Check the selected size and margins."` — for any error whose code is not `PAGE_SETUP_INVALID`, throwing the engine's message away. And `folio-go/wasm/cmd/engine/main.go:262` awards `PAGE_SETUP_INVALID` only on `strings.HasPrefix(message, "folio: page.")`.
+
+**The split is structural, and that is what makes it a defect rather than a rough edge.** `ApplyPageSetupCommand`'s own field validations are wrapped `folio: page.width: …`, `folio: page.margin.top: …` — a **dot** — and arrive located. Every refusal `Canvas` raises begins `"folio: page setup "` — a **space** — and so does not: `"folio: page setup leaves no positive content region"` and `"folio: page setup exceeds the JavaScript-safe geometry bound"` both land as `ENGINE_REJECTED` and are then replaced. So the two refusals an author is *most* likely to hit by moving margins on a small page are exactly the two whose reasons are destroyed, and the replacement sentence names size and margins whatever the real cause was.
+
+**Why it was not fixed in 12.1.** The fix touches `engineFailure`'s prefix routing and `pageSetupDiagnostic` — machinery serving the entire page-setup panel — and would alter shipped refusal text for every page-setup failure. 12.1 routed around it instead, through the component door, whose refusals are located by construction; that is a correct answer for one command and no answer at all for the panel.
+
+**What discharges it.** Carry the DataPath on the Go error rather than reconstructing it at the host by substring match, or widen the host's prefix test to cover `"folio: page setup "` and have `pageSetupDiagnostic` render the engine's message. Red-prove by asserting that a document whose margins leave no content region shows the engine's own sentence, and that the assertion reds when the fallback is restored.
+
+### DW-205 — a component stranded by a hand-edited band height is partly uneditable, and the refusal does not explain why
+
+- source_spec: `_bmad-output/implementation-artifacts/12-1-the-page-header-and-page-footer-take-the-height-the-author-s.md`
+- **Deferred by:** Story 12.1's plan gate (2026-09-05). 12.1 refuses strand *creation*; this entry is the residue for documents that arrive stranded.
+- **Owner:** unassigned. **Severity:** LOW while it requires a hand-edited file; re-price if any route can strand a component again.
+- **Status:** OPEN
+
+**CORRECTED 2026-09-05 at Story 12.1's review — the first version of this entry was wrong in its second half.** A document declaring `pageHeader.height: 20` and holding `e1` at `y=50 h=30` **parses clean and projects clean on the Go side** — `ParseTemplate` and `Canvas` both return nil (measured with a throwaway module outside the repo, exported API only), and `parse_bands.go:85-100` bounds a band height by nullness and decimal exactness only: no positivity, no ceiling. **But the browser does NOT admit it.** `folio-designer/src/engine-protocol.ts:345` reads `if (BANDS_CAPPING_VERTICALLY.includes(component.band) && !(box.y + box.height <= band.height)) return false`, so `isCanvas` rejects the projection, `parseInbound` returns undefined, and `EngineClient.#fail('PROTOCOL_INVALID')` **terminates the worker**. The original entry claimed the guard admitted the snapshot; it was written from a survey of the numeric-range check fourteen lines earlier and never verified against the vertical clause.
+
+**So in the designer the document cannot be opened at all**, and the refusals below are reachable only from a non-browser client. That makes the shortfall sharper, not milder: the failure an author meets is a dead editor with no attributable error, not a partly-editable document.
+
+**What is then refused, and the part worth keeping.** On `e1`: `moveComponent` refused; `resizeComponent` refused **even shrinking to `h=1`**, because `y > band.Height` fails before the new size is considered; and `updateComponentProperties` setting **only `color`** refused with `folio: component geometry must stay within pageHeader` — where the identical command succeeds on the same document with the taller header. So an edit carrying no geometry at all is refused for a geometric reason, and the message describes a component the author did not move. `updateComponentPropertiesInPlace` re-runs `containComponent` per id after `applyPropertyChanges`, which is why.
+
+**The escape, named so this reads as a disclosed shortfall and not a dead end.** `setComponentBounds` and `deleteComponent` both still succeed. An author can rescue the element by dragging it to a rectangle that fits — the designer's handle drag is `setComponentBounds` — or delete it. Nothing is unrecoverable; what is missing is any explanation of the constraint at the moment it bites.
+
+**What discharges it.** Either bound band height at load — which is a format change and a compatibility decision, not a patch — or make the containment refusal say *why* the component does not fit when the failure is a band shorter than the element rather than an element moved out of a band. The second is cheap and is the same "name the act, not the object" correction Story 12.1 applied to its own refusal; it is left out of 12.1 because it changes a message on the component command path, which 12.1's Boundaries put out of scope.
+
+### DW-206 — "Apply page setup" became a multi-command gesture, so it can apply partially
+
+- source_spec: `_bmad-output/implementation-artifacts/12-1-the-page-header-and-page-footer-take-the-height-the-author-s.md`
+- **Deferred by:** Story 12.1's plan gate (2026-09-05), ruled and accepted as designed. This entry records what remains true after the choice, so nobody re-derives it.
+- **Owner:** unassigned. Story 12.2 is the live candidate — it adds `locale` and `utcOffset` to the same panel and will widen the same gesture.
+- **Severity:** LOW. **Status:** OPEN
+
+**What changed.** Before 12.1, the **Apply page setup** button sent exactly one command, so the panel was all-or-nothing: either the whole page setup applied or nothing did. 12.1 puts band heights on the same button as their own `setBandHeight` commands. Each command is still individually atomic — a refusal leaves the document byte-unchanged, which is what AC3 asks — but **the gesture is not**, and no ordering makes it so.
+
+**The residue, precisely.** Band heights are sent first and the sequence stops at the first refusal, so the likely failure (a strand, or no content window) leaves the document wholly unchanged. What is left uncovered is the other direction: **a band height accepted and the following `pageSetup` command refused leaves the band height applied** while the margins the author typed in the same gesture are not. The author sees one located refusal and a document in a state they did not ask for. Reversing the order does not fix it — it trades a rare residue for an equally rare one pointing the other way, which is why the order was chosen on which failure is *likely* rather than on which residue is acceptable.
+
+**Why it was not fixed in 12.1.** Both honest fixes are larger than this story. Either the panel's commit becomes **one command carrying page setup and both band heights** — which is the `len(raw) != 7` arity change to a door Story 15.2a hardened, rejected at this story's plan gate for good reasons — or the engine grows a **batch/transaction primitive** that applies a list of commands atomically with one undo entry, which is a change to the command channel's contract and belongs to no single story.
+
+**The clause that should make someone re-price it.** It is LOW while the gesture carries two kinds of value. **Story 12.2 adds `locale` and `utcOffset` to this same panel**; if those also commit through this button, one gesture will carry four or five commands and the partial-application window widens with every one. Re-price at 12.2's plan gate, and note that a batch primitive discharges 12.2's version of this at the same time.
+
+**What discharges it.** An engine-side batch that applies an ordered list of commands all-or-nothing and pushes one undo entry, red-proved by a list whose last member is refused and asserting the document is byte-identical to its pre-image — not merely that the refusal was reported.
+
+### DW-207 — `npx tsc --noEmit` is a vacuous gate, and it has been the stated typecheck in story dispatches
+
+- source_spec: `_bmad-output/implementation-artifacts/12-1-the-page-header-and-page-footer-take-the-height-the-author-s.md`
+- **Deferred by:** Story 12.1's review (2026-09-05). **Surfaced, not caused, by 12.1** — the defect is in the gate, and it is older than this story.
+- **Owner:** unassigned. **Severity:** HIGH as an assurance defect; it is the reason a real regression reached review undetected in this very story.
+- **Status:** OPEN
+
+**The measurement.** `folio-designer/tsconfig.json` is a solution file — `{"files": [], "references": [tsconfig.app.json, tsconfig.node.json]}`. Run without `-b`, tsc has no files to check and exits 0 with `TypeScript: No errors found`. **Red-proved**: appending `export const DELIBERATE_TYPE_ERROR: number = "this is a string"` to `folio-designer/src/band-height-command.ts` and running `npx tsc --noEmit` gave **rc 0**; `npx tsc -b` reported `error TS2322` on that exact line. `package.json`'s own `typecheck` script is `npm run build:wasm && tsc -b`, so the project's real gate is correct — **it is the stated gate in the story dispatches that is wrong**, and every story that ran `npx tsc --noEmit` and reported it green measured nothing.
+
+**It is not hypothetical, and this story is the proof.** Story 12.1 added 194 lines to `App.test.tsx` carrying **8 type errors** (`request.mock.calls[0]![1] as ArrayBuffer` and a destructured `map` over a `vi.fn` declared with no parameters — `TS2352` and `TS2493`, four sites). `npx tsc --noEmit` passed. `npx tsc -b` listed all eight. They were repaired inside 12.1 by adopting the file's own established idiom, `(request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]`, already used at `App.test.tsx:719,734`.
+
+**Note the near-miss in the diagnosis, because it is the same class as the gate.** The agent that found this reported the eight errors as **pre-existing**. They were not: every one sits inside the 194-line hunk this story added (`git diff -U0` shows the single hunk `@@ -1360,0 +1361,194 @@`), and repairing only those four sites took the count to **0**, which also proves the baseline was clean. *A failure is only pre-existing if it was measured at the baseline.*
+
+**What discharges it.** Change the stated gate to `npx tsc -b` (or `npm run typecheck`) in the dispatch template and in every spec's Verification section, and consider a guard asserting that the typecheck command actually type-checks — the same "a scan that never looked" shape the command-JSON soleness allowlist exists to prevent. A cheap red-proof for such a guard already exists: the injected-error probe above.

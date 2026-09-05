@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { BANDS_CAPPING_VERTICALLY, CAPPING_BANDS, type CappingBand } from './engine-protocol'
 
 // D-7.4.5 / DW-25, AS WIDENED BY STORY 7.5.
 //
@@ -220,6 +221,49 @@ describe('band containment mirror', () => {
     // vertical clamps consume.
     expect(dragClamp).toMatch(/import \{ BANDS_CAPPING_VERTICALLY, type CanvasProjection \} from '\.\/engine-protocol'/)
     expect(dragClamp).toMatch(/^ {2}const limitHeight = limit && BANDS_CAPPING_VERTICALLY\.includes\(limit\.band\) \? limit\.height : Number\.POSITIVE_INFINITY$/m)
+  })
+
+  // STORY 12.1's REVIEW ADDED TWO MORE SPELLINGS OF THIS LIST AND THIS IS WHERE
+  // THEY WERE PUT BACK.
+  //
+  // The band-height command takes a BAND as a parameter, so it needed the list
+  // as a type and the panel needed it as something to iterate. Both were first
+  // written out again — `SettableBand` in band-height-command.ts and
+  // `settableBands` in App.tsx — which made four and five copies of a list whose
+  // entire safety property is that this file reads it on both sides. A copy
+  // outside the census is the only kind that can go stale unnoticed, and the
+  // cost of this one going stale is the cost of every other copy of it: the
+  // browser drops the snapshot, terminates the worker and blanks the canvas.
+  it('hands the SAME list to the type and the array the command path consumes', () => {
+    // The array is the same object, not an equal one: a member added to
+    // BANDS_CAPPING_VERTICALLY is in CAPPING_BANDS by identity.
+    expect(CAPPING_BANDS).toBe(BANDS_CAPPING_VERTICALLY)
+    expect([...CAPPING_BANDS]).toEqual(goBandsCappingVertically(go))
+    // AND THE UNION, TIED THE SAME WAY THE ARRAYS ARE: by reading the source.
+    // A type cannot be enumerated at run time, so the DERIVATION is read out of
+    // engine-protocol.ts instead — CappingBand must be the projection's own
+    // band-name union (which canvas_projection_wire_test.go pins against Go)
+    // minus the one band with no height to cap with — and the union that
+    // derivation produces is then computed from that same union's source text
+    // and compared to Go's list. A third band added in Go reaches the projection
+    // union, reaches CappingBand through Exclude, and reds here.
+    expect(ts).toMatch(/^export type CappingBand = Exclude<CanvasProjection\['bands'\]\[number\]\['name'\], 'content'>$/m)
+    const projectedBandNames = ts.match(/^[ \t]+bands: ReadonlyArray<Readonly<\{ name: ([^;]+);/m)?.[1]
+    expect(projectedBandNames).toBeDefined()
+    const derivedUnion = (projectedBandNames ?? '').split('|').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry !== '' && entry !== 'content')
+    expect(derivedUnion.sort()).toEqual([...goBandsCappingVertically(go)].sort())
+    // The type-level half of the same claim, which tsc checks and vitest cannot:
+    // a Record keyed by the union must carry EXACTLY the union's members, so a
+    // member gained or lost on either side stops this file compiling.
+    const everyCappingBand: Record<CappingBand, true> = { pageHeader: true, pageFooter: true }
+    expect(Object.keys(everyCappingBand).sort()).toEqual([...goBandsCappingVertically(go)].sort())
+    // And the consumers hold no copy of their own: they import these two.
+    const app = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+    const factory = fs.readFileSync(path.join(sourceDir, 'band-height-command.ts'), 'utf8')
+    expect(app).toContain('CAPPING_BANDS')
+    expect(app).not.toMatch(/\['pageHeader', 'pageFooter'\]/)
+    expect(factory).toMatch(/^import type \{ CappingBand \} from '\.\/engine-protocol'$/m)
+    expect(factory).not.toMatch(/'pageHeader' \| 'pageFooter'/)
   })
 
   it('keeps the HORIZONTAL cap universal in every consumer', () => {
