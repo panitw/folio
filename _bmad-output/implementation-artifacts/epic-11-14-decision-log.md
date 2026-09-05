@@ -1573,3 +1573,170 @@ it.**
 by the story that had to *act* on the claim, never by the story that recorded it. Records are checked by
 use, not by review — which is an argument for specs citing symbol and line so the next actor can fail to
 find them.
+
+---
+
+## D-12.C — The loose regexp is a breach of a comment's promise, not a disagreement between peers
+
+**Story 12.2.** The builder held three tasks at `[HELD-B]` on one question: `setDocumentUTCOffset`
+accepts what the loader accepts, but the loader's `utcOffsetPattern` admits `+99:99` — a value the
+evaluator's `parseUTCOffsetMinutes` then refuses at render. Three options: **(a)** the command reuses
+the loader's predicate as-is and ships a control that can author an unrenderable document; **(b)** the
+command range-checks on top, becoming stricter than the loader; **(c)** repair the loader's pattern.
+
+**Ruled: (c) then (a).** The fork *dissolves* rather than being decided. Repair the predicate, then have
+the command reuse the repaired predicate — one spelling of the document rule, in one place, with command
+and loader agreeing by construction. `IsUTCOffset` is the single exported predicate both doors use.
+
+**The builder argued (a) on the ground that (c) narrows what the format accepts and is therefore the
+owner's call. It is not, and the measurement is unusually clean:**
+
+| Claim | Measured |
+|---|---|
+| A compatibility clause in `folio-format.md` | **It exists, at `:67-72`** — see the correction below. My absence query returned **0**, rc 1, and was wrong. |
+| A compatibility promise anywhere else | `SPEC.md:248` lists it as an *open question*; `epics.md:148` NFR6 states *"Forward/backward compatibility rules undefined and need a policy before v1."* Those describe *template-vs-library* rules, not the format's own increment rule. |
+| The format's own rule | `folio-format.md:49` — *"`utcOffset` \| Fixed offset, `±HH:MM`."* |
+| Real documents excluded by (c) | **0** of 28 `.folio` files — 21× `+00:00`, 7× `+07:00` |
+
+`+99:99` is not a fixed offset. **So (c) does not narrow the format — it implements it.** The regexp was
+a loose rendering of a spec that was never loose. And there is no promise to break: the repo records
+compatibility rules as *explicitly undefined pending a policy*, which is a stronger result than the
+absence of a clause — the absence is deliberate and written down.
+
+**The real defect is a comment that made the gap invisible.** `parseUTCOffsetMinutes`'s doc comment says
+the document field is *"already syntax-checked at load."* It is not. So `+99:99` reaching the evaluator
+is a **breach of a documented contract**, not three peers disagreeing about strictness. The comment
+becomes true only after this story, and must be updated in it — **[[D-000.10]] applies to
+accurate-*sounding* comments as much as to stale rulings.**
+
+**`Z` is not a divergence, and I was wrong to frame it as one.** `parseUTCOffsetMinutes` serves **two
+populations with one function** — the document's `utcOffset` and offsets embedded in RFC 3339 timestamps
+arriving in report *data*. Verified: three call sites, two on the RFC 3339 path (`formatdate.go:196`,
+`:237`) and one on the document field (`:313`). `Z` is RFC 3339's canonical UTC spelling and the data
+caller *requires* it. The sets do not overlap imperfectly; one function correctly admits the **union of
+what its two callers need**. Removing it breaks `Z`-terminated timestamps in bound data; adding it to the
+loader is worse — **two byte-spellings of one semantic offset is a canonicalization hazard in a
+byte-identity product**, and round-trip identity would depend on which the serializer picked.
+
+**Carried into the story:** the red-proof is the **reachability**, not the regexp — `+99:99` must move
+from *"loads, then every date fails at render"* to *"refused at load with a located message"*; the
+anti-divergence guard must **name `Z`** as the one expected asymmetry with its reason stated in the
+assertion, or it hides the fact this decision uncovered; any existing test pinning the old looseness is
+corrected and reported, since such a test would mean the looseness was once observed and accepted; and
+the evaluator's document-path check at `:313` **stays** — [[D-12.1]] established `Canvas(t)` never reads
+`UTCOffset`, so there is no backstop, and **what this run punishes is redundant checks across an
+authority boundary, not within one package**.
+
+**A charter that constrains the fix rather than the outcome is a charter being read wrong.** The builder
+invoked 12.2's own charter — *"every value it makes authorable is one the loader already accepts"* — to
+justify (a). Under (a) alone that charter is satisfied in **letter** while the control ships a value that
+destroys the document's rendering; it was doing work only because the loader was doing too little. Under
+(c)+(a) it is true in **substance**. That is the generalizable point: a constraint phrased against the
+mechanism can be met by a fix that misses the purpose.
+
+### D-12.C.1 — the clause is real; the ruling holds because it is inapplicable, not absent
+
+**Corrected the same day, by the builder whose citation I had just called imaginary.** I told it *"the
+clause you cited is not in the document you named it in."* It is, at **`folio-format.md:67-72`**, and I
+verified it myself rather than take the correction on trust:
+
+> *"A MINOR increment may add **new optional keys** only. It may **not** change the meaning of an existing
+> key, and it may **not** extend a closed set of legal values (element `type`, `locale`, `style.align`,
+> `columns[].align`, `valign`, `columns[].footer`, `border.edges`, `page.orientation`, `page.size`).
+> Extending a closed set is a **MAJOR** change, because every existing library validates those sets as
+> load errors."*
+
+It is **stronger than the builder quoted** — the next paragraph records a worked precedent: *"`style.align`
+gained `justify` (Story 7.3, FR47), and the format is therefore at `2.0`"*, with the additive-boolean
+alternative rejected because an older reader *"would have ignored the unknown key and drawn the paragraph
+ragged while believing it had rendered the document correctly."*
+
+**How I produced the false zero: a vocabulary-based absence query.** I searched
+`compatib|backward|will always load|never reject`. The clause is written in **versioning** vocabulary —
+`MINOR`, `MAJOR`, `increment`, 8 hits in that file — and contains not one word from my phrase list. **My
+positive control did not protect me**: `utcOffset` hit 3 times, proving only that the file was being read,
+never that my *query* could see the thing I was looking for. This is [[D-000.20]]'s lesson one turn later
+and one level deeper: **a positive control validates the channel, not the vocabulary.** An absence query
+needs a control on a *synonym of the thing sought*, not on any token in the file.
+
+**The ruling is unchanged, and now rests on a better reason.** The clause governs **extending** a closed
+set. This story **narrows a loose regexp** — the opposite direction — and `utcOffset` is not among the nine
+enumerated sets. More decisively: `folio-format.md:49` already specifies *"Fixed offset, `±HH:MM`"*, so the
+format is not changing at all and no increment is in question. **(c) is right because the clause is
+inapplicable, not because it is absent.** Filing it as absent was the error.
+
+**Why the correction could not be left to stand as a footnote.** As first written, D-12.C told the next
+reader that `folio-format.md` carries no compatibility rule. The next person deciding whether to add a
+fifth `locale` tag or a sixth `border.edges` value would run the same vocabulary, get the same zero, and
+conclude they were free. **They are not** — that change is MAJOR, and the format has already paid the cost
+once. The false premise licensed **precisely the change the clause forbids**, in the opposite direction
+from the one this story travels. A wrong reason that reaches the right answer is not harmless when the
+reason is what gets reused.
+
+**And the builder's own citation was wrong in the mirror-image way.** It cited a real line and asserted it
+said something it does not say — it read the clause as protecting `+99:99`'s admission, when the clause
+never speaks to narrowing. So the same two lines were misread twice, in opposite directions, by both
+parties to the decision. **The record now names the lines and states what they do and do not govern**,
+which is the only form of citation that survives reuse.
+
+**One reading confirmed for reuse.** The builder was right that *"the command must not be stricter than
+the loader"* is **not** this project's rule — [[D-12.4.1]] set the opposite two stories ago. It does not
+decide this one, because under (c)+(a) the command is not stricter. But it is the answer the next time
+that argument is reached for.
+
+---
+
+## D-000.20 — The shell's `grep` prints no matches for `App.tsx` while counting nine of them
+
+**Not a story decision — a measurement defect in the orchestrator's own tooling, found while checking
+[[D-12.C]]'s neighbourhood.** Recorded because it invalidates a class of evidence used across this run.
+
+I greped `folio-designer/src/App.tsx` for `pageSetup` and got **nothing**, and briefly concluded the page
+setup panel did not exist in the product at all — a conclusion that would have made Story 12.2's first
+acceptance criterion ("the page setup panel, which is where document-level settings already live") false
+and sent the story back for rescoping **mid-implementation**. It is not false. The panel is at
+`App.tsx:1682`, `applyPageSetup` at `:780-823`, `pageSetupDiagnostic` at `:3000` — exactly where 12.2's
+Code Map already said they were. **The story's record was right and my measurement was wrong.**
+
+**Measured, on one file, in one shell, seconds apart:**
+
+| Command | Result |
+|---|---|
+| `grep -c "pageSetup" App.tsx` | **9** |
+| `grep "pageSetup" App.tsx` | **no output**, rc 1 |
+| `grep -n "pageSetup" App.tsx` | **no output**, rc 1 |
+| `grep -in "pageSetup" App.tsx` | **no output**, rc 1 |
+| `command grep -n "pageSetup" App.tsx` | **9 lines** |
+| same shimmed `grep -n` on `page-setup-command.ts` | **2 lines**, correct |
+
+`grep` in this shell is **not the binary** — it is a shell function from the session snapshot that execs
+`ugrep` with `--ignore-files --hidden -I`. On this file it **counts correctly and prints nothing**. The
+file is not gitignored (`git check-ignore` rc 1), and the matching lines are short (40–394 chars),
+so neither ignore rules nor per-match length explains it. **I could not identify the mechanism and am
+not asserting one** — the file does contain a 2196-char line, which is a candidate and nothing more.
+Recording an unexplained reproducible defect beats recording a tidy wrong cause; I have overstated a
+finding twice in this run already.
+
+**Why this is the worst false-zero mechanism of the five.** The four before it announced themselves in
+principle — recursive `grep`'s arbitrary misses, `git grep`'s tracked-only default, a `-run` filter
+matching nothing, `$?` clobbered by an intervening command. Each is a rule you can learn and then apply.
+**This one is file-specific and silent**: the same command, same flags, same shell, is correct on one
+file and empty on another, so no amount of care with flags protects you, and a positive control run
+against a *different* file passes while the measurement that matters returns zero. It is the run's
+dominant defect class — a guard that cannot distinguish a correct outcome from a plausible wrong one —
+now degenerate: **the guard reports the one answer that always looks like a legitimate finding.**
+"Zero occurrences" reads as evidence. It was noise.
+
+**Standing rule, effective now:** every negative grep result over the designer sources is worthless
+unless it carries a **positive control on the same file** — `-c` on a token known to be present. Prefer
+the `Grep` tool or `command grep` over the Bash builtin for any measurement a decision rests on. This
+is the direct generalisation of the rule this run keeps re-learning: **a zero is a claim, and a claim
+needs a control.**
+
+**One thing the false zero got right by accident, and it stands.** The `epics.md:4107` **Design pointer
+for 12.2 is genuinely wrong** — measured over the mockups directory, which the shimmed `grep` handled
+correctly (positive control: `Font Browser.dc.html` returns 1): **no mockup contains "page setup",
+"locale" or "UTC offset"**, and `Main.dc.html`'s inspector draws PROPERTIES / POSITION / TYPOGRAPHY /
+CONTENT / BANDS / COMPONENTS and no PAGE SETUP. 12.2's builder had already found this independently and
+filed it in the spec at line 454. **The pointer is stale; the acceptance criterion it appears to support
+is not** — the panel exists in the product, just not in the drawing. Correct the pointer, leave the AC.

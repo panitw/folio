@@ -8,6 +8,30 @@ baseline_commit: 'fd4da07c569ce437458037f1478a6b0fc114cbb2'
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*This section is background, not a requirement; the contract below governs. Written at close to describe
+what actually shipped.*
+
+Until now, the strip along the top of a page and the strip along the bottom were whatever height the
+starter file happened to declare, and nothing in the product could change them. This story adds two
+fields to the page setup panel that set those two heights, and the document remembers them.
+
+The interesting part is what the product refuses. Shortening a strip far enough would push an element
+that sits in it outside the area it belongs to, and making both strips tall enough would leave no room
+for the body at all. Either is now refused before anything changes, with a message naming the height
+that was rejected and the element that would have been stranded. Nothing is half-applied.
+
+The panel itself enforces no limits. It sends the number the author typed and shows whatever the engine
+says back, which is how every other field in that panel already behaves.
+
+Review caught one real defect before it shipped: the bottom strip had never actually been exercised, and
+a command aimed at it would have quietly changed the top strip instead. It is now tested on both.
+
+Two things look wrong on purpose. One long-standing failure in an unrelated text corpus is deliberately
+left red and has nothing to do with this work. And the heavier cross-platform and browser suites were
+not re-run at close — this project runs those once, at the end of the epic.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -470,3 +494,84 @@ Cadence is **end of epic** — no matrix suite, no Playwright. Exit code capture
 
 - Exported so a root-package diagnostic can quote a length in the author's units.
   [`decimal.go:256`](../../folio-go/internal/template/decimal.go#L256)
+
+## Delivery Log
+
+### 2026-09-05 — done
+
+**Baseline `fd4da07`. Shipped as `bcb6ebb`, already committed and pushed by the orchestrator; closed
+against tree `e2ff17a`** (Epic 16's boundary gate landed above it and touched `_bmad-output/` only, so no
+anchor in this spec moved). Fourteen files: the `setBandHeight` arm and the shared content-window
+predicate in Go, the two PAGE SETUP rows and the command encoder in the browser, and the test files that
+hold them. Triage was **14 patched / 2 deferred + 1 corrected / 0 rejected of substance**, over **one
+review loop**. All of it was ruled on by the orchestrator; nothing here re-opens it.
+
+**The story shipped a defect its own tests could not see, and the review is what caught it.** The
+`pageFooter` arm was never exercised. Deleting the band-pointer swap — so that a footer command writes
+the **header** instead — left the **entire Go suite green**, the mandated P6g red aside. Every accepting,
+strand, boundary and content-window test used `pageHeader`, and the single `pageFooter` row returned
+above the swap. Five mirrored tests now red it. This is **Story 12.4's key-to-edge rotation, one story
+later, in a story whose own dispatch explicitly warned about that failure shape** — the warning was not
+enough, and only the deliberate mutation found it. The rotation stays in the record as the red-proof.
+
+**The one review loop was caused by a false measurement the builder produced and the orchestrator
+recorded.** It was reported that the browser guard *admits* a projection carrying a stranded component.
+It does not: `engine-protocol.ts:345` rejects it, `parseInbound` returns `undefined`, and the worker is
+**terminated**. The builder diagnosed its own error rather than defending it — the claim had come from a
+surveying subagent's summary of the *numeric-range* check fourteen lines earlier, and the vertical clause
+was never read. **A survey passed off as a measurement.** Resolved by a narrow amendment to the frozen
+block under explicit human authorisation; **no code was reverted**, because none of it was wrong.
+
+**The correction made the story's case stronger, not weaker.** The struck justification was that without
+the engine's check, later commands would be refused — an inconvenience. What replaced it: a band-height
+command strands a component, the very next projection fails the browser guard, and the editor is bricked
+mid-session **with no attributable error**. That is data loss shaped like a crash, and it is now the
+recorded reason the check exists.
+
+**The typecheck gate was vacuous, and this story is what found it.** The root `tsconfig.json` is a
+solution file (`"files": []`, two references), so `npx tsc --noEmit` checks **zero files and exits 0**.
+Under that gate 12.1 shipped **8 real type errors past three green reports**. The builder refused the
+patch agent's claim that they were pre-existing — all 8 sat inside the story's own added hunk, and
+repairing only those four sites took the count to zero, which is also what proved the baseline clean.
+Gate corrected to `tsc -b` throughout and filed as **DW-207**.
+
+**Counts moved as work was added, not as anything went green:** folio-go **1956 → 1996** pass, designer
+**806 → 819** tests. Only the sanctioned P6g red throughout, at every measurement.
+
+**Measured gates, re-run by the closer at `e2ff17a`, each command in its own invocation with its own
+`cd` and its exit status captured on the command's own line.** Story 12.2 was being built concurrently in
+this same working tree; every gate below completed at 15:48:53 or earlier, and the first 12.2 source edit
+landed at 15:51:55, so all of these were measured against an unmodified source tree at `e2ff17a`. The Go
+counts come from a `-json` re-run because `go test ./...` prints no pass or skip totals — a first count
+here returned a false zero from a grep pattern that assumed `Test` followed `Action` directly, which the
+positive control caught.
+
+| gate | result |
+|---|---|
+| `cd folio-go && go test -count=1 ./...` | **rc=1** — **1996 pass / 2 fail / 5 skip**. The two are `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child. **No third.** Counts re-derived from a `-json` re-run, since `go test ./...` prints no totals. |
+| `cd folio-designer && npx vitest run` | **rc=0** — **59 files / 819 tests** passed |
+| `cd folio-designer && npx tsc -b` | **rc=0** — and **rc=0 again under `--force`**, so the pass is a real full check and not an up-to-date skip. `--noEmit` was not used (DW-207). |
+| `cd folio-designer && npx oxlint` | **rc=0** — exactly **4** `only-export-components` (`preview/pdf-viewer.tsx:16,17`; `App.tsx:2988,2995`), no fifth. The two `App.tsx` anchors moved from `2896,2903` because this story added lines above them. |
+| `cd lint && go build ./...` | **rc=0** |
+| `cd lint && go vet ./...` | **rc=0** |
+| `cd lint && test -z "$(gofmt -l .)"` | **rc=0** — `gofmt -l .` empty over a population of **43** `.go` files; positive control fired on a deliberately misformatted scratch file outside the repo. |
+| `cd lint && go test -count=1 ./...` | **rc=0** — four packages ok, `-count=1` as this module's rules walk directories and cache falsely |
+
+**Not run, by cadence, not by omission:** the matrix suite and Playwright. This project runs both **once
+at the end of the epic**; Epic 16's boundary gate (`e2ff17a`) already exercised them on this tree. Epic 12
+remains `in-progress` with 12.2, 12.3 and 12.5 outstanding, so the heavy catch-up for this epic is still
+ahead and is the orchestrator's to schedule.
+
+**Deferred — all four register entries were written fresh under this story's commit; `deferred-work.md`
+stood at DW-203 at the baseline.** **DW-204** (`pageSetupDiagnostic` discards the engine's message for
+anything not carrying `PAGE_SETUP_INVALID`), **DW-205** (a component stranded by a *hand-edited* band
+height is partly uneditable and the refusal does not say why — the residue this story leaves, since it
+refuses strand *creation* only), **DW-206** (the multi-command Apply gesture is not atomic — each command
+is, the gesture is not; disclosed in Design Notes rather than designed away), and **DW-207** (the vacuous
+`--noEmit` gate, wherever other dispatches still name it).
+
+**DW-205 is this story's one correction rather than a clean deferral.** It was filed at the plan gate
+carrying the false claim that the browser admits a stranded projection, and was rewritten before the
+commit landed — so git history holds only its corrected form, and the entry marks its own correction
+inline. Owners: DW-204, DW-206 and DW-207 are unassigned; DW-205 is unassigned and priced LOW while it
+requires a hand-edited file, to be re-priced if any route can strand a component again.

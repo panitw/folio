@@ -4104,8 +4104,10 @@ I want to set the document's locale and UTC offset in the designer,
 So that a Thai statement formats its dates and numbers as Thai without hand-editing the file.
 
 **Covers:** FR21, FR22, FR59 · AD-12
-**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
-  — the inspector's PAGE SETUP panel, where document-level settings live
+**Design:** no mockup draws this panel. `Main.dc.html`'s inspector draws PROPERTIES, POSITION,
+  TYPOGRAPHY, CONTENT, BANDS and COMPONENTS only; no mockup contains "page setup", "locale" or
+  "UTC offset". Follow the **shipped** PAGE SETUP panel instead — `folio-designer/src/App.tsx:1682`
+  (`PageSetup`), applied by `applyPageSetup` at `:780` — and match its existing row idiom.
 
 **Acceptance Criteria:**
 

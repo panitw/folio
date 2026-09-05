@@ -452,8 +452,8 @@ development_status:
   # never authors it, and the Go command layer refuses padding* on non-table kinds. The old
   # two-way fork (insets vs table-only) is dead, and 14.8's cell-padding AC is dropped with it.
   epic-12: in-progress
-  12-1-the-page-header-and-page-footer-take-the-height-the-author-s: review
-  12-2-the-document-declares-its-locale-and-its-utc-offset: backlog
+  12-1-the-page-header-and-page-footer-take-the-height-the-author-s: done
+  12-2-the-document-declares-its-locale-and-its-utc-offset: in-progress
   12-3-a-table-s-header-and-its-alternating-rows-are-authorable: backlog
   12-4-padding-is-honoured-outside-a-table-or-the-format-says-it-is: review
   12-5-a-band-boundary-is-dragged-on-the-canvas: backlog
