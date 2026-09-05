@@ -526,7 +526,7 @@ development_status:
   # exported ApplyComponentCommand and has not shipped, so it JOINS D-7.8.3's before-the-tag set --
   # which is now TWO items, not one. Sequenced before 15.3 so the deadline is satisfied by
   # construction rather than by a promise.
-  15-2a-a-component-command-means-exactly-what-it-names: backlog
+  15-2a-a-component-command-means-exactly-what-it-names: review
   15-3-folio-go-v0-1-0-is-cut: backlog
   epic-15-retrospective: optional
 

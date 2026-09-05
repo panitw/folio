@@ -1904,6 +1904,16 @@ func ApplyPageSetupCommand(t *Template, command []byte) (CanvasProjection, error
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
 	}
+	// The SAME scan the component door runs, and it has to be: the property
+	// this guards is a property of the command CHANNEL, and a guard over one of
+	// two exported doors passes while the property is false. Both of this
+	// door's own gates are duplicate-blind for the same reason the component
+	// door's are — len(raw) != 7 counts a map that has already deduped, the
+	// nested len(margins) != 4 counts another one, and the version gate reads
+	// the last "version" key.
+	if err := refuseDuplicateCommandKeys(command, pageSetupCommandPath); err != nil {
+		return CanvasProjection{}, err
+	}
 	dec := json.NewDecoder(bytes.NewReader(command))
 	dec.UseNumber()
 	var raw map[string]json.RawMessage
@@ -2054,7 +2064,22 @@ func parseMillipoints(literal, key string) (geom.Length, error) {
 	}
 	whole := int64(0)
 	for _, c := range parts[0] {
-		if c < '0' || c > '9' || whole > (1<<63-1)/10 {
+		// STORY 15.2a SPLIT THIS BRANCH, and the split is two branches rather
+		// than a changed string because the condition mixed two causes: a
+		// character that is not a digit, and a whole part that is genuinely
+		// about to overflow. Both reported OVERFLOW, so the `null` a designer
+		// draft emits for an unparseable number came back as "width overflows
+		// millipoints" — refused, so nothing was written, but with a cause the
+		// author could not act on. The overflow detector below is untouched.
+		//
+		// The wording is the fraction loop's own, seventeen lines down, which
+		// has always called a non-digit exactly this. The two loops disagreeing
+		// about the identical condition WAS the defect; importing a third
+		// vocabulary would have left them disagreeing.
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("%s must be a number", key)
+		}
+		if whole > (1<<63-1)/10 {
 			return 0, fmt.Errorf("%s overflows millipoints", key)
 		}
 		whole = whole*10 + int64(c-'0')

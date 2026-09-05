@@ -12,39 +12,47 @@
 // and a hand-rolled escape table that misses one produces bytes Go cannot
 // parse — which loses the located refusal the panel exists to display.
 //
+// STORY 15.2a moved that encoder into command-json.ts, which every builder in
+// the designer now shares. The header above stated the rule; the import below
+// is what makes it one rule rather than six ENCODER MODULES agreeing by hand.
+// (Six encoder modules, not the six chain builders below — a different six.)
+//
 // THE FIELD COUNT IS PART OF THE CONTRACT. componentFields(raw, N) counts
 // every top-level key, `kind` and `version` included, and refuses anything
 // else: add 4, rename 4, delete 3, addEntry 5, moveEntry 5, removeEntry 4,
-// embedFontFamily 12. An extra field is not ignored, it is a refusal.
-const encode = (value: string): ArrayBuffer => new TextEncoder().encode(value).buffer
-const quote = (value: string): string => JSON.stringify(value)
+// embedFontFamily 12. An extra field is not ignored, it is a refusal — which
+// is why every builder below still lists its own fields, in order, at the
+// call site.
+import { commandBytes, jsonArray, jsonNumber, jsonString } from './command-json'
+
+const quote = jsonString
 // Go reads these with commandInt, which requires an integer literal. They are
 // browser-derived list positions, never author text, and they are still
 // encoded rather than spliced so this module has exactly one encoder.
-const index = (value: number): string => JSON.stringify(value)
+const index = jsonNumber
 
 export function addFontChainCommand(name: string, entries: ReadonlyArray<string>): ArrayBuffer {
-  return encode(`{"kind":"addFontChain","version":1,"name":${quote(name)},"entries":[${entries.map(quote).join(',')}]}`)
+  return commandBytes('addFontChain', [['name', quote(name)], ['entries', jsonArray(entries.map(quote))]])
 }
 
 export function renameFontChainCommand(name: string, to: string): ArrayBuffer {
-  return encode(`{"kind":"renameFontChain","version":1,"name":${quote(name)},"to":${quote(to)}}`)
+  return commandBytes('renameFontChain', [['name', quote(name)], ['to', quote(to)]])
 }
 
 export function deleteFontChainCommand(name: string): ArrayBuffer {
-  return encode(`{"kind":"deleteFontChain","version":1,"name":${quote(name)}}`)
+  return commandBytes('deleteFontChain', [['name', quote(name)]])
 }
 
 export function addFontChainEntryCommand(name: string, at: number, face: string): ArrayBuffer {
-  return encode(`{"kind":"addFontChainEntry","version":1,"name":${quote(name)},"index":${index(at)},"face":${quote(face)}}`)
+  return commandBytes('addFontChainEntry', [['name', quote(name)], ['index', index(at)], ['face', quote(face)]])
 }
 
 export function moveFontChainEntryCommand(name: string, from: number, to: number): ArrayBuffer {
-  return encode(`{"kind":"moveFontChainEntry","version":1,"name":${quote(name)},"from":${index(from)},"to":${index(to)}}`)
+  return commandBytes('moveFontChainEntry', [['name', quote(name)], ['from', index(from)], ['to', index(to)]])
 }
 
 export function removeFontChainEntryCommand(name: string, at: number): ArrayBuffer {
-  return encode(`{"kind":"removeFontChainEntry","version":1,"name":${quote(name)},"index":${index(at)}}`)
+  return commandBytes('removeFontChainEntry', [['name', quote(name)], ['index', index(at)]])
 }
 
 // STORY 8.6 — THE PICK.
@@ -78,12 +86,14 @@ export function embedFontFamilyCommand(face: {
   bytes: ArrayBuffer
   tail: ReadonlyArray<string>
 }): ArrayBuffer {
-  return encode(`{"kind":"embedFontFamily","version":1,"name":${quote(face.chain)}`
-    + `,"family":${quote(face.family)},"style":${quote(face.style)}`
-    + `,"licence":${quote(face.licence)},"licenceText":${quote(face.licenceText)}`
-    + `,"copyright":${quote(face.copyright)},"source":${quote(face.source)}`
-    + `,"mediaType":${quote(face.mediaType)},"data":${quote(base64(face.bytes))}`
-    + `,"tail":[${face.tail.map(quote).join(',')}]}`)
+  return commandBytes('embedFontFamily', [
+    ['name', quote(face.chain)],
+    ['family', quote(face.family)], ['style', quote(face.style)],
+    ['licence', quote(face.licence)], ['licenceText', quote(face.licenceText)],
+    ['copyright', quote(face.copyright)], ['source', quote(face.source)],
+    ['mediaType', quote(face.mediaType)], ['data', quote(base64(face.bytes))],
+    ['tail', jsonArray(face.tail.map(quote))],
+  ])
 }
 
 // base64 over an ArrayBuffer, in chunks. `String.fromCharCode(...bytes)` on a

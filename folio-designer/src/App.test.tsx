@@ -4113,6 +4113,68 @@ describe('the CONTENT box resizes from its bottom edge', () => {
   })
 })
 
+// STORY 15.2a — THE DOCUMENT-ORIGINATED LEG, AND THE ONE THAT CARRIES THE
+// SEVERITY.
+//
+// The typed-draft cases prove the encoder. Only this one proves the story's
+// reachability claim, and it proves it through the gesture itself rather than
+// by calling a factory: a sample-data file is accepted, its node is clicked,
+// and Connect is pressed. No typing anywhere.
+//
+// A bind segment is a JSON object KEY taken verbatim out of that file
+// (`sample-data.ts`'s DiscoveryParser), and nothing constrains what characters
+// a JSON key may hold. Those keys used to travel through `component-command.ts`'s
+// hand-rolled quoter, which iterated the value BY CODE POINT and then escaped
+// from `charCodeAt(0)` — the high surrogate alone, with the low unit never
+// emitted. The result parsed, so nothing anywhere reported an error, and the
+// engine received an ADDRESS the author had not picked.
+//
+// Every escaping test that preceded this story used BMP-only inputs, which is
+// exactly why the defect survived being read.
+describe('a non-BMP key from a data file reaches the engine as the author\'s own code points', () => {
+  const EMOJI = '\u{1F600}'
+  const bound = (over: Record<string, unknown>) => ({ ...canvas, components: [{ id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello', ...over }] })
+
+  it('carries the key through accept, click and Connect without mutilating it', async () => {
+    const sent: string[] = []
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload !== undefined) sent.push(new TextDecoder().decode(payload))
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: bound({}) } }
+    })
+    // THE FILE, not a hand-built segment list. The astral character is inside
+    // the JSON KEY, which is the part nothing constrains.
+    const data = acceptSampleData('keys.json', new TextEncoder().encode(`{"customer":{"na${EMOJI}me":"Ada"}}`).buffer)
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: bound({}) }} initialSampleData={data} />)
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    const customer = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '2' && item.textContent?.startsWith('customer'))
+    expect(customer).toBeDefined()
+    customer!.focus()
+    fireEvent.keyDown(customer!, { key: 'ArrowRight' })
+    const leaf = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith(`na${EMOJI}me`))
+    // Non-vacuity: if the tree never rendered the astral key, pressing Connect
+    // below would bind nothing and every assertion after it would be about an
+    // empty list.
+    expect(leaf).toBeDefined()
+    leaf!.focus()
+    fireEvent.keyDown(leaf!, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    await waitFor(() => expect(sent).toHaveLength(1))
+
+    const wire = sent[0] as string
+    const command = JSON.parse(wire) as { kind: string; id: string; segments: string[] }
+    expect(command.kind).toBe('bindComponentScalar')
+    expect(command.segments).toEqual(['customer', `na${EMOJI}me`])
+    // THE ROUND TRIP, asserted by CODE POINT. `toEqual` on the string alone
+    // would also pass for a value that merely looks right in a diff.
+    expect([...(command.segments[1] as string)]).toEqual(['n', 'a', EMOJI, 'm', 'e'])
+    // The defect's own signature: the high surrogate emitted alone, with the
+    // low unit dropped, which PARSES and so raised no error anywhere.
+    expect(wire).not.toContain('\\ud83d')
+    expect(wire).not.toContain('\\uD83D')
+  })
+})
+
 // STORY 17.1: THE CANVAS FOLLOWS THE CONTENT FIELD.
 //
 // TWENTY-THREE tests. NINE are the story's I/O matrix, one per row. The other

@@ -1,5 +1,19 @@
 // This is an opaque Go command vocabulary, not a browser-side property or
 // style model. A caller sends exact local literals only on an explicit commit.
+//
+// STORY 15.2a: every value now goes through command-json.ts, the one place
+// that turns intent into JSON. `rawNumberLiteral` used to return the author's
+// typed string VERBATIM and unquoted, so a draft carrying JSON syntax closed
+// the command's own object and opened a second `ids` and a second `changes` —
+// the attacker choosing both the target and the change, and the author's real
+// selection disappearing. A numeric draft now travels as a JSON number
+// BYTE-FOR-BYTE when it already is one, and as `null` when it is not — the
+// author's literal is never re-computed. The engine holds the numeric grammar
+// and answers with its own located sentence; the browser deliberately does not,
+// and a `Number()` round trip here would be exactly that second authority,
+// silently turning a typed `1e3` into a 1000pt width.
+import { commandBytes, jsonArray, jsonBoolean, jsonNumber, jsonObject, jsonString } from './command-json'
+
 export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'expression' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'lineSpacing' | 'bold' | 'italic' | 'align' | 'valign' | 'color' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
 
 export type PropertyIntent = Readonly<{ field: PropertyField; operation: 'set' | 'clear' | 'null'; value?: string | boolean | ReadonlyArray<string> }>
@@ -48,34 +62,37 @@ export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = ['x', 'y']
 
 export function updateComponentPropertiesCommand(ids: ReadonlyArray<string>, intent: PropertyIntent): ArrayBuffer {
   const change = intent.operation === 'clear' || intent.operation === 'null'
-    ? `{"op":${quote(intent.operation)}}`
+    ? jsonObject([['op', jsonString(intent.operation)]])
     : pointFields.has(intent.field) || ratioFields.has(intent.field)
-      ? `{"op":"set","value":${rawNumberLiteral(intent.value)}}`
-      : `{"op":"set","value":${propertyValue(intent.value)}}`
-  return new TextEncoder().encode(`{"kind":"updateComponentProperties","version":1,"ids":[${ids.map(quote).join(',')}],"changes":{${quote(intent.field)}:${change}}}`).buffer
+      ? jsonObject([['op', jsonString('set')], ['value', numberLiteral(intent.value)]])
+      : jsonObject([['op', jsonString('set')], ['value', propertyValue(intent.value)]])
+  return commandBytes('updateComponentProperties', [['ids', jsonArray(ids.map(jsonString))], ['changes', jsonObject([[intent.field, change]])]])
 }
 
-function rawNumberLiteral(value: PropertyIntent['value']): string {
-  // Preserve the typed literal, unquoted; Go alone decides whether it is a
-  // valid number, in whatever unit that field is carried in.
-  return typeof value === 'string' ? value : ''
+function numberLiteral(value: PropertyIntent['value']): string {
+  // Unquoted, and now encoded rather than spliced; Go alone decides whether it
+  // is a valid number, in whatever unit that field is carried in. A value that
+  // is not a typed literal at all cannot become a number, so it travels as the
+  // same `null` an unparseable draft does rather than as malformed bytes.
+  return jsonNumber(typeof value === 'string' ? value : Number.NaN)
 }
 
 function propertyValue(value: PropertyIntent['value']): string {
-  if (typeof value === 'string') return quote(value)
-  if (typeof value === 'boolean') return String(value)
-  return `[${(value ?? []).map(quote).join(',')}]`
+  if (typeof value === 'string') return jsonString(value)
+  // Through the authority, not String(). A boolean is the one scalar whose JS
+  // spelling happens to match its JSON spelling, which is exactly why an
+  // exception for it would survive unnoticed until the day it did not.
+  if (typeof value === 'boolean') return jsonBoolean(value)
+  return jsonArray((value ?? []).map(jsonString))
 }
 
-// JSON.stringify IS the escape table, and the hand-rolled one it replaces was
-// a strict subset of it: `\ " \n \r \t` and nothing else, while JSON requires
-// every code point in U+0000-U+001F to be escaped. A value carrying any other
-// C0 control — U+0001 from a paste, most plausibly — emitted a raw control
-// byte inside a JSON string, so the command was MALFORMED BEFORE Go could read
-// the field, and the engine answered with a generic parse failure instead of
-// the located refusal naming the field. Engine-side validation cannot
-// substitute for this: the bytes never reach the rule.
-// This is a MINIMAL fix, deliberately. `rawNumberLiteral` above and the four
-// other designer encoders are Story 15.2a's shared-command-JSON authority
-// (DW-32), which must re-read this file rather than assume its earlier shape.
-function quote(value: string): string { return JSON.stringify(value) }
+// STORY 8.2 REPLACED A HAND-ROLLED ESCAPE TABLE HERE, and Story 15.2a moved
+// what replaced it into command-json.ts. The record is worth keeping because
+// it is the same defect class twice: the hand-rolled table escaped `\ " \n \r
+// \t` and nothing else, while JSON requires every code point in U+0000-U+001F
+// to be escaped. A value carrying any other C0 control — U+0001 from a paste,
+// most plausibly — emitted a raw control byte inside a JSON string, so the
+// command was MALFORMED BEFORE Go could read the field, and the engine answered
+// with a generic parse failure instead of the located refusal naming the field.
+// Engine-side validation cannot substitute for this: the bytes never reach the
+// rule. JSON.stringify IS the escape table; it is never re-derived.

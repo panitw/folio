@@ -2647,7 +2647,35 @@ three times, the third time *inside the commit that closed it*.
   still counts four fields — so the command mutates **a different component's different property**.
   Escalation to another command `kind` is blocked only by an **arity coincidence**, not by a check.
   The register's previous claim that no bad value reaches the document is **false**.
-- **Status:** OPEN — **but `component-property-command.ts` has MOVED since this entry was written.**
+  **AND THE ENCOUNTER HALF WAS MEASURED AND CAME BACK POSITIVE — by a route neither this entry nor
+  the story named.** This entry, and the story text derived from it, characterised the exposure as
+  *"keystroke-originated and self-inflicted in a local, serverless application"*. For
+  `rawNumberLiteral` itself that holds: every numeric hop into it is `number`-typed and re-formatted
+  through `points()`, so no document value reaches it. **The document-originated route is the BIND
+  SEGMENT.** A bind segment is a JSON object **key taken verbatim from the author's sample-data file**
+  (`sample-data.ts`'s `DiscoveryParser`); nothing constrains what characters a JSON key may hold; and
+  those keys travelled through `component-command.ts`'s broken `charCodeAt(0)` quoter. Open a data
+  file, click a node, press Connect — **no typing anywhere** — and the address the engine received was
+  not the one the author picked. Encounter is therefore not low: it is whatever the data file says it
+  is. This changes the **severity framing, not the scope**, because that encoder was already one the
+  consolidation routes through.
+  ⚠ **One claim was carried here at the plan gate and is FALSE**: that a crafted `component.id` in a
+  `.folio` reached the same splice with no typing. `internal/template/ids.go:validateElementID`
+  (AD-10/AC34) enforces `^e[0-9a-z]+$` at parse time, so such a document cannot be opened. The claim
+  rested on `engine-protocol.ts:331` having no charset check, but that guard governs the **inbound
+  projection**, which can only carry ids the loader already admitted. The spec's `## Design Notes`
+  carries the falsified wording and the reusable rule it produced — *when citing a validator as
+  absent, name the direction it governs and confirm that is the direction under discussion.*
+- **Status:** **CLOSED by Story 15.2a (2026-09-05)**, in one commit with DW-73, DW-75 and the engine's
+  duplicate-key refusal. `folio-designer/src/command-json.ts` is now the single command-JSON
+  authority and all six encoders route through it; `rawNumberLiteral` is gone and a numeric draft now
+  travels **byte-for-byte when it already is a valid JSON number, and as `null` when it is not**, with
+  no `Number()` anywhere on the path. `folio-designer/src/command-json-soleness.test.ts` asserts, as an
+  **allowlist**, that the set of production files building command JSON is exactly that one file.
+  The Go half — a shared duplicate-key scan narrowing **both** exported doors — is registered on
+  D-000.15's before-the-tag ledger as **DW-196**.
+  **The historical note below is kept because it is why 15.2a was told to re-read the file:**
+  **`component-property-command.ts` had MOVED since this entry was written.**
   Story 8.2 (2026-08-31) routed that file's `quote()` through `JSON.stringify`, minimally and by
   itself, because a chain name is author-typed and travels through the quoter: `quote()` escaped
   `\ " \n \r \t` and **nothing else**, while JSON requires all of U+0000–U+001F, so a pasted C0
@@ -2666,9 +2694,39 @@ a generic refusal rather than the located `STYLE_LINE_SPACING_INVALID` message t
 spec directed Story 7.4 to follow it, so the story did not cause it. What the story did do is **widen the
 set of fields on that path** by one, which is why it is filed rather than merely noted.
 
-**What closing it requires.** A refusal on the encoder side before the command is built — the panel
-already has the field identity it needs to locate the message — rather than letting unparseable bytes
-travel and be diagnosed by their absence of structure.
+**What closing it requires — SUPERSEDED AT 15.2a'S PLAN GATE (D-D.2, 2026-09-05), DELIBERATELY.** The
+sentence this replaced prescribed a browser-side pre-refusal. Replaced with:
+
+> A total encoder: every value spliced into command JSON goes through `JSON.stringify` — strings
+> quoted, numerics via `JSON.stringify(Number(v))`, which yields `null` for an unparseable draft. The
+> refusal stays in Go, which alone holds the numeric grammar (no exponent, at most three decimal
+> places, bounded by MaxCanvasMillipoints); the encoder's job is to make bytes that reach that rule,
+> not to duplicate it. A browser-side pre-refusal was the original prescription and was rejected at
+> 15.2a's plan gate (D-D.2) because it makes the panel a second authority on validity.
+
+⚠ **AND THAT PRESCRIBED EXPRESSION WAS ITSELF SUPERSEDED, at 15.2a's review loop 1 (see the story's
+`## Spec Change Log`).** `JSON.stringify(Number(v))` violated the very prohibition the sentence above
+invokes: it made the browser a second authority by COERCION. Executed on it, `1e3` reached the wire as
+`1000`, `0x10` as `16`, `.5` as `0.5`, `007` as `7`, `+5` as `5`, `" 12 "` as `12`, and
+`9007199254740993` as `9007199254740992` — every one of which Go had refused, or received exactly,
+before. **That widened the accept-set of both exported doors inside a story whose purpose is to narrow
+them**, and its signature was `1e3` being accepted while `1e21` was still refused. What shipped
+instead: the draft is tested against the JSON number grammar
+`/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/` and either travels **verbatim** or becomes `null`.
+That is not a rule about what a number means — it decides only whether bytes can *reach* Go's rule —
+and it is deliberately no narrower than the grammar, because a decimals-only check would send `1e3` as
+`null` and cost the located *"must be a decimal with at most three places"* Go answers today.
+
+**And `null` alone did not deliver a located message, so one Go diagnostic was split.** Executed
+through the exported door: `null` and a 20-digit overflow **both** returned `width overflows
+millipoints`, because `parseMillipoints`'s whole-part loop mixed *not a digit* with *genuine
+overflow* in one condition. `folio-go/page_setup.go` now splits that into two branches — a non-digit
+reports **`must be a number`** (the fraction loop's own wording, seventeen lines below, which had
+always called the identical condition that), a real overflow still reports `overflows millipoints`.
+Both directions are red-proved in `TestPageSetupNumberDiagnosticNamesTheCauseItFound`. This also
+repaired a shipped defect nobody filed: `page-setup-command.ts` already emitted `null` for an emptied
+margin under a comment claiming Go answered with the field-specific diagnostic, and what the author
+actually got was `page.margin.top overflows millipoints`.
 
 ---
 
@@ -4220,7 +4278,19 @@ review patch lands.
   owns DW-32. This is not a second story; it is a **second site DW-32's own acceptance must cover**,
   filed separately so it cannot be lost when that entry is read as naming one file.
 - **Severity:** **HIGH**, for the same reason DW-32 is: it is the same mechanism at a second entry point
-- **Status:** OPEN
+- **Status:** **CLOSED by Story 15.2a (2026-09-05)**, in the same commit as DW-32 and DW-75.
+  `page-setup-command.ts` routes all six numeric splices **and** the `preset`/`orientation` strings —
+  which were spliced raw *inside* their own quotes, a fact this entry did not record — through
+  `command-json.ts`. It also gained the test file it never had
+  (`folio-designer/src/page-setup-command.test.ts`), and the soleness guard names it **by name** so a
+  green scan cannot mean the scan never looked at it. The **engine** half is narrowed too:
+  `ApplyPageSetupCommand` shares the component door's duplicate-key scan, because a soleness guard
+  over one of two exported doors passes while the property is false.
+- **Two things the original analysis missed, both now covered:** `preset` and `orientation` came
+  straight from the projection and were defended only by a **remote** allowlist at
+  `engine-protocol.ts:275`; and the register's count of **five** encoders was **six** — it omitted
+  `font-chain-command.ts`, which was already correct and now routes through the authority anyway,
+  because five correct files and one exception is a claim about the five.
 
 **The gap.** DW-32 names `folio-designer/src/component-property-command.ts` and its `rawNumberLiteral`.
 `folio-designer/src/page-setup-command.ts:6-7` performs the **identical** splice — the author's typed
@@ -4277,7 +4347,14 @@ eventual fix walks into, which is why the owner is pointed at the same story.
   repairing a live corruption rather than tidying three spellings of one idea.
 - **Severity:** **HIGH** — not "the encoders differ" but "two of them silently produce the wrong
   document path". Re-verified **by execution** at Story 8.2's close, not carried on report.
-- **Status:** OPEN
+- **Status:** **CLOSED by Story 15.2a (2026-09-05)**, in the same commit as DW-32 and DW-73. Both
+  hand-rolled tables are deleted and both encoders route through `command-json.ts`, whose quoter is
+  `JSON.stringify` and nothing else. The non-BMP round trip this entry demanded is asserted
+  explicitly — `folio-designer/src/command-json.test.ts` sends `U+1F600` through a **bind segment**,
+  an **asset key and media type**, and a property value, and asserts `JSON.parse` returns the
+  author's own three code points rather than `U+0061 U+D83D U+0062`. `folio-go`'s
+  `TestEveryDesignerCommandFactoryRoutesThroughTheAuthority` additionally reads all six encoders from
+  the Go side and fails if any of them grows a `charCodeAt(` escape table again.
 
 **The defect, re-derived by executing the function at Story 8.2's close.** Both encoders read
 `for (const character of value) { const code = character.charCodeAt(0); ... }`. `for...of` over a
@@ -8518,3 +8595,165 @@ about what it listed and blind to an adjacent spelling of the same idea.
 **What discharges it:** a decision on whether these guards should be reshaped as allowlists over a known
 surface, or whether the denylists should be periodically re-derived from the platform API surface they
 police.
+
+---
+
+### DW-196 — the exported-API narrowing Story 15.2a spent, for Story 15.3's hand-over
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2a-a-component-command-means-exactly-what-it-names.md`
+- **Deferred by:** **Story 15.2a** (registered at the close, 2026-09-05, per D-000.15's obligation to
+  record what the freedom was spent on rather than reconstruct it later, and per DW-32's own note that
+  its Go half **joins D-7.8.3's before-the-tag set**).
+- **Owner:** **STORY 15.3** (`folio-go/v0.1.0`). Not a defect and nothing to fix — a LEDGER ENTRY, so
+  the tag story is handed the list instead of rediscovering it from a diff.
+- **Severity:** N/A. It is a record.
+- **Status:** OPEN until Story 15.3 reads it.
+
+**What was narrowed.** **BOTH** exported command doors now REFUSE a class of command bytes they
+previously accepted: bytes carrying the same object key twice, at any nesting level.
+
+- `folio.ApplyComponentCommand(t *Template, command []byte)` (`component_commands.go`)
+- `folio.ApplyPageSetupCommand(t *Template, command []byte)` (`page_setup.go`)
+
+Both are exported identifiers of package `folio`, so **D-8.2.2(a)** is satisfied on the surface test
+rather than on which binary calls them; the narrowing had not shipped, so **D-8.2.2(b)** is satisfied
+too. Both limbs, so it lands before the tag — and it did.
+
+- **The refusing surface**, exactly: `refuseDuplicateCommandKeys(command []byte, path string) error`
+  and its walker `scanForDuplicateKey`, both **unexported**, in `folio-go/component_commands.go`.
+  Called as the FIRST thing each door does after its nil-template check. **No new exported
+  identifier, no new error type, no new dependency** — `encoding/json`'s own `Decoder.Token()`
+  streaming, which is the only stdlib mechanism that can see a duplicate at all (a `RawMessage`
+  re-walk is structurally blind, because the duplicate is already collapsed by the time the map is
+  in hand).
+- **Why one scan and not two.** The property the story is named for is a property of the command
+  **channel**. A soleness guard over one of two exported doors is a test that passes while the
+  property is false.
+- **What it refuses**, measured by execution against the shipped behaviour it replaces, all of which
+  were **accepted** before: a repeated `ids`+`changes` at the top level (which NAMED `e1` in
+  `pageHeader` and MUTATED `e5` in `pageFooter`, returning a nil error); a repeated key in the
+  `changes` object; a repeated `op` or `value` in the operation object; a repeated `version` (the
+  `version == 1` gate reads the LAST one, so a `version:0` command was admitted by appending a
+  second key); a same-arity kind escalation (`deleteComponent` 3 → `deleteFontChain` 3, which passed
+  `componentFields` and landed in the wrong handler, stopped only by that handler's own field names —
+  arity coincidence, not a check); an object nested inside an array; and, on the page-setup door, a
+  repeated top-level key or a repeated key inside the nested `margin` object, neither of which
+  `len(raw) != 7` nor `len(margins) != 4` could ever trip because the map had already deduped.
+- **How it refuses — EACH DOOR CARRIES ITS OWN DIAGNOSTIC CODE**, and that took a correction at
+  review. The component door raises `componentFailure` with `ElementID: ""` and the document-scoped
+  `DataPath` `"command"`, reaching the host as **`COMPONENT_INVALID`** with a location — deliberately
+  not the bare `fmt.Errorf` every other refusal on that decode path uses, which surfaces as
+  `ENGINE_REJECTED` with nothing to act on. The page-setup door raises an error opening with the
+  `folio: page.setup` prefix the host's own fallback tests for, reaching it as
+  **`PAGE_SETUP_INVALID`** with `DataPath` `page.setup` and an empty `ElementID`. **The first
+  implementation used `componentFailure` on both**, faithfully extending a constraint written when
+  only one door was in scope — and `engineFailure` matches `*ComponentCommandError` BEFORE the
+  page-setup fallback, so a page-setup refusal reported `COMPONENT_INVALID` and missed the designer's
+  only code-branching page-setup consumer. Both codes are now asserted, one per door, executed
+  against the real js/wasm host.
+- **`ElementID` is empty at both doors, because a duplicate key means the named id is exactly the
+  thing that cannot be trusted** — the executed proof is that the command named `e1` and changed `e5`.
+- **What did NOT move, deliberately:** no `.folio` format change of any kind; no charset constraint was added to
+  `component.id` and none was deferred — the Go loader ALREADY enforces `^e[0-9a-z]+$` at parse time
+  (`internal/template/ids.go:validateElementID`, AD-10/AC34), so filing one would have written a
+  falsehood into this register; the
+  existing trailing-value and arity guards are left in place and are **not** subsumed — an earlier
+  draft of this entry, and the story's Code Map, claimed the scan subsumed the trailing-value guard
+  and **it does not**: the scan reads the first top-level value and stops, never inspecting the bytes
+  after it, so that guard is still the only thing checking for a second document; `POSITIVE_LENGTH_FIELDS`, `ORIGIN_FLOOR_FIELDS`, `pointFields` and
+  `ratioFields` are untouched in membership and in formatting; no registry diagnostic code was minted
+  (`diagnostic_registry_census_test.go:131` requires `errors.As(err, &renderErr)` for every registered
+  code, and a `ComponentCommandError` is not a `*RenderError`).
+- **The one behaviour change visible to an existing caller:** a Go integrator, or a hand-authored
+  command, that today sends bytes with a repeated key and relies on last-wins gets a located refusal
+  instead of a silent resolution. There is no released library and no third-party caller, so nothing
+  is stranded — this is the freedom being spent, recorded rather than assumed.
+- **One further changed message, in the same commit and NOT a narrowing:** `page_setup.go`'s
+  `parseMillipoints` whole-part loop reported `overflows millipoints` for a character that is not a
+  digit. It now reports `must be a number`, matching the fraction loop directly below it; a genuine
+  overflow still reports `overflows millipoints`. Measured before the change: **zero** test files and
+  **zero** `.ts`/`.tsx` files referenced either string. Positive control, counted the SAME WAY —
+  **files, not occurrences**, over test files only (`folio-go/**/*_test.go` and
+  `folio-designer/src/*.test.{ts,tsx}`), at the baseline commit `3c7e226`: `must stay within` in
+  **3** test files, `is required` in **14**. An earlier draft of this entry said 105 for the second,
+  which was the whole-repository file count and therefore not comparable to the zeros beside it; the
+  story's `## Rulings` said 2 and 13. Both are now the re-measured test-file figures, and the two
+  documents agree.
+
+**What discharges it:** Story 15.3 reading this entry when it decides what `folio-go/v0.1.0`'s
+compatibility promise covers.
+
+
+---
+
+### DW-197 — `parseMillipoints` tests its overflow guard BEFORE the multiply, so one 19-digit band wraps negative and is caught only downstream
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2a-a-component-command-means-exactly-what-it-names.md`
+- **Found by:** Story 15.2a's review (2026-09-05), while splitting the adjacent mixed branch.
+- **PRE-EXISTING — this story neither introduced it nor fixed it, and that is verified rather than
+  asserted.** `git show 3c7e226:folio-go/page_setup.go` carries the identical expression
+  `if c < '0' || c > '9' || whole > (1<<63-1)/10` in the same loop. 15.2a split that condition into a
+  non-digit branch and an overflow branch; **it did not move the comparison**, which is the same
+  before and after.
+- **Owner:** whoever next changes `parseMillipoints`' arithmetic. **Not Story 15.3** — it is not an
+  exported-surface question and it needs no decision before the tag.
+- **Severity:** **LOW**, and the reason is the bound below it, not the guard itself.
+- **Status:** OPEN.
+
+**The gap.** The whole-part loop reads `if whole > (1<<63-1)/10 { overflow }` and only then executes
+`whole = whole*10 + int64(c-'0')`. Testing before the multiply admits the boundary case: when
+`whole == (1<<63-1)/10` exactly — that is `922337203685477580`, an 18-digit value — the guard does not
+fire, and a final digit of 8 or 9 produces `9223372036854775808` or `...809`, both of which exceed
+`math.MaxInt64` and wrap negative.
+
+**Why nothing is broken today.** The wrapped value is negative, so the second overflow check
+(`whole > (1<<63-1)/1000`) does not fire either — but `lengthField`'s `MaxCanvasMillipoints` bound
+immediately below rejects any magnitude that large, in both directions. So the input is still refused;
+what is wrong is only which guard refuses it, and therefore which sentence the author reads. A
+19-digit literal in that one band earns the JavaScript-safe-geometry message instead of the overflow
+message.
+
+**What closing it would require.** Moving the comparison after the multiply, or bounding by digit
+count. Both are one-line changes with a message-wording consequence, which is exactly why they are not
+a drive-by edit inside a story whose contract says an overflow's message must not move.
+
+---
+
+### DW-198 — `go test ./...` on a tagged `folio-go/v0.1.0` fails outside the monorepo, and Story 15.3 cuts that tag
+
+- source_spec: `_bmad-output/implementation-artifacts/15-2a-a-component-command-means-exactly-what-it-names.md`
+- **Found by:** Story 15.2a's review (2026-09-05).
+- **Owner:** **STORY 15.3 (`folio-go/v0.1.0`), BY NAME.** It cuts the tag inside this same epic and
+  must not meet this at tag time. This is the entry's whole point: the discovery is cheap now and
+  expensive the moment a third party runs the suite on a fetched module.
+- **Severity:** **MEDIUM.** Nothing in the product is wrong; what fails is the *published module's*
+  own test suite when it is not sitting in this repository.
+- **Status:** OPEN until Story 15.3 reads it.
+
+**The gap, measured rather than characterised.** `folio-go`'s tests reach outside their own module in
+two ways, and the second is far the larger:
+
+1. **Cross-language source reads.** Four test files in `folio-go` open a path under
+   `folio-designer/`, and every one is a deliberate `t.Fatalf`-never-`t.Skip` — a missing file on the
+   other side of a protocol seam is a finding, not an excuse, which is right inside the monorepo and
+   fatal outside it. Measured with `git grep -ln --untracked '"folio-designer"' -- folio-go`:
+   `canvas_projection_wire_test.go` (pre-existing), `internal/fontset/licencesignature_test.go`
+   (pre-existing, three paths), `fonts/fonts_test.go` (pre-existing), and
+   `command_json_authority_wire_test.go` (**added by Story 15.2a**, two test functions).
+2. **`repoRootFromTest` itself**, which is the bigger half and has nothing to do with this story.
+   It walks up until it finds a directory holding **both `folio-go/` and `fixtures/`**, and
+   `t.Fatalf`s when it does not. Measured: **79 call sites across 50 files.** `fixtures/` is a
+   sibling of `folio-go/`, not part of the module, so none of them resolve outside the monorepo.
+
+**So the condition is overwhelmingly pre-existing**, and Story 15.2a added one file and two functions
+to it. The reason it is filed now rather than earlier is only that 15.2a is the story that put the
+tag's deadline in front of someone.
+
+**What closing it would require — a decision, not a patch, which is why it is 15.3's.** The options
+are genuinely different in kind: publish the module with a suite that only runs in-tree and say so;
+gate the out-of-tree cases on locating the sibling checkout and **skip** them, which contradicts the
+standing `t.Fatalf`-never-`t.Skip` rule these seams were built on; move `fixtures/` inside the module;
+or tag with the tests excluded. Whoever cuts the tag decides which promise `folio-go/v0.1.0` is making
+about `go test ./...`.
+
+**What discharges it:** Story 15.3 reading this entry and recording the choice at the tag.

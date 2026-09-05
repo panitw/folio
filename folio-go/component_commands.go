@@ -32,12 +32,179 @@ func componentFailure(id, path, message string) error {
 	return &ComponentCommandError{error: fmt.Errorf("folio: %s", message), ElementID: id, DataPath: path, Message: message}
 }
 
+// The two exported command doors both name a DOCUMENT rather than an element
+// when they refuse ambiguous bytes, because a duplicate key means the id the
+// command names is exactly the thing that cannot be trusted.
+const (
+	componentCommandPath = "command"
+	pageSetupCommandPath = "page.setup"
+)
+
+// EACH DOOR'S REFUSAL CARRIES ITS OWN DIAGNOSTIC CODE, and the two are reached
+// by different machinery at the host.
+//
+// wasm/cmd/engine/main.go's engineFailure matches *ComponentCommandError FIRST,
+// before the page-setup fallback below it, and answers COMPONENT_INVALID. That
+// is right for the component door and WRONG for page setup: the designer's only
+// code-branching page-setup consumer keys on PAGE_SETUP_INVALID, so a page-setup
+// refusal wearing COMPONENT_INVALID is a refusal that surface never sees.
+//
+// So the page-setup door returns a plain error whose message opens with the
+// `folio: page.` prefix the host's own fallback tests for. That path is not the
+// unlocated ENGINE_REJECTED the "use componentFailure" rule exists to avoid — it
+// sets DiagnosticCode PAGE_SETUP_INVALID, carries the message, and defaults
+// DataPath to page.setup, with ElementID left empty exactly as required.
+const pageSetupFailurePrefix = "folio: " + pageSetupCommandPath
+
+// maxCommandKeyScanDepth bounds the duplicate-key walk's recursion. It is not a
+// rule about commands — the deepest one this vocabulary has is three objects —
+// it is a bound on hostile bytes, because Decoder.Token() streams to ANY depth
+// (measured: 20 000 nested arrays tokenise cleanly) while this walk is
+// recursive.
+//
+// The number is encoding/json's own nesting limit, and that is the whole point:
+// measured, json.Unmarshal refuses input nested deeper than 10 000 with
+// "exceeded max depth", so a value this scan declines to walk is a value the
+// caller's ordinary decode rejects on the very next line. The scan never has to
+// be the thing that reports depth, and nothing decodable escapes it.
+const maxCommandKeyScanDepth = 10000
+
+// refuseDuplicateCommandKeys is the SOLE duplicate-key guard for both exported
+// command doors, and it exists because every arity and version check on either
+// door is duplicate-BLIND by construction. Both decode into
+// map[string]json.RawMessage, which resolves a repeated key silently by
+// last-wins BEFORE anything counts the map — so componentFields(raw, want) and
+// len(raw) != 7 both count the deduplicated map, equalNumber(raw["version"],
+// "1") reads the LAST version, and dispatch routes on the LAST kind.
+//
+// Executed at the baseline this replaces: a command that NAMED e1 in the page
+// header MUTATED e5 in the page footer and returned a nil error. A version:0
+// command was admitted by appending a second version:1. A deleteComponent was
+// escalated into deleteFontChain because the two happen to have the same
+// arity, and only the second handler's own field names stopped it — arity
+// coincidence, not a check.
+//
+// encoding/json cannot report duplicates through any decode: by the time a map
+// or a RawMessage is in hand, the duplicate is already gone. Token streaming is
+// the only stdlib mechanism that sees them, and it is the idiom this module
+// already uses (decoder.More at :519, internal/bind/value.go:161-183).
+func refuseDuplicateCommandKeys(command []byte, door string) error {
+	dec := json.NewDecoder(bytes.NewReader(command))
+	dec.UseNumber()
+	first, err := dec.Token()
+	if err != nil {
+		// Not this guard's refusal to make. Bytes that do not tokenise are
+		// malformed, and the caller's own decode says so in its own words.
+		return nil
+	}
+	at, key, found := scanForDuplicateKey(dec, first, "$", 0)
+	if !found {
+		return nil
+	}
+	message := fmt.Sprintf("the command declares the key %q twice at %s, so it names one thing and could change another", key, at)
+	if door == pageSetupCommandPath {
+		return fmt.Errorf("%s: %s", pageSetupFailurePrefix, message)
+	}
+	return componentFailure("", door, message)
+}
+
+// scanForDuplicateKey consumes the remainder of the value whose opening token
+// is tok, and reports the path of the first object that declares a key twice.
+// Arrays are walked too: an object nested inside one is not a special case
+// anywhere else and must not be one here.
+func scanForDuplicateKey(dec *json.Decoder, tok json.Token, path string, depth int) (string, string, bool) {
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		// A scalar is one token and it has already been read.
+		return "", "", false
+	}
+	if depth > maxCommandKeyScanDepth {
+		// DRAIN, NEVER JUST RETURN. Returning here without consuming the value
+		// would leave the decoder positioned INSIDE it, so the parent object's
+		// loop would read this value's nested keys as its own — reporting a
+		// duplicate at a path that does not exist, or at no duplicate at all.
+		// That would be a correctness bug in the very scanner this guard is.
+		drainValue(dec, delim)
+		return "", "", false
+	}
+	switch delim {
+	case '{':
+		// Lookup and insert only. lint/internal/rules/maprange.go bans ranging
+		// a map in non-test Go, and nothing here needs to.
+		seen := map[string]bool{}
+		for dec.More() {
+			keyToken, err := dec.Token()
+			if err != nil {
+				return "", "", false
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return "", "", false
+			}
+			if seen[key] {
+				return path, key, true
+			}
+			seen[key] = true
+			valueToken, err := dec.Token()
+			if err != nil {
+				return "", "", false
+			}
+			if at, duplicate, found := scanForDuplicateKey(dec, valueToken, path+"."+key, depth+1); found {
+				return at, duplicate, true
+			}
+		}
+	case '[':
+		for index := 0; dec.More(); index++ {
+			valueToken, err := dec.Token()
+			if err != nil {
+				return "", "", false
+			}
+			if at, duplicate, found := scanForDuplicateKey(dec, valueToken, fmt.Sprintf("%s[%d]", path, index), depth+1); found {
+				return at, duplicate, true
+			}
+		}
+	}
+	// The closing delimiter. Consuming it here is what leaves the decoder
+	// positioned on the parent's next token.
+	if _, err := dec.Token(); err != nil {
+		return "", "", false
+	}
+	return "", "", false
+}
+
+// drainValue consumes the remainder of a composite value whose opening
+// delimiter has already been read, leaving the decoder on the parent's next
+// token. It is iterative on purpose: it exists to handle input too deeply
+// nested to recurse over, so recursing over it would defeat itself.
+func drainValue(dec *json.Decoder, opening json.Delim) {
+	depth := 1
+	if opening != '{' && opening != '[' {
+		return
+	}
+	for depth > 0 {
+		tok, err := dec.Token()
+		if err != nil {
+			return
+		}
+		if delim, ok := tok.(json.Delim); ok {
+			if delim == '{' || delim == '[' {
+				depth++
+			} else {
+				depth--
+			}
+		}
+	}
+}
+
 // ApplyComponentCommand applies Story 5.7's small, versioned authoring
 // vocabulary. The command is intentionally decoded in Go: the browser sends
 // opaque bytes and never receives the template or its canonical JSON shape.
 func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error) {
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
+	}
+	if err := refuseDuplicateCommandKeys(command, componentCommandPath); err != nil {
+		return CanvasProjection{}, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(command))
 	dec.UseNumber()

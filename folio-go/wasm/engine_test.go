@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	folio "github.com/panitw/folio/folio-go"
@@ -816,5 +817,87 @@ func TestEngineFontChainMoveIsFollowedByTheFolioBytes(t *testing.T) {
 	// an edit to one slice, not a re-emission of the map.
 	if !bytes.Equal(bytes.Replace(after, []byte(reordered), []byte(authored), 1), before) {
 		t.Fatal("a move changed more of the document than the one chain's entry order")
+	}
+}
+
+// TestEngineApplyRefusesADuplicateKeyOnEitherRoutingBranch covers the wasm
+// path's OWN last-wins read, which is a third door onto the same defect and
+// adds no check of its own: engine.go unmarshals into `struct{ Kind string }`
+// to choose between the page-setup and component decoders, and that unmarshal
+// routes on the LAST "kind" exactly as the two module decoders do.
+//
+// Both directions are asserted. A duplicate that would route a pageSetup
+// command into the component decoder is refused, and so is one going the other
+// way — routing correctly by accident is not the property.
+func TestEngineApplyRefusesADuplicateKeyOnEitherRoutingBranch(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []struct {
+		name string
+		// component reports whether this payload is routed to the COMPONENT
+		// door. Each door raises its refusal in its own shape, so the two are
+		// distinguished here rather than asserted as one thing.
+		component bool
+		command   string
+	}{
+		{
+			// Routed to ApplyComponentCommand by the LAST kind, having named
+			// pageSetup first.
+			name:      "a component command wearing a page-setup kind first",
+			component: true,
+			command:   `{"kind":"pageSetup","version":1,"id":"e1","kind":"deleteComponent"}`,
+		},
+		{
+			// Routed to ApplyPageSetupCommand by the last kind.
+			name:      "a page-setup command wearing a component kind first",
+			component: false,
+			command:   `{"kind":"deleteComponent","version":1,"preset":"A4","orientation":"portrait","width":0,"height":0,"margin":{"top":10,"right":10,"bottom":10,"left":10},"kind":"pageSetup"}`,
+		},
+		{
+			name:      "a duplicate nested inside a component command",
+			component: true,
+			command:   `{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"FIRST","value":"SECOND"}}}`,
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			engine := NewEngine()
+			before, err := engine.Load(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = engine.Apply([]byte(probe.command))
+			if err == nil {
+				t.Fatal("duplicate-key bytes were accepted through the wasm engine")
+			}
+			var failure *folio.ComponentCommandError
+			switch {
+			case probe.component:
+				// The component door: a ComponentCommandError, which the host
+				// maps to COMPONENT_INVALID. Anything else falls through to
+				// ENGINE_REJECTED with no location at all.
+				if !errors.As(err, &failure) {
+					t.Fatalf("refusal is not a ComponentCommandError, so the host reports it unlocated: %v", err)
+				}
+				if failure.ElementID != "" {
+					t.Fatalf("refusal named the element %q, which the duplicate has made untrustworthy", failure.ElementID)
+				}
+			default:
+				// The page-setup door: NOT a ComponentCommandError, because
+				// engineFailure matches that type first and would answer
+				// COMPONENT_INVALID for a page-setup command. The prefix below
+				// is what routes it to PAGE_SETUP_INVALID instead.
+				if errors.As(err, &failure) {
+					t.Fatalf("the page-setup door raised a ComponentCommandError, so the host reports COMPONENT_INVALID: %v", err)
+				}
+				if !strings.HasPrefix(err.Error(), "folio: page.") {
+					t.Fatalf("error = %q, want the `folio: page.` prefix the host answers PAGE_SETUP_INVALID for", err.Error())
+				}
+			}
+			if after := engine.Snapshot(); after != before {
+				t.Fatalf("a refused command changed state: before=%#v after=%#v", before, after)
+			}
+		})
 	}
 }

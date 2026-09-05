@@ -298,3 +298,99 @@ func TestTableColumnsRequestRequiresTheExactSelectionEnvelope(t *testing.T) {
 		}
 	}
 }
+
+// TestWasmHostReportsTheDuplicateKeyRefusalAsComponentInvalid is Story 15.2a's
+// acceptance criterion at the only place the MAPPING is actually decided.
+// engineFailure matches *folio.ComponentCommandError BEFORE *folio.RenderError,
+// and a bare fmt.Errorf on the same decode path would instead fall through to
+// ENGINE_REJECTED with no location at all — which is what every other refusal
+// in ApplyComponentCommand's decoder does, and what this one must not.
+//
+// ElementID must arrive EMPTY. A duplicate key means the id the command names
+// is exactly the thing that cannot be trusted: executed at the baseline, a
+// command that named e1 in the page header mutated e5 in the page footer.
+//
+// This file is built for js/wasm, so it runs in the wasm suite rather than in
+// the ordinary Go gate; folio-go's own
+// TestDuplicateKeyRefusalArrivesAtTheHostAsComponentInvalid reads this mapping
+// out of main.go's source so the tie is measured on every story too.
+func TestWasmHostReportsTheDuplicateKeyRefusalAsComponentInvalid(t *testing.T) {
+	const doc = `{"assets":{},"bands":{"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":200,"height":40,"value":"first","style":{"fontFamily":"body","fontSize":11}},{"id":"e2","type":"text","x":0,"y":60,"width":200,"height":40,"value":"second","style":{"fontFamily":"body","fontSize":11}}]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":3,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"2.0"}`
+	engine := wasm.NewEngine()
+	if loaded := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(doc))}); !loaded.OK {
+		t.Fatalf("fixture precondition: the document must load, got %#v", loaded)
+	}
+	// Names e1 and changes e2, by appending a second ids and a second changes.
+	const command = `{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"FIRST"}},"ids":["e2"],"changes":{"value":{"op":"set","value":"SECOND"}}}`
+	got := dispatch(engine, request{Operation: "command", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(command))})
+	if got.OK {
+		t.Fatalf("duplicate-key bytes were accepted at the host: %#v", got)
+	}
+	if got.DiagnosticCode != "COMPONENT_INVALID" {
+		t.Fatalf("code = %q, want COMPONENT_INVALID — ENGINE_REJECTED would leave the panel with no location", got.DiagnosticCode)
+	}
+	if got.ElementID != "" {
+		t.Fatalf("ElementID = %q, want empty: a duplicate key makes the named id untrustworthy", got.ElementID)
+	}
+	if got.DataPath == "" {
+		t.Fatal("DataPath is empty, so the refusal names neither an element nor the command")
+	}
+	// The document did not move. The other half of "it refuses" is that the
+	// element a last-wins resolution would have mutated is still what it was.
+	serialized := dispatch(engine, request{Operation: "serialize"})
+	if !serialized.OK {
+		t.Fatalf("serialize after a refused command: %#v", serialized)
+	}
+	after, err := base64.StdEncoding.DecodeString(serialized.BytesBase64)
+	if err != nil {
+		t.Fatalf("decode serialized bytes: %v", err)
+	}
+	if !bytes.Contains(after, []byte(`"second"`)) || bytes.Contains(after, []byte("SECOND")) {
+		t.Fatal("the element the duplicate would have mutated did not survive the refusal")
+	}
+}
+
+// TestWasmHostReportsThePageSetupDuplicateKeyRefusalAsPageSetupInvalid is the
+// SECOND door's code, and it is a different question from the first — not a
+// repetition of it. engineFailure matches *folio.ComponentCommandError before
+// the page-setup fallback, so a page-setup refusal raised as a plain
+// componentFailure would report COMPONENT_INVALID and miss the designer's only
+// code-branching page-setup consumer entirely. The two doors are asserted
+// separately, one code each, because that is the only way the difference is
+// observable.
+func TestWasmHostReportsThePageSetupDuplicateKeyRefusalAsPageSetupInvalid(t *testing.T) {
+	const doc = `{"assets":{},"bands":{"content":{"elements":[]},"pageFooter":{"elements":[],"height":20},"pageHeader":{"elements":[],"height":20}},"fonts":{"body":["Noto Sans"]},"locale":"en","nextId":1,"page":{"margin":{"bottom":36,"left":36,"right":36,"top":36},"orientation":"portrait","size":"A4"},"utcOffset":"+00:00","version":"2.0"}`
+	engine := wasm.NewEngine()
+	if loaded := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(doc))}); !loaded.OK {
+		t.Fatalf("fixture precondition: the document must load, got %#v", loaded)
+	}
+	for _, probe := range []struct {
+		name    string
+		command string
+	}{
+		{
+			name:    "a repeated top-level key",
+			command: `{"kind":"pageSetup","version":1,"preset":"custom","orientation":"portrait","width":300,"height":400,"margin":{"top":10,"right":10,"bottom":10,"left":10},"orientation":"landscape"}`,
+		},
+		{
+			name:    "a repeated key in the nested margin object",
+			command: `{"kind":"pageSetup","version":1,"preset":"custom","orientation":"portrait","width":300,"height":400,"margin":{"top":1,"top":2,"right":10,"bottom":10,"left":10}}`,
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			got := dispatch(engine, request{Operation: "command", PayloadBase64: base64.StdEncoding.EncodeToString([]byte(probe.command))})
+			if got.OK {
+				t.Fatalf("duplicate-key bytes were accepted at the page-setup door: %#v", got)
+			}
+			if got.DiagnosticCode != "PAGE_SETUP_INVALID" {
+				t.Fatalf("code = %q, want PAGE_SETUP_INVALID — the refusal must carry the code of the door it was raised at, and COMPONENT_INVALID is the code the designer's page-setup consumer does not branch on", got.DiagnosticCode)
+			}
+			if got.ElementID != "" {
+				t.Fatalf("ElementID = %q, want empty: a duplicate key makes any named id untrustworthy", got.ElementID)
+			}
+			if got.DataPath == "" {
+				t.Fatal("DataPath is empty, so the refusal is unlocated")
+			}
+		})
+	}
+}

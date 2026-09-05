@@ -2290,3 +2290,382 @@ func TestEmbedFontFamilyStillRefusesAFaceOverTheSupportedSizeWithALocatedMessage
 		t.Errorf("the size refusal is not located at the chain: dataPath = %q", failure.DataPath)
 	}
 }
+
+// elementValue reads one element's `value` straight out of the canonical bytes,
+// so "the victim is unchanged" is asserted against the DOCUMENT rather than
+// against a projection the same defect could have shaped.
+func elementValue(t *testing.T, tpl *Template, band, id string) string {
+	t.Helper()
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Bands map[string]struct {
+			Elements []struct {
+				ID    string `json:"id"`
+				Value string `json:"value"`
+			} `json:"elements"`
+		} `json:"bands"`
+	}
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, element := range document.Bands[band].Elements {
+		if element.ID == id {
+			return element.Value
+		}
+	}
+	t.Fatalf("the fixture no longer carries %s in %s, so this test asserts nothing; re-derive the fixture rather than deleting the check", id, band)
+	return ""
+}
+
+// TestApplyComponentCommandRefusesDuplicateKeysAtEveryLevel hands the ENGINE the
+// bytes. That is the point of it: an encoder test would go green the moment a
+// future encoder regresses, because it tests the fix rather than the property.
+//
+// Every payload below was ACCEPTED at the baseline this replaces, and the first
+// one is the executed proof that gives the story its name — it NAMES e1 in the
+// page header and MUTATES e5 in the page footer, returning a nil error.
+func TestApplyComponentCommandRefusesDuplicateKeysAtEveryLevel(t *testing.T) {
+	for _, probe := range []struct {
+		name    string
+		command string
+		level   string
+	}{
+		{
+			name:    "top level ids and changes",
+			command: `{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"FIRST"}},"ids":["e5"],"changes":{"value":{"op":"set","value":"SECOND"}}}`,
+			level:   "$",
+		},
+		{
+			name:    "the changes object",
+			command: `{"kind":"updateComponentProperties","version":1,"ids":["e5"],"changes":{"value":{"op":"set","value":"FIRST"},"value":{"op":"set","value":"SECOND"}}}`,
+			level:   "$.changes",
+		},
+		{
+			name:    "the operation object",
+			command: `{"kind":"updateComponentProperties","version":1,"ids":["e5"],"changes":{"value":{"op":"set","value":"FIRST","value":"SECOND"}}}`,
+			level:   "$.changes.value",
+		},
+		{
+			name:    "a repeated op inside the operation object",
+			command: `{"kind":"updateComponentProperties","version":1,"ids":["e5"],"changes":{"value":{"op":"clear","op":"set","value":"SECOND"}}}`,
+			level:   "$.changes.value",
+		},
+		{
+			// The version gate reads the LAST key, so appending a second one
+			// admitted a version:0 command. Asserted directly rather than left
+			// to be repaired by accident at the top level: a fix nothing
+			// asserts can regress in silence.
+			name:    "a repeated version",
+			command: `{"kind":"updateComponentProperties","version":0,"ids":["e5"],"changes":{"value":{"op":"set","value":"SECOND"}},"version":1}`,
+			level:   "$",
+		},
+		{
+			// Arity is a COINCIDENCE, not a check. deleteComponent and
+			// deleteFontChain both carry three top-level keys, so
+			// componentFields passed and dispatch landed in the wrong handler;
+			// only that handler's own field names stopped it, which stops
+			// nothing in general.
+			name:    "a same-arity kind escalation",
+			command: `{"kind":"deleteComponent","version":1,"id":"e5","kind":"deleteFontChain"}`,
+			level:   "$",
+		},
+		{
+			// Arrays are not a special case anywhere else and must not be one
+			// here. The scan reaches an object nested inside one.
+			name:    "an object inside an array",
+			command: `{"kind":"bindComponentScalar","version":1,"id":"e5","segments":["a"],"probe":[{"k":1,"k":2}]}`,
+			level:   "$.probe[0]",
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			tpl := componentTemplate(t)
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			victim := elementValue(t, tpl, "pageFooter", "e5")
+			_, err = ApplyComponentCommand(tpl, []byte(probe.command))
+			if err == nil {
+				t.Fatal("duplicate-key bytes were accepted; a command that names one thing changed another")
+			}
+			var failure *ComponentCommandError
+			if !errors.As(err, &failure) {
+				// A bare fmt.Errorf surfaces at the host as ENGINE_REJECTED
+				// with no location at all, which is what every other refusal on
+				// this decode path does and what this one must not.
+				t.Fatalf("refusal is not a ComponentCommandError, so it reaches the host unlocated: %v", err)
+			}
+			if failure.ElementID != "" {
+				// A duplicate key means the named id is exactly the thing that
+				// cannot be trusted: the executed baseline named e1 and changed
+				// e5, so naming any id names the wrong one.
+				t.Fatalf("refusal named the element %q, which the duplicate has made untrustworthy", failure.ElementID)
+			}
+			if failure.DataPath != componentCommandPath {
+				t.Fatalf("DataPath = %q, want the document-scoped %q", failure.DataPath, componentCommandPath)
+			}
+			if !strings.Contains(failure.Message, probe.level) {
+				t.Fatalf("message %q does not name the level %s the duplicate is at", failure.Message, probe.level)
+			}
+			if got := elementValue(t, tpl, "pageFooter", "e5"); got != victim {
+				t.Fatalf("the element a last-wins resolution would have mutated changed from %q to %q", victim, got)
+			}
+			after, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("a refused command changed the canonical bytes")
+			}
+		})
+	}
+}
+
+// TestApplyComponentCommandStillAcceptsUnambiguousBytes is the other direction,
+// and it is what stops the guard above from being satisfied by refusing
+// everything. A duplicate key inside a STRING VALUE is not a duplicate key.
+func TestApplyComponentCommandStillAcceptsUnambiguousBytes(t *testing.T) {
+	tpl := componentTemplate(t)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e5"],"changes":{"value":{"op":"set","value":"a\",\"value\":\"b"}}}`)); err != nil {
+		t.Fatalf("a value whose TEXT looks like a repeated key was refused: %v", err)
+	}
+	if got, want := elementValue(t, tpl, "pageFooter", "e5"), `a","value":"b`; got != want {
+		t.Fatalf("value = %q, want %q", got, want)
+	}
+	// Repeated keys in SIBLING objects are not duplicates either: `op` appears
+	// once per operation object, and every multi-field command relies on it.
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e5"],"changes":{"value":{"op":"set","value":"x"},"align":{"op":"set","value":"center"}}}`)); err != nil {
+		t.Fatalf("sibling objects sharing a key name were refused: %v", err)
+	}
+}
+
+// TestDuplicateKeyRefusalCarriesNoElementID asserts the refusal's own shape at
+// the module boundary: a duplicate key makes the named id untrustworthy, so no
+// id is named, and the message fits inside the width the host will cut it to.
+// Mapping that onto a host RESPONSE is a different question, asserted by
+// TestDuplicateKeyRefusalArrivesAtTheHostAsComponentInvalid below.
+func TestDuplicateKeyRefusalCarriesNoElementID(t *testing.T) {
+	tpl := componentTemplate(t)
+	_, err := ApplyComponentCommand(tpl, []byte(`{"kind":"deleteComponent","version":1,"id":"e1","id":"e5"}`))
+	var failure *ComponentCommandError
+	if !errors.As(err, &failure) {
+		t.Fatalf("want a ComponentCommandError, got %v", err)
+	}
+	if failure.ElementID != "" || failure.DataPath != "command" {
+		t.Fatalf("ElementID = %q, DataPath = %q; want an empty id and a document-scoped path", failure.ElementID, failure.DataPath)
+	}
+	if len(failure.Message) > maxComponentFailureMessageBytes {
+		t.Fatalf("message is %d bytes, which the host would cut at %d", len(failure.Message), maxComponentFailureMessageBytes)
+	}
+}
+
+// componentInvalidHostBranch reads the wasm host's OWN mapping of a
+// *ComponentCommandError onto a response. Anchored on the errors.As that opens
+// the branch, because `return response{` is the whole file's idiom and an
+// unanchored match would read some other branch and compare it to this record —
+// a green test asserting the wrong thing.
+var componentInvalidHostBranch = regexp.MustCompile(`(?s)var componentErr \*folio\.ComponentCommandError\s*\n\s*if errors\.As\(err, &componentErr\) \{(.*?)\n\t\}`)
+
+// pageSetupHostFallback reads the OTHER door's mapping: the host's prefix test
+// and the code it answers with. Anchored on the prefix literal the page-setup
+// door deliberately emits, so this cannot match some unrelated response.
+var pageSetupHostFallback = regexp.MustCompile(`(?s)strings\.HasPrefix\(message, "folio: page\."\).*?DiagnosticCode: "PAGE_SETUP_INVALID"`)
+
+// TestDuplicateKeyRefusalArrivesAtTheHostAsComponentInvalid is the acceptance
+// criterion's own wording — "when it surfaces at the wasm host, then it arrives
+// as COMPONENT_INVALID with an EMPTY ElementID" — and it needs both halves,
+// because neither is sufficient on its own.
+//
+// The FIRST half is executed: the refusal really is a *ComponentCommandError
+// carrying an empty ElementID, so whatever the host does with that field, it is
+// handed nothing.
+//
+// The SECOND half is read from the host's source, for the same reason
+// TestComponentFailureBoundsMatchTheHostsOwnLiterals reads it: wasm/cmd/engine
+// is a main package built for js/wasm, its own tests carry `//go:build js &&
+// wasm` and do not run in this gate, and nothing else ties this module's
+// refusal to the code the browser is actually answered by. The existing
+// tripwire pins Message and DataPath and deliberately NOT ElementID — this is
+// the leg it leaves open.
+//
+// If it goes red: the host stopped mapping a component refusal onto
+// COMPONENT_INVALID, or stopped passing the module's own ElementID through, and
+// the panel is now being told an id the duplicate has made untrustworthy.
+func TestDuplicateKeyRefusalArrivesAtTheHostAsComponentInvalid(t *testing.T) {
+	tpl := componentTemplate(t)
+	_, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"FIRST"}},"ids":["e5"],"changes":{"value":{"op":"set","value":"SECOND"}}}`))
+	var failure *ComponentCommandError
+	if !errors.As(err, &failure) {
+		t.Fatalf("want a ComponentCommandError, got %v", err)
+	}
+	if failure.ElementID != "" {
+		t.Fatalf("ElementID = %q; the host would report an id the duplicate has made untrustworthy", failure.ElementID)
+	}
+
+	path := filepath.Join(repoRootFromTest(t), "folio-go", "wasm", "cmd", "engine", "main.go")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		// Not a skip. The host is the other side of this seam and a missing one
+		// is a finding, not an excuse.
+		t.Fatalf("read the wasm host: %v", err)
+	}
+	branch := componentInvalidHostBranch.FindStringSubmatch(string(source))
+	if branch == nil {
+		t.Fatal("wasm/cmd/engine/main.go no longer maps a *folio.ComponentCommandError where this test can read it; if the host was restructured, re-derive this extraction rather than deleting the check")
+	}
+	// Whitespace-insensitive: gofmt aligns these struct fields, so pinning the
+	// exact column spacing would redden this test the day an unrelated field
+	// with a longer name joins the literal. What is being asserted is the
+	// mapping, not the alignment.
+	for _, want := range []*regexp.Regexp{
+		regexp.MustCompile(`DiagnosticCode:\s*"COMPONENT_INVALID"`),
+		regexp.MustCompile(`ElementID:\s*bounded\(componentErr\.ElementID, 128\)`),
+	} {
+		if !want.MatchString(branch[1]) {
+			t.Errorf("the host's component-refusal branch no longer matches %s:\n%s", want, branch[1])
+		}
+	}
+
+	// THE SECOND DOOR'S CODE, read from the same file. A page-setup refusal is
+	// raised as a plain error opening with the `folio: page.` prefix precisely
+	// so it lands in this fallback instead of the component branch above, and
+	// the fallback is where PAGE_SETUP_INVALID is decided.
+	if !pageSetupHostFallback.MatchString(string(source)) {
+		t.Error("wasm/cmd/engine/main.go no longer answers PAGE_SETUP_INVALID for a message opening with the `folio: page.` prefix; if the host was restructured, re-derive this extraction rather than deleting the check — a page-setup refusal now reports some other code")
+	}
+	if !strings.HasPrefix(pageSetupFailurePrefix, "folio: page.") {
+		t.Errorf("the page-setup door's own prefix is %q, which the host's fallback above does not test for", pageSetupFailurePrefix)
+	}
+	// ORDER IS PART OF THE MAPPING. The *RenderError branch answers with a
+	// registered diagnostic code, and a ComponentCommandError is not a
+	// *RenderError — but if the two were ever reordered around a shared
+	// interface, this refusal would surface as something else entirely.
+	componentAt := strings.Index(string(source), "var componentErr *folio.ComponentCommandError")
+	renderAt := strings.Index(string(source), "var renderErr *folio.RenderError")
+	if componentAt < 0 || renderAt < 0 {
+		t.Fatal("wasm/cmd/engine/main.go no longer declares both error branches where this test can find them; re-derive this extraction rather than deleting the check")
+	}
+	if componentAt > renderAt {
+		t.Error("the host now matches *RenderError before *ComponentCommandError, so a component refusal no longer arrives as COMPONENT_INVALID")
+	}
+}
+
+// TestDuplicateKeyScanStaysSynchronisedPastItsDepthBound covers the scanner's
+// own failure mode rather than the defect it hunts.
+//
+// The walk is recursive and Decoder.Token() streams to ANY depth — measured,
+// 20 000 nested arrays tokenise cleanly — so the walk is bounded. Returning at
+// that bound WITHOUT consuming the value it declined to enter leaves the
+// decoder positioned INSIDE that value, and the parent object's loop then reads
+// the value's own nested tokens as if they were the parent's keys. The result
+// is a duplicate reported at a path that does not exist, or a real duplicate
+// missed, or a key token that is not a string aborting the scan silently.
+//
+// The bound is encoding/json's own nesting limit, so the payload below is one
+// level past what the caller's ordinary decode will accept: the scan must hand
+// it on intact rather than mangling the walk.
+func TestDuplicateKeyScanStaysSynchronisedPastItsDepthBound(t *testing.T) {
+	deep := strings.Repeat("[", maxCommandKeyScanDepth+1) + strings.Repeat("]", maxCommandKeyScanDepth+1)
+
+	// A REAL duplicate at the top level, sitting AFTER a value too deep to walk.
+	// A desynchronised decoder never reaches it.
+	if at, key, found := duplicateKeyPathForTest(t, `{"a":`+deep+`,"a":1}`); !found || at != "$" || key != "a" {
+		t.Fatalf("the duplicate after an over-deep value was reported as (%q, %q, %v); the scan lost its place inside that value", at, key, found)
+	}
+
+	// And NO duplicate where there is none. With the decoder left inside the
+	// deep value, the parent loop reads `[`-delimiters as keys and the scan
+	// reports whatever it stumbles into.
+	if at, key, found := duplicateKeyPathForTest(t, `{"a":`+deep+`,"b":1}`); found {
+		t.Fatalf("a duplicate was invented at (%q, %q) in bytes that declare none", at, key)
+	}
+
+	// The whole command still refuses, because the ordinary decode rejects the
+	// depth — the scan hands the question on rather than answering it.
+	tpl := componentTemplate(t)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"deleteComponent","version":1,"id":`+deep+`}`)); err == nil {
+		t.Fatal("bytes nested past encoding/json's own limit were accepted")
+	}
+}
+
+// duplicateKeyPathForTest exercises the walk directly, because what is under
+// test is the decoder's POSITION after it — a property no end-to-end refusal
+// can distinguish from a lucky guess.
+func duplicateKeyPathForTest(t *testing.T, payload string) (string, string, bool) {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(payload))
+	dec.UseNumber()
+	first, err := dec.Token()
+	if err != nil {
+		t.Fatalf("payload does not tokenise: %v", err)
+	}
+	return scanForDuplicateKey(dec, first, "$", 0)
+}
+
+// TestComponentPropertyNullReportsTheCauseAndTheField is the DW-32 door's own
+// user-visible outcome, and it had no coverage: every assertion about the
+// `null` an unparseable draft encodes to sat on the PAGE-SETUP door, while
+// DW-32 was filed against the property encoder.
+//
+// These are the exact bytes the designer now produces when the author types
+// something that is not a JSON number into a numeric property. The refusal must
+// name the FIELD and the CAUSE — a located message the panel can put beside the
+// box — not the generic parse failure the malformed bytes used to earn, and not
+// the overflow the mixed branch used to report.
+func TestComponentPropertyNullReportsTheCauseAndTheField(t *testing.T) {
+	for _, probe := range []struct {
+		field    string
+		wantPath string
+		wantMsg  string
+	}{
+		{field: "width", wantPath: "component.width", wantMsg: "must be a number"},
+		{field: "x", wantPath: "component.x", wantMsg: "must be a number"},
+		{field: "fontSize", wantPath: "component.fontSize", wantMsg: "must be a number"},
+	} {
+		t.Run(probe.field, func(t *testing.T) {
+			tpl := componentTemplate(t)
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"`+probe.field+`":{"op":"set","value":null}}}`))
+			var failure *ComponentCommandError
+			if !errors.As(err, &failure) {
+				t.Fatalf("want a located ComponentCommandError, got %v", err)
+			}
+			if failure.DataPath != probe.wantPath {
+				t.Fatalf("DataPath = %q, want %q — the panel puts the message beside the field this names", failure.DataPath, probe.wantPath)
+			}
+			if !strings.Contains(failure.Message, probe.wantMsg) {
+				t.Fatalf("message = %q, want it to name the cause %q", failure.Message, probe.wantMsg)
+			}
+			// The cause the mixed branch used to report for these exact bytes.
+			if strings.Contains(failure.Message, "overflows millipoints") {
+				t.Fatalf("message = %q, which still blames overflow for a value that is not a number", failure.Message)
+			}
+			after, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("a refused property command changed the canonical bytes")
+			}
+		})
+	}
+
+	// THE OTHER DIRECTION, on the same door: a genuine overflow still reports
+	// overflow. Fixing a message must not delete the detector, and this door
+	// shares parseMillipoints with page setup.
+	tpl := componentTemplate(t)
+	_, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"width":{"op":"set","value":99999999999999999999}}}`))
+	var overflow *ComponentCommandError
+	if !errors.As(err, &overflow) {
+		t.Fatalf("want a located ComponentCommandError, got %v", err)
+	}
+	if !strings.Contains(overflow.Message, "overflows millipoints") {
+		t.Fatalf("message = %q, want it to still report an overflow", overflow.Message)
+	}
+}
