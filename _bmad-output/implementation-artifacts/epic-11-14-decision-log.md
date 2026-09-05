@@ -1518,3 +1518,58 @@ findings rather than two: the accounting guard was vacuous (fixed, 16.11), two a
 (fixed, 16.11), and **the deepest cross-boundary test in the repository is hung** — pre-existing, not
 Epic 16's doing, and not repaired here. The gate does **not** pass. Filing the entry and naming an owner
 is Epic 16's obligation; fixing it is not.
+
+---
+
+### D-12.B.1 — Correction to D-12.B: the TypeScript guard DOES drop the snapshot, and the consequence is a dead editor
+
+**Third correction in this family, and this one reverses a correction I accepted against the original
+record.** D-12.B recorded, on 12.1's builder's measurement, that a stranded component *"gives a
+well-formed projection and the TS guard **admits it** — the snapshot is not dropped."* **False.**
+D-12.A's original claim was right, and I was talked out of it.
+
+Verified at `engine-protocol.ts:345`:
+
+```
+if (BANDS_CAPPING_VERTICALLY.includes(component.band as string) && !(box.y + box.height <= band.height)) return false
+```
+
+For the exact strand measured (`y=50000, h=30000, band.height=20000`): `80000 <= 20000` is false, so
+`isCanvas` returns false, `parseInbound` returns undefined, and `EngineClient.#fail('PROTOCOL_INVALID')`
+**terminates the worker.**
+
+**The builder's account of its own error is the transferable part:** *"I based my claim on the
+numeric-range check fourteen lines earlier, as reported by a surveying agent, and never read the vertical
+clause — a survey passed off as a measurement."* That is **D-12.A.2's rule biting the agent who reported
+it**: a claim about a group is not evidence about a member, and a surveyor's summary of a guard is not the
+guard. The clause was fourteen lines away.
+
+**What it breaks, and what it strengthens.** A frozen Always clause justified the send-only-if-changed
+rule by *"an already-stranded hand-edited document can still accept a margin change."* **That document
+cannot be opened in the designer at all.** The AC asserting it was green only because `App.test.tsx` mocks
+the engine and never runs the real guard — measured: **0** occurrences of `isCanvas`/`parseInbound` in
+that file, against **305** engine references as the positive control.
+
+But the correction makes the story's case far stronger. Without 12.1's engine check, a band-height command
+creates a strand and **the very next projection terminates the worker mid-session** — the editor bricks
+itself with no attributable error. *"Later commands are refused"* was an inconvenience; **this is data
+loss shaped like a crash**, and it is now the true reason the check must exist.
+
+**Ruled:** strike the false justification and its AC; **keep** the send-only-if-changed rule on the honest
+ground that it avoids needless commands and history entries — *a rule can be right for a reason other than
+the one first given*; replace the engine check's stated reason with worker termination. One narrow frozen
+edit, no revert: the root cause is a justification, not an implementation, and the 309 implemented lines
+are untouched by it.
+
+**And the same review found the sixth instance of the run's dominant defect.** Two layers independently
+found the `pageFooter` arm is never exercised in Go. Mutation run and confirmed: **deleting the
+band-pointer swap, so a footer command writes the header, leaves the entire Go suite green** except the
+mandated red. Setting the page-footer height would silently resize the page **header**. Every accepting,
+strand, boundary and content-window test uses `pageHeader`; the single `pageFooter` row returns above the
+swap. **This is Story 12.4's key-to-edge rotation, one story later, in a story explicitly warned about
+it.**
+
+**The standing lesson, now paid for three times in one family:** every correction in this thread was made
+by the story that had to *act* on the claim, never by the story that recorded it. Records are checked by
+use, not by review — which is an argument for specs citing symbol and line so the next actor can fail to
+find them.
