@@ -116,7 +116,7 @@ exists to prevent.
 | @oxlint/binding-win32-arm64-msvc | 1.79.0 | MIT | folio-designer | build-time-only |
 | @oxlint/binding-win32-ia32-msvc | 1.79.0 | MIT | folio-designer | build-time-only |
 | @oxlint/binding-win32-x64-msvc | 1.79.0 | MIT | folio-designer | build-time-only |
-| @playwright/test | 1.58.2 | Apache-2.0 | folio-designer | build-time-only |
+| @playwright/test | 1.63.0 | Apache-2.0 | folio-designer | build-time-only |
 | @rolldown/pluginutils | 1.0.0-beta.47 | MIT | folio-designer | build-time-only |
 | @rollup/rollup-android-arm-eabi | 4.63.0 | MIT | folio-designer | build-time-only |
 | @rollup/rollup-android-arm64 | 4.63.0 | MIT | folio-designer | build-time-only |
@@ -196,7 +196,6 @@ exists to prevent.
 | expect-type | 1.4.0 | Apache-2.0 | folio-designer | build-time-only |
 | fake-indexeddb | 6.2.5 | Apache-2.0 | folio-designer | build-time-only |
 | fdir | 6.5.0 | MIT | folio-designer | build-time-only |
-| fsevents | 2.3.2 | MIT | folio-designer | build-time-only |
 | fsevents | 2.3.3 | MIT | folio-designer | build-time-only |
 | gensync | 1.0.0-beta.2 | MIT | folio-designer | build-time-only |
 | html-encoding-sniffer | 6.0.0 | MIT | folio-designer | build-time-only |
@@ -225,8 +224,8 @@ exists to prevent.
 | pdfjs-dist | 6.2.108 | Apache-2.0 | folio-designer | shipped |
 | picocolors | 1.1.1 | ISC | folio-designer | build-time-only |
 | picomatch | 4.0.7 | MIT | folio-designer | build-time-only |
-| playwright | 1.58.2 | Apache-2.0 | folio-designer | build-time-only |
-| playwright-core | 1.58.2 | Apache-2.0 | folio-designer | build-time-only |
+| playwright | 1.63.0 | Apache-2.0 | folio-designer | build-time-only |
+| playwright-core | 1.63.0 | Apache-2.0 | folio-designer | build-time-only |
 | postcss | 8.5.26 | MIT | folio-designer | build-time-only |
 | pretty-format | 27.5.1 | MIT | folio-designer | build-time-only |
 | punycode | 2.3.1 | MIT | folio-designer | build-time-only |
