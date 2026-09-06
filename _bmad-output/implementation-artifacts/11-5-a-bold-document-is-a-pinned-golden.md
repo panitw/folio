@@ -10,27 +10,29 @@ context: []
 
 ## In plain terms (read this first if you just want the gist)
 
-Nothing in the fixture corpus declares bold. Measured twice, two mechanisms: `grep -a` for `"bold"`
-and `"italic"` under `fixtures/` returns **0**, and an independent `python3` byte-walk over every
-file in all 29 fixture directories also returns **0** — with the positive control `"fontFamily"`
-returning 23 files, so the instrument is live. That means the engine could quietly start drawing
-bold text in the regular face and **every single gate in this repository would stay green**: no
-diagnostic, no red test, no moved golden.
+*Non-normative: a plain-language summary, rewritten after delivery to describe what shipped. The
+frozen Intent below governs implementation.*
 
-Two numbers in DW-237 are off and are corrected here so the next reader inherits accurate ones. It is
-**29** fixture directories, not 30 — `ls fixtures | wc -l` returns 30 because it counts
-`statement-signoff.json`, which is a file. And the corpus carries **23** `expected.pdf` against **24**
-`expected.json`: `hidden-image` ships a JSON and no PDF, correctly and by prior ruling. Neither
-correction touches DW-237's conclusion, which re-measures as stated.
+Until this story, not one document in the pinned test corpus asked for bold or italic type. That was
+worse than a coverage gap: the engine could have quietly begun drawing bold text in the ordinary face
+and nothing here would have objected — no warning, no failing test, no changed output. The machinery
+was guarded; the result was not.
 
-This story closes that hole by adding one new document to the pinned corpus — a page that declares
-bold and italic on a font chain that declares its cuts — rendering it on all four targets, and
-pinning its bytes.
+This story pins the result. It adds one page that asks for bold and italic from a typeface genuinely
+offering those cuts, renders it identically on all four supported targets, and freezes the resulting
+bytes as a reference. To prove the page is a real witness rather than decoration, the resolver was
+deliberately broken; of the many tests named for reference documents, exactly one noticed — this new
+one.
 
-Then it **stops**. A pinned `expected.pdf` is an artifact a person has looked at, and no agent can
-make that claim on someone else's behalf. The story builds everything, proves the fixture is a real
-witness by breaking the resolver and watching the new golden move, and hands the rendered page to
-the owner. Their eye is the last test.
+Then the story stopped and asked a person, because no automated check can confirm a page looks right.
+The owner read it and confirmed something narrower than "it rendered": that the bold line is a true
+bold typeface, not a thickened ordinary one, and that the sloped lines are drawn italics, not tilted
+uprights. That reading is now recorded, and the gate that had been failing on purpose while the story
+waited went green when it landed.
+
+Two things not to mistake for defects. The suite still reports two permanent failures — a mandated
+floor nobody has met, never to be "fixed". And two weaknesses it found in how attestations are
+enforced were left unrepaired on purpose, and registered for an owner rather than quietly fixed.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -527,3 +529,84 @@ carrying a `Test` field — a plain run prints no totals.
 
 - Corpus row and its `beyondBaselineAcceptance` reason; the identity is now 14 == 5 + 9.
   [`missing_glyph_corpus_test.go:228`](../../folio-go/missing_glyph_corpus_test.go#L228)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `4ba9e57`. Shipped as one commit, `6d26a80` — 15 files, +2123/−15, all of them this story's.
+`fixtures/declared-variants/` is now a pinned golden: one A4 page, four Roboto cuts, rendered
+byte-identically on all four targets, plus twelve registration sites, a semantic guard and a human
+attestation. Rulings applied by ID: **D-11.5.1** (token gate KEEP; arm [A] ship the red gate; the
+third-failure rule survives with permanent-vs-transient made explicit), **D-11.5.2** (the
+`AD-21 / D-4.7.1` citation is wrong — the obligation descends **D-000.22 → D-2.3.5**; 11.2's line is
+deliberately left as the record of where the error travelled), **D-11.1.9** (matrix suite unfiltered,
+in-story), **D-000.28**, **D-11.3.7**, **D-11.4.4 / DW-256**.
+
+**The attestation is real, and its provenance is in the record.** The owner confirmed the **narrow**
+judgment on a direct question — that line 2 is a real bold font program and lines 3–4 are drawn
+italics — not merely that the page rendered. The question was put precisely because "rendered
+correctly" could have meant "displayed", and attesting the wrong property would have looked settled
+forever. `signoff.json` records that verbatim, including that the orchestrator transcribed it at the
+owner's instruction, and binds to the LIVE hash of `expected.pdf` so a re-record invalidates the
+reading by construction.
+
+**The attestation was enforced by nothing automated, and review found it.** Blanking `reader` and
+`examined` and setting `date: "tomorrow-ish"` left the untagged suite byte-identical to baseline;
+zeroing the digest turned the check FAIL→ok — the gradient pointing the wrong way. The fix DERIVES the
+checked set from `goldenDigestRecord`'s declared `{kind:"signoff"}` sites rather than adding a fourth
+hardcoded call. That choice matters: the adjacent comment had already warned about exactly this and did
+not prevent the fourth, so it would not have prevented the fifth. A declared site with no completeness
+check is now inexpressible, with a reasoned exemption map for the two records whose schema differs.
+
+**The index-to-element tie shipped vacuous, and was caught by mutating rather than reading.** It
+derived expected faces via `entry.Variant(style)` while arguing that read the document rather than the
+resolver — false, since that call IS the resolver's lookup. **The mutation SITE decided it:**
+swapping bold↔italic perturbs the centred pair and looked caught; swapping italic↔boldItalic touches
+nothing else and exposed the hole. Replaced with a literal table plus a staleness tie reading the
+struct fields directly.
+
+**Triage: every finding `patch`, none `bad_spec`, none rejected.** No numeric tally was recorded; the
+"Applied" list enumerates **8** distinct patches, which is a floor rather than a census. The
+discriminator was local-vs-pervasive, but a second reason applies that does not generalise from token
+cost: **an attested artifact makes reverting expensive in a way that is not about tokens** — a
+`bad_spec` loopback re-derives the fixture and risks moving bytes a person has read, spending a second
+reading by the same person. That generalises beyond this story and is why triage chose `patch`.
+
+**Instruments produced three false signals this session** — an empty `git diff`, a PATH-less loop
+reporting 14 phantom drifts, and a `cp` restore silently failing behind a bad `cd`. Re-measuring with a
+second mechanism caught all three. A warning you wrote yourself is not immunity: this story's own spec
+mandates `grep -a` (DW-256), and the instrument still had to be double-checked each time.
+
+**Gates, re-measured independently at `6d26a80` at close — not carried from the build report.** Counted
+from `go test -json` `Action` events, since a plain run prints no totals. Untagged **2242 pass / 2 fail
+/ 5 skip**; unfiltered `-tags=matrix` with `FOLIO_FONTGEN_PYTHON` set **2255 / 2 / 5**, reporting
+`fontgen: derived and compared 7 of 7 faces`. **Both fail only `TestCorpusMeetsP6ExerciseFloors` and
+its `P6g_(opaque_names)` child, checked by enumerated name and not by exit code.** The third failure
+this spec predicted — `TestDeclaredVariantsSemanticSignOffIsRecorded`, the transient attestation
+halt — **now PASSES**: the owner's record landed in this same commit and discharged it, so the suite
+ends at 2 failures rather than the 3 the Verification section forecasts. `lint` **227 pass / 0 fail**.
+`gofmt -l` over absolute `folio-go` and `lint` paths: **empty**. `tsc -b --force` **0**. `npm test`
+**65 files / 976 tests**, all passing. `oxlint` **exactly 4** pre-existing `only-export-components`
+warnings. `test:e2e:compile` **0** — a typecheck, not coverage; the e2e suite itself is an
+epic-boundary gate (D-000.30) and is **unrun** here, due at the Epic 11 boundary. `npm run build` was
+**not run** (Ask First).
+
+**Golden manifest, re-derived rather than relayed.** The `8d7015a` baseline rebuilt from `git ls-tree`
+is 23 lines whose own sha256 is `892a1505e5e7fff0184310d5f70eb7bfcfa10d18cda9af4e2aecf262a0630ce9` —
+matching the figure the spec declares, which validates the reconstruction method. Diffed against
+`6d26a80`: **exactly one added line, zero removed, zero changed.** **No pre-existing golden moved.**
+The three frozen artifacts verify unchanged at close: `expected.pdf` `2405d005…`, `input.folio`
+`abc8a997…`, `signoff.json` `737a672d…`.
+
+**Deferred, with owners.** Three entries minted at this close from weaknesses the builder named but
+nobody numbered: **DW-267** (statement sign-off FIELDS checked only under `-tags=matrix` while its
+digests are checked untagged — HIGH, pre-existing, unassigned), **DW-268** (no workflow runs the
+unfiltered `-tags=matrix` suite — HIGH, **OWNER-DECISION-PENDING** at the Epic 11 boundary gate; note
+`ci.yml:83`'s existing `-skip "$KNOWN_RED_TEST"` mechanism as a candidate), and **DW-269** (two
+committed measurements of the fixture-directory count disagree, and the surviving comment's premise was
+discharged by this very story — LOW). **D-R7.7** (sign-off records are never checked for recency) is
+cross-referenced from DW-267 and remains owed to **Story 15.2** — not duplicated here.
+
+**Epic 11 has no remaining stories, but the epic is deliberately NOT closed** — its boundary gate and
+DW-268's owner decision are both outstanding.

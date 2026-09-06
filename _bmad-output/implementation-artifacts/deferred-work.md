@@ -10412,3 +10412,91 @@ agent's grep can see.
 discharge collides with **D-000.30**, which rules that suite an EPIC-BOUNDARY gate and not a CI
 one. Whoever takes this must settle that first; the first-match-regex half is independent of it
 and can be discharged alone.
+
+### DW-267 - fixtures/statement-signoff.json's FIELDS are checked only under -tags=matrix while its digests are checked untagged
+
+- source_spec: `11-5-a-bold-document-is-a-pinned-golden.md`
+- **Deferred by:** Story 11.5 (2026-09-06). Named in-code by the builder in the exemption map it
+  introduced, but never given a number; **numbered at Story 11.5's close.** **Owner:** unassigned -
+  needs an owner ruling. **Severity:** HIGH - PRE-EXISTING, not introduced by Story 11.5.
+  **Status:** OPEN.
+
+**What it is.** `fixtures/statement-signoff.json`'s DIGESTS are checked by the untagged suite, but its
+FIELDS (`reader` / `date` / `examined`) are checked only by `statement_signoff_matrix_test.go`, which is
+`//go:build matrix` — and no workflow runs that suite unfiltered (see **DW-268**). So the fields of a
+human attestation covering four documents can be blanked and every gate anyone actually runs stays green.
+
+**Evidence.** Measured at `6d26a80` by diffing test NAME sets between the two suites:
+`TestStatementSemanticSignOffIsRecorded` appears in the `-tags=matrix` run and **not** in the untagged run,
+while `TestStatementSignOffDigestBindingRedProof` and `TestStatementSignOffFieldChecksAndGateWrapperRedProof`
+appear in both — the two red-proofs exercise the checker machinery on synthetic records, not the live
+record. The gap is stated verbatim in `byte_neutrality_test.go`'s `signOffRecordsExemptFromFieldCheck`
+entry for this path, which calls it *"a real residual gap of exactly the shape this derivation was built
+to close."*
+
+**Why it was not fixed in 11.5.** The story's fix DERIVED the checked set from `goldenDigestRecord`'s
+declared signoff sites. This record is exempt from that helper for a structural reason: under D-4.7.1 its
+digests live in a `digests` map keyed by fixture slug rather than a top-level `sha256`, so the helper
+cannot read it. Widening the field check to a second record SHAPE is a different change from deriving the
+set, so it was registered rather than folded in.
+
+**Related, do not duplicate.** **D-R7.7** (`epic-7-8-decision-log.md:329`) covers the adjacent but
+distinct weakness that *every* sign-off gate checks only non-emptiness and never recency or subject — it
+is already owed to **Story 15.2** and is cross-referenced here, not re-registered.
+
+### DW-268 - no workflow runs the unfiltered `-tags=matrix` suite, so every matrix-only guard is un-gated in CI
+
+- source_spec: `11-5-a-bold-document-is-a-pinned-golden.md`
+- **Deferred by:** Story 11.5 (2026-09-06). Named by the builder, numbered at Story 11.5's close.
+  **Owner:** ⚠ **OWNER-DECISION-PENDING** - the orchestrator is taking this to the owner at the Epic 11
+  boundary gate. **Severity:** HIGH. **Status:** OPEN.
+
+**What it is.** No CI workflow ever runs `go test -tags=matrix ./...` unfiltered. Every guard that lives
+behind that build tag is therefore enforced only when a human runs it locally. This is the mechanism that
+gave the Story 11.5 attestation gap its teeth, and it is the reason DW-267 matters rather than being
+theoretical.
+
+**Evidence.** Measured at `6d26a80` by reading both workflow files whole:
+- `matrix.yml` invokes `go test -tags=matrix` at eight sites (lines 48, 93, 138, 183, 328, 348, 368, 388),
+  and **every one carries a `-run` filter** — four `-run TestTargetRenderHash`, four `-run TestTargetProbeHex`.
+- `ci.yml` uses the tag only for `go build -tags=matrix ./...` (line 72) and `go vet -tags=matrix ./...`
+  (line 75). It never runs `go test` with the tag — and says so deliberately at line 70:
+  *"compiles; does not run the matrix, D-000.4."*
+- Diffed test NAME sets show **13 top-level tests that exist only under the tag**, including all five
+  `*SemanticSignOffIsRecorded` human-attestation gates and `TestCrossTargetByteIdentity`.
+
+**A mechanism already in the tree, worth considering.** `ci.yml` names the step at line 83 and runs
+`go test -count=1 -skip "$KNOWN_RED_TEST" ./...` at line 85 — an established pattern for running a suite green while
+a named permanent red is excluded. Since the unfiltered matrix suite's only standing failures are
+`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child, that same mechanism would let the
+tagged suite run in CI without the mandated red breaking it. Recorded as an option for whoever takes this,
+not as a ruling.
+
+### DW-269 - two committed measurements of the fixture-directory count disagree, and the surviving comment's premise has since been discharged
+
+- source_spec: `11-5-a-bold-document-is-a-pinned-golden.md`
+- **Deferred by:** Story 11.5 (2026-09-06), numbered at its close. **Owner:** unassigned.
+  **Severity:** LOW - a comment's accuracy, not a guard's behaviour. **Status:** OPEN.
+
+**What it is.** `folio-go/style_face_resolution_test.go:185` carries the rationale for
+`TestABareEntryNeverConstructsAVariantName`, under a `DO NOT DELETE OR WEAKEN THIS TEST` banner. It reads
+*"Measured at 3ad4ede: … `grep -rn '\"bold\"' fixtures/` → 0 across all 30 fixture dirs."* Both halves of
+that sentence are now wrong, and they went wrong in opposite directions.
+
+**Evidence.** Measured at `6d26a80` with `git ls-tree`, which separates trees from blobs:
+- **At `3ad4ede`, the commit the comment cites:** `fixtures/` held **29 directories** plus **one file**
+  (`statement-signoff.json`). `ls fixtures | wc -l` returns **30** because it counts that file. So the
+  comment took an `ls` count for a directory count and was **off by one at its own commit** — the same
+  correction Story 11.5's opener makes against DW-237.
+- **At `6d26a80`:** `fixtures/` holds **30 directories** plus that one file. The number **30** is now
+  accidentally correct as a directory count.
+- **But the `0` it qualifies is now false.** `git grep -a -l -F '"bold"' -- fixtures/` returns **2**
+  files — `fixtures/declared-variants/README.md` and `fixtures/declared-variants/input.folio` — because
+  Story 11.5 is precisely the story that made it false. Positive control: `"fontFamily"` returns 25 files,
+  so the search is live.
+
+**Why this is worth a number.** The sentence now reads as true — a plausible count, a citation to a
+commit — while its load-bearing clause is false. The comment is the stated justification for not deleting
+the test, and that justification has been discharged by the golden this story pinned. The test itself is
+still worth keeping (it guards the *mechanism*, where the golden guards the *outcome*), so the fix is to
+rewrite the rationale, **not** to act on the stale premise either way.
