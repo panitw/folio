@@ -4111,3 +4111,130 @@ against the **wrong chain's variants**, which is a rendering defect and not a me
 One read at the gate settles it. **If it comes back address-only, leave it unassigned with that measurement
 attached**, so the next person does not re-ask. *An entry that has been deliberately left alone is only
 distinguishable from one nobody looked at if the looking is recorded.*
+
+### D-11.3.1 — Story 11.2 shipped a canvas regression, and it is the orchestrator's to own
+
+**Verified in code before ruling on anything else.** `App.tsx:3394` sets
+`'--text-font-weight': component.bold ? 700 : 400` **from the requested flag**; `App.css:152` feeds it to
+`font-weight`; and `font-catalogue.test.ts:536` asserts the generated `@font-face` rules carry **no**
+`font-weight` descriptor — *"a font-weight descriptor would declare a weight matrix this story does not
+ship."* The fragment separately receives `fontFamily: shippedFaceFamily(fragment.face)`.
+
+**So since `d0ded7e`, a real `Roboto Bold` fragment has been painted in the bold face and then
+synthetically emboldened on top of it. The canvas has been double-bolding.**
+
+**Nobody violated anything.** 11.2's ACs did not reach the canvas and neither did its review; the browser
+faking predates it and was *correct* while every shipped face was Regular. What 11.2 changed is the other
+side: once a real bold face reaches the fragment, the faking stops being a substitute and becomes a
+duplicate.
+
+**But the honest description is that 11.2 made the canvas worse in exchange for making the engine right**,
+and it went unnoticed until 11.3's builder traced the paint path end to end. **`d0ded7e` is the
+orchestrator's commit, so this is mine to own**, and 11.3's plain-terms opener says so rather than claiming
+"the canvas now paints the real face" — for the interval between the two stories it painted a doubly-bold
+one, and **I-2 forbids synthetic emboldening, which means we were doing the forbidden thing.**
+
+**The generalisable shape, and it is not "the review missed it":** *a correct behaviour on one side of a
+boundary can be turned into a defect by a change on the other side, without either side being wrong when
+it was written.* The faking was right; the engine change was right; the pair became wrong. **A story that
+makes one half of a mirrored pair truthful should ask what the other half was compensating for** — the
+compensation is invisible while it is load-bearing and only becomes visible once it is redundant.
+
+### D-11.3.2 — the B control's third state, and quantifying "the family has no bold face"
+
+**Q1 — RULED (c): a genuine third state, neither on nor off, always operable.**
+
+The deciding argument is the AC's own words: *"states that this family has no bold face **rather than
+appearing to be on**"*. A disabled control still renders as on-or-off, so that sentence rules out both
+disabled options. **(a) is refused outright** — a state where `bold: true` cannot be cleared is **a control
+that has taken the document hostage**, and I-5's posture is that the panel must never leave the author
+unable to reach what the document carries. (b) fixes the trapdoor and still lies about the
+absent-and-unset case.
+
+**The builder applied D-11.2.11's reversibility asymmetry back at me, correctly** — (c) is the strict
+option because it refuses to render a reachable-looking ON state, and relaxing later is a widening. Noted
+that the asymmetry is *weaker* here: this is a UI state, not a format narrowing, so nothing expires at
+15.3. It still points the same way.
+
+**Required: the state must be reached by the route that reaches it in life** — bold a Roboto element, then
+switch its family to a CJK-only chain — not by constructing a projection by hand. *A state only reachable
+through a fabricated fixture is a state nobody has shown is reachable.*
+
+**Q2 — RATIFIED: "no bold face" quantifies over EVERY entry in the chain, not the first.**
+
+The counter-example settles it: first-entry-only reports *"no bold face"* for `["Noto Sans SC","Roboto"]`
+while Latin bolds perfectly well. And `App.tsx:2792`'s `declaredChainEntry` returns exactly `entries[0]`
+and sits three functions from the call site — **so the spec names it as the wrong function to reuse here**,
+rather than only stating the right rule. A correct rule beside an available wrong helper is a rule waiting
+to be violated.
+
+**The builder's vacuity catch is the better half**, and it is D-11.2.8 applied *prospectively* for the
+first time: `starter.folio`'s first entry is Roboto, which declares bold, so **both rules agree on it** and
+a test written against the starter alone cannot distinguish them. A distinguishing fixture is required.
+Second time this run a fixture had to change to make an assertion capable of failing.
+
+### D-11.3.3 — Q3: the right answer for a reason narrower than the one offered
+
+**RULED: follow the struct's convention** — `TableColumnsProjection` spells absence as the zero value, so a
+bool collapses committed-absent with committed-`false`, and the limit is disclosed exactly as
+`headerStyle.fontSize: 0` already discloses it. **Consistency inside one struct beats inventing a second
+idiom for one field**, the same reasoning that settled plain-`string` over `Presence` in 11.2.
+
+**The builder's justification was doing more work than it could bear.** It argued the collapse is safe
+because *no command can write `false`*. But 11.2 shipped `tableHeaderStyleFields` with nine fields, so the
+Go command layer **does** accept header bold, and `"bold": null` decoding to `present(false)` means
+committed-false is representable. Unwritability is not the ground.
+
+**The actual ground: `CanvasProjection` is not the file format.** It is engine↔browser, both in this
+repo, moving in one commit — **so it is not tag-bound, and a tri-state can be added at any time, before or
+after 15.3, for free.** D-11.2.11's asymmetry does not apply here at all. That makes the cheap choice both
+right *and* reversible, which is a stronger position than the one argued from.
+
+**One conditional, and the builder was told to check it rather than inherit it:** the third state must be
+derivable **without** distinguishing committed-absent from committed-`false` — it needs
+*declared-true-but-no-face*, which survives the collapse. **If a case is found where the control genuinely
+needs absent-vs-false, the collapse is lossy where it matters and Q3 flips to tri-state.**
+
+### D-11.3.4 — a Code Map is measured before the story edits the files it anchors
+
+11.3's builder found that **every Go anchor in 11.2's Code Map had moved** — `render.go:1148` is
+`lookupFontChain`, not `fontChain` (now `:1194`) — because **11.2's Code Map was measured at `102e1fc`,
+before its own implementation commit `d0ded7e`.**
+
+**This is structural, not carelessness.** A Code Map is measured at the plan gate; the story then edits
+precisely the files it anchored. **Every line number in a Code Map is stale by the time the story it
+belongs to closes**, and it is stale by exactly the amount the story changed.
+
+**So D-000.4's "cite by symbol" is not stylistic advice — it is the only part of a Code Map that survives
+the story's own diff.** Recorded because the register and two dispatch chains have now propagated stale
+anchors from that map, including mine.
+
+**Also corrected:** `folio-format.md`'s worked-example fence is at **846-957**, not `:876` — that line is
+mid-table.
+
+### D-11.3.5 — three findings that change 11.3's work, one of which would have shipped green
+
+**A guard that cannot see the defect it is written for.** `canvas-authority-contract.test.ts:46` bans
+`property: literal-value` pairs — which works for `white-space: normal` because no legitimate use exists.
+But the value 11.3 must ban is **`var(--text-font-weight)`**, so a literal-value pattern **matches neither
+of the two lines this story deletes** and the new AC2 guard would have **shipped green over the defect it
+was written to prevent.** Scoped to the painted-document surface and written against both spellings, with
+the chrome's seven legitimate `font-weight: 500` rules and its deliberate `.property-fx` italic noted as
+outside it.
+
+**A deletion with no witness.** The two custom properties are asserted by nothing, so removing them reds
+nothing. The positive control is what makes this actionable rather than a suspicion:
+`--text-line-baseline` **is** asserted (`App.test.tsx:1433`) and `--text-ink` is (`:2293`) — same file,
+same idiom, so the absence is a hole rather than a convention. The deletion gets its own positive
+assertion, or *"we removed the faking"* is a claim with no witness.
+
+**A stale comment 11.2 falsified.** `table-style-command.ts:34-39` still says `bold`/`italic` *"have no arm
+in the engine's header cascade to resolve from"*. 11.2 gave them one. **Retire it by editing, not
+deleting**, so the history reads. DW-240 has **five** mirror sites, not the two the register named.
+
+**And two starter details that would have produced a first-save diff:** `{"face":"Noto Sans SC"}`
+canonicalises back to a bare string (a variant-free object is not `SerialisesAsObject()`), so **SC goes in
+as a bare string**; and `"version": "2.0"` is **mandatory**, not optional.
+
+**No release build for 11.3** — the starter is fingerprinted only into gitignored regenerated output, and
+`verify-offline-release.mjs:113` class-checks `.folio` rather than pinning a digest.
