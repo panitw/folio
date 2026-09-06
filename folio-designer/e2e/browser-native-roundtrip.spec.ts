@@ -76,6 +76,18 @@ async function openTab(page: Page, name: 'PROPERTIES' | 'DATA' | 'INPUTS'): Prom
   await page.getByRole('tab', { name }).click()
 }
 
+// THE ONE CHAIN A FRESH SESSION DECLARES. Startup initializes the engine from
+// the shipped starter (`folio-designer/public/templates/starter.folio`, via
+// `loadStarterAfterEngineReady`), so `CanvasProjection.fontFamilies` is exactly
+// that file's font-map keys and the family control's IN THIS TEMPLATE group has
+// exactly this one row. It was `body` until commit 4d2b27e ("Ship Roboto in the
+// engine, and open new documents in a typeface with a name") renamed the key,
+// which left this helper searching for a name no fresh document declares any
+// more. Go pins the same name from the same file: `starterChainName` in
+// `folio-go/starter_template_test.go`, guarded by that file's parse of the real
+// bytes — so a future rename fails there loudly rather than only here by timeout.
+const starterFontFamily = 'Roboto'
+
 // The family is chosen from the engine's own declared chains — Go projects
 // them (CanvasProjection.fontFamilies) and the inspector searches that list —
 // so this picks the option rather than typing a value at the field.
@@ -83,9 +95,13 @@ async function setFontFamily(page: Page): Promise<void> {
   await openTab(page, 'PROPERTIES')
   const font = page.getByRole('combobox', { name: 'Font family' })
   await font.click()
-  await font.fill('body')
-  await page.getByRole('option', { name: 'body', exact: true }).click()
-  await expect(font).toHaveValue('body')
+  await font.fill(starterFontFamily)
+  // Scoped to the declared group rather than the whole listbox: typing the
+  // family name also matches AVAILABLE LOCALLY rows that merely start with it
+  // (Roboto Condensed, Roboto Mono, …), and picking one of those would embed a
+  // second family instead of naming the chain this document already declares.
+  await page.getByRole('group', { name: 'IN THIS TEMPLATE' }).getByRole('option', { name: starterFontFamily, exact: true }).click()
+  await expect(font).toHaveValue(starterFontFamily)
 }
 
 async function loadSample(page: Page): Promise<void> {
