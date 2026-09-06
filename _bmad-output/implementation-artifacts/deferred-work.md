@@ -9410,26 +9410,6 @@ The first is preferred: it makes the guard correct rather than making the human 
 adding an unstaged directory containing a `LICENSE` and confirming the manifest gate goes red; today it
 goes green.
 
-- source_spec: `_bmad-output/implementation-artifacts/11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face.md`
-  summary: The repo's most-repeated prohibition — never parse a `fonts.Shipped()` key to recover a family — is stated in five places and enforced by nothing.
-  evidence: Story 11.1's review found the rule asserted in the spec's Never list, in `fonts.go`, in `fonts_test.go`, in `font-catalogue.test.ts` and in `shipped_faces_test.go`, with `fonts_test.go` explicitly declining to check it. `lint` already carries type-aware custom rules, so a rule matching `TrimSuffix`/`TrimPrefix`/`HasPrefix` applied to a `Shipped()` key would turn prose into a measurement. One careless trim reinstates the naming-convention weight carrier D-B foreclosed.
-
-- source_spec: `_bmad-output/implementation-artifacts/11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face.md`
-  summary: Two "what the binary calls itself" authorities read different sfnt name IDs, and they coincide only while every shipped face is RIBBI.
-  evidence: `font-catalogue.test.ts:instanceOfFile` reads nameID 16 with fallback to 1 for family and 17 with fallback to 2 for subfamily; `folio-go/shipped_faces_test.go`'s `shippedFaceSpec` documents Family/Subfamily as name record 1 and 2 "exactly". All eleven current faces are RIBBI so the two agree today. The first non-RIBBI weight (SemiBold, Light) in 11.2 or 11.3 makes the two tables need different strings for what the code presents as one intent, and nothing records which ID a row means.
-
-- source_spec: `_bmad-output/implementation-artifacts/11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face.md`
-  summary: The offline load screen now lists twelve rows mixing two naming conventions, and the rendering fix the generator's own comment anticipates was never filed.
-  evidence: Rows 2-4 are generic descriptions ("Latin font", "Thai font", "CJK font") while rows 5-11 are family names ("Noto Sans Bold", ...), so the first screen a user sees presents "Latin font" and "Noto Sans Bold" as peers without indicating they are the same family. Itemising per face was ruled deliberately (the manifest must keep per-face attribution); `generate-offline-release.mjs` says in comment that if twelve rows read badly that is a rendering problem with a rendering fix in the component. The fix belongs to a presentation story, not to the manifest.
-
-- source_spec: `_bmad-output/implementation-artifacts/11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face.md`
-  summary: `make fonts-verify` verifies only the engine copy of each derived face; the designer mirror is hand-made and tied only from TypeScript.
-  evidence: `tools/fontgen/instance_faces.py` writes and re-verifies `repo_root/folio-go/fonts/<dir>/<out>` and knows nothing of `folio-designer/public/fonts/`. Story 11.1 took the hand-mirrored pairs from 4 to 11. The mirror is asserted only by `folio-designer/src/font-binary-identity.test.ts` — a different language, a different runner, outside the fonts pipeline — and on the Go side only for Roboto, by `TestShippedRobotoMatchesDesignerCatalogue`. A `--mirror` pass, or extending the Go table beyond Roboto, would close it.
-
-- source_spec: `_bmad-output/implementation-artifacts/11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face.md`
-  summary: A file-adding story can regenerate lint/MANIFEST.md before staging and get a GREEN over a manifest that silently omits the new assets.
-  evidence: Story 11.1 hit the loud half of this (the hand-pinned licence census disagreed with a git-scoped walk and failed). The silent half is worse and untested: `TestManifestUpToDate` compares the committed MANIFEST.md against a live walk, and `manifest.go` scopes that walk with `git ls-files`. Regenerate before staging and BOTH sides are blind identically — the generated manifest omits the rows, the walk omits them, the comparison agrees, and AD-26 accounting for redistributed binaries silently fails to exist. A record compared only against itself cannot detect a blind spot it shares with its own source.
-
 ---
 
 ### DW-232 — the archive-digest row in every font NOTICE is parsed by nothing, so a wrong one ships silently
@@ -9472,3 +9452,103 @@ archive, same release, no re-fetch needed.
 archive digest should say — a named exemption, not a free-text sentence. Widening the regex set is a new
 guard over a population that includes every pre-existing NOTICE, which is why 11.1 deliberately did not do
 it at green.
+
+---
+
+### DW-233 — the repo's most-repeated prohibition is stated in five places and enforced by nothing
+
+- **Deferred by:** Story 11.1's step-04 review (2026-09-06). Filed as a numbered entry by
+  Story 11.1's closer, which found it appended to this file as an unnumbered `source_spec` block
+  lodged inside DW-231's body — deferred in substance, unfindable in practice.
+- **Owner:** **Story 11.2** — it is the first story that resolves a family from a declared weight,
+  which is the exact site the prohibition guards. If it lands unenforced there, the rule has been
+  prose for two stories running.
+- **Severity:** HIGH. One careless trim reinstates the naming-convention weight carrier D-B
+  foreclosed, and it would arrive disguised as a simplification.
+- **Status:** OPEN.
+
+**The gap.** Story 11.1's review found the rule asserted in the spec's Never list, in `fonts.go`, in
+`fonts_test.go`, in `font-catalogue.test.ts` and in `shipped_faces_test.go`, with `fonts_test.go`
+explicitly declining to check it. `lint` already carries type-aware custom rules, so a rule
+matching `TrimSuffix`/`TrimPrefix`/`HasPrefix` applied to a `Shipped()` key would turn prose into
+a measurement. One careless trim reinstates the naming-convention weight carrier D-B foreclosed.
+
+**What discharges it.** A `lint` rule matching `TrimSuffix` / `TrimPrefix` / `HasPrefix` applied to a `fonts.Shipped()`
+key, red-proved by adding such a call and confirming the gate goes red. `lint` already carries
+type-aware custom rules, so the machinery exists; what is missing is the rule. Turning the prose
+into a measurement is the whole of the work.
+
+---
+
+### DW-234 — two "what the binary calls itself" authorities read different sfnt name IDs, and they agree only by luck
+
+- **Deferred by:** Story 11.1's step-04 review (2026-09-06). Filed as a numbered entry by
+  Story 11.1's closer, which found it appended to this file as an unnumbered `source_spec` block
+  lodged inside DW-231's body — deferred in substance, unfindable in practice.
+- **Owner:** **the first story that ships a NON-RIBBI face** (SemiBold, Light, and similar). Not
+  11.2 or 11.3 — neither adds a face, so neither can trip it.
+- **Severity:** MEDIUM. Latent and silent today; it becomes a correctness fork the moment the
+  shipped set stops being RIBBI.
+- **Status:** OPEN.
+
+**The gap.** `font-catalogue.test.ts:instanceOfFile` reads nameID 16 with fallback to 1 for family and 17 with
+fallback to 2 for subfamily; `folio-go/shipped_faces_test.go`'s `shippedFaceSpec` documents
+Family/Subfamily as name record 1 and 2 "exactly". All eleven current faces are RIBBI so the two
+agree today. The first non-RIBBI weight (SemiBold, Light) in 11.2 or 11.3 makes the two tables
+need different strings for what the code presents as one intent, and nothing records which ID a
+row means.
+
+**What discharges it.** Record, per row, WHICH name ID the string means, and make the two readers agree explicitly rather
+than coincidentally. Red-provable by adding a non-RIBBI face and confirming the two tables
+disagree before the fix and agree after.
+
+---
+
+### DW-235 — the offline load screen lists twelve rows mixing two naming conventions
+
+- **Deferred by:** Story 11.1's step-04 review (2026-09-06). Filed as a numbered entry by
+  Story 11.1's closer, which found it appended to this file as an unnumbered `source_spec` block
+  lodged inside DW-231's body — deferred in substance, unfindable in practice.
+- **Owner:** **a presentation story** — the fix is in the component, not the manifest. NOT YET
+  ROUTED TO A NAMED STORY; the orchestrator should assign it, Epic 13 being the nearest
+  presentation-owning epic.
+- **Severity:** LOW. Cosmetic, on the first screen a user sees. No correctness or provenance
+  consequence.
+- **Status:** OPEN.
+
+**The gap.** Rows 2-4 are generic descriptions ("Latin font", "Thai font", "CJK font") while rows 5-11 are
+family names ("Noto Sans Bold", ...), so the first screen a user sees presents "Latin font" and
+"Noto Sans Bold" as peers without indicating they are the same family. Itemising per face was
+ruled deliberately (the manifest must keep per-face attribution); `generate-offline-release.mjs`
+says in comment that if twelve rows read badly that is a rendering problem with a rendering fix in
+the component. The fix belongs to a presentation story, not to the manifest.
+
+**What discharges it.** A rendering change in the load-screen component — grouping, or a family-qualified label for the
+generic rows — so that peers read as peers. Explicitly NOT a manifest change: per-face attribution
+in the manifest was ruled deliberate (D-11.1.15) and must survive any fix here.
+
+---
+
+### DW-236 — `make fonts-verify` covers only the engine copy of each derived face, never the designer mirror
+
+- **Deferred by:** Story 11.1's step-04 review (2026-09-06). Filed as a numbered entry by
+  Story 11.1's closer, which found it appended to this file as an unnumbered `source_spec` block
+  lodged inside DW-231's body — deferred in substance, unfindable in practice.
+- **Owner:** **the next story that adds or changes a shipped face** — the same trigger as DW-232,
+  and the two should be picked up together since both are gaps in the same provenance pipeline.
+- **Severity:** MEDIUM. Story 11.1 took the hand-mirrored pairs from 4 to 11, so the surface this
+  does not cover roughly tripled in one story.
+- **Status:** OPEN.
+
+**The gap.** `tools/fontgen/instance_faces.py` writes and re-verifies `repo_root/folio-go/fonts/<dir>/<out>`
+and knows nothing of `folio-designer/public/fonts/`. Story 11.1 took the hand-mirrored pairs from
+4 to 11. The mirror is asserted only by `folio-designer/src/font-binary-identity.test.ts` — a
+different language, a different runner, outside the fonts pipeline — and on the Go side only for
+Roboto, by `TestShippedRobotoMatchesDesignerCatalogue`. A `--mirror` pass, or extending the Go
+table beyond Roboto, would close it.
+
+**What discharges it.** Either a `--mirror` pass in the derivation script that verifies `folio-designer/public/fonts/`
+against the engine copies, or extend the Go-side table beyond Roboto to all eleven cuts. The first
+is preferred: it puts the check inside the fonts pipeline, where someone changing a face will
+actually run it.
+

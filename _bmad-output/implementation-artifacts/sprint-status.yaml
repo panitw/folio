@@ -437,12 +437,11 @@ development_status:
   # the live CI before it was written up. Like Epics 7-10 these are DELIBERATELY authored
   # by hand rather than generated -- see the header warning above.
   #
-  # 11 is BLOCKED on an owner ruling before 11.1 starts: realize bold/italic as shipped
-  # faces, or retire the toggles. SPEC-fonts records the same question as open. The epic
-  # specifies only the "realize" branch; the "retire" branch replaces 11.1-11.2 with one
-  # removal story.
+  # 11's blocking fork was RULED 2026-09-06: realize, not retire (D-A, epic-11-14-decision-log.md).
+  # 11.1 shipped seven faces, not the nine D-A assumed -- upstream publishes no Thai italic.
+  # SPEC-fonts still records the question as open and is the stale copy.
   epic-11: in-progress
-  11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: review
+  11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: done
   11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop: backlog
   11-3-the-canvas-paints-the-weight-the-engine-resolved: backlog
   epic-11-retrospective: optional

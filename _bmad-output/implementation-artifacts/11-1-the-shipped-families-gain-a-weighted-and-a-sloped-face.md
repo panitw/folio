@@ -10,6 +10,30 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-11-14-decision-log.md'
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Not normative, and rewritten after the fact: the frozen Intent below governs implementation, while
+this section says what actually shipped.*
+
+The product now ships seven new typeface cuts, so that asking for bold or italic finally has something
+real to resolve to. Noto Sans and Roboto each gained a bold, an italic and a bold italic. Thai gained
+bold only — the people who publish that typeface make no Thai italic at all, so the nine faces the epic
+assumed were never possible.
+
+Nothing here reads a weight or paints one. A document asking for bold still prints in book weight, and
+that is deliberate: the following two stories do the resolving and the painting. What shipped is the raw
+material and its paperwork — every cut carries its own licence and its own record of where its bytes came
+from, and the build re-derives four of them from their sources on demand to prove none was hand-edited.
+
+The cost is about three megabytes of new font data, close to what was predicted before anything was
+fetched. The offline download now holds sixty-one cached pieces against a ceiling of sixty-four, so the
+build has gained a warning that the margin has narrowed to three. That warning fires today by design; it is
+not a failure.
+
+Two Thai provenance records are still incomplete, though the missing value is now on hand. One
+review finding was a genuine defect rather than a gap: a fallback rule could have made an entire
+writing system print bold in every author's document. It was closed before anyone saw it.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -446,3 +470,98 @@ reason the guard census tracks comment-stripping as a property.
 
 - The displayed total must sum cacheAssets, never rows.
   [`LoadScreen.test.tsx:75`](../../folio-designer/src/LoadScreen.test.tsx#L75)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `ffec48c`. Shipped in **`429cb1a`** on `main` — 66 files, +4538 / −232 — local and unpushed at
+this close. Decisions D-11.1.1 through D-11.1.25 live in
+[`epic-11-14-decision-log.md`](./epic-11-14-decision-log.md) and are not restated here. This closer
+touched only this story file, `sprint-status.yaml` and `deferred-work.md`, and staged nothing.
+
+**Seven faces, and seven is the whole realizable set.** Noto Sans and Roboto each gained Bold, Italic and
+Bold Italic; Noto Sans Thai gained **Bold only**, because upstream publishes no Thai italic at all. D-A's
+"nine new faces" was arithmetically impossible, not merely unambitious — that half of D-A rested on a
+false premise and the story measured it away at the plan gate rather than inheriting it. **Noto Sans SC
+stays Regular deliberately**: its Regular alone is **10,595,932 bytes**, and three instances of it would
+take the offline payload from roughly 11 MB to roughly 45 MB. Anyone counting families must be able to
+find that reason without asking, which is why it sits in the NOTICEs as well as here.
+
+**The payload cost, and an estimate that earned its keep.** The seven cuts add **3,136,768 B — 2.99 MiB,
++26.9%** — taking the shipped set **11,645,836 → 14,782,604** raw. Re-measured at this close directly
+from the eleven committed binaries: the seven sum to 3,136,768 exactly and the eleven to 14,782,604
+exactly. **This lands almost exactly on D-A's "~3 MB" estimate**, and that is worth saying out loud: an
+estimate checked against the outcome and found good is how the *next* estimate earns the right to be
+believed. Most of this run's figures have been corrections; this one is a confirmation.
+
+**The cache-asset margin moved in this story, not in 11.3.** `s1.assetCount` **54 → 61** against
+`maximumCacheAssets` 64, so the margin goes **10 → 3**; twelve S1 rows, `cachedBytes` **53,939,356**. The
+approach warning ships here and **fires**, naming its own threshold (`warnCacheAssets` = 56), its file,
+and the fact that nothing fails until the maximum is exceeded. Re-read at this close from the release
+manifest the orchestrator built at this tree: 61 assets, 12 rows, 53,939,356 cached bytes, and
+`brotli.totalBytes` **19,012,573**.
+
+**Non-additivity is now empirical rather than argued.** Σ `rows` = **17,238,271** against Σ `cacheAssets`
+= **53,939,356**, a factor of three apart — so a row-sum total could never have masqueraded as correct,
+and the load-screen assertion pins the one surface where the mistake would otherwise go unseen. Both
+figures re-derived at this close from the manifest, independently of the build's own report.
+
+**The control, and the limit that is part of it.** Two consecutive clean builds were byte-identical on
+`assetCount`, `cachedBytes`, every row and every asset. **Both ran at a FIXED TREE (HEAD `ffec48c`)** —
+this is reproducibility at one tree and **not** a cross-commit result; it must not be read as one.
+Separately and more durably, `strings` over the emitted wasm returns **zero** vcs markers, so the
+commit-hash input is closed *in the artifact* rather than merely declared in a flag. Note that the
+before/after `brotli.totalBytes` pair the Verification section asks for was **superseded by D-11.1.11**,
+which replaced the cross-arm delta with this same-arm control; only the after figure exists, recorded
+above. No baseline release build was run at this close.
+
+**Procurement: five upstream releases priced, cost zero.** Both sources were already inside archives the
+repo names, and the one new source file is a sibling path in an archive `UPSTREAM` already pins. Archive
+digests: Roboto `1653dbe1…` **directly verified**; Noto Sans `0c34df07…` and Noto Sans Thai `af889cc6…`
+(`NotoSansThai-v2.002.zip`, 4,720,990 B) both **transitively verified**, via the extracted VF matching the
+pinned `src_sha256`. **Transitive is a weaker guarantee than Roboto's and the two are not parity** — the
+extracted file is confirmed, the archive around it is inferred. Stated so no later reader flattens the
+three into one standard.
+
+**For whoever next opens a font NOTICE.** Noto Sans **Thai Regular**'s NOTICEs still carry **no archive
+digest**, and it is now backfillable from `af889cc6…` — same archive, same release, **no re-fetch
+needed**. That is a two-minute job sitting behind a value that already exists in the tree, and it will
+stop being obvious the moment this story scrolls out of view.
+
+**Review triage: 13 patched, 5 deferred, 2 escalated and both ruled, 0 loopbacks**
+(`review_loop_iteration` 0). The review's own best catch was **not a guard gap but a shipped rendering
+defect**: script fallbacks were validated against all thirteen families, so a fallback could have named a
+bold cut and rendered an entire script bold in every author's document. Three further patches were the
+run's dominant defect class found in guards *this story had just introduced* — a coverage witness that
+could not fire by construction, an acceptance criterion's sole realization that no test executed, and a
+falsifier that consumed the signal it existed to prove.
+
+**A register debt this close paid.** Of the five deferrals, one was written up as **DW-231** and the other
+four had been appended to `deferred-work.md` as raw, unnumbered `source_spec` blocks lodged inside
+DW-231's body — filed in substance, unfindable in practice. They are now **DW-233 through DW-236**, with
+owners, severities and discharge conditions, and the raw dump has been removed from DW-231. **DW-232** was
+filed separately by the same review. Nothing was invented and no evidence text was dropped; the four
+entries carry their original wording.
+
+**Measured gates at this close**, re-run rather than carried forward:
+
+| Gate | Result |
+|---|---|
+| `folio-go go test -count=1 ./...` | **2124 pass / 2 fail / 5 skip**, rc 1 |
+| — the two failures | `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child — **pre-existing baseline reds**, mandated unmet by D-000.17 / D-2.1.14 |
+| `lint go test -count=1 ./...` | **227 pass**, four packages ok, rc 0 |
+| `folio-designer npm test` | **64 files / 953 tests**, all pass, rc 0 |
+| `folio-designer npx tsc -b --force` | rc 0, clean |
+| `make fonts-verify` (pinned interpreter) | `derived and compared 7 of 7 faces`, `fontgen: OK` |
+
+**Not re-run at this close, and green when the orchestrator ran them at commit time:** the full unfiltered
+`-tags=matrix ./...` four-target suite (green but for the same two baseline reds, with
+`TestShippedFacesReproduceFromUpstream` **PASS** on witness `derived and compared 7 of 7 faces` — 7
+derived + 4 static-upstream = 11), and the offline release build. Neither is re-measured here; both are
+the orchestrator's figures, not mine.
+
+**What this story deliberately did not do.** It resolves no weight and paints none — 11.2 resolves, 11.3
+paints — so a bold document still renders in book weight at this commit and every golden digest is
+unchanged. No cut got a catalogue entry, because the catalogue asserts every face is upright Regular 400.
+The canvas fragment fallback stack did not move, only the counts around it.
