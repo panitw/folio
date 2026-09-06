@@ -12,27 +12,26 @@ context: []
 
 *Not normative, and rewritten at close: the frozen Intent below governs implementation.*
 
-The designer ships with a handful of font families already inside it — Roboto, Noto Sans and their
-relatives. Until now, when you picked one of those from the font list, the app *embedded a copy of it
-into your document*: several hundred kilobytes of font bytes, byte-for-byte identical to the ones the
-application was already carrying, welded into your `.folio` file for no benefit.
+The designer ships with a few font families already inside it — Roboto, Noto Sans and their relatives.
+Picking one used to *embed a copy of it into your document*: several hundred kilobytes identical to bytes
+the application already carried.
 
-After this story it just writes down the family's **name** instead, along with the list of cuts it has —
-which weights and slopes are real faces rather than something the browser fakes. The document gets
-smaller, and the bold and italic you see on screen are the same bold and italic the engine will print.
+It now writes the family's **name** instead, with the cuts that family has — which weights and slopes are
+real faces rather than something the browser fakes. Documents get smaller, and the bold and italic on
+screen are the ones the engine will print. In practice only Roboto gains this, being the one shipped family
+the picker offers; the owner had that correction before the work began.
 
-Two things came out of this that are worth saying plainly, because both are the kind of thing that
-quietly rots otherwise:
+**The fallback tail is computed by one piece of code, not two.** A font chain is a family plus fallbacks
+covering the scripts it does not — Roboto covers Latin, so it needs Thai and Chinese behind it. Both paths
+now share one function; two that merely agreed today would eventually disagree in silence, and a pick would
+quietly lose coverage.
 
-**The fallback tail is now computed by one piece of code, not two.** A font chain is a family plus a
-tail of fallbacks that cover the scripts it doesn't — Roboto covers Latin, so it needs Thai and Chinese
-behind it. The embed path already computed that tail. The declare path was going to compute it again.
-Two implementations that agree today are two implementations that disagree eventually, and the failure
-would be silent: a document that renders Thai as blank boxes because a pick quietly dropped the coverage
-the path it replaced had. They now share one function.
+**A pick can no longer write a font asset by hand.** The refusal is structural now — the reader of the file
+format rejects the shape outright — not a rule to remember.
 
-**A pick can no longer write a font asset by hand.** The refusal that guarantees that is now structural
-— the decoder rejects the shape outright — rather than a rule everyone remembers to follow.
+**A document naming a family as its own bold is now refused when opened**, with the place and reason given.
+Deliberate: such a file used to load and then print bold as ordinary text with no warning at all. Nothing
+older is migrated, rewritten or repaired.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -840,3 +839,118 @@ command's.
 
 - Build-time throw tying `scriptFallbacks` to the mirror; they could drift and lose cuts silently.
   [`build-wasm.mjs:283`](../../folio-designer/scripts/build-wasm.mjs#L283)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `7cc02d1`. Shipped at `58f3331` — 21 files, +3690/−67 — as one commit, `Make a shipped-family
+pick name and declare its cuts instead of embedding a duplicate`.
+
+**What actually shipped.** A pick of a family the release already ships now **names** it and **declares its
+cuts**, and embeds nothing: the ~348 KB byte-identical Roboto duplicate stops travelling, and the entry it
+writes can bold because the cuts are declared rather than inferred from a name. The family→cuts grouping
+landed as the product's first **declared** production table (`shipped-face-cuts.ts`), tied to
+`fonts.Shipped()`'s key set **in both directions** — four bases plus seven cuts is eleven — so a face that
+leaves the FontSet cannot leave the mirror behind. Route C reshaped `addFontChain`'s `entries` and
+`embedFontFamily`'s `tail` from `[]string` into the format's own chain-entry shape with **no arity
+movement**, and the object form **refuses `asset`** structurally in the decoder, which is what keeps
+`assetKeyReferenced`'s blind spot out of this story's reach. DW-241's self-reference narrowing landed as a
+located load error derived from the closed key set, with DW-245's limit written beside the check and into
+`folio-format.md`. The fallback tail is now computed by **one** function both paths call.
+
+**What it turned out not to do, and the owner knew before it was built.** Under D-11.4.1's (2′) criterion
+**exactly one family becomes boldable by a pick: Roboto** — the three shipped Notos are uncatalogued and
+the control does not offer them, and every catalogue and fetchable face is Regular-only by construction.
+D-11.4.2 records that the orchestrator had recommended this story to the owner on a description
+(*"any existing document whose author re-picks their family, which is most of them in practice"*) that
+measurement falsified, took the correction back to the owner rather than burying it in a Delivery Log, and
+the owner ruled **ship as ruled, register the rest**. AC1 is non-vacuous with a population of one.
+
+**Decisions applied.** D-11.0.1 (owner: the story exists at all), D-11.4.1 (2′ — name and declare; the
+membership criterion is the declared mirror, and `shippedFamilies` is wrong in *both* directions),
+D-11.4.2 (owner: ship as ruled), D-11.4.3 (the three registrations and what stays open in each), D-11.4.4
+(the search instrument is evidence), D-11.2.1/.2 (declared, never constructed or parsed), D-11.2.8
+(vacuity), D-11.2.11 (the narrowing must not become "no two variants may agree" — asserted in both
+directions), D-11.3.7 (run the predicate against the nearest legitimate spelling), D-000.28 (no `-run`
+filter on the matrix leg), D-000.30 (how the e2e gate is stated).
+
+**Triage.** **No patched/deferred/rejected tally exists in any artifact readable at close** — the story
+file carries no triage section and the builder's report is not on disk. Recording the absence rather than
+a number. What *is* on the record: **one review round**, whose finding was that a shipped-family pick
+emitted a **one-entry chain** and so produced *less script coverage than the path it replaced*; and the
+**Matrix Test Audit**, which found one matrix row uncovered. Both are written up in the Spec Change Log.
+
+**The `bad_spec` vs `patch` discriminator, kept because it generalises.** The one-entry-chain finding was
+triaged `patch`, not a `bad_spec` loopback, on this rule (orchestrator ruling, review round 1): *`bad_spec`
+exists for a spec defect whose consequences are **pervasive** — where the implementer derived a chain of
+decisions from a wrong frame and patching one symptom leaves the frame wrong. The test is whether the
+wrongness is local or pervasive, not whether the spec or the code is at fault.* Here it was additive and
+local: nothing written was wrong, nothing else in ~1,545 lines derived from its absence, and the fix had no
+design freedom. The record should not read as an implementer error, because it was not one — the tasks
+under-specified the declare path and the implementer built exactly what they said.
+
+**The uncovered row was the DISCLOSURE row, and that is a general lesson.** Every other matrix row asserts
+something *happens*; the DW-245 row asserts something *does not happen and is disclosed instead*. **There
+was nothing to red, so nothing was written** — and it arrived inside the guard for DW-245 itself. Generalise
+it: *a row whose content is an absence plus a disclosure has no natural failing test, so test-first
+discipline silently skips it. Those rows need a positive control and a mutation, or they ship as prose.*
+
+**We shipped a vacuous assertion, and it is fixed. Say it plainly.** A cut-key check written as
+`Object.keys(payload).filter(k => VARIANTS.includes(k))` was applied to an `embedFontFamily` payload that
+**never carried cut keys at all**, so its two sides could not disagree and it asserted nothing. This run has
+made D-11.2.8 — *an assertion whose two sides could be equal is not an assertion* — a standing rule we hold
+every other agent to, and we exempted ourselves from it in the same story. A rule we exempt ourselves from
+is not a rule. The replacement asserts against the declared mirror and states why the payload cannot carry
+a cut by the back door.
+
+**DW-256, and the near-miss that is the better half of it.** Found by the orchestrator while verifying
+these gates, not by the product: two literal NUL bytes at `App.tsx:3201-3202` make the designer's core
+source file *binary* to the project's ugrep-based `grep -I`, which skips it with **exit 1, no output, no
+warning**. Every review layer, Code Map and investigation in this program has searched that file with a
+tool that silently declined to open it, so a no-match there has meant nothing. Ruled **D-11.4.4**: a search
+tool is part of the evidence, not a neutral window onto it. **The near-miss is instructive** — the broken
+grep contradicted a *truthful* builder report, and trusting the instrument over the claim would have filed
+a false defect against correct work and sent a builder chasing it. Verifying a report does not mean
+assuming the report is the thing that is wrong.
+
+**Measured gates, re-run at `58f3331` for this close.** `folio-go` plain: **2237 pass / 2 fail / 5 skip**,
+counted from `go test -json` `Action` events carrying a `Test` field. `folio-go` **unfiltered**
+`-tags=matrix` with `FOLIO_FONTGEN_PYTHON` set: **2249 pass / 2 fail / 5 skip**, and
+`fontgen: derived and compared 7 of 7 faces`. In **both** runs the only failures are, by enumerated name,
+`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child — the mandated permanent red; **no
+third failure**. `TestCrossTargetByteIdentity`, `TestGoldenDigestAgreesAtEveryDeclaredSite` and
+`TestShippedRobotoMatchesDesignerCatalogue` all **pass**, so no golden moved. `lint`: **227 pass / 0 fail**,
+four packages `ok`, exit 0. `gofmt -l folio-go lint`: **empty (0 bytes)**, exit 0. `npx tsc -b --force`:
+exit 0. `npm test`: **65 files / 976 tests**, all passing. `npx oxlint`: exit 0 with **exactly 4**
+`only-export-components` warnings, all pre-existing (two in `pdf-viewer.tsx`, two in `App.tsx`).
+`npm run test:e2e:compile`: exit 0 — and a green there is a **TYPECHECK, not coverage**: the suite is
+exercised at **epic boundaries**, not in CI and not per story (D-000.30). **Not run, deliberately:**
+`npm run build`, which is Ask First in this spec's Verification.
+
+**Deferred.** Nine entries by the builder — **DW-247** (the multi-cut fetch is half-built:
+`parseFamilyMetadata` already parses every upstream cut and `fetchWebFamily` throws them away; registered
+as **load-bearing**, not an enhancement, per D-11.4.2), **DW-248** (the duplicate embed, closed for shipped
+families and left **open in one direction** for a fetched face byte-identical to a shipped one, because
+detecting that needs the binary comparison D-11.2.1 refuses — the limit is stated so the fix is never read
+as complete), **DW-249** (the Go factory list names six designer factories and there are nine, with a
+measured false negative), **DW-250** (a `.folio` naming shipped faces is not self-contained and the format
+does not say which FontSet it was written against), **DW-251** (`assetKeyReferenced` never walks a chain
+entry's variant siblings), **DW-252** (every chain-entry refusal reason is over the 256-rune render cap, so
+authors have read truncated sentences since 11.2), **DW-253** (the mirror's tie test parses a sibling test
+file by regex, so the `fonts.go` parse now exists twice), **DW-254** (a cut can be declared only at chain
+*creation*; no command adds or changes one afterwards), **DW-255** (a command's refusal names the chain but
+not which entry, while the loader names the sibling exactly). Plus **DW-256** by the orchestrator. **All ten
+carry `### DW-` headings and are census-visible**; none is in the workflow's raw `- source_spec:` block
+form, which is invisible to a `### DW-` census (D-11.0.2). Owners: DW-247 is Epic 16-shaped; the rest are
+unassigned and want placement at Epic 11's boundary gate.
+
+**Register housekeeping discharged at this close.** D-000.31a's second survivor — *"ten blocks under two
+known headings is a close-sized task… folded into the next close rather than scheduled"* — is done here.
+The ten unindexed raw blocks lodged inside **DW-189** (seven, from Story 17.4) and **DW-190** (three, from
+Story 17.5) are now **DW-257 … DW-266**, each with a `### DW-` heading, its original `summary` and
+`evidence` text preserved verbatim, and a pointer left in the parent entry. Owners and severities on those
+ten are marked **the closer's read, not a lead ruling**; DW-266 additionally collides with D-000.30 on its
+"run e2e in CI" half and is flagged unassigned for that reason. After this the register holds **269**
+`### DW-` headings and **six** remaining `- source_spec:`+`summary:` blocks, all of them within two lines
+of their own heading — genuine provenance metadata, not orphans (D-000.31a).

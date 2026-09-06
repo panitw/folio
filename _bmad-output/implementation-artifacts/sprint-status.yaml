@@ -450,7 +450,7 @@ development_status:
   # without 11.4 the ONLY document that could bold would be starter.folio, and only because 11.3
   # edits it. 11.4 is what makes bold reachable in a document the author already has. It touches the
   # family control that Epic 16 rebuilt and Epic 14 will rebuild again; the owner priced that.
-  11-4-picking-a-family-declares-the-cuts-it-has: review
+  11-4-picking-a-family-declares-the-cuts-it-has: done
   # 11.5 SPLIT OUT OF 11.3 on 2026-09-06 by D-11.2.12. It was the only item in 11.3 that moves a
   # rendered byte, and it was forcing the full four-target matrix onto an otherwise designer-side
   # story; split out, 11.3 runs no matrix at all. This is the INVERSE of D-11.1.18, where splitting

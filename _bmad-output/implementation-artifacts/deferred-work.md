@@ -8410,33 +8410,9 @@ this entry** — the equivalence is demonstrated, not asserted.
 **Why LOW today:** the panel that would host such a control is independently proven absent by structural
 tests. The risk is that those tests and these guards drift apart.
 
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: A held arrow key leaves one undo entry and one document revision per step, so a two-second hold puts dozens of entries between the author and their previous state.
-  evidence: applyProperties' own comment records "one opaque command, one revision, one undo entry"; Story 17.4 makes that path repeat at key-repeat rate for the first time. Nothing coalesces consecutive steps on the same field.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: A step arriving while the previous step's command is in flight advances the draft but sends nothing, and is then discarded if the engine's answer wins the race.
-  evidence: step() calls setDraft before submit, and submit returns early on pendingRef. The committed transition at App.tsx (lastCommitted !== committed) then rewrites the draft to the engine's value. Measured consequence: a hold steps at the round-trip rate, not the repeat rate, and the last press before release can be lost. The browser run at 60ms spacing showed no drops against the in-process wasm engine, so the window is real but narrow locally.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: The stepping fields keep role="textbox" with no spinbutton semantics, so a screen reader is told nothing when an arrow changes the value or when it stops at a bound.
-  evidence: shared carries only aria-label/aria-description; there is no role="spinbutton", no aria-valuenow/valuemin/valuemax, and no live region announcing a clamp. The panel already has an honest-note idiom for statements of this kind.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: The page-setup numeric fields (page width/height and the four margins) do not step, so two visually identical inputMode="decimal" inputs in the same app now behave differently under the arrow keys.
-  evidence: the Field component in App.tsx renders inputMode="decimal" inputs with no onKeyDown at all. Story 17.4's contract scopes the numeric set to PropertyDraft, so this is a deliberate boundary, but nothing records the resulting asymmetry.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: While a step's command is in flight the field is deliberately left enabled, but its sibling controls (Clear, Set null, the colour swatch) stay enabled too and silently drop a click on pendingRef.
-  evidence: those controls are disabled on the `pending` state, which a step no longer raises. Before Story 17.4 every commit raised it, so the click could not be made; now it can, and it does nothing with no feedback.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: The arrow step does not check event.nativeEvent.isComposing, so an arrow used to navigate IME candidates inside a numeric field would also step the value.
-  evidence: keyDown routes ArrowUp/ArrowDown straight to step() after the modifier check. Low reachability on decimal fields, but the guard is one condition and the failure is a committed value the author never chose.
-
-- source_spec: `17-4-arrow-keys-step-a-number-field.md`
-  summary: A typed draft already outside a field's bounds snaps to the bound on the first arrow press rather than stepping, so one nudge can move leading from 5000 to 1000.
-  evidence: step() clamps the stepped value without first checking whether `current` was already in range. The result is always legal, which is the story's rule, but the size of the jump is not obviously what an author pressing an arrow once intends.
+**The seven raw blocks that sat here are now `### DW-257` .. `### DW-263`**, numbered at Story 11.4's
+close under D-000.31a. They were Story 17.4's deferrals, lodged inside this entry with no number, and so
+invisible to every `### DW-` census. They are unrelated to DW-189's own subject.
 
 ---
 
@@ -8464,17 +8440,9 @@ implementer correctly declined to act on it and covered the row-not-blanking wit
 key rather than the box holding a value — which is the same unset-versus-set distinction 17.3 spent its
 whole contract preserving, arriving in the chrome instead of the file.
 
-- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
-  summary: The CONTENT box's drag height has a 72px floor and no ceiling, so one gesture can produce a box thousands of pixels tall.
-  evidence: `moveProseResize` clamps with `Math.max(PROSE_MIN_HEIGHT_PX, …)` only, and `App.css` declares no `max-height`. With pointer capture a single downward drag past the window bottom keeps growing the box. MEASURED in Chromium 1217 rather than assumed: forcing the textarea to 4000px leaves `.panel-body` at `overflow-y: auto`, grows its `scrollHeight` from 896 to 4824, and the TYPOGRAPHY rows below stay reachable by scrolling — so the consequence is an oversized scrollable panel, NOT a lockout, and the floor clamp always brings it back. That is why this is a deferral and not a patch. The frozen matrix specifies only the floor, so choosing a ceiling (and whether it is a `max-height`, a viewport fraction, or none at all) is a design call this story's contract does not make.
-
-- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
-  summary: The drag seeds its arithmetic from the 72px constant and assumes the box's rendered resting height equals it — true today, but underivable, because the repo bans every way of measuring it.
-  evidence: `beginProseResize` starts from `proseHeight ?? PROSE_MIN_HEIGHT_PX`, and at rest the textarea carries no inline height, so its real height is whatever CSS produces. It is 72px today, established two ways: by hand (`--type-body-em` is `400 11px/1.3` at `tokens.css:17`, so `rows={4}` is ~57.2px, below the 72px `min-height`, with `padding: 0; border: 0` from `.property-value`) and in Chromium (textarea 72.0px, box 86px). If that intrinsic height ever exceeds 72 — a larger type token, a fallback face with taller metrics, browser text zoom — the first pointerdown would snap the box DOWN before the drag begins. No test can catch it: `canvas-authority-contract.test.ts:18-45` prohibits `getComputedStyle`, `offsetHeight`, `clientHeight`, `getBoundingClientRect` and `ResizeObserver` across production, unit-test and e2e sources alike. Discharging it needs the floor to become a single source both languages read — a CSS custom property carrying the number — not a measurement.
-
-- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
-  summary: Every CSS fact this story relies on is guarded by a first-match source-text regex, and the browser suite that could check the rendered result runs in no CI workflow.
-  evidence: `property-prose-height.test.ts` and the two CSS rows in `App.test.tsx` match rules with patterns like `/^\.property-field-prose \{[^}]*\}/m`, which take the FIRST matching block. A later, more specific rule — a second `.property-field-prose { position: static }` block, or `resize: vertical !important` somewhere below — changes what the browser renders while the regex keeps reading the first block and staying green. This story closed the `!important` case on the base `textarea` rule specifically (a review patch), which is one instance of the class, not the class. The standing backstop would be `e2e/`, but `npm run test:e2e` appears in no workflow — CI runs only `npm run test:e2e:compile` — so no rendered CSS is ever a gate. Discharging it means either running the e2e suite in CI or replacing the first-match regexes with a real cascade check.
+**The three raw blocks that sat here are now `### DW-264` .. `### DW-266`**, numbered at Story 11.4's
+close under D-000.31a. They were Story 17.5's deferrals, lodged inside this entry with no number. They
+are unrelated to DW-190's own subject.
 
 ---
 
@@ -10299,3 +10267,148 @@ RUN against a planted NUL and against the legitimate `.trie`, not read.
 **Also invisible today, same cause:**
 `_bmad-output/implementation-artifacts/8-3-a-font-travels-inside-the-template.md` (2 NULs) - a spec file no
 agent's grep can see.
+
+---
+
+### DW-257 - a held arrow key writes one undo entry and one document revision per step, so a two-second hold buries the author's previous state
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's numeric stepping.
+  **Severity:** MEDIUM - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** A held arrow key leaves one undo entry and one document revision per step, so a two-second hold puts dozens of entries between the author and their previous state.
+
+**Evidence.** applyProperties' own comment records "one opaque command, one revision, one undo entry"; Story 17.4 makes that path repeat at key-repeat rate for the first time. Nothing coalesces consecutive steps on the same field.
+
+---
+
+### DW-258 - a step arriving while the previous one is in flight advances the draft, sends nothing, and can be discarded by the engine's answer
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's numeric stepping.
+  **Severity:** MEDIUM - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** A step arriving while the previous step's command is in flight advances the draft but sends nothing, and is then discarded if the engine's answer wins the race.
+
+**Evidence.** step() calls setDraft before submit, and submit returns early on pendingRef. The committed transition at App.tsx (lastCommitted !== committed) then rewrites the draft to the engine's value. Measured consequence: a hold steps at the round-trip rate, not the repeat rate, and the last press before release can be lost. The browser run at 60ms spacing showed no drops against the in-process wasm engine, so the window is real but narrow locally.
+
+---
+
+### DW-259 - the stepping fields keep `role="textbox"` and no spinbutton semantics, so a screen reader is told nothing when an arrow moves the value or stops at a bound
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's accessibility surface.
+  **Severity:** MEDIUM - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** The stepping fields keep role="textbox" with no spinbutton semantics, so a screen reader is told nothing when an arrow changes the value or when it stops at a bound.
+
+**Evidence.** shared carries only aria-label/aria-description; there is no role="spinbutton", no aria-valuenow/valuemin/valuemax, and no live region announcing a clamp. The panel already has an honest-note idiom for statements of this kind.
+
+---
+
+### DW-260 - the page-setup numeric fields do not step, so two visually identical inputs in the same app behave differently under the arrow keys
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching page setup's numeric fields.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** The page-setup numeric fields (page width/height and the four margins) do not step, so two visually identical inputMode="decimal" inputs in the same app now behave differently under the arrow keys.
+
+**Evidence.** the Field component in App.tsx renders inputMode="decimal" inputs with no onKeyDown at all. Story 17.4's contract scopes the numeric set to PropertyDraft, so this is a deliberate boundary, but nothing records the resulting asymmetry.
+
+---
+
+### DW-261 - a step in flight leaves the row's sibling controls enabled, and they silently drop the click
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's numeric stepping.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** While a step's command is in flight the field is deliberately left enabled, but its sibling controls (Clear, Set null, the colour swatch) stay enabled too and silently drop a click on pendingRef.
+
+**Evidence.** those controls are disabled on the `pending` state, which a step no longer raises. Before Story 17.4 every commit raised it, so the click could not be made; now it can, and it does nothing with no feedback.
+
+---
+
+### DW-262 - the arrow step does not check `isComposing`, so an arrow navigating IME candidates also steps the value
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's numeric stepping.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** The arrow step does not check event.nativeEvent.isComposing, so an arrow used to navigate IME candidates inside a numeric field would also step the value.
+
+**Evidence.** keyDown routes ArrowUp/ArrowDown straight to step() after the modifier check. Low reachability on decimal fields, but the guard is one condition and the failure is a committed value the author never chose.
+
+---
+
+### DW-263 - a typed draft already out of bounds snaps to the bound on the first arrow press instead of stepping
+
+- source_spec: `17-4-arrow-keys-step-a-number-field.md`
+- **Deferred by:** Story 17.4 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the property panel's numeric stepping.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** A typed draft already outside a field's bounds snaps to the bound on the first arrow press rather than stepping, so one nudge can move leading from 5000 to 1000.
+
+**Evidence.** step() clamps the stepped value without first checking whether `current` was already in range. The result is always legal, which is the story's rule, but the size of the jump is not obviously what an author pressing an arrow once intends.
+
+---
+
+### DW-264 - the CONTENT box's drag height has a floor and no ceiling, so one gesture can produce a box thousands of pixels tall
+
+- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
+- **Deferred by:** Story 17.5 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the CONTENT box's resize.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** The CONTENT box's drag height has a 72px floor and no ceiling, so one gesture can produce a box thousands of pixels tall.
+
+**Evidence.** `moveProseResize` clamps with `Math.max(PROSE_MIN_HEIGHT_PX, …)` only, and `App.css` declares no `max-height`. With pointer capture a single downward drag past the window bottom keeps growing the box. MEASURED in Chromium 1217 rather than assumed: forcing the textarea to 4000px leaves `.panel-body` at `overflow-y: auto`, grows its `scrollHeight` from 896 to 4824, and the TYPOGRAPHY rows below stay reachable by scrolling — so the consequence is an oversized scrollable panel, NOT a lockout, and the floor clamp always brings it back. That is why this is a deferral and not a patch. The frozen matrix specifies only the floor, so choosing a ceiling (and whether it is a `max-height`, a viewport fraction, or none at all) is a design call this story's contract does not make.
+
+---
+
+### DW-265 - the drag seeds its arithmetic from the 72px constant and assumes the box's resting height equals it, which the repo bans every way of measuring
+
+- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
+- **Deferred by:** Story 17.5 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** the next story touching the CONTENT box's resize.
+  **Severity:** LOW - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** The drag seeds its arithmetic from the 72px constant and assumes the box's rendered resting height equals it — true today, but underivable, because the repo bans every way of measuring it.
+
+**Evidence.** `beginProseResize` starts from `proseHeight ?? PROSE_MIN_HEIGHT_PX`, and at rest the textarea carries no inline height, so its real height is whatever CSS produces. It is 72px today, established two ways: by hand (`--type-body-em` is `400 11px/1.3` at `tokens.css:17`, so `rows={4}` is ~57.2px, below the 72px `min-height`, with `padding: 0; border: 0` from `.property-value`) and in Chromium (textarea 72.0px, box 86px). If that intrinsic height ever exceeds 72 — a larger type token, a fallback face with taller metrics, browser text zoom — the first pointerdown would snap the box DOWN before the drag begins. No test can catch it: `canvas-authority-contract.test.ts:18-45` prohibits `getComputedStyle`, `offsetHeight`, `clientHeight`, `getBoundingClientRect` and `ResizeObserver` across production, unit-test and e2e sources alike. Discharging it needs the floor to become a single source both languages read — a CSS custom property carrying the number — not a measurement.
+
+---
+
+### DW-266 - every CSS fact Story 17.5 relies on is guarded by a first-match source-text regex, and the browser suite that could check the rendered result runs in no CI workflow
+
+- source_spec: `17-5-the-content-box-resizes-from-its-bottom-edge.md`
+- **Deferred by:** Story 17.5 (2026-09-04), as a raw block carrying no number. **Numbered at Story 11.4's
+  close** under D-000.31a, which folded the ten surviving unindexed blocks into the next close; the
+  summary and evidence below are the original text, unedited. **Owner:** unassigned - needs an owner ruling.
+  **Severity:** MEDIUM - the closer's read, not a lead ruling. **Status:** OPEN.
+
+**What it is.** Every CSS fact this story relies on is guarded by a first-match source-text regex, and the browser suite that could check the rendered result runs in no CI workflow.
+
+**Evidence.** `property-prose-height.test.ts` and the two CSS rows in `App.test.tsx` match rules with patterns like `/^\.property-field-prose \{[^}]*\}/m`, which take the FIRST matching block. A later, more specific rule — a second `.property-field-prose { position: static }` block, or `resize: vertical !important` somewhere below — changes what the browser renders while the regex keeps reading the first block and staying green. This story closed the `!important` case on the base `textarea` rule specifically (a review patch), which is one instance of the class, not the class. The standing backstop would be `e2e/`, but `npm run test:e2e` appears in no workflow — CI runs only `npm run test:e2e:compile` — so no rendered CSS is ever a gate. Discharging it means either running the e2e suite in CI or replacing the first-match regexes with a real cascade check.
+
+**Owner note, added when this was numbered:** the *"run the e2e suite in CI"* half of the
+discharge collides with **D-000.30**, which rules that suite an EPIC-BOUNDARY gate and not a CI
+one. Whoever takes this must settle that first; the first-match-regex half is independent of it
+and can be discharged alone.
