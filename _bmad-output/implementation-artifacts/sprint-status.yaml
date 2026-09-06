@@ -440,7 +440,7 @@ development_status:
   # 11's blocking fork was RULED 2026-09-06: realize, not retire (D-A, epic-11-14-decision-log.md).
   # 11.1 shipped seven faces, not the nine D-A assumed -- upstream publishes no Thai italic.
   # SPEC-fonts still records the question as open and is the stale copy.
-  epic-11: in-progress
+  epic-11: done
   11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: done
   11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop: done
   11-3-the-canvas-paints-the-weight-the-engine-resolved: done

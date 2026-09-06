@@ -4728,3 +4728,47 @@ system is built that way; a doctrinal one binds because we decided and can re-de
 been in AD-21, arm [B] would have been unavailable — you cannot defer an architectural invariant. Being
 doctrinal, all three arms were genuinely open, and [A] had to be won on its merits rather than assumed.
 Citing a doctrine as an architecture decision is how a choice quietly stops looking like a choice.
+
+
+### D-11.6.1 — OWNER DECISION: fix DW-268 now, and close Epic 11
+
+Two decisions taken at Epic 11's boundary gate.
+
+**DW-268 — the unfiltered suite runs in CI, now, before Epic 13.** No workflow ran it: `matrix.yml`
+runs only `-run TestTargetRenderHash` and `-run TestTargetProbeHex`, and `ci.yml` builds and vets under
+the tag without ever testing. The owner priced it as worth the CI minutes, and the session had already
+paid for the gap twice: it is why a blanked attestation record left the suite byte-identical to
+baseline, and it is why a roundtrip e2e test stayed broken across two epics. `ci.yml:83` already carries
+a `-skip "$KNOWN_RED_TEST"` step, and the tagged suite's only standing reds are the two permanent P6
+ones, so the mechanism to carry this already exists.
+
+**Epic 11 closes and Epic 13 starts.** All five stories done, boundary gate green — full e2e 36/36 on my
+own run, untagged 2242/2/5 and matrix 2255/2/5 failing only the two permanent reds by name.
+
+**The register items stay open and unowned deliberately.** The owner chose to start Epic 13 rather than
+sweep DW-239, DW-243, DW-246, DW-267 and DW-269 first, and the three duplicated numbers (DW-100,
+DW-162, DW-238) stay ambiguous for now. That is a real cost — a citation to any of those three resolves
+to two places — and it is recorded here so the next close cannot mistake it for an oversight.
+
+### D-11.6.2 — the boundary gate's find was not ours, and my diagnosis of it was wrong
+
+Epic 11's gate ran the e2e suite for the first time since before the epic and found one failure. I read
+the captured page snapshot as a contradiction — an empty font picker beside a status bar reading "1 font
+in template" — and dispatched a diagnosis on that premise. **The premise was false and the agent said
+so.** `canvas.fontFamilies` is `['Roboto']`, so the count is 1 AND the search for `body` correctly
+matches nothing; both readings of the same value agreed. I had reasoned from `defaultFontFamily`
+returning `body` for a BLANK document, when a fresh session loads the STARTER.
+
+The real cause is `4d2b27e` (2026-09-04), which renamed the starter's chain `body` → `Roboto` as its
+stated deliverable. Ancestral to Epic 11's base, verified by `git merge-base --is-ancestor`, by reading
+the starter at `429cb1a~1`, by the spec file being byte-identical across the epic, and by a full build in
+a throwaway worktree at that commit failing identically.
+
+> **A dispatch's framing is evidence too, and a confident wrong premise is worse than an open question** —
+> it tells a capable agent where to look and thereby where not to. State what was OBSERVED, and mark what
+> is INFERRED as inferred. I asserted a contradiction where I had only two numbers I had not reconciled.
+
+The corroborating detail is the one to remember: the evidence manifest recorded `fontFamily: "body"` and
+had not changed since 2026-08-30, so the test's last real execution predated the rename. **It was broken
+for two days across two epics and nothing noticed.** That is DW-268's cost, measured rather than argued,
+and it is what decided the ruling above.
