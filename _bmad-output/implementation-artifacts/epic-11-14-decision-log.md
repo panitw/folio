@@ -3446,3 +3446,91 @@ as the premise. Checking the artifact cost one command.
 - `s1.assetCount` 54 → 61, margin 10 → 3, twelve rows, `cachedBytes` 53,939,356, all at this arm.
 - The control: two consecutive clean builds byte-identical at a fixed tree; emitted wasm carries zero vcs
   markers.
+
+### D-11.1.24 — two acceptance criteria the correct code could not satisfy, and the rule for what to do about that
+
+11.1's builder finished step-04 with 13 patches applied, 5 deferred, and **two findings it deliberately
+refused to resolve** because the honest fix was to edit an acceptance criterion — *"the one move I should
+never make unilaterally."* That refusal was correct and is the behaviour to keep: a builder that edits its
+own marking scheme has stopped being marked.
+
+**(A) An AC instructed production code to read a test-only symbol.** The AC read: *"when any production
+code needs the family, then it reads `shippedFaceSpecs.Family` (sfnt name ID 1) and never parses the
+key."* `shippedFaceSpecs` lives in `folio-go/shipped_faces_test.go`; no non-test package can import it.
+Five comments had been written pointing production code at it.
+
+**Ruling: reword the AC and the five comments. No frozen renegotiation, because the frozen block is
+already correct.** Boundaries & Constraints reads *"The machine-readable family is
+`shippedFaceSpecs.Family`, **which is sfnt name ID 1** and is asserted against the binary"* — which names
+name ID 1 as the authority and the symbol as the thing that asserts it. **The AC was a lossy paraphrase of
+frozen text that was already right**, collapsing "the test that asserts name ID 1" into "the symbol
+production code reads." No code change; the code already honours the intent's single reading. That the
+never-parse prohibition is enforced by nothing is the real gap and is correctly deferred — a comment
+pointing at an unreachable symbol was never going to enforce anything.
+
+**(B) AC2 required an archive sha256 that existed nowhere for Noto Sans Thai Bold.** Options were: fetch
+it, narrow the AC, or accept and defer.
+
+**Ruling: fetched. The AC becomes TRUE as written rather than edited to fit.**
+`NotoSansThai-v2.002.zip`, **4,720,990 bytes**, sha256
+`af889cc673fc714060ce5e4e088fbad32aa4c0571a19958efeaff128a22da485`. The extracted
+`NotoSansThai/googlefonts/variable/NotoSansThai[wdth,wght].ttf` is 218,652 B and hashes to
+`5a1c559b…` — **exactly the pinned `src_sha256`** — so the archive is verified transitively, the same
+standard as Noto Sans and explicitly not parity with Roboto's directly-verified archive.
+
+Three reasons over narrowing: **D-11.1.3 already ruled it** for Noto Sans (record the digest while we have
+the file), and applying that to two faces in a story but not the third would be arbitrary; **"narrow the
+AC to archives this story fetched" is self-referential** and would be satisfied by fetching nothing — an
+AC that can be met by doing less is not a criterion; and the tree already has the precedent, since
+`notosansthailooped/NOTICE.md` records one. Plain Thai was the outlier.
+
+**THE GENERAL RULE, because this will recur.** `bad_spec` exists to stop code being derived from a wrong
+spec. When the defect is in prose **no code was derived from** — an AC that describes correct code
+inaccurately — reverting re-derives byte-identical code and buys nothing but the risk of the re-derivation
+differing. **The test is: would re-deriving from the corrected spec produce different code?** If provably
+not, correct the spec text in place and record why.
+
+**Three conditions, and the rule is void without all three:** the intent has exactly one reading; the code
+already honours it; and **the call is the orchestrator's, never the builder's.** Without the third the
+rule is just a licence to move the goalposts.
+
+### D-11.1.25 — what step-04 actually caught, and the one that was a shipped bug
+
+Recorded because the review layers earned it, and because three of the patches are the run's dominant
+defect class found in guards that this very story had introduced.
+
+**Guards that existed and could not fail:**
+- **`TestShippedRobotoMatchesDesignerCatalogue`'s coverage witness could not fire** — `checked++` sat
+  outside the `t.Run` closure, counting loop turns rather than completed subtests, so `checked !=
+  len(cuts)` was unreachable **by construction**. Fixed, and the agent then **watched it fail**
+  (`checked 3 of 4`) before restoring. *A witness nobody watched fail is not a witness.*
+- **The cache-asset approach warning — the sole realization of an AC — was executed by no test at all**,
+  and raising `warnCacheAssets` to 64, legal under the reader's own bounds, made it **silently stop firing
+  with everything green**. This is the guard I ruled into existence at D-11.1.22 and praised for its
+  negative cases; the negative cases checked the *threshold's* legality and nothing checked that the
+  warning *fires*. Now a six-test file, red-proved twice.
+- **The warning's latch was consumable by a red-proof fixture**, so under `--red-only` the single warning
+  line described a deliberately mutated release rather than the real one. A falsifier eating the signal it
+  was meant to prove — the same family as D-11.1.16's index-keyed red proofs.
+
+**And the one that was a real bug, not a guard gap: `scriptFallbacks` was validated against all thirteen
+families, so a script fallback could name a bold cut and render an entire script bold in every author's
+document.** Re-pointed at the six upright Regulars, with a duplicate check both existing throws were blind
+to. That is a shipped rendering defect closed before it existed — **in code neither the builder nor I can
+remember authoring**, which is the strongest possible argument for the third-party-scrutiny disposition of
+D-11.1.21.
+
+**Also worth keeping:** `font-catalogue.test.ts` carried a six-family population against `build-wasm.mjs`'s
+thirteen and is now **derived from the same slot table**, so the duplicate cannot drift again — the fix
+that removes the class rather than the instance. And the OBLIQUE bit turned out to be genuinely uneven
+across the shipped italics (Roboto Italic `0x0201`, Roboto Bold Italic `0x0221` set it; the Noto italics
+do not), so it is now a per-face intended column **with a non-vacuity check that the column carries both
+values** — otherwise it would be a blanket rule wearing a table.
+
+**On the builder's three self-reports.** `epic-11-context.md` was promised to reviewers and omitted:
+compiled context, untracked, not shipped, derived from artifacts the reviewers had — **no re-review**. But
+a blind reviewer caught that the package's own description did not match its contents, which is a reviewer
+checking the **frame** rather than the picture, and that is what catches a planted premise. The builder
+also caught its own mis-measurement **because 227 tests across 4 packages did not match the shape it
+expected**, not because anything failed. *Cross-checking the shape of a number against what it should be
+is the single habit that would have caught most of this run's defects, the orchestrator's included.*
