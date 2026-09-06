@@ -4772,3 +4772,125 @@ The corroborating detail is the one to remember: the evidence manifest recorded 
 had not changed since 2026-08-30, so the test's last real execution predated the rename. **It was broken
 for two days across two epics and nothing noticed.** That is DW-268's cost, measured rather than argued,
 and it is what decided the ruling above.
+
+
+### D-13.1.1 — I dispatched 13.1 against my own recorded ordering, and the builder caught it
+
+The decision log rules **13.4 first within Epic 13, against numeric order** — twice, at the Wave C plan
+(line 343) and again in the Epic 11 close (line 1626). I dispatched **13.1** first without re-reading my
+own log.
+
+The builder surfaced it and did the thing that made it recoverable: rather than obeying silently or
+ignoring it, it **tested whether the ordering was a real dependency**. Save PDF's disabled condition is
+`preview === undefined`, independent of `sampleData`; and D-000.8 had already corrected 13.4's premise
+("13.4's gate is not a file… entering preview mode is not gated at all — only the render is"). So 13.1
+is shippable now and the run continues with it.
+
+**The deviation is mine.** Recorded here rather than left to surface at the retro, where it would read as
+a builder going off-plan.
+
+> **A ruling I wrote is not a ruling I remember.** The log exists because the run outlives my context, and
+> I dispatched from memory. Before dispatching any story, re-read the log's ordering rulings for that
+> epic — the check costs one grep and this one cost a subagent's investigation to catch.
+
+Note what did NOT happen, because it is the good outcome: a stale ordering ruling did not silently
+override a correct dispatch, and a correct dispatch did not silently override a ruling. It was surfaced,
+measured, and decided. D-11.2.4's shape — an anomaly is a lead, not a verdict.
+
+### D-13.1.2 — RULING: AD-20 settles the interface fork, and the codebase precedent is the outlier
+
+Story 13.1's AC says to reuse the two file tiers "with the picker's type and suggested name
+**parameterised** rather than a second download path written." The builder flagged that the codebase runs
+the other way — `file/capability.ts` already carries three selectors, and the image path is a separate
+narrow interface — and followed the AC while asking me to rule before step-04 turned it into a finding.
+
+**Ruling: parameterise. AD-20 requires it.** I read the ADR rather than either summary. Its rule ends:
+*"One capability check at startup selects the tier; the rest of the app talks to **one file-access
+interface and never branches again**."* Parameterising the picker type and suggested name IS that rule.
+A fourth narrow interface is the branch AD-20 exists to forbid.
+
+**One citation correction that matters for the next reader:** the `AD-20` reference lives at
+`file/capability.ts:35` and is about picker semantics. Whatever argument the image path makes for its own
+narrow interface, it does not make it by citing AD-20. If image access is a genuine AD-20 exception that
+is a finding about the image path, not a licence for a second exception.
+
+**And the count was wrong.** D-000.8 says "13.1 has two hardcodings, not one". There are **three**:
+`folioName` (`file-access.ts:67`), `folioPickerType` (`file-system-access.ts:12`), and the blob MIME
+(`input-download.ts:49`). Superseded in the spec's Change Log. A count wrong by one is exactly how a third
+site stays hardcoded after a story that was supposed to remove them.
+
+
+### D-13.1.3 — I made the same false-absence error twice, and a positive control would have caught neither
+
+Ruling on Story 13.1's interface fork, I claimed `image-file.ts` "does not cite AD-20" and told the
+builder so as established fact. The builder checked and it does, at `folio-designer/src/image-file.ts:5`.
+
+**The mechanism.** I ran `grep -an "AD-20" folio-designer/src/file/*.ts` — scoped to `src/file/`.
+`image-file.ts` lives one directory up at `folio-designer/src/image-file.ts`. My search could not have
+found it. I then reported the absence at full width. Re-run unscoped with a positive control: exactly two
+hits, `image-file.ts:5` and `file/capability.ts:35`.
+
+**This is the second time this session.** The first was the census orphan count (D-000.31a), where I
+measured `- source_spec:` lines and read them as orphan blocks. Both failures have the identical shape: I
+searched a population narrower than my claim, then made the claim at full width.
+
+**And the rule I have been enforcing all run would not have caught either.** D-11.2.4 demands a positive
+control with every reported absence. A positive control proves the TOOL works. It cannot prove the tool
+was pointed at the right place — a control inside `src/file/*.ts` would have passed while the claim about
+the whole source tree stayed false. So:
+
+> **D-13.1.3 — state the population you searched in the same sentence as the finding.** "No hits in
+> `src/file/*.ts`" is a fact. "Does not cite AD-20" is a different and much larger claim. The gap between
+> the two is where a scoped search becomes a false universal. A positive control checks the instrument;
+> naming the population checks the aim. Both, or neither is worth anything.
+
+**The builder's reading beat mine on the substance, too.** I had conceded a conflict — "the precedent is
+the outlier" — and there is none. `image-file.ts:5` cites AD-20 for *"a narrow, read-bytes-only interface
+with **no save**, no handle retention and no document semantics."* Story 13.1 adds a **save**, so AD-20's
+save rule never covered that interface and the precedent does not reach this story. No finding against
+`image-file.ts`. Adopted into the spec's Design Notes with the search and its control recorded.
+
+**Registered separately at LOW:** AD-20's literal words are "one file-access interface and never branches
+again," and there are now three (`FileAccess`, `SampleFileAccess`, `ImageFileAccess`) plus three selectors
+in `capability.ts`. Every extra is read-only so the rule's PURPOSE holds — but literal-versus-purpose
+drift is what stops an ADR being checkable, which is the whole reason we cite them.
+
+
+### D-13.1.4 — the e2e cadence changed and no numbered decision said so; this is that decision
+
+Discharging DW-268 changed a cadence that a prior owner decision had set, and the agent doing the work
+noticed that nothing recorded the change. It was right to flag it rather than quietly leave two
+contradicting records.
+
+**D-000.4 placed the designer e2e suite at epic boundaries.** The owner's Epic 11 ruling (D-11.6.1) moves
+it to **every push and pull request**. D-000.4 is superseded on that point only; everything else in it
+stands.
+
+**And several Epic 11 story files were already mis-citing this.** They attribute the e2e cadence to
+**D-000.30**, which is the red-proof-window rule and says nothing about cadence. The real citation was
+always D-000.4. I propagated that mis-citation myself in more than one dispatch this session. The story
+files are historical record and are NOT being rewritten; this entry is the correction, and any future
+citation of "D-000.30" for cadence should be read as D-000.4 superseded by D-11.6.1.
+
+**What actually runs now**, and the honest limits, both from measurement rather than intent:
+
+- `folio-go-matrix` runs the tagged suite with **four** named exclusions, each its own scalar with its own
+  stated reason, all four spelled at the call site so a fifth must touch two places. Three are genuine
+  environment limits, not convenience: `TestShippedFacesReproduceFromUpstream` needs ~22 MB of gitignored
+  upstream font sources plus an exact fontTools build, which D-000.12(4) and Epic 16's boundary gate
+  already ruled CI cannot acquire; `TestCrossTargetByteIdentity` and `TestFMAProbeDiverges` need one host
+  that is natively darwin/arm64 AND has Docker, which no runner is.
+- **That third exclusion is not a coverage loss, and I verified it rather than accepting it.**
+  `matrix.yml` runs four NATIVE per-target legs plus compare jobs on the same push/PR events, and its
+  Finding 8 fix made the compare step loop over every registered document rather than only the fontless
+  one — which is precisely the hole that used to leave font cross-target identity to the local-only test.
+  Coverage is relocated to a stronger form: four real platforms instead of one host emulating them.
+- `folio-designer-e2e` runs all 36 Playwright tests, installing Go at the pinned version because
+  `browser-native-roundtrip.spec.ts` builds `folio-go/cmd/folio` and asserts the native PDF is byte-equal
+  to the wasm one.
+
+**The limit worth keeping in view: neither job has ever run on Linux.** Every proof was on darwin/arm64
+using the workflow's own extracted commands. The first push is the first Linux evidence. **If the
+wasm-versus-native byte-equality assertion reds there, that is a finding about byte determinism across
+platforms — the most interesting kind this project has — and not a reason to make the job advisory.**
+Making a job advisory to keep it green is how DW-268 came to exist in the first place.

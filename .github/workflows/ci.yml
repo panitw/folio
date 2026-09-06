@@ -53,6 +53,55 @@ env:
   # which is the fail-safe direction. Verified both ways before this landed.
   KNOWN_RED_TEST: "^TestCorpusMeetsP6ExerciseFloors$"
 
+  # DW-268. The three tests below are NOT expected reds and are NOT
+  # tolerated failures. They are tests whose INPUTS a GitHub-hosted runner
+  # does not have, so the folio-go-matrix job below is scoped to what a
+  # runner can actually reproduce rather than shipping a job that fails on
+  # every push (which teaches everyone to ignore it) or one that tolerates
+  # any failure (which is worse than no job at all — D-000.74's mechanism
+  # that grows).
+  #
+  # THEY ARE THREE SEPARATE SCALARS, EACH NAMED FOR ITS OWN REASON, and the
+  # step below spells all three out in its `-skip` expression. That is
+  # D-000.74's shape argument applied here: a FOURTH exclusion cannot be
+  # added by appending a line to a list — it must add a scalar AND widen the
+  # command, in two places a reviewer reads. Anchored ^...$ for the same
+  # reason KNOWN_RED_TEST is: a rename must stop matching and redden the
+  # job, never silently widen it.
+  #
+  # Nothing else in the tagged suite is excluded. In particular the five
+  # human-sign-off gates (declared-variants, statement, shaped-text,
+  # expected-breaks, thai-stacked-marks) — the FIELD checks that a blanked
+  # attestation slips past, and the reason DW-268 exists — run here in full.
+  #
+  # (1) needs .font-sources/, four upstream variable-font builds totalling
+  #     ~22 MB that are gitignored, plus Python 3.12.13 with fontTools
+  #     4.63.0 exactly (fontTools is not byte-deterministic across
+  #     versions). D-000.12(4) and the Epic 16 boundary gate already ruled
+  #     that CI does not have that toolchain and cannot acquire it; this is
+  #     that standing ruling honoured, not a new concession. The test fails
+  #     rather than skips when its sources are absent — deliberately, per
+  #     its own doc comment — so it must be named here or the job is red
+  #     forever. What it guards stays guarded per-commit by the untagged
+  #     accounting test in folio-go/fonts (Story 16.11).
+  MATRIX_TEST_NEEDING_FONT_SOURCES: "^TestShippedFacesReproduceFromUpstream$"
+  # (2) and (3) are the harness's two SINGLE-MACHINE entry points: each
+  #     loops over all four targets in one process, so it needs a host that
+  #     is darwin/arm64 natively AND has a Docker daemon with linux/amd64 +
+  #     linux/arm64 platforms AND has Node. On a Linux runner the
+  #     darwin/arm64 leg reaches runOnTarget's default branch and fatals
+  #     ("no runner defined for target darwin/arm64"); GitHub's macOS
+  #     runners provide no Docker daemon. No runner in existence satisfies
+  #     both halves, which is exactly why AC13 shaped matrix.yml as four
+  #     NATIVE per-target legs plus a compare job. Their claims are covered
+  #     there, per target and per document, by
+  #     render-*/compare-render-hashes and fma-probe-*/
+  #     assert-fma-probe-diverges — so this is coverage relocated, not
+  #     coverage dropped, and matrix.yml runs on the same push/PR events as
+  #     this file.
+  MATRIX_TEST_NEEDING_ALL_FOUR_TARGETS_RENDER: "^TestCrossTargetByteIdentity$"
+  MATRIX_TEST_NEEDING_ALL_FOUR_TARGETS_PROBE: "^TestFMAProbeDiverges$"
+
 jobs:
   folio-go:
     runs-on: ubuntu-24.04
@@ -67,7 +116,14 @@ jobs:
       - name: go vet
         working-directory: folio-go
         run: go vet ./...
-      - name: go build -tags=matrix (compiles; does not run the matrix, D-000.4)
+      # DW-268: this step still only COMPILES the tagged code. It is kept
+      # because it is the cheap, early signal, and because it covers the
+      # non-test tagged files too — but it is no longer the only thing CI
+      # does with the tag: the folio-go-matrix job below RUNS the tagged
+      # suite. The old parenthetical here ("does not run the matrix") was
+      # true of the whole repository until DW-268 and is now true only of
+      # this step.
+      - name: go build -tags=matrix (this step compiles only; folio-go-matrix runs it)
         working-directory: folio-go
         run: go build -tags=matrix ./...
       - name: go vet -tags=matrix
@@ -127,6 +183,56 @@ jobs:
             exit 1
           fi
           echo "$KNOWN_RED_TEST failed as expected; the quarantine still holds."
+
+  # DW-268. THE TAGGED SUITE, RUN — not built, not vetted, RUN.
+  #
+  # Until this job existed, `-tags=matrix` code was compiled on every push
+  # (folio-go, above) and executed nowhere: matrix.yml runs only
+  # `-run TestTargetRenderHash` and `-run TestTargetProbeHex`, eight legs of
+  # a suite of thirteen tagged tests. Everything else under the tag —
+  # including all five HUMAN SIGN-OFF gates — ran only when a person typed
+  # the epic-boundary command by hand. That is not a cadence, it is a hope,
+  # and it cost two measured defects in a single session: a declared-variants
+  # attestation blanked to reader:"", examined:"", date:"tomorrow-ish" left
+  # the untagged suite byte-identical to baseline, because the field checks
+  # live under the tag. The owner priced this job's minutes against that and
+  # decided it is worth them.
+  #
+  # It is a JOB and not a step in folio-go for the reason folio-go-known-red
+  # is a job: its name is the disclosure. "folio-go-matrix ran and was green"
+  # is a claim a reader can see in the checks list without opening a log.
+  #
+  # SEPARATE JOB, SEPARATE RUNNER, and deliberately NOT `needs: folio-go` —
+  # the two ask different questions and a reader is entitled to both answers
+  # on a run where one of them is red.
+  #
+  # No continue-on-error. Same reason as everywhere else in this file.
+  folio-go-matrix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      # -count=1 for D-000.11's reason, which bites HARDER here than in the
+      # untagged job: the sign-off gates read fixture files OUTSIDE the
+      # module (fixtures/declared-variants/signoff.json and friends at the
+      # repo root), and Go's test cache does not track those reads. A cached
+      # ok on a gate whose attestation has since been blanked is precisely
+      # the failure DW-268 exists to prevent.
+      #
+      # The -skip expression names FOUR tests and no more: one sanctioned
+      # red (KNOWN_RED_TEST, which the quarantine job above asserts still
+      # fails) and three whose inputs no GitHub runner has. Each is its own
+      # env scalar, defined and justified at the top of this file. This is an
+      # ALLOWLIST, not a tolerance: a fifth failure — anything at all, in any
+      # package, under the tag or not — reddens this job.
+      - name: "go test -count=1 -tags=matrix (UNFILTERED but for four NAMED tests; must be GREEN)"
+        working-directory: folio-go
+        run: |
+          go test -count=1 -tags=matrix \
+            -skip "$KNOWN_RED_TEST|$MATRIX_TEST_NEEDING_FONT_SOURCES|$MATRIX_TEST_NEEDING_ALL_FOUR_TARGETS_RENDER|$MATRIX_TEST_NEEDING_ALL_FOUR_TARGETS_PROBE" \
+            ./...
 
   hashmatrix:
     runs-on: ubuntu-24.04
@@ -247,3 +353,83 @@ jobs:
       - name: compile deferred browser smoke suite (D-000.4)
         working-directory: folio-designer
         run: npm run test:e2e:compile
+
+  # DW-268. THE BROWSER SUITE, RUN.
+  #
+  # `npm run test:e2e` — 36 Playwright tests — ran in NO workflow at all.
+  # The only e2e-shaped thing CI did was `test:e2e:compile`, which is
+  # `tsc --noEmit` over the spec files: it proves the specs still typecheck,
+  # which is not the same claim as the specs still passing, and the
+  # difference was measured. e2e/browser-native-roundtrip.spec.ts was broken
+  # for two days across two epics with nobody noticing, because the suite
+  # ran only at epic boundaries; its evidence manifest had been stale since
+  # 2026-08-30 and the staleness was the only trace. The compile step above
+  # stays — it is seconds, it covers the specs' types, and it fails earlier
+  # and more legibly than a browser run does.
+  #
+  # A SEPARATE JOB, not more steps on folio-designer, for three reasons that
+  # are about this suite specifically and not about tidiness: it needs a
+  # browser download the other job has no use for; it needs the GO toolchain
+  # (see below), which the other job does not install; and at ~36 serial
+  # browser tests it is by some distance the longest thing here, so hanging
+  # it off the end of folio-designer would delay every fast signal in that
+  # job behind it.
+  #
+  # WHY setup-go IS HERE. This is not a browser-only suite.
+  # browser-native-roundtrip.spec.ts builds folio-go/cmd/folio, runs it over
+  # the template the browser just authored, asserts the native PDF is
+  # BYTE-EQUAL to the wasm-rendered one, and then shells into
+  # `go test -run ^TestBrowserAuthoredRoundTripWitness$`. Without a pinned
+  # Go it would either fail outright or — worse — measure byte identity
+  # against a different toolchain than every other job in this file, which
+  # is AD-22's drift class arriving through the back door. Same GO_VERSION
+  # as everywhere else, deliberately.
+  #
+  # NO BROWSER OVERRIDE. playwright.config.ts honours
+  # PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH when set; it is deliberately NOT set
+  # here, so CI uses the Chromium the pinned @playwright/test downloaded —
+  # the version-managed one, not whatever the runner image happens to ship.
+  #
+  # NO webServer OF OUR OWN. playwright.config.ts's webServer already runs
+  # `npm run build && npm run preview` on 127.0.0.1:4173 with
+  # reuseExistingServer: false, so this job must NOT start a server or
+  # pre-build; doing so would either be ignored or collide on the port. The
+  # config owns that, and this job invokes the config.
+  #
+  # No continue-on-error. A flaky-looking browser test is a defect report,
+  # not a reason to make this job advisory.
+  folio-designer-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.16.0"
+          cache: npm
+          cache-dependency-path: folio-designer/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: npm ci (committed lockfile only)
+        working-directory: folio-designer
+        run: npm ci
+      # --with-deps installs the shared libraries headless Chromium needs on
+      # a bare ubuntu image; chromium alone, because playwright.config.ts
+      # declares no projects and so runs the default browser only.
+      - name: install the pinned Playwright Chromium
+        working-directory: folio-designer
+        run: npx playwright install --with-deps chromium
+      - name: "browser end-to-end suite (npm run test:e2e; the config builds and previews the app itself)"
+        working-directory: folio-designer
+        run: npm run test:e2e
+      # Only on failure, and only the report: a green run's traces are noise
+      # and cost storage, while a red run's are the difference between a
+      # reproducible defect and "it went red on CI once".
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: folio-designer/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -10413,13 +10413,45 @@ discharge collides with **D-000.30**, which rules that suite an EPIC-BOUNDARY ga
 one. Whoever takes this must settle that first; the first-match-regex half is independent of it
 and can be discharged alone.
 
+**Update 2026-09-06 (DW-268): that half is now DONE, and the collision it named was never real.**
+`ci.yml`'s new `folio-designer-e2e` job runs the whole 36-test Playwright suite on every push and PR, on
+the owner's Epic 11 boundary ruling — so *"the browser suite that could check the rendered result runs in
+no CI workflow"*, this entry's second clause and half its title, is **no longer true**. Two corrections
+to the note above while it is being read: the cadence rule is **D-000.4**, not D-000.30 (D-000.30 is the
+red-proof-window rule — the mis-citation is repeated across several Epic 11 story files), and it was an
+owner cadence decision, which is why an owner could and did move it. **This entry stays OPEN on its
+first-match-regex half only**, which is untouched: `property-prose-height.test.ts` and `App.test.tsx`
+still read the FIRST matching CSS block, and a later overriding rule still goes unseen by them. The
+standing backstop those regexes lacked now exists.
+
 ### DW-267 - fixtures/statement-signoff.json's FIELDS are checked only under -tags=matrix while its digests are checked untagged
+
+> **PARTLY DISCHARGED 2026-09-06 by DW-268 — the EXPOSURE is closed, the STRUCTURE is not. Deliberately
+> NOT marked DISCHARGED.** DW-268's `folio-go-matrix` job now runs the tagged suite on every push and PR,
+> and `TestStatementSemanticSignOffIsRecorded` was **measured running and passing** under that job's exact
+> command (all five `*SemanticSignOffIsRecorded` gates were, and the four `-skip` names were confirmed
+> not to over-match: a control test in the same file still runs). So this entry's stated harm —
+> *"the fields ... can be blanked and every gate anyone actually runs stays green"* — **is no longer
+> true.** A blanking now reds CI, on the same push that introduces it.
+>
+> **What that does NOT fix, and why the number stays open.** The heading is still accurate: the field
+> check for this record lives ONLY under the tag, while its digests are checked untagged. The untagged
+> derived check in `byte_neutrality_test.go` still names `fixtures/statement-signoff.json` in
+> `signOffRecordsExemptFromFieldCheck` — its own witness line prints *"3 record(s) checked … 2 exempt by
+> declared reason [fixtures/embedded-font/signoff.json fixtures/statement-signoff.json]"* — for the
+> structural reason this entry gives: under D-4.7.1 its digests live in a `digests` map keyed by fixture
+> slug rather than a top-level `sha256`, so the derivation helper cannot read it. Widening that helper to
+> a second record SHAPE is the work, and none of it was done here. Two consequences survive: the record is
+> still not covered by the per-commit *untagged* suite a developer runs locally before pushing, and it is
+> still the one attestation whose coverage depends on a build tag rather than on the derivation.
+>
+> **Severity lowered HIGH → LOW.** It was HIGH because nothing anyone ran caught it. Something does now.
 
 - source_spec: `11-5-a-bold-document-is-a-pinned-golden.md`
 - **Deferred by:** Story 11.5 (2026-09-06). Named in-code by the builder in the exemption map it
   introduced, but never given a number; **numbered at Story 11.5's close.** **Owner:** unassigned -
-  needs an owner ruling. **Severity:** HIGH - PRE-EXISTING, not introduced by Story 11.5.
-  **Status:** OPEN.
+  needs an owner ruling. **Severity:** ~~HIGH~~ **LOW** as of 2026-09-06 - PRE-EXISTING, not introduced
+  by Story 11.5. **Status:** **OPEN (partly discharged by DW-268; see the box above).**
 
 **What it is.** `fixtures/statement-signoff.json`'s DIGESTS are checked by the untagged suite, but its
 FIELDS (`reader` / `date` / `examined`) are checked only by `statement_signoff_matrix_test.go`, which is
@@ -10444,12 +10476,83 @@ set, so it was registered rather than folded in.
 distinct weakness that *every* sign-off gate checks only non-emptiness and never recency or subject — it
 is already owed to **Story 15.2** and is cross-referenced here, not re-registered.
 
-### DW-268 - no workflow runs the unfiltered `-tags=matrix` suite, so every matrix-only guard is un-gated in CI
+### DW-268 - DISCHARGED 2026-09-06: CI now runs both un-run suites, and each new job was mutation-proved able to red
+
+> **DISCHARGED — the owner ruled at the Epic 11 boundary gate that the CI minutes are worth it, and
+> `.github/workflows/ci.yml` now carries two new jobs.** The entry below is preserved as written and its
+> measurements at `6d26a80` were all correct; what follows is what closed it.
+>
+> **`folio-go-matrix`** runs `go test -count=1 -tags=matrix -skip "…" ./...` on ubuntu-24.04. The skip
+> expression is a **NAMED ALLOWLIST of exactly four tests**, each its own env scalar defined and
+> justified at the top of the file — the shape D-000.74 argues for, so that a fifth exclusion cannot be
+> added by appending to a list but must touch both the env block and the command:
+> - `KNOWN_RED_TEST` — the existing `^TestCorpusMeetsP6ExerciseFloors$`, reused rather than reinvented, as
+>   this entry's own last paragraph suggested. The anchored form also takes the `P6g_(opaque_names)`
+>   child with it, so the two standing reds cost one name, not two.
+> - `MATRIX_TEST_NEEDING_FONT_SOURCES` — `^TestShippedFacesReproduceFromUpstream$`. **Genuinely not
+>   reproducible in CI, said plainly rather than papered over:** it needs the four gitignored upstream
+>   variable builds in `.font-sources/` (~22 MB) *and* Python 3.12.13 with fontTools 4.63.0 exactly, and
+>   D-000.12(4) / the Epic 16 boundary gate already ruled that CI does not have that toolchain and cannot
+>   acquire it. It **fails rather than skips** when its inputs are absent, by its own design, so it had to
+>   be named or the job would be red on every push. Its per-commit substitute is Story 16.11's untagged
+>   accounting test in `folio-go/fonts`.
+> - `MATRIX_TEST_NEEDING_ALL_FOUR_TARGETS_RENDER` / `…_PROBE` — `^TestCrossTargetByteIdentity$` and
+>   `^TestFMAProbeDiverges$`. These are the harness's SINGLE-MACHINE entry points: each loops over all
+>   four targets in one process, so it needs a host that is darwin/arm64 natively **and** has a Docker
+>   daemon with both Linux platforms. On a Linux runner the darwin/arm64 leg reaches `runOnTarget`'s
+>   `default` branch and fatals; GitHub's macOS runners have no Docker daemon. No runner satisfies both
+>   halves — which is exactly why AC13 shaped `matrix.yml` as four *native* per-target legs plus a compare
+>   job, and those legs run on the same push/PR events. **Coverage relocated, not dropped.**
+>
+> **`folio-designer-e2e`** runs `npm run test:e2e` — the whole 36-test Playwright suite — on ubuntu-24.04.
+> It installs the pinned Playwright Chromium (`--with-deps chromium`; the config declares no projects, so
+> chromium is all it uses) and **also `setup-go` at the same pinned `GO_VERSION`**, because this is not a
+> browser-only suite: `browser-native-roundtrip.spec.ts` builds `folio-go/cmd/folio`, asserts the native
+> PDF is byte-equal to the wasm-rendered one, and shells into a `go test`. It starts no server of its own
+> — `playwright.config.ts`'s `webServer` already runs `npm run build && npm run preview` on
+> 127.0.0.1:4173 with `reuseExistingServer: false`. `test:e2e:compile` is kept: it is seconds, it fails
+> earlier and more legibly, and a typecheck is a different claim from a pass. The Playwright report is
+> uploaded **on failure only**.
+>
+> **The property was PROVED, not asserted — three mutations, each run through the exact command extracted
+> from the YAML** (per D-11.3.7, reading a workflow is not testing a workflow):
+> 1. **Blanked attestation.** `fixtures/declared-variants/signoff.json` set to `reader: ""`,
+>    `examined: ""`, `date: "tomorrow-ish"`, digest left correct → **`folio-go-matrix` REDS, exit 1**, on
+>    `TestDeclaredVariantsSemanticSignOffIsRecorded` (`declared_variants_signoff_matrix_test.go:156`) —
+>    a matrix-only gate that until now ran in no workflow. Restored by `cp`; digest back to
+>    `737a672d36e5ff7489a52bec5d42273ebcf390f09017bf64d387e95574a1d6c3` exactly, `git status fixtures/`
+>    clean.
+> 2. **Broken e2e locator.** `e2e/table-editor.spec.ts`'s `grid` name changed to one nothing matches →
+>    **`npm run test:e2e` REDS, exit 1**, 1 failed / 35 passed. Restored; file digest back to
+>    `d88d15b87e3333813896709cfc88206a10b96b1686bd079ffd77755defbbb656`.
+> 3. **A third failure is NOT absorbed.** A temporary `//go:build matrix` test that `t.Fatal`s
+>    unconditionally → **`folio-go-matrix` REDS, exit 1** on that test by name. Deleted; the command is
+>    green again and the file is absent. (Worth recording: the plant *also* reddened
+>    `TestEpic2GateObligationsMatchTheDeclaredSet`, which noticed the undeclared matrix file — the
+>    obligation register works.)
+>
+> **YAML validated two ways**, because a workflow that does not parse is a job that silently never runs,
+> which is this entry's own failure class: `actionlint 1.7.12` exit 0 over both workflow files, and
+> `yaml.safe_load` parsing both and enumerating the jobs.
+>
+> **What remains.** Three things, none of them DW-268:
+> - **D-000.4's cadence is now partly superseded and no numbered decision records that.** D-000.4 places
+>   the designer e2e suite at epic boundaries; the owner's Epic 11 boundary ruling moves it to every
+>   push/PR. The owner may want that written into the decision log, and the several story files that say
+>   *"exercised at epic boundaries, not in CI (D-000.30)"* are now stale — and were already
+>   **mis-citing**: D-000.30 is the red-proof-window rule; the e2e cadence is D-000.4's.
+> - **`TestShippedFacesReproduceFromUpstream` is still enforced only by hand.** Unchanged by this work and
+>   already recorded at D-000.12(4); named here so the exclusion is not mistaken for coverage.
+> - **The two new jobs have never executed on Linux.** Every proof above was run on darwin/arm64. The
+>   commands are the workflow's own, but the first real push is the first Linux evidence — in particular
+>   `browser-native-roundtrip.spec.ts`'s wasm-vs-native byte-equality assertion has not been observed on
+>   linux/amd64. If it reds there it is a finding, not a reason to make the job advisory.
 
 - source_spec: `11-5-a-bold-document-is-a-pinned-golden.md`
 - **Deferred by:** Story 11.5 (2026-09-06). Named by the builder, numbered at Story 11.5's close.
-  **Owner:** ⚠ **OWNER-DECISION-PENDING** - the orchestrator is taking this to the owner at the Epic 11
-  boundary gate. **Severity:** HIGH. **Status:** OPEN.
+  **Owner:** ruled by the owner at the Epic 11 boundary gate (2026-09-06) — build it, the CI minutes are
+  worth it. **Severity:** HIGH. **Status:** **DISCHARGED 2026-09-06** by `.github/workflows/ci.yml`'s
+  `folio-go-matrix` and `folio-designer-e2e` jobs, each mutation-proved able to red.
 
 **What it is.** No CI workflow ever runs `go test -tags=matrix ./...` unfiltered. Every guard that lives
 behind that build tag is therefore enforced only when a human runs it locally. This is the mechanism that
