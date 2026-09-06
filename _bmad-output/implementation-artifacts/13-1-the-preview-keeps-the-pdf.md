@@ -8,6 +8,29 @@ baseline_commit: '9608b46c6989a0855f8643929d02fe64edb40b0d'
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — written after delivery. The frozen Intent below governs implementation; this section
+describes what actually shipped.*
+
+The designer can now hand the author the exact PDF on screen. A Save PDF control sits beside the local
+render control on the preview screen. Pressing it writes the same bytes the engine produced — nothing is
+re-rendered and nothing is re-encoded on the way out — and the save goes through the file machinery the
+app already used for templates, taught to carry a file format rather than assume every save is a
+template. With no render yet the control is present but disabled and says why; when the preview is out of
+date it says so both before the press and in the completion message.
+
+Two smaller changes to template file naming shipped as a deliberate consequence, and they were ruled
+opposite ways on purpose. A title that already ends in a document extension no longer collects a second
+one: the suggested name swaps the extension instead of stacking it, in both directions. But the
+capitalisation the author typed is never rewritten, because changing case can fork one document into two
+files a keystroke apart on some filesystems. The first is a suggestion anyone can overtype; the second is
+silent divergence in the author's own file.
+
+The browser-level test written here was type-checked but not executed locally; continuous integration now
+runs it on every push. Six observations found along the way were recorded as deferred work rather than
+fixed, including one about a hash the screen shows that nothing verifies.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -315,3 +338,111 @@ ran here.)
 
 - Browser witness for both tiers; compile-checked locally, executed in CI since `adf905a`.
   [`pdf-export.spec.ts:1`](../../folio-designer/e2e/pdf-export.spec.ts#L1)
+
+## Delivery Log
+
+### 2026-09-07 — done
+
+Baseline `9608b46`. Shipped in one commit, `1091645` — 11 files, +1412/−28, no loopback
+(`review_loop_iteration: 0`). Save PDF writes `preview.bytes` verbatim through the existing two-tier
+`FileAccess`, with the three `.folio` hardcodings collapsed into one `LocalFileFormat` carried from picker
+to write. The plan gate's correction of D-000.8 — three sites, not two — held: had the count stayed at
+two, the third site would have shipped a PDF written with the wrong suffix or the wrong MIME, which is
+exactly the failure a story named for removing those hardcodings would have been assumed to have closed.
+
+**Two `.folio` behaviour changes shipped, ruled opposite ways deliberately — record the asymmetry, do not
+"simplify" it away.** Stripping is now **symmetric**: a template titled `statement.pdf` suggests
+`statement.folio`, not `statement.pdf.folio`. Casing is **preserved**: `REPORT.FOLIO` stays itself. Both
+are changes to observable `.folio` naming, both sat behind the same Ask-First clause, and they were ruled
+in opposite directions on **blast radius**, not on taste. A wrong suggested name is a string the author
+overtypes in the picker before anything happens. A case-folded name **forks one document into two files a
+keystroke apart on a case-sensitive filesystem**, with nothing to say which one the next Open picks up —
+and on a case-insensitive one it silently overwrites. The two rules look inconsistent side by side; they
+are not, and the reason lives in a comment at the strip site as well as here, because a later reader
+tidying "one of these must be wrong" would reintroduce the worse of the two.
+
+**Both Ask-First gates fired on the same function**, which is the builder's own observation and the more
+useful finding. `localFileName` was mandated a change by a Task clause and forbidden that same change by
+an Ask-First clause — the spec contradicted itself, and the contradiction was only visible at the moment
+of implementing it. Ruled at step-04 triage: the Task clause wins for stripping; the Ask-First clause wins
+for casing. A fence that trips twice in one place was drawn wrong, not obeyed wrongly. Recorded in the
+Spec Change Log above and in D-13.1.2 / the step-04 triage entry.
+
+**The `exportInFlight` latch was invisible to 286 passing tests.** Deleting its reset left the entire suite
+green, because every test pressed Save PDF exactly once. A leaked latch would have made the control work
+**once per session**, silently, with the button still enabled and no error anywhere — the worst shape of
+defect this run has produced, because the failure mode is a control that stops responding and never says
+so. Now red-proved by pressing twice and asserting two picker calls and two writes, on each of the
+completed, cancelled and failed paths that share the `finally`.
+
+**A fix whose correctness no test can distinguish from the bug is not a fix.** The builder's own patch-1
+diagnosis for the naming defect named the wrong line, and the fix it proposed would have been caught by no
+assertion in the suite — it would have passed review as a fix and shipped as a no-op. The separating input
+had to be added before the patch meant anything. Treat "the patch is in and the suite is green" as
+evidence of nothing until an input exists on which the two implementations disagree.
+
+**A later fix can silently retire an earlier fix's only separating input** — DW-275, and the rule is worth
+more than the entry. The single-longest-match strip was red-proved against a chained fold earlier in this
+same story. Then the case-preserving early return, ruled at the second Ask-First gate and entirely
+correct, returned the one input on which the two implementations disagreed unchanged, short-circuiting the
+comparison before either strip ran. Nothing regressed; the property simply stopped being observable, and
+the recorded proof became a claim about a tree that no longer exists. **So: re-run a function's mutation
+proofs after every subsequent change to that function, not only after the change that introduced them.**
+
+**A test pin moved to a neighbouring case, and the baseline it protected stopped being checked while still
+reading as a guard.** Caught and restored — the casing pin now sits beside the PDF case as its own
+assertion, because they are separate properties and neither substitutes for the other. Same family as
+Epic 11's vacuous set assertions: the assertion is present, the file is green, and the thing it was
+written to defend is no longer among the things it can fail on.
+
+**Also fixed by executing rather than by reading:** `localFileName` returned `report.folio.folio` for one
+input and a stem-less `.pdf` for another (the untitled fallback ran before the strip, not after), and its
+extension match assumed lowercase constants. The `fileError`/`fileStatus` pair moved out of the hidden
+tabpanel, where switching to the DATA tab mid-save dropped `role="alert"` from the accessibility tree — an
+alert that tests as present and behaves as absent. And a test cast erased the very type the story had just
+made required.
+
+**Findings triaged: no tally was recorded, and I am not inventing one.** The population I searched is the
+whole of this spec file plus `1091645`'s commit message; this story carries no `## Implementation Notes`
+and no triage section, and neither source states a findings count or names a single rejection. What is
+countable is the deferred arm: **6 deferrals**, each a census-visible `### DW-` heading whose
+`source_spec` names this story. DW-270 — the displayed digest is never checked against the bytes it
+claims to cover (pre-existing; natural home Story 13.3, which promotes that hash to an evidence block).
+DW-271 — two of `exportPreviewPdf`'s three pre-await captures are defensive reads nothing can
+discriminate; **the byte capture IS guarded and reds**, and the entry exists so the defending comment is
+never mistaken for a proof. DW-272 and DW-273 — two status-announcement gaps, the second being the half
+of a pre-existing silence this story did not close. DW-274 — AD-20 says "one file-access interface" and
+there are three, all read-only, so the rule's purpose is intact and only its literal has drifted.
+DW-275 — above. All six are LOW / OPEN / unassigned. The patched arm is named rather than counted, in the
+paragraphs above and in the commit message; **the rejected arm has no record at all**, so read "0
+rejected" as unverified rather than measured.
+
+The orchestrator placed DW-270 … DW-275 and I verified rather than re-added them: all six are proper
+`### DW-` headings, and the register is internally consistent at **278** headings with **max DW-275** —
+278 = 275 numbers + the three known pre-existing duplicate headings (DW-100, DW-162, DW-238), which are
+left exactly as found. Per D-000.31a the `- source_spec:` lines are provenance metadata on numbered
+entries, not orphan markers; no unnumbered block is lodged inside any entry, and the file ends inside
+DW-275 with nothing trailing it.
+
+**Gates, re-measured at `1091645` by the closer, not carried forward:** `npm test` **65 files / 993 tests,
+0 failing** (baseline 976). The vitest **file** count did not move: the story added **no new vitest file**,
+and all +17 tests landed as additions to the two existing files `src/App.test.tsx` and
+`src/file/file-access.test.ts`. The one test file this story *added* is `e2e/pdf-export.spec.ts`, which
+Playwright owns and vitest never loads — so it is not one of the 65 and contributes none of the 993.
+
+The rest, in order: `tsc -b --force` exit 0; `oxlint` exit 0 with
+**exactly 4** `only-export-components` warnings, 0 errors, all pre-existing (`preview/pdf-viewer.tsx:16,17`
+and `App.tsx:3665,3672` — the spec's baseline named `App.tsx:3585,3592` at `9608b46`; the count and the
+rule are the invariant, the lines are not); `npm run test:e2e:compile` exit 0; `go test -count=1 ./...`
+**2242 pass / 2 fail / 5 skip**, counted from `-json` events, failing only `TestCorpusMeetsP6ExerciseFloors`
+and its `P6g_(opaque_names)` subtest by enumerated name, as required by D-000.17/D-2.1.14 and unchanged by
+this story, which touches no Go; `gofmt -l` over `folio-go` and `lint` with absolute paths, empty.
+`npm run build` was **not** run, per the spec.
+
+**Not executed here: the full Playwright suite.** The heavy-test cadence places it at the epic boundary,
+and Epic 13 has four stories left before that gate. `e2e/pdf-export.spec.ts` is **compile-checked only**
+locally and must never be reported as executed coverage from this run — but per D-13.1.4 it does execute
+in CI on every push and pull request since `adf905a` (D-000.4's epic-boundary cadence superseded on that
+point by the owner's D-11.6.1), so the first push carries its first real execution, and the first Linux
+evidence for the designer e2e job at all.
+
