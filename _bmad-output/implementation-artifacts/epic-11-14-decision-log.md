@@ -4468,3 +4468,59 @@ deferrals into that file at step-05, and racing it is how two writers produce on
 as good as the search a reader will actually run.* Content that is present but unindexed is, for every
 practical purpose, absent — and it is worse than absent, because its presence in the file makes the
 register look complete to anyone who scrolls it.
+
+### D-000.31a — CORRECTION: D-000.31's central table is wrong, and my own search was the defective one
+
+**D-000.31 is retracted on its central claim.** It reported *"67 raw blocks with NO number — 21% of the
+register invisible to its own index"* and named three orphans owed to Stories 13.2, 15.2 and a
+`parseMillipoints` owner. **All three are numbered entries that already exist, with those exact owners
+already written in.** Caught by 11.3's closer; **verified by me before accepting it**, which is the
+standard I have been holding every agent in this run to.
+
+| I cited | What is actually there |
+|---|---|
+| `:8483` pdf-viewer effect churn | **`### DW-191`**, heading two lines above — Owner Story 13.2, MEDIUM, OPEN |
+| `:8691` `parseMillipoints` overflow bound | **`### DW-197`** — LOW, and it already says *"Not Story 15.3"* |
+| `:8778` `TestShippedFacesReproduceFromUpstream` | **`### DW-200`** — Owner Story 15.2, MEDIUM |
+
+**The mechanism of my error.** `- source_spec:` is the **provenance metadata field of a numbered entry**,
+sitting one or two lines under its own `### DW-` heading. I read it as the marker of an *unnumbered* block.
+Measured properly — nearest `### DW-` heading above each occurrence:
+
+```
+metadata lines (within 3 lines of a DW heading):  58
+genuine standalone raw blocks:                    10
+  all ten inside DW-189 (7: lines 8413-8437) and DW-190 (3: 8467-8475)
+```
+
+**So the register holds 258 entries and ~4% of it is unindexed, not 21%.** Two of the three "risks to
+remaining stories" never existed: **DW-191 already carries the Epic 13 correction prominently**, under its
+own heading *"Why it fires today, which is the part the epic gets wrong."* My conclusion — *Epic 13 will
+otherwise be planned against a false premise* — was exactly backwards: **the register had already caught
+it and said so.**
+
+**The lesson, and it is the one I have been demanding of everyone else since D-11.2.4.** *My grep had no
+positive control.* One check — *does `- source_spec:` also appear inside a known-good numbered entry?* —
+would have collapsed the whole finding in seconds. I ran an absence-shaped search, got a large number, and
+reported the number instead of testing what it was counting.
+
+**And the irony is load-bearing rather than decorative.** D-000.31's closing rule reads: *"a register is
+only as good as the search a reader will actually run."* **The defective search was mine**, in the entry
+that coined the rule. A rule about searches, established by a bad search, and neither the writing of it nor
+committing it caught the problem — **a closer re-deriving the citation did.** Records are checked by use,
+never by review; this run has now paid for that lesson four times.
+
+**What survives D-000.31, and it is not nothing:**
+1. **Ten genuine raw blocks remain**, inside DW-189 and DW-190, from the Epic 16 adversarial round and
+   Story 17.5. They are real and still unindexed.
+2. **A sweep is no longer a story.** Ten blocks under two known headings is a close-sized task, not an
+   epic-sized one. **Folded into the next close rather than scheduled.**
+3. **Epic 13's dispatch still carries the pdf-viewer correction** — but as a **pointer to DW-191**, which
+   any builder finds by grepping its own story id. That is the register working as designed.
+4. **The census-invisible `- source_spec:` block form is still a real defect** — it is how 11.1 lost four
+   deferrals and how 11.3's would have gone unnumbered without its closer. That finding stands; only its
+   scale was wrong.
+
+**DW-246 is created and needs an owner** — `TableColumnsProjection`'s four new members have no consumer,
+and **no story in `epics.md` adds a table-header weight control.** Not routable to an existing story;
+carried to Epic 11's boundary gate for placement.

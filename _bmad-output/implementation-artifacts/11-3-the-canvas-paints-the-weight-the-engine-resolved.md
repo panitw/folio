@@ -12,20 +12,24 @@ context: []
 
 *Not normative, and rewritten after the fact. The frozen Intent below governs implementation.*
 
-The product forbids faking a bold typeface by smearing a normal one thicker. **The design canvas has been
-doing exactly that, and since the previous story it has been doing it twice over.**
+The product forbids faking a bold typeface by smearing a normal one thicker. **The design canvas had been
+doing exactly that, and between `d0ded7e` and this story it had been doing it twice over.**
 
-Story 11.2 taught the engine to pick a real bold cut and to tell the browser which one it picked. The
-browser has been ignoring that and applying its own thickening instruction, computed from the checkbox
-rather than from the answer. Once the engine started naming a genuinely bold typeface, the browser began
-thickening **that** — so a bold heading on the canvas has been drawn in the bold cut and then emboldened
-again on top of it. Nothing was violated when it shipped: 11.2's acceptance never reached the canvas.
-But the honest description is that the previous story **made the canvas worse in exchange for making the
-engine right**, and nobody noticed until this story traced the path the paint actually takes.
+The previous story taught the engine to pick a real bold cut and name it to the browser. The browser went
+on applying its own thickening, computed from the checkbox rather than the engine's answer — so once the
+engine named a genuinely bold typeface, the browser thickened **that**. A bold heading was drawn in the
+bold cut, then emboldened again on top of it. Nothing was violated when it shipped — that story's
+acceptance never reached the canvas — but the honest description is that it **made the canvas worse in
+exchange for making the engine right**, and this story found and owned it.
 
-This story deletes the thickening, lets the real cut through untouched, teaches the panel to read a
-document's declared cuts back out so it can say when a typeface simply has no bold, and fills in the
-starter document so a brand-new file can bold at all.
+The fake thickening is gone, and the cut the engine resolved reaches the screen untouched. The panel now
+reads a document's declared cuts back out, so a typeface with no bold says so rather than offering a
+dead switch. The starter document gained real cuts, so a brand-new file can bold at all.
+
+Three apparent omissions are deliberate. Most existing documents still cannot bold until the next story.
+Nothing here pins a bold page as a reference rendering — split out, which is why this story moved no
+printed bytes. And the new "no bold" note is styled by rules no automated test here
+can see: a standing limit, recorded rather than closed.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -797,3 +801,60 @@ conjunction silently drops everything after its first failing term.
 
 - Nothing that runs had ever parsed the shipped file; now three tests do.
   [`starter_template_test.go:62`](../../folio-go/starter_template_test.go#L62)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `fa93107`. Shipped at `6214165` — 24 files, +2437/−80 — as one commit, `Paint the face the
+engine resolved, and stop faking the weight on top of it`.
+
+**What actually shipped.** The synthetic weight and slope are gone from the painted surface: the canvas
+now carries only the engine's own `font-size`, and the fragment's family comes from the resolved face with
+no weight written beside it. A three-rule contract guard (longhand, value-scoped shorthand, JSX bounded by
+the opening tag) names the forbidden CSS the way the canvas-authority contract already names the banned
+measurement APIs. DW-239's chain-entry variant projection landed across three sites — Go struct, wire
+protocol test, browser guard — with three always-present keys rather than `omitempty`, because a missing
+key blanks the whole canvas at the browser guard. The B/I third state reads **every** chain entry, never
+`entries[0]`, and is conservative across a selection. DW-240's `TableColumnsProjection` pair landed with
+its member list tied to `tableHeaderStyleFields` itself, so a tenth field cannot repeat the omission.
+`starter.folio` gained real cuts at version 2.0, and three tests now parse the shipped file — nothing that
+ran had ever done so (D-11.3.9).
+
+**Decisions applied.** D-11.3.1 (the 11.2 canvas regression is the orchestrator's to own — carried into
+the opener as instructed), D-11.3.2 and D-11.3.6/F1 (the combined cut: the third state is derived from the
+CUT the resulting bold+italic combination needs, never from the control), D-11.3.3 (Q3's zero-value
+collapse is sound, for a narrower reason than the one offered), D-11.3.4, D-11.3.5, D-11.3.7, D-11.3.8,
+D-11.3.10. D-11.2.12 split the golden into Story 11.5, which is why this story ran no matrix leg and moved
+no rendered byte. D-000.30 governs how the e2e gate is stated. The frozen block was reopened after
+approval by the orchestrator to correct a false e2e claim; that edit is recorded inline in the Spec Change
+Log and is not a builder breach.
+
+**Triage.** 13 patched / 1 deferred / 5 rejected / 0 loopbacks. The review caught two things worth naming:
+the embedded-bold arm had lost its face entirely (variant asset keys were not being registered, gated now
+by the discriminant and never by key shape), and — twice in one story, recorded as D-11.3.7 — a guard
+written for a defect could not see that defect, which is why the AC2 prohibition ended up as three rules
+instead of one.
+
+**Measured gates, re-run at `6214165` for this close.** `folio-go`: **2204 pass / 2 fail / 5 skip**,
+counted from `go test -json` `Action` events; the only failures are `TestCorpusMeetsP6ExerciseFloors` and
+its `P6g_(opaque_names)` child, the mandated permanent red. `lint`: **227 pass**, four `ok`, exit 0.
+`gofmt -l` over both modules: **empty (0 bytes)**. `tsc -b --force`: exit 0. `npm test`: **64 files / 965
+tests**, all passing. `oxlint`: exit 0 with **exactly 4** `only-export-components` warnings, all
+pre-existing (two in `pdf-viewer.tsx`, two in `App.tsx`). `npm run test:e2e:compile`: exit 0 — and a green
+`test:e2e:compile` is a TYPECHECK and not coverage; the suite is exercised at EPIC BOUNDARIES, not in CI
+and not per story (D-000.30). CI runs only `test:e2e:compile`, typechecking 42 cases across 16 spec files
+without executing them; the suite is not rotten — `0c0f3e9` fixed two real e2e failures found at Epic 12's
+boundary gate. **Not run, deliberately:** the `-tags=matrix` suite (removed from this story by D-11.2.12)
+and `npm run build` (ruled out at CHECKPOINT 1).
+
+**Deferred.** One item, now **DW-246**: `TableColumnsProjection`'s four new header bold/italic members have
+no consumer, so DW-240's read-back half landed a story ahead of the control that would use it. Deliberate,
+not an oversight — 11.3 was scoped to the read-back only. **Owner: unassigned**; it needs whichever story
+adds a header weight control to the table editor, and `epics.md` names none. At close it was converted out
+of the workflow's raw `- source_spec:` block form, which is invisible to a `### DW-` census (D-11.0.2).
+
+**A standing limit, not a gap this story could close.** The `.property-toggle-unavailable` /
+`.property-unavailable` rules are witnessed by nothing that executes: jsdom parses no stylesheet, so
+deleting either rule leaves the third state visually identical with the whole suite green. The tests assert
+the toggled class, which is the only handle they have.

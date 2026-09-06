@@ -443,7 +443,7 @@ development_status:
   epic-11: in-progress
   11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: done
   11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop: done
-  11-3-the-canvas-paints-the-weight-the-engine-resolved: review
+  11-3-the-canvas-paints-the-weight-the-engine-resolved: done
   # 11.4 added 2026-09-06 by OWNER DECISION D-11.0.1, which took the fourth option over the
   # recommended triggered deferral. D-11.2.1 rules that the engine resolves a weight only to a face
   # the document explicitly NAMES and never infers one -- the only route that does not break AD-8. So
