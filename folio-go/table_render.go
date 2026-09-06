@@ -287,6 +287,14 @@ type resolvedHeaderStyle struct {
 	// background is — headerStyle.color wins over style.color.
 	inkStyle template.Style
 
+	// Story 11.2 / FR57: the header row's WEIGHT and SLOPE, cascaded in
+	// the exact spelling their siblings use. They are here rather than
+	// on resolvedBodyStyle for D-000.76's reason: headerStyle governs
+	// the header row ALONE, and the body and footer rows cascade from
+	// the table's own `style` through fontChain, unchanged.
+	bold   bool
+	italic bool
+
 	// inkField is WHICH of the two the cascade actually took, carried
 	// beside the value so a malformed colour can be located. The error
 	// site used to emit the literal "headerStyle.color/style.color",
@@ -374,6 +382,24 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 		r.inkStyle.Color, r.inkField = header.Color, "headerStyle.color"
 	case base.Color.Set:
 		r.inkStyle.Color, r.inkField = base.Color, "style.color"
+	}
+
+	// `.Set && !.Null` on BOTH arms, matching the nine siblings around
+	// them — the spelling the `color` arm above records a live defect for
+	// omitting. An explicit `headerStyle: {"bold": null}` must fall
+	// through to `style.bold`, not win with a null.
+	switch {
+	case hasHeader && header.Bold.Set && !header.Bold.Null:
+		r.bold = header.Bold.Value
+	case base.Bold.Set && !base.Bold.Null:
+		r.bold = base.Bold.Value
+	}
+
+	switch {
+	case hasHeader && header.Italic.Set && !header.Italic.Null:
+		r.italic = header.Italic.Value
+	case base.Italic.Set && !base.Italic.Null:
+		r.italic = base.Italic.Value
 	}
 
 	switch {
@@ -680,7 +706,7 @@ func collectBandTableRuns(
 		rects := make([]pagemodel.Rect, len(tbl.Columns))
 		padTop, padRight, padBottom, padLeft := paddingEdges(hs.padding)
 
-		var chain []string
+		var chain, styledChain, metricsChain []string
 		// headerCache is the cache scoped to the HEADER's chain (see
 		// fontCache.forChain): a located capability error must name the
 		// chain this label draws through, and a table's header and body
@@ -704,8 +730,17 @@ func collectBandTableRuns(
 			// there is nothing to project, and calling it first would
 			// also turn `chain` from nil into a non-nil empty slice on
 			// the way to an error return.
-			chain = chainFaceNames(entries)
+			// AC2 / FR57: the header row's own cascaded weight and slope,
+			// applied HERE. ⚠ This arm reaches chainFaceNames directly
+			// and never calls fontChain, so a resolution placed in
+			// fontChain alone would pass every text AC and silently skip
+			// every table header.
+			chain, styledChain = chainFaceNames(entries, fontStyleOf(hs.bold, hs.italic))
 			headerCache = cache.forChain(hs.fontFamily)
+			// AFTER headerCache, deliberately: the metrics list asks the
+			// cache whether each declared variant is actually supplied,
+			// so it must be the header's own scoped view of it.
+			metricsChain = metricsFaceNames(chain, styledChain, fs, headerCache)
 		}
 
 		for i, col := range tbl.Columns {
@@ -739,14 +774,14 @@ func collectBandTableRuns(
 			contentY := tableTop + padTop
 			contentH := tbl.HeaderHeight - padTop - padBottom
 
-			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, col.Label, fs, headerCache, breaksAreDrawn)
+			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, styledChain, col.Label, fs, headerCache, breaksAreDrawn)
 			if serr != nil {
 				return nil, nil, nil, serr
 			}
 			diags = append(diags, glyphDiags...)
 			totalRunes := len([]rune(col.Label))
 
-			vm, verr := chainVerticalModel(chain, hs.fontSize, hs.lineSpacing, fs, headerCache)
+			vm, verr := chainVerticalModel(metricsChain, hs.fontSize, hs.lineSpacing, fs, headerCache)
 			if verr != nil {
 				// Located: the leading model knows the chain and the
 				// resolved size but not which element declared them, so
@@ -863,12 +898,20 @@ func collectBandTableRuns(
 			// "no resolvable fontFamily" failure is the SAME message
 			// the existing font-resolution failure produces, never a
 			// third spelling (AC5's own grounds, D-000.65).
-			bodyChain, cerr := fontChain(doc, el)
+			bodyChain, bodyStyledChain, cerr := fontChain(doc, el)
 			if cerr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, cerr)
 			}
 			// The BODY's chain, scoped for the same reason headerCache is.
 			bodyCache := cache.forChain(el.Style.Value.FontFamily.Value)
+			// Every face that may draw a body or footer cell, for the
+			// same reason the header has one: the leading must never be
+			// derived from a face the glyphs did not come from.
+			bodyMetricsChain := metricsFaceNames(bodyChain, bodyStyledChain, fs, bodyCache)
+			// AC3's Warning is one per (element, distinct rune), and a
+			// table shapes a column ONCE PER ROW — so the memo has to
+			// outlive the shapeSegments call. See coalesceStyleFaceDiags.
+			var styleFaceSeen []Diagnostic
 			bodyFontSize := defaultFontSizePt
 			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
 				bodyFontSize = el.Style.Value.FontSize.Value
@@ -890,7 +933,7 @@ func collectBandTableRuns(
 			// Read off el.Style directly, beside bodyFontSize and for the
 			// same reason bs does not carry it: this ONE model serves the
 			// body rows AND the footer row.
-			vm, verr := chainVerticalModel(bodyChain, bodyFontSize, styleLineSpacing(el.Style), fs, bodyCache)
+			vm, verr := chainVerticalModel(bodyMetricsChain, bodyFontSize, styleLineSpacing(el.Style), fs, bodyCache)
 			if verr != nil {
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
 			}
@@ -958,11 +1001,11 @@ func collectBandTableRuns(
 						continue
 					}
 
-					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, bodyCache, breaksAreConsumed)
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, bodyStyledChain, boundText, fs, bodyCache, breaksAreConsumed)
 					if serr != nil {
 						return nil, nil, nil, serr
 					}
-					diags = append(diags, glyphDiags...)
+					diags = coalesceStyleFaceDiags(diags, glyphDiags, &styleFaceSeen)
 					totalRunes := len([]rune(boundText))
 
 					atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)
@@ -1209,11 +1252,11 @@ func collectBandTableRuns(
 						continue
 					}
 
-					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, boundText, fs, cache, breaksAreConsumed)
+					segs, glyphDiags, serr := shapeSegments(string(col.ID), bodyChain, bodyStyledChain, boundText, fs, cache, breaksAreConsumed)
 					if serr != nil {
 						return nil, nil, nil, serr
 					}
-					diags = append(diags, glyphDiags...)
+					diags = coalesceStyleFaceDiags(diags, glyphDiags, &styleFaceSeen)
 					totalRunes := len([]rune(boundText))
 
 					atomic := atomicSpansFor(doc.doc.UnbreakableValues, subs)

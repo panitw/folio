@@ -9610,3 +9610,33 @@ one.
 
 **See also DW-230** — the golden record is enforced record→disk and in the disk→record direction by
 nothing. A new golden added here inherits that gap until 15.2 closes it.
+
+---
+
+## Story 11.2 review deferrals (2026-09-06) — UNNUMBERED, and they need numbers
+
+These four are written in the `bmad-build` step-04 prescribed `- source_spec:` block form. **That form is
+invisible to a `### DW-` census** (239 numbered entries in this file at time of writing), which is the
+exact defect D-11.0.2 recorded when four of Story 11.1's five deferrals went unfindable. They are placed
+under their own heading rather than appended into the previous entry's body so at least they cannot be
+misread as part of DW-240. **Whoever numbers the register next should give these four real ids.**
+
+- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
+  summary: The designer's chain commands silently DESTROY declared style variants, and the canvas cannot see them at all.
+  evidence: `setFontChain`/`addFontChain` (`component_commands.go`) rebuild a whole chain from a `[]string` as `template.FaceEntry(...)`, so any `bold`/`italic`/`boldItalic` the document carried is dropped on the next chain edit; `embedFontFamily` rebuilds similarly. `CanvasFontChainEntry` (`page_setup.go:593`) projects only `face`/`assetKey`/`family`/`style`, so the panel cannot read a variant back. Story 11.2 created this data-loss path by creating variants; it is fenced out of 11.2 by the spec's Ask First (command surface = Story 11.4, projection = Story 11.3) and must be closed by whichever lands first. Found by two independent review layers.
+
+- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
+  summary: A style variant naming its own base face is accepted silently and defeats AC3's promise that a lost weight is always stated.
+  evidence: `{"face": "Roboto", "bold": "Roboto"}` (and the `{"asset":"k","bold":"k"}` form) passes every parser check and renders with no Warning, so "bold draws the regular face" is indistinguishable to the author from a working declaration — the one outcome AC3 exists to make impossible. It is also self-consistent under the current rules (declared, supplied, covers → used), so it is a ruling question rather than a defect: is a self-referential variant legal? The embedded form additionally appends two identical `FontChainSite` records for one asset key in `newEmbeddedFaceIndex`.
+
+- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
+  summary: PRE-EXISTING — the table footer row shapes through the unscoped `cache` where the body row uses the chain-scoped `bodyCache`.
+  evidence: Independently observed at HEAD before this story's changes and again by review. Per `forChain`'s own doc comment, a located capability error raised from a footer cell names whichever chain sorted first rather than the one the cell actually draws through. Not caused by Story 11.2 and deliberately left untouched by it; the two sites are adjacent in `table_render.go` and diverge only in that argument.
+
+- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
+  summary: `TableColumnsProjection` gained no header bold/italic members, so the designer can now author a header weight it cannot read back.
+  evidence: Story 11.2 widened `tableHeaderStyleFields` to nine and `resolveHeaderStyle` cascades both new fields, but `table_columns_projection.go` still carries the committed/resolved pair for only the seven pre-existing fields. Nothing ties `tableHeaderStyleFields` to the projection's member list, so no test flags the asymmetry — a write-only property. Projection changes are Ask First in 11.2's spec and belong to 11.3/11.4.
+
+- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
+  summary: PRE-EXISTING — `TEXT_MISSING_GLYPH` duplicates per table ROW, so one uncoverable rune in a column reports once per row instead of once per element.
+  evidence: Measured during Story 11.2's patch round: 5 duplicate warnings over 5 rows, because `seenMissingRunes` is local to each `shapeSegments` call and the table body site calls it per row. Story 11.2's own `TEXT_STYLE_FACE_UNDECLARED` inherited exactly this shape by copying the mandated pattern, and was fixed in-story by hoisting its memo to table scope; the shipped twin was deliberately NOT widened, because changing a shipped diagnostic's output is the adjacent-bug fix the spec's Ask First fence rules out. The asymmetry is now stated in the coalescing function's own comment with the measurement. This is the only place in `shapeSegments` where two Warnings coalesce at different scopes, which is itself the reason to close it.

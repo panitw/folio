@@ -1344,7 +1344,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 			if component == nil || component.Band != band.name {
 				return fmt.Errorf("folio: canvas text component %q is missing from geometry projection", element.ID)
 			}
-			chain, err := fontChain(t, element)
+			chain, styledChain, err := fontChain(t, element)
 			if err != nil {
 				// Existing designer documents can be structurally valid while
 				// incomplete for production rendering (for example, a text
@@ -1367,7 +1367,14 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 			if element.Style.Set && !element.Style.Null && element.Style.Value.FontSize.Set && !element.Style.Value.FontSize.Null {
 				fontSize = element.Style.Value.FontSize.Value
 			}
-			segs, _, err := shapeSegments(string(element.ID), chain, element.Value.Value, fs, cache, breaksAreConsumed)
+			// The canvas reads the SAME engine measurement the PDF does
+			// (AC6 / the Story 5.9 invariant), so it consumes the same
+			// lists: coverage on the base chain, shaping on the styled
+			// one, leading over every face that may draw. Its diagnostics
+			// channel is discarded here, exactly as every other Warning
+			// on this path is.
+			metricsChain := metricsFaceNames(chain, styledChain, fs, cache)
+			segs, _, err := shapeSegments(string(element.ID), chain, styledChain, element.Value.Value, fs, cache, breaksAreConsumed)
 			if err != nil {
 				// A CHAIN ENTRY THIS BUILD CANNOT DRAW WITH IS A DOCUMENT
 				// THE FORMAT CALLS VALID, and it degrades exactly as an
@@ -1456,7 +1463,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 			// IDENTICAL advance the renderer does, ratio included — the
 			// browser never measures text and never adjudicates what the
 			// engine measured.
-			vm, err := chainVerticalModel(chain, fontSize, styleLineSpacing(element.Style), fs, cache)
+			vm, err := chainVerticalModel(metricsChain, fontSize, styleLineSpacing(element.Style), fs, cache)
 			if err != nil {
 				return fmt.Errorf("folio: canvas text element %s: %w", element.ID, err)
 			}
@@ -1604,24 +1611,34 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 					// browser reads as "shipped, unattributed" — a
 					// quieter lie than a refusal.
 					//
-					// AND IT IS UNREACHABLE TODAY. SAID PLAINLY, SO A
-					// LATER READER DOES NOT TAKE IT FOR A PROVED GUARD.
-					// projectFontChainEntry refuses first: Canvas builds
+					// ⚠ IT WAS UNREACHABLE UNTIL STORY 11.2, AND IT IS
+					// NOT ANY MORE. This paragraph used to read "AND IT
+					// IS UNREACHABLE TODAY", on this premise:
+					// projectFontChainEntry refuses first — Canvas builds
 					// the font chains BEFORE CanvasWithTextPaint calls
 					// addCanvasTextPaint, and it refuses any chain entry
-					// whose Face exceeds this same bound. For a shipped
-					// face fragment.face IS that entry's Face — that is
-					// the whole claim above — so an over-long name has
-					// already failed the projection by the time this line
-					// runs. MEASURED, not assumed: deleting this check
-					// leaves the whole Go suite exactly as it stands —
-					// 1815 pass / 2 fail / 5 skip, the two standing reds
-					// and no third — so NO test reddens on its deletion
-					// and this check carries no mutation proof. Kept as
-					// defence in depth at a WIRE boundary — the value
-					// reaches a browser that must bound it too — and it
-					// is what would hold if the ordering above ever
-					// changed or a face reached here by another route.
+					// whose Face exceeds this same bound — and "for a
+					// shipped face fragment.face IS that entry's Face".
+					//
+					// THAT PREMISE NO LONGER HOLDS. fragment.face can now
+					// be a STYLE VARIANT's name (chainFaceNames' styled
+					// list, Story 11.2), and projectFontChainEntry bounds
+					// an entry's `face` and `asset` and NOT its variant
+					// siblings — projecting a variant into
+					// CanvasFontChainEntry is Story 11.3's call, fenced
+					// out of 11.2 by its Ask First. So an over-long
+					// VARIANT name reaches this line without having
+					// failed the projection, and this check is the thing
+					// that catches it: a live guard, no longer defence in
+					// depth. The bound is applied the way
+					// projectFontChainEntry applies it — refused with a
+					// stated reason, never silently emptied.
+					//
+					// The old paragraph's measurement (deleting the check
+					// reddened no test) was true when it was taken and is
+					// left recorded here rather than deleted, because it
+					// is what a later reader would otherwise re-derive
+					// and mis-trust. It is stale, not wrong-then.
 					shipped := ""
 					if carried == "" {
 						if len(fragment.face) > maxCanvasPropertyString {

@@ -409,13 +409,13 @@ func justifiedThaiPackedLines(t *testing.T, id string) ([]wrappedLine, []text.Op
 		t.Fatalf("parse justified-thai template: %v", err)
 	}
 	el := justifiedThaiElement(t, id)
-	chain, err := fontChain(tpl, el)
+	chain, styled, err := fontChain(tpl, el)
 	if err != nil {
 		t.Fatalf("element %s: %v", id, err)
 	}
 	value := el.Value.Value
 	fs, cache := testShippedFontSet(), newFontCache()
-	segs, _, err := shapeSegments(id, chain, value, fs, cache, breaksAreConsumed)
+	segs, _, err := shapeSegments(id, chain, styled, value, fs, cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatalf("element %s: %v", id, err)
 	}

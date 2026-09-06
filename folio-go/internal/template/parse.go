@@ -381,14 +381,86 @@ func decodeFonts(raw json.RawMessage, assets map[string]Asset) (Fonts, error) {
 	return out, nil
 }
 
+// quotedKeyList spells a key enumeration for a refusal message —
+// `"bold", "italic", "boldItalic"` — so no message hand-writes a set the
+// parser no longer enforces.
+func quotedKeyList(keys []string) string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = `"` + k + `"`
+	}
+	return strings.Join(out, ", ")
+}
+
+// fontChainEntryGrammar spells the object form's whole legal key set,
+// DERIVED from the closed enumeration in model.go rather than written
+// out here.
+//
+// Story 8.3's own note is the reason: "unpinned wording in a refusal is
+// wording that goes stale silently and sends the author to fix the one
+// thing that was not wrong." Three refusals in this function used to
+// hand-write "exactly one key, \"asset\"", and all three became false
+// the moment the key set widened. Deriving them means the set can only
+// be widened in one place.
+func fontChainEntryGrammar() string {
+	return `{"face": "<face name>"} or {"asset": "<assets key>"} — exactly one of those two — optionally carrying the style-variant siblings ` +
+		quotedKeyList(fontChainVariantKeys()) +
+		`, each naming a face of the SAME kind as the entry itself (a face name beside "face", an assets key beside "asset") and no other key`
+}
+
+// THE THREE OBJECT-SHAPE REFUSALS SAY WHICH DEFECT THIS IS. They share
+// the grammar sentence above — one authority for what is legal — and
+// each opens with the specific thing that is wrong, because "here is the
+// grammar" alone leaves an author with an unrecognised key, an author
+// with both discriminants and an author with neither reading the same
+// sentence and guessing which of the three they are. The pre-11.2
+// message was narrower but at least said "exactly one key, \"asset\"".
+//
+// Each is DERIVED from the closed enumerations, never hand-written: the
+// legal key set can only be widened in model.go, and every sentence
+// below moves with it.
+
+// noDiscriminantReason: the object names no KIND at all.
+func noDiscriminantReason() string {
+	return `a font chain entry object must name what kind of face it is: exactly one of "face" or "asset", and this object has neither` +
+		` (a sibling such as ` + quotedKeyList(fontChainVariantKeys()) + ` decorates an entry and cannot stand alone).` +
+		` The legal shape is ` + fontChainEntryGrammar() + `; a plain face name is written as a string`
+}
+
+// bothDiscriminantsReason: the object names TWO kinds at once.
+func bothDiscriminantsReason() string {
+	return `a font chain entry object must name exactly one kind of face, and this object carries BOTH "face" and "asset".` +
+		` A face the renderer supplies and a face the document carries are different faces and neither stands in for the other (AD-8).` +
+		` The legal shape is ` + fontChainEntryGrammar()
+}
+
+// unknownEntryKeyReason: the kind is clear and a key is not in the set.
+// It NAMES THE OFFENDING KEY, which is why decodeFontChainEntry visits
+// the object's keys in sorted order — an author with two unrecognised
+// keys is always sent to the same one.
+func unknownEntryKeyReason(key string) string {
+	return `"` + key + `" is not a key a font chain entry may carry. The key set is CLOSED: ` +
+		quotedKeyList(append([]string{"face", "asset"}, fontChainVariantKeys()...)) +
+		` and nothing else — an unknown key is an entry of an unknown kind, never a known entry with an unknown decoration.` +
+		` The legal shape is ` + fontChainEntryGrammar()
+}
+
 // decodeFontChainEntry decodes ONE chain entry at field, which already
 // carries the chain name and the index.
 //
 // The shape is decided from the raw JSON's first non-space byte rather
 // than by trying each decode in turn: `"` is a face name, `{` is an
-// embedded reference, and anything else is refused with BOTH legal
-// shapes named, so the message says what the author may write instead of
-// only what they may not.
+// object entry, and anything else is refused with BOTH legal shapes
+// named, so the message says what the author may write instead of only
+// what they may not.
+//
+// STORY 11.2 REPLACED "EXACTLY ONE KEY" WITH "EXACTLY ONE OF face|asset,
+// OVER A CLOSED SET". The one-key rule was the MECHANISM; the property
+// stated below — an unknown key cannot ride along disguised as a
+// decoration — is what it bought, and an exactly-one-of discriminant
+// over a closed set preserves that property exactly. Nothing here is
+// passthrough, and nothing is inferred from a face NAME: a sibling is
+// read, never parsed, and never constructed.
 func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]Asset) (FontChainEntry, error) {
 	trimmed := strings.TrimSpace(string(raw))
 	switch {
@@ -405,38 +477,113 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 	case strings.HasPrefix(trimmed, "{"):
 		entryObj, err := decodeObjectMap(raw)
 		if err != nil {
-			return FontChainEntry{}, newLoadError(field, "", trimmed, "must be an object with exactly one key, \"asset\": "+err.Error())
+			return FontChainEntry{}, newLoadError(field, "", trimmed, "must be an object of the form "+fontChainEntryGrammar()+": "+err.Error())
 		}
-		// EXACTLY {asset}, both directions. A missing `asset` and an
-		// extra key are the same defect — the object IS the entry's
-		// discriminant, so an unrecognised key in it is an entry of an
-		// unknown kind, not a known entry with an unknown decoration,
-		// and D-1.4.9's passthrough does not reach here.
-		assetRaw, ok := entryObj["asset"]
-		if !ok || len(entryObj) != 1 {
-			return FontChainEntry{}, newLoadError(field, "", trimmed,
-				"an embedded font chain entry is the object {\"asset\": \"<assets key>\"} and carries no other key; a plain face name is written as a string")
+		// EXACTLY ONE OF face|asset, BOTH DIRECTIONS, AND THE KEY SET
+		// STAYS CLOSED. A missing discriminant, both discriminants and
+		// an unrecognised key are the same defect — the object IS the
+		// entry's kind, so a key outside the closed set is an entry of
+		// an unknown kind, not a known entry with an unknown
+		// decoration, and D-1.4.9's passthrough does not reach here.
+		faceRaw, hasFace := entryObj["face"]
+		assetRaw, hasAsset := entryObj["asset"]
+		switch {
+		case hasFace && hasAsset:
+			return FontChainEntry{}, newLoadError(field, "", trimmed, bothDiscriminantsReason())
+		case !hasFace && !hasAsset:
+			return FontChainEntry{}, newLoadError(field, "", trimmed, noDiscriminantReason())
 		}
-		key, err := decodeStringRaw(assetRaw)
-		if err != nil {
-			return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must be a string: "+err.Error())
+		// SORTED, never a bare map range (AD-1 / NFR1.d): the key this
+		// refusal NAMES reaches an output, so an author with two
+		// unrecognised keys is always sent to the same one.
+		for _, key := range slices.Sorted(maps.Keys(entryObj)) {
+			if key == "face" || key == "asset" {
+				continue
+			}
+			if !slices.Contains(fontChainVariantKeys(), key) {
+				return FontChainEntry{}, newLoadError(field, "", trimmed, unknownEntryKeyReason(key))
+			}
 		}
-		if key == "" {
-			return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must name an assets key — an empty string names none")
+
+		var entry FontChainEntry
+		if hasFace {
+			face, ferr := decodeStringRaw(faceRaw)
+			if ferr != nil {
+				return FontChainEntry{}, newLoadError(field+".face", "", string(faceRaw), "must be a string naming a face the renderer supplies: "+ferr.Error())
+			}
+			if face == "" {
+				return FontChainEntry{}, newLoadError(field+".face", "", string(faceRaw), "must name a face — an empty string names none")
+			}
+			entry.Face = face
+		} else {
+			key, kerr := decodeStringRaw(assetRaw)
+			if kerr != nil {
+				return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must be a string: "+kerr.Error())
+			}
+			if key == "" {
+				return FontChainEntry{}, newLoadError(field+".asset", "", string(assetRaw), "must name an assets key — an empty string names none")
+			}
+			asset, present := assets[key]
+			if !present {
+				return FontChainEntry{}, newLoadError(field+".asset", "", key,
+					"names no entry in the document's assets map — an embedded face must be carried by the document that references it")
+			}
+			if lerr := requireEmbeddedFaceLicence(asset, key, field); lerr != nil {
+				return FontChainEntry{}, lerr
+			}
+			entry.AssetKey = key
 		}
-		asset, present := assets[key]
-		if !present {
-			return FontChainEntry{}, newLoadError(field+".asset", "", key,
-				"names no entry in the document's assets map — an embedded face must be carried by the document that references it")
+
+		// THE SIBLINGS, IN THE CLOSED SET'S OWN FIXED ORDER — so a
+		// document with two defective siblings is always refused at the
+		// same one, whatever order the file happened to write them in.
+		for _, v := range fontChainVariants {
+			sibRaw, ok := entryObj[v.key]
+			if !ok {
+				continue
+			}
+			sibField := field + "." + v.key
+			name, serr := decodeStringRaw(sibRaw)
+			if serr != nil {
+				// THE MESSAGE SAYS WHICH MEANING APPLIES HERE. `bold` is
+				// a boolean on `style` and a FACE on a chain entry, and
+				// an author who writes `"bold": true` here has reached
+				// for the other one.
+				return FontChainEntry{}, newLoadError(sibField, "", string(sibRaw),
+					"must be a string naming a face: on a font chain entry \""+v.key+"\" is the FACE drawn at that weight and slope, not a boolean — the boolean of the same name lives on style")
+			}
+			if name == "" {
+				return FontChainEntry{}, newLoadError(sibField, "", string(sibRaw), "an empty string names no face")
+			}
+			// AD-8's NAMESPACE MATCH, BOTH DIRECTIONS. A sibling of a
+			// `face` entry is a FontSet face name; a sibling of an
+			// `asset` entry is an assets key. A cross-namespace sibling
+			// is the substitution AD-8 forbids, arriving inside a single
+			// entry where no precedence rule can see it.
+			_, namesAnAsset := assets[name]
+			if entry.Embedded() {
+				if !namesAnAsset {
+					return FontChainEntry{}, newLoadError(sibField, "", name,
+						"names no entry in the document's assets map — an embedded entry's style variants are assets keys, never face names (AD-8)")
+				}
+				// AD-26 / I-7: a variant asset key IS an embedded face,
+				// so it clears the licence requirement exactly as the
+				// `asset` value does. A sibling that skipped it would
+				// let a document carry an unlicensed embedded bold.
+				if lerr := requireEmbeddedFaceLicence(assets[name], name, sibField); lerr != nil {
+					return FontChainEntry{}, lerr
+				}
+			} else if namesAnAsset {
+				return FontChainEntry{}, newLoadError(sibField, "", name,
+					"names an entry in the document's assets map — a face entry's style variants are FontSet face names, never assets keys; write the whole entry as {\"asset\": …} if the document carries these faces (AD-8)")
+			}
+			*v.field(&entry) = name
 		}
-		if err := requireEmbeddedFaceLicence(asset, key, field); err != nil {
-			return FontChainEntry{}, err
-		}
-		return AssetEntry(key), nil
+		return entry, nil
 
 	default:
 		return FontChainEntry{}, newLoadError(field, "", trimmed,
-			"a font chain entry is either a face name (a string) or an embedded face (the object {\"asset\": \"<assets key>\"})")
+			"a font chain entry is either a face name (a string) or the object "+fontChainEntryGrammar())
 	}
 }
 

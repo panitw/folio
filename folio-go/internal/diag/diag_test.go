@@ -36,6 +36,7 @@ var codePins = []struct {
 	{"CodeExpressionInvalid", CodeExpressionInvalid, "EXPRESSION_INVALID"},
 	{"CodeContentUnlayoutable", CodeContentUnlayoutable, "CONTENT_UNLAYOUTABLE"},
 	{"CodeTextMissingGlyph", CodeTextMissingGlyph, "TEXT_MISSING_GLYPH"},
+	{"CodeTextStyleFaceUndeclared", CodeTextStyleFaceUndeclared, "TEXT_STYLE_FACE_UNDECLARED"},
 	{"CodeInternalUnhandledCaveat", CodeInternalUnhandledCaveat, "INTERNAL_UNHANDLED_CAVEAT"},
 	{"CodeDocumentDateInvalid", CodeDocumentDateInvalid, "DOCUMENT_DATE_INVALID"},
 	{"CodeStyleColorInvalid", CodeStyleColorInvalid, "STYLE_COLOR_INVALID"},

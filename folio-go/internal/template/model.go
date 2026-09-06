@@ -142,38 +142,184 @@ type Padding struct {
 }
 
 // FontChainEntry is ONE entry of a fallback chain, and it has exactly
-// two shapes (Story 8.3, FR53/FR56): a face NAME the renderer is handed
-// at render time, or a reference to a face carried INSIDE the document
-// as an `assets` entry, spelled `{"asset": "<key>"}` in the file.
+// THREE shapes since Story 11.2 (Story 8.3, FR53/FR56; FR57): a face
+// NAME the renderer is handed at render time, a reference to a face
+// carried INSIDE the document as an `assets` entry (`{"asset": "<key>"}`),
+// or either of those written as an object carrying optional
+// STYLE-VARIANT SIBLINGS from the closed set `bold`, `italic`,
+// `boldItalic`.
 //
-// The two are discriminated by which field is non-empty, and exactly one
-// of them ever is — decodeFonts refuses an empty asset key and an empty
-// face alike, so `Face != ""` and `AssetKey != ""` partition the type
-// rather than merely overlapping it. Embedded() is THE predicate; a
-// caller that writes `e.AssetKey != ""` itself is writing the same test
-// a second time.
+// The two KINDS are discriminated by which of Face/AssetKey is
+// non-empty, and exactly one of them ever is — decodeFontChainEntry
+// refuses an empty asset key and an empty face alike and enforces
+// exactly-one-of at the object form, so `Face != ""` and
+// `AssetKey != ""` partition the type rather than merely overlapping
+// it. Embedded() is THE predicate; a caller that writes
+// `e.AssetKey != ""` itself is writing the same test a second time.
+//
+// THE MECHANISM CHANGED AT STORY 11.2; THE PROPERTY DID NOT. Until this
+// story the object form was EXACTLY one key, and decodeFontChainEntry
+// said in its own words what that bought: an unknown key cannot ride
+// along disguised as a decoration. That property is preserved here by an
+// exactly-one-of discriminant over a CLOSED key set — `face`|`asset`
+// plus the three siblings and nothing else — so an entry object carrying
+// any other key is still a located load error, still never passthrough,
+// and the struct still has no Extra. What is no longer true is only the
+// CARDINALITY: an entry of an unknown KIND is still refused, but a known
+// entry may now carry a known, enumerated decoration.
+//
+// THE SET IS CLOSED AND EXTENDING IT LATER IS A MAJOR CHANGE. That price
+// is the reason an open sub-object (`{"face":"X","variants":{…}}`) was
+// considered and rejected: it would have surrendered the unknown-key
+// refusal that is the whole property this shape exists to preserve.
+// folio-format.md states the closure and its price.
+//
+// A SIBLING'S NAMESPACE MATCHES ITS ENTRY'S DISCRIMINANT (AD-8). A
+// `face` entry's siblings are FontSet face names; an `asset` entry's are
+// `assets` keys. Nothing here is ever PARSED or CONSTRUCTED from a face
+// name: `Face + " Bold"` is the naming-convention weight carrier written
+// backwards, and it is forbidden on identical grounds.
 //
 // It is a struct rather than an interface or a `any` because it crosses
 // the parse/serialize/project boundary three times and every crossing
-// wants the discriminant checkable at compile time. A one-key object is
-// the file's whole shape here, so the struct has no Extra: an entry
-// object carrying any key besides `asset` is a located load error, not
-// passthrough — the object IS the discriminant, and an unknown key in it
-// would be an entry of an unknown kind, not a known entry with an
-// unknown decoration.
+// wants the discriminant checkable at compile time.
 type FontChainEntry struct {
 	// Face is the name of a face the FontSet supplies. Non-empty exactly
-	// when this entry is a plain JSON string in the file.
+	// when this entry is a plain JSON string in the file, or an object
+	// whose discriminant is `face`.
 	Face string
 	// AssetKey is the `assets` key of a face the document carries.
 	// Non-empty exactly when this entry is a `{"asset": …}` object.
 	AssetKey string
+
+	// Bold, Italic and BoldItalic are the three OPTIONAL style-variant
+	// siblings. Each names a face of the SAME KIND as this entry's
+	// discriminant — a FontSet face name on a `face` entry, an `assets`
+	// key on an `asset` entry.
+	//
+	// PLAIN STRINGS, MIRRORING Face AND AssetKey: `""` means absent, and
+	// an empty string is refused at parse, exactly as those two already
+	// work. They are deliberately NOT Presence[string]: Presence exists
+	// so an explicit JSON `null` can be told apart from an absent key,
+	// and this entry has no such three-valued key anywhere — importing
+	// the idiom here would make FontChainEntry the model's only
+	// mixed-idiom struct for no gain.
+	Bold       string
+	Italic     string
+	BoldItalic string
+}
+
+// FontStyle names the (weight, slope) a text element asks its chain for.
+// It is the CLOSED set the variant siblings answer, and it exists so the
+// engine never carries two loose booleans past the one place they are
+// read off Style.
+type FontStyle uint8
+
+const (
+	// FontStyleRegular is "no variant requested": the entry's own face.
+	FontStyleRegular FontStyle = iota
+	FontStyleBold
+	FontStyleItalic
+	FontStyleBoldItalic
+)
+
+// fontChainVariants is THE authority for the closed variant set: the
+// file's key spelling, the FontStyle it answers, and the struct field it
+// lands in, tied together in ONE table and in the FIXED ORDER every walk
+// visits them.
+//
+// Every consumer derives from this — the parser's refusal messages, the
+// serializer's sibling order, the embedded-face index's third
+// determinism axis, and the resolver's lookup — so none of them can name
+// a set the others no longer enforce.
+var fontChainVariants = []struct {
+	key   string
+	style FontStyle
+	field func(*FontChainEntry) *string
+}{
+	{"bold", FontStyleBold, func(e *FontChainEntry) *string { return &e.Bold }},
+	{"italic", FontStyleItalic, func(e *FontChainEntry) *string { return &e.Italic }},
+	{"boldItalic", FontStyleBoldItalic, func(e *FontChainEntry) *string { return &e.BoldItalic }},
+}
+
+// fontChainVariantKeys returns the closed set's keys in its fixed order.
+// It is derived, never a second list.
+func fontChainVariantKeys() []string {
+	out := make([]string, 0, len(fontChainVariants))
+	for _, v := range fontChainVariants {
+		out = append(out, v.key)
+	}
+	return out
 }
 
 // Embedded reports whether this entry names a face the document carries
 // rather than one the renderer is given. It is the ONE place the
 // discriminant is spelled.
 func (e FontChainEntry) Embedded() bool { return e.AssetKey != "" }
+
+// SerialisesAsObject reports whether this entry's file shape is an
+// OBJECT rather than a bare string.
+//
+// IT IS ONE PREDICATE WITH TWO CONSUMERS, AND THAT IS THE WHOLE POINT
+// (Story 11.2). writeFontChain decides the emitted shape with it, and
+// fontsRequireMajor decides the saved version with it. Both used to
+// spell `entry.Embedded()`, and the two agreed only because object-form
+// and embedded were the same set. The variant siblings separate them:
+// `{"face":"Roboto","bold":"Roboto Bold"}` has an empty AssetKey, so the
+// old version predicate would have stamped `1.0` on a document no 1.x
+// reader can decode — a version that lies. Sharing the predicate makes
+// disagreement unrepresentable.
+func (e FontChainEntry) SerialisesAsObject() bool {
+	if e.Embedded() {
+		return true
+	}
+	for _, v := range fontChainVariants {
+		if *v.field(&e) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// Variant returns the face name or assets key this entry declares for s,
+// or "" when it declares none. FontStyleRegular is the entry's own face,
+// which is never a variant and is answered "" here — the caller already
+// holds it.
+//
+// ABSENCE IS A FIRST-CLASS RESULT. "" means the entry declares no face
+// for that weight and slope, and the ruled answer to that is the entry's
+// OWN base face plus a Warning — never a walk down the chain hunting for
+// something bold, and never a name constructed from this one.
+func (e FontChainEntry) Variant(s FontStyle) string {
+	for _, v := range fontChainVariants {
+		if v.style == s {
+			return *v.field(&e)
+		}
+	}
+	return ""
+}
+
+// EmbeddedAssetKeys returns every `assets` key this entry names — the
+// discriminant first, then its declared style-variant siblings in the
+// closed set's FIXED ORDER. It is empty for a `face` entry, whose
+// siblings are FontSet face names and name no asset at all.
+//
+// The order is load-bearing: newEmbeddedFaceIndex walks chains in sorted
+// name order and entries in authored order, and the siblings are its
+// THIRD axis.
+func (e FontChainEntry) EmbeddedAssetKeys() []string {
+	if !e.Embedded() {
+		return nil
+	}
+	out := make([]string, 0, 1+len(fontChainVariants))
+	out = append(out, e.AssetKey)
+	for _, v := range fontChainVariants {
+		if key := *v.field(&e); key != "" {
+			out = append(out, key)
+		}
+	}
+	return out
+}
 
 // FaceEntry and AssetEntry build the two shapes. They exist so a caller
 // never writes a bare composite literal whose field choice IS the
@@ -208,15 +354,19 @@ type Fonts map[string][]FontChainEntry
 //   - folio.knownFontFamily      (component_commands.go) — the fontFamily property command
 //   - folio.defaultFontFamily    (component_commands.go) — the chain a new text element adopts
 //   - folio.canvasFontChains     (page_setup.go)         — the projected chain list
-//   - folio.fontChain            (render.go)             — a text element's chain at render
-//   - the table header-style resolver (table_render.go)  — headerStyle.fontFamily at render
+//   - folio.lookupFontChain      (render.go)             — a chain by name at render
 //
 // Each caller keeps its own message text; only the predicate is shared.
-// All five were typed on []string until Story 8.3 and are typed on
-// []FontChainEntry now; the list is re-verified rather than inherited,
-// and it is still exactly five (measured over the module at f51dd5e:
-// `grep -rn "Fonts.Chain" --include='*.go'` outside _test.go names these
-// five call sites and no sixth).
+// All of them were typed on []string until Story 8.3 and are typed on
+// []FontChainEntry now.
+//
+// ⚠ THE COUNT IS FOUR, NOT FIVE, AND HAS BEEN SINCE STORY 8.4. This
+// comment claimed five until Story 11.2 re-measured it: the fifth entry
+// it listed — "the table header-style resolver (table_render.go)" — stopped
+// being a call site when Story 8.4 routed that resolver through
+// folio.lookupFontChain, which is render.go's own site already counted
+// above. Re-measured at 3ad4ede: `grep -rn "Fonts.Chain" --include='*.go'`
+// outside _test.go names these FOUR call sites and no fifth.
 func (f Fonts) Chain(name string) ([]FontChainEntry, bool) {
 	chain, ok := f[name]
 	if !ok || len(chain) == 0 {

@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/template"
 )
 
 // theWorkedExampleTable is the table this file edits: `e2` in the content band
@@ -280,15 +282,82 @@ func TestAnUnknownHeaderStyleFieldIsRefused(t *testing.T) {
 	tpl := headerStyleFixture(t)
 	// `padding` and `border` are refused by the SAME gate as a nonsense name:
 	// the arm's closed set is the only door, and neither is in it.
-	for _, field := range []string{"paddingTop", "border", "padding", "bold", "italic", "notAField"} {
+	//
+	// ⚠ `bold` and `italic` LEFT THIS LIST AT STORY 11.2 and are in the
+	// closed set now — resolveHeaderStyle cascades both, so a header style
+	// declaring either is read by something that draws (FR57, AC2). They are
+	// asserted below instead, where a NON-BOOLEAN value for them is refused
+	// at the field itself rather than at the gate.
+	for _, field := range []string{"paddingTop", "border", "padding", "notAField"} {
 		refusalLeavesTheDocumentAlone(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"set","value":"x"}`, "table.headerStyle")
 	}
-	// And the seven that ARE in it are all reachable, so the closed set is not
+	// The two booleans take their own arm, so `"x"` is refused by the VALUE
+	// check and locates at the field — a different door from the gate above,
+	// and asserting it is what keeps the two doors distinguishable.
+	for _, field := range []string{"bold", "italic"} {
+		refusalLeavesTheDocumentAlone(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"set","value":"x"}`, "table.headerStyle."+field)
+	}
+	// And the nine that ARE in it are all reachable, so the closed set is not
 	// simply refusing everything.
 	for _, field := range tableHeaderStyleFields {
 		if err := applyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"clear"}`); err != nil {
 			t.Errorf("clearing the declared field %q was refused: %v", field, err)
 		}
+	}
+}
+
+// TestTheHeaderStyleBooleanArmActuallyStoresWhatItWasGiven is P4: the
+// two booleans Story 11.2 added to the closed set take their OWN arm
+// above the string default, and nothing observed what that arm WROTE.
+// Measured by mutation: inverting the stored value (`Value: !flag`) left
+// the whole suite green — every other assertion about them checks only
+// that the field is reachable or that a bad value is refused.
+//
+// It reads the value back out of the RE-PARSED CANONICAL BYTES rather
+// than off the in-memory template, so the assertion covers the command,
+// the serializer and the loader in one statement — and `false` is
+// asserted as well as `true`, because an arm that stored a constant
+// would satisfy either one alone.
+func TestTheHeaderStyleBooleanArmActuallyStoresWhatItWasGiven(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		value string
+		read  func(template.Style) template.Presence[bool]
+	}{
+		{"bold", "true", func(st template.Style) template.Presence[bool] { return st.Bold }},
+		{"bold", "false", func(st template.Style) template.Presence[bool] { return st.Bold }},
+		{"italic", "true", func(st template.Style) template.Presence[bool] { return st.Italic }},
+		{"italic", "false", func(st template.Style) template.Presence[bool] { return st.Italic }},
+	} {
+		t.Run(tc.field+"="+tc.value, func(t *testing.T) {
+			tpl := headerStyleFixture(t)
+			mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+tc.field+`","op":"set","value":`+tc.value+`}`)
+			reloaded, err := ParseTemplate(canonicalBytes(t, tpl))
+			if err != nil {
+				t.Fatalf("the command produced bytes that do not load: %v", err)
+			}
+			var found bool
+			for _, el := range reloaded.doc.Bands.Content.Elements {
+				if string(el.ID) != theWorkedExampleTable {
+					continue
+				}
+				found = true
+				hs := el.Table.Value.HeaderStyle
+				if !hs.Set || hs.Null {
+					t.Fatalf("the command left no headerStyle block to carry %s", tc.field)
+				}
+				got := tc.read(hs.Value)
+				if !got.Set || got.Null {
+					t.Fatalf("headerStyle.%s did not survive the round trip: %+v", tc.field, got)
+				}
+				if want := tc.value == "true"; got.Value != want {
+					t.Fatalf("headerStyle.%s round-tripped as %v, want %v — the command's own arm is storing something other than what it was given", tc.field, got.Value, want)
+				}
+			}
+			if !found {
+				t.Fatalf("fixture precondition: element %s is not in the content band, so nothing above was asserted", theWorkedExampleTable)
+			}
+		})
 	}
 }
 

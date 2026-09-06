@@ -267,7 +267,7 @@ func justifyProbeLineWithGaps(t *testing.T, gaps int) justifyProbe {
 	t.Helper()
 	fs, cache := testShippedFontSet(), newFontCache()
 	const value = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron"
-	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, value, fs, cache, breaksAreConsumed)
+	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, nil, value, fs, cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func TestJustifiedLinePiecesRemainderRule(t *testing.T) {
 func TestJustifiedLinePiecesLeavesEveryRaggedCaseAtTheStartEdge(t *testing.T) {
 	fs, cache := testShippedFontSet(), newFontCache()
 	const value = "alpha beta gamma delta epsilon zeta\neta theta iota kappa lambda mu nu xi"
-	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, value, fs, cache, breaksAreConsumed)
+	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, nil, value, fs, cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestJustifiedLastLineThatIsAlsoMandatoryBreakEndedIsRaggedByEitherCondition
 	// Ends ON a mandatory break, so the trailing-empty-line rule is
 	// exercised as well as the mid-value break.
 	const value = "alpha beta gamma delta epsilon zeta\neta theta iota kappa lambda mu nu xi\n"
-	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, value, fs, cache, breaksAreConsumed)
+	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, nil, value, fs, cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestJustifiedLastLineThatIsAlsoMandatoryBreakEndedIsRaggedByEitherCondition
 func TestJustifiedLineWithExactlyOneGapTakesTheWholeSlack(t *testing.T) {
 	fs, cache := testShippedFontSet(), newFontCache()
 	const value = "alpha beta gamma"
-	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, value, fs, cache, breaksAreConsumed)
+	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, nil, value, fs, cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,7 +735,7 @@ func TestCanvasPaintMatchesTheShippingRunPathUnderJustification(t *testing.T) {
 func TestJustifiedPieceBoundaryStraddlingAPageSlotIsALocatedError(t *testing.T) {
 	fs, cache := testShippedFontSet(), newFontCache()
 	const value = "alpha beta"
-	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, value, fs, cache, breaksAreDrawn)
+	segs, _, err := shapeSegments("e1", []string{"Noto Sans"}, nil, value, fs, cache, breaksAreDrawn)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -783,10 +783,15 @@ func collectBandTextRuns(
 		// which report it was handed. AC9 only requires that a null
 		// binding "renders as empty, and is not an error"; it does
 		// not license skipping the element's own validation.
-		chain, err := fontChain(doc, el)
+		chain, styledChain, err := fontChain(doc, el)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, err)
 		}
+		// The faces this element is actually DRAWN and MEASURED with:
+		// the styled list coalesced onto the base one, so shaping,
+		// leading and the digit table all read the same faces. Coverage
+		// below still walks `chain` — see chainFaceNames.
+		metricsChain := metricsFaceNames(chain, styledChain, fs, cache)
 		// Story 10.1: the element's ink, resolved ONCE per element and
 		// validated at render, through the module's one hex parser, so a
 		// malformed value is a located render error naming the element and
@@ -835,7 +840,7 @@ func collectBandTextRuns(
 		// runes sharing the same resolved face. Shaped ONCE here;
 		// every line below is a SLICE of these glyphs, never a
 		// re-shape of a shorter string (Story 2.4, AC10).
-		segs, glyphDiags, serr := shapeSegments(string(el.ID), chain, boundText, fs, cache, breaksAreConsumed)
+		segs, glyphDiags, serr := shapeSegments(string(el.ID), chain, styledChain, boundText, fs, cache, breaksAreConsumed)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
@@ -912,7 +917,7 @@ func collectBandTextRuns(
 		// widens the set of inputs that can reach verticalModel's two
 		// error paths. That widening is measured rather than assumed:
 		// see TestVerticalModelErrorPathsAreUnreachableThroughRender.
-		vm, serr := chainVerticalModel(chain, fontSize, styleLineSpacing(el.Style), fs, cache)
+		vm, serr := chainVerticalModel(metricsChain, fontSize, styleLineSpacing(el.Style), fs, cache)
 		if serr != nil {
 			return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, serr)
 		}
@@ -1007,7 +1012,7 @@ func collectBandTextRuns(
 		// digit identity never affects width, but substitution needs
 		// EVERY digit's CID, since any of 0-9 may be a page's own).
 		if len(slots) > 0 && len(pending) > startPending {
-			dt, dterr := digitTableRun(chain, fontSize, fs, cache)
+			dt, dterr := digitTableRun(chain, styledChain, fontSize, fs, cache)
 			if dterr != nil {
 				return nil, nil, nil, dterr
 			}
@@ -1142,18 +1147,112 @@ func lookupFontChain(doc *Template, chainName string) ([]template.FontChainEntry
 	return chain, nil
 }
 
+// fontStyleOf is THE (bold, italic) -> template.FontStyle mapping, and
+// the only place the two booleans are turned into the closed set the
+// chain answers. Two callers hold the pair — a text element's own style,
+// and a table header's cascaded one — and neither may spell the mapping
+// itself.
+func fontStyleOf(bold, italic bool) template.FontStyle {
+	switch {
+	case bold && italic:
+		return template.FontStyleBoldItalic
+	case bold:
+		return template.FontStyleBold
+	case italic:
+		return template.FontStyleItalic
+	}
+	return template.FontStyleRegular
+}
+
+// styleFontStyle reads the requested weight and slope off one resolved
+// Style. OFF IS ABSENT-OR-FALSE AND ON IS NOTHING ELSE: a Presence that
+// is unset, explicitly null, or set to false all mean "not this", which
+// is the same three-state reading every other style field here uses.
+func styleFontStyle(st template.Style) template.FontStyle {
+	return fontStyleOf(
+		st.Bold.Set && !st.Bold.Null && st.Bold.Value,
+		st.Italic.Set && !st.Italic.Null && st.Italic.Value,
+	)
+}
+
+// elementFontStyle is styleFontStyle over an element's optional style
+// block: an element with no style at all requests no variant.
+func elementFontStyle(el template.Element) template.FontStyle {
+	if !el.Style.Set || el.Style.Null {
+		return template.FontStyleRegular
+	}
+	return styleFontStyle(el.Style.Value)
+}
+
 // fontChain resolves one text element's style.fontFamily to its ordered
-// fallback chain of face names (AD-8's Rule; AC3). It does not touch
-// coverage — resolveRuneFace does that, per rune, against this chain.
-func fontChain(doc *Template, el template.Element) ([]string, error) {
+// fallback chain of face names (AD-8's Rule; AC3), together with the
+// STYLED list its own style.bold/style.italic select (FR57).
+//
+// It does not touch coverage — resolveRuneFace does that, per rune,
+// against the BASE list, and only against the base list. See
+// chainFaceNames for why the two are parallel rather than substituted.
+func fontChain(doc *Template, el template.Element) (base, styled []string, err error) {
 	if !el.Style.Set || el.Style.Null || !el.Style.Value.FontFamily.Set || el.Style.Value.FontFamily.Null {
-		return nil, fmt.Errorf("has text but no style.fontFamily to resolve a font from")
+		return nil, nil, fmt.Errorf("has text but no style.fontFamily to resolve a font from")
 	}
 	chain, err := lookupFontChain(doc, el.Style.Value.FontFamily.Value)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return chainFaceNames(chain), nil
+	base, styled = chainFaceNames(chain, elementFontStyle(el))
+	return base, styled, nil
+}
+
+// metricsFaceNames is the list chainLineMetrics walks: EVERY FACE THAT
+// MAY ACTUALLY DRAW a rune of this element, in a fixed order.
+//
+// It is a PROJECTION of chainFaceNames' two slices, never a third
+// derivation of either. A styled list of nil means no variant was
+// requested at all, and the base list is already the answer.
+//
+// ⚠ IT ADDS THE VARIANT, IT DOES NOT REPLACE THE BASE — AND THAT IS A
+// DEFECT THIS FUNCTION SHIPPED TWICE BEFORE GETTING RIGHT. It began as a
+// coalesce: `out[i] = styled[i]`. Two conditions break that, and both
+// end the same way — the leading derived from a face the glyphs did not
+// come from:
+//
+//   - THE VARIANT IS NOT SUPPLIED. faceCovers opens with cache.declares,
+//     so shaping skips it and draws the base face; an uncoalesced name
+//     left chainLineMetrics with no present face at all, and a
+//     single-entry chain ABORTED the render on a document the format
+//     calls valid.
+//   - THE VARIANT IS SUPPLIED BUT DOES NOT COVER THE RUNE. Coverage
+//     chose the entry on its BASE face, so the variant is not guaranteed
+//     to carry the glyph; shaping falls back to the base (AC3's absence
+//     arm) while a replaced list showed chainLineMetrics only the
+//     variant. No error, just wrong leading, silently.
+//
+// Both faces can draw, so both belong. That is not a widening of the
+// vertical model's rule but the plain reading of it: chainLineMetrics
+// has always walked the DECLARED chain — every member, used or not —
+// and a styled entry declares two faces rather than one.
+//
+// The order is base-then-variant per entry, stated because the model is
+// a max() that cannot observe it: an order left to chance is one a later
+// reader cannot rely on.
+// PRECONDITION: styled is nil, or len(styled) == len(base) with the same
+// order — chainFaceNames is the only producer of the pair and builds
+// them together, so this holds by construction. It is STATED rather than
+// guarded: a runtime check here would be a guard for a case no
+// acceptance criterion demonstrates, and TestTheTwoChainSlicesAreAligned
+// pins the producer instead.
+func metricsFaceNames(base, styled []string, fs FontSet, cache *fontCache) []string {
+	if styled == nil {
+		return base
+	}
+	out := make([]string, 0, 2*len(base))
+	for i := range base {
+		out = append(out, base[i])
+		if styled[i] != "" && styled[i] != base[i] && cache.declares(styled[i], fs) {
+			out = append(out, styled[i])
+		}
+	}
+	return out
 }
 
 // chainFaceNames is THE one boundary between the document's chain and
@@ -1201,28 +1300,77 @@ func fontChain(doc *Template, el template.Element) ([]string, error) {
 //	chainLineMetrics (wrap.go)         FontSet + fontCache   named before
 //	chainVerticalModel (wrap.go)       FontSet + fontCache   NOT named
 //	lineAdvance (wrap.go)              FontSet + fontCache   NOT named
-//	formatFontChain (render.go)        neither               named before
-//	missingGlyphMessage (render.go)    neither               NOT named
+//	formatFontChain (render.go)        *fontCache            named before
+//	missingGlyphMessage (render.go)    *fontCache            NOT named
 //	verticalModel (wrap.go)            neither               NOT named
 //	scaleAdvanceByLineSpacing (wrap.go) neither              NOT named
 //
+// ⚠ THE SPLIT IS 6/2/2, NOT 6/4, AND THIS TABLE WAS STALE. Story 8.4
+// gave formatFontChain and missingGlyphMessage a *fontCache of their own
+// (so an embedded entry could be spelled by display name), which moved
+// them out of the "neither" column this table used to put them in. Only
+// verticalModel and scaleAdvanceByLineSpacing take neither now.
+// Re-measured at 3ad4ede.
+//
 // None of the ten can reach a *Template, so none can reach Assets. The
-// four that take neither consume the chain for MESSAGES and vertical
-// arithmetic only — they need the names and never the bytes — and that
-// asymmetry is why Story 8.4 put the name -> bytes view behind the
-// fontCache the six already hold, instead of widening six signatures into
-// six answer sites. See embedded_face.go for the choice and the rejected
+// two that take neither consume the chain for vertical arithmetic only —
+// they need the names and never the bytes — and that asymmetry is why
+// Story 8.4 put the name -> bytes view behind the fontCache the six
+// already hold, instead of widening six signatures into six answer
+// sites. See embedded_face.go for the choice and the rejected
 // alternative.
-func chainFaceNames(chain []template.FontChainEntry) []string {
-	names := make([]string, 0, len(chain))
+//
+// ---------------------------------------------------------------------
+// STORY 11.2: TWO ALIGNED SLICES, AND WHY IT IS NOT ONE SUBSTITUTED ONE.
+//
+// base is what it always was: one name per entry, authored order. styled
+// is the SAME LENGTH AND THE SAME ORDER, holding the face the entry
+// declares for want — "" where it declares none. It is nil, entirely,
+// when want is FontStyleRegular: nothing is restyled, so there is
+// nothing to carry, and every caller's pre-11.2 behaviour is the nil
+// path unchanged.
+//
+// COVERAGE WALKS base AND ONLY base. If a bold name replaced its base
+// name BEFORE coverage ran, a variant whose cmap is narrower than its
+// base would push a rune to the NEXT ENTRY — silently changing the
+// TYPEFACE in order to keep the WEIGHT, which is precisely the
+// substitution AD-8 and D-B forbid by name. The declared variant is
+// applied WITHIN the entry coverage already chose, and the index is what
+// carries the correspondence between the two slices.
+//
+// A VARIANT IS READ, NEVER CONSTRUCTED. There is no `entry.Face + " Bold"`
+// here and there must never be one: FR57 says the mapping is "resolved
+// per rune through the DECLARED chain", so an entry that declares no
+// variant has none, however suggestively the supplied FontSet happens to
+// be named. TestABareEntryNeverConstructsAVariantName is the thing that
+// keeps this true.
+//
+// A variant's NAMESPACE follows its entry's: an embedded entry's variant
+// is an assets key and is minted into the reserved namespace exactly as
+// the entry's own key is; a face entry's variant is a FontSet name and
+// passes through verbatim. The parser has already refused the
+// cross-namespace case, so nothing here has to decide it.
+func chainFaceNames(chain []template.FontChainEntry, want template.FontStyle) (base, styled []string) {
+	base = make([]string, 0, len(chain))
+	if want != template.FontStyleRegular {
+		styled = make([]string, 0, len(chain))
+	}
 	for _, entry := range chain {
+		name := entry.Face
 		if entry.Embedded() {
-			names = append(names, embeddedFaceName(entry.AssetKey))
+			name = embeddedFaceName(entry.AssetKey)
+		}
+		base = append(base, name)
+		if want == template.FontStyleRegular {
 			continue
 		}
-		names = append(names, entry.Face)
+		variant := entry.Variant(want)
+		if variant != "" && entry.Embedded() {
+			variant = embeddedFaceName(variant)
+		}
+		styled = append(styled, variant)
 	}
-	return names
+	return base, styled
 }
 
 // fontCache parses a face's bytes into a *fontset.Font at most once per
@@ -1569,26 +1717,55 @@ func (c *fontCache) metricsFace(name string, fs FontSet) (*fontset.Font, bool, e
 // (today, only cache.get's face-parse error) that still aborts the
 // render — that is a different condition from "no coverage" and must
 // not be folded into it.
-func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (name string, found bool, err error) {
-	for _, name := range chain {
-		if !cache.declares(name, fs) {
-			continue
+//
+// ⚠ IT RETURNS THE ENTRY'S INDEX, NOT ITS NAME, SINCE STORY 11.2. The
+// index is what ties the base chain to the parallel STYLED chain
+// chainFaceNames produces beside it: the caller needs to know WHICH
+// ENTRY covered the rune, so it can apply that entry's own declared
+// variant and no other entry's. A name answers a different question, and
+// a name is one index away anyway.
+//
+// ⚠ THE COMMENT ABOVE BELONGS TO resolveRuneFace, WHICH IS BELOW
+// faceCovers — godoc attaches a comment to the declaration that FOLLOWS
+// it, so this block is deliberately not adjacent to a func line. Read it
+// with resolveRuneFace; faceCovers has its own comment.
+
+// faceCovers is the single "does this face draw this rune" test, shared
+// by resolveRuneFace's walk of the base chain and by shapeSegments'
+// styled arm — so a declared variant is checked for coverage in exactly
+// the way a base face is, and the FontSet tolerance is asked once rather
+// than spelled twice.
+func faceCovers(name string, r rune, fs FontSet, cache *fontCache) (bool, error) {
+	if !cache.declares(name, fs) {
+		return false, nil
+	}
+	// Story 8.4: THIS is "something must actually draw from that
+	// entry". An embedded entry whose asset is not a font this build
+	// can read fails HERE, located, rather than at load (D-1.8.1 as
+	// amended keeps load accepting it) and rather than never
+	// (DW-83). An entry the chain never reaches for any rune is
+	// never decoded and never complains.
+	f, err := cache.get(name, fs)
+	if err != nil {
+		return false, err
+	}
+	return f.HasGlyph(r), nil
+}
+
+// resolveRuneFace: see the long comment above faceCovers, which is this
+// function's — AC4's coverage walk, returning the INDEX of the first
+// entry whose face draws r.
+func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (index int, found bool, err error) {
+	for i, name := range chain {
+		covers, cerr := faceCovers(name, r, fs, cache)
+		if cerr != nil {
+			return 0, false, cerr
 		}
-		// Story 8.4: THIS is "something must actually draw from that
-		// entry". An embedded entry whose asset is not a font this build
-		// can read fails HERE, located, rather than at load (D-1.8.1 as
-		// amended keeps load accepting it) and rather than never
-		// (DW-83). An entry the chain never reaches for any rune is
-		// never decoded and never complains.
-		f, ferr := cache.get(name, fs)
-		if ferr != nil {
-			return "", false, ferr
-		}
-		if f.HasGlyph(r) {
-			return name, true, nil
+		if covers {
+			return i, true, nil
 		}
 	}
-	return "", false, nil
+	return 0, false, nil
 }
 
 // formatFontChain renders chain as AD-8's Rule names it for a human
@@ -1613,15 +1790,30 @@ func resolveRuneFace(chain []string, r rune, fs FontSet, cache *fontCache) (name
 func formatFontChain(chain []string, cache *fontCache) string {
 	out := make([]string, len(chain))
 	for i, name := range chain {
-		out[i] = name
-		if cache == nil {
-			continue
-		}
-		if src, ok := cache.embedded.source(name); ok {
-			out[i] = src.displayName()
-		}
+		out[i] = faceDisplayName(name, cache)
 	}
 	return "[" + strings.Join(out, ", ") + "]"
+}
+
+// faceDisplayName spells ONE face name the way a person reads it, and it
+// is the rule formatFontChain has always applied, lifted out so a
+// diagnostic naming a single face applies the identical rule rather than
+// a second copy of it (Story 11.2's AC3 Warning names one face, not a
+// chain).
+//
+// A carried face's render-path name is "asset:" plus 64 hex characters;
+// printed verbatim in a diagnostic it reads as though the author
+// mistyped a font name. cache may be nil, and then every name is printed
+// verbatim — a caller with no cache has no document behind the chain
+// either, so there is no embedded entry in it to spell.
+func faceDisplayName(name string, cache *fontCache) string {
+	if cache == nil {
+		return name
+	}
+	if src, ok := cache.embedded.source(name); ok {
+		return src.displayName()
+	}
+	return name
 }
 
 // missingGlyphMessage is the one construction site for FR41's fifth
@@ -1634,6 +1826,75 @@ func missingGlyphMessage(elementID string, r rune, chain []string, cache *fontCa
 		"no face in chain %s covers %U (%c) in element %s — the rune is omitted from the rendered output (no glyph, no advance); "+
 			"it is not substituted or drawn as a blank box (AD-8)",
 		formatFontChain(chain, cache), r, r, elementID,
+	)
+}
+
+// coalesceStyleFaceDiags appends src to dst, dropping any AC3
+// style-fallback Warning already recorded in seen and recording the ones
+// it keeps.
+//
+// WHY IT EXISTS: shapeSegments coalesces to one Diagnostic per (element,
+// distinct rune) WITHIN ONE CALL, which is the whole story for a text
+// element — it is shaped once. A TABLE shapes a column ONCE PER ROW, so
+// a five-hundred-row table would report the same column's same rune five
+// hundred times, and the rule the spec states is per (element, distinct
+// rune), not per (element, rune, row). This is where the memo outlives
+// the call.
+//
+// The identity compared is the WHOLE Diagnostic, not a key derived from
+// it: the message is a pure function of (element, rune, face), so two
+// equal Diagnostics ARE the same (element, distinct rune) and there is
+// no key to get wrong. A SLICE with a linear scan, never a map — AD-1
+// forbids map iteration where order can reach an output, and the
+// population is the distinct fallback runes of one table's columns.
+//
+// ⚠ IT IS SCOPED TO THIS STORY'S CODE, AND THAT ASYMMETRY IS DELIBERATE
+// AND REPORTED. TEXT_MISSING_GLYPH has the identical per-row duplication
+// (measured: five rows of one uncovered rune produce five Warnings), and
+// it is SHIPPED behaviour that predates this story. Widening this to
+// cover it would change a shipped diagnostic's output, which is the
+// adjacent-bug fix this story's scope fence rules out; it is registered
+// instead.
+func coalesceStyleFaceDiags(dst, src []Diagnostic, seen *[]Diagnostic) []Diagnostic {
+	for _, d := range src {
+		if d.Code == DiagCodeTextStyleFaceUndeclared {
+			already := false
+			for _, s := range *seen {
+				if s == d {
+					already = true
+					break
+				}
+			}
+			if already {
+				continue
+			}
+			*seen = append(*seen, d)
+		}
+		dst = append(dst, d)
+	}
+	return dst
+}
+
+// styleFaceUndeclaredMessage is the one construction site for Story
+// 11.2's AC3 Warning: the element, the rune (as U+XXXX and as itself),
+// and THE FACE THE RUNE WAS ACTUALLY DRAWN IN.
+//
+// It names one FACE where missingGlyphMessage names the whole chain, and
+// the difference is the whole reason this is a separate code rather than
+// a reuse of TEXT_MISSING_GLYPH: that one means the rune was DROPPED,
+// this one means the rune was drawn at the WRONG WEIGHT. Naming the face
+// is what tells the author which chain entry to give a variant to.
+//
+// It says the entry's own base face was used and that no bold or oblique
+// was synthesized, because "nothing was drawn in the weight you asked
+// for" is only actionable when the reader can see what WAS drawn and
+// knows the engine did not invent a substitute (I-2).
+func styleFaceUndeclaredMessage(elementID string, r rune, face string, cache *fontCache) string {
+	return fmt.Sprintf(
+		"the font chain entry covering %U (%c) in element %s declares no face for the requested weight and slope, "+
+			"so the rune is drawn in that entry's own base face %s — no bold or oblique is synthesized, and no other entry "+
+			"in the chain is substituted for it (FR57, AD-8)",
+		r, r, elementID, faceDisplayName(face, cache),
 	)
 }
 
@@ -1689,7 +1950,30 @@ const (
 // positionSegments — all of which count rune positions against the
 // ORIGINAL elementText, via totalRunes) never silently renumbers a
 // later rune's position because an earlier one was dropped.
-func shapeSegments(elementID string, chain []string, elementText string, fs FontSet, cache *fontCache, breaks lineBreakHandling) ([]faceSegment, []Diagnostic, error) {
+//
+// STORY 11.2 ADDED THE styled SLICE, AND IT IS NOT A SECOND CHAIN. It is
+// chainFaceNames' parallel list: same length, same order, "" where the
+// entry declares no face for the requested weight and slope, and nil
+// entirely when no variant was requested at all. COVERAGE STILL WALKS
+// chain — never styled — and the variant is then applied WITHIN the
+// entry coverage chose. Substituting into chain would let a narrow
+// variant push a rune to the next entry and change its typeface to keep
+// its weight, which is the substitution AD-8 forbids.
+//
+// THE ABSENCE ARM IS AC3's, AND IT IS EMITTED HERE FOR ONE REASON: this
+// is the innermost function that holds an ELEMENT ID, so the Warning
+// costs no plumbing, and a hidden element's diagnostics are already
+// discarded upstream. Two conditions reach it and both are "absence":
+// the entry declares no variant, and the declared variant does not cover
+// this rune. Neither invents a second fallback policy — both draw the
+// entry's OWN base face.
+//
+// PRECONDITION: styled is nil, or len(styled) == len(chain) with the
+// same order, so styled[i] is entry i's declared variant. chainFaceNames
+// is the pair's only producer and builds them together; the alignment is
+// STATED rather than guarded, and pinned at the producer by
+// TestTheTwoChainSlicesAreAligned.
+func shapeSegments(elementID string, chain, styled []string, elementText string, fs FontSet, cache *fontCache, breaks lineBreakHandling) ([]faceSegment, []Diagnostic, error) {
 	type segment struct {
 		face    string
 		runes   []rune
@@ -1707,10 +1991,58 @@ func shapeSegments(elementID string, chain []string, elementText string, fs Font
 	// element's text, which is tiny, so the linear scan costs nothing
 	// that matters. First-occurrence position determines order.
 	var seenMissingRunes []rune
+	// seenStyleFallbackRunes is AC3's coalescing, in the identical shape
+	// and for the identical reason — a separate slice because the two
+	// conditions are different Diagnostics about different runes, and one
+	// shared slice would let a dropped rune silence a mis-weighted one.
+	var seenStyleFallbackRunes []rune
 	for _, r := range elementText {
-		face, found, err := resolveRuneFace(chain, r, fs, cache)
+		index, found, err := resolveRuneFace(chain, r, fs, cache)
 		if err != nil {
 			return nil, nil, err
+		}
+		var face string
+		if found {
+			face = chain[index]
+			if styled != nil {
+				variant := styled[index]
+				if variant != "" {
+					// THE VARIANT MAY NOT COVER THE RUNE. Coverage chose
+					// this entry on its BASE face, so the declared
+					// variant is not guaranteed to carry the glyph.
+					// Treat that as absence too: the entry's own base
+					// face, and the same Warning — one policy on every
+					// path, rather than a second fallback invented for
+					// this case.
+					covers, cerr := faceCovers(variant, r, fs, cache)
+					if cerr != nil {
+						return nil, nil, cerr
+					}
+					if covers {
+						face = variant
+					} else {
+						variant = ""
+					}
+				}
+				if variant == "" {
+					alreadySeen := false
+					for _, sr := range seenStyleFallbackRunes {
+						if sr == r {
+							alreadySeen = true
+							break
+						}
+					}
+					if !alreadySeen {
+						seenStyleFallbackRunes = append(seenStyleFallbackRunes, r)
+						diags = append(diags, Diagnostic{
+							Severity:  SeverityWarning,
+							Code:      DiagCodeTextStyleFaceUndeclared,
+							ElementID: elementID,
+							Message:   styleFaceUndeclaredMessage(elementID, r, face, cache),
+						})
+					}
+				}
+			}
 		}
 		if !found {
 			// A LINE FEED IS NOT A COVERAGE FAILURE — ON A CALLER

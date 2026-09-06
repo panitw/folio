@@ -176,6 +176,33 @@ const DiagCodeEmptyAverage = string(diag.CodeEmptyAverage)
 // breaking change"): once shipped, this string's meaning is permanent.
 const DiagCodeTextMissingGlyph = string(diag.CodeTextMissingGlyph)
 
+// DiagCodeTextStyleFaceUndeclared names Story 11.2's absence arm (FR57):
+// an element declared style.bold, style.italic or both, and the chain
+// entry that COVERS the rune declares no face for that weight and slope.
+//
+// The rune is drawn in THAT ENTRY'S OWN BASE FACE. It is never taken
+// from a later entry in the chain — losing the weight is a smaller lie
+// than changing the typeface, and walking the chain for weight is the
+// substitution AD-8 forbids — and it is never synthetically emboldened
+// or obliqued (I-2: the engine synthesizes neither, anywhere). So the
+// page is right in typeface and wrong in weight, and this Warning is the
+// SOLE record of the difference: it names the element id, the rune (as
+// U+XXXX and its literal form) and the face actually drawn, because
+// naming the face is what tells the author which chain entry to give a
+// variant to.
+//
+// A face name is never inferred: an entry naming "Roboto" with no
+// declared variant renders Roboto Regular and warns even when the
+// supplied FontSet does contain "Roboto Bold" (FR57: "resolved per rune
+// through the DECLARED chain").
+//
+// It travels on the EXISTING Result.Diagnostics channel, never on
+// D-3.6.3's error type — the render succeeds.
+//
+// Additive only (AD-14, verbatim: "changing a code's meaning is a
+// breaking change"): once shipped, this string's meaning is permanent.
+const DiagCodeTextStyleFaceUndeclared = string(diag.CodeTextStyleFaceUndeclared)
+
 // DiagCodeTableFooterSourceUnresolved and DiagCodeTableFooterSourceForbidden
 // are DW-6's two long-owed codes (D-1.4.2, R8), minted here now that
 // internal/diag exists and both conditions ship (R5, D-000.65: mint

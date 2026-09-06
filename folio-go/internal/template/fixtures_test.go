@@ -251,11 +251,20 @@ var minimalEscapeTrapFixture = []byte("{\n  \"assets\": {},\n  \"bands\": {\n   
 // real face would add ~47 KB to a test fixture to prove nothing this
 // one does not.
 //
-// It is NOT referenced by a chain entry, deliberately: this fixture
-// declares version 1.2, and an embedded-face ENTRY would require 2.0
-// (Story 8.3). That an unreferenced font asset does NOT raise the
-// version is itself the rule (D-1.4.13), and it is asserted directly in
-// linespacing_test.go rather than resting on this fixture.
+// It is NOT referenced by a chain entry, deliberately. That an
+// unreferenced font asset does NOT raise the version is itself the rule
+// (D-1.4.13), and it is asserted directly in linespacing_test.go rather
+// than resting on this fixture.
+//
+// ⚠ THE FIXTURE DECLARES 2.0 SINCE STORY 11.2, AND ITS CHAIN IS WHY. The
+// story added two genuinely new serialized keys — `face` and
+// `boldItalic` — so the middle chain entry is written in the OBJECT form
+// that carries them, and an object-form entry raises the document to 2.0
+// exactly as an embedded-face entry does (version.go's fontsRequireMajor
+// reads one shared predicate for both). The version moved with the
+// fixture's own content, which is the rule this file demonstrates rather
+// than an exception to it. The unreferenced font asset above is still
+// unreferenced and still raises nothing on its own.
 var maximalFixture = []byte(`{
   "assets": {
     "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078": {
@@ -424,7 +433,12 @@ var maximalFixture = []byte(`{
   "fonts": {
     "body": [
       "Noto Sans",
-      "Noto Sans Thai",
+      {
+        "bold": "Noto Sans Thai Bold",
+        "boldItalic": "Noto Sans Thai Bold Italic",
+        "face": "Noto Sans Thai",
+        "italic": "Noto Sans Thai Italic"
+      },
       "Noto Sans SC"
     ]
   },
@@ -444,7 +458,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "1.2"
+  "version": "2.0"
 }
 `)
 

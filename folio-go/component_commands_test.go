@@ -198,9 +198,77 @@ func TestPlacedImageStartsEmptyAndSurvivesTheRoundTripAndRender(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a document with an empty image box did not render: %v", err)
 	}
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("empty image box reported diagnostics: %#v", result.Diagnostics)
+	// ⚠ THIS EXPECTATION MOVED AT STORY 11.2, AND IT MOVED FOR A REASON
+	// THAT IS NOT ABOUT IMAGES. `worked-example.json` — the fixture
+	// componentTemplate builds from — declares `style.bold` on element
+	// `e1`, against a `body` chain of bare face names that declares no
+	// bold variant. Until Story 11.2 `style.bold` was read by nothing
+	// that draws, so the render said nothing about it. It is read now,
+	// and an entry with no declared variant renders in its own base face
+	// and SAYS SO — one TEXT_STYLE_FACE_UNDECLARED Warning per distinct
+	// rune of that element (FR57, AC3).
+	//
+	// So the assertion is narrowed rather than deleted: this test is
+	// about an unfilled image box, and what it must still prove is that
+	// the EMPTY BOX contributes nothing. Every diagnostic present must be
+	// the pre-existing bold condition on e1; a diagnostic from any other
+	// element, or of any other code, is the failure this line was written
+	// to catch and still catches.
+	for _, d := range result.Diagnostics {
+		if d.Code == DiagCodeTextStyleFaceUndeclared && d.ElementID == "e1" {
+			continue
+		}
+		t.Fatalf("empty image box reported diagnostics beyond e1's declared-bold Warning: %#v", result.Diagnostics)
 	}
+	// THE EXACT COUNT, not merely "some". AC3 coalesces to one Warning
+	// per (element, DISTINCT RUNE), so e1's own text fixes this number —
+	// and asserting only "more than zero" would let a duplicate-warning
+	// regression (one per occurrence, or one per row) pass here.
+	// Re-derived from the fixture rather than written down, so it moves
+	// with the fixture's text and not with a maintainer's memory.
+	wantWarnings := 0
+	seen := map[rune]bool{}
+	for _, r := range workedExampleElementText(t, "e1") {
+		if !seen[r] {
+			seen[r] = true
+			wantWarnings++
+		}
+	}
+	if wantWarnings == 0 {
+		t.Fatal("fixture precondition: element e1 has no text, so it can earn no Warning and the assertion above proves nothing")
+	}
+	if len(result.Diagnostics) != wantWarnings {
+		t.Fatalf("empty image box render reported %d diagnostics, want exactly %d — one per distinct rune of e1's bold text, never one per occurrence: %#v",
+			len(result.Diagnostics), wantWarnings, result.Diagnostics)
+	}
+}
+
+// workedExampleElementText reads one element's authored `value` out of
+// the golden source, so the expected Warning count above is DERIVED from
+// the fixture rather than pinned to a number that goes stale silently.
+func workedExampleElementText(t *testing.T, id string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "template", "golden", "worked-example.json"))
+	if err != nil {
+		t.Fatalf("read golden source: %v", err)
+	}
+	tpl, err := ParseTemplate(b)
+	if err != nil {
+		t.Fatalf("parse golden source: %v", err)
+	}
+	for _, band := range []([]template.Element){
+		tpl.doc.Bands.PageHeader.Elements,
+		tpl.doc.Bands.Content.Elements,
+		tpl.doc.Bands.PageFooter.Elements,
+	} {
+		for _, el := range band {
+			if string(el.ID) == id {
+				return el.Value.Value
+			}
+		}
+	}
+	t.Fatalf("fixture precondition: worked-example.json has no element %q", id)
+	return ""
 }
 
 func TestBindComponentScalarPreservesDecodedSegmentsAndRejectsTypedBindings(t *testing.T) {

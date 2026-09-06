@@ -88,7 +88,7 @@ func shapedRunFromCommittedFixture(t *testing.T, fixtureDir, elementID string) f
 		t.Fatalf("presence precondition: fixtures/%s/input.folio has no content element %q — the transfer names it, so its absence makes every assertion below vacuous", fixtureDir, elementID)
 	}
 
-	chain, err := fontChain(tpl, el)
+	chain, styled, err := fontChain(tpl, el)
 	if err != nil {
 		t.Fatalf("fixtures/%s element %s: font chain: %v", fixtureDir, elementID, err)
 	}
@@ -96,7 +96,7 @@ func shapedRunFromCommittedFixture(t *testing.T, fixtureDir, elementID string) f
 	// face out of the document, and a cache that could not see the document
 	// would silently skip the carried entry and shape nothing.
 	cache := newDocumentFontCache(tpl).forChain(el.Style.Value.FontFamily.Value)
-	segs, diags, err := shapeSegments(elementID, chain, el.Value.Value, testShippedFontSet(), cache, breaksAreConsumed)
+	segs, diags, err := shapeSegments(elementID, chain, styled, el.Value.Value, testShippedFontSet(), cache, breaksAreConsumed)
 	if err != nil {
 		t.Fatalf("fixtures/%s element %s: shapeSegments: %v", fixtureDir, elementID, err)
 	}

@@ -32,6 +32,7 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeTextClippedWidth", DiagCodeTextClippedWidth, "TEXT_CLIPPED_WIDTH"},
 	{"DiagCodeEmptyAverage", DiagCodeEmptyAverage, "AGGREGATE_EMPTY_AVERAGE"},
 	{"DiagCodeTextMissingGlyph", DiagCodeTextMissingGlyph, "TEXT_MISSING_GLYPH"},
+	{"DiagCodeTextStyleFaceUndeclared", DiagCodeTextStyleFaceUndeclared, "TEXT_STYLE_FACE_UNDECLARED"},
 	{"DiagCodeTableFooterSourceUnresolved", DiagCodeTableFooterSourceUnresolved, "TABLE_FOOTER_SOURCE_UNRESOLVED"},
 	{"DiagCodeTableFooterSourceForbidden", DiagCodeTableFooterSourceForbidden, "TABLE_FOOTER_SOURCE_FORBIDDEN"},
 	{"DiagCodeTemplateMalformed", DiagCodeTemplateMalformed, "TEMPLATE_MALFORMED"},

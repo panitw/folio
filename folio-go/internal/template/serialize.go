@@ -201,6 +201,12 @@ func writeFonts(dst []byte, depth int, f Fonts) []byte {
 // population that proves it (22 of them when Story 8.3 measured this;
 // 23 since Story 8.4, which added the one fixture that HAS an embedded
 // entry, and moved no other).
+//
+// STORY 11.2's AC5 LIVES IN THAT BARE-STRING BRANCH. An entry declaring
+// no style variant still serialises as a bare string, so a document that
+// declares neither bold nor italic moves not one byte and keeps its
+// version — which is why the object-form decision is made by the SHARED
+// predicate below and never by "does this entry carry anything new".
 func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
 	if len(chain) == 0 {
 		return append(dst, "[]"...)
@@ -212,8 +218,42 @@ func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
 		}
 		dst = append(dst, '\n')
 		dst = appendIndent(dst, depth+1)
-		if entry.Embedded() {
-			dst = writeObject(dst, depth+1, []kv{{"asset", writeString(entry.AssetKey)}})
+		if entry.SerialisesAsObject() {
+			// THE SHARED PREDICATE, NOT `Embedded()`. version.go's
+			// fontsRequireMajor asks the identical question of the
+			// identical value, and the two agreed only while object-form
+			// and embedded were the same set. See
+			// FontChainEntry.SerialisesAsObject.
+			fields := make([]kv, 0, 1+len(fontChainVariants))
+			if entry.Embedded() {
+				fields = append(fields, kv{"asset", writeString(entry.AssetKey)})
+			} else {
+				fields = append(fields, kv{"face", writeString(entry.Face)})
+			}
+			// THE SIBLINGS IN THE CLOSED SET'S FIXED ORDER. writeObject
+			// sorts byte-wise, so emission order is deterministic
+			// whatever this loop does — the order is stated anyway so
+			// the rule does not depend on a property of the emitter.
+			//
+			// ⚠ SPELLED AS THREE LITERAL kv{"key", …} PAIRS, ON PURPOSE.
+			// drift_test.go's extractGoKeys reads this file's kv
+			// composite literals for the key names the serializer can
+			// emit, and a key held in a loop variable is invisible to it
+			// — the emitted byte would then appear in the runtime half
+			// of TestDriftASTMatchesRuntimeEmission and in neither the
+			// AST half nor folio-format.md's drift guard. The closed set
+			// lives in model.go; these three lines are its emission, and
+			// the targeted enumeration test pins that they agree.
+			if entry.Bold != "" {
+				fields = append(fields, kv{"bold", writeString(entry.Bold)})
+			}
+			if entry.Italic != "" {
+				fields = append(fields, kv{"italic", writeString(entry.Italic)})
+			}
+			if entry.BoldItalic != "" {
+				fields = append(fields, kv{"boldItalic", writeString(entry.BoldItalic)})
+			}
+			dst = writeObject(dst, depth+1, fields)
 			continue
 		}
 		dst = appendJSONString(dst, entry.Face)

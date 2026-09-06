@@ -248,6 +248,24 @@ func (x embeddedFaceIndex) source(name string) (embeddedFaceSource, bool) {
 // visited in SORTED NAME order and entries in the document's authored
 // order, so both the fallback address and the sequence-collision tie-break
 // are independent of map order.
+//
+// ⚠ SINCE STORY 11.2 THE SIBLINGS ARE A THIRD AXIS, and they are visited
+// in the closed variant set's own FIXED ORDER — that is what
+// FontChainEntry.EmbeddedAssetKeys returns, discriminant first. This
+// walk used to read `entry.AssetKey` alone, which was the SECOND MINT
+// SITE for the reserved namespace and would have FAILED on a variant
+// key: the variant's minted name would be absent from the index,
+// cache.declares would answer false, faceCovers would report no
+// coverage, and the render would fall back to the entry's base face.
+//
+// ⚠ NOT SILENTLY — an earlier draft of this comment said so and it was
+// WRONG. That fall-back is AC3's absence arm, so it emits a
+// TEXT_STYLE_FACE_UNDECLARED Warning naming the element, the rune and
+// the base face. The defect is real and worse than a missing diagnostic
+// in one respect: the document DOES carry the bold face, states its
+// terms and names it correctly, and the page would come out at the wrong
+// weight while a Warning told the author their chain declared no bold.
+// The face is derived from the entry now, not re-walked here.
 func newEmbeddedFaceIndex(t *Template) embeddedFaceIndex {
 	index := embeddedFaceIndex{}
 	if t == nil || t.doc == nil {
@@ -256,21 +274,20 @@ func newEmbeddedFaceIndex(t *Template) embeddedFaceIndex {
 	chainNames := slices.Sorted(maps.Keys(t.doc.Fonts)) // sorted: deterministic addresses.
 	for _, chainName := range chainNames {
 		for i, entry := range t.doc.Fonts[chainName] {
-			if !entry.Embedded() {
-				continue
+			for _, assetKey := range entry.EmbeddedAssetKeys() {
+				name := embeddedFaceName(assetKey)
+				src, seen := index[name]
+				if !seen {
+					asset, present := t.doc.Assets[assetKey]
+					src = embeddedFaceSource{assetKey: assetKey, asset: asset, present: present}
+				}
+				src.sites = append(src.sites, template.FontChainSite{
+					AssetKey:   assetKey,
+					ChainName:  chainName,
+					EntryIndex: i,
+				})
+				index[name] = src
 			}
-			name := embeddedFaceName(entry.AssetKey)
-			src, seen := index[name]
-			if !seen {
-				asset, present := t.doc.Assets[entry.AssetKey]
-				src = embeddedFaceSource{assetKey: entry.AssetKey, asset: asset, present: present}
-			}
-			src.sites = append(src.sites, template.FontChainSite{
-				AssetKey:   entry.AssetKey,
-				ChainName:  chainName,
-				EntryIndex: i,
-			})
-			index[name] = src
 		}
 	}
 	return index

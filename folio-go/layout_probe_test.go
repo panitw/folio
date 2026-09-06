@@ -72,7 +72,7 @@ func elementLayouts(t *testing.T, tpl *Template, dataJSON string) []elementLayou
 			if boundText == "" {
 				continue
 			}
-			chain, cerr := fontChain(tpl, el)
+			chain, styled, cerr := fontChain(tpl, el)
 			if cerr != nil {
 				t.Fatalf("fontChain %s: %v", el.ID, cerr)
 			}
@@ -80,7 +80,7 @@ func elementLayouts(t *testing.T, tpl *Template, dataJSON string) []elementLayou
 			if el.Style.Set && !el.Style.Null && el.Style.Value.FontSize.Set && !el.Style.Value.FontSize.Null {
 				fontSize = el.Style.Value.FontSize.Value
 			}
-			segs, _, serr := shapeSegments(string(el.ID), chain, boundText, fs, cache, breaksAreConsumed)
+			segs, _, serr := shapeSegments(string(el.ID), chain, styled, boundText, fs, cache, breaksAreConsumed)
 			if serr != nil {
 				t.Fatalf("shapeSegments %s: %v", el.ID, serr)
 			}

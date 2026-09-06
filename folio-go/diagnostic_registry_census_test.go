@@ -175,6 +175,49 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			}
 			return result
 		},
+		diag.CodeTextStyleFaceUndeclared: func(t *testing.T) Result {
+			// Story 11.2, FR57. A REAL production trigger, not a
+			// constructed Diagnostic: the worked example's element `e1`
+			// declares `style.bold`, and its `body` chain is three bare
+			// face names that declare no bold variant — so every rune of
+			// it renders in its own base face and says so.
+			source := roundTripGoldenSource(t)
+			if !strings.Contains(source, `"bold": true`) {
+				t.Fatal("fixture precondition: worked-example.json declares no style.bold, so this trigger would exercise nothing")
+			}
+			// AND THE CHAIN MUST DECLARE NO VARIANT, or the trigger
+			// passes for the wrong reason — a chain that HAS a bold face
+			// resolves it and emits nothing. An object-form entry is the
+			// only way a chain can carry one, and an object-form entry is
+			// the only `{` inside the fonts block.
+			// GUARD THE SLICE, not only the fixture. This trigger checks
+			// a precondition ABOUT worked-example.json's content and then
+			// parses that content by hand; an unguarded strings.Index
+			// would index from -1 and panic, taking the whole test binary
+			// down and hiding every other census failure with it.
+			open := strings.Index(source, `"fonts": {`)
+			if open < 0 {
+				t.Fatal("fixture precondition: worked-example.json has no `\"fonts\": {` block, so this trigger cannot check that the chain declares no variant")
+			}
+			fontsBlock := source[open+len(`"fonts": {`):]
+			close := strings.Index(fontsBlock, "\n  \"")
+			if close < 0 {
+				t.Fatal("fixture precondition: worked-example.json's fonts block is not followed by another top-level key, so its extent cannot be bounded")
+			}
+			fontsBlock = fontsBlock[:close]
+			if strings.Contains(fontsBlock, "{") {
+				t.Fatalf("fixture precondition: worked-example.json's fonts block now carries an object-form entry, so the absence arm may not be reached:\n%s", fontsBlock)
+			}
+			tpl, err := ParseTemplate([]byte(source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := Render(tpl, Data(`{"customer":{"name":"Ada"},"transactions":[{"date":"2026-08-29","amount":1}]}`), Params(`{}`), testShippedFontSet())
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result
+		},
 		diag.CodeInternalUnhandledCaveat: func(t *testing.T) Result {
 			return Result{Bytes: []byte("mapped"), Diagnostics: []Diagnostic{diagnosticFromCaveat("e1", expr.Caveat{Kind: expr.CaveatKind(255), Path: "future.path"})}}
 		},

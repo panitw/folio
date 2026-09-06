@@ -110,6 +110,17 @@ var testShippedRobotoBoldItalic []byte
 //go:embed fonts/notosansthai/LICENSE-OFL.txt
 var testShippedNotoSansThaiLicence string
 
+// testShippedNotoSansThaiBoldLicence is the SAME need one story later:
+// Story 11.2's embedded-variant render test carries the Bold cut as a
+// SECOND embedded face, and an asset a chain names — as a discriminant
+// or as a style variant — must state its terms (AD-26 / I-7). Read from
+// the file committed beside that face rather than reused from the
+// Regular's, so the document states the terms of the bytes it actually
+// carries.
+//
+//go:embed fonts/notosansthai-bold/LICENSE-OFL.txt
+var testShippedNotoSansThaiBoldLicence string
+
 // testShippedFontSet returns the same (name -> bytes) pairs
 // `fonts.Shipped()` returns, built from the test-local embeds above so
 // this package's own white-box test files never import `fonts` (see

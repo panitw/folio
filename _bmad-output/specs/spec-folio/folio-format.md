@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below) **or any chain in `fonts` declares an embedded-face entry** (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and saving raises it to the **highest** requirement the document actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -192,7 +192,7 @@ references a key of this object, never a face name directly — so a chain is de
 reused, and the chain is part of the render's identity (AD-8). A glyph covered by no face in the
 chain produces a diagnostic naming the element and the rune; it is never silently blank.
 
-**A chain entry has exactly two legal shapes**, and they may be mixed in one chain, in any order:
+**A chain entry has exactly three legal shapes**, and they may be mixed in one chain, in any order:
 
 ```json
 "fonts": {
@@ -207,12 +207,55 @@ chain produces a diagnostic naming the element and the rune; it is never silentl
    the integrator supplies). This is the only shape the format had before `2.0`.
 2. **A one-key object `{"asset": "<key>"}`** — a face carried *inside the document*, whose value is
    a key of the top-level `assets` object. A document declaring one is a `2.0` document (above).
+3. **An object carrying STYLE VARIANTS** — either of the two above written as an object, with
+   optional siblings naming the faces this entry is drawn in when an element declares
+   `style.bold`, `style.italic`, or both. The object's shape is exactly one discriminant —
+   `face` **or** `asset`, never both and never neither — beside any of the three variant keys:
 
-Anything else — a number, an array, an object with no `asset` key, or an object carrying any key
-besides `asset` — is a **load error naming the chain and the entry's index**, e.g.
-`fonts.body[1]`. An `{"asset": …}` entry whose key is **not present in `assets`** is likewise a
-load error, and it names the chain, the index and the key: `fonts.body[1].asset`. A chain entry is
-never silently dropped and never coerced.
+```json
+"fonts": {
+  "body": [
+    "Noto Sans Thai",
+    { "face": "Roboto", "bold": "Roboto Bold", "italic": "Roboto Italic" },
+    { "asset": "9f86d0…", "bold": "1b4f0e…" }
+  ]
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `face` | The discriminant of a shipped/supplied face, written as an object so it can carry variants. `{"face": "Roboto"}` and the bare string `"Roboto"` are the same entry; the bare string is what a variant-free entry serialises back to. |
+| `asset` | The discriminant of a face the document carries — a key of the top-level `assets` object, exactly as shape 2. |
+| `bold`, `italic`, `boldItalic` | *Optional.* The face this entry is drawn in for that weight and slope. **This is a CLOSED set of exactly three keys**, and extending it later is a **MAJOR** change, not an additive one — the closure is what keeps an unknown key inside an entry a load error rather than a decoration that rides along. ⚠ **The type differs from `style`'s keys of the same name**: on a `style` block `bold` and `italic` are **booleans** saying *what the author asked for*; on a chain entry they are **face names** (or `assets` keys) saying *what to draw it with*. |
+
+A variant's namespace **matches its entry's discriminant**: a `face` entry's variants are face
+names, an `asset` entry's variants are `assets` keys. A cross-namespace sibling —
+`{"asset": "<key>", "bold": "Roboto Bold"}`, or `{"face": "Roboto", "bold": "<assets key>"}` — is a
+**load error naming the sibling**, e.g. `fonts.body[1].bold`. Nothing is ever *inferred* from a
+face name: an entry that declares no variant for the requested style has none, however the
+renderer's own faces happen to be named.
+
+**Three conditions all end the same way**, and an author needs all three to predict what a page
+will look like. In each, the rune is drawn in **that entry's own base face** — never in a later
+entry's, because losing the weight is a smaller lie than changing the typeface — and a **warning**
+names the element, the rune and the face actually drawn:
+
+1. **The entry declares no variant** for the requested weight and slope.
+2. **The declared variant names a face the renderer was not given.** The same tolerance a bare
+   chain entry has (above) applies to a variant: it is skipped in silence, never a load or render
+   error, because the same document is correct wherever that face IS supplied.
+3. **The declared variant does not cover the rune.** Coverage chose the entry on its BASE face, so
+   the variant is not guaranteed to carry the glyph.
+
+A partial match is an absence too: an element declaring both `bold` and `italic`, against an entry
+declaring only `bold`, draws the base face and warns — choosing the bold cut would be a nearest-fit
+search, and nothing here searches. No weight or slope is ever synthesized.
+
+Anything else — a number, an array, an object with neither `face` nor `asset`, an object with both,
+or an object carrying any key outside that closed set — is a **load error naming the chain and the
+entry's index**, e.g. `fonts.body[1]`. An `{"asset": …}` entry whose key is **not present in
+`assets`** is likewise a load error, and it names the chain, the index and the key:
+`fonts.body[1].asset`. A chain entry is never silently dropped and never coerced.
 
 **An entry naming an asset that is not a font is ACCEPTED AT LOAD and errors at RENDER.** The load
 path checks that the key exists in `assets` and nothing else — it never inspects the asset's
@@ -423,7 +466,7 @@ designer and the engine disagree.
 | `as` | The row-scope alias. Optional; defaults to `row`. Inside the table, `<alias>.field` is the current row; unqualified paths still resolve from the document root (AD-11). |
 | `headerHeight` | **Required.** Height of the repeated header row, in points. Accounted for on **every** continuation page. Because it is required, no command may clear it. |
 | `columns[]` | Ordered. Each carries its own `id` (same counter as elements, so a diagnostic can name a column), `label`, `width`, `align`, and `bind`. `columns[].align` is its **own** closed set — `left` · `center` · `right` — and does **not** admit `justify` (Story 7.3, D-7.3.1). Nor does a table's own `style.align` or its `headerStyle.align`, which feed the same cell alignment and therefore carry the same three values (Story 7.8). The sets are separate declarations so that extending one cannot legalise another by accident. |
-| `headerStyle` | *Optional.* A `Style` block governing the header row ONLY — the same vocabulary as an element's own `style` (below) **except for `align`**, which admits `left` · `center` · `right` here and never `justify`, because a header cell is a table cell (see *Alignment is three closed sets*, above). A table's own `style.align` carries the same three values, for the same reason — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
+| `headerStyle` | *Optional.* A `Style` block governing the header row ONLY — the same vocabulary as an element's own `style` (below) **except for `align`**, which admits `left` · `center` · `right` here and never `justify`, because a header cell is a table cell (see *Alignment is three closed sets*, above). A table's own `style.align` carries the same three values, for the same reason — never a data row. A field the header style leaves absent falls back to the table's own `style` for that field, then to that field's documented default (Story 4.1) — and that fall-through is **per field**, so `headerStyle: {"bold": true}` on a table whose own `style` sets `italic` gives the header row both. `headerStyle.bold` and `headerStyle.italic` govern the header row's weight and slope, which resolve to faces through the table's declared font chain exactly as an element's own do (see `style`, below, and *`fonts`* above). `columns[].align` still wins over both for that column's own header cell (see `style`, below). |
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
 | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 4.5, the aggregate is computed** (`sum`/`count`/`avg`) and can be formatted (`formatNumber`), then rendered into the footer cell through the same expression evaluator used by ordinary bindings. Story 3.6 supplies the diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape). |
 | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
@@ -494,7 +537,7 @@ Every field optional; omitted fields inherit the documented default.
 |---|---|
 | `fontFamily` | **none — required on any element carrying text** |
 | `fontSize` | `10` |
-| `bold`, `italic` | `false` |
+| `bold`, `italic` | `false`. **Booleans: what the author asked for, not what to draw it with.** The FACE each one resolves to is declared on the font chain, per entry — see *`fonts`* above, where a chain entry's own `bold`, `italic` and `boldItalic` name faces. Resolution is **per rune, through the declared chain** (FR57): the entry that COVERS the rune is chosen on its base face first, and the declared variant is then applied within that entry. An entry that declares no face for the requested weight and slope draws the rune in **its own base face** and emits a warning; the chain is never walked for weight, and no bold or oblique is ever synthesized. A table cascades both to its cells like every other cell property, and `headerStyle.bold`/`headerStyle.italic` win for the header row. |
 | `lineSpacing` | absent — the leading the declared font chain itself rules. A ratio scaling the baseline-to-baseline advance, and **only** that: the ascent above the first baseline and the descent below the last are untouched, so the ratio never re-measures a line, and a component's siblings never move. Under the default `valign` (`top`) the first baseline therefore stays exactly where it was. Note the one place the ratio is still visible in a first line's position: `valign: middle`/`bottom` seat the whole packed block inside the declared `height`, and a ratio makes that block taller, so the block is re-seated and its first baseline moves — measured at 11pt over two lines, `1.5` lifts a `bottom`-aligned first baseline by 7.491pt. That is `valign` doing its job on a taller block, not the ratio touching the first line. An exact decimal of at most three places, between `0.001` and `1000.0` inclusive; anything outside that, or a fourth decimal place, is a located load error naming the component — never a silent clamp. Values below `1` are legal and genuinely tight: one line's letters may reach into the line below, which is what tight leading is and what the page draws. |
 | `align` | `left` · also `center`, `right`, `justify` — **`justify` is for a non-table element's own `style` only** (Story 7.3, FR47; narrowed at Story 7.8); `columns[].align`, a table's `style.align` and its `headerStyle.align` all keep the three-value set. `justify` flushes both edges by distributing the line's leftover width across its interior break opportunities, in whole millipoints: every gap receives `slack / gaps` and the first `slack mod gaps` gaps *in reading order* each receive one more, so the distributed amounts sum to the slack exactly and the last piece's right edge meets the declared `width` exactly. Three independent conditions leave a line ragged at the element's own start edge: it is the **last line** of the element; it was ended by a **mandatory break** the author typed; or it has **no interior break opportunity** to place slack in (an atomic unknown Thai run offers none). An element with no declared `width` has no box to justify to, and a line that meets or overflows its width has no slack — FR44's clip-and-warn applies unchanged. Declaring `justify` raises the document to version `2.0`. It is legal **only on a non-table element's own `style`**: a table's `style.align`, its `headerStyle.align` and its `columns[].align` all admit `left` · `center` · `right` alone, and `justify` at any of the three is a located load error naming the element and the field (Story 7.8 — see *Alignment is three closed sets*). So a table can never reach `2.0` through `align`. |
 | `valign` | `top` · also `middle`, `bottom` |
@@ -600,11 +643,14 @@ rule.**
   account — so the document carries it verbatim and loads clean with the record absent, partial, or
   explicitly `null`. This is also why such an asset does not raise the document's `version` (see
   *`version`* above): it is legible to a `1.x` reader exactly as it is.
-- **A chain names this asset** by `{"asset": "<key>"}`. Then it **is** an embedded face, and
+- **A chain names this asset** by `{"asset": "<key>"}`, *or names it as a style variant of an
+  embedded entry* — `{"asset": "<other key>", "bold": "<key>"}`. Either way it **is** an embedded face, and
   `licence`, `licenceText` and `copyright` are **REQUIRED**: each must be present, non-`null` and
   non-empty. A document that fails this is a **load error**, located at
-  `assets.<key>.font.<the first missing key>` and naming the chain entry — `fonts.<chain>[<i>]` —
-  that made the asset an embedded face. It is never a warning and never a best-effort render.
+  `assets.<key>.font.<the first missing key>` and naming the chain entry — `fonts.<chain>[<i>]`, or
+  `fonts.<chain>[<i>].<variant>` when a style variant is what named it — that made the asset an
+  embedded face. A variant asset key clears this bar exactly as the entry's own `asset` value does;
+  a sibling that skipped it would let a document carry an unlicensed embedded bold. It is never a warning and never a best-effort render.
 
   A font that travels without its terms is not a font that may be passed on, and a `.folio` is a
   single file that travels alone: there is nowhere else for the terms to be. `licenceText` is the

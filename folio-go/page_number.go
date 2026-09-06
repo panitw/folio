@@ -424,17 +424,37 @@ type pendingPageSlot struct {
 // exactly as any other shaped text would.
 //
 // It resolves to the SAME face a {{page}} slot in this element resolves
-// to, by construction: both are shaped from the same chain, and digits
-// never fall back within the shipped set (finding 6, story creation) —
-// resolveRuneFace always returns chain[0] for a digit. Because of that,
+// to, and that identity is LOAD-BEARING rather than incidental:
+// buildPageNumberSlot pairs the SLOT RUN's face name with THIS run's
+// CIDs and injects them with no re-shaping, so two different faces would
+// put one font program's glyph ids into another's — arbitrary wrong
+// glyphs in a page number, with nothing to report it.
+//
+// ⚠ IT IS SHAPED FROM THE SAME (chain, styled) PAIR THE SLOT'S OWN RUN
+// IS, AND STORY 11.2 IS WHY IT HAS TO SAY SO. The identity used to hold
+// "by construction: both are shaped from the same chain, and digits
+// never fall back within the shipped set — resolveRuneFace always
+// returns chain[0] for a digit". Style variants broke the premise in two
+// places at once: the element's runes resolve through the styled list,
+// and a declared variant is NOT guaranteed to cover the digits, so the
+// slot's run can fall back to its base face while a differently-derived
+// chain resolves the digit table elsewhere. Passing the pair verbatim is
+// what keeps the two resolutions ONE resolution. Do not hand this
+// function a pre-coalesced list; that is the shape that diverged.
+// Because digits never fall back within the shipped set,
 // the digit table can never itself produce a missing-glyph Diagnostic
 // (Story 3.6) — decimal digits 0-9 are always covered by chain[0] in
 // every shipped/testdata font — so its diagnostics return is discarded
 // here, never silently swallowing a real one: the len(segs) check below
 // would already fail loudly (a different message) if coverage ever
 // broke for a digit.
-func digitTableRun(chain []string, fontSize geom.Length, fs FontSet, cache *fontCache) (textRunSource, error) {
-	segs, _, err := shapeSegments("", chain, "0123456789", fs, cache, breaksAreDrawn)
+func digitTableRun(chain, styled []string, fontSize geom.Length, fs FontSet, cache *fontCache) (textRunSource, error) {
+	// The element id is EMPTY and the diagnostics are discarded, which is
+	// what keeps this site from minting an unlocated Warning when a
+	// declared variant does not cover the digits — the element's own runs
+	// have already reported that absence, located, for the runes that
+	// actually reached the page.
+	segs, _, err := shapeSegments("", chain, styled, "0123456789", fs, cache, breaksAreDrawn)
 	if err != nil {
 		return textRunSource{}, err
 	}

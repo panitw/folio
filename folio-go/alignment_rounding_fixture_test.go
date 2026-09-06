@@ -137,7 +137,7 @@ func renderAlignmentRounding(t *testing.T) []byte {
 
 func alignmentRoundingMeasure(t *testing.T, s string) geom.Length {
 	t.Helper()
-	segs, _, err := shapeSegments("probe", []string{"Noto Sans"}, s, testShippedFontSet(), newFontCache(), breaksAreDrawn)
+	segs, _, err := shapeSegments("probe", []string{"Noto Sans"}, nil, s, testShippedFontSet(), newFontCache(), breaksAreDrawn)
 	if err != nil {
 		t.Fatalf("shape %q: %v", s, err)
 	}

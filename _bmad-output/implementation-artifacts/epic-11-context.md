@@ -4,92 +4,103 @@
 
 ## Goal
 
-Bold and italic are the most prominent inert controls in the product: the toggles light up, the document
-records them, and nothing on the render path reads them, so two documents differing only by bold and italic
-render to identical bytes. This epic realizes them — the shipped families gain real weighted and sloped
-faces, the engine resolves a face from the declared weight and slope and shapes and measures from that
-face's own metrics, and the canvas paints the resolved face instead of letting the browser fake a weight
-over Regular metrics. Page, canvas and panel finally agree on what bold means; where a family genuinely has
-no such face, the product says so rather than pretending.
+Bold and italic are the most prominent inert controls in the product: the toggles light up, the
+document records them, the canvas fakes a thicker stroke, and nothing on the render path reads
+them — two documents differing only by bold and italic render to identical bytes. The epic's
+governing ruling was to **realize** them rather than retire them. So the shipped families gain real
+weighted and sloped faces; the engine resolves a face from the declared weight and slope and shapes
+and measures from that face's own metrics; the canvas paints the face the engine resolved instead of
+letting the browser embolden Regular; and the family control writes the cuts a family has into the
+document, so bold is reachable in a file the author did not hand-edit. Where a family genuinely has
+no such cut, the product states the absence rather than showing a state the document cannot reach.
 
 ## Stories
 
 - Story 11.1: The shipped families gain a weighted and a sloped face
 - Story 11.2: The engine resolves a face from the declared weight and slope
 - Story 11.3: The canvas paints the weight the engine resolved
+- Story 11.4: Picking a family declares the cuts it has
 
 ## Requirements & Constraints
 
-- Bold and italic become **real faces**, resolved per rune through the declared fallback chain. Synthetic
-  emboldening and obliquing are forbidden everywhere — at emit time and on the canvas. A weight is a face or
-  it does not exist.
-- **Scope is three families, nine new faces**: Noto Sans, Noto Sans Thai and Roboto each gain bold, italic
-  and bold-italic. The CJK family stays Regular-only — three instances of it would take the offline payload
-  from roughly 11 MB to roughly 45 MB, where the Latin-and-Thai set costs about 3 MB. So "this family has no
-  face at this weight" is a permanent shipped condition to design for, not a rare edge case.
-- **Byte identity holds.** A document declaring neither bold nor italic hashes identically on every target,
-  before and after. No golden-corpus document declares either, so the corpus is a real witness and must not
-  be regenerated; a moved hash is a defect until proven intended.
-- **A shipped face is committed output, never generated at build time**, from the same replayable
-  derivation, reproducing byte-for-byte under verification.
-- **Licence provenance is CI-enforced**: each face travels with its own notice (upstream release URL, source
-  sha256) and OFL text, accounted for by the guard that fails the build on an unaccounted asset.
-- **Payload cost is stated**: the release manifest carries the measured per-face byte cost and the load
-  screen itemises the new faces as it already itemises the large CJK face.
-- **A shortfall is stated, never silent**: a diagnostic names the element, the rune and the face, from the
-  closed additive registry on the single diagnostic channel.
-- A shipped user-facing string tells authors the families are Regular-only with no bold or italic.
-  Realizing bold makes that false; it is corrected inside this epic.
+- **A weight is a face or it does not exist.** Synthetic bold and synthetic oblique are forbidden at
+  emit time *and* in the browser, as are variable-font axes. Faking a weight would put a fabricated
+  outline inside the byte-identity regime. Story 11.3 must *remove* the browser's faking, not tidy it.
+- **A shipped face is committed output, never a function of the build environment.** Each new face is
+  derived by the same replayable derivation, committed rather than generated at build time, and the
+  verification target reproduces every committed face byte-for-byte.
+- **Licence provenance is a build gate, not a warning.** Every face travels with its own notice
+  recording the upstream release URL and source sha256, plus its OFL text, and is accounted for by
+  the font-asset guard; an unaccounted or unlicensed asset fails the build.
+- **Payload growth is stated where the author waits for it.** The offline release manifest carries
+  the measured per-face byte cost and the load screen itemises each face as a named row, the way the
+  large CJK face is already itemised. First-load weight is a considered price, not a silent one.
+- **Byte identity is a constraint on this epic, not a target of it.** A document declaring neither
+  bold nor italic must hash identically across all four targets, before and after every story. No
+  golden-corpus document declares bold or italic, so the corpus is a genuine witness; a moved hash is
+  investigated as a defect until proven an intended, versioned change.
+- **A shortfall is stated, never silent.** A covered rune with no face at the requested weight renders
+  in the nearest available face and raises a diagnostic naming the element, the rune and the face —
+  one diagnostic type on one channel, from the closed, additive code registry.
+- **Not every family has every cut.** An absent cut is a permanent shipped condition to design for,
+  declared absent rather than declared and empty.
 
 ## Technical Decisions
 
-- **Weight and slope are declared on the font chain entry and nowhere else.** An entry gains optional
-  style-variant siblings via the existing `Presence` idiom, absent by default — a face-name variant on the
-  shipped arm, an asset-key variant on the embedded arm. The font-set value keeps its shape and **the public
-  API does not change.** A chain entry already serialises as either a bare string or an object, so a
-  document with no variants serialises exactly as today: corpus byte identity follows by construction.
-- **Per-rune coverage decides the entry; style resolves within that entry only.** A covering entry with no
-  face at the requested weight renders that rune in its own Regular with the stated diagnostic — never
-  falling further down the chain to another entry's bold, which would change the typeface to keep the
-  weight and make one script silently change family because another asked for bold. Absence is a
-  first-class result the caller handles, not a nil defaulting to Regular, and the mixed-script proof belongs
-  in the main test body, not an edge-case file.
-- **Foreclosed, so no spec reopens them**: encoding weight into font-set key names; any shape change to the
-  font-set type; synthetic bold or oblique in any form.
-- Glyphs are shaped and measured from the resolved face's own metrics, so a bold run may break differently
-  from the same words unbolded — and canvas and PDF break identically, both reading one engine measurement.
-- **11.1 has two derivation mechanisms, not one.** The existing instancing script covers only the Noto
-  families; Roboto is not derivable through it. The one-cut-per-name discipline guarding Roboto extends to
-  the new cuts rather than being scoped to Regular.
-- **The canvas is told the resolved outcome, not the requested flag** — a projection field, not a format
-  field. The browser cannot discover a missing bold face without measuring or holding a second model of the
-  font set, both barred.
-- **The no-synthetic canvas contract test is an allowlist of permitted paint properties, not a denylist.** A
-  denylist naming only weight and style cannot see `font-synthesis`, `-webkit-text-stroke`, `text-shadow`,
-  `paint-order`, or a `transform: skewX()` — and a skew is how an oblique gets faked.
-- **The B/I controls are three UI states over two document states.** Clearing writes absence, not an
-  explicit false, so "off" and "never set" are the same bytes; the third state derives from the projection
-  and is never stored. No document is normalised or migrated on load or selection.
-- Table cells take weight and slope through the same cascade every other cell property uses, with the header
-  style winning for the header row alone.
+- **Fonts are an explicit value.** The engine takes a font set; nothing under the internal packages
+  embeds font data, the binaries live in exactly one directory inside the Go module, and resolution
+  during a render is a pure lookup against the supplied set — never a host font query, never a fetch,
+  never a path on disk.
+- **Chain semantics are unchanged.** A template's `fontFamily` names an ordered chain, resolved per
+  rune for coverage, first covering entry wins; an entry may name a shipped face or an embedded asset
+  and a chain may mix both. The chain is part of the font set's identity, so a different chain is a
+  different render, never a silent substitution.
+- **The engine resolves a weight only to a face the document explicitly names, and never infers one.**
+  This is the ruling that keeps font resolution an explicit value, and it is precisely why Story 11.4
+  exists: without the family control writing the available variants into the chain entry, only the
+  starter document could ever bold.
+- **11.4 adds no new command kind.** The family control writes variants through the same command
+  family it already uses; the engine infers nothing from what it is handed.
+- **No migration, ever.** Documents whose chain entries predate 11.4 are not rewritten, repaired or
+  normalised on load or on selection; they acquire variants only when their author re-picks the
+  family. A panel narrowing or widening its vocabulary is never a document migration.
+- **The browser never measures.** The canvas paints pre-broken lines with browser wrapping disabled
+  and takes every metric and break from the engine's measure API. Because a bold run is measured from
+  the bold face's own metrics, it may wrap differently from the same words unbolded — and canvas and
+  PDF must show that difference identically, since both read one engine measurement.
+- **The canvas is given the resolved outcome through the engine's own text paint projection**, not the
+  requested flag; the no-synthetic rule is enforced by a contract test that names forbidden CSS the
+  way the canvas-authority contract already names the banned measurement APIs.
+- **The engine owns the document.** There is no TypeScript model of a `.folio`; the UI holds an
+  immutable snapshot for painting and sends every committed mutation as a command.
+- Table cells take weight and slope through the same cascade every other cell property uses, with the
+  header style winning for the header row alone.
+- Subsetting and embedding are untouched: one subset per font per document, at render time, inside the
+  PDF producer; a shipped face and an embedded face reach that path identically. Layout, subsetting,
+  emission and toolchain changes are breaking changes for downstream test suites.
 
 ## UX & Interaction Patterns
 
-- The load screen's manifest rows are where payload growth becomes visible: each new face is a named row
-  with its measured size, not a silently larger download.
-- The inspector's B/I pair must never show a state the document cannot reach. Where the resolved family has
-  no bold face, the control states that reason rather than appearing to be on — anything disabled carries a
-  stated reason.
-- The canvas-approximate / preview-exact asymmetry must stay legible, and this epic narrows the gap:
-  painting the real resolved face stops the preview holding a surprise the canvas could have shown.
+- The load screen's payload manifest is where new bytes become visible: each face is a named row with
+  its measured size, never an unexplained larger download.
+- The inspector's TYPOGRAPHY B / I pair must never appear to be on in a state the document cannot
+  reach. Where the resolved family has no bold or italic cut, the control states that fact — the
+  standing rule is that anything declined or disabled carries its reason beside it, in the product's
+  terse, technical, located voice.
+- The family control uses the same words for an absent cut that the B / I controls use, so one absence
+  is described one way wherever the author meets it.
+- The canvas-approximate / preview-exact asymmetry must stay legible without a tutorial; this epic
+  narrows the gap by making the canvas paint the real face, so the preview holds no surprise the
+  canvas could have shown.
 
 ## Cross-Story Dependencies
 
-- Strictly ordered. Nothing for 11.2 to resolve until 11.1's faces ship; nothing for 11.3 to paint until
-  11.2 resolves a face and projects the outcome, which 11.3 consumes rather than re-deriving in the browser.
-- 11.2 rests on an assumption to verify at its plan gate: that the designer can write chain style variants
-  through the existing font-chain command family without a new command kind. If not, 11.2 and 11.3 both
-  acquire a command-surface change and a dependency on the command-layer work.
-- Inherited constraints from shipped work: the current shipped face set and its machine-checked
-  byte-identity rule; the toggle semantics where pressing a pressed control clears rather than writing
-  false; and the repo-wide scan forbidding browser measurement, whose narrow named exceptions must not widen.
+- The stories are strictly ordered. 11.2 has nothing to resolve until 11.1's faces ship; 11.3 has
+  nothing real to paint until 11.2 resolves a face and projects the outcome, which the canvas consumes
+  rather than re-deriving; 11.4 depends on 11.3's wording for a stated absence and on 11.2's
+  resolution being explicit-only.
+- 11.4 was added by owner decision after 11.2's no-inference ruling; treat it as the story that makes
+  bold reachable in existing documents, not as optional polish.
+- The epic builds on the shipped-font and font-chain authoring work already in the product: the chain
+  entry shape, the designer's chain-editing commands, the offline release payload and its manifest,
+  and the licence-accounting lint. Those are inherited constraints to satisfy, not surfaces to redesign.

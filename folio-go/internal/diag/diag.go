@@ -124,6 +124,26 @@ const (
 	// present). AC4.
 	CodeTextMissingGlyph Code = "TEXT_MISSING_GLYPH"
 
+	// CodeTextStyleFaceUndeclared names Story 11.2's absence arm
+	// (FR57): an element asked its font chain for a weight or a slope,
+	// and the chain entry that COVERS the rune declares no face for it.
+	// The rune is drawn in that entry's OWN base face — never in another
+	// entry's, and never synthetically emboldened or obliqued (I-2) — so
+	// the page is correct in typeface and wrong in weight, and this
+	// Warning is the sole record of the difference. Its message names the
+	// element id, the rune (as U+XXXX and its literal form), and THE FACE
+	// the rune was actually drawn in.
+	//
+	// IT IS NOT CodeTextMissingGlyph, AND THE DISTINCTION IS THE REASON
+	// IT WAS MINTED. That code means the rune was DROPPED — no glyph, no
+	// advance — and its message names the whole chain that was searched.
+	// This one means the rune was DRAWN, at the wrong weight, by one
+	// named face. D-4.5.1's two-limb reuse test fails on both limbs (a
+	// different author action, a different thing done to the document),
+	// and reuse would make the shipped TEXT_MISSING_GLYPH message text
+	// false — which AD-14 makes a breaking change.
+	CodeTextStyleFaceUndeclared Code = "TEXT_STYLE_FACE_UNDECLARED"
+
 	// CodeInternalUnhandledCaveat names an internal/expr.Caveat whose
 	// Kind has no matching arm in diagnosticFromCaveat (render.go) —
 	// unreachable given expr.CaveatKind's current single member, but a
@@ -340,6 +360,7 @@ var allCodes = []Code{
 	CodeExpressionInvalid,
 	CodeContentUnlayoutable,
 	CodeTextMissingGlyph,
+	CodeTextStyleFaceUndeclared,
 	CodeInternalUnhandledCaveat,
 	CodeDocumentDateInvalid,
 	CodeStyleColorInvalid,
@@ -375,6 +396,7 @@ var dispositions = map[Code]Disposition{
 	CodeExpressionInvalid:           DispositionError,
 	CodeContentUnlayoutable:         DispositionError,
 	CodeTextMissingGlyph:            DispositionWarning,
+	CodeTextStyleFaceUndeclared:     DispositionWarning,
 	CodeInternalUnhandledCaveat:     DispositionWarning,
 	CodeDocumentDateInvalid:         DispositionError,
 	CodeStyleColorInvalid:           DispositionError,

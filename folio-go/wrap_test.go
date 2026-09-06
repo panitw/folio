@@ -16,7 +16,7 @@ func shippedChain() []string { return []string{"Noto Sans", "Noto Sans Thai", "N
 
 func segmentsFor(t *testing.T, s string) []faceSegment {
 	t.Helper()
-	segs, _, err := shapeSegments("e-test", shippedChain(), s, testShippedFontSet(), newFontCache(), breaksAreConsumed)
+	segs, _, err := shapeSegments("e-test", shippedChain(), nil, s, testShippedFontSet(), newFontCache(), breaksAreConsumed)
 	if err != nil {
 		t.Fatalf("shapeSegments(%q): %v", s, err)
 	}

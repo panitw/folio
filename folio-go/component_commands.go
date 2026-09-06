@@ -2510,15 +2510,21 @@ func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasPr
 // tableHeaderStyleFields is the closed set of headerStyle fields a command may
 // author, in the order a refusal names them.
 //
-// SEVEN, AND THE FOUR ABSENTEES ARE EACH A RULING (D-8.1.2's map, stated in
-// full in the story's Design Notes). `border` is deferred — the resolver arm
+// NINE, AND THE TWO ABSENTEES ARE EACH A RULING (D-8.1.2's map, stated in
+// full in Story 8.1's Design Notes). `border` is deferred — the resolver arm
 // exists but it is a nested block the cascade treats block-granularly, and it
 // waits on Story 14.8's BORDERS section. `padding` is forbidden outright by
 // D-12.4.1: the panel never authors padding, on a table or anywhere else.
-// `bold` and `italic` have NOWHERE TO RESOLVE FROM — resolveHeaderStyle has no
-// Bold arm and no Italic arm, so a header style declaring either would be
-// stored, serialized, and read by nothing.
-var tableHeaderStyleFields = []string{"fontFamily", "fontSize", "lineSpacing", "background", "color", "valign", "align"}
+//
+// ⚠ IT WAS SEVEN UNTIL STORY 11.2, AND THIS PARAGRAPH IS THE RULING IT
+// RETIRED — EDITED, NOT DELETED, so the history reads. It said: "`bold` and
+// `italic` have NOWHERE TO RESOLVE FROM — resolveHeaderStyle has no Bold arm
+// and no Italic arm, so a header style declaring either would be stored,
+// serialized, and read by nothing." That was true and is no longer:
+// resolveHeaderStyle now cascades both, in the same `.Set && !.Null` spelling
+// its siblings use, and the header row resolves the declared variant from its
+// own chain (FR57, AC2). The tripwire fired exactly as it was written to.
+var tableHeaderStyleFields = []string{"fontFamily", "fontSize", "lineSpacing", "background", "color", "valign", "align", "bold", "italic"}
 
 // tableCommandTarget repeats the two-line gate all seven column arms share:
 // the element must exist and it must be a table. It is the same pair of
@@ -2727,6 +2733,10 @@ func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (Canvas
 			style.Valign = template.Presence[string]{}
 		case "align":
 			style.Align = template.Presence[string]{}
+		case "bold":
+			style.Bold = template.Presence[bool]{}
+		case "italic":
+			style.Italic = template.Presence[bool]{}
 		}
 		cleanupEmptyHeaderStyle(element)
 		return Canvas(t)
@@ -2744,6 +2754,19 @@ func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (Canvas
 			return CanvasProjection{}, componentFailure(id, path, err.Error())
 		}
 		style.LineSpacing = template.Presence[int64]{Set: true, Value: thousandths}
+	case "bold", "italic":
+		// The ONLY booleans in the set, so they take their own arm above
+		// the string default — read with the same propertyBool the
+		// element-level style.bold command uses, never a second decoder.
+		flag, err := propertyBool(value)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, path, field+": "+err.Error())
+		}
+		if field == "bold" {
+			style.Bold = template.Presence[bool]{Set: true, Value: flag}
+		} else {
+			style.Italic = template.Presence[bool]{Set: true, Value: flag}
+		}
 	default:
 		text, err := propertyString(value)
 		if err != nil {

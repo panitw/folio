@@ -154,7 +154,10 @@ func TestChainFaceNamesMapsEveryEntryAndKeepsOrder(t *testing.T) {
 		{"embedded only", []template.FontChainEntry{asset("k1"), asset("k2")}, []string{k1, k2}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := chainFaceNames(tc.chain)
+			got, styled := chainFaceNames(tc.chain, template.FontStyleRegular)
+			if styled != nil {
+				t.Fatalf("a chain asked for no variant returned a styled list: %v", styled)
+			}
 			if len(got) != len(tc.want) {
 				t.Fatalf("chainFaceNames(%v) = %v, want %v", tc.chain, got, tc.want)
 			}
@@ -174,6 +177,72 @@ func TestChainFaceNamesMapsEveryEntryAndKeepsOrder(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestTheTwoChainSlicesAreAligned is P12's guard, at the PRODUCER.
+//
+// metricsFaceNames and shapeSegments both index `styled` with an index
+// derived from `base`/`chain`, and neither checks the lengths — the
+// alignment is a stated precondition, not a runtime guard, because a
+// guard here would be one for a case no acceptance criterion
+// demonstrates. What makes that safe is that chainFaceNames is the
+// pair's ONLY producer and builds both in one pass, so this pins the
+// producer rather than adding a check to every consumer.
+//
+// Both halves of the contract are asserted: nil for a regular request
+// (nothing is restyled, so there is nothing to carry), and exact
+// same-length same-order for every other request — including entries
+// that declare NO variant, whose slot must still be present and empty
+// rather than skipped, which is the mistake that would silently shift
+// every later index by one.
+func TestTheTwoChainSlicesAreAligned(t *testing.T) {
+	face := template.FaceEntry
+	asset := template.AssetEntry
+	withBold := func(name, bold string) template.FontChainEntry {
+		return template.FontChainEntry{Face: name, Bold: bold}
+	}
+	for _, chain := range [][]template.FontChainEntry{
+		nil,
+		{face("A")},
+		{face("A"), face("B"), face("C")},
+		{withBold("A", "A Bold"), face("B")},
+		{face("A"), withBold("B", "B Bold")},
+		{asset("k1"), withBold("B", "B Bold"), asset("k2")},
+		{withBold("A", "A Bold"), withBold("B", "B Bold")},
+	} {
+		for _, want := range []template.FontStyle{
+			template.FontStyleRegular,
+			template.FontStyleBold,
+			template.FontStyleItalic,
+			template.FontStyleBoldItalic,
+		} {
+			base, styled := chainFaceNames(chain, want)
+			if len(base) != len(chain) {
+				t.Fatalf("base list has %d entries for a %d-entry chain", len(base), len(chain))
+			}
+			if want == template.FontStyleRegular {
+				if styled != nil {
+					t.Fatalf("a regular request produced a styled list %v — nil is the contract, and every consumer branches on it", styled)
+				}
+				continue
+			}
+			if len(styled) != len(base) {
+				t.Fatalf("styled list has %d entries against %d base entries for chain %v — the index that ties them would read the wrong entry's variant", len(styled), len(base), chain)
+			}
+			// And the correspondence is by INDEX, entry for entry: an
+			// entry declaring nothing for this request contributes an
+			// EMPTY slot, never a skipped one.
+			for i, entry := range chain {
+				wantVariant := entry.Variant(want)
+				if wantVariant != "" && entry.Embedded() {
+					wantVariant = embeddedFaceName(wantVariant)
+				}
+				if styled[i] != wantVariant {
+					t.Fatalf("styled[%d] = %q for entry %+v at style %d, want %q", i, styled[i], entry, want, wantVariant)
+				}
+			}
+		}
 	}
 }
 
@@ -205,7 +274,7 @@ func TestEmbeddedFaceNameIsDerivedFromTheAssetKey(t *testing.T) {
 	// Length first: under the pre-8.4 boundary this is EMPTY, and indexing it
 	// would panic and take the whole test binary down with it — which hides
 	// every other failure the same mutation causes.
-	got := chainFaceNames([]template.FontChainEntry{template.AssetEntry(key)})
+	got, _ := chainFaceNames([]template.FontChainEntry{template.AssetEntry(key)}, template.FontStyleRegular)
 	if len(got) != 1 || got[0] != name {
 		t.Errorf("the boundary and the derivation disagree about an embedded entry's face name: chainFaceNames = %v, want [%s]", got, name)
 	}

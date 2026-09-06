@@ -95,9 +95,13 @@ const (
 //
 // majorFeatureVersion is the version introduced by the 2.0 closed-set
 // extension, `style.align: "justify"` (Story 7.3), and — since Story
-// 8.3 — by a `fonts` chain's embedded-face entry as well. TWO reasons,
-// ONE version: the constant is not renamed for the second, because it
-// names the version, not the feature.
+// 8.3 — by a `fonts` chain entry that serialises as an OBJECT as well
+// (Story 11.2 widened that second reason from "an embedded-face entry"
+// to "an object-form entry"; the trigger is the SHAPE a 1.x reader
+// cannot decode, and an embedded entry is now one case of it rather
+// than the whole of it). TWO reasons, ONE version: the constant is not
+// renamed for the second, because it names the version, not the
+// feature.
 //
 // They are named rather than spelled inline so versionRequiredByContent
 // reads as the rule rather than as string handling.
@@ -225,11 +229,12 @@ func versionForSave(loaded string, d *Document) string {
 //     later element's `justify`.
 //   - does any style block set `align: "justify"`? That is 2.0's closed-
 //     set extension, and no 1.x reader may draw it.
-//   - does any CHAIN in `fonts` declare an embedded-face entry? That is
-//     2.0's second reason (Story 8.3, FR53/FR56): a 1.x reader decodes a
-//     chain entry as a string and never coerces, so it refuses the file
-//     outright. Probed at DOCUMENT level, outside the element loop —
-//     see the probe itself for why.
+//   - does any CHAIN in `fonts` declare an entry that serialises as an
+//     OBJECT — an embedded face, or a face carrying style variants? That
+//     is 2.0's second reason (Story 8.3, FR53/FR56; widened by Story
+//     11.2, FR57): a 1.x reader decodes a chain entry as a string and
+//     never coerces, so it refuses the file outright. Probed at DOCUMENT
+//     level, outside the element loop — see the probe itself for why.
 //
 // Presence.Set, not "has a non-empty value" — but that only bites for
 // `color`, and the asymmetry is stated rather than papered over.
@@ -347,18 +352,37 @@ func styleVersionRank(st Style) versionRank {
 	return rank
 }
 
-// fontsRequireMajor reports whether any chain declares an embedded-face
-// entry. Written as its own function, and not inlined into
-// versionRequiredByContent, so the enumeration it walks (every chain,
-// every entry — never the first chain, never the first entry) is stated
-// once and is testable on its own.
+// fontsRequireMajor reports whether any chain declares an entry that
+// SERIALISES AS AN OBJECT. Written as its own function, and not inlined
+// into versionRequiredByContent, so the enumeration it walks (every
+// chain, every entry — never the first chain, never the first entry) is
+// stated once and is testable on its own.
 //
 // It deliberately does NOT look at d.Assets. A font asset is not the
 // trigger; a chain entry naming one is. See the probe's comment.
+//
+// ⚠ THE TEST IS THE SHAPE, NOT `Embedded()`, AND STORY 11.2 IS WHY. This
+// function and writeFontChain ask the same question of the same value:
+// one decides the emitted bytes, the other the declared version, and
+// they must never disagree, because a 1.x reader "decodes a chain entry
+// as a string and never coerces, so it refuses the file outright". They
+// both spelled `entry.Embedded()` until Story 11.2, and agreed only
+// because object-form and embedded were then the same set. The variant
+// siblings separate them: `{"face":"Roboto","bold":"Roboto Bold"}` has
+// an empty AssetKey, so `Embedded()` is false, so nothing raised the
+// version, so versionForSave would stamp 1.0 on a document no 1.x
+// reader can decode — a version that lies, and one that would have
+// shipped green because no non-embedded object entry had ever existed.
+// ONE predicate, TWO consumers, so disagreement is unrepresentable.
+//
+// It still raises to the EXISTING rankMajorFeature (2.0): the doc's own
+// test is "would a pre-2.0 reader refuse this file or render it wrong?"
+// — it refuses, on the entry shape, which is the trigger 2.0 already
+// names. What 2.0 MEANS widens; no rank is inserted.
 func fontsRequireMajor(f Fonts) bool {
 	for _, name := range slices.Sorted(maps.Keys(f)) {
 		for _, entry := range f[name] {
-			if entry.Embedded() {
+			if entry.SerialisesAsObject() {
 				return true
 			}
 		}

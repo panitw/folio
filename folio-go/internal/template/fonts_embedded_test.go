@@ -617,7 +617,15 @@ func TestBadChainEntryShapeIsALocatedLoadError(t *testing.T) {
 		{"null", `["Noto Sans", null]`, "fonts.body[1]"},
 		{"true", `["Noto Sans", true]`, "fonts.body[1]"},
 		{"an empty object", `["Noto Sans", {}]`, "fonts.body[1]"},
-		{"an object with no asset key", `["Noto Sans", {"face": "Noto Sans"}]`, "fonts.body[1]"},
+		// ⚠ `{"face": "Noto Sans"}` USED TO BE THIS ROW, AND STORY 11.2
+		// MADE IT VALID: the object form's `face` discriminant is now a
+		// legal entry. The genuine defect the row was standing for — an
+		// entry object that names NO kind at all — is a sibling with no
+		// discriminant beside it, so that is what the row asserts now.
+		{"an object with no discriminant", `["Noto Sans", {"bold": "Noto Sans Bold"}]`, "fonts.body[1]"},
+		// And the other direction, or "exactly one of" is asserted in
+		// neither: BOTH discriminants in one object is the same defect.
+		{"an object with both discriminants", `["Noto Sans", {"face": "Noto Sans", "asset": "` + embeddedFontKey + `"}]`, "fonts.body[1]"},
 		{"an object with an extra key", `["Noto Sans", {"asset": "` + embeddedFontKey + `", "weight": 700}]`, "fonts.body[1]"},
 		{"a non-string asset value", `["Noto Sans", {"asset": 7}]`, "fonts.body[1].asset"},
 		{"a null asset value", `["Noto Sans", {"asset": null}]`, "fonts.body[1].asset"},
@@ -638,6 +646,142 @@ func TestBadChainEntryShapeIsALocatedLoadError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), tc.field)
 		})
+	}
+}
+
+// TestTheThreeObjectShapeRefusalsAreTOLDAPART is P6: an empty object,
+// both discriminants and an unrecognised key are three DIFFERENT
+// authoring mistakes at the same field, and a message that cannot tell
+// them apart sends all three authors looking for the same thing.
+//
+// TestBadChainEntryShapeIsALocatedLoadError above asserts the FIELD
+// only, so it passes whatever the sentence says — a refusal asserted
+// only by its address is not asserted (D-000.25). This pins that each
+// one names its own defect, and that each still carries the shared
+// grammar so the author is told what they MAY write.
+func TestTheThreeObjectShapeRefusalsAreTOLDAPART(t *testing.T) {
+	reasons := map[string]string{}
+	for _, tc := range []struct{ name, chain, mustSay string }{
+		{"no discriminant", `[{"bold": "Noto Sans Bold"}]`, "neither"},
+		{"both discriminants", `[{"face": "Noto Sans", "asset": "` + embeddedFontKey + `"}]`, "BOTH"},
+		{"an unknown key", `[{"face": "Noto Sans", "weight": 700}]`, `"weight"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			le := requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), "fonts.body[0]")
+			if !strings.Contains(le.Reason, tc.mustSay) {
+				t.Errorf("the %s refusal %q does not say which defect this is (wanted it to mention %s)", tc.name, le.Reason, tc.mustSay)
+			}
+			// Every one still tells the author what they MAY write.
+			for _, key := range append([]string{"face", "asset"}, fontChainVariantKeys()...) {
+				if !strings.Contains(le.Reason, `"`+key+`"`) {
+					t.Errorf("the %s refusal %q does not name the legal key %q", tc.name, le.Reason, key)
+				}
+			}
+			reasons[tc.name] = le.Reason
+		})
+	}
+	// And they are genuinely three sentences, not one repeated.
+	if len(reasons) == 3 {
+		for a, ra := range reasons {
+			for b, rb := range reasons {
+				if a < b && ra == rb {
+					t.Errorf("the %q and %q refusals are byte-identical, so the author cannot tell which mistake they made:\n%s", a, b, ra)
+				}
+			}
+		}
+	}
+	// The unknown-key refusal NAMES the offending key, which is what
+	// makes decodeFontChainEntry's sorted scan load-bearing rather than
+	// inert: an object with two unrecognised keys always reports the
+	// first in byte order.
+	le := requireLoadError(t, embeddedFontDoc(fontAssetBody, `[{"face": "Noto Sans", "weight": 700, "axis": 1}]`), "fonts.body[0]")
+	if !strings.Contains(le.Reason, `"axis"`) {
+		t.Errorf("with two unrecognised keys the refusal %q does not name the first in byte order (\"axis\")", le.Reason)
+	}
+}
+
+// TestAnUnknownEntryKeyIsRefusedByTheCLOSEDSetAndSaysSo is the extra-key
+// row's MESSAGE, asserted because the subject did not move but THE GROUND
+// DID: `{"asset": …, "weight": 700}` was refused for breaking "exactly one
+// key" until Story 11.2 and is refused for not being in the CLOSED key set
+// now. requireLoadError checks the Field only, so the row above cannot see
+// that change — a refusal asserted only by its address is not asserted
+// (D-000.25).
+//
+// It pins the closed set's own members appearing in the sentence, DERIVED
+// from the parser's enumeration rather than spelled here, so the assertion
+// tracks the set instead of a wording.
+func TestAnUnknownEntryKeyIsRefusedByTheCLOSEDSetAndSaysSo(t *testing.T) {
+	le := requireLoadError(t,
+		embeddedFontDoc(fontAssetBody, `["Noto Sans", {"asset": "`+embeddedFontKey+`", "weight": 700}]`),
+		"fonts.body[1]")
+	for _, key := range append([]string{"face", "asset"}, fontChainVariantKeys()...) {
+		if !strings.Contains(le.Reason, `"`+key+`"`) {
+			t.Errorf("the refusal %q does not name the legal key %q — the message must be derived from the closed set, not hand-written", le.Reason, key)
+		}
+	}
+}
+
+// TestACrossNamespaceVariantIsALocatedLoadError is AD-8's namespace match,
+// asserted in BOTH directions. A sibling naming the other namespace is the
+// substitution AD-8 forbids, arriving inside a single entry where no
+// precedence rule can see it — an `asset` entry whose bold is a face name
+// would draw a shipped face for a document that thinks it carries its own,
+// and a `face` entry whose bold is an assets key would do the reverse.
+func TestACrossNamespaceVariantIsALocatedLoadError(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		chain  string
+		field  string
+		reason string
+	}{
+		{
+			"an embedded entry whose variant is a face name",
+			`[{"asset": "` + embeddedFontKey + `", "bold": "Noto Sans Bold"}]`,
+			"fonts.body[0].bold",
+			"assets",
+		},
+		{
+			"a face entry whose variant is an assets key",
+			`["Noto Sans", {"face": "Noto Sans", "bold": "` + embeddedFontKey + `"}]`,
+			"fonts.body[1].bold",
+			"assets",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			le := requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), tc.field)
+			if !strings.Contains(le.Reason, tc.reason) {
+				t.Errorf("refusal %q does not tell the author which namespace applies here", le.Reason)
+			}
+		})
+	}
+}
+
+// TestADefectiveVariantIsRefusedAtTheSiblingItself covers the remaining
+// per-sibling refusals: each lands on `fonts.<chain>[<i>].<key>`, never on
+// the entry, so the author is sent to the half that is wrong.
+func TestADefectiveVariantIsRefusedAtTheSiblingItself(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		chain string
+		field string
+	}{
+		{"an empty variant", `["Noto Sans", {"face": "Noto Sans", "bold": ""}]`, "fonts.body[1].bold"},
+		{"a boolean variant", `["Noto Sans", {"face": "Noto Sans", "bold": true}]`, "fonts.body[1].bold"},
+		{"a null variant", `["Noto Sans", {"face": "Noto Sans", "italic": null}]`, "fonts.body[1].italic"},
+		{"a numeric boldItalic", `["Noto Sans", {"face": "Noto Sans", "boldItalic": 700}]`, "fonts.body[1].boldItalic"},
+		{"an empty face discriminant", `["Noto Sans", {"face": "", "bold": "Noto Sans Bold"}]`, "fonts.body[1].face"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), tc.field)
+		})
+	}
+	// The wrong-typed case says WHICH MEANING APPLIES HERE. `bold` is a
+	// boolean on `style` and a FACE on a chain entry, and an author who
+	// writes `true` has reached for the other one.
+	le := requireLoadError(t, embeddedFontDoc(fontAssetBody, `["Noto Sans", {"face": "Noto Sans", "bold": true}]`), "fonts.body[1].bold")
+	if !strings.Contains(le.Reason, "boolean") || !strings.Contains(le.Reason, "style") {
+		t.Errorf("refusal %q does not distinguish a chain entry's `bold` from style's boolean of the same name", le.Reason)
 	}
 }
 
