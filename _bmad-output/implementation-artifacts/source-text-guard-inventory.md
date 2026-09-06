@@ -123,3 +123,53 @@ brackets alone on their own lines.
    `engine-protocol.ts`, `build-wasm.mjs` and `component_commands.go` are each read by several.
 5. **`font-catalogue.test.ts` vs `font-binary-identity.test.ts` is an unreconciled disagreement** over the
    same file — worth a deliberate ruling rather than leaving two policies in place.
+
+---
+
+## AMENDMENT, 2026-09-06 — this census had the wrong axis, and three findings it could not see prove it
+
+This document censused guards along **one** axis: *how does this test read source as text, and does it
+strip?* That axis found real defects and it is not retracted. But three findings since have been
+invisible to it **by construction**, and they are invisible for the same reason: they are not about
+reading source text at all.
+
+**The three it missed:**
+
+1. **Directory-listing guards** (D-11.1.6). `lint`'s `fonts-asset-unaccounted` is hardcoded to
+   `folio-go/fonts` and walks the tree; `manifest.ResolveAssets` walks the whole repo. Neither reads
+   source as text, so neither could appear here — and the question *"which of these covers the designer
+   side?"* had to be answered by measurement from scratch. **Recorded in the census's own body as a
+   structural blind spot, and now hit twice.**
+2. **A guard quantified over the wrong population** (D-11.1.7). The designer's shipped faces split into
+   two populations: the catalogue's 31, over which `subfamily === 'Regular'` / `usWeightClass === 400` /
+   `macStyle === 0` / `italicAngle === 0` are asserted per face, and the six hardcoded-slot faces, over
+   which **nothing at all** is asserted. Both populations ship. Only one is checked. No amount of
+   text-reading analysis surfaces that, because the assertion is correct — it is just quantified over
+   half the subject.
+3. **A record enforced in one direction only** (DW-230). Every consumer of `goldenDigestRecord` iterates
+   the declared record, so record → disk is enforced and **disk → record is enforced by nothing**. A
+   fixture shipping an `expected.pdf` that nobody registers gets zero coverage and turns nothing red.
+
+**The four delivery axes a census must run along.** The original axis is the first of four, not the
+whole job:
+
+| Axis | The question | Found by it so far |
+|---|---|---|
+| **Source text** | does the guard read source as text, and does it strip comments/strings? | this document's original body |
+| **Tree shape** | does the guard enumerate a directory, and *which* directory? | D-11.1.6 |
+| **Build output** | does the guard read a built artifact, and was that artifact built the way the guard assumes? | DW-100's `-buildvcs` finding; DW-162's margin |
+| **Runtime behaviour** | does anything assert what the surface a human actually reads does — as opposed to what the layer beneath it computes? | D-11.1.8's LoadScreen total |
+
+**And two standing questions that cut across all four**, both of which have now earned their place:
+
+- **Which population is this assertion quantified over — and is that the whole subject?** This is the
+  question that produced findings 2 and 3 above, and neither was found by looking for a false zero. It
+  is the cheapest high-yield question in the set.
+- **Is this record enforced in both directions?** A declaration checked only from the declaration
+  outward cannot see its own omissions. The vacuity guards already in place
+  (`if len(goldenDigestRecord) == 0`) catch an **empty** record and are structurally blind to an
+  **incomplete** one.
+
+**Standing:** the four axes and the two cross-cutting questions apply to every remaining boundary gate.
+This document's original body remains valid for the source-text axis and is **not** a census of the
+other three; do not read a clean bill here as coverage of anything but reading source as text.

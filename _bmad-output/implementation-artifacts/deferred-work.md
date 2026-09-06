@@ -9239,3 +9239,125 @@ The band-boundary handle is a bare `<button>` named for the act (`Resize the pag
 **What discharges it.** A ruling on whether canvas gestures get value semantics, and if so a single idiom applied to the boundary handle, the resize handle and the dimension readout together — not one control at a time.
 
 ---
+
+---
+
+### DW-230 — the golden record is complete in one direction only, and the check I thought would catch that compares the wrong two populations
+
+- **Deferred by:** the orchestrator (2026-09-06), while trying to register a hole I had recorded during
+  Epic 15's survey. **The hole I recorded was not real. A different one is**, and the correction is the
+  more useful half of this entry.
+- **Owner:** **Story 15.2.** It is the last story that adds fixtures before the tag, so it is the last
+  point at which an unregistered golden could be introduced and go unnoticed.
+- **Severity:** LOW today — the two populations agree exactly at this commit. It is a **coverage hole,
+  not a defect**: nothing is wrong, and nothing would say so if it became wrong.
+- **Status:** OPEN.
+
+**What I had recorded, and why it was wrong.** My note said: *24 `fixtures/*/expected.json` exist but
+`byte_neutrality_test.go:goldenDigestRecord` declares 23, `hidden-image` absent, and the completeness
+check iterates the declared record so it cannot see its own omission.* The counts are right and the
+conclusion is not. **`goldenDigestRecord`'s subject is `expected.pdf`, not `expected.json`.** Measured:
+23 fixtures ship an `expected.pdf`, the record declares 23, and the two sets are **identical** —
+`comm -3` returns nothing. `fixtures/hidden-image/` contains one file, `expected.json`, and **no golden
+PDF at all**, so its absence from the record is CORRECT.
+
+I compared a population against a record that was never about it, found an off-by-one, and read it as an
+omission. Same error as D-11.1.2 and D-12.C.1: **I matched on shape and never checked the subject.** A
+count that differs by one between two populations is evidence of nothing until you have established that
+the two populations were supposed to be the same population.
+
+**The hole that is real, and survives the correction.** Every consumer of the record iterates the
+**declared record** — `TestEveryGoldenPDFResolvesItsPageTree`, and the byte-neutrality and structural
+checks at `byte_neutrality_test.go:634` and `:1515`, all of which loop `for _, fx := range
+goldenDigestRecord`. So the **record → disk** direction is enforced: declare a fixture whose
+`expected.pdf` is missing and the presence precondition fails on `ReadFile`. **The disk → record
+direction is enforced by nothing.** A fixture that ships an `expected.pdf` and is never added to
+`goldenDigestRecord` receives **no structural page-tree validation, no byte-neutrality coverage, and no
+test turns red.** It is invisible in exactly the way the record exists to prevent.
+
+The one test that does walk the directory — `walkToUnicodeCorpus`
+(`tounicode_corpus_test.go:129`), reading *"every `<fixturesDir>/*/expected.pdf`"* — walks it for the
+ToUnicode corpus and asserts nothing about registration. The existing vacuity guards
+(`if len(goldenDigestRecord) == 0`) catch an **empty** record and cannot see an **incomplete** one.
+
+**And a second, softer gap.** Nothing records *why* `hidden-image` ships an `expected.json` and no
+golden PDF. Today that is a correct exemption; nothing distinguishes it from a golden somebody forgot to
+record. `matrix_test.go:1994`'s comment pins the number in prose — *"the golden ships and
+goldenDigestRecord holds 23 entries"* — which is precisely the form that ages into a false reassurance.
+
+**What discharges it.** A test that walks `fixtures/*/` and asserts, in the disk → record direction,
+that every directory shipping an `expected.pdf` appears in `goldenDigestRecord`, with an **explicit,
+named exemption list** for fixtures that deliberately ship no golden — so that `hidden-image`'s
+exemption is a recorded decision rather than an absence. Red-provable by dropping any one entry from the
+record while leaving its `expected.pdf` on disk; today that edit is green.
+
+**Defect class.** Instance ~14 of this run's dominant class — *a guard that cannot distinguish a correct
+outcome from a plausible wrong one* — and the second found this session by asking **which population is
+this assertion quantified over?** rather than by hunting a false zero (the first being D-11.1.7's
+shipped-slot metadata gap). That question is now a standing census axis.
+
+---
+
+### DW-162 UPDATE (2026-09-06) — the owner arrived, and it is Story 11.1
+
+DW-162's owner was written as *"the next story that adds a cache asset"*, with the trigger naming
+*"specifically any story adding several at once (a second font tier, an icon set, additional pdfjs
+support files)"*. **Story 11.1 adds seven at once** — the seven new font cuts (D-11.1.4), each landing
+as its own `public/fonts/<cut-dir>/` asset under the uncatalogued hardcoded-slot route (D-11.1.5).
+
+**The arithmetic, if all seven consume slots:** `s1.assetCount` 54 → 61 against `maximumCacheAssets` 64,
+so the margin goes **10 → 3**. That is under the ceiling and is not a blocker. It is, however, the
+entry's own stated trigger firing, and the note's figure has now aged three times — 41, corrected to 20,
+corrected to 10, and now possibly 3.
+
+**Not asserted, delegated for measurement.** I have not verified that all seven consume precache slots;
+the engine-embedded cuts may reach the browser through the wasm instead, in which case the delta is
+smaller. 11.1's builder is measuring `s1.assetCount` before and after a clean `npm run build` and will
+carry the measured figure, not mine.
+
+**DW-162's discharge condition is assigned to Story 11.1.** It asks for *"the release build printing the
+margin and failing — or at minimum warning — at a declared threshold."* At a margin of 3 that is no
+longer a nicety: going **over** is caught by `verify-offline-release.mjs` and `parseS1Payload`, while
+**approaching** is watched by nothing, so the first signal would be a release that fails outright. Same
+class as DW-230 and D-11.1.7 — the guard catches the wrong outcome but cannot see the approach to it.
+
+---
+
+### DW-100 / Story 8.4d SEQUENCING RE-KEY (2026-09-06) — the trigger is a property of the payload, not the arrival of Story 15.0
+
+**What was written.** DW-162's sequencing note (D-16.R.21) keys the font-tier payload question to
+**Story 15.0**: *"When 15.0 lands, catalogue faces stop consuming precache slots at all and this margin
+question dissolves for the font tier specifically."* That is true as written and it has been read more
+broadly than it should be — as though Story 8.4d, the size-budget gate, waits on 15.0.
+
+**Why that keying is wrong.** 8.4d's job under D-8.4.24 is to make `s1VisibleBytes` a number something
+checks. A gate is only meaningful once the quantity it gates has stopped moving. **Story 15.0 is not
+what stops it moving.** Story 11.1 alone adds roughly **3.1 MB against an `s1VisibleBytes` of ~12.4 MB —
+about +25%** (Roboto's three statics ≈ 1.11 MB, three Noto Sans derivations ≈ 1.95 MB, Thai Bold
+≈ 48 KB), and it does so whether or not 15.0 has landed. Keying the gate to one story's arrival gates it
+on the wrong event.
+
+**Re-keyed.** Story 8.4d's trigger is now: **no story with a payload delta remains open.** That is a
+property of the program's open set, checked by reading it, rather than a named story whose landing
+happens to correlate. 15.0 remains *one* of the stories that must be closed first, alongside 11.1 and
+any other story that moves a shipped byte — it is no longer the trigger itself.
+
+**Standing consequence for the run.** Every story from here that changes the shipped payload records its
+measured `s1VisibleBytes` delta in its Delivery Log, as an **arm-to-arm comparison within one
+environment**, and states the same-arm repeat it was measured against.
+
+**CORRECTION, same day, before this text was acted on.** I first justified that instruction by DW-100's
+update — the engine row being 58% of the total and `build-wasm.mjs` leaving `-buildvcs` at its default,
+so the figure moves on every commit regardless of payload. **That reason is stale.** 11.1's builder
+measured it: `wasm-vcs-stamp.mjs` declares `export const ENGINE_BUILD_FLAGS = ['-buildvcs=false']`,
+`buildEngineWasm` uses it, and `assertNoVCSStamp` actively verifies that none of `vcs.revision`,
+`vcs.time`, `vcs.modified` or `build\tvcs=` survives in the emitted binary, throwing if one does. The
+tree-state input was deliberately closed, and `build-wasm.mjs` carries a comment calling it a considered
+trade rather than a free win. **DW-100's mechanism finding is therefore discharged as a live hazard and
+should be read as history, not as a current property.**
+
+The instruction stands and is now *stronger*, because the control exists. Build the same arm twice
+first: if the repeat is byte-stable, the cross-arm delta is a real measurement rather than the
+difference of two drifting numbers — and if it is **not** stable, that is a finding in its own right,
+because something is supposed to have closed that input and evidently has not. Never quote a cross-arm
+delta without stating the same-arm repeat behind it.

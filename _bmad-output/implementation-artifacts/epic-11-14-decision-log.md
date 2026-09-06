@@ -2868,3 +2868,304 @@ a claim matches reality; none verifies that a claim was made.**
 `review` set **by name**, and read the epic-level states **by name** for any epic whose stories are all
 `done`. Both are one grep, both belong beside confirming the tree is clean, and both have now caught
 something the first time they were run.
+
+---
+
+### D-11.1.1 — Procurement is not a new capability; it is the path this repo has always used
+
+**Context.** Story 11.1 needs upstream font sources for the new cuts. 11.1's builder framed this as a
+Block-If: *"nothing in the repo fetches a font binary"* — reading the offline-first constraint as
+forbidding acquisition.
+
+**Ruling (orchestrator, accepted by the builder).** That was right about *automated* fetching and the
+wrong frame for the decision. `.font-sources/` is gitignored (`.gitignore:123`) and
+`tools/fontgen/instance_faces.py` states the convention itself: the sources *"are NOT committed (20 MB
+of inputs for 11 MB of outputs); each entry records the release URL and the sha256 to fetch them by."*
+Every `UPSTREAM` entry already carries a `src_url` and a `src_sha256`, and the derivation hashes each
+source before instancing and requires it to match. The three variable fonts already on this machine got
+there by exactly this path.
+
+So the offline constraint governs the **product**, not the **workshop**. The shipped artifact stays
+fully offline and no build step gains a network call. We are not introducing downloading into an
+offline-first repo; we are using the existing, documented, hash-pinned procurement path for releases
+the repo already names.
+
+**Why it matters beyond 11.1.** This is the second time in the run that a constraint stated about the
+product has been read as a constraint on the process. Record the distinction: *a rule about what the
+artifact may do at runtime is not a rule about how its inputs were obtained.*
+
+### D-11.1.2 — Two digests, two purposes; and I read the wrong row
+
+**What happened.** I was about to verify `Roboto_v3.016.zip` against
+`e688a215e0841b6e4edb1207c93f88f4c609f82e870884349a7257e449eb9355`, having taken that value from
+`folio-go/fonts/roboto/NOTICE.md`. 11.1's builder stopped me: that is the sha256 of the **extracted
+`Roboto-Regular.ttf`**, which the NOTICE labels *"sha256 of the SOURCE (upstream) file"* — the file
+*inside* the archive. That NOTICE records **no archive digest at all**.
+
+The archive digest is real and lives in a **different NOTICE**:
+`folio-designer/public/fonts/roboto/NOTICE.md:50` records
+`1653dbe12f248da8fb0b9920db7b9496cd677ed3981154f6f15285c8bd4e334f` (29,162,959 bytes).
+
+**Verified.** The downloaded archive hashes to `1653dbe1…` — match. Independently, its extracted
+`android/static/Roboto-Regular.ttf` hashes to `e688a215…`, byte-identical to the committed shipped
+file. Two digests, two purposes: one proves the archive, one proves it is the release this repo already
+shipped from.
+
+**The error class, which is one this run has seen before.** I queried for a fact using the vocabulary I
+expected it to be written in, found a value of the right *shape* in the first file I looked at, and
+stopped. Same shape as D-12.C.1 (compatibility vocabulary against a versioning clause). **The lesson is
+narrower than "check twice": a digest is only meaningful with its subject attached.** A hex string is
+not self-describing, and two hex strings in two files can both be correct and neither be the one you
+need. Quote the label, not just the value.
+
+### D-11.1.3 — The Noto Sans archive can only be verified transitively, and the spec must say so
+
+There is **no recorded archive digest for `NotoSans-v2.015.zip` anywhere in the repo** — neither NOTICE
+carries a release-archive row for it. The downloaded archive is 117,491,253 bytes, sha256
+`0c34df072a3fa7efbb7cbf34950e1f971a4447cffe365d3a359e2d4089b958f5`; neither figure was recorded
+anywhere beforehand.
+
+**Verified transitively instead:** the extracted
+`NotoSans/googlefonts/variable-ttf/NotoSans[wdth,wght].ttf` hashes to `bfb7bb69…`, exactly the
+`src_sha256` already pinned in `UPSTREAM`. Same file, therefore the right archive.
+
+**Ruling.** That is a genuinely weaker guarantee than Roboto's, and the spec states it in those terms
+rather than implying the two were verified alike. **Record `0c34df07…` as an archive row in the new
+NOTICEs while we have the file** — the whole cost of never repeating this is one line, and the next
+story inherits the stronger check.
+
+### D-11.1.4 — Both determinations came back YES: seven faces, zero new upstream releases
+
+Two open determinations were resolved by opening the archives rather than reasoning about them.
+
+**The Noto italic VF is already in the archive the repo pins.**
+`NotoSans/googlefonts/variable-ttf/NotoSans-Italic[wdth,wght].ttf`, 2,322,640 B, sha256
+`58e6e0eb…` — the sibling path the builder predicted from the notofonts release layout. Placed at
+`.font-sources/NotoSans-Italic-VF.ttf`, gitignored. The italic half therefore needs **no new upstream
+release**: it is one new `src` filename against a `src_url` that differs only after the `->`.
+
+**All three Roboto cuts ship as statics.** `android/static/Roboto-{Bold,Italic,BoldItalic}.ttf` are all
+present. So they are **static-upstream**: copied unmodified, no instancing, no `UPSTREAM` entry, no
+fontgen involvement — Roboto-Regular's existing route. The accounting test's SOURCE-digest ==
+SHIPPED-digest identity is satisfied by construction, because it is literally the same bytes.
+`make fonts` / `make fonts-verify` never touch Roboto.
+
+**Consequence.** The owner's [C] ruling — *"fetch all five, ship everything possible"* — was priced at
+five upstream releases. It costs **zero**. Every source the seven faces need is now on disk and every
+one traces to an archive the repo already names; exactly one new source *file* was added.
+
+| Face | Route | Source |
+|---|---|---|
+| Noto Sans Bold | derived | `NotoSans-VF.ttf` (on disk, pinned) |
+| Noto Sans Italic | derived | `NotoSans-Italic-VF.ttf` (new file, same archive) |
+| Noto Sans Bold Italic | derived | `NotoSans-Italic-VF.ttf` |
+| Noto Sans Thai Bold | derived | `NotoSansThai-VF.ttf` (on disk, pinned) |
+| Roboto Bold / Italic / Bold Italic | static | `Roboto_v3.016.zip` (verified archive) |
+
+**Two absences are rulings, not oversights, and the spec states both with their reasons attached.**
+Noto Sans Thai publishes nine styles and **zero** italic variants (verified independently), so there is
+no Thai italic to ship. Noto Sans SC gets no cut: its Regular alone is 10.6 MB and a CJK bold would
+dominate the payload. A reader who counts families will otherwise read either gap as a bug.
+
+### D-11.1.5 — Each cut is its own family name, and that forces the uncatalogued route
+
+**The ruling.** The browser declares one static Regular per family with no `font-weight` and no
+`font-style`, and that convention is machine-asserted. The canvas must paint bold under AD-17, so a bold
+cut needs a browser declaration — but a `font-weight: 700` rule under the same family would break the
+convention and put a weight axis into CSS that the format deliberately excludes. **So each cut carries
+its own family name**, making `"Noto Sans Bold"` one string on three surfaces at once: the Go `FontSet`
+key, the `@font-face` family, and the family the canvas paints with. The key is READABLE; **nothing may
+PARSE it.** This also dissolves the "no multi-cut precedent" objection — a cut with its own family name
+is not a second cut of an existing family.
+
+**Measurement confirmed the route is forced, and it is the clean one.** `font-catalogue.test.ts`
+iterates the catalogue's 31 entries and asserts per face `subfamily === 'Regular'`,
+`usWeightClass === 400`, `macStyle === 0`, `italicAngle === 0`. **A bold cut fails all four, so it
+cannot be a catalogue entry.** The precedent already exists: only Roboto is catalogued; the three Notos
+reach the browser uncatalogued, through hardcoded `assets` slots plus hand-written `@font-face` rules in
+`shippedRules`. So each cut goes to `public/fonts/<cut-dir>/` with its own LICENSE + NOTICE, a hardcoded
+slot, a hand-written rule under its own family, and a `shippedFamilies` entry — **and no catalogue
+entry**. Two build-time throws move together from 6 to 6+N. `font-catalogue.test.ts` needs no edit, and
+the catalogue genuinely stays Regular-only.
+
+**Accepted asymmetry:** Roboto Regular is catalogued while Roboto Bold will not be. Forced by the
+Regular-only assertion, and it is the safe direction.
+
+### D-11.1.6 — AD-26 measured: neither branch applied, and the guard I asked about was the wrong guard
+
+I asked whether `lint`'s `fonts-asset-unaccounted` **enumerates the tree** or **reads the catalogue**,
+treating those as the two branches. Measurement says the question had no answer as posed.
+
+`lint/internal/rules/fontsassets.go` pins `const fontsAssetLocation = "folio-go/fonts"` and walks only
+that. Its expected set comes from the `//go:embed` directives parsed out of `fonts.go`, not from any
+catalogue. **For a designer-side directory it is simply not the guard.**
+
+The guard that does cover the designer side is **`manifest.ResolveAssets`, and it enumerates the whole
+repo.** So an uncatalogued designer-side directory is **visible and must be accounted**: it demands
+`LICENSE*` + `NOTICE*` + a Copyright line, classifies the licence against the four-id font allowlist,
+and adds a `MANIFEST.md` row that `TestManifestUpToDate` byte-compares — with
+`licencecensus_test.go:pinnedCensus` pinning every tracked LICENSE path on top. **No AD-26 breach and no
+invisibility: the build fails until the directory is accounted.** That holds without any change from
+this story.
+
+**Recorded because the next story will otherwise re-derive it**, and because my own
+`source-text-guard-inventory.md` **structurally cannot see directory-listing guards** — this is the
+second finding it was blind to by construction.
+
+### D-11.1.7 — The shipped-slot faces are the one population nothing verifies; 11.1 closes it in-story
+
+The builder found, while measuring D-11.1.6, that the six hardcoded-slot shipped faces are covered by
+**no** metadata assertion at all — the Regular-only checks live exclusively on the catalogue population.
+It asked whether closing that should be its own item.
+
+**Ruling: in-story, not a separate item.** This story is what makes the gap load-bearing. It is the
+first time a **non-Regular** face enters that population, and it enters the one population where nothing
+would catch a mislabelled cut. The assertion is per-face over the shipped slots, asserting each face's
+**intended** subfamily and weight — not a blanket Regular, which would be false the moment the cuts
+land. Splitting it out would ship seven cuts through an unguarded surface and leave the guard orphaned
+in a story with no reason to be written.
+
+**This is instance ~13 of the run's dominant defect class** — a guard that cannot distinguish a correct
+outcome from a plausible wrong one — and the first found by asking *which population is this assertion
+actually quantified over?* rather than by finding a false zero. Add that question to the census axes.
+
+### D-11.1.8 — Q2's non-additivity is real by three mechanisms and asserted by none
+
+The builder verified rather than assumed, and the distinction produced the AC.
+
+**`thai-dictionary` is non-additive today, three independent ways:** `parseS1Payload` rejects
+`cached-bytes-mismatch` unless `cachedBytes` equals Σ `cacheAssets.bytes`, so rows contribute nothing
+structurally (already red-proved by `release-payload.test.ts`'s `staleArithmetic`); `LoadScreen.tsx`
+computes `verified` from `payload.cacheAssets` filtered by verified URLs, **not from `rows`**, which is
+the mechanism that makes N embedded face rows safe and the one that would have been got wrong by
+assuming; and `generate-offline-release.mjs` reduces `rows` into `s1VisibleBytes` **before** appending
+the dictionary row.
+
+**What is not asserted is the AC.** Nothing pins that the *rendered* total ignores `rows`. Rewrite
+`LoadScreen`'s total from `payload.cachedBytes` to a row sum and every existing test still passes —
+`parseS1Payload` never sees the UI. So AC3 is a LoadScreen-level test that a payload with embedded rows
+displays Σ `cacheAssets`, not Σ `rows`, red-provable by making the total a row sum. That is falsifiable,
+it is about the surface an author actually reads, and it is what stops the "you download 696 KB twice"
+failure.
+
+**The pattern worth keeping:** three correct mechanisms, zero assertions at the surface that matters.
+Being right by construction and being guarded are different properties, and only one of them survives a
+refactor.
+
+### D-11.1.9 — DW-12 for 11.1, stated in the form that cannot be discharged by a green subset
+
+11.1 runs the **FULL `-tags=matrix` suite unfiltered, on four targets, in-story** — never a `-run`
+filter, never CI's name-filtered subset. Two facts make this non-negotiable here rather than ritual:
+`TestShippedFacesReproduceFromUpstream` **is among the tests CI never runs**, and this story changes
+that guard's own subject. A green from anything narrower discharges nothing.
+
+**And it must run with `FOLIO_FONTGEN_PYTHON` set.** Measured: with it, 2125 pass / 2 fail / 5 skip and
+that test passes; without it, 2124 / 3 / 5 — the third being that same test as a **could-not-execute**.
+A degraded form that cannot run is not a form that can pass. (Both against the same two known failures,
+`TestCorpusMeetsP6ExerciseFloors` / `P6g_(opaque_names)`.) `TestCrossTargetByteIdentity` really executes
+all four legs in 24.16s, so Docker and Node are present and the gate is not silently skipping — itself a
+check worth keeping, since a four-target gate that quietly ran one leg is the same defect class again.
+
+### D-11.1.10 — Arm A: the row type must name how the bytes actually reach the reader
+
+**The fork, surfaced by the builder rather than absorbed.** My Q2 ruling (rows are `embedded-in-engine`)
+and my D-11.1.5 three-surface ruling (each cut declared to the browser under its own family) imply
+**different row types**, because these faces are delivered twice. Q2 was ruled on an analysis that turned
+out to be incomplete. The builder caught that choosing either arm silently would overturn a ruling made
+an hour earlier, and stopped. That was correct and is the behaviour to keep.
+
+**My slot hypothesis was refuted, cleanly.** I had assumed engine-embedded cuts might not consume
+precache slots. The three Notos refute it by existing: they are embedded in the wasm **and** hold three
+of the six hardcoded slots, because a CSS `@font-face` needs a URL and the wasm's copy has none. The
+builder decomposed `s1.assetCount` = 54 exactly — 31 catalogue faces, 9 Vite chunks, 6 hardcoded font
+slots, 4 pdfjs fonts, 4 engine/starter/index — every one traceable to a `fingerprint()` call. **The rule
+is exact: one `fingerprint()` slot = one dist asset = one cache slot.** My predicted 61 rested on a false
+premise and was withdrawn.
+
+**RULING: Arm A** — 11.1 commits the cuts engine-side; 11.3 bundles them.
+
+1. **Q2 stays true because on Arm A it *is* true.** Not preserved by wording: on Arm A the bytes really
+   are only in the wasm, so `embedded-in-engine` **describes** the delivery. Arm B would have a row say
+   *"embedded in engine; no second request"* about a face the browser separately downloads — a false row
+   on a pinned surface, which no rewording rescues. **A row type must name how the bytes actually reach
+   the reader.**
+2. **Blast radius follows acceptance.** 11.1's acceptance is that the engine lays out and paints the
+   seven cuts; nothing in it requires the browser to hold the bytes. 11.3's acceptance does. Each story's
+   payload cost then attributes to the thing that made it necessary, which is what makes the size record
+   readable later.
+3. **Margin timing — recorded as the WEAKEST of the three, deliberately.** Both arms end at margin 3;
+   only the timing differs. Recorded as weak so nobody later reconstructs this ruling as having been
+   about the margin. It was about row truth.
+
+**Cost accepted knowingly:** 11.3 rewrites seven rows from `embedded-in-engine` to `cached-asset`. That
+churn lands in a story already rewriting those rows, and it forces 11.3 to re-attest each row against the
+delivery it then actually has — a feature. Arm B's pay-once saving is real and smaller than a false row.
+
+**The falsifier, issued as part of the ruling so it costs no second round trip.** Arm A splits a mirrored
+surface across two stories, and D-7.4.5 says a mirrored invariant moves in one commit. **If a guard exists
+that reads both the Go-side face set and the browser-side `shippedFamilies` and compares them, Arm A is
+not churn-heavy but impossible** — 11.1 would leave the mirror half-populated and red the suite. In that
+case the builder takes Arm B without asking, records that Q2 is superseded by the mirror constraint and
+by whose measurement, and states the margin as 10 → 3. **The falsifier IS the ruling.** Issued as a
+precondition rather than an assertion because I have not measured it and the census is structurally blind
+to it — this would be the third such blind spot.
+
+**The obligation that is Arm A's price, and is not optional.** Deferring the slots defers the check, and
+*a deferred check with no named owner is exactly how DW-162's figure aged 41 → 20 → 10 while three
+stories walked past it.* So: the spec hands DW-162 forward to **Story 11.3 by name**, with the predicted
+54 → 61 and 10 → 3 marked as predictions to be measured; and **the approach-warning threshold ships in
+11.1 on either arm** — 11.1 is the story that knows the margin is about to hit 3, 11.3 is the story that
+will be busy hitting it.
+
+### D-11.1.11 — I wrote a stale mechanism into a standing instruction, and the correction improves the instruction
+
+**What happened.** In re-keying Story 8.4d's trigger I justified "measure arm-to-arm in one environment"
+by DW-100's finding that `s1VisibleBytes` drifts every commit — the engine row being 58% of the total and
+`build-wasm.mjs` leaving `-buildvcs` at its default. The builder measured it: **that is no longer true.**
+`wasm-vcs-stamp.mjs` declares `export const ENGINE_BUILD_FLAGS = ['-buildvcs=false']`, `buildEngineWasm`
+uses it, and `assertNoVCSStamp` actively verifies that none of `vcs.revision`, `vcs.time`,
+`vcs.modified` or `build\tvcs=` survives in the emitted binary, throwing if one does. The tree-state
+input was deliberately closed. Register amended the same day, before the text was acted on.
+
+**The instruction survives and is stronger, which is the point worth keeping.** The conclusion was right
+for a reason that had expired. With the drift closed, a **same-arm repeat is available as a control**:
+build the same arm twice, and only then quote the cross-arm delta against it. If the repeat is
+byte-stable the delta is a measurement rather than the difference of two drifting numbers; if it is
+**not** stable, that is a finding in its own right, because something is supposed to have closed that
+input and evidently has not. **Never quote a cross-arm delta without stating the same-arm repeat behind
+it.**
+
+**The error class.** Not a wrong fact — a fact that *was* right, cited without checking whether it still
+was. Distinct from D-11.1.2 (right shape, wrong subject) and D-12.C.1 (wrong vocabulary). This one is
+**a finding quoted past its own repair**, and a decision log is precisely the instrument that makes it
+easy: the entry stays readable forever and says nothing about having been fixed. Whenever a DW entry is
+cited as a live hazard, check its status before leaning on it.
+
+### D-11.1.12 — the italic PostScript names are upstream output, and the warning belongs at the assertion
+
+The two italic derivations emit `name[6]` values that read as typos and are not:
+`NotoSans-Italic.ttf` → **`NotoSansItalic-Italic`**, `NotoSans-BoldItalic.ttf` →
+**`NotoSansItalic-BoldItalic`**. fontTools composes name[6] from the *source* VF's
+variations-PostScript prefix, which for the italic VF is `NotoSansItalic`; the bold cut escapes it
+because the roman VF's prefix is `NotoSans`.
+
+**Ruling: record the measured value, never hand-correct it.** A shipped face is committed output of a
+replayable script; editing its name table by hand puts a manual edit inside the byte-identity regime,
+which is the one thing that discipline exists to forbid.
+
+**And the warning goes in a comment at `shippedFaceSpecs` itself, not only in the spec.** `shippedFaceSpecs`
+asserts name[6] exactly, so a reader who "corrects" these two rows reds the suite. **The spec is read
+once; the assertion is read by whoever is about to change it** — and that is the person who needs the
+warning. The comment states that the value is upstream-determined output and that correcting it reds the
+suite.
+
+### D-11.1.13 — the payload delta is measured, and D-A's estimate held
+
+Exact, from the extracted and derived files: derived **2,025,112 B** over four cuts (Noto Sans Bold
+648,284; Italic 663,520; Bold Italic 665,508; Thai Bold 47,800); static **1,111,656 B** over three
+(Roboto Bold 358,188; Italic 375,320; Bold Italic 378,148). **Total 3,136,768 B = 2.99 MiB**, taking the
+shipped set 11,645,836 → 14,782,604 raw — **+26.9%**.
+
+That lands almost exactly on D-A's "~3 MB" estimate, so the owner's arithmetic held. **Worth one line in
+the Delivery Log**: an estimate that is checked and found good is how the next estimate earns its trust,
+and this run has spent far more words on estimates that did not.
