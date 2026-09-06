@@ -4375,6 +4375,16 @@ declares no bindings. The engine has no such requirement: the CLI renders that t
 This epic touches no engine byte. Every PDF it displays, exports and describes is one the engine
 already produced.
 
+> **AMENDED BY OWNER DECISION, 2026-09-07 (D-13.4.1).** Story 13.4 is an exception to the sentence
+> above. It adds a NEW read-only Go function — a type-directed stand-in document generator — plus a
+> wasm op to expose it. The exception was taken knowingly, by the owner, because the story's second
+> acceptance criterion is not deliverable otherwise: there is no single value that renders empty
+> (`upper`/`lower` reject null, `formatNumber` rejects null AND "", `formatDate` accepts neither and has
+> no empty form, and a null under `visibleIf` SILENTLY DELETES the element per D-3.2.3). **`Render`
+> itself is still untouched** — it is called with genuinely supplied data — so the promise's intent, that
+> every displayed PDF is one the engine really produced, holds. The literal claim does not, and this
+> note exists so an auditor finds the exception rather than the contradiction.
+
 **FRs covered:** FR61, FR62
 **Also lands:** UX-DR9, UX-DR14, UX-DR17, UX-DR21, UX-DR22, UX-DR23 — the exactness claim is the
 thing this screen exists to make legible, and it is a constraint on every story below

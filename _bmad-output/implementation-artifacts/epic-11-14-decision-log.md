@@ -4894,3 +4894,53 @@ using the workflow's own extracted commands. The first push is the first Linux e
 wasm-versus-native byte-equality assertion reds there, that is a finding about byte determinism across
 platforms — the most interesting kind this project has — and not a reason to make the job advisory.**
 Making a job advisory to keep it green is how DW-268 came to exist in the first place.
+
+
+### D-13.4.1 — OWNER DECISION: build the stand-in document in Go, and amend Epic 13's no-engine-byte promise to say so
+
+Story 13.4's second AC — "every unresolved path renders as empty and the page is produced" — is not
+deliverable as written. The builder measured the arms first-hand rather than reasoning about them:
+`evalUpperLower` rejects null ("never coerced"); `formatNumber` rejects null AND `""`; `formatDate`
+rejects both and needs a real RFC 3339 string or epoch ms, so **no empty value exists for it at all**;
+`ConditionValue` returns `false, nil` for null, meaning a null-filled document **silently deletes every
+`visibleIf` element** — which is owner ruling D-3.2.3, not a bug; and `checkTableBindings` refuses a null
+collection, leaving `[]` as the only clean stand-in. **There is no single value that renders empty.**
+
+**Why this went to the owner and not to me.** I verified both constraints before escalating. `epics.md`
+states *"This epic touches no engine byte"*, and the Epics 8–15 scope fence escalates the engine-side
+option by name. Every available route either broke a stated epic promise or narrowed the story, so none
+was within my authority or the lead's.
+
+**The owner chose route (a):** a new read-only Go function, mirroring `ParameterReferences`'s three-band
+walk and built ON `expr.Parse`/`ScanPlaceholders`, emitting a document whose value at each referenced
+path is chosen by the expression WRAPPING it — `""` for string contexts, `0` for `formatNumber`, one
+fixed instant for `formatDate`, `true` for `visibleIf`, `[]` for a table bind. A wasm op exposes it and
+the designer sends the bytes on the existing `data` channel.
+
+**What that buys, and it is the reason (a) beat the alternatives:** `Render` is called with genuinely
+supplied data, so its semantics, error contract, codes and goldens are untouched **structurally rather
+than by discipline**. Staleness comes free — `data` is already hashed into the preview identity, so
+loading real data changes the key and `loadSample`'s existing `invalidatePreview()` marks the no-data
+preview stale with no new code.
+
+**Epic 13's promise is amended in place rather than quietly broken.** The note at `epics.md` records the
+exception, its owner and its date, and distinguishes the literal claim (now false) from the intent (still
+true: every displayed PDF is one the engine really produced). An auditor should find the exception, not
+the contradiction.
+
+**The condition I attached, which is the story's real risk.** The builder named it itself: *"any construct
+the generator misses becomes a hard failure in a mode that promised never to fail."* So the generator's
+coverage must be exhaustive **by construction** — the operator list derived from the engine's own
+registry, never restated as a literal in the test, so adding an operator to the engine reds the check.
+This run has been bitten twice by hand-maintained mirrors (`matrixDocuments`, and `build-wasm.mjs`'s
+shipped-families literal that omitted plain Roboto while naming three families with no key). Plus: the
+stand-in must be byte-deterministic (a fixed instant, never `time.Now()`), and the screen must withhold
+exactly what the mockup withholds — a page built from fabricated values is **not** production output and
+must never present as it.
+
+**Ruled with it, all as recommended:** params stay out (separate root, pinned e2e behaviour); the real
+`CodeEmptyAverage` warning on an empty `avg` footer is accepted rather than suppressed, because a preview
+where diagnostics mean something different from everywhere else is worse than one honest warning
+(AD-14/I-8); and the epic's citations are corrected to **FR9 · FR35** — FR34 is the Design Canvas, the
+approximate representation, and citing it for the exact-preview surface would mislead every later reader
+— with the S3→S5 state extension recorded as an extension rather than an implementation.
