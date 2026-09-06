@@ -3169,3 +3169,117 @@ shipped set 11,645,836 → 14,782,604 raw — **+26.9%**.
 That lands almost exactly on D-A's "~3 MB" estimate, so the owner's arithmetic held. **Worth one line in
 the Delivery Log**: an estimate that is checked and found good is how the next estimate earns its trust,
 and this run has spent far more words on estimates that did not.
+
+### D-11.1.14 — the falsifier fired, and the mechanism is now standing practice
+
+**Arm A is impossible, as D-11.1.10 said it would be if the guard existed.** It exists. Verified
+independently at `folio-designer/src/font-binary-identity.test.ts:982`:
+
+```js
+familiesWithNoRule(generator, [...chromeFamilies,
+  ...shippedFaceNames(fontsGo).filter((face) => !catalogueFamilySet.has(face))]).toEqual([])
+```
+
+`shippedFaceNames` parses the `Shipped()` map keys straight out of `folio-go/fonts/fonts.go`; every key
+that is not a catalogue family must have an `@font-face` rule, and `familySourcePaths` resolves each rule
+through a real `assets` slot, with `isSentinel` catching a rule whose slot resolves to nothing. A bold cut
+cannot be a catalogue family, so all seven land in the must-have-a-rule set. **Arm A would leave the
+mirror half-populated and red the suite.** So: **Arm B.** Rows are `cached-asset`, `s1.assetCount`
+54 → 61, margin **10 → 3 in this story**, and the spec records that Q2's `embedded-in-engine` ruling is
+superseded by the mirror constraint, naming the measurement and the falsifier it was taken under.
+
+**The mechanism is the durable part.** Attaching an explicit, measurable falsifier to a ruling — *"if X
+exists, this ruling is void and you take the other arm without asking"* — converted a wrong ruling into a
+right one **with no round trip**. The cost of being wrong was one paragraph rather than one dispatch, and
+the builder never had to choose between obeying a ruling and obeying the code. **Standing practice: when
+a ruling rests on a fact the ruler has not measured, name the fact, name what its presence implies, and
+hand over the authority to flip.** This is now the preferred shape for any ruling issued under
+uncertainty, and it is strictly better than either guessing or blocking.
+
+**The load-screen non-additivity test survives the flip, for a better reason than it was written under.**
+The seven new rows are now correctly additive, but `thai-dictionary` becomes the **only**
+`embedded-in-engine` row; its non-additivity is still asserted nowhere at the surface an author reads;
+and at twelve rows instead of five, a row-sum total is **worse**, not moot.
+
+### D-11.1.15 — twelve rows: itemise, because `rows` is a record before it is a screen
+
+**Question.** AC3 itemises per face, so the load screen goes from 5 rows to 12. Aggregate them?
+
+**Ruling: itemise.** Three reasons, the third general.
+
+1. **`rows` is a manifest surface before it is a screen.** `verify-offline-release.mjs` checks `s1Ids` and
+   `semanticLabels` by ordered exact join. An aggregate does not satisfy "the manifest states the per-face
+   cost" — it destroys per-face attribution at the moment the payload grew 26.9%. The one question a
+   reader will have later is *which face cost what*, and an aggregate is the single shape that cannot
+   answer it.
+2. **The CJK precedent is one row per face**, and `cjk-font` is already read by id. A second convention
+   for the cuts gives one surface two rules, and the next story must learn which applies.
+3. **Never fix a presentation problem by making the record less specific.** If twelve rows reads badly,
+   that is a rendering problem with a rendering fix — grouping, a disclosure, a heading — in the
+   component, not the manifest. Same instinct as DW-162, where a figure kept in aggregate prose aged 41 →
+   20 → 10 unnoticed. If the screen genuinely reads badly, the Delivery Log records what was seen and a
+   presentation story takes it; the data is not thinned pre-emptively.
+
+### D-11.1.16 — count-independence, and an index-keyed RED PROOF is the defect wearing its own uniform
+
+The builder specced the positional `s1.rows[4]` read as *"make it count-independent"* rather than *"change
+4 to 11"*, because the index will move again in 11.3. Correct, and the scope is larger than it looked.
+
+- **`release-payload.ts:57` carries three couplings on one line:**
+  `cached.length !== 4 || rows[4].delivery !== 'embedded-in-engine' || rows[4].assetUrl !== rows[0].assetUrl`.
+  The count becomes 11, the index becomes 11, **and `rows[0]` is itself positional** — it means "the
+  engine wasm row" and says so nowhere. All three key by id.
+- `verify-offline-release.mjs:95` — `const dictionaryRow = s1.rows[4]`.
+- **`verify-offline-release.mjs:295` and `:325` mutate `rows[4]` and `rows[0]` BY INDEX inside `redProof`
+  harnesses.** This is the part that matters. Those are the falsifiers proving the guards can go red. An
+  index-keyed falsifier that lands on the wrong row after an insertion either **fails to go red**, or goes
+  **red for the wrong reason** — and a red proof passing for the wrong reason is this run's dominant
+  defect class wearing the costume of the thing meant to catch it. **A falsifier must target its subject
+  by identity, never by position.** New rule, and it generalises past this story.
+- **The precedent is in the same file**: `verify-offline-release.mjs:98` already does
+  `s1.rows.find(row => row.id === 'cjk-font')`. Cited so the change reads as adopting the file's own
+  better convention rather than as invention.
+
+### D-11.1.17 — the fragment fallback stack does not change, and the reason outranks scope
+
+`canvas-font-stack.test.ts`'s counts move; **its fragment fallback stack must not.** The builder flagged
+this as the one place where the obvious edit is the wrong one, and was right for a reason stronger than
+scope: **widening the stack changes what every unattributed fragment in every existing document falls back
+to** — a silent rendering change to documents nobody edited, under a byte-determinism regime whose whole
+premise is that output moves only when input does. That is this project's worst failure mode, and it would
+arrive disguised as a tidy-up.
+
+Written into the spec as a **`Never`**, not only as a table note: the table is read by the implementer,
+the `Never` is read by the reviewer wondering why the obvious edit was skipped.
+
+### D-11.1.18 — token gate: [K], and the reason is that there is no seam
+
+~7,142 tokens against the workflow's 1,600 threshold. Kept whole **deliberately**, not by inheriting the
+run's earlier `[K]`.
+
+**The story cannot be split along the seam that matters.** The Go/browser split *is* Arm A, and D-11.1.14
+just proved the mirror must move in one commit under D-7.4.5. Splitting by face multiplies the full
+four-target matrix — the run's most expensive gate — by the number of splits. Splitting the accounting
+from the faces ships binaries through unaccounted guards. **There is no seam, so `[K]`.**
+
+**Mitigation pre-authorized:** if the implementer starts missing rows, hand it the 20-row guard table
+separately, as its own artifact, and do **not** trim it. A complete table delivered twice is cheap; a
+table trimmed to fit is how a directory-listing guard gets skipped — and three of this story's four
+hardest blockers are that kind.
+
+**The guard table is the best artifact this story has produced.** It names the three files my census
+missed (`accounting_test.go`, `folio-go/fonts/fonts.go`, `NOTICE.md`) and separates dir-listing guards
+from text-matchers — the axis my census structurally could not see. It is the **tree-shape axis done
+properly**, and the closer is pointed at it as the reference implementation for the amended census.
+
+### D-11.1.19 — one more assertion quantified over a population that just changed
+
+`shipped_faces_test.go:assertShippedFaceMatchesSpec` contains a bare literal:
+`!strings.HasSuffix(names[6], "-Regular")`. It reds on every new cut. **Parameterise it from the spec
+row; do not delete it**, and record *why* beside it.
+
+It is a **correct** assertion quantified over a population that just changed — the same shape as
+D-11.1.7's shipped-slot metadata gap, which this story is also closing. Deleting it rather than widening
+it would be the third instance of the class in a single story, and the only one we introduced ourselves.
+**When a story changes a population, every assertion quantified over that population is either widened or
+consciously exempted — never quietly dropped because it went red.**
