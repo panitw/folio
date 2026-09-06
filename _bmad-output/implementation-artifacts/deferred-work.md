@@ -9361,3 +9361,51 @@ first: if the repeat is byte-stable, the cross-arm delta is a real measurement r
 difference of two drifting numbers — and if it is **not** stable, that is a finding in its own right,
 because something is supposed to have closed that input and evidently has not. Never quote a cross-arm
 delta without stating the same-arm repeat behind it.
+
+---
+
+### DW-231 — regenerating `MANIFEST.md` before staging produces a licence hole that passes its own gate
+
+- **Deferred by:** the orchestrator and Story 11.1's builder, jointly (2026-09-06), while clearing two
+  `lint` failures that turned out to be artifacts of untracked files.
+- **Owner:** **the next story that adds tracked files to the repository.** Not a named story, because the
+  hazard is a property of the *shape* of the work rather than of any one epic.
+- **Severity:** **HIGH when it fires**, and it fires silently. LOW frequency — it needs a story that adds
+  files, which this run had not seen until 11.1.
+- **Status:** OPEN. Nothing in the repository prevents it; only the gate order does, and that order was
+  unwritten until now.
+
+**The mechanism.** `TestManifestUpToDate` compares the **committed `MANIFEST.md`** against a **live
+walk**, and `lint/internal/manifest/manifest.go:704` scopes that walk with
+`git -C <root> ls-files -- <dir>`. So the walk sees tracked files only.
+
+Run `cd lint && go run ./cmd/genmanifest` while new files are still **untracked** and both sides of the
+comparison are blind in the same way: the regenerated manifest omits their rows, the walk omits them too,
+the two agree, and **the test passes** — leaving `MANIFEST.md` silently unaccounting for however many
+redistributed binaries the story added. For Story 11.1 that would have been **fourteen font files, each
+carrying an OFL obligation**, and `MANIFEST.md` is the artifact that discharges AD-26.
+
+**Why Story 11.1 got a red test instead, and why that is not reassurance.** The licence census failed
+*loudly* because `licencecensus_test.go:pinnedCensus` is **hand-pinned**: the builder wrote its rows from
+the intended set, so a hand-written population disagreed with a walked one and the disagreement was
+visible. The manifest would have failed *silently* because **both of its sides derive from the same
+walk**.
+
+> **A record compared only against itself cannot detect a blind spot it shares with its own source.**
+
+So the loud failure was a property of how the *census* is built, not a property of the mistake. Nothing
+about that episode licenses the inference that this hazard announces itself. It is DW-230's
+one-direction finding in general form, and the two entries should be read together.
+
+**The interim control, in force from now:** any story that adds tracked files follows the order
+**implement → the orchestrator stages by explicit path → regenerate `MANIFEST.md` → run the licence and
+manifest gates → review.** Recorded as D-11.1.20 / D-11.1.20a. Staging is the orchestrator's to do; the
+builder is forbidden to touch git, which is the other half of why this interaction had never surfaced.
+
+**What discharges it.** Make the manifest walk's population independent of its own blind spot — either
+widen it to `git ls-files --others --exclude-standard` so untracked-but-not-ignored files are visible and
+must be accounted (the fix already applied to the font-host scanners for the same mechanism), or have
+`genmanifest` refuse to run while the working tree holds unstaged additions under a scanned directory.
+The first is preferred: it makes the guard correct rather than making the human careful. Red-provable by
+adding an unstaged directory containing a `LICENSE` and confirming the manifest gate goes red; today it
+goes green.

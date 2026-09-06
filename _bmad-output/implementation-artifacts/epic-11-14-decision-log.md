@@ -3283,3 +3283,131 @@ D-11.1.7's shipped-slot metadata gap, which this story is also closing. Deleting
 it would be the third instance of the class in a single story, and the only one we introduced ourselves.
 **When a story changes a population, every assertion quantified over that population is either widened or
 consciously exempted — never quietly dropped because it went red.**
+
+### D-11.1.20 — a builder forbidden to touch git cannot green a guard that reads `git ls-files`
+
+**How it surfaced.** 11.1's builder was cut off mid-implementation with no completion record. Assessing
+the tree rather than assuming, the work had survived and was substantially green — but `lint` failed two
+tests:
+
+```
+TestLicenceSignalCensus: census walked up only 59 committed licence files,
+  but pinnedCensus records 73 of them — the walk itself looks broken
+TestManifestUpToDate: lint/MANIFEST.md is out of date
+```
+
+**Neither was a defect.** Both guards are scoped to **tracked** files — `manifest.go:704` shells out to
+`git -C <root> ls-files -- <dir>` — and this story's fourteen new directories were untracked. The
+builder's fourteen census rows and its regenerated `MANIFEST.md` were correct the entire time; the guards
+were measuring a repository that did not contain the story's files. Staging the fourteen directories **by
+explicit path** (never `git add -A`) turned all four `lint` packages green with no code change.
+
+**The structural finding, which is about the process and not the code.** The standing rule forbids the
+builder to commit, add, stash, checkout, reset, revert or restore. Two of this story's guards read
+`git ls-files`. Therefore **a story that adds files is structurally unable to verify its own work on
+exactly the surfaces AD-26 cares most about.** That is not a bug in either rule; it is an interaction
+between them that nobody had hit, because no previous story in this run added a tracked directory.
+
+**Standing gate order for any file-adding story, from here:**
+`implement → the ORCHESTRATOR stages by explicit path → licence and manifest gates → review.`
+Staging is not committing, it is within the orchestrator's authority, and it is now a named step rather
+than something rediscovered under a red test.
+
+**Why this is the safe direction, and worth saying explicitly.** This is the run's catalogued tracked-only
+mechanism — the one that produced false zeros in the font-host scanners until their populations were
+widened to `git ls-files --others --exclude-standard`. Here the same mechanism produced a **false
+FAILURE** rather than a false pass. A guard that cannot see a file and therefore *fails* is behaving
+correctly under uncertainty; a guard that cannot see a file and therefore *passes* is the defect class
+this run keeps finding. **Same mechanism, opposite sign, and only one of the two signs is dangerous** —
+which is a useful thing to be able to say about a red test before spending an hour on it.
+
+**Also recorded: the builder's work was fully recoverable.** Fourteen directories each with binary +
+`LICENSE-OFL.txt` + `NOTICE.md`, eleven `//go:embed` directives, eleven `Shipped()` keys spelled as ruled,
+twenty-one tracked files modified, all four CHECKPOINT 1 edits applied. `folio-go` green apart from the
+two known baseline failures; designer **63 files / 947 tests all passing** against a 938 baseline, `tsc`
+clean, `build:wasm` succeeding — which is itself the proof that `shippedFamilies` moved 6 → 13 and the
+rule-count throw is satisfied. An interrupted builder is resumed and re-oriented against a measured tree,
+never restarted.
+
+### D-11.1.20a — AMENDMENT: the loud failure was a property of the guard, not of the mistake
+
+11.1's builder improved D-11.1.20 and the improvement is the more useful half. **The tracked-only
+mechanism has a silent direction, and we happened to hit the loud one.**
+
+**The silent direction, reasoned through the code.** `TestManifestUpToDate` compares the **committed
+`MANIFEST.md`** against a **live walk**, and `manifest.go:704` scopes that walk with `git ls-files`.
+Regenerate the manifest *before* staging and **both sides are blind in the same way**: the generated file
+omits the fourteen rows, the walk omits them too, the comparison agrees, and the test goes **GREEN while
+`MANIFEST.md` silently fails to account for fourteen redistributed font binaries.** That is an AD-26
+breach that passes its own gate. The correct order — stage, then regenerate — is the difference between a
+red test and a shipped licence hole.
+
+**Why we got the loud failure instead, which is the part to keep.** The licence census failed loudly
+**because it is hand-pinned**: the builder wrote 73 rows from the *intended* set, so a hand-written
+population disagreed with a walked one and the disagreement was visible. The manifest would have failed
+silently **because both of its sides derive from the same walk**.
+
+> **A record compared only against itself cannot detect a blind spot it shares with its own source.**
+
+That is DW-230's one-direction finding in general form. It also means the loud failure was a property of
+**how that particular guard is built**, not a property of the mistake — so nothing about this episode
+licenses the inference that the tracked-only hazard announces itself. Registered separately as a live
+hazard for every future file-adding story.
+
+**And the inverted near-miss, worth recording because it runs the other way to every other instance.**
+The builder's first `grep -c "go:embed" fonts.go` returned **12**. The twelfth is line 22's prose,
+`// estimated) — go:embed`. The real count is eleven embeds and eleven `Shipped()` keys. It resolves
+clean because `lint`'s `expectedShippedFaces` trims the line and prefix-matches `"//go:embed "`, which
+that prose does not satisfy. **The repo's matcher was the strict one; the ad-hoc grep was the loose one.**
+Every other instance in this run has gone the other way, and it is a concrete reminder that
+strips-comments is a property of the *reader*, not of the file — which is exactly why the census tracks
+it per guard rather than per file.
+
+### D-11.1.21 — the builder disclosed that it did not author the designer half, and that is the behaviour to keep
+
+On resume, 11.1's builder reported that its visible transcript contains step-01, step-02, the spec, the
+CHECKPOINT 1 edits, the font binaries, all fourteen provenance directories, the four `UPSTREAM` entries,
+`make fonts` / `make fonts-verify`, and **two** implementation subagents — Go and `lint`. It **never
+dispatched a designer-side agent**; that chunk is absent from its transcript. (A first implementation
+agent died on an API error after 44 tool calls having written only prose.)
+
+**Confirmed from outside its transcript:** the git snapshot in the orchestrator's own system prompt, taken
+when this session resumed, already listed every designer file as modified before the orchestrator's first
+tool call. So the designer chunk landed in the part of the session neither party can see.
+
+**The disposition is correct and is now standing practice.** The builder is reviewing that diff as
+**third-party code under full adversarial scrutiny** rather than as work it knows to be right. It cost
+nothing — it was going to review it anyway — and it removes the one assumption that would have made the
+review shallow. **Code being good is not evidence that it was reviewed**, and an agent that cannot
+remember authoring something must not treat its quality as a substitute for having checked it.
+
+Worth noting what the builder did *not* do: absorb the gap, reconstruct a plausible account, or let the
+work's evident quality stand in for provenance. It reported a discontinuity in its own memory as a fact
+about the review's reliability. That is the correct failure mode for an agent that has been interrupted.
+
+### D-11.1.22 — the release is measured, and every prediction held
+
+```
+assetCount 61   rows 12   cachedBytes 53,939,356
+approach warning: 61 cache assets against a declared maximum of 64 — the margin is 3.
+  The warning threshold is `warnCacheAssets` = 56 in src/release-payload.ts;
+  nothing fails until the maximum is exceeded.
+```
+
+`s1.assetCount` **54 → 61**; margin **10 → 3**; twelve rows; seven new `cached-asset` rows itemised per
+face per D-11.1.15; `thai-dictionary` the sole `embedded-in-engine` row per D-11.1.14. **DW-162's
+discharge condition is met** — the message names the threshold, its file, and states that nothing fails
+until the maximum is exceeded, which is precisely the over-versus-approach distinction the entry existed
+to draw.
+
+**AC3's non-additivity is now empirical rather than argued.** Σ `rows` = **17,238,271**;
+Σ `cacheAssets` = **53,939,356** = `cachedBytes` exactly. They differ by a factor of three, so a row-sum
+total could not masquerade as correct — and the LoadScreen test pins the one surface where it would
+otherwise go unnoticed.
+
+**The builder exceeded the instruction on `warnCacheAssets`, and the excess is the valuable part.** The
+ruling asked for a threshold read through `readDeclaredConstant`. The builder also wrote the negative
+cases — a threshold **above the ceiling** and one **below the floor** — under the comment *"than left as
+a warning that can never fire."* **The obvious failure of an approach warning is not that it is absent
+but that it is set somewhere it can never trip**, and nothing in the ruling would have produced that
+check. Recorded because it is the defect class caught *prospectively* for the first time in this run.
