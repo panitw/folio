@@ -25,11 +25,17 @@ in this directory, the unmodified upstream licence text).
 This is Story 16.8's addition to `fonts.Shipped()`'s FontSet — the fourth shipped production
 face, joining the three Story 2.2 Noto faces (`"Noto Sans"`, `"Noto Sans Thai"`,
 `"Noto Sans SC"`) — keyed as `"Roboto"`. A new document's starter template
-(`folio-designer/public/templates/starter.folio`) declares its default `fonts` chain as
-`"Roboto": ["Roboto", "Noto Sans Thai", "Noto Sans SC"]`, so a new document opens in a
+(`folio-designer/public/templates/starter.folio`) declares its default `fonts` chain under the
+name `"Roboto"`, over the same three families in the same order, so a new document opens in a
 typeface with a name rather than in the internal chain name `body` the starter used before this
 story — the Noto Sans Thai and Noto Sans SC fallbacks are unchanged and keep Thai and CJK
 rendering exactly as they did before.
+
+**Story 11.3 gave that chain its CUTS**, and the entries are objects rather than bare strings now:
+Roboto declares `bold`, `italic` and `boldItalic` (this directory's three sibling cuts), Noto Sans
+Thai declares `bold` alone, and Noto Sans SC declares none. The exact contents are not restated
+here — `folio-go/starter_template_test.go` reads that file and intersects every name it declares
+with `fonts.Shipped()`, which is a check rather than a second copy.
 
 It is a **single upright static Regular**: `OS/2.usWeightClass` 400, `glyf` outlines only, no
 `fvar`/`gvar`/`avar`, no `CFF`/`CFF2`. NFR7's glyf/TrueType-over-CFF choice is met, as it is for

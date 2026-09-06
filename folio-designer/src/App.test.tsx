@@ -5,6 +5,7 @@ import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { shortcutHintsFor } from './shortcuts'
 import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { embeddedFaceFamily } from './embedded-face-family'
+import { shippedFaceFamily } from './shipped-face-family'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
@@ -34,13 +35,16 @@ const withMachineStore = (): (() => void) => {
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
-const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+// STORY 11.3: a projected entry carries its DECLARED style variants too, and
+// they are always-present keys — '' is absent. `variants` lets a fixture declare
+// a cut without every other call site restating three empty strings.
+const face = (name: string, variants: Partial<Readonly<{ bold: string; italic: string; boldItalic: string }>> = {}) => ({ face: name, assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '', ...variants })
 
 // carried() is the projected shape of an EMBEDDED chain entry: no face name,
 // an asset key, and the family/style Go read out of the asset's own `font`
 // record for the panel to display. The key never becomes a family here — that
 // derivation is embedded-face-family.ts's alone (D-8.4.1).
-const carried = (assetKey: string) => ({ face: '', assetKey, family: 'Noto Sans Thai', style: 'Regular' })
+const carried = (assetKey: string, variants: Partial<Readonly<{ bold: string; italic: string; boldItalic: string }>> = {}) => ({ face: '', assetKey, family: 'Noto Sans Thai', style: 'Regular', bold: '', italic: '', boldItalic: '', ...variants })
 
 // STORY 12.3 — the sixteen TABLE-LEVEL members the table-columns projection
 // gained, as one fixture the table tests spread in.
@@ -51,7 +55,7 @@ const carried = (assetKey: string) => ({ face: '', assetKey, family: 'Noto Sans 
 // every committed member is absent while every resolved one carries the
 // cascade's answer — which is the shape that makes "the panel shows the
 // resolved value" observable at all.
-const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left' }
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false }
 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
@@ -5815,6 +5819,327 @@ describe('Story 12.5: a band boundary is dragged on the canvas', () => {
     // The whole of this block sits before that header, which is the property
     // the splice violated.
     expect(myOwner).toBeLessThan(header)
+  })
+})
+
+
+// STORY 11.3 — THE CANVAS PAINTS THE WEIGHT THE ENGINE RESOLVED, AND THE PANEL
+// STATES A CUT THE FAMILY DOES NOT HAVE.
+//
+// Two defects and one gap, all on the same surface:
+//
+//   * The canvas set `--text-font-weight` from `component.bold` — THE REQUESTED
+//     FLAG — and App.css fed it to `font-weight`. That is browser emboldening
+//     (I-2, AD-17), and since Story 11.2 it was applied ON TOP OF the real bold
+//     cut the engine had already resolved and named on the fragment.
+//   * NOTHING ASSERTED THE TWO CUSTOM PROPERTIES. Measured before this story:
+//     `--text-font-weight` and `--text-font-style` were written at exactly one
+//     site and read at exactly one, and no test named either — so deleting them
+//     reddened nothing and the deletion was invisible to the suite. The sibling
+//     `--text-line-baseline` IS asserted (`:1433`), and `--text-ink` (`:2293`),
+//     both in this file with the idiom below, which is what makes that a
+//     coverage hole rather than a search artefact. The first test here is the
+//     positive assertion the deletion needed.
+//   * The B / I controls had no way to say a family has no such face, because
+//     the projection did not carry the chain's declared variants (DW-239).
+//
+// THE ABSENCE STATE IS READ THROUGH THREE HANDLES, and each carries a different
+// half of the claim: the button's `property-toggle-unavailable` class (the only
+// handle jsdom has on a stylesheet it never parses), its `aria-describedby`
+// (the ONE announcement path — the sentence is not folded into the accessible
+// name as well), and the visible paragraph that id points at (the wording, and
+// the stated way out). A test that read only the class would pass over a state
+// that says nothing.
+describe('the resolved weight, painted and stated', () => {
+  const boldPaint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'Heading', x: 0, face: 'Roboto Bold Italic' }] }] }
+  const robotoChain = { name: 'Roboto', entries: [face('Roboto', { bold: 'Roboto Bold', italic: 'Roboto Italic', boldItalic: 'Roboto Bold Italic' }), face('Noto Sans Thai', { bold: 'Noto Sans Thai Bold' }), face('Noto Sans SC')] }
+  const cjkChain = { name: 'CJK', entries: [face('Noto Sans SC')] }
+  // ⚠ THE FIXTURE'S FACE IS `Roboto Bold Italic`, NOT `Roboto Bold`. It carried
+  // the latter beside `bold: true, italic: true`, which is a resolution the
+  // engine cannot produce: `fontStyleOf(true, true)` asks the chain for
+  // `boldItalic`, and this chain declares one. A fixture encoding an impossible
+  // engine answer teaches the wrong model to the next reader even while every
+  // assertion over it passes.
+  const bolded = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Heading', fontFamily: 'Roboto', fontSize: 12_000, bold: true, italic: true, textPaint: boldPaint }
+  const projection = (components: CanvasProjection['components'], chains: CanvasProjection['fontChains'] = [robotoChain, cjkChain]): CanvasProjection => ({ ...canvas, fontFamilies: chains.map((chain) => chain.name), fontChains: chains, components })
+  const mount = (components: CanvasProjection['components'], chains?: CanvasProjection['fontChains']) => {
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection(components, chains) }} />)
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+  }
+  // The three handles, read together, so no test can assert a state that half
+  // exists. `undefined` asserts the PLAIN control: no class, no description.
+  const expectCut = (label: 'Bold' | 'Italic', sentence: string | undefined) => {
+    const control = screen.getByRole('button', { name: label })
+    if (sentence === undefined) {
+      expect(control.className, `${label} must be the plain control`).not.toContain('property-toggle-unavailable')
+      expect(control.getAttribute('aria-describedby'), `${label} must describe no absence`).toBeNull()
+      return control
+    }
+    expect(control.className, `${label} must be in the unavailable state`).toContain('property-toggle-unavailable')
+    // NOT DISABLED, EVER. A disabled control is the shape CHECKPOINT 1 refused:
+    // it renders as on-or-off, and it would make a declared flag unclearable.
+    expect(control).not.toBeDisabled()
+    const described = control.getAttribute('aria-describedby')
+    expect(described, `${label} must point at the reason`).not.toBeNull()
+    expect(document.getElementById(described!)).toHaveTextContent(sentence)
+    return control
+  }
+  const NO_BOLD = 'No bold face in this family — the engine paints the regular face and warns.'
+  const NO_ITALIC = 'No italic face in this family — the engine paints the regular face and warns.'
+  const NO_BOLD_ITALIC = 'No bold italic face in this family — it cannot do both at once. Turn off either one.'
+
+  it('paints the face the engine resolved and applies no weight or slope of its own', () => {
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection([bolded]) }} />)
+    const paint = screen.getByLabelText('text component e1: Heading').querySelector('.canvas-text-paint') as HTMLElement
+    // POSITIVE CONTROL FIRST, so the three absences below are a measurement of
+    // this node and not of a node that was never found. `--text-font-size` is
+    // set on the SAME element by the SAME expression, and it stays: a size is
+    // not a weight, and it is the engine's own.
+    expect(paint).toHaveStyle({ '--text-font-size': '12px' })
+    // THE DELETION, ASSERTED. Neither custom property, and neither property
+    // they fed — a bold, italic component whose flags are both set.
+    expect(paint.style.getPropertyValue('--text-font-weight')).toBe('')
+    expect(paint.style.getPropertyValue('--text-font-style')).toBe('')
+    expect(paint.style.fontWeight).toBe('')
+    expect(paint.style.fontStyle).toBe('')
+    // AND THE WEIGHT ARRIVES AS A FACE INSTEAD. `Roboto Bold Italic` is the face
+    // the ENGINE resolved and named on the fragment; the browser asks for it by
+    // name and synthesises nothing on top of it.
+    const fragment = paint.querySelector('.canvas-text-fragment') as HTMLElement
+    // Quotes normalised, because jsdom's CSSOM re-serialises the stack with
+    // double quotes. The EXPECTED side is still the derivation rather than a
+    // literal, so a change to the fallback stack reds here too.
+    expect(fragment.style.fontFamily.replaceAll('"', '\'')).toBe(shippedFaceFamily('Roboto Bold Italic'))
+    expect(fragment.style.fontWeight).toBe('')
+    expect(fragment.style.fontStyle).toBe('')
+  })
+
+  // I/O MATRIX ROW: "bold element, NO variant declared". The engine's answer is
+  // the entry's own BASE face plus a Warning, and the canvas must take that
+  // answer rather than compensating for it — which is precisely what the
+  // deleted `font-weight: 700` was doing. Every other absent-cut test here sets
+  // `bold: false` and reads the CONTROL; this one sets `bold: true` and reads
+  // the FRAGMENT, which is the half of the row nothing else covers.
+  it('paints a bold element in the BASE face when the chain declares no bold cut', () => {
+    const regularPaint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 10_000, advance: 12_000, width: 30_000, fragments: [{ text: 'Heading', x: 0, face: 'Noto Sans SC' }] }] }
+    const flat = { ...bolded, fontFamily: 'CJK', italic: false, textPaint: regularPaint }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection([flat]) }} />)
+    const paint = screen.getByLabelText('text component e1: Heading').querySelector('.canvas-text-paint') as HTMLElement
+    const fragment = paint.querySelector('.canvas-text-fragment') as HTMLElement
+    // THE BASE FACE, and nothing added to it. Canvas and PDF agree because both
+    // took the engine's answer; the canvas does not thicken what the engine
+    // declined to thicken.
+    expect(fragment.style.fontFamily.replaceAll('"', '\'')).toBe(shippedFaceFamily('Noto Sans SC'))
+    expect(paint.style.getPropertyValue('--text-font-weight')).toBe('')
+    expect(paint.style.fontWeight).toBe('')
+    expect(fragment.style.fontWeight).toBe('')
+  })
+
+  // ⚠ THE EMBEDDED ARM, AND A REGRESSION THIS STORY WOULD OTHERWISE INTRODUCE.
+  //
+  // `carriedFaceKeys` read only `entry.assetKey`, which was complete while an
+  // entry named ONE face. Since Story 11.2 an entry may name four, and for
+  // `{"asset": K1, "bold": K2}` the ENGINE resolves a bold run to K2 and puts
+  // K2 on the fragment. With K2 unfetched, `carriedFaces.has(K2)` is false,
+  // `fragment.face` is empty on that arm, and the fragment gets NO `fontFamily`
+  // at all — it falls to the stylesheet's stack while the document's own bold
+  // bytes sit in its `assets` map. Before this story that fragment at least got
+  // `font-weight: 700`, so deleting the synthetic weight without this fix makes
+  // embedded bold STRICTLY WORSE (the D-11.3.1 shape: a compensation removed
+  // without supplying what it compensated for).
+  it('fetches an embedded entry\'s VARIANT asset key and paints the fragment with it', async () => {
+    const base = '1111111111111111111111111111111111111111111111111111111111111111'
+    const variant = '2222222222222222222222222222222222222222222222222222222222222222'
+    const fontSet = installStubFontSet()
+    try {
+      const embeddedPaint = { overflow: false, truncated: false, lines: [{ top: 0, baseline: 12_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: variant }] }] }
+      const component = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'ignored', bold: true, fontFamily: 'body', textPaint: embeddedPaint }
+      const embedded = { name: 'body', entries: [carried(base, { bold: variant })] }
+      const requested: string[] = []
+      const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+        if (operation === 'asset') { requested.push(new TextDecoder().decode(payload)); return { snapshot: snapshot(1), bytes: new Uint8Array([0, 1, 2, 3]).buffer } }
+        return { snapshot: snapshot(1) }
+      })
+      const view = render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection([component], [embedded]) }} />)
+      // BOTH KEYS ARE FETCHED. The base is the entry's discriminant and the
+      // variant is a sibling of the same kind (AD-8), so both are `assets` keys
+      // and both are faces this document may be painted with.
+      await waitFor(() => expect(requested).toHaveLength(2))
+      expect(requested.some((payload) => payload.includes(base)), 'the entry\'s own asset key').toBe(true)
+      expect(requested.some((payload) => payload.includes(variant)), 'the entry\'s BOLD variant asset key').toBe(true)
+      // AND THE FRAGMENT THE ENGINE ATTRIBUTED TO THE VARIANT IS PAINTED WITH
+      // IT. This is the assertion the fetch exists for: a fetch with no family
+      // on the node would be a request nobody uses.
+      const painted = () => Array.from(view.container.querySelectorAll('.canvas-text-fragment')) as HTMLElement[]
+      await waitFor(() => expect(painted().map((node) => node.style.fontFamily)).toEqual([embeddedFaceFamily(variant)]))
+      // AND NOTHING SYNTHETIC ON TOP OF IT, which is the whole story on this arm.
+      expect(painted()[0]!.style.fontWeight).toBe('')
+      expect(painted()[0]!.style.fontStyle).toBe('')
+    } finally {
+      fontSet.restore()
+    }
+  })
+
+  it('leaves the B and I controls plain when the chain declares the cut', () => {
+    mount([bolded])
+    expect(screen.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true')
+    expectCut('Bold', undefined)
+    expectCut('Italic', undefined)
+    expect(screen.queryByText(/No .* face in this family/)).toBeNull()
+  })
+
+  it('states the absent cut beside the control, on a chain no entry of which declares one', () => {
+    mount([{ ...bolded, fontFamily: 'CJK', bold: false, italic: false }])
+    // TWO DIFFERENT MISSING CUTS ARE TWO DIFFERENT FACTS, so they state two
+    // sentences — the "once for the pair" rule is about ONE cut implicating
+    // both controls, not about collapsing unrelated absences.
+    expectCut('Bold', NO_BOLD)
+    expectCut('Italic', NO_ITALIC)
+    expect(screen.getByText(NO_BOLD)).toBeInTheDocument()
+    expect(screen.getByText(NO_ITALIC)).toBeInTheDocument()
+  })
+
+  it('states an absent italic while the bold beside it stays plain', () => {
+    const thai = { name: 'Thai', entries: [face('Noto Sans Thai', { bold: 'Noto Sans Thai Bold' })] }
+    mount([{ ...bolded, fontFamily: 'Thai', bold: false, italic: false }], [thai])
+    // Noto Sans Thai ships a Bold and upstream publishes no italic at all
+    // (fonts.go), so the two controls must disagree — and a rule that answered
+    // "the chain declares SOMETHING" rather than "the chain declares THIS cut"
+    // would leave both plain.
+    expectCut('Bold', undefined)
+    expectCut('Italic', NO_ITALIC)
+  })
+
+  // ⚠ F1 — THE COMBINED CUT, the row this spec's I/O matrix never enumerated.
+  //
+  // `boldItalic` was projected across the whole new seam and read by nothing.
+  // An element with BOTH flags set, on a chain declaring `bold` and `italic`
+  // but not `boldItalic`, resolves to the base face and warns — while both
+  // controls read plainly on. That is the state AC3 exists to prevent.
+  //
+  // THE FIXTURE'S DISCRIMINATING POWER IS PINNED FIRST, because a chain missing
+  // only the combined cut is the ONE shape that tells the generalised predicate
+  // from the per-axis one: on a chain missing `bold` outright both predicates
+  // agree, and an assertion whose two sides could be equal is not an assertion
+  // (D-11.2.8).
+  it('enters the unavailable state for the COMBINED cut, and states it once for the pair', () => {
+    const noCombined = { name: 'Pair', entries: [face('Roboto', { bold: 'Roboto Bold', italic: 'Roboto Italic' })] }
+    expect(noCombined.entries[0]!.bold, 'the chain must DECLARE a bold, or this fixture cannot tell the combined rule from the per-axis one').not.toBe('')
+    expect(noCombined.entries[0]!.italic, 'and an italic, for the same reason').not.toBe('')
+    expect(noCombined.entries[0]!.boldItalic, 'and must be missing only the COMBINED cut').toBe('')
+    mount([{ ...bolded, fontFamily: 'Pair' }], [noCombined])
+    // BOTH controls are implicated: marking only one implies the other is fine.
+    expectCut('Bold', NO_BOLD_ITALIC)
+    expectCut('Italic', NO_BOLD_ITALIC)
+    // ⚠ AND THE SENTENCE NAMES THE MISSING CUT, NOT THE CONTROL. The predicate
+    // alone — without this — makes B say "No bold face in this family" on a
+    // chain that DECLARES a bold. A panel that lies precisely is worse than one
+    // that lies vaguely, so the false sentence is asserted absent by name.
+    expect(screen.queryByText(NO_BOLD)).toBeNull()
+    expect(screen.queryByText(NO_ITALIC)).toBeNull()
+    // STATED ONCE FOR THE PAIR, through ONE announcement path: both buttons
+    // point at the SAME element, and there is exactly one of it.
+    expect(screen.getAllByText(NO_BOLD_ITALIC)).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Bold' }).getAttribute('aria-describedby'))
+      .toBe(screen.getByRole('button', { name: 'Italic' }).getAttribute('aria-describedby'))
+    // AND THE SENTENCE IS NOT ALSO FOLDED INTO THE ACCESSIBLE NAME (P9): the
+    // plain names are what resolve, so nothing is announced twice.
+    expect(screen.getByRole('button', { name: 'Bold' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Italic' })).toBeInTheDocument()
+  })
+
+  // THE SAME CHAIN, ONE FLAG OFF. The combined cut is only required once BOTH
+  // are on, so B — whose press would produce plain bold — must be plain, while
+  // I, whose press would produce the combined cut, must warn BEFORE the press.
+  it('warns on the control whose press would need the missing combined cut, and not on the other', () => {
+    const noCombined = { name: 'Pair', entries: [face('Roboto', { bold: 'Roboto Bold', italic: 'Roboto Italic' })] }
+    mount([{ ...bolded, fontFamily: 'Pair', italic: false }], [noCombined])
+    expectCut('Bold', undefined)
+    expectCut('Italic', NO_BOLD_ITALIC)
+    expect(screen.getAllByText(NO_BOLD_ITALIC)).toHaveLength(1)
+  })
+
+  // ⚠ THE `entries[0]` TRAP, AND THE ONE FIXTURE THAT CAN SEE IT.
+  //
+  // `declaredChainEntry` returns the chain's FIRST entry and sits three
+  // functions from the call site, so it is the function an implementer reaches
+  // for — and it is the wrong rule here (Q2, ratified at CHECKPOINT 1). The
+  // starter's own chain CANNOT detect the error: its first entry is Roboto,
+  // which declares a bold, so the first-entry rule and the all-entries rule
+  // return the same answer on it. An assertion whose two sides could be equal
+  // is not an assertion (D-11.2.8), so this fixture is built the other way
+  // round — first entry with no bold, later entry with one — and the two rules
+  // are pinned to genuinely DISAGREE on it before the control is read.
+  it('asks every entry of the chain, not the first one', () => {
+    const cjkFirst = { name: 'Mixed', entries: [face('Noto Sans SC'), face('Roboto', { bold: 'Roboto Bold' })] }
+    expect(cjkFirst.entries[0]!.bold, 'the FIRST entry must declare no bold, or this fixture cannot tell the two rules apart').toBe('')
+    expect(cjkFirst.entries.some((entry) => entry.bold.length > 0), 'a LATER entry must declare one, for the same reason').toBe(true)
+    mount([{ ...bolded, fontFamily: 'Mixed', bold: false, italic: false }], [cjkFirst])
+    // The all-entries rule says AVAILABLE; the first-entry rule would say
+    // "no bold face in this family" while Latin bolds perfectly well.
+    expectCut('Bold', undefined)
+    // Italic is the control arm: NO entry of this chain declares one, so the
+    // same fixture must produce the absent state for the other cut. Without it
+    // this test would also pass over a rule that never reports an absence.
+    expectCut('Italic', NO_ITALIC)
+  })
+
+  // THE SELECTION RULE IS `every`, AND THE DELIBERATE CHOICE IS PINNED. Swapping
+  // it to `some` reddened nothing: every other test here selects ONE component.
+  // A mixed selection in which one component's chain declares the cut must keep
+  // the plain control, because "this family has no bold face" would be false of
+  // half of it.
+  it('keeps the control plain when only SOME of the selection lacks the cut', () => {
+    const canBold = { ...bolded, id: 'e1', bold: false, italic: false, fontFamily: 'Roboto' }
+    const cannot = { ...bolded, id: 'e2', y: 30_000, bold: false, italic: false, fontFamily: 'CJK' }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projection([canBold, cannot]) }} />)
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    fireEvent.click(screen.getByLabelText(/^text component e2/), { shiftKey: true })
+    // Non-vacuity: the selection really is two components.
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    expectCut('Bold', undefined)
+    expectCut('Italic', undefined)
+    // And the SAME cut-less component alone still states it, so the green above
+    // is the `every` rule and not a panel that never reports an absence.
+    cleanup()
+    mount([{ ...cannot, id: 'e1', y: 0 }])
+    expectCut('Bold', NO_BOLD)
+  })
+
+  // ⚠ THE DECLARED-BUT-UNAVAILABLE STATE, DRIVEN BY ITS REAL ROUTE. Bold a
+  // Roboto element, then switch its family to a CJK-only chain — both through
+  // the panel's own controls, with the engine answering each one. A state only
+  // reachable through a hand-built projection is a state nobody has shown is
+  // reachable, and this is the state that decided Q1 against a disabled
+  // control: the document carries `bold: true` and the author must be able to
+  // clear it.
+  it('keeps a declared-but-unavailable cut clearable after the family moves under it', async () => {
+    const plain = { ...bolded, bold: false, italic: false }
+    const sent: string[] = []
+    let current: CanvasProjection = projection([plain])
+    const request = vi.fn(async (_operation: string, payload?: ArrayBuffer) => {
+      if (payload) {
+        const text = new TextDecoder().decode(payload)
+        sent.push(text)
+        if (text.includes('"bold":{"op":"set"')) current = projection([{ ...plain, bold: true }])
+        if (text.includes('"fontFamily"')) current = projection([{ ...plain, bold: true, fontFamily: 'CJK' }])
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 1 + sent.length, byteLength: 3, canvas: current } }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: current }} />)
+    fireEvent.click(screen.getByLabelText('text component e1: Heading'))
+    fireEvent.click(screen.getByRole('button', { name: 'Bold' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true'))
+    // NOW THE FAMILY MOVES, through the same dropdown an author uses.
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'IN THIS TEMPLATE' })).getByRole('option', { name: 'CJK' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bold' }).className).toContain('property-toggle-unavailable'))
+    const unavailable = expectCut('Bold', NO_BOLD)
+    // THE DOCUMENT STILL CARRIES THE FLAG, so the control is still pressed —
+    // and it is the third state, not the plain on state.
+    expect(unavailable).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(unavailable)
+    await waitFor(() => expect(sent.at(-1)).toContain('"bold":{"op":"clear"}'))
   })
 })
 

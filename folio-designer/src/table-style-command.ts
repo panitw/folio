@@ -31,12 +31,27 @@
 // undo entry and raises the document's required format version.
 import { commandBytes, jsonNumber, jsonString, type JsonField } from './command-json'
 
-// The seven header-style fields a command may author. The four `Style` fields
+// The seven header-style fields THIS MODULE can author. The four `Style` fields
 // absent from this union are each a ruling, not an oversight: `border` is
-// deferred to Story 14.8's BORDERS section, `padding` is forbidden outright by
-// D-12.4.1, and `bold`/`italic` have no arm in the engine's header cascade to
-// resolve from — a header style declaring either would be stored and read by
-// nothing.
+// deferred to Story 14.8's BORDERS section, and `padding` is forbidden outright
+// by D-12.4.1.
+//
+// ⚠ `bold`/`italic` USED TO BE JUSTIFIED HERE AS "no arm in the engine's header
+// cascade to resolve from — a header style declaring either would be stored and
+// read by nothing". THAT SENTENCE IS RETIRED AT STORY 11.3 BECAUSE IT IS FALSE:
+// Story 11.2 gave `resolveHeaderStyle` a bold and an italic arm, the engine's
+// `tableHeaderStyleFields` is NINE, and Story 11.3 projects the committed and
+// resolved pair for both (`headerBold`/`headerBoldResolved`,
+// `headerItalic`/`headerItalicResolved`). A header style declaring either is
+// stored, cascaded, drawn and now read back.
+//
+// THEY STAY OUT OF THIS UNION ON A DIFFERENT AND STILL-TRUE GROUND: their value
+// is a BOOLEAN, and this factory encodes every value as a string or a number
+// (`NUMERIC_HEADER_STYLE_FIELDS` below is the whole of its type knowledge), so
+// it cannot build a command the engine would accept. There is also no control
+// to send one — `TableEditor.tsx` has no header B/I — and DW-240 was read-back
+// plumbing, not authoring. Adding either here means adding a boolean arm and
+// the control that uses it, together.
 export type TableHeaderStyleField = 'fontFamily' | 'fontSize' | 'lineSpacing' | 'background' | 'color' | 'valign' | 'align'
 
 // The two header-style fields whose value is a NUMBER on the wire: a length in

@@ -71,7 +71,15 @@ const families = catalogue.map((row) => row.family)
 // directly (precedent: `folio-go/wasm/cmd/engine/main_test.go:229`), and a
 // template that parses to no chains at all THROWS: an empty declared set would
 // silently collapse this file back to the one-armed harness it was.
-type StarterTemplate = Readonly<{ fonts?: Readonly<Record<string, ReadonlyArray<string>>> }>
+//
+// ⚠ AN ENTRY IS `unknown`, NOT `string` (Story 11.3). `starter.folio` declares
+// style variants now, so two of its three entries are OBJECTS
+// (`{"face": "Roboto", "bold": "Roboto Bold", …}`) and only the third is a bare
+// string. This harness reads `Object.keys(fonts)` and nothing else, so the
+// widening is a TRUTHFULNESS fix rather than a behavioural one — but a type
+// that lies about the file it parses is exactly the premise-instead-of-source
+// mistake the comment above records.
+type StarterTemplate = Readonly<{ fonts?: Readonly<Record<string, ReadonlyArray<unknown>>> }>
 const starterPath = fileURLToPath(new URL('../public/templates/starter.folio', import.meta.url))
 const starter = JSON.parse(readFileSync(starterPath, 'utf8')) as StarterTemplate
 const declaredChains = Object.keys(starter.fonts ?? {})

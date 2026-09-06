@@ -224,3 +224,203 @@ func TestProjectedEntryStringsAreBounded(t *testing.T) {
 		})
 	}
 }
+
+// STORY 11.3 / DW-239 — THE DECLARED STYLE VARIANTS, PROJECTED.
+//
+// The panel could not see that a chain declares a bold cut, so it could not
+// honour the epic's rule that an ABSENT cut is stated rather than shown as a
+// reachable on-state. These three keys are that read-back, and this is the Go
+// half of the same contract the file above already keeps for `family`/`style`:
+// engine-protocol.test.ts proves the browser's guard ACCEPTS the shape, and
+// only a test here can prove the engine EMITS it.
+//
+// WHAT IT MUST BE, AND THE TRAP IT MUST NOT FALL INTO. The projection copies
+// what the DOCUMENT declares, verbatim (D-11.2.1 / D-11.2.2). Every row below
+// therefore names its expected value as a literal the fixture also spells,
+// which is the only way a `Face + " Bold"` implementation is visibly wrong; a
+// row asserting `entry.Bold != ""` would pass over one.
+//
+// AND THE NAMESPACES DO NOT CROSS (AD-8). A `face` entry's variants are FontSet
+// FACE NAMES; an `asset` entry's are `assets` KEYS. The embedded row asserts
+// the projected `bold` is the second asset's KEY — not its family, not its
+// style, not a name derived from either.
+
+// variantFixtureSecondKey and variantFixtureSecondData are a SECOND hand-built
+// 156-byte sfnt and its digest, copied from internal/template's own variant
+// fixtures, because a chain entry with a variant ASSET KEY needs a document
+// carrying two faces — the loader refuses a variant naming no asset, and that
+// refusal is itself pinned in that package.
+const variantFixtureSecondKey = "35573263bb78c4a0b0866ff63489bcfeb36b56ac2abe42206967541ba829eea7"
+
+const variantFixtureSecondData = `[
+        "AAEAAAADACAABAAQY21hcAAAAAAAAAA8AAAAIGdseWYAAAAAAAAAXAAAACBoZWFkAAAAAAAAAHwA",
+        "AAAgRklYVFVSRTFGSVhUVVJFMUZJWFRVUkUxRklYVFVSRTFGSVhUVVJFMUZJWFRVUkUxRklYVFVS",
+        "RTFGSVhUVVJFMUZJWFRVUkUxRklYVFVSRTFGSVhUVVJFMUZJWFRVUkUx"
+      ]`
+
+const variantFixtureFirstKey = "cbd7a24e64e08aba9da4edd9343b9eaa629e7c26e722eedf68fd5efe217dbedc"
+
+const variantFixtureFirstData = `[
+        "AAEAAAADACAABAAQY21hcAAAAAAAAAA8AAAAIGdseWYAAAAAAAAAXAAAACBoZWFkAAAAAAAAAHwA",
+        "AAAgQ01BUERBVEFDTUFQREFUQUNNQVBEQVRBQ01BUERBVEFHTFlGREFUQUdMWUZEQVRBR0xZRkRB",
+        "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
+      ]`
+
+// variantChainDoc is a two-asset document whose `body` chain is written
+// verbatim by the caller, so a row can put any legal entry shape in it. The
+// assets map is emitted in sorted key order (AD-9), and the second key sorts
+// first.
+func variantChainDoc(chainBody string) string {
+	return `{
+  "assets": {
+    "` + variantFixtureSecondKey + `": {
+      "data": ` + variantFixtureSecondData + `,
+      "font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
+        "family": "Second Sans",
+        "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1.",
+        "source": "hand-built 156-byte sfnt — a fixture, not a face",
+        "style": "Bold"
+      },
+      "mediaType": "font/ttf"
+    },
+    "` + variantFixtureFirstKey + `": {
+      "data": ` + variantFixtureFirstData + `,
+      "font": {
+        "copyright": "Copyright 2026 The Folio Fixture Authors",
+        "family": "Maximal Sans",
+        "licence": "SIL Open Font License 1.1",
+        "licenceText": "This fixture face is licensed under the SIL Open Font License, Version 1.1.",
+        "source": "hand-built 156-byte sfnt — a fixture, not a face",
+        "style": "Regular"
+      },
+      "mediaType": "font/ttf"
+    }
+  },
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 200, "height": 40, "value": "v", "style": {"fontFamily": "body", "fontSize": 11}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ` + chainBody + `},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}`
+}
+
+func TestProjectedEntryCarriesTheDeclaredStyleVariantsVerbatim(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		chain string
+		want  []CanvasFontChainEntry
+	}{
+		{
+			// A BARE STRING DECLARES NOTHING, and all three keys are still
+			// projected — as "" — because they are never omitempty. A key that
+			// appeared only for entries that happen to declare a variant is a
+			// key the browser's hasExactKeys rejects for every other document,
+			// and the symptom is a blank canvas.
+			name:  "a bare face entry declares no variant",
+			chain: `["Noto Sans"]`,
+			want:  []CanvasFontChainEntry{{Face: "Noto Sans"}},
+		},
+		{
+			name:  "a face entry declaring all three",
+			chain: `[{"bold": "Noto Sans Bold", "boldItalic": "Noto Sans Bold Italic", "face": "Noto Sans", "italic": "Noto Sans Italic"}]`,
+			want: []CanvasFontChainEntry{{
+				Face: "Noto Sans", Bold: "Noto Sans Bold", Italic: "Noto Sans Italic", BoldItalic: "Noto Sans Bold Italic",
+			}},
+		},
+		{
+			// THE ROW THE STARTER TEMPLATE IS: a bold and no italic. The two
+			// absences travel as "" beside a present bold, which is what lets
+			// the panel state "this family has no italic face" for exactly one
+			// of its two controls.
+			name:  "a face entry declaring bold only",
+			chain: `[{"bold": "Noto Sans Thai Bold", "face": "Noto Sans Thai"}]`,
+			want:  []CanvasFontChainEntry{{Face: "Noto Sans Thai", Bold: "Noto Sans Thai Bold"}},
+		},
+		{
+			// AD-8: AN EMBEDDED ENTRY'S VARIANT IS AN ASSETS KEY. The expected
+			// value is the second asset's KEY — deliberately not "Second Sans",
+			// which is that asset's display family and is what a projection
+			// that crossed the two namespaces would have produced.
+			name:  "an embedded entry declaring a variant asset key",
+			chain: `[{"asset": "` + variantFixtureFirstKey + `", "bold": "` + variantFixtureSecondKey + `"}]`,
+			want: []CanvasFontChainEntry{{
+				AssetKey: variantFixtureFirstKey, Family: "Maximal Sans", Style: "Regular", Bold: variantFixtureSecondKey,
+			}},
+		},
+		{
+			// MIXED KINDS IN ONE CHAIN, in the document's own authored order,
+			// so a projection that read the variants off the wrong entry is
+			// caught rather than being invisible in a one-entry chain.
+			name:  "a mixed chain keeps each entry's own variants",
+			chain: `[{"bold": "Noto Sans Bold", "face": "Noto Sans"}, {"asset": "` + variantFixtureFirstKey + `", "boldItalic": "` + variantFixtureSecondKey + `"}, "Noto Sans SC"]`,
+			want: []CanvasFontChainEntry{
+				{Face: "Noto Sans", Bold: "Noto Sans Bold"},
+				{AssetKey: variantFixtureFirstKey, Family: "Maximal Sans", Style: "Regular", BoldItalic: variantFixtureSecondKey},
+				{Face: "Noto Sans SC"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := projectedChainEntries(t, variantChainDoc(tc.chain))
+			if len(entries) != len(tc.want) {
+				t.Fatalf("projected %d entries, want %d: %+v", len(entries), len(tc.want), entries)
+			}
+			for i, want := range tc.want {
+				if entries[i] != want {
+					t.Errorf("entry %d = %+v, want %+v — the projection copies the entry's declared variants VERBATIM: no name is constructed, parsed or inferred (D-11.2.1)", i, entries[i], want)
+				}
+			}
+		})
+	}
+}
+
+// TestAProjectedVariantIsBoundedLikeEveryOtherProjectedString closes the half
+// of the bound the three new fields opened. maxCanvasPropertyString is applied
+// to every string on this wire, and a bound applied to four of seven fields is
+// a bound on nothing — the sentence projectFontChainEntry's own comment makes.
+func TestAProjectedVariantIsBoundedLikeEveryOtherProjectedString(t *testing.T) {
+	long := strings.Repeat("N", maxCanvasPropertyString+1)
+	atLimit := strings.Repeat("N", maxCanvasPropertyString)
+	for _, tc := range []struct {
+		name    string
+		chain   string
+		refused bool
+	}{
+		{"bold at the limit", `[{"bold": "` + atLimit + `", "face": "Noto Sans"}]`, false},
+		{"bold over the limit", `[{"bold": "` + long + `", "face": "Noto Sans"}]`, true},
+		{"italic over the limit", `[{"face": "Noto Sans", "italic": "` + long + `"}]`, true},
+		{"boldItalic over the limit", `[{"boldItalic": "` + long + `", "face": "Noto Sans"}]`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tpl, err := ParseTemplate([]byte(variantChainDoc(tc.chain)))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			_, cerr := Canvas(tpl)
+			if tc.refused {
+				if cerr == nil {
+					t.Fatal("a projected variant over the bound must be REFUSED with a stated reason, never silently cut")
+				}
+				if !strings.Contains(cerr.Error(), "font chain entry exceeds the projection bound") {
+					t.Errorf("Canvas refused with %q, want the projection-bound reason", cerr)
+				}
+				return
+			}
+			if cerr != nil {
+				t.Fatalf("a projected variant AT the bound must be accepted, got: %v", cerr)
+			}
+		})
+	}
+}

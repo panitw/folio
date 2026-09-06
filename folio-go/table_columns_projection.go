@@ -19,8 +19,8 @@ type TableColumnsProjection struct {
 	Collection string `json:"collection"`
 	Alias      string `json:"alias"`
 
-	// STORY 12.3 — the table-level header and row properties, sixteen
-	// members, and the arithmetic is 7 x 2 + 1 + 1.
+	// STORY 12.3 — the table-level header and row properties, twenty
+	// members since Story 11.3, and the arithmetic is 9 x 2 + 1 + 1.
 	//
 	// TWO MEMBERS PER HEADER-STYLE FIELD. The committed one is what the
 	// document actually declares — empty/zero when the key is absent —
@@ -58,6 +58,21 @@ type TableColumnsProjection struct {
 	// place it is lossy is a hand-edited `headerStyle.fontSize: 0`,
 	// which no command can write (the arm refuses a non-positive size)
 	// and which DW-26 already records as unbounded at the loader.
+	//
+	// AND, SINCE STORY 11.3, THE TWO BOOLEANS — a SECOND disclosed
+	// limit, of the same kind and a wider one. `false` is the zero
+	// value, so HeaderBold/HeaderItalic collapse committed-ABSENT with
+	// committed-`false`, and unlike the fontSize case a command CAN
+	// write the losing value: `tableHeaderStyleFields` carries `bold`
+	// and `italic`, and `{"bold": null}` decodes to present(false).
+	// The collapse is accepted rather than answered with a tri-state
+	// for one field, on D-11.3.3's ground: CanvasProjection is
+	// engine<->browser, both in this repo, moving in one commit — it is
+	// NOT tag-bound, so a tri-state can be added the day something needs
+	// one, and consistency inside one struct beats a second idiom until
+	// then. Nothing today needs one: the panel's third state is
+	// declared-true-but-no-face, which survives the collapse. AN
+	// UNDISCLOSED LIMIT AGES INTO FALSE REASSURANCE, so it is disclosed.
 	HeaderHeight     int64  `json:"headerHeight"`
 	AltRowBackground string `json:"altRowBackground"`
 
@@ -75,6 +90,10 @@ type TableColumnsProjection struct {
 	HeaderValignResolved      string `json:"headerValignResolved"`
 	HeaderAlign               string `json:"headerAlign"`
 	HeaderAlignResolved       string `json:"headerAlignResolved"`
+	HeaderBold                bool   `json:"headerBold"`
+	HeaderBoldResolved        bool   `json:"headerBoldResolved"`
+	HeaderItalic              bool   `json:"headerItalic"`
+	HeaderItalicResolved      bool   `json:"headerItalicResolved"`
 
 	Columns []TableColumnProjection `json:"columns"`
 }
@@ -104,6 +123,17 @@ func committedStyleString(value template.Presence[string]) string {
 		return value.Value
 	}
 	return ""
+}
+
+// committedStyleBool is the same reading for a Presence[bool], and it is
+// the site of the collapse the struct comment discloses: absent, null and
+// an explicit `false` all come back `false`, because `false` is the only
+// spelling of absence a bool has on a wire whose key set is pinned exactly
+// in both directions. It is its own function rather than an inline
+// expression so there is ONE place to change if that stops being
+// acceptable.
+func committedStyleBool(value template.Presence[bool]) bool {
+	return value.Set && !value.Null && value.Value
 }
 
 type TableColumnProjection struct {
@@ -171,6 +201,10 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		HeaderValignResolved:      resolved.valign,
 		HeaderAlign:               committedStyleString(committed.Align),
 		HeaderAlignResolved:       resolved.alignFallback,
+		HeaderBold:                committedStyleBool(committed.Bold),
+		HeaderBoldResolved:        resolved.bold,
+		HeaderItalic:              committedStyleBool(committed.Italic),
+		HeaderItalicResolved:      resolved.italic,
 		Columns:                   make([]TableColumnProjection, 0, len(element.Table.Value.Columns)),
 	}
 	for _, column := range element.Table.Value.Columns {

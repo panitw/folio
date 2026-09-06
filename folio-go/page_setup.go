@@ -586,15 +586,41 @@ type CanvasFontChain struct {
 // the honest answer for a document that named its own face nothing;
 // inventing a name here would be the engine guessing.
 //
-// All four keys are ALWAYS emitted (no omitempty, deliberately). The
+// All SEVEN keys are ALWAYS emitted (no omitempty, deliberately). The
 // browser checks this object with an exact-key guard, so a key that
 // appears only for some entries is a key that rejects the whole snapshot
 // for some documents — and the symptom is a blank canvas.
+//
+// STORY 11.3 / DW-239: Bold, Italic and BoldItalic are the entry's own
+// DECLARED style variants, projected so the panel can READ BACK what the
+// document declares. They exist for one question the panel could not
+// otherwise answer — does this chain declare a bold cut at all? — and
+// the epic's rule is that an absent cut is STATED, never shown as a
+// reachable on-state.
+//
+// THEY ARE COPIED VERBATIM, NEVER CONSTRUCTED (D-11.2.1 / D-11.2.2).
+// Nothing here appends " Bold", parses a face name, reads a name table
+// or sniffs OS/2. "" is absence, exactly as it is on FontChainEntry.
+//
+// A SIBLING'S NAMESPACE MATCHES ITS ENTRY'S DISCRIMINANT (AD-8). On a
+// `face` entry these are FontSet face names; on an `asset` entry they
+// are `assets` keys. The projection never crosses the two, because it
+// reads them off the entry that already carries the discriminant.
+//
+// THIS IS NOT THE RESOLVER. Which face a PAINTED fragment ends up in is
+// CanvasTextFragment.Face, decided by shapeSegments against coverage.
+// A chain entry's declared variant is what the DOCUMENT says, and the
+// two are different facts: a declared bold that does not cover a rune is
+// not the face that rune is drawn in.
 type CanvasFontChainEntry struct {
 	Face     string `json:"face"`
 	AssetKey string `json:"assetKey"`
 	Family   string `json:"family"`
 	Style    string `json:"style"`
+
+	Bold       string `json:"bold"`
+	Italic     string `json:"italic"`
+	BoldItalic string `json:"boldItalic"`
 }
 
 // canvasFontChains is the projection of the document's declared chains, in
@@ -638,10 +664,11 @@ func canvasFontChains(t *Template) ([]CanvasFontChain, error) {
 
 // projectFontChainEntry projects ONE entry, and applies
 // maxCanvasPropertyString to EVERY string it puts on the wire — the face
-// name, the asset key, the family and the style alike. A bound applied
-// to three of four fields is a bound on nothing: the projection is
-// refused with a stated reason rather than silently cut, which is the
-// rule every other list in this projection already follows.
+// name, the asset key, the family, the style and, since Story 11.3, the
+// three declared style variants alike. A bound applied to four of seven
+// fields is a bound on nothing: the projection is refused with a stated
+// reason rather than silently cut, which is the rule every other list in
+// this projection already follows.
 //
 // The family and style are read from the asset's `font` record. An
 // explicit `null` there is treated as absence for DISPLAY purposes —
@@ -665,7 +692,15 @@ func projectFontChainEntry(t *Template, entry template.FontChainEntry) (CanvasFo
 	} else {
 		out.Face = entry.Face
 	}
-	for _, s := range []string{out.Face, out.AssetKey, out.Family, out.Style} {
+	// THE DECLARED VARIANTS, VERBATIM, FROM THE ENTRY'S OWN FIELDS.
+	// Read through FontChainEntry.Variant so the closed set is the
+	// model's one table (fontChainVariants) rather than a second list
+	// here; "" comes back for a variant the entry does not declare, and
+	// "" is exactly how this projection spells absence.
+	out.Bold = entry.Variant(template.FontStyleBold)
+	out.Italic = entry.Variant(template.FontStyleItalic)
+	out.BoldItalic = entry.Variant(template.FontStyleBoldItalic)
+	for _, s := range []string{out.Face, out.AssetKey, out.Family, out.Style, out.Bold, out.Italic, out.BoldItalic} {
 		if len(s) > maxCanvasPropertyString {
 			return CanvasFontChainEntry{}, fmt.Errorf("folio: font chain entry exceeds the projection bound")
 		}

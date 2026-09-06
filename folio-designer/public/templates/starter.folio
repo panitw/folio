@@ -6,7 +6,11 @@
     "pageHeader": {"elements": [], "height": 60}
   },
   "fonts": {
-    "Roboto": ["Roboto", "Noto Sans Thai", "Noto Sans SC"]
+    "Roboto": [
+      {"bold": "Roboto Bold", "boldItalic": "Roboto Bold Italic", "face": "Roboto", "italic": "Roboto Italic"},
+      {"bold": "Noto Sans Thai Bold", "face": "Noto Sans Thai"},
+      "Noto Sans SC"
+    ]
   },
   "locale": "en",
   "nextId": 1,
@@ -16,5 +20,5 @@
     "size": "A4"
   },
   "utcOffset": "+00:00",
-  "version": "1.0"
+  "version": "2.0"
 }

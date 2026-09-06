@@ -66,6 +66,84 @@ const prohibited = [
   // (contentWindowOrigins); multiplying is the one plausible line of designer
   // code that would quietly replace them, in either operand order.
   /\b(?:contentWindowHeight|windowHeight)\s*\*|\*\s*[\w.?]*\b(?:contentWindowHeight|windowHeight)\b/,
+  // STORY 11.3 / AC2, AND THE SHARP END OF I-2: NO SYNTHETIC BOLD OR OBLIQUE
+  // ON PAINTED DOCUMENT TEXT. The engine resolves a real cut and names it on
+  // the fragment; a `font-weight` or `font-style` applied to the painted text
+  // asks the browser to smear a face it already drew correctly, which is the
+  // one thing the emit path has always refused. Until this story the canvas did
+  // exactly that, from `component.bold` — THE REQUESTED FLAG — and after 11.2
+  // it did it ON TOP OF the real bold cut.
+  //
+  // ⚠ SCOPED TO THE SURFACE, NOT TO THE VALUE, and that is the whole design of
+  // these two rules. The sibling CSS rule above (`white-space: normal`, …)
+  // scopes by VALUE because its forbidden values appear nowhere legitimate.
+  // These do: the chrome writes `font-weight: 500` in seven rules and `600` in
+  // two, and `.property-fx` is deliberately italic. The invariant is not "this
+  // value is wrong" but "this property may not be applied to painted document
+  // text" — the page/chrome line DESIGN.md already draws — so the scope is the
+  // `.canvas-text-*` surface and the JSX elements that carry it.
+  //
+  // ⚠ AND IT REACHES TWO DIFFERENT SPELLINGS, BECAUSE THE DEFECT WAS WRITTEN IN
+  // BOTH AND A VALUE PATTERN REACHED NEITHER. `App.css` read
+  // `font-weight: var(--text-font-weight)` and `App.tsx` wrote
+  // `'--text-font-weight': component.bold ? 700 : 400`; a
+  // `font-weight:\s*(bold|\d+)` pattern matches neither of the two lines this
+  // story deleted, and would have shipped green over the defect it exists for.
+  // The two rules are separate entries so each has its own red proof.
+  //
+  // ⚠ NEITHER IS A BAN ON THE CUSTOM PROPERTY'S NAME. A rename defeats a name
+  // ban, and the pair is what closes that: the custom property can only BECOME
+  // a weight through a CSS declaration on the painted surface, which the first
+  // rule catches whatever the value is called.
+  //
+  // RULE 15 — the painted-document CSS surface, LONGHAND. Any `.canvas-text*`
+  // rule whose body declares either property, by any value: a literal, a
+  // `var()`, or an inherited custom property.
+  //
+  // ⚠ THE SELECTOR PART IS `[^{}]*`, NOT `[^\n{}]*`. It was the latter, and a
+  // grouped selector broken across lines — `.canvas-text-paint,\n.other { … }`
+  // — walked straight through it. In CSS the text between the previous rule's
+  // `}` and this rule's `{` IS the selector list, so excluding braces is the
+  // correct bound and excluding newlines was an accident of this file happening
+  // to be written one rule per line.
+  /\.canvas-text[^{}]*\{[^}]*\bfont-(?:weight|style)\s*:/,
+  // RULE 16 — the same surface, SHORTHAND, which the longhand rule cannot see.
+  // `font: bold 12px/1 sans-serif` sets `font-weight` without the word
+  // `font-weight` appearing anywhere, and this is not hypothetical: the
+  // `.property-toggle-unavailable` rule THIS STORY ADDED uses the `font`
+  // shorthand precisely because it resets a weight.
+  //
+  // SCOPED TO THE VALUE HERE, and that is not a contradiction of the rule above.
+  // The shorthand's other job — `font: var(--type-band-tab)` on
+  // `.canvas-text-truncated` — is a legitimate type token on a chrome strip and
+  // is in the file today; banning the shorthand outright would red it. What is
+  // forbidden is a weight or a slope EXPRESSED in the shorthand, so the value is
+  // scanned for exactly those: the four keywords, and a `[1-9]00` weight (a
+  // length is `12px`, never a bare `700`). The value scan stops at `;` or `}`,
+  // so a keyword elsewhere in the block cannot answer for it.
+  /\.canvas-text[^{}]*\{[^}]*\bfont\s*:[^;}]*(?:\b(?:bold(?:er)?|lighter|italic|oblique)\b|\b[1-9]00\b)/,
+  // RULE 17 — the same surface in JSX: the inline style object on an element
+  // whose className names one of the canvas text spans. Any property whose name
+  // carries a weight or a slope — `fontWeight`, `font-style`, or a custom
+  // property spelling either — is the same prohibition arriving by the other
+  // door. `fontFamily` and `--text-font-size` are deliberately untouched: the
+  // family IS how the resolved cut reaches the browser, and a size is not a
+  // weight.
+  //
+  // ⚠ BOUNDED BY THE OPENING TAG (`[^>]*`), NOT BY THE FIRST `}`. It was
+  // `[^}]*`, which stopped at the first closing brace inside the style object —
+  // and EVERY canvas-text style object in App.tsx already contains a
+  // conditional-spread `{}` (`...(component.color === undefined ? {} : {…})`),
+  // so a weight written AFTER one was invisible in the very file this rule
+  // guards. A JSX inline style lives inside one opening tag, so the tag is the
+  // honest bound.
+  //
+  // ⚠ AND THE className IS NOT REQUIRED TO BE A STRING LITERAL. It was
+  // `className="canvas-text…"`, which a template literal
+  // (`` className={`canvas-text-paint ${x}`} ``) defeated. Matching `className=`
+  // and then the class name anywhere in the same tag covers the literal, the
+  // template literal, a ternary and a helper call alike.
+  /className=[^>]*canvas-text[^>]*style=\{\{[^>]*font-?(?:weight|style)/i,
 ]
 
 // STORY 8.2. THE SECOND LOCK ON "THE BROWSER HOLDS NO ENGINE RULE".
@@ -252,6 +330,135 @@ describe('canvas projection authority contract', () => {
     expect(violationsForSource('const top = canvas.contentWindowHeight * index')).not.toEqual([])
     expect(violationsForSource('const top = index * canvas.contentWindowHeight')).not.toEqual([])
     expect(violationsForSource('const top = sheet * windowHeight')).not.toEqual([])
+    // STORY 11.3 / AC2 — THE TWO SPELLINGS, EACH ITS OWN ROW. The first is the
+    // line App.css carried until this story, `var()` value and all; the second
+    // is the line App.tsx carried, where the property is a CUSTOM property and
+    // the word `font-weight` never appears in a `property: value` position at
+    // all. A value-shaped pattern reddens neither.
+    expect(violationsForSource('.canvas-text-paint { font-size: var(--text-font-size); font-weight: var(--text-font-weight); }')).not.toEqual([])
+    expect(violationsForSource('<span className="canvas-text-paint" style={{ \'--text-font-weight\': component.bold ? 700 : 400 }} />')).not.toEqual([])
+    // AND THE FOUR EVASIONS REVIEW MEASURED AS GREEN AGAINST THE FIRST FORM OF
+    // THESE RULES. Each is a real way the deleted defect comes back, each was
+    // silent, and each has its own row so a later retune cannot quietly reopen
+    // one of them.
+    //
+    // EACH ROW NAMES THE RULE IT MUST WAKE, the way the Story 17.6 block below
+    // does: `.not.toEqual([])` cannot tell three live rules from two, and these
+    // three overlap enough that one could cover for another's deletion.
+    const [longhand, shorthand, inlineStyle] = [prohibited[14], prohibited[15], prohibited[16]]
+    for (const [line, rule] of [
+      // (i) the `font` SHORTHAND, which carries a weight with no `font-weight`
+      // anywhere in it. Only the shorthand rule can answer this.
+      ['.canvas-text-paint { font: bold 12px/1 sans-serif }', shorthand],
+      // (ii) a GROUPED SELECTOR broken across lines, which a newline-excluding
+      // selector bound walked straight through.
+      ['.canvas-text-paint,\n.other { font-weight: 700 }', longhand],
+      // (iii) a weight written AFTER a nested `{}` in the style object — and
+      // every canvas-text style object in App.tsx already contains a
+      // conditional spread, so this was the most natural reintroduction point
+      // in the very file the rule guards.
+      ['<span className="canvas-text-paint" style={{ ...(a ? {} : { fontFamily: f }), fontWeight: 700 }} />', inlineStyle],
+      // (iv) a TEMPLATE-LITERAL className, which a string-literal pattern missed.
+      ['<span className={`canvas-text-paint ${x}`} style={{ fontWeight: 700 }} />', inlineStyle],
+      // And the original two spellings, pinned to their rules for the same reason.
+      ['.canvas-text-paint { font-weight: var(--text-font-weight); }', longhand],
+      ['<span className="canvas-text-paint" style={{ \'--text-font-weight\': component.bold ? 700 : 400 }} />', inlineStyle],
+    ] as const) {
+      expect(violationsForSource(line).map(String), line).toContain(String(rule))
+    }
+  })
+
+  // STORY 11.3 / AC2. THE PROHIBITION IN BOTH DIRECTIONS, because a rule that
+  // reddens the chrome is not scoped and a rule that misses the mutation is not
+  // a prohibition. The reds are the two lines this story deleted plus the
+  // plausible ways they could come back; the greens are every legitimate use of
+  // the same two properties that is already in this repository.
+  it('turns a synthetic weight or slope on painted document text red, and leaves the chrome alone', () => {
+    // REDS — the painted surface, in CSS, by every value spelling.
+    for (const line of [
+      '.canvas-text-paint { font-weight: var(--text-font-weight); }',
+      '.canvas-text-paint { font-style: var(--text-font-style); }',
+      '.canvas-text-paint { font-weight: 700 }',
+      '.canvas-text-paint { font-weight: bold }',
+      '.canvas-text-fragment { font-style: italic }',
+      '.canvas-text-line { font-weight:700 }',
+      // The rule reached through a descendant or a grouped selector, which is
+      // the same surface written a different way.
+      '.canvas-component .canvas-text-fragment span { font-weight: 600 }',
+      '.some-chrome, .canvas-text-paint { font-style: oblique }',
+      // The shorthand, in every spelling that carries a weight or a slope.
+      '.canvas-text-paint { font: bold 12px/1 sans-serif }',
+      '.canvas-text-paint { font: italic 12px/1 sans-serif }',
+      '.canvas-text-paint { font: 700 12px/1 sans-serif }',
+      '.canvas-text-fragment { font: oblique 700 12px/1 sans-serif }',
+      // The selector list broken across lines, in both orders.
+      '.canvas-text-paint,\n.other-chrome { font-weight: 700 }',
+      '.other-chrome,\n.canvas-text-paint { font: bolder 12px sans-serif }',
+    ]) {
+      expect(violationsForSource(line), line).not.toEqual([])
+    }
+    // REDS — the painted surface, in JSX, by custom property and by the React
+    // property name alike.
+    for (const line of [
+      '<span className="canvas-text-paint" style={{ \'--text-font-weight\': component.bold ? 700 : 400 }} />',
+      '<span className="canvas-text-paint" aria-hidden="true" style={{ \'--text-font-style\': component.italic ? \'italic\' : \'normal\' }} />',
+      '<span className="canvas-text-fragment" style={{ fontWeight: 700 }} />',
+      '<span className="canvas-text-line" style={{ fontStyle: \'italic\' }} />',
+      // AFTER a nested `{}` — the shape the real paint span already has.
+      '<span className="canvas-text-paint" style={{ ...(component.color === undefined ? {} : { \'--text-ink\': component.color }), fontWeight: 700 }} />',
+      '<span className="canvas-text-paint" aria-hidden="true" style={{ ...(a ? {} : { b: 1 }), \'--text-font-style\': component.italic ? \'italic\' : \'normal\' }} />',
+      // A className that is not a string literal.
+      '<span className={`canvas-text-paint ${zoomClass}`} style={{ fontWeight: 700 }} />',
+      '<span className={clsx(\'canvas-text-fragment\', extra)} style={{ fontStyle: \'italic\' }} />',
+      // A RENAMED CUSTOM PROPERTY DEFEATS THE JSX RULE AND NOT THE PAIR: the
+      // value can only become a weight through a CSS declaration on the same
+      // surface, and rule 15 is standing there.
+      '.canvas-text-paint { font-weight: var(--tfw) }',
+    ]) {
+      expect(violationsForSource(line), line).not.toEqual([])
+    }
+    // GREENS — the repository's own legitimate uses, quoted verbatim from the
+    // files they live in. These are the nine chrome rules a value-scoped ban
+    // would have reddened, the pasted-HTML fixtures that are INPUT DATA rather
+    // than a rule, and the neighbouring test that names both properties while
+    // asserting their ABSENCE from an @font-face descriptor.
+    for (const line of [
+      '.mode-switch .mode-active { background: var(--color-active); color: var(--color-ink-high); font-weight: 500; }',
+      '.panel-tab-active { border-bottom-color: var(--color-select); color: var(--color-ink-high); font-weight: 500; }',
+      '.component-identity-name { color: var(--color-ink-high); font: var(--type-body-em); font-weight: 500; text-transform: capitalize; }',
+      '.property-fx { flex: none; padding: 0 3px; color: var(--color-ink-ghost); font: var(--type-mono); font-style: italic; }',
+      '.property-toggle[aria-pressed="true"] { background: var(--color-active); font-weight: 600; }',
+      '.property-segment[aria-pressed="true"] { background: var(--color-active); font-weight: 500; }',
+      '.property-add-fonts-label { color: var(--color-select-bright); font-weight: 500; }',
+      '.font-browser-card .font-browser-family { font: var(--type-body-em); font-weight: 500; }',
+      '.font-browser-confirm { padding: var(--space-2) var(--space-6); font-weight: 500; }',
+      '\'text/html\': \'<p style="font-weight:700;font-family:Georgia">Clause 1.</p>\'',
+      'expect(rule).not.toContain(\'font-weight\')',
+      'expect(rule).not.toContain(\'font-style\')',
+      // The painted surface's family and size, which are the engine's own
+      // answers and must never be caught by a rule aimed at weight.
+      '.canvas-text-fragment { left: var(--text-fragment-x); top: 0; font-family: \'Noto Sans\', sans-serif; }',
+      '.canvas-text-paint { font-size: var(--text-font-size); }',
+      '<span className="canvas-text-fragment" style={{ fontFamily: shippedFaceFamily(fragment.face) }} />',
+      // THE SHORTHAND CARRYING A TYPE TOKEN, which is in this file today on
+      // `.canvas-text-truncated` — a chrome strip, not painted document text —
+      // and which the shorthand rule must not red. This is the green that keeps
+      // rule 16 scoped to a weight rather than to the property.
+      '.canvas-text-truncated { padding: 2px var(--space-2); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); }',
+      // The story's own third-state rule, which uses the shorthand to reset a
+      // weight — legitimately, because it is CHROME and names no canvas-text
+      // surface at all.
+      '.property-toggle-unavailable, .property-toggle-unavailable[aria-pressed="true"] { border-style: dashed; font: var(--type-body-em); }',
+    ]) {
+      expect(violationsForSource(line), line).toEqual([])
+    }
+    // AND THE REAL FILES, WHICH IS THE CLAIM THAT ACTUALLY MATTERS: the four
+    // sources that carry every green above stay green as they stand on disk.
+    for (const name of ['App.css', 'App.tsx', 'App.test.tsx', 'font-catalogue.test.ts']) {
+      const file = [...production, ...tests].filter((candidate) => path.basename(candidate) === name)
+      expect(file, name).toHaveLength(1)
+      expect(violations(file), name).toEqual([])
+    }
   })
 
   // STORY 8.4a. THE MUTATION PROOFS THE `document.fonts` RULE NEVER HAD —

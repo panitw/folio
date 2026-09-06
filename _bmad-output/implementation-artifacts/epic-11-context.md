@@ -10,9 +10,11 @@ them — two documents differing only by bold and italic render to identical byt
 governing ruling was to **realize** them rather than retire them. So the shipped families gain real
 weighted and sloped faces; the engine resolves a face from the declared weight and slope and shapes
 and measures from that face's own metrics; the canvas paints the face the engine resolved instead of
-letting the browser embolden Regular; and the family control writes the cuts a family has into the
-document, so bold is reachable in a file the author did not hand-edit. Where a family genuinely has
-no such cut, the product states the absence rather than showing a state the document cannot reach.
+letting the browser embolden Regular; the family control writes the cuts a family has into the
+document, so bold is reachable in a file the author did not hand-edit; and a bold document joins the
+pinned corpus, so a face that silently changes is caught by a golden rather than by a reader. Where
+a family genuinely has no such cut, the product states the absence rather than showing a state the
+document cannot reach.
 
 ## Stories
 
@@ -20,6 +22,7 @@ no such cut, the product states the absence rather than showing a state the docu
 - Story 11.2: The engine resolves a face from the declared weight and slope
 - Story 11.3: The canvas paints the weight the engine resolved
 - Story 11.4: Picking a family declares the cuts it has
+- Story 11.5: A bold document is a pinned golden
 
 ## Requirements & Constraints
 
@@ -36,9 +39,17 @@ no such cut, the product states the absence rather than showing a state the docu
   the measured per-face byte cost and the load screen itemises each face as a named row, the way the
   large CJK face is already itemised. First-load weight is a considered price, not a silent one.
 - **Byte identity is a constraint on this epic, not a target of it.** A document declaring neither
-  bold nor italic must hash identically across all four targets, before and after every story. No
-  golden-corpus document declares bold or italic, so the corpus is a genuine witness; a moved hash is
-  investigated as a defect until proven an intended, versioned change.
+  bold nor italic must hash identically across all four targets, before and after every story. The
+  inherited corpus declares bold or italic nowhere, so it is a genuine witness that nothing moved; a
+  moved hash is investigated as a defect until proven an intended, versioned change.
+- **The epic must leave a bold document pinned.** No inherited fixture declares bold, so a resolver
+  that silently switched face would fire no diagnostic, red no test and move no golden. The hole is
+  closed by a *new* fixture declaring bold and italic on a chain that declares its variants, rendered
+  identically on all four targets and pinned by a JSON and a PDF golden registered in the golden
+  digest record and CI's matrix slug list. The one existing in-tree document that declares bold is
+  byte-compared against the format documentation's worked example, so the two move together and it
+  cannot be adapted into a fixture. A pinned PDF is a human-attested artifact: attestation is an owner
+  action and the work halts for it, never self-attesting and never shipping the fixture goldenless.
 - **A shortfall is stated, never silent.** A covered rune with no face at the requested weight renders
   in the nearest available face and raises a diagnostic naming the element, the rune and the face —
   one diagnostic type on one channel, from the closed, additive code registry.
@@ -95,10 +106,14 @@ no such cut, the product states the absence rather than showing a state the docu
 
 ## Cross-Story Dependencies
 
-- The stories are strictly ordered. 11.2 has nothing to resolve until 11.1's faces ship; 11.3 has
-  nothing real to paint until 11.2 resolves a face and projects the outcome, which the canvas consumes
-  rather than re-deriving; 11.4 depends on 11.3's wording for a stated absence and on 11.2's
-  resolution being explicit-only.
+- The stories are ordered, but they are not one chain. 11.2 has nothing to resolve until 11.1's faces
+  ship; 11.3 has nothing real to paint until 11.2 resolves a face and projects the outcome, which the
+  canvas consumes rather than re-deriving; 11.4 depends on 11.3's wording for a stated absence and on
+  11.2's resolution being explicit-only. 11.5 depends on 11.2 alone — it pins rendered bytes and does
+  not touch the canvas.
+- 11.5 was split out of 11.3 so the four-target render matrix falls on the one story that moves a
+  rendered byte: 11.3 is otherwise entirely designer-side and runs no matrix, while 11.5 runs the
+  matrix suite unfiltered and carries the owner attestation halt.
 - 11.4 was added by owner decision after 11.2's no-inference ruling; treat it as the story that makes
   bold reachable in existing documents, not as optional polish.
 - The epic builds on the shipped-font and font-chain authoring work already in the product: the chain

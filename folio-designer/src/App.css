@@ -148,8 +148,26 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-text-truncated { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; padding: 2px var(--space-2); border-top: 2px dashed var(--color-bind); background: var(--color-bind-tint-warm); color: var(--color-ink-high); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); }
 /* --text-ink is set only where the engine projects a style.color; with no
    declaration the paint falls back to the page's own ink, which is what the
-   PDF's initial fill draws. */
-.canvas-text-paint { inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; color: var(--text-ink, var(--color-page-ink)); font-size: var(--text-font-size); font-weight: var(--text-font-weight); font-style: var(--text-font-style); }
+   PDF's initial fill draws.
+
+   NO font-weight AND NO font-style, EVER, AND THAT IS THE RULE RATHER THAN AN
+   OMISSION (Story 11.3, I-2, AD-17). Until this story both were declared here
+   from `--text-font-weight`/`--text-font-style`, which App.tsx set from
+   `component.bold`/`component.italic` — THE REQUESTED FLAG. That is browser
+   emboldening and obliquing: the product refuses to fake a weight it does not
+   have, and the emit path has always refused it. Since Story 11.2 it was also
+   actively wrong, because the engine resolves the real cut and names it on the
+   fragment, so a bold heading was drawn in Roboto Bold and then emboldened AGAIN
+   on top of it.
+
+   THE WEIGHT ARRIVES AS A FACE, NOT AS A PROPERTY. `.canvas-text-fragment`'s
+   font-family carries the face the engine RESOLVED (CanvasTextFragment.Face),
+   and Story 11.1's generated @font-face rules declare no font-weight descriptor
+   precisely so the browser synthesises nothing on top of it.
+   canvas-authority-contract.test.ts turns either property red in any
+   `.canvas-text-*` rule; `font-size` stays, because a size is not a weight and
+   it too is the engine's own. */
+.canvas-text-paint { inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; color: var(--text-ink, var(--color-page-ink)); font-size: var(--text-font-size); }
 .canvas-text-line { top: var(--text-line-baseline); left: 0; height: var(--text-line-advance); line-height: 1; transform: translateY(calc(-1 * var(--text-font-size))); }
 .canvas-text-fragment { left: var(--text-fragment-x); top: 0; font-family: 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC', sans-serif; }
 .canvas-text-expression { color: var(--color-bind-on-page); }
@@ -348,6 +366,35 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .property-toggle-group { display: flex; align-items: center; gap: var(--space-1); }
 .property-toggle { width: 28px; min-height: 26px; display: grid; place-items: center; padding: 0; border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-low); font: var(--type-body-em); }
 .property-toggle[aria-pressed="true"] { border-color: var(--color-edge-strong); background: var(--color-active); color: var(--color-ink-high); font-weight: 600; }
+/* STORY 11.3 / AC3 — THE THIRD STATE: the chain declares no face at this
+   weight or slope. It is neither the plain off state above nor the pressed one,
+   it is NOT disabled (a declared-but-unavailable cut has to stay clearable —
+   see BooleanProperty), and it never appears alone: `.property-unavailable`
+   beside it states the reason in words, which is DESIGN.md's rule for anything
+   declined ("State the reason next to anything disabled"), and the same
+   sentence is in the control's accessible name.
+
+   SPECIFICITY AND SOURCE ORDER, COMPUTED BY HAND — jsdom parses no stylesheet,
+   so nothing in the suite can check this. Two selectors, deliberately:
+   `.property-toggle-unavailable` is (0,1,0), which beats `.property-toggle`
+   (0,1,0) on source order alone, but LOSES to
+   `.property-toggle[aria-pressed="true"]` (0,2,0) — so the pressed case needs
+   `.property-toggle-unavailable[aria-pressed="true"]`, which is (0,2,0) and
+   sits after it. The `font` SHORTHAND is what puts the weight back to the
+   token's own 400 over that rule's `font-weight: 600`; a longhand would work
+   too, and the shorthand says "this control's type is the base type" once.
+   Nothing else in this file selects `.property-toggle`, and `button` (:5) sets
+   only `font: inherit`, which the base rule already overrides. */
+.property-toggle-unavailable, .property-toggle-unavailable[aria-pressed="true"] { border-style: dashed; border-color: var(--color-ink-faint); background: transparent; color: var(--color-ink-faint); font: var(--type-body-em); }
+/* The B / I pair and the reasons beneath it. A GRID, not more flex items in
+   `.property-toggle-row`: the row is `display: flex; align-items: center`, so a
+   `<p>` added inside one of the two `.property-editor`s made that editor taller
+   and pushed B and I off each other's line — and jsdom parses no stylesheet, so
+   nothing in the suite could see it. The notes now sit BELOW an unchanged
+   two-item row, at the column's full width, and the row's own layout is exactly
+   what it was before this story. */
+.property-toggles { display: grid; gap: var(--space-1); min-width: 0; }
+.property-unavailable { margin: 0; color: var(--color-ink-low); font: var(--type-body); }
 .property-toggle-mixed { flex: none; padding: 0 var(--space-1); color: var(--color-bind); font: var(--type-mono); }
 .property-segmented { display: flex; align-items: stretch; min-width: 0; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); }
 .property-segment { flex: 1; min-width: 0; min-height: 26px; display: grid; place-items: center; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--color-ink-low); font: var(--type-body); letter-spacing: var(--tracking-brand); }

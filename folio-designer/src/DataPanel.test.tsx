@@ -10,7 +10,7 @@ import type { SampleFileAccess } from './sample-file'
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
-const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' })
 
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },

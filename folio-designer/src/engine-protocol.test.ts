@@ -4,7 +4,7 @@ import { ENGINE_PROTOCOL_VERSION, LOCALE_TAGS, MAX_CANVAS_BODY_TEXT_LINES, MAX_E
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
 // family and no style — its name is its identity.
-const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+const face = (name: string, variants: Partial<Readonly<{ bold: string; italic: string; boldItalic: string }>> = {}) => ({ face: name, assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '', ...variants })
 
 const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', locale: 'th', utcOffset: '+07:00', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
@@ -248,12 +248,16 @@ describe('canvas projection protocol guard', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
     const chain = (...entries: ReadonlyArray<unknown>) => ({ ...canvas, fontChains: [{ name: 'body', entries }] })
     const key = 'c'.repeat(64)
+    // STORY 11.3: an entry carries its three DECLARED variants too, always
+    // present, '' for absent. `carried` spells the embedded shape once so the
+    // rows below vary one thing each.
+    const carried = (patch: object = {}) => ({ face: '', assetKey: key, family: 'Inter', style: 'Regular', bold: '', italic: '', boldItalic: '', ...patch })
 
     // Both legal shapes, and a chain mixing them.
     expect(projection(chain(face('Noto Sans')))).toBeDefined()
-    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: 'Regular' }))).toBeDefined()
-    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: '' }))).toBeDefined()
-    expect(projection(chain(face('Noto Sans'), { face: '', assetKey: key, family: 'Inter', style: 'Regular' }))).toBeDefined()
+    expect(projection(chain(carried()))).toBeDefined()
+    expect(projection(chain(carried({ style: '' })))).toBeDefined()
+    expect(projection(chain(face('Noto Sans'), carried()))).toBeDefined()
 
     // Not an object at all: the shapes the pre-8.3 wire could carry, and the
     // ones a hostile or stale sender might.
@@ -264,32 +268,64 @@ describe('canvas projection protocol guard', () => {
 
     // The key set is EXACT, both directions: a key Go stops sending fails as
     // surely as a key Go starts sending.
-    expect(projection(chain({ assetKey: key, family: 'Inter', style: 'Regular' }))).toBeUndefined()
-    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '', style: '', weight: 700 }))).toBeUndefined()
+    expect(projection(chain({ assetKey: key, family: 'Inter', style: 'Regular', bold: '', italic: '', boldItalic: '' }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), weight: 700 }))).toBeUndefined()
     expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '' }))).toBeUndefined()
+    // STORY 11.3's THREE, each missing on its own. They are ALWAYS-PRESENT
+    // keys precisely because this guard is hasExactKeys: an entry key Go sends
+    // for only SOME entries rejects the whole snapshot for exactly those
+    // documents, and the symptom is a blank canvas.
+    for (const absent of ['bold', 'italic', 'boldItalic'] as const) {
+      const { [absent]: _dropped, ...rest } = face('Noto Sans')
+      expect(projection(chain(rest)), absent).toBeUndefined()
+    }
 
     // Every value is a string.
-    expect(projection(chain({ face: 'Noto Sans', assetKey: null, family: '', style: '' }))).toBeUndefined()
-    expect(projection(chain({ face: '', assetKey: key, family: 7, style: '' }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), assetKey: null }))).toBeUndefined()
+    expect(projection(chain(carried({ family: 7 })))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), bold: 7 }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), italic: null }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), boldItalic: true }))).toBeUndefined()
 
     // EXACTLY ONE of face and assetKey. Neither is an entry of no kind;
     // both is an entry of two.
-    expect(projection(chain({ face: '', assetKey: '', family: '', style: '' }))).toBeUndefined()
-    expect(projection(chain({ face: 'Noto Sans', assetKey: key, family: 'Inter', style: '' }))).toBeUndefined()
+    expect(projection(chain(face('')))).toBeUndefined()
+    expect(projection(chain(carried({ face: 'Noto Sans', style: '' })))).toBeUndefined()
 
     // A named face carries no display strings — its name IS its identity —
     // and an embedded one always carries a family, because Go falls back to
     // the asset key rather than sending a name the panel cannot draw.
-    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: 'Inter', style: '' }))).toBeUndefined()
-    expect(projection(chain({ face: 'Noto Sans', assetKey: '', family: '', style: 'Regular' }))).toBeUndefined()
-    expect(projection(chain({ face: '', assetKey: key, family: '', style: 'Regular' }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), family: 'Inter' }))).toBeUndefined()
+    expect(projection(chain({ ...face('Noto Sans'), style: 'Regular' }))).toBeUndefined()
+    expect(projection(chain(carried({ family: '' })))).toBeUndefined()
+
+    // STORY 11.3 / DW-239 — THE DECLARED VARIANTS ARE ADMITTED, NOT
+    // ADJUDICATED, and every combination of present and absent is legal: a
+    // family with a bold and no italic is the SHIPPED condition (Noto Sans
+    // Thai), not a corner case.
+    expect(projection(chain(face('Roboto', { bold: 'Roboto Bold', italic: 'Roboto Italic', boldItalic: 'Roboto Bold Italic' })))).toBeDefined()
+    expect(projection(chain(face('Noto Sans Thai', { bold: 'Noto Sans Thai Bold' })))).toBeDefined()
+    expect(projection(chain(face('Noto Sans SC')))).toBeDefined()
+    // AN EMBEDDED ENTRY'S VARIANT IS AN ASSETS KEY (AD-8), and the guard reads
+    // no shape into it: a 64-character face name is a legal face name, so
+    // "looks like a digest" was never available as a test — the DISCRIMINANT is
+    // what says which namespace the value is in, and a variant is admitted on
+    // either kind of entry.
+    expect(projection(chain(carried({ bold: 'd'.repeat(64) })))).toBeDefined()
+    expect(projection(chain(carried({ bold: 'Second Sans Bold' })))).toBeDefined()
 
     // The per-string bound applies to EVERY projected string, not only the
     // face name — a bound on three of four fields is a bound on nothing.
     const long = 'f'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)
-    expect(projection(chain({ face: '', assetKey: key, family: long, style: '' }))).toBeUndefined()
-    expect(projection(chain({ face: '', assetKey: key, family: 'Inter', style: long }))).toBeUndefined()
-    expect(projection(chain({ face: '', assetKey: long, family: 'Inter', style: '' }))).toBeUndefined()
+    expect(projection(chain(carried({ family: long, style: '' })))).toBeUndefined()
+    expect(projection(chain(carried({ style: long })))).toBeUndefined()
+    expect(projection(chain(carried({ assetKey: long })))).toBeUndefined()
+    // …AND TO THE THREE NEW ONES. A bound on four of seven fields is a bound
+    // on nothing, which is the sentence the Go projection's own comment makes.
+    expect(projection(chain(face('Noto Sans', { bold: long })))).toBeUndefined()
+    expect(projection(chain(face('Noto Sans', { italic: long })))).toBeUndefined()
+    expect(projection(chain(face('Noto Sans', { boldItalic: long })))).toBeUndefined()
+    expect(projection(chain(face('Noto Sans', { bold: 'f'.repeat(MAX_CANVAS_PROPERTY_STRING) })))).toBeDefined()
   })
 
   // DW-70. Go sorts these keys with slices.Sorted over Go strings — BY BYTE —
@@ -443,7 +479,7 @@ describe('canvas projection protocol guard', () => {
     for (const align of ['middle', 'JUSTIFY', 'flush', '']) expect(response(component(align))).toBeUndefined()
 
     // The COLUMN set stays the triple, on its own projection.
-    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
+    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
     expect(columns('right')).toBeDefined()
     expect(columns('justify')).toBeUndefined()
 
@@ -706,7 +742,7 @@ describe('canvas projection protocol guard', () => {
     const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'table-1', operation: 'table-columns', payload }
     expect(parseRequest(request)).toBeDefined()
     expect(parseRequest({ ...request, payload: undefined })).toBeUndefined()
-    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, revision: 6 } })).toBeUndefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, table: { ...response.tableColumns.table, columns: [{ ...response.tableColumns.table.columns[0], bind: 'row.amount' }] } } })).toBeUndefined()
@@ -728,7 +764,7 @@ describe('canvas projection protocol guard', () => {
   // <TableEditor>, which never mounts. So the assertion is on parseInbound's
   // RETURN VALUE and never on a visual symptom.
   it('refuses a table projection with a missing member and one with a surplus key alike', () => {
-    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] }
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [] }
     const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
     expect(parseInbound(responseFor(table))).toBeDefined()
     // DIRECTION ONE — a projected member the guard's list does not name. Modelled
@@ -751,6 +787,18 @@ describe('canvas projection protocol guard', () => {
     // A COMMITTED alignment of '' is ABSENT and must stay admissible: refusing
     // it would make an unstyled table's own projection unparseable.
     expect(parseInbound(responseFor({ ...table, headerAlign: '', headerValign: '' }))).toBeDefined()
+    // STORY 11.3 / DW-240 — THE TWO BOOLEAN PAIRS. Wrong shape refused on each
+    // of the four members separately, so the proof is not carried by whichever
+    // one the guard happens to test first.
+    for (const key of ['headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved'] as const) {
+      expect(parseInbound(responseFor({ ...table, [key]: 'true' })), `${key} as a string must be refused`).toBeUndefined()
+      expect(parseInbound(responseFor({ ...table, [key]: 1 })), `${key} as a number must be refused`).toBeUndefined()
+    }
+    // AND BOTH VALUES ARE ADMITTED ON BOTH HALVES. `false` is this projection's
+    // spelling of absence for a bool — committed-absent and committed-`false`
+    // are the same wire value, a limit TableColumnsProjection's own comment
+    // discloses — so nothing here may read a meaning into either one.
+    expect(parseInbound(responseFor({ ...table, headerBold: true, headerBoldResolved: true, headerItalic: false, headerItalicResolved: true }))).toBeDefined()
   })
 
   // A NEGATIVE LENGTH THE FILE DOOR ADMITS MUST NOT KILL THE WORKER.
@@ -768,7 +816,7 @@ describe('canvas projection protocol guard', () => {
   // loader would narrow the format, which the story forbids itself. The guard's
   // job is to admit exactly what the file door admits.
   it('admits the negative lengths the loader itself admits, and still refuses a negative line spacing', () => {
-    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', columns: [] }
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [] }
     const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
     // The document that loads today: a negative headerHeight, and the negative
     // fontSize that cascades into its resolved twin.

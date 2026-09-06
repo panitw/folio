@@ -290,7 +290,25 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // family is derived, nothing is registered, and every fragment keeps the
   // stylesheet's declared stack. It is a degrade, not a refusal — the
   // projection is already admitted and the session is untouched.
-  const carriedFaceKeys = [...new Set((canvas?.fontChains ?? []).flatMap((chain) => chain.entries).map((entry) => entry.assetKey).filter(isCarriedFaceAssetKey))].sort()
+  //
+  // ⚠ AND AN EMBEDDED ENTRY'S STYLE VARIANTS ARE ASSET KEYS TOO (Story 11.3,
+  // AD-8). Reading only `entry.assetKey` was correct while an entry named one
+  // face; since 11.2 an entry may name up to four, and for
+  // `{"asset": K1, "bold": K2}` the ENGINE resolves a bold run to `K2` and puts
+  // it on the fragment. If K2 is not fetched here, `carriedFaces.has(K2)` is
+  // false, `fragment.face` is empty on that arm, the fragment gets NO
+  // `fontFamily` at all and falls to the stylesheet's stack — a document whose
+  // own bold face is right there in its `assets` map, drawn in something else.
+  // That is the same shape as D-11.3.1: removing a compensation (the synthetic
+  // `font-weight: 700` this story deletes) without supplying what it
+  // compensated for.
+  //
+  // THE DISCRIMINANT DECIDES, NOT THE SHAPE. Variants are collected only from
+  // entries that ARE embedded; a `face` entry's variants are FontSet face
+  // names, and a 64-character face name is a legal face name, so filtering the
+  // whole population by `isCarriedFaceAssetKey` would have crossed the two
+  // namespaces on exactly the value that looks like it could not.
+  const carriedFaceKeys = [...new Set((canvas?.fontChains ?? []).flatMap((chain) => chain.entries).flatMap((entry) => entry.assetKey.length > 0 ? [entry.assetKey, entry.bold, entry.italic, entry.boldItalic] : []).filter(isCarriedFaceAssetKey))].sort()
   const carriedFaceListing = carriedFaceKeys.join('\u0000')
   useEffect(() => {
     setCarriedFaces(NO_CARRIED_FACES)
@@ -2051,11 +2069,19 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   // text, so it owns the rejection of either command.
   const errorFor = (field: PropertyField) => scopedError && (scopedError.field === field || (field === 'value' && scopedError.field === 'expression')) ? scopedError : undefined
   const draftFor = (spec: FieldSpec) => <PropertyDraft key={spec.field} spec={spec} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} live={live(spec.field)} error={errorFor(spec.field)} />
+  // STORY 11.3 / F1 — THE CUT EACH TOGGLE WOULD REQUIRE, AND WHETHER THE CHAIN
+  // DECLARES IT. Deduplicated, so the combined cut — which implicates BOTH
+  // controls, because marking only one implies the other is fine — states its
+  // reason ONCE for the pair. Two DIFFERENT missing cuts still state two
+  // sentences: they are two different facts.
+  const missingBoldCut = selectionMissingCut(components, 'bold', fontChains)
+  const missingItalicCut = selectionMissingCut(components, 'italic', fontChains)
+  const absentCuts = [...new Set([missingBoldCut, missingItalicCut].filter((cut): cut is StyleCut => cut !== undefined))]
   return <>
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} /></div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
@@ -2679,7 +2705,120 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
-function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+/**
+ * THE THREE CUTS A CHAIN CAN DECLARE, and their names in a sentence. The wire
+ * spells the combined one `boldItalic`; a person reads "bold italic".
+ *
+ * ⚠ THE SENTENCE IS DERIVED FROM THE CUT, NEVER FROM THE CONTROL, and that is
+ * F1's second part rather than a formatting choice. A sentence per control says
+ * "No bold face in this family" whenever B is unavailable — including on a
+ * chain that DECLARES a bold and is missing only the combined cut, where the
+ * statement is simply false. A panel that lies precisely is worse than one that
+ * lies vaguely. One sentence per cut cannot go false that way.
+ */
+const CUT_NAMES = { bold: 'bold', italic: 'italic', boldItalic: 'bold italic' } as const
+type StyleCut = keyof typeof CUT_NAMES
+
+/**
+ * DOES ANY ENTRY OF THIS COMPONENT'S CHAIN DECLARE THIS CUT?
+ *
+ * STORY 11.3 / AC3, and the only question the B / I controls' third state is
+ * derived from. `chainDeclaresCut` is a READ-BACK of the projection Go now
+ * carries (`CanvasFontChainEntry.bold/italic/boldItalic`, DW-239) — the
+ * document's own declaration, copied verbatim by the engine. NOTHING HERE
+ * RESOLVES ANYTHING: which face a painted fragment ends up in is
+ * `fragment.face`, decided per rune by the engine against coverage, and a chain
+ * entry never stands in for it.
+ *
+ * ⚠ EVERY ENTRY, NEVER `entries[0]` — and `declaredChainEntry` three functions
+ * below IS THE WRONG FUNCTION TO REUSE HERE, named because it is the one an
+ * implementer reaches for. It returns the FIRST entry, which is right for the
+ * specimen row it serves and wrong for this: a chain
+ * `["Noto Sans SC", "Roboto"]` would report "no bold face" while Latin bolds
+ * perfectly well. Q2 ratified the all-entries rule at CHECKPOINT 1.
+ *
+ * ⚠ THE STARTER'S OWN CHAIN CANNOT DETECT THAT ERROR — its first entry is
+ * Roboto, which declares a bold, so the two rules return the same answer on it
+ * (D-11.2.8: an assertion whose two sides could be equal is not an assertion).
+ * `App.test.tsx` drives this with a chain whose first entry has no bold and
+ * whose later entry does.
+ *
+ * AN UNKNOWN FAMILY IS NOT AN ABSENCE. A component with no `fontFamily`, or one
+ * naming a chain this projection does not carry, returns `true`: the panel
+ * states an absence it has measured and never one it merely could not check.
+ */
+function chainDeclaresCut(family: string | undefined, cut: StyleCut, chains: CanvasProjection['fontChains']): boolean {
+  if (family === undefined) return true
+  const chain = chains.find((candidate) => candidate.name === family)
+  if (chain === undefined) return true
+  return chain.entries.some((entry) => entry[cut].length > 0)
+}
+
+/**
+ * WHICH CUT WOULD THIS CONTROL BEING ON REQUIRE, AND IS IT MISSING?
+ *
+ * F1's first part. The cut is the one the element's RESULTING `(bold, italic)`
+ * combination needs, not the control's own axis: B on an element that is
+ * already italic asks the chain for `boldItalic`, not for `bold`.
+ *
+ * ⚠ THIS IS THE HOLE F1 WAS RAISED FOR. `boldItalic` was projected across the
+ * whole seam and read by nothing, so an element with BOTH flags set, on a chain
+ * declaring `bold` and `italic` but not `boldItalic`, resolved to the base face
+ * and warned while both controls read plainly on — the exact state AC3 exists
+ * to prevent, arriving through the one combination the I/O matrix never
+ * enumerated.
+ *
+ * It is asked with the control ON rather than at the element's current
+ * combination so the panel warns BEFORE the press as well as after it: an
+ * unbolded element on a chain with no bold must still say so, which is AC3's
+ * own sentence.
+ */
+function missingCutFor(component: PanelComponent, field: 'bold' | 'italic', chains: CanvasProjection['fontChains']): StyleCut | undefined {
+  const bold = field === 'bold' || component.bold === true
+  const italic = field === 'italic' || component.italic === true
+  const cut: StyleCut = bold && italic ? 'boldItalic' : bold ? 'bold' : 'italic'
+  return chainDeclaresCut(component.fontFamily, cut, chains) ? undefined : cut
+}
+
+/**
+ * THE SELECTION'S ANSWER, and it is deliberately the CONSERVATIVE one: a cut is
+ * reported missing only when EVERY selected component is missing it AND they
+ * are missing the SAME one. A mixed selection in which one component can bold
+ * keeps the plain control, because "this family has no bold face" would be
+ * false of half of it — and a selection missing two DIFFERENT cuts has no one
+ * true sentence to state, so it states none.
+ */
+function selectionMissingCut(components: ReadonlyArray<PanelComponent>, field: 'bold' | 'italic', chains: CanvasProjection['fontChains']): StyleCut | undefined {
+  if (components.length === 0) return undefined
+  const cuts = components.map((component) => missingCutFor(component, field, chains))
+  const first = cuts[0]
+  return first !== undefined && cuts.every((cut) => cut === first) ? first : undefined
+}
+
+/**
+ * THE SENTENCE, BUILT IN ONE PLACE AND ANNOUNCED THROUGH ONE PATH (F1.3 / P9).
+ *
+ * It was folded into the button's `aria-label` AND rendered as a visible `<p>`,
+ * phrased three ways — a double announcement that the combined case would have
+ * made a quadruple. Now the visible paragraph is the only copy: the buttons
+ * point at it with `aria-describedby`, so a screen reader hears the control's
+ * plain name and then this sentence, once, in the wording that is on screen.
+ *
+ * The way out is part of the sentence, because a state with no stated exit is
+ * the grey-out DESIGN.md forbids in a different costume. For the combined cut
+ * the exit is the honest one: not "this family cannot do what you asked" but
+ * "cannot do both at once" — turning off EITHER control reaches a combination
+ * the chain does declare, which is what makes the state self-resolving.
+ */
+function cutAbsenceSentence(cut: StyleCut): string {
+  return cut === 'boldItalic'
+    ? 'No bold italic face in this family — it cannot do both at once. Turn off either one.'
+    : `No ${CUT_NAMES[cut]} face in this family — the engine paints the regular face and warns.`
+}
+
+const cutAbsenceId = (cut: StyleCut) => `cut-absent-${cut}`
+
+function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error, absentCutId }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError; absentCutId?: string }) {
   const values = components.map((component) => component[field])
   const uniform = values.every((value) => value === values[0])
   const active = uniform && values[0] === true
@@ -2689,7 +2828,33 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
   // the inline × that used to sit beside each of these is gone. Turning bold
   // off therefore writes NO `bold: false` into the document -- unset and false
   // paint identically, and the round trip a toggle implies is off -> absent.
-  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className="property-toggle" disabled={pending} aria-pressed={active} aria-label={uniform ? label : `${label}, mixed`} title={active ? `${label}, press again to clear` : label} onClick={() => void commit(active ? { field, operation: 'clear' } : { field, operation: 'set', value: true })}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  //
+  // THE THIRD STATE (Story 11.3 / AC3, ruled at CHECKPOINT 1 Q1(c)): the
+  // chain declares no face at this weight or slope. It is a GENUINE third
+  // state and not a disabled two-state control — the AC's own words are
+  // "states that this family has no bold face RATHER THAN APPEARING TO BE ON",
+  // and a disabled control still renders as on-or-off.
+  //
+  // IT STAYS OPERABLE, and that is the part that was refused outright. A
+  // document can carry `bold: true` on a family with no bold cut — bold a
+  // Roboto element, then switch it to a CJK-only chain — and a disabled
+  // control would make that flag UNCLEARABLE: a control that has taken the
+  // document hostage, against I-5's posture that the panel must never leave
+  // the author unable to reach what the document carries.
+  //
+  // AND IT STATES ITS REASON BESIDE ITSELF, never a bare grey-out (DESIGN.md:
+  // "State the reason next to anything disabled"). The sentence is also folded
+  // into the accessible name, so the control does not read as a plain pressed
+  // toggle to a screen reader while reading as something else on screen.
+  //
+  // ONE ANNOUNCEMENT PATH. The reason is rendered ONCE, per missing CUT, by the
+  // caller — so two controls implicated by the same combined cut share one
+  // sentence — and this control points at it with `aria-describedby`. The
+  // accessible name stays the plain label: folding the sentence in as well
+  // announced it twice, in a third wording, which is P9's bug and would have
+  // been a quadruple in the combined case.
+  const name = uniform ? label : `${label}, mixed`
+  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className={`property-toggle${absentCutId === undefined ? '' : ' property-toggle-unavailable'}`} disabled={pending} aria-pressed={active} aria-describedby={absentCutId} aria-label={name} title={active ? `${name}, press again to clear` : name} onClick={() => void commit(active ? { field, operation: 'clear' } : { field, operation: 'set', value: true })}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
 // The font family is a closed set too, but a per-DOCUMENT one: style.fontFamily
 // must name a declared, non-empty font chain, and Go now projects exactly those
@@ -3391,7 +3556,7 @@ function isExpressionRun(part: string): boolean { return part.startsWith('{{') &
 // element.
 export function TextPaint({ component, carriedFaces, zoom }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; zoom: number }) {
   const paint = component.textPaint!
-  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), '--text-font-weight': component.bold ? 700 : 400, '--text-font-style': component.italic ? 'italic' : 'normal', ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom), ...(fragment.assetKey !== undefined && carriedFaces.has(fragment.assetKey) ? { fontFamily: embeddedFaceFamily(fragment.assetKey) } : isShippedFaceName(fragment.face) ? { fontFamily: shippedFaceFamily(fragment.face) } : {}) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
+  return <span className="canvas-text-paint" aria-hidden="true" style={{ '--text-font-size': canvasDisplay.css(component.fontSize ?? 12000, zoom), ...(component.color === undefined ? {} : { '--text-ink': component.color }) } as CSSProperties}>{paint.lines.map((line, lineIndex) => <span className="canvas-text-line" key={`${component.id}-${lineIndex}`} style={{ '--text-line-baseline': canvasDisplay.css(line.baseline - component.y, zoom), '--text-line-advance': canvasDisplay.css(line.advance, zoom) } as CSSProperties}>{line.fragments.map((fragment, fragmentIndex) => <span className="canvas-text-fragment" key={`${component.id}-${lineIndex}-${fragmentIndex}`} style={{ '--text-fragment-x': canvasDisplay.css(fragment.x - component.x, zoom), ...(fragment.assetKey !== undefined && carriedFaces.has(fragment.assetKey) ? { fontFamily: embeddedFaceFamily(fragment.assetKey) } : isShippedFaceName(fragment.face) ? { fontFamily: shippedFaceFamily(fragment.face) } : {}) } as CSSProperties}>{textRuns(fragment.text).map((part, partIndex) => isExpressionRun(part) ? <span className="canvas-text-expression" key={`${component.id}-${lineIndex}-${fragmentIndex}-${partIndex}`}>{part}</span> : part)}</span>)}</span>)}</span>
 }
 // The engine says this element's paint is a PREFIX. It is stated in words, at
 // the component, in the same sentence a screen reader gets — not by colour,

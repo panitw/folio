@@ -726,6 +726,34 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 			func(v TableColumnsProjection) string { return v.HeaderValignResolved }},
 		{"align", "HeaderAlignResolved", `"align": "center"`, `"right"`, "center", "right",
 			func(v TableColumnsProjection) string { return v.HeaderAlignResolved }},
+		// STORY 11.3's TWO. Leg one puts `true` on the table's own style and
+		// leg two puts `false` on headerStyle, so the second leg is the one a
+		// member wired to `style.bold` cannot pass — the direction matters for
+		// a bool, because a leg-two value of `true` would also be produced by
+		// a member that simply echoed leg one.
+		{"bold", "HeaderBoldResolved", `"bold": true`, `false`, "true", "false",
+			func(v TableColumnsProjection) string { return strconv.FormatBool(v.HeaderBoldResolved) }},
+		{"italic", "HeaderItalicResolved", `"italic": true`, `false`, "true", "false",
+			func(v TableColumnsProjection) string { return strconv.FormatBool(v.HeaderItalicResolved) }},
+	}
+	// THE TIE DW-240 WAS MISSING, AND THE DURABLE HALF OF ITS FIX. Nothing
+	// related `tableHeaderStyleFields` to this projection's member list, which
+	// is exactly why nobody noticed that the command layer accepted nine
+	// header-style fields while the projection carried seven pairs: a weight
+	// an author could write and could not read back. `rows` above is a
+	// hand-maintained list and was itself the second copy of that asymmetry,
+	// so it is pinned to the engine's own closed set here rather than counted.
+	// A tenth field added to `tableHeaderStyleFields` now reds THIS test until
+	// its pair and its row exist.
+	fields := make([]string, 0, len(rows))
+	for _, row := range rows {
+		fields = append(fields, row.field)
+	}
+	slices.Sort(fields)
+	want := slices.Clone(tableHeaderStyleFields)
+	slices.Sort(want)
+	if !slices.Equal(fields, want) {
+		t.Errorf("this test walks the header-style fields\n\t%v\nand the engine's closed set is\n\t%v — a field a command can author with no row here is a field whose resolved projection member nothing follows, which is DW-240 repeating", fields, want)
 	}
 	for _, row := range rows {
 		t.Run(row.member, func(t *testing.T) {
@@ -741,7 +769,15 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 			}
 			// And the COMMITTED twin beside it is still absent, which is what
 			// makes the two members different members rather than one repeated.
-			if committed := committedTwin(t, view, row.field); committed != "" && committed != "0" {
+			// "false" JOINS "" AND "0" AS A SPELLING OF ABSENT, and that is
+			// the disclosed collapse rather than a hole in this check: a bool
+			// on a wire whose key set is pinned exactly in both directions has
+			// no third value to put an absence in, so committed-absent and
+			// committed-`false` are the same member value
+			// (TableColumnsProjection's own comment states the limit). Leg two
+			// below is where the two booleans are still discriminating, and it
+			// sets headerStyle to `false` over a table style of `true`.
+			if committed := committedTwin(t, view, row.field); committed != "" && committed != "0" && committed != "false" {
 				t.Errorf("committed %s = %q with nothing on headerStyle, want absent", row.field, committed)
 			}
 			// LEG TWO: headerStyle now declares a DIFFERENT value, so the
@@ -773,6 +809,74 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 	}
 }
 
+// TestTheProjectionCarriesAPairForEveryHeaderStyleFieldACommandCanWrite is the
+// OTHER half of DW-240's tie, and the durable one: it reads the projection's
+// member list off the STRUCT rather than off a hand-maintained list, so it
+// holds even for a field nobody remembered to add a cascade row for.
+//
+// DW-240 WAS AN ASYMMETRY NOTHING COULD SEE. `tableHeaderStyleFields` (the
+// authoring half) went to nine at Story 11.2 while TableColumnsProjection kept
+// seven Header*/Header*Resolved pairs, and no test in this repository related
+// the two — so a header weight an author could write was a header weight the
+// panel could not read back, silently, for a whole story. The two members were
+// the cheap half of the fix; this is the half that stops the tenth field
+// repeating it.
+//
+// IT IS READ FROM THE JSON TAGS, NOT THE Go NAMES, because the tags are what
+// the browser's exact-key guard pins and therefore what "a member" means on
+// this seam. `headerHeight` is the one `header*` key with no `Resolved` twin,
+// and that is asserted rather than skipped: the struct's own comment calls the
+// singleton deliberate, so the test states which key it is instead of letting
+// any unpaired key through.
+func TestTheProjectionCarriesAPairForEveryHeaderStyleFieldACommandCanWrite(t *testing.T) {
+	tags := map[string]bool{}
+	value := reflect.TypeOf(TableColumnsProjection{})
+	for i := 0; i < value.NumField(); i++ {
+		tag, _, _ := strings.Cut(value.Field(i).Tag.Get("json"), ",")
+		if tag != "" {
+			tags[tag] = true
+		}
+	}
+	// POSITIVE CONTROL: the reflection actually read something, and read the
+	// key set the wire record already pins. A typo'd tag name would otherwise
+	// make every absence below vacuous.
+	if len(tags) != len(tableColumnsProjectionWireKeys) {
+		t.Fatalf("read %d json tags off TableColumnsProjection and the recorded wire set has %d — this test is measuring the wrong struct", len(tags), len(tableColumnsProjectionWireKeys))
+	}
+	var paired, unpaired []string
+	for tag := range tags {
+		field, ok := strings.CutPrefix(tag, "header")
+		// A tag spelled EXACTLY `header` would take `field[:1]` on an empty
+		// string and PANIC — a test that crashes instead of reporting, on the
+		// one input this loop cannot name. It is not reachable today and it is
+		// guarded rather than argued: the guard costs a line, and "unreachable"
+		// is the claim that ages worst in this repository.
+		if !ok || field == "" || strings.HasSuffix(tag, "Resolved") {
+			continue
+		}
+		name := strings.ToLower(field[:1]) + field[1:]
+		if tags[tag+"Resolved"] {
+			paired = append(paired, name)
+			continue
+		}
+		unpaired = append(unpaired, name)
+	}
+	// BOTH LISTS ARE SORTED, because both are built by ranging a MAP and Go
+	// randomises that order deliberately. `paired` was sorted and `unpaired` was
+	// not, so a second unpaired key would have made this test's verdict depend
+	// on the run — green sometimes, red sometimes, over the same code.
+	slices.Sort(paired)
+	slices.Sort(unpaired)
+	want := slices.Clone(tableHeaderStyleFields)
+	slices.Sort(want)
+	if !slices.Equal(paired, want) {
+		t.Errorf("TableColumnsProjection carries a committed/resolved pair for\n\t%v\nand the fields a command may author are\n\t%v — a field on one side only is a value an author can write and cannot read back (DW-240), or a member the engine sends that no command can produce", paired, want)
+	}
+	if !slices.Equal(unpaired, []string{"height"}) {
+		t.Errorf("the header keys with no resolved twin are %v, want exactly [height] — headerHeight is the one deliberate singleton (it is required by the format, so it is never absent and committed IS resolved); any other unpaired header key is a missing pair", unpaired)
+	}
+}
+
 // committedTwin reads the COMMITTED member beside a resolved one, as a string,
 // so the test above can assert the pair are genuinely two members.
 func committedTwin(t *testing.T, view TableColumnsProjection, field string) string {
@@ -792,6 +896,10 @@ func committedTwin(t *testing.T, view TableColumnsProjection, field string) stri
 		return view.HeaderValign
 	case "align":
 		return view.HeaderAlign
+	case "bold":
+		return strconv.FormatBool(view.HeaderBold)
+	case "italic":
+		return strconv.FormatBool(view.HeaderItalic)
 	}
 	t.Fatalf("no committed twin for %q", field)
 	return ""

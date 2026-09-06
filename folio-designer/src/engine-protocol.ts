@@ -195,6 +195,14 @@ export type TableColumn = Readonly<{ id: string; header: string; width: number; 
 // resolved and a second member would be ceremony: a duplicate of the committed
 // value, carried on every projection, that a later reader has to keep agreeing
 // with itself.
+//
+// STORY 11.3 / DW-240 ADDS THE NINTH AND TENTH PAIRS. `headerStyle.bold` and
+// `headerStyle.italic` have cascaded through `resolveHeaderStyle` since Story
+// 11.2 and the engine's `tableHeaderStyleFields` has carried both since then;
+// only the read-back was missing, which is a weight an author could write and
+// could not see. For a BOOLEAN, `false` is this projection's spelling of
+// absence — committed-absent and committed-`false` are the same wire value —
+// and `TableColumnsProjection`'s own comment discloses that limit.
 export type TableHeaderStyle = Readonly<{
   headerFontFamily: string; headerFontFamilyResolved: string
   headerFontSize: number; headerFontSizeResolved: number
@@ -203,6 +211,8 @@ export type TableHeaderStyle = Readonly<{
   headerColor: string; headerColorResolved: string
   headerValign: string; headerValignResolved: string
   headerAlign: string; headerAlignResolved: string
+  headerBold: boolean; headerBoldResolved: boolean
+  headerItalic: boolean; headerItalicResolved: boolean
 }>
 export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
 
@@ -282,7 +292,13 @@ export type CanvasProjection = Readonly<{
 	// them is non-empty, and `family`/`style` are what the panel DISPLAYS for an
 	// embedded entry — read by Go from the asset's own `font` record, never
 	// derived in the browser.
-	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string }>> }>>
+	//
+	// `bold`/`italic`/`boldItalic` are Story 11.3's read-back of the entry's own
+	// DECLARED style variants (DW-239). '' is absent. They say what the DOCUMENT
+	// declares, never what a painted fragment resolved to — that is
+	// `textPaint.…fragments[].face`, and confusing the two would put a chain
+	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
+	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
 	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
@@ -330,11 +346,28 @@ export type EngineInbound = EngineSuccess | EngineFailure | EngineLifecycle
 // An embedded entry always carries a non-empty `family` — Go decides what the
 // panel shows and falls back to the asset key — and a named face carries no
 // family and no style at all, because its name IS its identity.
+//
+// STORY 11.3 ADDS THE THREE DECLARED VARIANTS (DW-239), AND THEY ARE ADMITTED,
+// NOT ADJUDICATED. '' is absent — the same spelling `family` and `style`
+// already use — so every combination of present and absent is a legal entry,
+// including an entry that declares none.
+//
+// A SIBLING'S NAMESPACE IS ITS ENTRY'S DISCRIMINANT (AD-8): on a `face` entry
+// these three name FontSet faces, on an `assetKey` entry they name `assets`
+// keys. THAT IS CARRIED BY THE DISCRIMINANT, NOT BY THE VALUE, and this guard
+// deliberately imposes no rule that would read one namespace as the other. No
+// shape check is available or wanted: the same ruling recorded above for
+// `assetKey` holds for a variant asset key — a 64-character face name is a
+// legal face name, so "looks like a digest" was never a test — and a face-name
+// pattern would be the naming-convention weight carrier written backwards
+// (D-11.2.1). Whether a declared variant NAMES anything is the engine's
+// question, answered where the document is loaded, never here.
 const isFontChainEntry = (value: unknown): boolean => {
-  if (!isRecord(value) || !hasExactKeys(value, ['face', 'assetKey', 'family', 'style'])) return false
-  const { face, assetKey, family, style } = value
+  if (!isRecord(value) || !hasExactKeys(value, ['face', 'assetKey', 'family', 'style', 'bold', 'italic', 'boldItalic'])) return false
+  const { face, assetKey, family, style, bold, italic, boldItalic } = value
   if (typeof face !== 'string' || typeof assetKey !== 'string' || typeof family !== 'string' || typeof style !== 'string') return false
-  if ([face, assetKey, family, style].some((text) => text.length > MAX_CANVAS_PROPERTY_STRING)) return false
+  if (typeof bold !== 'string' || typeof italic !== 'string' || typeof boldItalic !== 'string') return false
+  if ([face, assetKey, family, style, bold, italic, boldItalic].some((text) => text.length > MAX_CANVAS_PROPERTY_STRING)) return false
   if ((face.length > 0) === (assetKey.length > 0)) return false
   if (assetKey.length > 0) return family.length > 0
   return family.length === 0 && style.length === 0
@@ -375,7 +408,7 @@ const isDiagnostic = (value: unknown): value is EngineDiagnostic => isRecord(val
 const isPreview = (value: unknown): value is PreviewEvidence => isRecord(value) && hasOnly(value, ['revision', 'identity', 'pdfSha256', 'diagnostics']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.identity === 'string' && /^[a-f0-9]{64}$/.test(value.identity) && ((value.pdfSha256 === undefined && value.diagnostics === undefined) || (typeof value.pdfSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.pdfSha256) && Array.isArray(value.diagnostics) && value.diagnostics.length <= MAX_ENGINE_DIAGNOSTICS && value.diagnostics.every(isDiagnostic)))
 const isParameterReferences = (value: unknown): value is ParameterReferences => isRecord(value) && hasExactKeys(value, ['revision', 'names']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && Array.isArray(value.names) && value.names.length <= MAX_ENGINE_PARAMETER_REFERENCES && value.names.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_ENGINE_PARAMETER_NAME_LENGTH && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) && new Set(value.names).size === value.names.length && value.names.every((name, index, names) => index === 0 || names[index - 1]! < name)
 const isTableColumns = (value: unknown): value is TableColumns => {
-  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'columns'])) return false
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'columns'])) return false
   const table = value.table
   // THE TYPED CLAUSES FOR STORY 12.3's SIXTEEN MEMBERS. Every one is REQUIRED
   // and never optional: hasExactKeys above already refuses a response that
@@ -416,6 +449,11 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   // its own default.
   if (!['', 'left', 'center', 'right'].includes(table.headerAlign as string) || !['left', 'center', 'right'].includes(table.headerAlignResolved as string)) return false
   if (!['', 'top', 'middle', 'bottom'].includes(table.headerValign as string) || !['top', 'middle', 'bottom'].includes(table.headerValignResolved as string)) return false
+  // STORY 11.3's TWO BOOLEAN PAIRS. `false` is both absent and off — the
+  // projection has one member for what is committed and no third state to put
+  // an absence in — so both values are admitted on both halves, and there is
+  // nothing to adjudicate beyond the type.
+  if (!(['headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved'] as const).every((key) => typeof table[key] === 'boolean')) return false
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {

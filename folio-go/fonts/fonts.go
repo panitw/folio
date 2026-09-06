@@ -135,12 +135,21 @@ var robotoBoldItalic []byte
 // Shipped returns folio-go's shipped font set — the three Story 2.2 Noto
 // faces, Story 16.8's Roboto and Story 11.1's seven weighted and sloped
 // cuts — keyed by the exact face names a `.folio` document's `fonts`
-// fallback chains reference. A new document's
-// starter template names its default chain `"Roboto": ["Roboto", "Noto
-// Sans Thai", "Noto Sans SC"]` (folio-designer/public/templates/
-// starter.folio); the three original Noto names remain shipped unchanged
-// for every document that names them, `body` chains from before this
-// story included. One expression, no arguments (AC9) — callers wire the shipped
+// fallback chains reference. A new document's starter template
+// (folio-designer/public/templates/starter.folio) names its default chain
+// `"Roboto"` over the same three families, and since Story 11.3 it
+// declares the CUTS as well: Roboto as an object carrying `bold`,
+// `italic` and `boldItalic`, Noto Sans Thai carrying `bold` alone (there
+// is no upstream italic — see the ruling above), and Noto Sans SC as a
+// bare string, because it has no cut at all (D-A) and a variant-free
+// object canonicalises straight back to a string. The three original
+// Noto names remain shipped unchanged for every document that names
+// them, `body` chains from before Story 16.8 included.
+//
+// THE STARTER IS NOT DOCUMENTED HERE TWICE. folio-go's own
+// starter_template_test.go intersects every face name that file declares
+// with the keys below, so this paragraph going stale is caught by a test
+// rather than by a reader. One expression, no arguments (AC9) — callers wire the shipped
 // set into a render with `fonts.Shipped()`, never a package-level
 // variable a caller could mutate out from under another caller.
 //

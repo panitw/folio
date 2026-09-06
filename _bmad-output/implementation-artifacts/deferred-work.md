@@ -9910,3 +9910,29 @@ rather than left as an omission. **Either is a discharge; silence is not.**
 
 **Required by the DW-241 ruling and not optional:** the limit is stated **in the code beside the check and
 in the format doc's chain-entry row**, not only here.
+
+---
+
+## Deferred by Story 11.3's review round (2026-09-06) — NEEDS A REAL `### DW-` NUMBER AT CLOSE
+
+⚠ **This block is written in the workflow's prescribed `- source_spec:` form, which is INVISIBLE to a
+`### DW-` census (D-11.0.2 — the defect that lost four of Story 11.1's five deferrals).** It is placed
+under its own heading, and it must be converted to a numbered `### DW-` entry (next free number is
+**DW-246**) by whoever closes this story. Do not leave it in this shape.
+
+- source_spec: `_bmad-output/implementation-artifacts/11-3-the-canvas-paints-the-weight-the-engine-resolved.md`
+  summary: `TableColumnsProjection`'s four new header bold/italic members have no consumer — the table
+    editor reads none of them and `table-style-command.ts` still cannot author a header weight — so
+    DW-240's read-back half has landed a story ahead of the control that would use it.
+  evidence: Measured at Story 11.3's review round. `folio-designer/src/TableEditor.tsx` contains zero
+    occurrences of `bold` or `italic` (positive control: 4 occurrences of
+    `headerAlign|headerValign|headerFontFamily`, so the file does read header style and is greppable).
+    `table-style-command.ts`'s `TableHeaderStyleField` union carries the seven pre-existing fields and not
+    the two new ones. **This is deliberate, not an oversight:** 11.2 shipped the authoring half in the Go
+    command layer (`tableHeaderStyleFields` is nine), Story 11.3 was scoped to the read-back only, and its
+    spec explicitly fenced a header B/I control out of scope. It is registered because, left unstated, it
+    reads as a contradiction of this story's own Design Note that *"a projection shipped without its
+    consumer is unconsumed (D-7.4.5)"* — the note is about the chain-entry half, which does have its
+    consumer in this story; the table half deliberately does not yet. **Owner: unassigned** — it needs
+    whichever story adds a header weight control to the table editor, and no such story is currently
+    named in `epics.md`. Registered to get an owner rather than to claim one.

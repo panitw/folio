@@ -36,7 +36,7 @@ const familyControlThaiSample = 'กขค Aa'
 // browser, and that witness is routed to Story 16.3's run. Nothing here claims
 // otherwise.
 
-const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '' })
+const face = (name: string) => ({ face: name, assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' })
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+00:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
 const engine = (request: unknown) => ({ request }) as unknown as EngineClient
@@ -1353,7 +1353,7 @@ describe('Story 16.7 — every row shows the typeface it names', () => {
   it('matrix: declared chain row — none when the chain resolves to no carried or shipped face', () => {
     // AN ENTRY THAT IS NEITHER: `assetKey` is not a carried key and `face` is
     // empty, so it fails both `isCarriedFaceAssetKey` and `isShippedFaceName`.
-    mount(commandRequest(), [{ name: 'body', entries: [{ face: '', assetKey: '', family: '', style: '' }] }])
+    mount(commandRequest(), [{ name: 'body', entries: [{ face: '', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }])
     fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
     const templateGroup = screen.getByRole('group', { name: 'IN THIS TEMPLATE' })
     const bodyOption = within(templateGroup).getByRole('option', { name: 'body' })
