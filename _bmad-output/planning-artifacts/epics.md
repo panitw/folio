@@ -4026,6 +4026,45 @@ already names the measurement APIs
 **Then** the B control states that this family has no bold face rather than appearing to be on, so
 the panel never shows a state the document cannot reach
 
+### Story 11.4: Picking a family declares the cuts it has
+
+As a template author,
+I want the family I pick to bring its bold and italic with it,
+So that pressing B works on a document I did not hand-edit.
+
+**Covers:** FR57 · AD-8, AD-15, I-5
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
+  — the TYPOGRAPHY section's family control
+
+**Added by OWNER DECISION D-11.0.1 (2026-09-06), which took the fourth option over the recommended
+deferral.** The ruling that makes it necessary is D-11.2.1: the engine resolves a weight only to a face
+the document explicitly NAMES, and it will never infer one — the route that does not break AD-8. So
+after 11.2 and 11.3, `starter.folio` is the only document in the world that can bold, and only because
+11.3 edits it. This story is what makes bold reachable in a document the author already has.
+
+**Acceptance Criteria:**
+
+**Given** an author picking a family in the family control
+**When** the pick is applied
+**Then** the chain entry it writes declares that family's available style variants alongside the base
+face, using the same command family the control already uses — no new command kind, and nothing the
+engine has to infer
+
+**Given** a family with no bold cut, or no italic cut
+**When** it is picked
+**Then** the entry declares only the variants that exist, and the B or I control states the absence in
+the words Story 11.3 gave it — an absent cut is declared absent, never declared and empty
+
+**Given** a document whose chain entries predate this story
+**When** it is opened
+**Then** nothing is migrated, rewritten or repaired (I-5). The document reports honestly and acquires
+variants only when its author re-picks the family — the same rule every other control in the product
+follows
+
+**Given** a document whose author never touches the family control
+**When** it is rendered
+**Then** the bytes are identical to before this story (AD-21)
+
 ## Epic 12: The inspector reaches the engine that is already there
 
 Six capabilities are shipped in the engine, tested by goldens, carried by the format — and reachable

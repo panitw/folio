@@ -1574,6 +1574,68 @@ by the story that had to *act* on the claim, never by the story that recorded it
 use, not by review — which is an argument for specs citing symbol and line so the next actor can fail to
 find them.
 
+### Re-grounding refresh — 2026-09-06 (third session)
+
+*Filed by the orchestrator from the lead's report. Re-grounded from this section, its 2026-09-05 refresh,
+and the rulings below — not re-derived from the spine, the ADRs or the epics doc. Verified at HEAD
+`429cb1a`, working tree **clean**, re-measured with `git rev-parse HEAD` and `git status --porcelain`
+rather than inherited from the session's opening `gitStatus`, which showed `ffec48c` and 21 modified + 14
+untracked paths. **That opening snapshot was two commits and one story stale** — anyone reading it as
+current would have concluded 11.1 was mid-flight. Third session in a row the opening snapshot has been the
+grounding hazard; treat it as never authoritative.*
+
+**State.** Epic 11 `in-progress` — 11.1 `done`, 11.2/11.3 `backlog`, 11.4 added this day by owner
+decision. Epic 12 `done` (5/5). Epic 13 `backlog` (5). Epic 14 `backlog` (10). Epic 15 `in-progress` —
+15.1/15.2a/15.2b `done`; 15.0, 15.2, 15.3 `backlog`, **plus 8.4d and 8.4k**.
+
+**Invariants carried, not re-derived.** I-1 no rendered byte is a function of the build environment; I-2 a
+weight is a face or it does not exist, no synthetic bold/oblique at emit **or** on the canvas; I-3 AD-17,
+the browser never measures, machine-enforced with five named-owner exceptions; I-4 AD-15, the engine owns
+the document; I-5 a control the panel declines to author must not delete what the document carries; I-6
+AD-21; I-7 AD-26; I-8 AD-14, diagnostics are one type on one channel from an additive registry; I-9
+`Render`'s error contract is not negotiable from the designer.
+
+**Three things verified in code rather than inherited:**
+1. **`fontChain` already serves both the render path and the canvas projection.** `render.go:1148` has
+   three non-test callers: `render.go:786`, `table_render.go:866`, and **`page_setup.go:1347`, the canvas
+   text-paint projection.** So 11.3 needs no new resolution path — it inherits 11.2's.
+2. **`chainFaceNames` is the single boundary and is style-blind by construction** (`render.go:1216`, three
+   non-test call sites). Its comment and `embedded_face.go`'s opening block record that ten functions
+   consume the chain and none can reach a `*Template` — which is why Story 8.4 put name→bytes behind the
+   `fontCache` instead of widening six signatures. **That argument transfers verbatim to "what is a bold
+   entry".**
+3. **The long-carried "15.0 is tracked but has no epic text" discrepancy is CLOSED** — `epics.md:5133`
+   now carries it in full, and `:5139` records the sequence 15.0 → 8.4d → 15.3 (D-8.4d.2).
+
+**One record discrepancy the lead found, and it was a release-gate risk.** `sprint-status.yaml` routes
+`8-4k` and `8-4d` to Epic 15 (`deferred-to-epic-15`, `moved-to-epic-15`) while **Epic 15's own story rows
+enumerate neither**, and both stories' text lives in Epic 8's section. So Epic 15's list under-counted its
+own work by two — and 8.4d is explicitly sequenced **before 15.3 cuts the tag**. Closed the same day by
+adding pointer comments to Epic 15's rows; the authoritative rows stay under Epic 8 so no story carries two
+status values.
+
+**Ordering risks across 11/13/14/15, as the lead framed them:**
+- **11.2 is the run's only hard deadline dependency.** It spends format freedom — the chain entry gains
+  keys — and that freedom expires when 15.3 cuts `folio-go/v0.1.0` (D-000.14 **in
+  `epic-8-15-decision-log.md`**, not this log's D-000.14; per D-000.23 a bare citation names two rules).
+  11.2 and 11.3 must both close before 15.3, and today that is satisfied by build order rather than by
+  anything that checks it.
+- **11.3 before Epic 14.** 11.3 touches the TYPOGRAPHY B/I pair that Epics 16 and 17 rebuilt and Epic 14
+  rebuilds again. Running it first means Epic 14 inherits a third state on the B control as a *behaviour to
+  preserve*, which is cheaper than adding it afterwards.
+- **Epic 13 before Epic 14, and 13.4 first within Epic 13**, against numeric order — `App.tsx`'s
+  sample-data gate blocks every preview without a JSON file.
+- **DW-192/DW-193 remain the live masking hazard over Epics 13 and 14** — the pointer carve-out waives
+  every AD-17 prohibition inside `App.tsx`, and the e2e suite is compiled and never executed. Fifteen
+  designer stories' problem, not Epic 11's.
+
+**Confidence, stated with its limit.** High on Epic 11 — the lead read the code, not only the log. **Medium
+on Epics 13 and 14**: the 2026-09-05 survey's findings were re-read but **not re-measured**, and D-000.4
+requires line anchors from that survey to be re-derived by symbol at each plan gate. **Every Epic 13/14
+anchor in the original grounding report is SAMPLED until its own plan gate re-derives it.**
+
+---
+
 ---
 
 ## D-12.C — The loose regexp is a breach of a comment's promise, not a disagreement between peers
@@ -3534,3 +3596,132 @@ checking the **frame** rather than the picture, and that is what catches a plant
 also caught its own mis-measurement **because 227 tests across 4 packages did not match the shape it
 expected**, not because anything failed. *Cross-checking the shape of a number against what it should be
 is the single habit that would have caught most of this run's defects, the orchestrator's included.*
+
+---
+
+### D-11.0.1 — OWNER DECISION: Epic 11 gains a fourth story, so bold is reachable in a document that already exists
+
+**The question put to the owner.** After 11.2 and 11.3 as specified, pressing B in a real document still
+bolds nothing. D-11.2.1 rules that the engine resolves a weight only to a face the document **explicitly
+names** and will never infer one. No document names them: `folio-designer/public/templates/starter.folio`
+declares `"Roboto": ["Roboto", "Noto Sans Thai", "Noto Sans SC"]` — three regular faces — and **no
+acceptance criterion in 11.2 or 11.3 touches that file.** Both stories can pass in full while a new user
+pressing B is told *"Roboto has no bold face"* with `Roboto-Bold.ttf` sitting inside the product at 358 KB.
+Epic 11's own opening line is *"Ploy bolds a heading."*
+
+The two halves were separated in the question so they could be decided independently: **the format change
+is deadline-bound** (it dies when 15.3 cuts the tag) while **filling in the names is just writing a
+document** and carries no deadline at all.
+
+**RULING: option four — fix the starter AND add the fourth story now.** The owner took the more expensive
+option over the lead's recommended triggered deferral. Both halves land:
+- **11.3 updates `starter.folio`**, naming Roboto's and the Notos' available cuts. Placed in 11.3, not
+  11.2, because 11.3 is the story whose B control would otherwise be telling the truth about a document we
+  could have fixed — and it keeps 11.2 a pure engine story.
+- **Story 11.4, *Picking a family declares the cuts it has*,** is added to `epics.md` and the tracker. The
+  family control writes a family's available variants as it declares the family, through the existing
+  command family.
+
+**What the owner bought, and what they knowingly paid.** Option 1 alone would leave every *existing*
+document unable to bold until its author hand-edited JSON — the capability 3.1 MB of font binary was spent
+on, reachable only outside the product. Option 4 (defer 11.4 to a trigger) was the lead's recommendation
+and the owner declined it; the register has entries that aged past their triggers, and this one would have
+been keyed to a file Epic 14 opens. **The price is real and was stated: 11.4 touches the family control
+Epic 16 rebuilt two weeks ago and Epic 14 will rebuild again**, so it is work in a contested file, and it
+makes a three-story epic four.
+
+**Recorded because the shape recurs:** the epic was *correct* at three stories and *undelivered*. Every
+acceptance criterion passed and the user-facing sentence in the epic's own opening paragraph remained
+false. **An epic's ACs are not a substitute for its first sentence** — check the narrative against the
+deliverable before declaring the story set complete, not after.
+
+### D-11.2.1 — RULING: the weight mapping is declared on the chain entry and derived from nothing
+
+**The question.** Where does `(family, weight, slope) → face` live? The orchestrator staged it before
+11.2's dispatch, offering a metadata index — read sfnt name ID 1, `OS/2.usWeightClass` and the italic bits
+from each `FontSet` face and group by family — as the candidate that seemed to fit 11.1's direction.
+
+**RULING: declared on the `FontChainEntry`, exactly as D-B already ruled, and derived from NOTHING.** Not
+name ID 1, not `usWeightClass`, not `fsSelection`, not `macStyle`, not `post.italicAngle`.
+
+1. A `FontChainEntry` gains optional style-variant siblings — a **FontSet face name** on the shipped arm,
+   an **asset key** on the embedded arm — using the existing `Presence` idiom, absent by default.
+   `folio.FontSet` does not change shape.
+2. **Coverage decides the entry on the BASE chain; style is resolved WITHIN the chosen entry.** Do not
+   substitute variant names into the chain before coverage runs — *a variant whose `cmap` is narrower than
+   its base would push a rune to the next entry and silently change the TYPEFACE to keep the WEIGHT*,
+   which is the substitution D-B forbids by name. This trap is the lead's, and it is the kind that ships.
+3. **A face name is never constructed, and never parsed.** `entry.Face + " Bold"` is the foreclosed
+   naming-convention weight carrier written in the other direction. The prohibition as written in five
+   places says *"never parse"*; **it binds construction identically, and 11.2's spec must say so** — a
+   literal reading could otherwise honour the words while reinstating the mechanism.
+4. **One answer site.** `embedded_face.go`'s rejected alternative — widening the six
+   `(chain, FontSet, *fontCache)` signatures — is rejected again for the same reason. A second answer site
+   is the signal the shape is wrong.
+5. **Absence is a first-class result.** An entry with no declared variant resolves to **its own base
+   face** and emits AC3's diagnostic. *"Nearest available face"* means **this entry's** base face — never a
+   walk down the chain hunting for something bold.
+
+**Two grounds that kill the index independently of D-B, and the orchestrator's own third item was the
+fatal one.**
+- **AD-8 / D-8.4.1.** `embedded_face.go` derives an embedded face's name from the **asset key** and never
+  from `font.family`, precisely so a document's family and a caller's cannot substitute for one another.
+  An index keyed on name ID 1 **regroups exactly those two populations**. `fontCache`'s precedence rule
+  protects *direct lookup*; weight resolution asks a different question — *"which face is the bold sibling
+  of this family?"* — and that question has no reserved namespace to protect it. A document embedding a
+  face whose name table says `Roboto` would acquire the caller's `Roboto Bold`. Fatal, not qualifying.
+- **AD-21, against a criterion 11.1 already shipped on.** 11.1 shipped on *"a face nothing names is a face
+  nothing embeds."* Under inference, a face **nothing in the document names** would be shaped, subset and
+  embedded because it happened to sit in the caller's `FontSet` — so two `Render` calls with the same
+  document and `FontSet`s differing only by an unrelated extra face would produce different bytes.
+
+**Cost is dissolved rather than weighed:** nothing is parsed eagerly, `fontCache` stays lazy and per-name,
+and the 10.6 MB Noto Sans SC is parsed only if a rune lands on it. There is no third way to find because
+the second way is not needed.
+
+**On the evidence I offered for the index, honestly weighed by the lead.** Name ID 1 is load-bearing for
+**identity and provenance** — it is what `shippedFaceSpecs` asserts the binary against, and D-11.1.24
+corrected an AC that had read it as something production code consults. The `usWeightClass` and OBLIQUE
+columns are a **guard table proving the binaries are what we claim**, which is the opposite of a resolution
+authority. Measured, the bits *would* work (all four shipped italics set `fsSelection` bit 0; only the two
+Roboto italics set bit 9) — the index is refused because it is already ruled out and breaks AD-8, not
+because it could not be made to function. **That distinction matters: a design can be implementable and
+still be wrong.**
+
+**The enforcement, priced at one test AC3 needed anyway.** A chain entry `"Roboto"` with **no declared
+variant**, in a `FontSet` that **does** contain `"Roboto Bold"`, plus an element declaring bold, must
+render Roboto **Regular** and emit AC3's diagnostic. An implementation that constructs the name reds that
+test. **DW-233's prohibition finally acquires a behavioural tripwire**, inside AC3's own subject rather
+than as new scope. The repo-wide `lint` rule stays deferred.
+
+**DW-234 does not bite in 11.2 under this ruling** — the resolver reads no name IDs at all, so the
+nameID 16/17-vs-1/2 divergence stays a guard-table concern for whoever ships the first non-RIBBI weight.
+
+**The assumption to check at 11.2's plan gate rather than at implementation** (it is D-B's own carried
+assumption, and D-11.0.1 makes it sharper): **the designer must be able to write chain variants through
+the existing font-chain command family without a new command kind.** If it cannot, 11.2/11.3/11.4 acquire
+a command-surface change and land behind the hardening 15.2a already shipped.
+
+### D-11.0.2 — DW routing settled before 11.2 dispatches
+
+- **DW-233** (the never-parse prohibition enforced by nothing) → **Story 11.2**, confirmed. D-11.2.1's
+  guardrail discharges it behaviourally at the cost of one test the story already owed AC3. It widens 11.2
+  slightly and that widening is authorised.
+- **DW-234** (two "what the binary calls itself" authorities read different sfnt name IDs) → stays
+  **unowned and open**. It does not bite in 11.2 because nothing in the resolver reads a name ID.
+- **DW-235** (the load screen's twelve rows mix two naming conventions) → **Story 15.0**, routed. The
+  closer could only reach *"a presentation story"* and flagged it unrouted. 15.0 is the right owner
+  because fetch-on-first-pick **changes which rows exist** — catalogue faces stop consuming precache
+  slots — so it is the next story that must open the load screen's row rendering for its own reasons. A
+  presentation fix keyed to a story that has to be there anyway is the kind that gets done.
+- **DW-236** (`make fonts-verify` covers only the engine copy, never the designer mirror) → left as the
+  closer filed it. Hand-mirrored pairs went 4 → 11 in 11.1, so the exposure grew; it is not Epic 11's to
+  close.
+
+**And the finding behind all four is worth more than any of them.** Of 11.1's five review deferrals, only
+one had been written up; the other four were appended as **raw, unnumbered blocks lodged inside DW-231's
+body** — deferred in substance, **invisible to any `### DW-` census**, one of them a duplicate of its own
+host. **67 more such blocks remain from eleven earlier stories, ten of them from Story 12.3 alone.** The
+register has been silently under-reporting itself for most of this run. That is a sweep story, and it is
+the same defect class as everything else this run keeps finding: *a record whose own index cannot see part
+of its contents.*
