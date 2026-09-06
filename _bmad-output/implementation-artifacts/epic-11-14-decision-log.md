@@ -3725,3 +3725,174 @@ host. **67 more such blocks remain from eleven earlier stories, ten of them from
 register has been silently under-reporting itself for most of this run. That is a sweep story, and it is
 the same defect class as everything else this run keeps finding: *a record whose own index cannot see part
 of its contents.*
+
+### D-11.2.2 — RULING: the object form, and the version that would have lied
+
+**D-11.2.1 §1's mechanism was falsified by measurement, and the lead corrected its own ruling.** §1 said
+the chain entry gains variant siblings *"using the existing `Presence` idiom"*. **There is no such idiom.**
+`FontChainEntry` has no `Presence` field and no `Extra`; the shipped arm is a **bare JSON string** with
+nowhere to hang a key; the embedded arm enforces **exactly one key** (`parse.go:416`). All three are
+deliberate and documented. The lead had carried the phrase verbatim out of D-B without checking it —
+**D-11.1.11's error class again** (a supporting mechanism quoted past its own repair), and the second time
+D-B has had a supporting fact corrected.
+
+**The verdict is unaffected and the correction strengthens it.** D-B's actual reason for "not a new format
+axis" was never the idiom — it was that `serialize.go:writeFontChain` **already** emits an entry as either
+a bare string or an object. Still true, and exactly what the object form uses.
+
+**RULING — ratified:** shipped arm gains an object form `{"face":"Roboto","bold":"Roboto Bold"}`; embedded
+arm becomes `{"asset":"…","bold":"…"}`; the discriminant is **exactly-one-of `face`|`asset`**; the one-key
+rule widens to a **closed set of three — `bold`, `italic`, `boldItalic` — never to passthrough**. Bare
+strings stay bare, so AC5 holds by construction.
+
+**Why this is a mechanism change in service of the invariant rather than a breach of it.** `model.go:157-163`
+and `parse.go:411-418` state the property in words: *"the object IS the entry's discriminant, so an
+unrecognised key in it is an entry of an unknown kind, not a known entry with an unknown decoration."* The
+**one-key rule is the mechanism; the property is that an unknown key cannot ride along disguised as a
+decoration.** An exactly-one-of discriminant over a closed set preserves the property exactly. Generalise:
+*before treating a documented invariant as a wall, separate the rule from the property it protects — they
+are often not the same size.*
+
+**It stays a lead ruling and not the owner's**, on the test that kept D-B off the owner's desk: no public
+API moves, no shipped bytes move, and — checked rather than assumed — **no version rank is added**.
+
+═══ THE DEFECT THE PROPOSAL WOULD HAVE SHIPPED: A VERSION THAT LIES ═══
+
+**Neither the orchestrator nor the builder had this. Verified independently in code before forwarding.**
+
+```go
+// internal/template/version.go:358
+func fontsRequireMajor(f Fonts) bool { … if entry.Embedded() { return true } … }
+// internal/template/serialize.go:215
+        if entry.Embedded() { dst = writeObject(dst, …, []kv{{"asset", …}}) }
+```
+
+**Two copies of one predicate, agreeing only because object-form and embedded are currently the same
+set.** The object form separates them: `{"face":"Roboto","bold":"Roboto Bold"}` has `AssetKey == ""`, so
+`Embedded()` is false, so nothing raises the version, so `versionForSave` stamps **`1.0`** on a document
+carrying an object entry **no 1.x reader can decode**. `version.go`'s own comment gives the real trigger —
+*"a 1.x reader decodes a chain entry as a string and never coerces, so it refuses the file outright"* — and
+`folio-format.md:86` names the failure: **"a version that lies: it would claim a reader sufficient for
+content that reader cannot load."** It would ship **green**, because nothing asserts the negative direction
+for a non-embedded object entry. There has never been one.
+
+**Fix, in scope as a forced consequence of AC1:** the predicate moves from *"the entry is embedded"* to
+**"the entry serialises as an object"** — the property a 1.x reader actually chokes on, and the property
+the comment already claims to be about. **One predicate on `FontChainEntry`, consumed by BOTH
+`writeFontChain` and `fontsRequireMajor`**, so they cannot disagree. A D-7.4.5 mirrored invariant: one
+commit.
+
+**Red proof must be behavioural:** for each entry shape in a literal table, assert *(serialised entry
+begins with `{`) ⟺ (versionForSave raises to 2.0)*. **Never pin the predicate against itself** — pin the
+serializer's real output against the version's real output.
+
+**NO MAJOR BUMP, ruled rather than defaulted.** The doc's own test — *would a pre-2.0 reader refuse this
+file or render it wrong?* — answers "refuses, on the entry shape", so Story 8.3's existing 2.0 trigger
+already covers it. 3.0 was considered and rejected on `folio-format.md:617-634`'s recorded grounds: Folio
+is unreleased, and a bump would make **every** document declare 3.0 including the twenty-two fixtures that
+make no font choice at all, **moving their bytes and goldens for a reason unrelated to fonts.** We widen
+what 2.0 means; every reader of 2.0 that has ever existed lives in this repo and moves in the same commit.
+**This is the pre-tag free window being spent correctly.**
+
+**The general lesson, and it is the sharpest one this run has produced about duplicated logic.** Two copies
+of a predicate that have *always* agreed are not evidence that they mean the same thing — they may be
+evidence that no input has yet distinguished them. **A duplicated predicate is a hypothesis that the two
+call sites ask the same question, and it is only tested by an input that could separate them.** This story
+was that input, and the separation was silent.
+
+═══ THREE MORE THE SAME CHANGE MUST CARRY ═══
+
+- **A sibling must not cross namespaces.** `{"asset":"myRoboto","bold":"Roboto Bold"}` — an embedded
+  regular whose bold is a **shipped** face — is the AD-8 substitution **smuggled inside a single entry
+  where no precedence rule can see it**. A `face` entry's siblings are FontSet face names; an `asset`
+  entry's are asset keys. Cross-namespace = located load error, asserted both directions.
+- **`requireEmbeddedFaceLicence` must run on a variant asset key** (`parse.go:433`), or a document can
+  carry an **unlicensed embedded bold face** — AD-26 / I-7. `folio-format.md:598`'s wording must widen with
+  it, or the requirement does not reach a sibling.
+- **The sibling walk order is DECLARED, never map order.** `newEmbeddedFaceIndex` pins determinism on
+  chains in sorted name order and entries in authored order; siblings are a **third axis**. Fixed order in
+  the walk and in `writeFontChain`'s key emission, or round-trip bytes move (AD-22).
+
+═══ THE CLOSED SET IS CLOSED AT BOTH ENDS, WITH ONE AUTHORITY AND A LITERAL FACING IT ═══
+
+A closed set enforced only in the parser is a rule with no declaration; one declared in prose and enforced
+by a `len()` is the split the guard census was about. So: **the parser holds the set once as a named
+enumeration** (the authority); **the refusal message is DERIVED from it** — three hand-written messages go
+stale otherwise (`parse.go:407`, the `default` branch, and the "carries no other key" sentence), and Story
+8.3's own comment says why: *"unpinned wording in a refusal is wording that goes stale silently and sends
+the author to fix the one thing that was not wrong"*; **the test holds a LITERAL list** and asserts it
+equals the parser's set and that the format doc carries a row per key. **Literal-vs-derived, never
+derived-vs-derived** — a doc assertion reading the same enumeration the parser reads moves with it and is
+vacuous.
+
+**The set is three keys, closed, and the doc states the closure AND its price.** An open extension point
+(`{"face":"X","variants":{…}}`) was rejected: it surrenders the unknown-key refusal that is the whole
+property this change exists to preserve, and it is speculative generality D-A already foreclosed. A future
+weight or width axis costing a version bump post-tag **is what versioning is for.**
+
+**And the doc row must state the type difference:** `style.bold` is a boolean; a chain entry's `bold` is a
+face name or asset key. One token, two meanings, one document.
+
+### D-11.2.3 — the format doc moves in four places, and two existing tests invert
+
+**Four sites in `folio-format.md`, all in one commit under D-7.4.5:** `:192` *"A chain entry has exactly two
+legal shapes"* (a normative claim, not a caption — the builder caught this); `:47` the 2.0 trigger, from
+"an embedded-face entry" to "an object-form entry"; `:598` the licence requirement, widened to reach a
+variant asset key; and the chain-entry row itself gaining the three keys with their type difference stated.
+**Fork B's assertion checks only the fourth** — widening it to police the other three is a different and
+much larger test.
+
+**Two existing tests, and the one that matters was not the one I asked about.**
+- `fonts_embedded_test.go:621` — **subject unmoved, ground moved**, from "exactly one key" to "not in the
+  closed set". `requireLoadError` asserts **the field only**, so the test **cannot see** the change and
+  would keep passing with a false message. Add the message assertion; the name stays.
+- **`fonts_embedded_test.go:620` is a behaviour REVERSAL**: `{"face": "Noto Sans"}` is pinned **today** as
+  a load error and becomes **valid**. Replace the row, do not re-explain it; its replacement is the genuine
+  no-discriminant case (`{"bold": "Roboto Bold"}`). **And add a both-discriminants row** or "exactly one
+  of" is asserted in neither direction.
+
+*I asked about the row whose reason changed and missed the row whose answer inverted, one line above it.
+Asking "what does this test now mean?" found less than asking "which currently-red case does this make
+green?"*
+
+### D-11.2.4 — an absence in a subagent's return is a lead, not a result
+
+11.2's builder reported two housekeeping findings — that `Main.dc.html` does not exist, and that FR57 has
+no definition. **I checked both before acting** (I had already told the builder I was "handling the
+design-file gap") and **both were wrong**: the mockups directory holds six tracked files including
+`Main.dc.html` at exactly the cited path, and FR57 is defined at `epics.md:121` with a coverage row at
+`:350`.
+
+**The builder's own diagnosis is better than my correction and is adopted as the rule.** I said *report the
+search that produced the absence*. It found the sharper thing: it had applied that discipline **twice in
+the same session to its own greps** — catching an `AD-8:` search that false-zeroed on em-dashes, and a
+`git ls-files` glob whose positive control came back empty — and then relayed a **subagent's** absences
+untested. **Text arriving from a subagent feels like a finding; it is raw input with the same failure modes
+as one's own shell, minus the ability to see the command.**
+
+> **An absence in a subagent's return is a lead, not a result. Verify it, and report the search rather than
+> the conclusion.**
+
+It generalises past housekeeping: **a reviewer's "nothing enforces this" is a claim about a population and
+is worth exactly what that population is worth.** This is now a standing rule for every agent in the run.
+
+**FR57 earned its citation on the way.** Its own wording — *"resolved per rune through the **declared**
+chain"* — is independent textual support for D-11.2.1: the ruling is not layered on the requirement, it is
+what the requirement already said. Now cited in the spec's Design Notes so a later reader has it before
+re-litigating.
+
+### D-11.2.5 — an acceptance criterion that knows how it would be faked
+
+AC2 (tables take the weight) is written as its own criterion **with its failure mode inside it**: the table
+header arm calls `chainFaceNames` **directly at `table_render.go:707`, bypassing `fontChain`**, so an
+implementation resolving style in `fontChain` alone **passes every text AC and silently fails this one**.
+Stating the mechanism in the criterion means it cannot be satisfied by a table that happens not to
+exercise the header path.
+
+Recorded as a pattern worth repeating: **an AC that names how it could be faked is harder to fake than one
+that names only what it wants.** It is the same instinct as a red proof, applied to prose.
+
+Also settled here: 11.2's builder held the spec at `draft` rather than freezing `<frozen-after-approval>`
+while Fork A was open — three I/O matrix rows turned on the answer, and only a human can reopen a frozen
+block. **Freezing to look like progress and reopening later is strictly worse than waiting.** Correct, and
+recorded so the pattern is available to later builders.
