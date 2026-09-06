@@ -4415,3 +4415,56 @@ builder **proved the tree survived it** — snapshotting all 17 source files bef
 after, same manifest hash. That is the rule working and being *shown* to work. Q3's open check is
 **discharged by measurement**: the third state derives from the chain's variant strings and never from the
 committed boolean, so the zero-value collapse is not lossy where it matters. **Q3 does not flip.**
+
+### D-000.31 — 21% of the register is invisible to its own index, and two remaining stories are owed work by it
+
+**Measured while 11.3's implementer worked, because this has now been deferred twice and it bears directly
+on finishing Epics 13–15.**
+
+```
+### DW-        numbered entries visible to a census   247
+- source_spec: raw blocks with NO number                67    (21% of the register)
+```
+
+**Sixty-seven blocks, from fifteen-plus stories across Epics 12, 15, 16 and 17** — Story 12.3 alone
+contributed ten. They are in the file; what they lack is a **number**, which means nothing can cite them,
+no `### DW-` census counts them, and a builder grepping for work owed to its own story does not find them.
+This is the same defect the 11.1 and 11.2 closers each caught locally, seen at register scale: **the
+register has been under-reporting itself by more than a fifth for most of this run.**
+
+**The concrete risk, which is why this stopped being a tidiness item.** Extracting owners from all 67:
+
+| Orphan | Owner named inside it | Severity |
+|---|---|---|
+| `deferred-work.md:8483` — `preview/pdf-viewer.tsx:89`'s effect re-runs on every view-state write, disposing and re-rasterizing the `PDFDocumentProxy` | **Story 13.2** | MEDIUM |
+| `deferred-work.md:8778` — `TestShippedFacesReproduceFromUpstream` is reachable from no CI gate; its sole invocation is `Makefile:39,45` | **Story 15.2** | MEDIUM |
+| `deferred-work.md:8691` — `parseMillipoints` tests the overflow bound *before* the multiply | *"whoever next changes `parseMillipoints`' arithmetic"* | LOW |
+
+**Two of the three are owed to stories still in front of me**, and neither is findable by any search a
+builder would run.
+
+**And reading them corrected one of my own attributions.** My extraction pattern matched `Story 15.3` in
+the `:8691` block — but the sentence is *"**Not Story 15.3** — it is not an exported-surface question and
+it needs no decision before the tag."* **The pattern matched the story that was explicitly excluded.** That
+is D-11.1.2's error class in a new costume: matching on shape without reading the subject, and here the
+shape was a *negation*. A grep that finds "Story 15.3" cannot tell an assignment from a disclaimer.
+
+**The `:8483` entry also falsifies a premise Epic 13 states as fact**, which makes it worth more than its
+severity: Epic 13's prose says `.pdf-preview-scroll` has no height cap so `scrollTop`/`scrollLeft` *"can
+never be non-zero"* and the restore effect is dead code. **True only on the vertical axis** — `App.css:368`
+sets `overflow: auto` on both, and at a zoom above fit the canvas is wider than its box. **Epic 13's
+dispatch must carry that correction**, or 13.2 will be planned against a false premise the epic asserts.
+
+**Actions, and deliberately not taken now.** I did **not** edit the register: 11.3's builder writes its own
+deferrals into that file at step-05, and racing it is how two writers produce one lost entry. Instead:
+1. **11.3's closer numbers all three orphans**, alongside 11.3's own deferrals — the job both previous
+   closers did well, and they are the agent already holding that context.
+2. **The remaining 64 are a sweep**, and a sweep is a story, not a chore squeezed into a close. Registered
+   as such rather than attempted piecemeal.
+3. **Epic 13's dispatch carries the `:8483` correction and the `:8778` pointer**, from this entry, so
+   neither depends on the sweep landing first.
+
+**The rule this yields, and it is the fourth register-integrity finding of the run:** *a register is only
+as good as the search a reader will actually run.* Content that is present but unindexed is, for every
+practical purpose, absent — and it is worse than absent, because its presence in the file makes the
+register look complete to anyone who scrolls it.
