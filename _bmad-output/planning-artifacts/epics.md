@@ -4097,7 +4097,8 @@ UNFILTERED in-story (D-11.1.9)
 **Given** the new `expected.pdf`
 **When** it is committed
 **Then** it carries a **human attestation** — an `expected.pdf` is a human-attested artifact under
-AD-21 / D-4.7.1, attestation is an OWNER action, and the story HALTS for it rather than self-attesting or
+D-000.22 → D-2.3.5 (doctrinal, NOT architectural: AD-21 says nothing about attestation, and D-4.7.1 is
+scoped to the statement family — see D-11.5.2), attestation is an OWNER action, and the story HALTS for it rather than self-attesting or
 shipping the fixture without a golden
 
 **Given** the resolver pointed at the base face instead of the declared variant

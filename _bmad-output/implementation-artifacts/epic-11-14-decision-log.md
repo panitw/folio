@@ -4671,3 +4671,60 @@ tool is not the thing we thought we were auditing. So:
 **And the near-miss is the lesson's other half.** The builder's report was accurate and my instrument was
 broken; had I trusted my grep over its claim, I would have filed a false defect against correct work and
 sent a builder chasing it. Verifying a report does not mean assuming the report is the thing that is wrong.
+
+
+### D-11.5.1 — RULING: the halt is a RED GATE, and a red that cannot go green is a decoration
+
+**Token gate: KEEP the full spec.** There is no seam. The fixture, its goldens, its twelve registration
+sites and its red proof are one artifact, and splitting would multiply the matrix gate across both halves
+rather than removing it from either — D-11.1.18's situation exactly, and the inverse of D-11.2.12's.
+
+**Q1: arm [A], ship the red gate.** The acceptance criterion's word is HALTS, and in this project the
+discriminator between a halt and a defer has consistently been whether the tree itself is left red. Arm
+[B] leaves a tree that says "done" and a register entry that says "not really", which is the same shape of
+lie D-11.1.x kept catching in guards: a state that cannot be distinguished from its opposite by looking.
+Two Epic 2 precedents (`431a6a5` shipping the gate, `9e79348` landing the record next day) and D-2.3.5's
+mandate settle it. Arm [C] is ruled out on its own merits — no precedent and it trips empty-field errors.
+
+**On the collision with "a third failure is a hard stop".** That rule is mine and the builder was right to
+put it to me rather than route around it. It is a REGRESSION rule, and this red is not a regression, so it
+survives — but only with the distinction spelled out, because the rule is load-bearing and I will not erode
+it by exception:
+
+> `TestCorpusMeetsP6ExerciseFloors` and its `P6g` subtest are **permanent** mandated reds — a floor nobody
+> has met. The attestation gate is a **transient** red that clears the moment the owner attests. A
+> permanent red teaches everyone to ignore a number; a transient one is a countdown. Both must be
+> enumerated BY NAME in every baseline, and a failure whose name is not on that list is still a hard stop.
+
+**The condition that makes arm [A] worth anything.** A red gate nobody can turn green is not a halt, it is
+a permanent decoration that trains the next reader to skip a third failure. So the gate must be
+**mutation-proved in the clearing direction**, which is the opposite of how we have proved every other
+guard this run: write a synthetic record file, confirm the gate goes **GREEN**, then remove it and confirm
+it returns to RED, reporting both digests. Proving it can red is not the property in question here — we
+know it reds, that is its resting state. The property in question is that the owner's attestation will
+actually discharge it.
+
+**Q2: the new `matrix-file:` obligation cites D-11.5.1** — this ruling. The `matrix-document:
+declared-variants` entry cites the story's own acceptance criterion, as proposed.
+
+### D-11.5.2 — the attestation obligation is doctrinal, not architectural, and I propagated the wrong citation
+
+Story 11.5's acceptance criterion says an `expected.pdf` is human-attested "under AD-21 / D-4.7.1". The
+builder checked and **AD-21 says nothing about human attestation**. I verified independently before
+accepting: AD-21's section carries 0 occurrences of human/attest/sign-off/signoff, the whole
+ARCHITECTURE-SPINE.md carries 0 of `attested`, `sign-off`, `signoff` or `human attest`, and the positive
+controls are live (AD-21 appears 5 times in the spine, AD-22 6).
+
+The obligation is REAL. Its descent is **D-000.22 → D-2.3.5**, and D-4.7.1 is scoped to the statement
+family — it invalidated an existing sign-off, it did not create the general rule.
+
+**Provenance of the error: mine.** It reads "AD-21 / D-4.7.1" at
+`11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md:613`, in a spec I approved, and it
+propagated from there into Story 11.5's acceptance criterion when I wrote it. Corrected in `epics.md` and
+in the 11.5 spec; 11.2's line is left as the historical record of where it came from.
+
+**Why the distinction is not pedantry, and it is the hinge of Q1.** An architectural rule binds because the
+system is built that way; a doctrinal one binds because we decided and can re-decide. Had the obligation
+been in AD-21, arm [B] would have been unavailable — you cannot defer an architectural invariant. Being
+doctrinal, all three arms were genuinely open, and [A] had to be won on its merits rather than assumed.
+Citing a doctrine as an architecture decision is how a choice quietly stops looking like a choice.
