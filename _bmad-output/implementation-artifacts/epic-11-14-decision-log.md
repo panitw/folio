@@ -4524,3 +4524,113 @@ never by review; this run has now paid for that lesson four times.
 **DW-246 is created and needs an owner** — `TableColumnsProjection`'s four new members have no consumer,
 and **no story in `epics.md` adds a table-header weight control.** Not routable to an existing story;
 carried to Epic 11's boundary gate for placement.
+
+### D-11.4.1 — RULING (2′): a pick of a shipped family NAMES and DECLARES, and the obvious criterion is wrong in both directions
+
+**The gap 11.4's builder found.** AC1 requires a pick to declare *"that family's available style
+variants."* **For every family the control can pick, that set is empty, structurally.** All 31 local-tier
+catalogue faces are hardcoded `style: "Regular"` (`build-wasm.mjs:428` — it is not even in the source
+JSON); the stored tier can only hold what `fetchWebFamily` produces, which takes `regularFilename()` and
+hardcodes Regular; and `IN THIS TEMPLATE` writes no chain entry at all. **The only faces with real cuts are
+shipped, and shipped families are not offered by that control.** So 11.4 as written would ship, pass, and
+leave `starter.folio` the only document that can bold Latin text — the exact condition D-11.0.1 created it
+to end.
+
+**And the measurement that made it indefensible rather than merely narrow:**
+`folio-designer/public/fonts/roboto/Roboto-Regular.ttf` and `folio-go/fonts/roboto/Roboto-Regular.ttf` are
+**byte-identical** (`e688a215…`). Picking Roboto **embeds a duplicate of a face the engine already ships**,
+and that duplicate is Regular-only — it can never bold, while `Roboto Bold`, `Roboto Italic` and `Roboto
+Bold Italic` sit unreachable in the same `FontSet`.
+
+**RULING (lead): (2′) — a pick of a shipped family names the face and declares its cuts; it does not
+embed.** Grounding stronger than permission: **Story 16.5 SPECIFIES this rather than tolerating it.** Its
+spec says *"Only the moment a font starts travelling has moved"*, and a face already in the release on
+every machine never travels — so the embed trigger does not reach it. Naming a shipped face is also **the
+format's oldest expression**: a chain entry was `[]string` until Story 8.3, the embedded arm is the
+addition, and `starter.folio` has always declared three bare names and zero embeds. **(2′) makes a pick
+produce the shape the product's own default document already has.**
+
+**THE CRITERION, and both of its obvious candidates are traps I verified myself.**
+
+```
+shippedFamilies (build-wasm.mjs:191, 13 names) — the BROWSER's CSS registry
+Shipped() keys (fonts.go, 11)                  — the ENGINE's FontSet
+```
+- **`shippedFamilies` OMITS plain `Roboto`** — it carries the three cuts but not the base, because Roboto
+  Regular reaches the browser through the *catalogue* while the Notos reach it uncatalogued (D-11.1.5). A
+  membership test answers **"Roboto is not shipped"** — false, and exactly backwards for the one family
+  this ruling is about.
+- **It INCLUDES `IBM Plex Sans`, `IBM Plex Mono`, `IBM Plex Sans Thai`** — design-system faces with CSS
+  rules and **no `Shipped()` key**. A test against it writes `{"face":"IBM Plex Sans"}` and **produces a
+  `.folio` the engine refuses.**
+- The other candidate, `shippedFaceNames(fontsGo)`, is a **test-side parse of Go source**, unimportable by
+  production — **D-11.1.24's trap, second instance.**
+
+*Two sets with the same shape and different subjects. The run's most expensive recurring error, appearing
+here in the one place a careless implementation would certainly have reached for.*
+
+**So the forced consequence: 11.4 declares, as a PRODUCTION artifact, the mirror of the engine's FontSet** —
+each shipped base family and its variant keys — mirrored Go ↔ browser in one commit (D-7.4.5), with
+`shippedFaceSpecs` and `shippedSlotFaces` **asserting it rather than being it.** Required by AC1, not added
+to it: construction is foreclosed (D-B), binary reading is foreclosed (D-11.2.1, and refused for provenance
+too), and the test tables are unimportable. There is no alternative that makes AC1 pass.
+
+**Correction to my own framing:** I called the byte identity a coincidence. **It is not** —
+`TestShippedRobotoMatchesDesignerCatalogue` pins "there is exactly one Roboto" as a machine-checked
+one-family invariant (Story 16.8). Still unusable as the criterion, because it holds for one family and
+cannot generalise — but the register says *invariant*, not *luck*.
+
+### D-11.4.2 — OWNER DECISION: ship as ruled, and I described this story wrongly when I asked for it
+
+**What I told the owner at D-11.0.1**, recommending the fourth option: *"the family control learns to fill
+in a family's available cuts as it declares the family. Covers new documents **and any existing document
+whose author re-picks their family, which is most of them in practice**."*
+
+**Measurement falsifies the emphasised clause.** Under (2′), **exactly one family becomes boldable by a
+pick: Roboto.** The three Notos are uncatalogued shipped faces the control does not offer; all 31 catalogue
+faces and every fetchable face are Regular-only by construction. **AC1 stops being vacuous and its
+non-vacuous population has one member** — the family `starter.folio` already declares.
+
+**I took the correction back to the owner rather than putting it in a Delivery Log**, because they had
+bought the expensive option on a description that turned out to be wrong, and because two of the four
+remedies would have changed the program.
+
+**OWNER RULING: ship as ruled, register the rest.** 11.4 delivers Roboto boldable by pick, removes a
+348 KB duplicate embed that ships today and can never bold, and carries DW-241's narrowing before the tag.
+Declined: widening the picker to the shipped Notos (would reopen a UI decision Stories 16.4/16.9
+deliberately made), and scheduling the general capability now (multi-face fetch, multi-asset embed,
+per-face licence admission, payload against a cache margin already at 3 of 64).
+
+**Registered as load-bearing, NOT as an enhancement** — the lead's framing and it is the right one: option
+(3), reading real cuts from upstream `METADATA.pb`, is *the entry for "bold works for the fonts people
+actually pick"*. **`parseFamilyMetadata` (`font-source.ts:138`) already parses every
+`fonts { style, weight, filename }` block and `fetchWebFamily` throws it away** — the capability is half
+built. Framing it as load-bearing rather than optional is what stops it aging the way DW-162's figure did.
+
+**The lesson, and it is about me rather than the code.** I priced an option for an owner from a plausible
+model of the picker instead of from the picker. The story was authorised on my description; the
+description was wrong; **and the person who found that out was the builder measuring the surface I should
+have measured before asking.** When an owner decision turns on what a control can currently do, measure the
+control first — an owner cannot audit a premise they were handed.
+
+### D-11.4.3 — three registrations, and what stays open in each
+
+- **Option (3), upstream cuts** — load-bearing, Epic 16-shaped, half built. **Not an enhancement.**
+- **The duplicate embed** — a pre-existing defect: the author *cannot avoid it* (picking Roboto always
+  embeds) and what it produces can never bold while its cuts sit in the same FontSet. **(2′) closes it as a
+  consequence**, and the entry stays **open in one direction**: a *fetched* face byte-identical to a shipped
+  one still duplicates, and detecting that needs the binary comparison we are refusing. **State the limit,
+  so the check is never read as complete** (cf. DW-245, same discipline).
+- **No self-contained copy of a shipped family.** Follows from 16.5's own rule rather than from a removal.
+  Restoring it later is a **widening — free after the tag**. Re-price on the first request for a `.folio`
+  that renders against a foreign FontSet.
+
+**Guardrails carried into the spec:** criterion is membership in the declared mirror, never
+`shippedFamilies`, never a Go-source parse, never a byte comparison, never a constructed name; family →
+cuts is declared, never derived; **`Noto Sans SC` declares no cuts and takes AC3's Warning — exercised as
+ordinary behaviour, not as an edge case**, being D-A's permanent shipped instance of "this family has no
+face at this weight"; variant keys a pick writes are FontSet **face names**, never asset keys (which is
+what keeps `assetKeyReferenced` out of scope); **a pick must never emit a variant equal to its base**,
+since DW-241 makes that a load error and such a pick would author an unloadable document; and the
+`IN THIS TEMPLATE` disclosure is asserted **in both directions** — a shipped pick adds nothing to it, a
+catalogue pick does.
