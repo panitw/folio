@@ -8,6 +8,32 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Not normative, and rewritten after the fact: the frozen Intent below governs implementation, while
+this section says what actually shipped.*
+
+Asking a document for bold or italic now changes what it prints. Until this story those requests were
+stored, edited and shown in the browser, and read by nothing that draws — two documents differing only in
+a bold flag produced identical files.
+
+A document's font list can now say which typeface cut stands in for bold, for italic, and for both.
+Nothing is guessed: the engine never assembles or picks apart a typeface name to find a heavier one. It
+still chooses a typeface by which letters that typeface can draw, and only then applies the weight the
+document named within that choice. Where a document asks for bold and named no bold, it prints in the
+book weight it already had and says so plainly rather than quietly substituting something close.
+
+Saving a document that uses the new form now stamps a newer format number, because older readers
+genuinely cannot read it. That was a real trap caught here: the two places deciding this had drifted
+apart, and one would have written a number that lied.
+
+None of this is visible in the designer yet. The canvas still paints book weight and the family control
+still offers no cuts — the next two stories do that. No printed proof of a bold page ships either, and
+that is a ruling, not an omission: nobody can vouch for a bold page before one can be produced.
+
+Review caught two genuine bugs, both about measurement rather than the new feature itself; both are
+fixed.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -676,3 +702,110 @@ makes later relative paths resolve elsewhere, printing `lstat …` lines that re
 
 - The one pre-existing test whose expectation moved, narrowed rather than silenced.
   [`component_commands_test.go:198`](../../folio-go/component_commands_test.go#L198)
+
+## Delivery Log
+
+### 2026-09-06 — done
+
+Baseline `3ad4ede`. Shipped in **`d0ded7e`** on `main` — **36 files, +3746 / −282** (`--numstat`, summed;
+the `--stat` line is a single column and is not a split). Local and unpushed at this close: `main` sits
+**12 commits ahead of `origin/main`** and nothing here was pushed. Decisions **D-11.2.1 through
+D-11.2.10** live in [`epic-11-14-decision-log.md`](./epic-11-14-decision-log.md) and are not restated.
+This closer touched only this story file, `sprint-status.yaml` and `deferred-work.md`, and staged nothing.
+
+**What shipped.** A font chain entry may now be an **object** declaring its own cuts. Per-rune coverage
+still decides the entry on the **base** chain, and the declared variant is applied **within** the entry
+coverage already chose — never by constructing or parsing a face name, and never by inferring one from
+the binaries. An entry with no declared variant for the requested style renders in **its own base face**
+and emits a newly minted Warning naming the element, the rune and the face. Bare-string entries serialise
+byte-for-byte as before, so the corpus does not move.
+
+**The defect this story nearly shipped, and it was found before code rather than by a test.** The version
+predicate and the serializer held **two copies of `entry.Embedded()`** that agreed only because
+object-form and embedded had always been the same set. The object form separates them, and the old
+predicate would have stamped **`1.0`** on a document **no 1.x reader can decode** — green, silently, with
+nothing asserting the negative direction because no such entry had ever existed. One shared predicate now
+feeds both sites, red-proved behaviourally output-against-output rather than by asserting the predicate
+equals itself.
+
+**What review caught, and it was not a guard gap.** Two real correctness defects, both in *measurement*
+rather than in the new resolution logic. First, the metrics chain **replaced** the base face instead of
+**adding** it: a variant that did not cover a rune drew glyphs from the base while deriving leading from
+the variant, and on a single-entry chain the base was excluded outright — a hard render failure on a
+document the format calls valid. Second, fixing that made a **latent** page-number defect reachable:
+digit CIDs are injected without re-shaping, so the faces must match, and nothing pinned that. **They had
+to land in one commit**, which is why the review's two findings are inseparable in the diff. The
+Matrix Test Audit is what surfaced the first one — an uncovered matrix row led to a missing test led to a
+production bug, the complete chain (D-11.2.9).
+
+**AC2 caught nothing, and that is the criterion working.** D-11.2.5 wrote the failure mode *into* the
+acceptance criterion — that the table-header arm reaches `chainFaceNames` directly and bypasses
+`fontChain` — and the implementer routed style through `chainFaceNames` from the start. A guard that
+changes behaviour before it can fire appears in no findings count and paid for itself anyway.
+
+**Review triage: 16 patched / 5 deferred / 0 rejected / 0 loopbacks** (`review_loop_iteration` 0). Taken
+as the build loop's own tally and **not re-litigated at this close**. The count is stated, not
+enumerated, in the build's report, so this close did not spot-check the individual patches.
+
+**THE REGISTER DEBT, and this close discharged it — seven entries minted, DW-238 through DW-244.** The
+build wrote its five deferrals in the workflow's prescribed `- source_spec:` block form, which is
+**invisible to a `### DW-` census** — the exact defect that lost four of Story 11.1's five deferrals
+(D-11.0.2). To its credit the build put them under their own heading and said in the file that they
+needed real numbers, so nothing was buried inside another entry's body this time. Three things worth
+recording about the conversion:
+
+- **Its own heading said "four" twice; there were five blocks.** An undercount inside the very note
+  warning about a census gap. The fifth (`TableColumnsProjection` has no header bold/italic) is now
+  **DW-240**.
+- **One deferral became two entries.** Per **D-11.2.10**, *"whichever story lands first must close it"*
+  names two owners and is how an item is dropped by both. The **destruction** half is **DW-238, Story
+  11.4's hard precondition**; the **projection** half is **DW-239, Story 11.3's**. Reachability was
+  measured rather than assumed: the chain-command builders have no production caller and `embedFontFamily`
+  cannot rebuild an existing chain, so **severity is LOW today and HIGH the moment 11.4 builds the
+  surface**. **Epic 11 does not close with either open.**
+- **A seventh entry came from the decision log, not from review.** **DW-244** registers D-11.2.9's "number
+  to watch": AC3's Warning is per (element, **distinct rune**). Re-measured at this close rather than
+  relayed — `worked-example.json`'s `e1` binds `"Statement for Ada Lovelace"`, **16 distinct runes, so 16
+  Warnings from one element on one render**. Distinct-rune coalescing is bounded by the *alphabet*, and
+  for CJK body text the alphabet is the text: `Noto Sans SC` is Regular-only, so a bold CJK page takes the
+  absence arm on **every** rune. Per spec, not a defect, unpriced at scale.
+
+Owners for **DW-238**, **DW-239** and **DW-244** were ruled by the orchestrator. **DW-240**, **DW-242**
+and **DW-243** were routed by this closer and each says so in its own entry; **DW-243** (the pre-existing
+footer cache) is the one I am least confident about and is registered unassigned to get an owner rather
+than to claim one. **DW-241** — a variant naming its own base face, accepted silently — is routed to the
+**engineering lead** because it needs a **ruling**, not a fix: the behaviour is self-consistent under the
+rules this story shipped, so no implementer can settle whether it is legal.
+
+**Measured gates at this close — my figures, at `d0ded7e` with a clean tree.**
+
+| Gate | Result |
+|---|---|
+| `cd folio-go && go test -count=1 ./...` | **2187 pass / 2 fail / 5 skip**, exit 1 |
+| `cd lint && go test -count=1 ./...` | **227 pass**, four packages `ok`, exit 0 |
+| `gofmt -l folio-go lint` (repo root, absolute paths) | **empty**, exit 0 |
+| `cd folio-designer && npx tsc -b --force` | exit 0 |
+| `cd folio-designer && npm test` | **64 files / 953 tests passed**, exit 0 |
+
+The two Go failures are **`TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` child** — the
+mandated permanent red, never to be "fixed". **There was no third failure**, and that is asserted from the
+enumerated failing test names rather than from the exit code: the pass/fail/skip totals were counted from
+`go test -json` `Action` events carrying a `Test` field, because a plain run prints no totals and a
+carried-forward figure is not a measurement. `tsc` was run with `--force`, since `tsc -b` exits 0 without
+typechecking when its build info is current.
+
+**Not run by this closer, and recorded as the builder's figures rather than mine.** The full
+`-tags=matrix` suite (**2199 / 2 / 5**, `fontgen: derived and compared 7 of 7 faces`) and
+`TestCrossTargetByteIdentity` (**24 documents × 4 legs**, every document's four hashes checked
+individually rather than by trusting the PASS) were run **unfiltered by the build** and re-measured by the
+orchestrator at commit time. This close did not re-execute them. No release build was run — this story
+changes no designer-side asset.
+
+**Tracker and output tree.** `sprint-status.yaml` changed by exactly one line, `review` → `done`;
+`epic-11` stays `in-progress` with 11.3 and 11.4 open. Its 512 comment lines were left intact: a value
+histogram over all 169 keys returned only bare status tokens, and the comment blocks around the Epic 11
+keys are the owner's and the lead's own record (D-A, D-11.0.1, D-11.2.1), written deliberately by prior
+closers and recorded nowhere else. **No agent narrative was found to move.** The output tree carried no
+debris from this story: nothing untracked anywhere under `_bmad-output/`, no orphaned review prompts, no
+patch files, no duplicate slug specs, no unresolved result files. `epic-11-context.md` is **not stale** —
+it was recompiled inside this story's own commit, after `epics.md` last moved at `102e1fc`.

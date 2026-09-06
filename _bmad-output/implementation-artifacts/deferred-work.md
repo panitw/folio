@@ -9613,30 +9613,261 @@ nothing. A new golden added here inherits that gap until 15.2 closes it.
 
 ---
 
-## Story 11.2 review deferrals (2026-09-06) — UNNUMBERED, and they need numbers
+### DW-238 — a chain edit DESTROYS declared style variants, and today nothing can reach the code that would
 
-These four are written in the `bmad-build` step-04 prescribed `- source_spec:` block form. **That form is
-invisible to a `### DW-` census** (239 numbered entries in this file at time of writing), which is the
-exact defect D-11.0.2 recorded when four of Story 11.1's five deferrals went unfindable. They are placed
-under their own heading rather than appended into the previous entry's body so at least they cannot be
-misread as part of DW-240. **Whoever numbers the register next should give these four real ids.**
+- **Deferred by:** Story 11.2's review round (2026-09-06), as the destruction half of a single finding
+  the builder registered as *"whichever story lands first must close it."* **Split and re-routed by the
+  orchestrator as D-11.2.10** (`epic-11-14-decision-log.md`), on measured reachability rather than on the
+  builder's framing.
+- **Owner:** **STORY 11.4, as a HARD PRECONDITION.** 11.4 is the story that builds the family control
+  which declares a family's cuts, and it is therefore the story that makes this code reachable. It must
+  close this before it ships the surface, not after.
+- **Severity:** **LOW today, HIGH the moment Story 11.4 builds the surface.** The severity is a function
+  of reachability, and reachability changes in exactly one story.
+- **Status:** OPEN. **Epic 11 does not close with this open (D-11.2.10).**
 
-- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
-  summary: The designer's chain commands silently DESTROY declared style variants, and the canvas cannot see them at all.
-  evidence: `setFontChain`/`addFontChain` (`component_commands.go`) rebuild a whole chain from a `[]string` as `template.FaceEntry(...)`, so any `bold`/`italic`/`boldItalic` the document carried is dropped on the next chain edit; `embedFontFamily` rebuilds similarly. `CanvasFontChainEntry` (`page_setup.go:593`) projects only `face`/`assetKey`/`family`/`style`, so the panel cannot read a variant back. Story 11.2 created this data-loss path by creating variants; it is fenced out of 11.2 by the spec's Ask First (command surface = Story 11.4, projection = Story 11.3) and must be closed by whichever lands first. Found by two independent review layers.
+**The original finding, verbatim from the build's step-04 block** (destruction half; the projection half
+is DW-239):
 
-- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
-  summary: A style variant naming its own base face is accepted silently and defeats AC3's promise that a lost weight is always stated.
-  evidence: `{"face": "Roboto", "bold": "Roboto"}` (and the `{"asset":"k","bold":"k"}` form) passes every parser check and renders with no Warning, so "bold draws the regular face" is indistinguishable to the author from a working declaration — the one outcome AC3 exists to make impossible. It is also self-consistent under the current rules (declared, supplied, covers → used), so it is a ruling question rather than a defect: is a self-referential variant legal? The embedded form additionally appends two identical `FontChainSite` records for one asset key in `newEmbeddedFaceIndex`.
+> summary: The designer's chain commands silently DESTROY declared style variants, and the canvas cannot
+> see them at all.
+>
+> evidence: `setFontChain`/`addFontChain` (`component_commands.go`) rebuild a whole chain from a
+> `[]string` as `template.FaceEntry(...)`, so any `bold`/`italic`/`boldItalic` the document carried is
+> dropped on the next chain edit; `embedFontFamily` rebuilds similarly. `CanvasFontChainEntry`
+> (`page_setup.go:593`) projects only `face`/`assetKey`/`family`/`style`, so the panel cannot read a
+> variant back. Story 11.2 created this data-loss path by creating variants; it is fenced out of 11.2 by
+> the spec's Ask First (command surface = Story 11.4, projection = Story 11.3) and must be closed by
+> whichever lands first. Found by two independent review layers.
 
-- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
-  summary: PRE-EXISTING — the table footer row shapes through the unscoped `cache` where the body row uses the chain-scoped `bodyCache`.
-  evidence: Independently observed at HEAD before this story's changes and again by review. Per `forChain`'s own doc comment, a located capability error raised from a footer cell names whichever chain sorted first rather than the one the cell actually draws through. Not caused by Story 11.2 and deliberately left untouched by it; the two sites are adjacent in `table_render.go` and diverge only in that argument.
+**Why the severity is LOW today, and it is measured, not assumed.** The font-chain command builders have
+**no production caller**: `FontChainEntry` and `fontChainCommand` appear **nowhere in `App.tsx`** (measured
+at this close: `grep -c` → **0**), because Story 16.9 deleted that UI. The one live command that touches a
+chain, `embedFontFamily`, **cannot rebuild an existing chain** — it refuses at
+`component_commands.go:3356` with *"a font chain named %q already exists"* (line re-derived at `d0ded7e`
+and confirmed at this close). It creates; it does not overwrite. **So no live path destroys a variant
+today.**
 
-- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
-  summary: `TableColumnsProjection` gained no header bold/italic members, so the designer can now author a header weight it cannot read back.
-  evidence: Story 11.2 widened `tableHeaderStyleFields` to nine and `resolveHeaderStyle` cascades both new fields, but `table_columns_projection.go` still carries the committed/resolved pair for only the seven pre-existing fields. Nothing ties `tableHeaderStyleFields` to the projection's member list, so no test flags the asymmetry — a write-only property. Projection changes are Ask First in 11.2's spec and belong to 11.3/11.4.
+**Why it is nevertheless not "no bug".** The destroying code is written, tested and shipped. The moment
+11.4 gives it a caller, a document that declares `{"face":"Roboto","bold":"Roboto Bold"}` loses its bold
+on the author's next family edit, with no diagnostic and no undo record — a silent data loss in a file
+the author owns.
 
-- source_spec: `_bmad-output/implementation-artifacts/11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop.md`
-  summary: PRE-EXISTING — `TEXT_MISSING_GLYPH` duplicates per table ROW, so one uncoverable rune in a column reports once per row instead of once per element.
-  evidence: Measured during Story 11.2's patch round: 5 duplicate warnings over 5 rows, because `seenMissingRunes` is local to each `shapeSegments` call and the table body site calls it per row. Story 11.2's own `TEXT_STYLE_FACE_UNDECLARED` inherited exactly this shape by copying the mandated pattern, and was fixed in-story by hoisting its memo to table scope; the shipped twin was deliberately NOT widened, because changing a shipped diagnostic's output is the adjacent-bug fix the spec's Ask First fence rules out. The asymmetry is now stated in the coalescing function's own comment with the measurement. This is the only place in `shapeSegments` where two Warnings coalesce at different scopes, which is itself the reason to close it.
+**What discharges it.** `setFontChain`/`addFontChain`/`embedFontFamily` must carry an existing entry's
+`bold`/`italic`/`boldItalic` siblings through a rebuild rather than reconstructing bare
+`template.FaceEntry(...)` values — or refuse the edit outright when it would drop a declared variant. A
+test that authors a variant, applies a chain edit, and asserts the variant survives the round trip.
+**Red-provable** by reverting the carry-through and confirming the variant disappears.
+
+---
+
+### DW-239 — the canvas cannot see a declared variant, so an author can write a weight the panel will never show
+
+- **Deferred by:** Story 11.2's review round (2026-09-06), as the projection half of the finding split at
+  **D-11.2.10**. Registered as its own entry precisely because *"whichever story lands first"* names two
+  owners, and an item with two owners is dropped by both.
+- **Owner:** **STORY 11.3.** It is the story that paints the weight the engine resolved, and the panel's
+  read-back is its surface. Projecting a variant into `CanvasFontChainEntry` is already named as 11.3's
+  call in 11.2's own Ask First fence.
+- **Severity:** MEDIUM. Not data loss — a read-back hole. The document keeps its variant; the designer
+  simply cannot see that it has one.
+- **Status:** OPEN. **Epic 11 does not close with this open (D-11.2.10).**
+
+**The original finding is the same block quoted verbatim under DW-238**; the sentence that belongs here is:
+
+> `CanvasFontChainEntry` (`page_setup.go:593`) projects only `face`/`assetKey`/`family`/`style`, so the
+> panel cannot read a variant back.
+
+**Re-derived at this close:** `CanvasFontChainEntry` is declared at `folio-go/page_setup.go:593`, projected
+by `projectFontChainEntry` at `:651`, and `page_setup.go:1628` already carries the in-source fence comment
+*"CanvasFontChainEntry is Story 11.3's call, fenced"*. The fence is written into the code, so the owner is
+not in doubt — only the discharge is outstanding.
+
+**One trap for whoever does it.** 11.2's spec records this as a **blank-canvas hazard**: the projection's
+exact-key guard means adding members to `CanvasFontChainEntry` is not a free widening. Read the Code Map's
+note before touching it.
+
+**What discharges it.** `CanvasFontChainEntry` gains the three variant members, `projectFontChainEntry`
+fills them, the exact-key guard is updated deliberately rather than incidentally, and a test round-trips a
+variant-declaring chain through the projection.
+
+---
+
+### DW-240 — `TableColumnsProjection` has no header bold/italic, so a header weight is authorable and unreadable
+
+- **Deferred by:** Story 11.2's review round (2026-09-06).
+- **Owner:** **STORY 11.3** — *closer's routing, and stated as a judgement rather than a ruling.* The
+  build's block named "11.3/11.4", which is the same two-owner shape D-11.2.10 just split apart, so it is
+  not left that way. The **authoring** half already shipped in 11.2 (`tableHeaderStyleFields` is nine
+  fields and `resolveHeaderStyle` cascades both new ones), so the only missing half is the **read-back** —
+  the same class of hole as DW-239 and the same surface. **If the orchestrator disagrees, this is the one
+  of the six worth re-routing;** it is the only entry here whose owner I chose rather than inherited.
+- **Severity:** MEDIUM. A write-only property is a correctness trap for the panel, not for the document.
+- **Status:** OPEN.
+
+**Verbatim from the build's step-04 block:**
+
+> summary: `TableColumnsProjection` gained no header bold/italic members, so the designer can now author a
+> header weight it cannot read back.
+>
+> evidence: Story 11.2 widened `tableHeaderStyleFields` to nine and `resolveHeaderStyle` cascades both new
+> fields, but `table_columns_projection.go` still carries the committed/resolved pair for only the seven
+> pre-existing fields. Nothing ties `tableHeaderStyleFields` to the projection's member list, so no test
+> flags the asymmetry — a write-only property. Projection changes are Ask First in 11.2's spec and belong
+> to 11.3/11.4.
+
+**Confirmed at this close:** `grep -n 'Bold\|Italic' folio-go/table_columns_projection.go` → **zero hits**.
+The asymmetry is real at `d0ded7e`.
+
+**What discharges it.** The projection gains the committed/resolved pair for `bold` and `italic`, **and** —
+more durably than the two members themselves — something ties `tableHeaderStyleFields` to the projection's
+member list so the next field added cannot repeat this. The absence of that tie is why no test caught it.
+
+---
+
+### DW-241 — a variant naming its own base face is accepted silently, which is the one outcome AC3 exists to prevent
+
+- **Deferred by:** Story 11.2's review round (2026-09-06).
+- **Owner:** **THE ENGINEERING LEAD.** *This needs a RULING, not a fix.* The behaviour is self-consistent
+  under the rules Story 11.2 shipped (declared → supplied → covers → used), so no implementer can settle
+  it: the question *is a self-referential variant legal?* is a format decision, and the answer determines
+  whether there is any defect here at all. Routing it to a story would be asking a story to invent a
+  format rule.
+- **Severity:** MEDIUM as a promise defect — AC3 promises that a lost weight is always **stated**, and this
+  is the one route by which a weight is lost **silently**.
+- **Status:** OPEN, **awaiting a ruling**. Nothing should be implemented against it until then.
+
+**Verbatim from the build's step-04 block:**
+
+> summary: A style variant naming its own base face is accepted silently and defeats AC3's promise that a
+> lost weight is always stated.
+>
+> evidence: `{"face": "Roboto", "bold": "Roboto"}` (and the `{"asset":"k","bold":"k"}` form) passes every
+> parser check and renders with no Warning, so "bold draws the regular face" is indistinguishable to the
+> author from a working declaration — the one outcome AC3 exists to make impossible. It is also
+> self-consistent under the current rules (declared, supplied, covers → used), so it is a ruling question
+> rather than a defect: is a self-referential variant legal? The embedded form additionally appends two
+> identical `FontChainSite` records for one asset key in `newEmbeddedFaceIndex`.
+
+**The three answers available, so the ruling is a choice and not an essay.** (a) **Legal and silent** —
+today's behaviour; the author asked for a face and got it. (b) **Legal but stated** — accept it and emit
+AC3's Warning anyway, on the ground that the author lost the weight whether or not they named the face
+themselves. (c) **A located load error** at `fonts.<name>[<i>].<key>` — a variant that equals its own
+discriminant declares nothing.
+
+**A second, smaller thing rides on the same ruling.** The embedded form appends **two identical
+`FontChainSite` records for one asset key** in `newEmbeddedFaceIndex`. Whether that is a duplicate to
+de-duplicate or the honest record of two declarations pointing at one asset depends on which of (a)/(b)/(c)
+is chosen, so it is held here rather than fixed independently.
+
+**What discharges it.** A ruling recorded in `epic-11-14-decision-log.md`, and — if (b) or (c) — the
+implementation and its test in whichever story the lead names.
+
+---
+
+### DW-242 — `TEXT_MISSING_GLYPH` duplicates per table ROW, and Story 11.2 fixed the twin but not the original
+
+- **Deferred by:** Story 11.2's review round (2026-09-06). **PRE-EXISTING** — the shipped defect, not one
+  this story introduced.
+- **Owner:** unassigned — **the next story that may change a shipped diagnostic's output.** Not routed to
+  11.3 or 11.4: fixing this changes the *observable output of a shipped diagnostic*, which AD-14 makes a
+  breaking change, so it needs a story that can carry that cost rather than one that inherits it. **Stated
+  as a judgement:** a case could be made for routing it to the lead as a small AD-14 ruling, and I have
+  left it unassigned instead because the correct output is not in doubt — only the licence to move it is.
+- **Severity:** MEDIUM. Diagnostic noise scaling with row count, and — because 11.2 fixed its own twin —
+  an inconsistency now visible **inside one function**.
+- **Status:** OPEN.
+
+**Verbatim from the build's step-04 block:**
+
+> summary: PRE-EXISTING — `TEXT_MISSING_GLYPH` duplicates per table ROW, so one uncoverable rune in a
+> column reports once per row instead of once per element.
+>
+> evidence: Measured during Story 11.2's patch round: 5 duplicate warnings over 5 rows, because
+> `seenMissingRunes` is local to each `shapeSegments` call and the table body site calls it per row. Story
+> 11.2's own `TEXT_STYLE_FACE_UNDECLARED` inherited exactly this shape by copying the mandated pattern, and
+> was fixed in-story by hoisting its memo to table scope; the shipped twin was deliberately NOT widened,
+> because changing a shipped diagnostic's output is the adjacent-bug fix the spec's Ask First fence rules
+> out. The asymmetry is now stated in the coalescing function's own comment with the measurement. This is
+> the only place in `shapeSegments` where two Warnings coalesce at different scopes, which is itself the
+> reason to close it.
+
+**Why this one is easy to lose and worth keeping.** The fix is already written — 11.2 hoisted its own
+memo to table scope and the shape is proven. What is deferred is not the design; it is the permission to
+move a shipped message's cardinality. That makes it the kind of item that reads as "already handled" to a
+skim, which is exactly why it carries a number now.
+
+**What discharges it.** Hoist `seenMissingRunes` to table scope for `TEXT_MISSING_GLYPH` as 11.2 did for
+`TEXT_STYLE_FACE_UNDECLARED`, remove the asymmetry note from the coalescing function's comment, and record
+the output change under AD-14. Red-provable by a five-row table with one uncoverable rune: five warnings
+before, one after.
+
+---
+
+### DW-243 — the table FOOTER shapes through the unscoped cache where the body uses the chain-scoped one
+
+- **Deferred by:** Story 11.2's review round (2026-09-06). **PRE-EXISTING** — independently observed at
+  `HEAD` before this story's changes and again by review; deliberately left untouched by 11.2.
+- **Owner:** unassigned — **the next story that touches `table_render.go`'s footer path.** *Stated as a
+  judgement:* it belongs to no Epic 11 story (11.2 did not cause it, 11.3 paints and 11.4 authors), and
+  inventing an owner for it would be the routing mistake D-11.2.10 warns about in the other direction.
+  **This is the entry of the six I am least sure about, and it is here to get an owner rather than to
+  claim one.**
+- **Severity:** LOW. It misnames a chain in a located capability error; it does not change what is drawn.
+- **Status:** OPEN.
+
+**Verbatim from the build's step-04 block:**
+
+> summary: PRE-EXISTING — the table footer row shapes through the unscoped `cache` where the body row uses
+> the chain-scoped `bodyCache`.
+>
+> evidence: Independently observed at HEAD before this story's changes and again by review. Per `forChain`'s
+> own doc comment, a located capability error raised from a footer cell names whichever chain sorted first
+> rather than the one the cell actually draws through. Not caused by Story 11.2 and deliberately left
+> untouched by it; the two sites are adjacent in `table_render.go` and diverge only in that argument.
+
+**Confirmed at this close:** the body arm takes `bodyCache := cache.forChain(...)` at
+`folio-go/table_render.go:906` and the header arm takes `headerCache := cache.forChain(hs.fontFamily)` at
+`:739`; the comment at `:711` states the invariant both arms are honouring — *a located capability error
+must name the* chain the cell draws through. The footer arm is the one that does not.
+
+**What discharges it.** Give the footer arm its own `cache.forChain(...)` with the footer's resolved font
+family, matching the two adjacent sites, and assert the error names the footer's chain rather than the
+first-sorted one. A one-argument change with a real test; the reason it is deferred is scope, not
+difficulty.
+
+---
+
+### DW-244 — AC3's Warning is per (element, DISTINCT RUNE), which is 16 on a two-word fixture and thousands on a CJK page
+
+- **Deferred by:** the orchestrator at Story 11.2's close (2026-09-06), from **D-11.2.9**
+  (`epic-11-14-decision-log.md`), which named it *"the number to watch"*. **Not a review finding and not a
+  defect** — the cardinality is exactly what 11.2's spec and AC3 specify.
+- **Owner:** **Stories 11.3 and 11.4, to REVISIT — jointly, and deliberately so.** This is the one item
+  here that is correctly held by both, because it is not a task either can complete: it is a figure each
+  must re-check against the documents its own surface makes reachable. Neither blocks on it.
+- **Severity:** LOW today. **Unpriced at scale**, which is the actual content of this entry.
+- **Status:** OPEN as a watch item.
+
+**The measurement, re-derived at this close rather than relayed.** `worked-example.json`'s element `e1`
+binds to the text `"Statement for Ada Lovelace"` — **26 characters, 16 distinct runes** — and
+`TEXT_STYLE_FACE_UNDECLARED` coalesces to **one Warning per (element, distinct rune)**, so that one element
+emits **16 Warnings** on a single render. `folio-go/component_commands_test.go` asserts that count by
+**re-deriving it from the fixture** rather than hardcoding it, which is the right shape and is why the
+number will track the text.
+
+**Why the number is worth watching.** Distinct-rune coalescing is bounded by the *alphabet*, not by the
+text length, which is why 16 is a sane number for Latin. **For CJK body text the alphabet is the text**:
+a page of Chinese prose in an element with no declared variant produces on the order of **thousands of
+Warnings per render**, and the shipped set makes that reachable today — `Noto Sans SC` is Regular-only, so
+**every** CJK rune in a bold element takes AC3's absence arm. This is per spec and it is not a defect. It
+is a figure that becomes one at a scale nobody has tested.
+
+**What discharges it.** Either a measurement at CJK scale showing the volume is tolerable — in which case
+record the number and close this — or a bound agreed with the lead (a per-element cap with a "and N more"
+tail, or coalescing to one Warning per (element, face) rather than per rune). **Do not change the
+cardinality without a ruling:** AD-14 makes a shipped diagnostic's output a breaking change, and 11.2's
+own test asserts the per-rune count deliberately, so moving it moves a guard as well as a message.
+
+**See also DW-242**, which is the same question asked about the *other* Warning that coalesces in
+`shapeSegments` — the two now differ in scope, and any bound chosen here should be chosen for both.
