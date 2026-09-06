@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
@@ -7,7 +8,9 @@ import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
 import { shippedFamilyEntry } from './shipped-face-cuts'
-import { FileAccessCancelled, type FileAccess } from './file/file-access'
+import { FileAccessCancelled, folioFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
+import { FileSystemAccess } from './file/file-system-access'
+import { InputDownloadAccess } from './file/input-download'
 import type { EngineClient } from './engine-client'
 import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
@@ -1355,7 +1358,7 @@ describe('application shell', () => {
   it('acquires a target before serialization, preserves dirty on failure, and handles the Save shortcut', async () => {
     let rejectSave = true
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 3, byteLength: 3 }, bytes }))
-    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio' }))
+    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat }))
     const writeSave = vi.fn(async () => { if (rejectSave) throw new Error('denied'); return { name: 'untitled.folio' } })
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 3, byteLength: 3 }} />)
@@ -1398,7 +1401,7 @@ describe('application shell', () => {
       if (operation === 'command') return new Promise((resolve) => { releaseCommit = () => resolve({ snapshot: snapshot(3) }) })
       return Promise.resolve({ snapshot: snapshot(2), bytes })
     })
-    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'untitled.folio' })), writeSave }
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat })), writeSave }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={snapshot(2)} />)
     fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
@@ -6300,6 +6303,411 @@ describe('the resolved weight, painted and stated', () => {
     expect(unavailable).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(unavailable)
     await waitFor(() => expect(sent.at(-1)).toContain('"bold":{"op":"clear"}'))
+  })
+})
+
+// STORY 13.1 — THE PREVIEW KEEPS THE PDF.
+//
+// The engine stub below returns a LITERAL byte fixture and reports the SHA-256
+// of that same literal. Every byte claim in this block is pinned to the fixture
+// and to the digest, never read back out of `preview.bytes` — an assertion whose
+// two sides come from the same place is not an assertion (D-11.2.8).
+//
+// The fixture is thirty-three bytes: a high byte, a NUL, a CR/LF pair and a run
+// that is not a prefix of itself, so a truncation or a text re-encode changes it.
+const exportedPdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55, 10, 37, 226, 227, 207, 211, 10, 0, 255, 128, 1, 254, 200, 17, 42, 7, 240, 13, 10, 37, 37, 69, 79, 70, 10])
+const exportedPdfDigest = '0ed9ca9f2a8912227c9bb42a9183e81e89a553e40619734cee78d79d6bfb7e7a'
+// A SECOND, DISTINCT fixture for the mid-save replacement arm below. It shares
+// no prefix with the first past `%PDF-`, so a write that picked up the newer
+// preview cannot pass a truncation-insensitive comparison.
+const replacementPdfBytes = new Uint8Array([37, 80, 68, 70, 45, 50, 46, 48, 10, 37, 200, 199, 198, 197, 10, 0, 1, 2, 253, 254, 255, 90, 91, 92, 13, 10, 37, 37, 69, 79, 70, 10, 7])
+const replacementPdfDigest = '16693a98e884070a1122a0aa3d91ca2a7a5aded352e26d0f8b715431b404289d'
+
+// Every render hands back a FRESH copy of the fixture, the way the real worker
+// boundary does, so nothing downstream can pass a byte claim by sharing an
+// object identity with the source.
+const previewRequest = () => vi.fn(async (operation: string) => {
+  // Answered so the parameter panel is settled rather than showing its own
+  // `role="alert"`: the alert claims below are about the PDF save alone.
+  if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+  if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+  if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+  if (operation === 'render') return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, diagnostics: [] } }
+  return { snapshot: snapshot(1) }
+})
+
+// A native tier over a fake picker, recording every buffer any handle received.
+const nativeSaveTier = () => {
+  const written: number[][] = []
+  const writingHandle = (name: string) => ({ name, getFile: async () => new File([exportedPdfBytes], name), createWritable: async () => ({ write: async (buffer: ArrayBuffer) => { written.push([...new Uint8Array(buffer)]) }, close: async () => undefined }) })
+  const picked = writingHandle('statement.pdf')
+  const showSaveFilePicker = vi.fn(async () => picked)
+  const showOpenFilePicker = vi.fn(async () => [picked])
+  return { written, picked, showSaveFilePicker, showOpenFilePicker, access: new FileSystemAccess({ showOpenFilePicker, showSaveFilePicker }) }
+}
+
+// A download tier over a fake document, capturing the one blob it creates.
+const downloadSaveTier = () => {
+  const anchor = { href: '', download: '', style: { display: '' }, click: vi.fn(), remove: vi.fn() }
+  const blobs: Blob[] = []
+  const fakeDocument = { body: { append: vi.fn() }, createElement: vi.fn(() => anchor) } as unknown as Document
+  const url = { createObjectURL: vi.fn((blob: Blob) => { blobs.push(blob); return 'blob:local' }), revokeObjectURL: vi.fn() }
+  return { anchor, blobs, access: new InputDownloadAccess(fakeDocument, url) }
+}
+
+const showRenderedPreview = async (request: ReturnType<typeof previewRequest>, fileAccess?: FileAccess, admit = true) => {
+  render(<App engine={engine(request)} fileAccess={fileAccess} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+  fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+  if (admit) {
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+  }
+}
+
+describe('Story 13.1: the preview keeps the PDF', () => {
+  it('writes the engine bytes verbatim through the native tier, asking the engine for nothing and keeping every document field', async () => {
+    const tier = nativeSaveTier()
+    const request = previewRequest()
+    await showRenderedPreview(request, tier.access)
+    const engineCallsBeforeThePress = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(tier.written).toHaveLength(1))
+    // THE PICKER IS OFFERED A PDF NAME AND A PDF-ONLY FILTER — all three of the
+    // former `.folio` hardcodings, arriving as one format.
+    expect(tier.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'Untitled template.pdf', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] })
+    // THE BYTES, against the literal and against the digest the stub reported.
+    expect(tier.written[0]).toEqual([...exportedPdfBytes])
+    expect(createHash('sha256').update(Uint8Array.from(tier.written[0]!)).digest('hex')).toBe(exportedPdfDigest)
+    // NOTHING WAS RE-RENDERED OR RE-SERIALIZED. The engine request count does
+    // not move across the press.
+    expect(request.mock.calls.length).toBe(engineCallsBeforeThePress)
+    await waitFor(() => expect(screen.getByText('Saved PDF of revision 1 as statement.pdf')).toBeInTheDocument())
+    // THE DOCUMENT IS UNTOUCHED: name, and the clean/dirty verdict that
+    // `savedRevision` alone decides.
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('downloads the same verbatim bytes under a PDF name and a PDF MIME in the fallback tier', async () => {
+    const tier = downloadSaveTier()
+    await showRenderedPreview(previewRequest(), tier.access)
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(tier.blobs).toHaveLength(1))
+    expect(tier.anchor.download).toBe('Untitled template.pdf')
+    expect(tier.blobs[0]!.type).toBe('application/pdf')
+    expect([...new Uint8Array(await tier.blobs[0]!.arrayBuffer())]).toEqual([...exportedPdfBytes])
+    expect(createHash('sha256').update(new Uint8Array(await tier.blobs[0]!.arrayBuffer())).digest('hex')).toBe(exportedPdfDigest)
+    await waitFor(() => expect(screen.getByText('Downloaded PDF of revision 1 as Untitled template.pdf')).toBeInTheDocument())
+  })
+
+  it('asks for a fresh target every time, carrying no currentTarget even while one is held', async () => {
+    // A REAL RETAINED TARGET FIRST, because the request this test inspects is
+    // only interesting when there IS something for it to have carried: with
+    // `target` still undefined, `currentTarget: target` and no `currentTarget`
+    // at all are the same object to a structural comparison.
+    const heldTarget = { kind: 'in-place' as const, name: 'held.folio', handle: { name: 'held.folio', getFile: async () => new File([], 'held.folio'), createWritable: vi.fn(async () => ({ write: async () => undefined, close: async () => undefined })) } }
+    const requests: SaveTargetRequest[] = []
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return requests.length === 1 ? { name: 'held.folio', target: heldTarget, format: folioFileFormat } : { name: 'held.pdf', format: pdfFileFormat } })
+    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => (requests.length === 1 ? { name: 'held.folio', target: heldTarget } : { name: 'held.pdf' }))
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
+    render(<App engine={engine(previewRequest())} fileAccess={files} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
+    await waitFor(() => expect(screen.getByText('held.folio')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+    // The template save DID carry the session's target, so the contrast below
+    // is between two live requests rather than between a request and a wish.
+    expect(requests[0]).toEqual({ suggestedName: 'Untitled template', currentTarget: undefined, saveAs: true, format: folioFileFormat })
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(requests).toHaveLength(2))
+    const pdfRequest: Readonly<Record<string, unknown>> = requests[1]!
+    // `saveAs: true` AND NO `currentTarget` KEY AT ALL — asserted by key
+    // presence, not by value, because `currentTarget: target` with a target in
+    // hand is exactly the mutation that would overwrite the author's `.folio`
+    // with PDF bytes, and `toEqual` treats an explicit `undefined` as absent.
+    expect(Object.keys(pdfRequest).sort()).toEqual(['format', 'saveAs', 'suggestedName'])
+    expect('currentTarget' in pdfRequest).toBe(false)
+    expect(pdfRequest.saveAs).toBe(true)
+    expect(pdfRequest.format).toBe(pdfFileFormat)
+    expect(pdfRequest.suggestedName).toBe('held.folio')
+    expect(heldTarget.handle.createWritable).not.toHaveBeenCalled()
+  })
+
+  it('shows the picker for a PDF save while a .folio target is held, leaves that handle unwritten, and leaves the template save clean and in place', async () => {
+    const templateWrites: number[][] = []
+    const pdfWrites: number[][] = []
+    const recording = (name: string, sink: number[][]) => ({ name, getFile: async () => new File([new Uint8Array([1, 2, 3])], name), createWritable: vi.fn(async () => ({ write: async (buffer: ArrayBuffer) => { sink.push([...new Uint8Array(buffer)]) }, close: async () => undefined })) })
+    const held = recording('held.folio', templateWrites)
+    const picked = recording('statement.pdf', pdfWrites)
+    // Order, not content: the fake must not decide what to hand back by
+    // inspecting the very request this test is making a claim about.
+    let pickerCalls = 0
+    const showSaveFilePicker = vi.fn(async () => (++pickerCalls === 1 ? held : picked))
+    render(<App engine={engine(previewRequest())} fileAccess={new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker })} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    // A TEMPLATE SAVE FIRST, so a real `.folio` handle is retained.
+    fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
+    await waitFor(() => expect(templateWrites).toHaveLength(1))
+    expect(screen.getByText('Saved local file')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(pdfWrites).toHaveLength(1))
+    // THE PICKER WAS SHOWN, and the retained `.folio` handle received nothing:
+    // it is still on its single write, the one the template save made.
+    expect(showSaveFilePicker).toHaveBeenCalledTimes(2)
+    expect(showSaveFilePicker).toHaveBeenLastCalledWith({ suggestedName: 'held.pdf', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] })
+    expect(held.createWritable).toHaveBeenCalledOnce()
+    expect(templateWrites).toHaveLength(1)
+    expect(pdfWrites[0]).toEqual([...exportedPdfBytes])
+    // AND `title`, `target` AND `savedRevision` ARE WHAT THEY WERE: the name is
+    // unchanged, the document is still clean, and the next plain Save goes back
+    // in place through the retained handle with no third picker.
+    expect(screen.getByText('held.folio')).toBeInTheDocument()
+    expect(screen.getByText('Saved local file')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
+    await waitFor(() => expect(templateWrites).toHaveLength(2))
+    expect(showSaveFilePicker).toHaveBeenCalledTimes(2)
+    expect(templateWrites[1]).toEqual([1, 2, 3])
+  })
+
+  it('names the save as stale before the press and names the stale revision in the completion', async () => {
+    const tier = nativeSaveTier()
+    await showRenderedPreview(previewRequest(), tier.access, false)
+    // The bytes are byte-exact and savable; what is stale is the claim that they
+    // are the CURRENT document, which PDF.js has not admitted.
+    expect(screen.queryByRole('button', { name: 'Save PDF' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save stale PDF' }))
+    await waitFor(() => expect(tier.written).toHaveLength(1))
+    expect(tier.written[0]).toEqual([...exportedPdfBytes])
+    await waitFor(() => expect(screen.getByText('Saved PDF of stale revision 1 as statement.pdf')).toBeInTheDocument())
+  })
+
+  it('offers a disabled control with a reason a screen reader reaches when nothing has been rendered or no file access exists', async () => {
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    render(<App engine={engine()} fileAccess={files} initialSnapshot={snapshot(1)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const control = screen.getByRole('button', { name: 'Save PDF' })
+    expect(control).toBeDisabled()
+    expect(control).toHaveAccessibleDescription('Save PDF is unavailable: no local PDF has been rendered yet.')
+    expect(files.acquireSaveTarget).not.toHaveBeenCalled()
+    cleanup()
+    // The other unavailability, told in its own words rather than as the same
+    // sentence twice: this browser exposes no local file access at all.
+    await showRenderedPreview(previewRequest(), undefined)
+    const withoutAccess = screen.getByRole('button', { name: 'Save PDF' })
+    expect(withoutAccess).toBeDisabled()
+    expect(withoutAccess).toHaveAccessibleDescription('Save PDF is unavailable: this browser exposes no local file access.')
+    cleanup()
+    // ⚠ THE REASON NAMES THE CONTROL THE AUTHOR IS LOOKING AT. A reason reading
+    // "Save PDF is unavailable" under a button labelled `Save stale PDF` names a
+    // control that is not on screen.
+    await showRenderedPreview(previewRequest(), undefined, false)
+    const stale = screen.getByRole('button', { name: 'Save stale PDF' })
+    expect(stale).toBeDisabled()
+    expect(stale).toHaveAccessibleDescription('Save stale PDF is unavailable: this browser exposes no local file access.')
+  })
+
+  // PATCH 7/8 — THE TWO WRITERS ARE INTERLOCKED IN THE FUNCTIONS, NOT ONLY IN
+  // THE RENDERED `disabled` ATTRIBUTES.
+  //
+  // Both presses are dispatched inside ONE `act`, so React has not re-rendered
+  // either control and neither is disabled yet. What refuses the second press is
+  // the other writer's latch — which is an invariant of these two functions
+  // rather than a property of when React happens to flush.
+  it('refuses a PDF save while a template save holds the latch, and the other way round', async () => {
+    const requests: SaveTargetRequest[] = []
+    let release!: () => void
+    const acquireSaveTarget = vi.fn((request: SaveTargetRequest) => { requests.push(request); return new Promise<AcquiredSaveTarget>((resolve) => { release = () => resolve({ name: 'held', format: request.format }) }) })
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave: vi.fn(async (): Promise<SavedLocalFile> => ({ name: 'held' })) }
+    await showRenderedPreview(previewRequest(), files)
+    act(() => {
+      screen.getByRole('button', { name: 'Save As' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      screen.getByRole('button', { name: 'Save PDF' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(requests.map((request) => request.format)).toEqual([folioFileFormat])
+    // AND THE REASON, WHILE IT IS THE ONE IN FLIGHT, does not call the export
+    // "another" action.
+    expect(screen.getByRole('button', { name: 'Save PDF' })).toHaveAccessibleDescription('Save PDF is unavailable while a local file action is in progress.')
+    release()
+    await waitFor(() => expect(screen.getByText(/Saved locally as held|Downloaded local file held/)).toBeInTheDocument())
+    act(() => {
+      screen.getByRole('button', { name: 'Save PDF' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      screen.getByRole('button', { name: 'Save As' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(requests.map((request) => request.format)).toEqual([folioFileFormat, pdfFileFormat])
+    release()
+    await waitFor(() => expect(requests).toHaveLength(2))
+  })
+
+  it('stays silent when the author cancels the picker and changes nothing', async () => {
+    const acquireSaveTarget = vi.fn(async () => { throw new FileAccessCancelled() })
+    const writeSave = vi.fn()
+    await showRenderedPreview(previewRequest(), { open: vi.fn(), acquireSaveTarget, writeSave })
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByText(/Preparing PDF save/)).not.toBeInTheDocument())
+    expect(writeSave).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Saved PDF/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument()
+  })
+
+  it('announces exactly one alert naming the PDF save when the write fails, and leaves the document and its retained target alone', async () => {
+    const heldTarget = { kind: 'in-place' as const, name: 'held.folio', handle: { name: 'held.folio', getFile: async () => new File([], 'held.folio'), createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) } }
+    const requests: SaveTargetRequest[] = []
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return request.format === pdfFileFormat ? { name: 'held.pdf', format: pdfFileFormat } : { name: 'held.folio', target: heldTarget, format: folioFileFormat } })
+    const writeSave = vi.fn(async (acquired: AcquiredSaveTarget): Promise<SavedLocalFile> => { if (acquired.format === pdfFileFormat) throw new Error('media removed'); return { name: 'held.folio', target: heldTarget } })
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
+    render(<App engine={engine(previewRequest())} fileAccess={files} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
+    await waitFor(() => expect(screen.getByText('held.folio')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save the preview PDF')
+    expect(screen.queryByText(/Saved PDF/)).not.toBeInTheDocument()
+    expect(screen.getByText('held.folio')).toBeInTheDocument()
+    expect(screen.getByText('Saved local file')).toBeInTheDocument()
+    // The preview itself is untouched, so the author can try again.
+    expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument()
+    // ⚠ AND `target` SURVIVED THE FAILURE. Losing it is silent until the
+    // author's next plain Save, which would then open a picker instead of
+    // writing the file they already named — so the surviving handle is asserted
+    // by taking that next Save and reading the request it produced.
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
+    await waitFor(() => expect(requests).toHaveLength(3))
+    expect(requests[2]).toEqual({ suggestedName: 'held.folio', currentTarget: heldTarget, saveAs: false, format: folioFileFormat })
+  })
+
+  // PATCH 4 — THE LATCH IS RELEASED ON EVERY PATH, AND NOTHING PROVED IT.
+  //
+  // Deleting `exportInFlight.current = false` from the `finally` left all 286
+  // tests in this file green, because every one of them pressed Save PDF at
+  // most once. Its user-facing effect is that Save PDF works exactly ONCE per
+  // session, silently, with the button still enabled and no message at all.
+  //
+  // All three outcomes run through that one `finally`, so all three are pressed
+  // here in sequence and a fourth press must still reach the picker.
+  it('releases the in-flight latch after success, cancellation and failure alike', async () => {
+    const outcomes = ['ok', 'cancel', 'fail', 'ok'] as const
+    let press = 0
+    const acquireSaveTarget = vi.fn(async (): Promise<AcquiredSaveTarget> => {
+      if (outcomes[press] === 'cancel') { press++; throw new FileAccessCancelled() }
+      return { name: 'statement.pdf', format: pdfFileFormat }
+    })
+    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => {
+      const outcome = outcomes[press++]
+      if (outcome === 'fail') throw new Error('media removed')
+      return { name: 'statement.pdf' }
+    })
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
+    await showRenderedPreview(previewRequest(), files)
+    const control = () => screen.getByRole('button', { name: 'Save PDF' })
+    fireEvent.click(control())
+    await waitFor(() => expect(screen.getByText('Downloaded PDF of revision 1 as statement.pdf')).toBeInTheDocument())
+    fireEvent.click(control())
+    await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText(/PDF save/)).not.toBeInTheDocument())
+    fireEvent.click(control())
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not save the preview PDF'))
+    fireEvent.click(control())
+    await waitFor(() => expect(screen.getByText('Downloaded PDF of revision 1 as statement.pdf')).toBeInTheDocument())
+    expect(acquireSaveTarget).toHaveBeenCalledTimes(4)
+    expect(writeSave).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  // PATCH 5 — THE BYTES AND THE REVISION ARE THE ONES CAPTURED AT THE PRESS.
+  //
+  // `exportPreviewPdf` reads them off the record BEFORE the picker await. A
+  // render that completes while the picker is still open replaces the live
+  // preview underneath the save — and the write must still carry what the
+  // author pressed on, never whatever arrived in the meantime.
+  //
+  // The non-vacuity arm is the evidence line: it is asserted to show the SECOND
+  // digest before the picker is released, so the replacement demonstrably
+  // happened and the byte claim is not passing over a preview that never moved.
+  it('writes the bytes and names the revision captured at the press when a newer render lands mid-save', async () => {
+    let renders = 0
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') {
+        const first = ++renders === 1
+        return { snapshot: snapshot(1), bytes: (first ? exportedPdfBytes : replacementPdfBytes).slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: first ? exportedPdfDigest : replacementPdfDigest, diagnostics: [] } }
+      }
+      return { snapshot: snapshot(1) }
+    })
+    let releaseTarget!: () => void
+    const written: number[][] = []
+    const acquireSaveTarget = vi.fn(() => new Promise<AcquiredSaveTarget>((resolve) => { releaseTarget = () => resolve({ name: 'statement.pdf', format: pdfFileFormat }) }))
+    const writeSave = vi.fn(async (_acquired: AcquiredSaveTarget, save: { bytes: ArrayBuffer }): Promise<SavedLocalFile> => { written.push([...new Uint8Array(save.bytes)]); return { name: 'statement.pdf' } })
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
+    await showRenderedPreview(request, files)
+    await waitFor(() => expect(screen.getByText(new RegExp(exportedPdfDigest))).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
+    // A second render lands while the picker is still open.
+    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    await waitFor(() => expect(screen.getByText(new RegExp(replacementPdfDigest))).toBeInTheDocument())
+    releaseTarget()
+    await waitFor(() => expect(written).toHaveLength(1))
+    expect(written[0]).toEqual([...exportedPdfBytes])
+    expect(createHash('sha256').update(Uint8Array.from(written[0]!)).digest('hex')).toBe(exportedPdfDigest)
+    expect(written[0]).not.toEqual([...replacementPdfBytes])
+    await waitFor(() => expect(screen.getByText('Downloaded PDF of revision 1 as statement.pdf')).toBeInTheDocument())
+  })
+
+  // PATCH 6 — THE ALERT SURVIVES A TAB SWITCH.
+  //
+  // The pair first sat inside `<div role="tabpanel" … hidden={…}>`, so moving to
+  // the DATA tab mid-save removed the `role="alert"` from the accessibility
+  // tree entirely. jsdom reports `hidden` content as absent from `getByRole`,
+  // so this test reds against that placement and passes against the main.
+  it('keeps the PDF save alert reachable when the inspector tab changes mid-save', async () => {
+    let failWrite!: (error: Error) => void
+    const writeSave = vi.fn(() => new Promise<SavedLocalFile>((_resolve, reject) => { failWrite = reject }))
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'statement.pdf', format: pdfFileFormat })), writeSave }
+    await showRenderedPreview(previewRequest(), files)
+    fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    expect(screen.queryByRole('button', { name: 'Save PDF' })).not.toBeInTheDocument()
+    failWrite(new Error('media removed'))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not save the preview PDF'))
+  })
+
+  it('treats a second press while a save is in flight as a no-op, opening exactly one picker', async () => {
+    let releaseTarget!: () => void
+    const acquireSaveTarget = vi.fn(() => new Promise<{ name: string; format: typeof pdfFileFormat }>((resolve) => { releaseTarget = () => resolve({ name: 'statement.pdf', format: pdfFileFormat }) }))
+    const writeSave = vi.fn(async () => ({ name: 'statement.pdf' }))
+    await showRenderedPreview(previewRequest(), { open: vi.fn(), acquireSaveTarget, writeSave })
+    const control = screen.getByRole('button', { name: 'Save PDF' })
+    // THREE PRESSES INSIDE ONE `act`, deliberately. React does not re-render
+    // between them, so the control is still enabled for the second and third —
+    // which is the real rapid double-click, and the only shape in which the
+    // in-flight LATCH is what stops them rather than the `disabled` attribute
+    // that a later render puts on. Dispatching them through separate
+    // `fireEvent.click` calls would flush a render in between and prove nothing.
+    act(() => { for (let press = 0; press < 3; press++) control.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(control).toBeDisabled()
+    expect(acquireSaveTarget).toHaveBeenCalledOnce()
+    releaseTarget()
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+    expect(acquireSaveTarget).toHaveBeenCalledOnce()
   })
 })
 

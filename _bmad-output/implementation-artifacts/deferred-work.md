@@ -10603,3 +10603,128 @@ commit — while its load-bearing clause is false. The comment is the stated jus
 the test, and that justification has been discharged by the golden this story pinned. The test itself is
 still worth keeping (it guards the *mechanism*, where the golden guards the *outcome*), so the fix is to
 rewrite the rationale, **not** to act on the stale premise either way.
+
+
+### DW-270 - the preview's displayed digest is never checked against the bytes it claims to cover
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's plan gate, while establishing that Save PDF writes the bytes the displayed
+  hash covers. **PRE-EXISTING - not caused by this story.** **Owner:** unassigned; Story 13.3 is the
+  natural home, since it promotes the hash to a first-class evidence block. **Severity:** LOW.
+  **Status:** OPEN.
+
+**Evidence.** The digest is computed in Go over the returned slice (`folio-go/wasm/engine.go`,
+`Engine.Render` - `sha256.Sum256(pdf)` over the same appended copy the reply carries), sent as
+`pdfSha256`, and admitted on the main thread **by shape alone**: `engine-protocol.ts`'s `isPreview` tests
+`/^[a-f0-9]{64}$/`, and `parseInbound` checks only that a digest never arrives without bytes. Nothing
+anywhere in `folio-designer/src` recomputes SHA-256 over the PDF. The only browser-side SHA-256 in the
+tree is `font-store.ts`'s `storedFaceKey`, over face bytes.
+
+**Why it is worth a line despite being LOW.** The screen's whole claim is that this hash identifies this
+document, and Epic 13 promotes that hash from a grey footnote to a bordered block a person is told to
+compare by eye. Between the engine and the screen the bytes cross four value-preserving copies; each is
+correct today, and none is checked. A change that truncates or re-wraps at any hop would display a digest
+describing bytes the author no longer has.
+
+**What discharges it:** compare `crypto.subtle.digest('SHA-256', preview.bytes)` against `preview.digest`
+at install time and refuse to present a preview whose digest does not describe its own bytes, with a test
+that a deliberately corrupted byte reds it. Ruled OUT of Story 13.1 (Q3(a), 2026-09-06): AC1's obligation
+is a property of the save path, and an async crypto hop inside the activation-gated save gesture is the
+worst place to add one.
+
+### DW-271 - two of exportPreviewPdf's three pre-await captures are defensive reads that nothing can discriminate
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's step-04 verification-gap layer, measured. **Owner:** unassigned.
+  **Severity:** LOW. **Status:** OPEN.
+
+`exportPreviewPdf` captures `bytes`, `revision` and staleness before the picker await, with a comment
+explaining why. **The byte capture IS guarded** - writing `previewRef.current!.bytes` at write time reds
+the mid-save test. The other two are not: mutating each read to its live-state equivalent leaves the suite
+**green**.
+
+**And the reason is structural, not a missing test.** `fileBusy` disables every command surface reachable
+from Preview, and `installPreview` refuses any record whose revision differs from `snapshotRef.current`,
+so two records with different revisions cannot coexist across one save. `admittedPreview` reads
+`previewStatus` out of the render closure, so recomputing staleness after the await returns the same
+answer **by construction**. Guarding them needs a seam that does not exist today.
+
+**Why it is registered rather than fixed.** The reads are correct and cheap and should stay. The entry
+exists so nobody later reads the defending comment as evidence of a guarded property - a comment that
+explains an invariant is not a test of it, and this run has been bitten by that shape repeatedly.
+
+### DW-272 - fileStatus and fileError survive a Design/Preview mode switch and re-announce in the wrong slot
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`returnToDesign` and `enterPreview` leave both fields set, and both surfaces render the same two state
+values. So a PDF-save status reappears under the canvas in the **template** file-message slot and is
+re-announced on mount - "Saved PDF of revision 1 as statement.pdf" surfacing where template messages live.
+
+**Why it was deferred rather than patched:** clearing them changes template-save status behaviour, which
+Story 13.1's spec placed behind Ask First. The fix is small; the authority was not the story's.
+
+### DW-273 - a template save from Preview with the DATA tab open still announces nowhere
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's step-04 review. **PRE-EXISTING - Story 13.1 closed the PDF half only.**
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Cmd+S runs `save(false)` in preview mode and the Open/Save/Save As toolbar renders in both modes, but
+before 13.1 the `fileError`/`fileStatus` pair rendered only inside the Design `<main>`. Story 13.1 added
+the pair to the preview `<main>`, covering every PDF outcome and every template save made while Preview is
+open - but the announcement still depends on being in Preview at all.
+
+**The remaining case, named so it is findable:** a template save in **Design** mode whose status the author
+has navigated away from. Half-closed silences are how the other half never gets found.
+
+### DW-274 - AD-20 says "one file-access interface" and there are three
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's plan gate, ruling the interface fork (D-13.1.2). **Owner:** unassigned.
+  **Severity:** LOW. **Status:** OPEN.
+
+AD-20's rule ends: *"One capability check at startup selects the tier; the rest of the app talks to **one
+file-access interface and never branches again**."* There are now three - `FileAccess`,
+`SampleFileAccess`, `ImageFileAccess` - plus three selectors in `file/capability.ts`.
+
+**The rule's PURPOSE is intact**, which is why this is LOW: every one of the extra two is **read-only**,
+and AD-20 exists to stop save-in-place being built against a Chromium-only API. `image-file.ts:5` cites
+AD-20 explicitly for *"a narrow, read-bytes-only interface with no save, no handle retention and no
+document semantics"* - a precedent for a narrow OPEN path, which is why it does not reach a story adding a
+save (D-13.1.2).
+
+**Why register it anyway.** Literal-versus-purpose drift is what stops an ADR being checkable, and being
+checkable is the whole reason a story cites one. A reader who counts interfaces finds three and cannot
+tell whether the rule is broken or has been reinterpreted. **What discharges it:** amend AD-20 to say what
+it means - one interface per *access mode*, or one *save* interface - so the count and the words agree.
+
+
+### DW-275 - localFileName's single-longest-match strip is no longer distinguishable from a chained fold
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Found by:** Story 13.1's step-04, then re-measured after the casing ruling changed the answer.
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Swapping `find` for a fold over `knownFileFormats` leaves the suite **green**. The two implementations
+diverge only on a name ending in one known extension whose stem ends in another - `report.pdf.folio` with
+`folioFileFormat` is the single such input over the two shipped formats - and the case-preserving early
+return now returns exactly that name unchanged, short-circuiting the comparison before either strip runs.
+
+**The reason this is registered rather than fixed is the lesson.** The distinction WAS red-proved earlier
+in the same story. Then a later, correct fix - the case-preserving early return ruled at Ask-First #2 -
+**retired the only input that separated the two implementations**. Nothing regressed and no behaviour
+changed; the property simply stopped being observable.
+
+> **A fix can silently retire an earlier fix's only separating input.** Re-run a function's existing
+> mutation proofs after every subsequent change to that function, not only after the change that
+> introduced them. A proof recorded in a story file is a claim about a tree that no longer exists.
+
+The **observable** half of the original defect - the unconditional append that actually produced
+`report.folio.folio` - remains red-proved. `find` was kept for clarity and for a future third format,
+which is a preference, not a proof, and it is recorded here as one.
+
+**What discharges it:** a third declared format would make the two diverge on reachable inputs with
+nothing to catch it. Guarding the property needs the module to export the strip or admit a test-visible
+format; `knownFileFormats` is private today.

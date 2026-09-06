@@ -1,4 +1,4 @@
-import { FileAccessCancelled, FileAccessFailure, folioName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
+import { FileAccessCancelled, FileAccessFailure, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
 
 export type DownloadUrl = Readonly<{
   createObjectURL(object: Blob): string
@@ -39,14 +39,16 @@ export class InputDownloadAccess implements FileAccess {
   async acquireSaveTarget(request: SaveTargetRequest): Promise<AcquiredSaveTarget> {
     // Downloads have no retained overwrite permission. Naming is still chosen
     // synchronously at the user's Save/Save As gesture.
-    return { name: folioName(request.suggestedName) }
+    return { name: localFileName(request.suggestedName, request.format), format: request.format }
   }
 
   async writeSave(target: AcquiredSaveTarget, request: SaveRequest): Promise<SavedLocalFile> {
     let href: string | undefined
     let anchor: HTMLAnchorElement | undefined
     try {
-      const blob = new Blob([request.bytes], { type: 'application/json' })
+      // The MIME comes from the target the acquire step named, never from a
+      // literal here: the download's suffix and its type are then one decision.
+      const blob = new Blob([request.bytes], { type: target.format.mimeType })
       href = this.url.createObjectURL(blob)
       anchor = this.document.createElement('a')
       anchor.href = href

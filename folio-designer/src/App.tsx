@@ -8,7 +8,7 @@ import { engineMayStart } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import type { BindingErrorScope } from './DataPanel'
-import { isFileAccessCancelled, type FileAccess, type FileTarget } from './file/file-access'
+import { folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
@@ -229,6 +229,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [tableEditorError, setTableEditorError] = useState<string>()
   const snapshotRef = useRef(snapshot)
   const saveInFlight = useRef(false)
+  // STORY 13.1. A SECOND IN-FLIGHT LATCH, and it is a REF for the reason the
+  // font-chain one is: the guard is read at the instant of the click, and a
+  // React state read inside a handler is the value that handler closed over —
+  // two presses dispatched before the re-render would both see `false` and both
+  // open a picker. It is deliberately its own latch rather than `saveInFlight`:
+  // a PDF save and a template save are different writes to different files, and
+  // conflating them would make one silently swallow the other's press.
+  const exportInFlight = useRef(false)
   // ONE APPLY AT A TIME. bindingInFlight is the shipped precedent; this one
   // exists because Apply became a SEQUENCE of commands rather than a single
   // one, and two interleaved sequences would send band heights derived from
@@ -1701,12 +1709,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const save = async (saveAs: boolean) => {
-    if (!engine || !fileAccess || saveInFlight.current) return
+    if (!engine || !fileAccess || saveInFlight.current || exportInFlight.current) return
     saveInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus(saveAs ? 'Preparing Save As…' : 'Preparing local save…')
     try {
       // Must run inside the gesture before awaiting the worker: the native
       // picker is activation-gated. Cancellation leaves every session field as-is.
-      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, currentTarget: target, saveAs })
+      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, currentTarget: target, saveAs, format: folioFileFormat })
       setFileStatus('Saving local file…')
       const serialized = await engine.request('serialize')
       if (!serialized.bytes) throw new Error('Local file could not be serialized')
@@ -1779,6 +1787,67 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     renderPreview(true)
   }
   const returnFromFailure = (failure: PreviewFailureRecord) => { if (activeFailure(failure)) returnWithOptionalSelection(failure.error, true) }
+
+  // STORY 13.1 — THE PREVIEW KEEPS THE PDF.
+  //
+  // `preview.bytes` is the buffer the engine returned and the buffer the
+  // displayed digest covers (`installPreview` stores `result.bytes.slice(0)`;
+  // the viewer hands PDF.js its own `bytes.slice(0)` so the rasterizer never
+  // neuters this one). It is written VERBATIM: nothing here re-renders,
+  // re-serializes, or decodes it to text and back, and the engine receives no
+  // request at all across the press.
+  //
+  // ⚠ `saveAs: true` AND NO `currentTarget`, AND THAT IS A SAFETY PROPERTY, NOT
+  // A STYLE. `FileSystemAccess.acquireSaveTarget` reuses a retained handle with
+  // no picker when `!saveAs && currentTarget?.kind === 'in-place'`, so a PDF
+  // save that passed the template's target would overwrite the author's
+  // `.folio` with PDF bytes, irreversibly. A PDF save is always a fresh target.
+  //
+  // ⚠ AND NOTHING FROM THE RESULT IS KEPT. `title`, `target` and
+  // `savedRevision` describe the TEMPLATE the author is editing; a PDF is an
+  // output taken off it, so writing any of them here would rename the document
+  // after a file that cannot be reopened, or call an unsaved template clean.
+  //
+  // ONE NAME FOR THE CONTROL, used by the button and by its own reason. The
+  // reason used to say "Save PDF is unavailable" under a button labelled `Save
+  // stale PDF`, and to call the export "another local file action" while the
+  // action in progress WAS the export.
+  const pdfExportLabel = preview && !admittedPreview(preview) ? 'Save stale PDF' : 'Save PDF'
+  const pdfExportUnavailable = !fileAccess ? `${pdfExportLabel} is unavailable: this browser exposes no local file access.`
+    : !preview ? `${pdfExportLabel} is unavailable: no local PDF has been rendered yet.`
+    : fileBusy ? `${pdfExportLabel} is unavailable while a local file action is in progress.`
+    : undefined
+  // The staleness the CONTROL states and the staleness the COMPLETION states are
+  // one predicate, read once per render and once per press. `admittedPreview` is
+  // the existing definition of "current, engine-authoritative, and admitted by
+  // PDF.js"; minting a second one here could drift from the status line's.
+  const exportPreviewPdf = async () => {
+    // BOTH LATCHES, not just this one. `fileBusy` is the shared interlock that
+    // keeps two local writes off the wire at once, and it stays — but until now
+    // only the rendered `disabled` attributes held the template save and the PDF
+    // save apart, which is an ordering property of React's flush rather than an
+    // invariant of these two functions. Each refuses while the other is live.
+    if (!fileAccess || !preview || exportInFlight.current || saveInFlight.current) return
+    const record = preview
+    // Read off the record BEFORE the staleness question: `admittedPreview` is a
+    // type predicate, so a `!`-negated alias narrows `record` to `never` in the
+    // stale branch and the compiler loses the very fields the status needs.
+    const pdfBytes = record.bytes
+    const pdfRevision = record.revision
+    const stale = !admittedPreview(record)
+    exportInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus(stale ? 'Preparing stale PDF save…' : 'Preparing PDF save…')
+    try {
+      // Inside the gesture, before any await that is not the picker itself: the
+      // native picker is gated on the click's transient user activation.
+      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, saveAs: true, format: pdfFileFormat })
+      const saved = await fileAccess.writeSave(acquired, { bytes: pdfBytes })
+      const revision = stale ? `stale revision ${pdfRevision}` : `revision ${pdfRevision}`
+      setFileStatus(saved.target ? `Saved PDF of ${revision} as ${saved.name}` : `Downloaded PDF of ${revision} as ${saved.name}`)
+    } catch (error) {
+      if (isFileAccessCancelled(error)) setFileStatus(undefined)
+      else announceFailure('Could not save the preview PDF')
+    } finally { exportInFlight.current = false; setFileBusy(false) }
+  }
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -1920,10 +1989,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p></main>}
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p>{/* THE LOCAL-FILE MESSAGES, IN PREVIEW (Story 13.1). The pair below the
+        canvas lives inside the DESIGN main, which Preview replaces wholesale, so
+        before Save PDF existed nothing in Preview could announce a local file
+        outcome and a failed save here would have failed silently. The two mains
+        are mutually exclusive, so a failure is still exactly one alert.
+
+        ⚠ IN THE MAIN, NOT IN THE INSPECTOR PANEL, and that is the whole point of
+        where they sit. They were first put beside the control that produces
+        them — inside `<div role="tabpanel" … hidden={inspectorTab !== 'properties'}>`
+        — so switching to the DATA tab while a save was in flight took the
+        `role="alert"` straight out of the accessibility tree. An alert that
+        tests as present and behaves as absent is worse than no alert. */}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}</main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><button type="button" className="file-button" onClick={() => void exportPreviewPdf()} disabled={Boolean(pdfExportUnavailable)} aria-describedby={pdfExportUnavailable ? 'preview-pdf-export-reason' : undefined}>{pdfExportLabel}</button>{pdfExportUnavailable && <p id="preview-pdf-export-reason" className="honest-note">{pdfExportUnavailable}</p>}<p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>

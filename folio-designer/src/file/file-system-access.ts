@@ -1,4 +1,4 @@
-import { FileAccessCancelled, FileAccessFailure, folioName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
+import { FileAccessCancelled, FileAccessFailure, folioFileFormat, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileFormat, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
 
 export type FileSystemPicker = Readonly<{
   showOpenFilePicker(options: OpenPickerOptions): Promise<ReadonlyArray<LocalFileHandle>>
@@ -9,7 +9,12 @@ type PickerType = Readonly<{ description: string; accept: Readonly<Record<string
 type OpenPickerOptions = Readonly<{ multiple: false; types: ReadonlyArray<PickerType> }>
 type SavePickerOptions = Readonly<{ suggestedName: string; types: ReadonlyArray<PickerType> }>
 
-const folioPickerType: PickerType = { description: 'Folio template', accept: { 'application/json': ['.folio'] } }
+// The picker entry is DERIVED from the format rather than written out, so the
+// filter the author sees and the suffix the name gets can never disagree.
+const pickerTypeFor = (format: LocalFileFormat): PickerType => ({ description: format.description, accept: { [format.mimeType]: [format.extension] } })
+// Opening is still `.folio`-only: a PDF is something this designer writes, not
+// something it can load.
+const folioPickerType: PickerType = pickerTypeFor(folioFileFormat)
 
 export class FileSystemAccess implements FileAccess {
   private readonly picker: FileSystemPicker
@@ -30,10 +35,10 @@ export class FileSystemAccess implements FileAccess {
   async acquireSaveTarget(request: SaveTargetRequest): Promise<AcquiredSaveTarget> {
     try {
       if (!request.saveAs && request.currentTarget?.kind === 'in-place') {
-        return { name: request.currentTarget.name, target: request.currentTarget }
+        return { name: request.currentTarget.name, target: request.currentTarget, format: request.format }
       }
-      const handle = await this.picker.showSaveFilePicker({ suggestedName: folioName(request.suggestedName), types: [folioPickerType] })
-      return { name: handle.name, target: { kind: 'in-place', name: handle.name, handle } }
+      const handle = await this.picker.showSaveFilePicker({ suggestedName: localFileName(request.suggestedName, request.format), types: [pickerTypeFor(request.format)] })
+      return { name: handle.name, target: { kind: 'in-place', name: handle.name, handle }, format: request.format }
     } catch (error) {
       throw localFailure(error, 'Could not prepare local save')
     }

@@ -1,0 +1,125 @@
+# Epic 13 Context: A template author can read, navigate and keep the exact PDF
+
+<!-- Compiled from planning artifacts. Edit freely. Regenerate with compile-epic-context if planning docs change. -->
+
+## Goal
+
+Preview is the screen where Folio's central claim lands: the document on screen is the production
+document, produced in this tab, and the evidence for that is visible rather than asserted. Today only
+the middle column exists — the page itself. This epic builds the rest of the screen: a page-thumbnail
+rail that doubles as a diagnostic map, an evidence rail carrying render facts and the output hash as a
+first-class block, real PDF-viewer navigation (fit, typed zoom, typed page, persistent scroll), an
+export path so the exact bytes can leave the tab, chrome that states freshness honestly, and a preview
+that runs with no sample data at all. No engine byte changes: every PDF this epic displays, exports and
+describes is one the engine already produced.
+
+## Stories
+
+- Story 13.1: The preview keeps the PDF
+- Story 13.2: The viewer navigates like a PDF viewer
+- Story 13.3: The preview screen is the evidence screen
+- Story 13.4: Preview runs without sample data, and an absent value is empty
+- Story 13.5: The chrome tells the truth about the preview
+
+## Requirements & Constraints
+
+- **Save the exact bytes.** The previewed PDF must be writable to a local file byte-for-byte as the
+  engine produced it — never re-rendered for the save, never re-serialized. The saved file's digest is
+  the digest the screen shows.
+- **Real viewer navigation.** Fit-width, fit-page, a zoom the author can type or choose, a typed page
+  number, and a scroll position that survives leaving and re-entering Preview.
+- **Exactness is the product.** The previewed document is the production document byte for byte, and
+  the interface must *earn* that claim rather than assert it. Any affirmation the product cannot
+  substantiate is the one thing this screen must never print. Nothing in the interface may imply server
+  rendering, a cloud round-trip, or an account — the standing "no network · nothing left this machine"
+  assurance belongs where it is always visible.
+- **Staleness is the state failure that matters.** A stale preview must be visibly invalidated or
+  re-rendered, never presented unmarked — and that rule governs export and the evidence statistics
+  exactly as it governs the page. Chrome, status line and rail must never disagree about freshness.
+- **Canvas-approximate vs preview-exact must be legible without a tutorial.**
+- **Preview must not be gated on sample data.** The engine imposes no such requirement (the CLI renders
+  a bindings-free template with no data argument), so the screen must not disable itself ahead of it.
+- **Diagnostics belong where the consequence is visible** — surfaced in Preview, non-blocking,
+  dismissible, naming the offending element and path, and locating back to it on the canvas.
+- **Accessibility floor** applies to every new control: keyboard-reachable, operable, labelled, with
+  visible focus, and diagnostics distinguished by shape before colour.
+
+## Technical Decisions
+
+- **Preview identity (AD-18).** A rendered preview is keyed by a hash over serialized template ∥ data ∥
+  params ∥ engine version ∥ font-set identity; the key is recomputed on every committed command and any
+  difference marks the preview stale. The preview surface is a controlled pdf.js canvas — never the
+  browser's built-in viewer in an iframe or embed — because diagnostics overlay it and long renders need
+  progress.
+- **The browser never measures text (AD-17).** Every metric and line break comes from the engine's
+  measure API. `src/preview/` holds a narrow, explicitly-enumerated exception to the canvas-authority
+  contract (today for `scroll*`); the fit-width/fit-page container measurement must be added to that
+  exception **by name**, never by widening it with a wildcard — a rasterized PDF's display scale is
+  viewer navigation, not document measurement. Guards are widened deliberately, never deleted.
+- **File access is two-tier and capability-detected (AD-20).** Where `showSaveFilePicker` exists, save
+  through a held handle; otherwise fall back to a download. Save PDF must reuse the single file-access
+  interface the designer already has for `.folio`, parameterising picker type and suggested filename —
+  not a second, parallel download path.
+- **Cross-target identity is a build property, not a live comparison.** The tab cannot compare itself
+  to a native render. What is true is that the wasm engine is the same engine compiled to another
+  target and that byte identity across `darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` is
+  proven by the CI matrix for the release the browser is running. Wording on screen must say that, not
+  more.
+- **Engine semantics are untouched.** No-data empty-value substitution is scoped strictly to *preview
+  with no data supplied*. The absent-binding error contract, its diagnostic codes and the golden corpus
+  stay exactly as they are; the same template rendered by the Go library with absent data still fails.
+  A path absent from data that *was* supplied remains a located error — absent data and
+  absent-from-present-data are different conditions.
+- **A no-data preview's hash is not evidence** of cross-target equality, because the inputs were not the
+  production inputs.
+- **Layout frame.** Preview mode swaps the palette rail for a ~132 px page-thumbnail rail and the
+  properties panel for a ~320 px render panel, and the status bar grows to ~32 px for page navigation —
+  the one place the frame changes height. The component palette must not render in preview mode at all,
+  since nothing there can be placed.
+
+## UX & Interaction Patterns
+
+- **Preview is a mode switch, not a panel.** The canvas is replaced by the rendered PDF. The mode switch
+  in the document bar is the single way in and out; the separate in-heading return button goes away —
+  while keeping a reachable way to abandon a render in progress.
+- **Three columns.** Left: PAGES thumbnail rail, one numbered thumbnail per page, current page marked in
+  the select accent, a page carrying a diagnostic marked in the bind accent, clicking navigates, and a
+  long document truncates (`… 29 more`) rather than rendering every thumbnail. Middle: the page on the
+  darker preview ground, carrying the PRODUCTION OUTPUT badge and nothing competing with it. Right: the
+  evidence rail.
+- **Evidence rail** carries RENDER (engine version, target, pages, rows, elapsed, byte size), OUTPUT
+  HASH as its own bordered block with the digest in mono wrapped across two lines so it can be compared
+  by eye, DIAGNOSTICS with counts in the header (total, and errors separately), and a paired Re-render /
+  Save PDF action row at its foot. Re-render moves here from the INPUTS tab.
+- **Diagnostics** use the shape-before-colour legend — triangle/dashed for a render that proceeded,
+  square/solid for one that failed — and a zero state that states zero explicitly so a clean render
+  reads as *checked*, not as *nothing here*. A card names its location as page · bound path · element
+  kind · band, and carries Locate on canvas and Dismiss.
+- **Navigation controls live in the bottom status bar** — page stepper, page indicator, zoom — not on a
+  toolbar above the page, so the page area carries the page alone. A fit choice persists across page
+  changes until the author zooms manually; beyond viewport size the viewer's own height-constrained
+  container scrolls on both axes with the page centred when smaller, so the outer region never scrolls
+  in its place.
+- **Chrome states the Preview-mode fact.** In Preview the document bar shows render freshness
+  ("rendered 412 ms ago · current", or stale in the same words the status line uses) rather than the
+  Design-mode page setup.
+- **Two-accent grammar holds:** cyan means structure, focus and authority (the production marker and the
+  output hash carry it); amber means data only. Green appears once, on the hash affirmation; red is
+  reserved for a failed render. Every machine-readable value — hash, path, byte count, filename — is set
+  in mono.
+- **Voice is terse and technical**: state the fact, name the location, offer no comfort. A no-data
+  preview must say plainly that it is one and that empty values are stand-ins.
+
+## Cross-Story Dependencies
+
+- 13.3 re-dresses the diagnostic card and its Locate-on-canvas / Dismiss behaviour already built earlier
+  in the designer; it changes presentation, not that behaviour.
+- 13.1's Save PDF and 13.3's evidence rail land the same paired action row — 13.3 owns its placement,
+  13.1 owns the export itself; both are governed by the freshness rule.
+- 13.5 removes the in-preview return button that 13.3's screen rework also touches; the document-bar
+  mode switch becomes the sole mode control.
+- 13.4 depends on the preview freshness/identity key so that loading sample data later marks the
+  no-data preview stale like any other input change, and must not disturb the engine's error contract or
+  the golden corpus owned by the engine epics.
+- 13.2 depends on the `src/preview/` exception list in the canvas-authority contract test being extended
+  by name, which is a shared guard other epics also assert against.

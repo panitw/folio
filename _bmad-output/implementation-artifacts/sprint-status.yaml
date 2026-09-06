@@ -474,8 +474,8 @@ development_status:
   12-5-a-band-boundary-is-dragged-on-the-canvas: done
   epic-12-retrospective: optional
 
-  epic-13: backlog
-  13-1-the-preview-keeps-the-pdf: backlog
+  epic-13: in-progress
+  13-1-the-preview-keeps-the-pdf: review
   13-2-the-viewer-navigates-like-a-pdf-viewer: backlog
   13-3-the-preview-screen-is-the-evidence-screen: backlog
   13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt: backlog
