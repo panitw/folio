@@ -4289,3 +4289,129 @@ failures including a regression (`0c0f3e9`)"*. Assigned to 11.3's closer, since 
 than it was written to make.* DW-193 was accurate on the day it was filed and the four words that bounded
 it were dropped in one hand-off. **D-11.1.11 said to check a DW entry's status before leaning on it; this
 says to check its scope too** — not just *is it still true?* but *is it still saying only what it said?*
+
+### D-11.3.6 — F1: the combined cut. A generalisation that fixes the state and breaks the statement.
+
+**The gap.** `boldItalic` is projected across the whole new seam — Go emits it, `engine-protocol.ts` types
+and guards it — and **read by nothing**: `chainDeclaresCut` is typed `field: 'bold' | 'italic'`. So an
+element with **both** flags set, on a chain declaring `bold` and `italic` but **not** `boldItalic`,
+resolves to no declared variant, falls back to the base face, warns — and **both controls read plainly
+on.** That is exactly the state AC3 exists to prevent, arriving through the one combination the spec's I/O
+matrix never enumerated. The builder owned the omission as its own.
+
+**RULING: `patch`, not an intent_gap or a `bad_spec` loopback.** AC3's principle — *the panel never shows a
+state the document cannot reach* — determines the rule even though the matrix missed the row. Under
+D-11.1.24 the test is *would re-deriving from a corrected spec produce different code?* It would produce
+**this** code plus one generalised predicate. Reverting 17 files and ~965 lines to re-derive a predicate is
+the wrong trade, and D-11.2.12 already fenced the story as indivisible. **The missing matrix row is a spec
+defect; the repair is a patch plus a Spec Change Log entry.**
+
+**But the builder's proposed generalisation was HALF a rule, and applied as written it makes the panel say
+something FALSE.** Its predicate — *"the cut the element's resulting (bold, italic) combination requires
+has no declared face"* — is correct. Trace it: both flags set, `boldItalic` absent, so B's required cut is
+`boldItalic`, so **B enters the unavailable state and says "No bold face in this family."** There IS a bold
+face; the chain declares one. **The generalisation fixes the state and breaks the statement, and a panel
+that lies precisely is not better than one that lies vaguely.**
+
+**The whole rule, three parts, all required:**
+1. **Predicate as proposed** — `cutAbsent` is computed against the cut the element's resulting combination
+   requires, not against the control's own axis.
+2. **The sentence names the MISSING CUT, never the control.** `boldItalic` absent → *"No bold italic face
+   in this family."* Derived from the cut, so there is **one sentence per cut rather than one per
+   control**, and it cannot go false the way the current phrasing does.
+3. **When the missing cut is the combined one, the reason is stated ONCE for the pair.** Both controls
+   enter the unavailable state — both are implicated and marking only one would imply the other is fine —
+   but the sentence appears once. **This also disposes of P9's double-announcement bug** (folded into
+   `aria-label` *and* a visible non-`aria-hidden` `<p>`, phrased three ways); the combined case would have
+   made it a quadruple.
+
+**And the part that makes this state acceptable at all: both controls stay operable, and here that is the
+escape route rather than merely Q1's rule.** Turning off *either* B or I lands the element on a combination
+the chain **does** declare. **The combined-absence state is self-resolving through the very controls the
+author is looking at** — which is the difference between *"this family cannot do what you asked"* and
+*"this family cannot do those two at once."* The second tells the author what to do next, and it is the
+accurate one.
+
+### D-11.3.7 — the guard written for the defect could not see the defect. Twice, in one story.
+
+**P1/P2.** I flagged this hazard at 11.3's plan gate (D-11.3.5), the rules were written against it, and
+they **still** shipped two holes. The builder found them by **running the regexes rather than reading
+them** — the same method that has now caught the same class three times in this run.
+
+```
+RULE 16   RED    style={{ fontWeight: 700, ...(a ? {f} : {}) }}    <- weight FIRST
+          GREEN  style={{ ...(a ? {f} : {}), fontWeight: 700 }}    <- weight AFTER the spread
+```
+
+`[^}]*` stops at the first `}`, and **the real canvas-text style objects in `App.tsx` already contain a
+conditional-spread `{}`** — so **the most natural reintroduction point, in the very file the rule guards,
+is invisible to it.**
+
+Rule 15's `font:` shorthand hole is worse than hypothetical: **this same commit's
+`.property-toggle-unavailable` rule uses `font:` shorthand precisely to override a weight.** *The idiom the
+guard cannot see is already live in the stylesheet the guard protects.*
+
+**Standing addition to the census questions:** for any guard expressed as a pattern, **run it against the
+defect it forbids AND against the nearest legitimate spelling of the same thing**, in the file it guards.
+Reading a regex is not testing a regex, and a guard's author is the worst-placed person to imagine the
+spelling they did not think of.
+
+### D-11.3.8 — removing a compensation without supplying what it compensated for. Twice, on one axis.
+
+**P3, reclassified: this is a regression the story introduces, not a finding.** `carriedFaceKeys`
+(`App.tsx:293`) collects only `entry.assetKey` and never the **variant** asset keys this change added. So
+for a document declaring `{"asset": K1, "bold": K2}`, the engine resolves and emits
+`fragment.assetKey = K2`, `K2` was never fetched, `carriedFaces.has(K2)` is false, and the fragment gets
+**no `fontFamily` at all** — falling to the default stack. **Before this story it at least got
+`font-weight: 700`.** Removing the synthetic weight without registering the variant keys makes embedded
+bold **strictly worse**.
+
+**Same shape as D-11.3.1, on the same axis, two stories running.** 11.2 made the engine truthful and left
+the canvas double-bolding; 11.3 removes the faking and leaves the embedded arm with no face at all. **A
+compensation is invisible while it is load-bearing.** The rule D-11.3.1 stated — *a story that makes one
+half of a mirrored pair truthful should ask what the other half was compensating for* — now has its second
+instance, and both were found by review rather than by the story that caused them.
+
+### D-11.3.9 — nothing that runs parses the shipped starter
+
+**P7, and it is the sharpest finding of the story.** `starter.folio`'s only real-bytes reader is
+`folio-go/wasm/cmd/engine/main_test.go:229`, which is `//go:build js && wasm` — **so it is not in
+`go list ./...`, `go test ./...` never compiles it, and CI never runs a js/wasm test.**
+
+**Ship the starter with `"version": "1.0"` and object entries, or typo `"Roboto-Bold"`, and every gate
+stays green.** The shipped template — the first document every new user opens, and the one artifact
+D-11.0.1 added to this story to make bold reachable — is verified by nothing.
+
+**A Go test that reads the real file is now mandatory rather than preferred.** This was my item C, and the
+measurement gave it teeth I did not have when I asked for it: I wanted the round-trip promoted from a
+measurement to a test; the actual position is that there was no test to promote it *from*, and no gate
+would have noticed.
+
+### D-11.3.10 — the rest of 11.3's triage, and what the audit caught this time
+
+**Twelve patches approved.** Beyond P1/P2, P3 and P7 above: **P4** — the headline `bolded` fixture asserts
+`face: 'Roboto Bold'` while its chain declares `boldItalic`, so **the story's central test asserts a
+resolution the engine cannot produce**. **P5 — the Matrix Test Audit failed again**, second consecutive
+story: the row *"bold element, no variant declared → painted in Regular"* has **no test asserting the
+fragment**; every absent-cut test sets `bold: false` and inspects only the control. **P6** — a deliberate
+`every` is unpinned; swapping it to `some` reds nothing. **P8** — `folio-go/fonts/roboto/NOTICE.md:29` and
+`fonts.go:138-140` still quote the pre-11.3 starter chain; fixed in-story, because *the reason they were
+left is precisely the reason they would not otherwise be found.* **P10** — `field[:1]` panics on a json tag
+spelled exactly `header`, and an unsorted-vs-sorted comparison makes a second failure order-dependent.
+**P11/P12** — D-000.30's correction pushed to the source, and the `.property-toggle-unavailable` CSS
+recorded as a **stated limit** rather than hand-computed specificity in a report nobody re-reads, plus a
+layout check the hand-computation could not cover.
+
+**Five rejections, all correct** — including the starter's non-canonical `fonts` block, rejected with the
+`build-wasm.mjs:71-75` citation that says the whole file is deliberately non-canonical. *A rejection that
+cites why saves the next reviewer from re-raising it.*
+
+**One deferral:** `TableColumnsProjection`'s four new members have no consumer — DW-240's read-back half
+landing ahead of its control. Registered explicitly **so it does not read as a contradiction of the spec's
+own D-7.4.5 note**, with the split recorded as deliberate and an owner named.
+
+**And two process results worth keeping.** The verification-gap layer ran **alone** per D-11.2.7, and the
+builder **proved the tree survived it** — snapshotting all 17 source files before and `cmp`-ing every one
+after, same manifest hash. That is the rule working and being *shown* to work. Q3's open check is
+**discharged by measurement**: the third state derives from the chain's variant strings and never from the
+committed boolean, so the zero-value collapse is not lossy where it matters. **Q3 does not flip.**
