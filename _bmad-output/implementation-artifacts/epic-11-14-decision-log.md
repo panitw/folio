@@ -4529,8 +4529,9 @@ carried to Epic 11's boundary gate for placement.
 
 **The gap 11.4's builder found.** AC1 requires a pick to declare *"that family's available style
 variants."* **For every family the control can pick, that set is empty, structurally.** All 31 local-tier
-catalogue faces are hardcoded `style: "Regular"` (`build-wasm.mjs:428` — it is not even in the source
-JSON); the stored tier can only hold what `fetchWebFamily` produces, which takes `regularFilename()` and
+catalogue faces are hardcoded `style: "Regular"` (by `build-wasm.mjs`'s `font-catalogue.ts` emitter — the
+`catalogueFaces.map(...)` row template inside its `writeFileSync(join(generatedDir, 'font-catalogue.ts'), …)`
+call, `:428` when this was measured — it is not even in the source JSON); the stored tier can only hold what `fetchWebFamily` produces, which takes `regularFilename()` and
 hardcodes Regular; and `IN THIS TEMPLATE` writes no chain entry at all. **The only faces with real cuts are
 shipped, and shipped families are not offered by that control.** So 11.4 as written would ship, pass, and
 leave `starter.folio` the only document that can bold Latin text — the exact condition D-11.0.1 created it
@@ -4603,8 +4604,8 @@ per-face licence admission, payload against a cache margin already at 3 of 64).
 
 **Registered as load-bearing, NOT as an enhancement** — the lead's framing and it is the right one: option
 (3), reading real cuts from upstream `METADATA.pb`, is *the entry for "bold works for the fonts people
-actually pick"*. **`parseFamilyMetadata` (`font-source.ts:138`) already parses every
-`fonts { style, weight, filename }` block and `fetchWebFamily` throws it away** — the capability is half
+actually pick"*. **`parseFamilyMetadata` (`folio-designer/src/font-source.ts`, `:138` when this was measured) already
+parses every `fonts { style, weight, filename }` block and `fetchWebFamily` throws it away** — the capability is half
 built. Framing it as load-bearing rather than optional is what stops it aging the way DW-162's figure did.
 
 **The lesson, and it is about me rather than the code.** I priced an option for an owner from a plausible
@@ -4634,3 +4635,39 @@ what keeps `assetKeyReferenced` out of scope); **a pick must never emit a varian
 since DW-241 makes that a load error and such a pick would author an unloadable document; and the
 `IN THIS TEMPLATE` disclosure is asserted **in both directions** — a shipped pick adds nothing to it, a
 catalogue pick does.
+
+
+### D-11.4.4 — the tooling was giving false cleans on the designer's core file, and only a checkable claim exposed it
+
+Verifying 11.4's gates, I grepped `folio-designer/src/App.tsx` for `proposedFallbackTail` — the symbol my
+own frozen amendment turns on, since I had required the declare path and the embed path to compute the
+fallback tail by **the same code, not two implementations that agree today**. Two separate greps returned
+nothing. The builder had reported the symbol defined at `:126` and called from both paths.
+
+I was one step from recording a discrepancy against a truthful report. `sed -n '118,136p'` printed the
+definition immediately.
+
+**Cause.** The project's shell `grep` is a function wrapping **ugrep with `-I`**. `App.tsx:3201-3202` uses
+a **literal NUL byte** as a string separator instead of the escape '\u0000'. Two NUL bytes are enough for
+ugrep to classify the file as binary and skip it — **exit 1, no output, no warning**. `grep -a` finds all
+three occurrences. Pre-existing: `git show HEAD:` carries the same two bytes.
+
+**Why this is the most serious thing 11.4 surfaced, and it is not in 11.4.** Every review layer, Code Map
+and investigation step in this program has searched the designer's 3,585-line core file with a tool that
+silently declined to open it. A no-match on App.tsx has meant **nothing** for the whole run. Registered as
+**DW-256** (HIGH).
+
+**The rule this extends.** D-11.2.4 says an absence in a subagent's return is a lead, not a result, and
+demands a positive control. That discipline was aimed at agents. Here the *tool* failed, beneath every
+agent's diligence — a positive control on the search would have caught it, and nobody ran one because the
+tool is not the thing we thought we were auditing. So:
+
+> **D-11.4.4 — a search tool is part of the evidence, not a neutral window onto it.** When a search returns
+> empty and something you have reason to believe says otherwise, suspect the instrument before the claim.
+> Confirm an empty result with a *different* mechanism — `sed`, `awk`, `python`, `git grep` — before
+> recording it as a finding. This applies with most force to the biggest, most-searched files, which are
+> exactly where a silent skip does the most damage and is least likely to be noticed.
+
+**And the near-miss is the lesson's other half.** The builder's report was accurate and my instrument was
+broken; had I trusted my grep over its claim, I would have filed a false defect against correct work and
+sent a builder chasing it. Verifying a report does not mean assuming the report is the thing that is wrong.

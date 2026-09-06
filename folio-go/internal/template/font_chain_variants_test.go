@@ -232,6 +232,114 @@ func TestTheObjectFormRoundTripsAsAFixedPoint(t *testing.T) {
 	}
 }
 
+// TestTwoVariantsOfOneEntryMayNameTheSameFace is DW-241's OTHER DIRECTION, and
+// it is not optional (D-11.2.11).
+//
+// The narrowing compares each variant to THAT ARM'S OWN DISCRIMINANT and to
+// nothing else. A cross-variant collision — one face declared as both the bold
+// and the italic cut — is LEGAL and SILENT: it is a real declaration, whatever
+// a reader thinks of it, and refusing it would be a second, wider rule wearing
+// the first one's name. Run the guard against the nearest LEGITIMATE spelling,
+// not only against the defect (D-11.3.7).
+func TestTwoVariantsOfOneEntryMayNameTheSameFace(t *testing.T) {
+	source := embeddedFontDoc(fontAssetBody, `[{"face": "Roboto", "bold": "Roboto Bold", "italic": "Roboto Bold"}]`)
+	d, err := ParseDocument([]byte(source))
+	if err != nil {
+		t.Fatalf("a cross-variant collision must LOAD — only the base is privileged: %v", err)
+	}
+	entry := d.Fonts["body"][0]
+	if entry.Bold != "Roboto Bold" || entry.Italic != "Roboto Bold" {
+		t.Fatalf("the parsed entry lost a variant: %+v", entry)
+	}
+	// AND IT ROUND-TRIPS AS A FIXED POINT, so nothing downstream quietly
+	// deduplicates the two into one.
+	out, err := SerializeDocument(d)
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	again, err := ParseDocument(out)
+	if err != nil {
+		t.Fatalf("reparse: %v", err)
+	}
+	out2, err := SerializeDocument(again)
+	if err != nil {
+		t.Fatalf("reserialize: %v", err)
+	}
+	if string(out) != string(out2) {
+		t.Fatalf("a cross-variant collision is not a fixed point:\n%s\n---\n%s", out, out2)
+	}
+	// THE POSITIVE CONTROL FOR THE GUARD ITSELF: change one of those two to the
+	// entry's own base and the SAME document is refused, so this test's green
+	// is a statement about the collision and not about the check being absent.
+	requireLoadError(t, embeddedFontDoc(fontAssetBody, `[{"face": "Roboto", "bold": "Roboto", "italic": "Roboto Bold"}]`), "fonts.body[0].bold")
+}
+
+// TestTheSelfReferenceCheckIsSTRINGEQUALITYAndSaysSo is DW-245: the
+// DISCLOSED LIMIT of the D-11.2.11 refusal, asserted rather than described.
+//
+// The refusal compares a variant to its entry's own discriminant with string
+// equality, so its reach ends exactly one character from the base. A variant
+// naming a DIFFERENT face that happens to hold IDENTICAL BYTES renders
+// bold-as-regular just as silently, and nothing here can see it: detecting it
+// would mean comparing what is inside the two faces, which D-11.2.1 forbids.
+//
+// THIS TEST EXISTS BECAUSE THE LIMIT IS THE EASY THING TO FORGET. A reader who
+// meets the self-reference refusal concludes that bold-as-regular-with-no-
+// warning is closed. It is closed for the case an author reaches by writing
+// the same name twice and open for the case they reach by a stranger route,
+// and *a check whose limit is unstated ages into a false reassurance*. So the
+// behaviour is pinned here AND the two required statements of the limit are
+// pinned with it — otherwise either could be deleted and every test stay green.
+//
+// It is also D-11.3.7's discipline applied to this guard: run the pattern
+// against the defect it forbids AND against the nearest LEGITIMATE spelling.
+// `"Roboto Copy"` is that nearest spelling, one edit away from the refusal.
+func TestTheSelfReferenceCheckIsSTRINGEQUALITYAndSaysSo(t *testing.T) {
+	// The nearest legitimate spelling LOADS. This is the limit, exercised.
+	source := embeddedFontDoc(fontAssetBody, `[{"face": "Roboto", "bold": "Roboto Copy"}]`)
+	d, err := ParseDocument([]byte(source))
+	if err != nil {
+		t.Fatalf("a variant naming a DIFFERENT face must load — the check is string equality against the base, not a likeness test: %v", err)
+	}
+	if got := d.Fonts["body"][0].Bold; got != "Roboto Copy" {
+		t.Fatalf("the parsed entry lost or rewrote its variant: %q", got)
+	}
+
+	// THE POSITIVE CONTROL, and it is what makes the green above mean
+	// something: strip " Copy" — one edit — and the SAME document is refused.
+	// Without this, a test asserting "this loads" would pass just as well if
+	// the self-reference check had never been written at all.
+	requireLoadError(t, embeddedFontDoc(fontAssetBody, `[{"face": "Roboto", "bold": "Roboto"}]`), "fonts.body[0].bold")
+
+	// AND THE LIMIT IS STATED IN BOTH PLACES DW-241's RULING REQUIRES.
+	// Neither statement has any other guard: the doc guard above reads a table
+	// row's FIRST cell only, and nothing at all reads the comment in parse.go.
+	root := repoRootFromTest(t)
+	for _, site := range []struct {
+		what string
+		path string
+		want []string
+	}{
+		{
+			"the comment beside the check in parse.go",
+			filepath.Join(root, "folio-go", "internal", "template", "parse.go"),
+			[]string{"Roboto Copy", "IDENTICAL BYTES"},
+		},
+		{
+			"the format doc's chain-entry section",
+			filepath.Join(root, "_bmad-output", "specs", "spec-folio", "folio-format.md"),
+			[]string{"Roboto Copy", "identical bytes"},
+		},
+	} {
+		text := string(mustReadFile(t, site.path))
+		for _, want := range site.want {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s no longer discloses the limit of the self-reference refusal (missing %q). An undisclosed limit reads as a closed hole (DW-245).", site.what, want)
+			}
+		}
+	}
+}
+
 // TestAVariantFreeObjectEntryCanonicalisesBackToABareString is P8, and
 // it is the round trip the whole version rule rests on.
 //

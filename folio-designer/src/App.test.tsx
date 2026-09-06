@@ -6,6 +6,7 @@ import { shortcutHintsFor } from './shortcuts'
 import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
+import { shippedFamilyEntry } from './shipped-face-cuts'
 import { FileAccessCancelled, type FileAccess } from './file/file-access'
 import type { EngineClient } from './engine-client'
 import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
@@ -2856,7 +2857,166 @@ describe('typography controls over the engine-projected closed sets', () => {
       expect(payload['data']).toBe('AAEAAH8=')
       // AC3: Inter covers Latin and nothing else, so the proposed tail is the
       // shipped faces for the scripts it does NOT cover, in order.
-      expect(payload['tail']).toEqual(['Noto Sans Thai', 'Noto Sans SC'])
+      //
+      // STORY 11.4 — AND THE TAIL NOW DECLARES THE CUTS THOSE FACES HAVE. The
+      // ORDER and the MEMBERSHIP are exactly what they were; what changed is
+      // that `Noto Sans Thai` says it has a bold, so a document whose Thai
+      // fallback came from a pick can bold its Thai. `Noto Sans SC` declares
+      // nothing and stays a bare string — D-A, a permanent shipped condition,
+      // not a row somebody has yet to fill in.
+      expect(payload['tail']).toEqual([{ face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' }, 'Noto Sans SC'])
+      // AND THE PICKED ENTRY ITSELF DECLARES NO CUT, because it has none: one
+      // embedded face, and every catalogue face is a single upright Regular.
+      //
+      // ⚠ THIS USED TO BE A VACUOUS ASSERTION AND IT IS WORTH SAYING WHY
+      // (D-11.2.8). It read `Object.keys(payload).filter(k => VARIANTS.includes(k))`
+      // — the TOP LEVEL of an `embedFontFamily` payload, which has never carried
+      // a variant key in any version of this command and has nowhere to put one.
+      // It could not fail whatever the implementation did, while wearing the
+      // label of a claim about the PICKED ENTRY. The claim is now asserted at
+      // the two places it can actually break: the picked family is not in the
+      // declared mirror, so there are no cuts for the entry to declare, and the
+      // tail — the ONLY place this command can carry a cut — never names the
+      // picked family, so no cut can arrive attached to it by the back door.
+      // The entry itself is built inside the engine from the bytes above, and
+      // `TestEmbedFontFamilyWritesTheAssetAndDeclaresTheChain` reads it back.
+      expect(shippedFamilyEntry('Inter'), 'Inter is not a family the release ships, so a pick of it has no cuts to declare').toBeUndefined()
+      const tailFaces = (payload['tail'] as ReadonlyArray<string | { face: string }>).map((entry) => typeof entry === 'string' ? entry : entry.face)
+      expect(tailFaces).not.toContain('Inter')
+    } finally {
+      globalThis.fetch = restore
+    }
+  })
+
+  // STORY 11.4 — THE PAYOFF, AND UNTIL THE REVIEW NOTHING ASSERTED IT.
+  //
+  // Every other test in this story checks what a pick WRITES. This one checks
+  // what the author SEES afterwards, which is the only reason any of it was
+  // funded: the element's B control states Story 11.3's absence sentence
+  // before the pick and is the plain control after it. The whole chain of
+  // mechanism — the mirror declares Roboto's cuts, the command carries them,
+  // the engine projects them back, `selectionMissingCut` reads the projection —
+  // is exercised end to end by one gesture, and any link of it breaking turns
+  // this red.
+  //
+  // ⚠ THE PROJECTION IS REBUILT FROM THE PICK'S OWN COMMAND BYTES, never from a
+  // fixture written beside it. A hand-written "after" chain would go on
+  // declaring cuts for a pick that had stopped writing them. The engine's half
+  // of the same seam — that it copies a chain entry's declared cuts into the
+  // projection verbatim — is tied in Go by `canvas_projection_wire_test.go`.
+  it('stops stating the absent cut once the picked family declares one', async () => {
+    const NO_BOLD_HERE = 'No bold face in this family — the engine paints the regular face and warns.'
+    // `body` declares ONE entry and no cut at all, so B states the absence.
+    let projected: CanvasProjection = { ...canvas, components: [{ ...textComponent, fontFamily: 'body' }] }
+    let revision = 1
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload !== undefined) {
+        const command = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        if (command['kind'] === 'addFontChain') {
+          const name = command['name'] as string
+          const entries = (command['entries'] as ReadonlyArray<string | Record<string, string>>).map((entry) => typeof entry === 'string' ? face(entry) : face(entry['face'], entry))
+          projected = { ...projected, fontFamilies: [...projected.fontFamilies, name], fontChains: [...projected.fontChains, { name, entries }] }
+        }
+        if (command['kind'] === 'updateComponentProperties') {
+          const value = ((command['changes'] as Record<string, Record<string, string>>)['fontFamily'] ?? {})['value']
+          projected = { ...projected, components: projected.components.map((component) => ({ ...component, fontFamily: value ?? component.fontFamily })) }
+        }
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: ++revision, byteLength: 3, canvas: projected } }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: projected }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    const NO_ITALIC_HERE = 'No italic face in this family — the engine paints the regular face and warns.'
+    const control = (name: 'Bold' | 'Italic') => screen.getByRole('button', { name })
+    // BEFORE — and this half is asserted so the "after" is a CHANGE and not a
+    // control that never said anything (D-11.2.8).
+    for (const [name, sentence] of [['Bold', NO_BOLD_HERE], ['Italic', NO_ITALIC_HERE]] as const) {
+      expect(control(name).className).toContain('property-toggle-unavailable')
+      expect(document.getElementById(control(name).getAttribute('aria-describedby')!)).toHaveTextContent(sentence)
+    }
+
+    fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+    fireEvent.click(screen.getByRole('option', { name: /^Roboto$/ }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(2))
+
+    // AFTER — the family now DECLARES both cuts, so there is nothing to state.
+    //
+    // ⚠ THE ITALIC CONTROL IS THE SENSITIVE ONE, AND THAT IS MEASURED RATHER
+    // THAN ASSUMED. `chainDeclaresCut` is an ANY-ENTRY rule (Q2, ratified at
+    // 11.3's CHECKPOINT 1), and the proposed fallback tail carries `Noto Sans
+    // Thai`, which declares a bold — so B would go plain even for a pick that
+    // declared NOTHING for Roboto itself. Nothing in the tail declares an
+    // italic, so I going plain is the picked family's own declaration and no
+    // other entry's. Deleting Roboto's cuts from the mirror leaves B green and
+    // turns I red, which is exactly the discrimination this test needs.
+    await waitFor(() => expect(control('Italic').className).not.toContain('property-toggle-unavailable'))
+    for (const name of ['Bold', 'Italic'] as const) {
+      expect(control(name).className).not.toContain('property-toggle-unavailable')
+      expect(control(name).getAttribute('aria-describedby')).toBeNull()
+      expect(control(name)).not.toBeDisabled()
+    }
+    expect(screen.queryByText(NO_BOLD_HERE)).not.toBeInTheDocument()
+    expect(screen.queryByText(NO_ITALIC_HERE)).not.toBeInTheDocument()
+  })
+
+  // STORY 11.4 — THE OTHER HALF OF THE SAME FORK, AND BOTH ARE ASSERTED
+  // BECAUSE A TEST THAT ONLY CHECKED THIS ONE COULD NOT SEE THE CATALOGUE CASE
+  // REGRESS.
+  //
+  // `Roboto` is a family the RELEASE ALREADY SHIPS — it is a `fonts.Shipped()`
+  // key, and `folio-designer/public/fonts/roboto/Roboto-Regular.ttf` and
+  // `folio-go/fonts/roboto/Roboto-Regular.ttf` are byte-identical, which
+  // `TestShippedRobotoMatchesDesignerCatalogue` makes machine-checked. So
+  // picking it used to embed ~348 KB of duplicate as a Regular-only entry that
+  // could never bold, while `Roboto Bold` sat unreachable in the same FontSet.
+  //
+  // It now NAMES the face and declares that family's cuts. Still two commands
+  // and two undo entries, still in the engine's forced order — only the first
+  // command changed kind.
+  it('names a family the release already ships, declaring its cuts and embedding nothing', async () => {
+    // NO FETCH AT ALL is part of the claim: nothing is read, so nothing can be
+    // written into the document. The stub is here to catch one, not to serve it.
+    const fetchStub = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([0]).buffer }))
+    const restore = globalThis.fetch
+    globalThis.fetch = fetchStub as never
+    try {
+      const request = select()
+      const sent = request.mock.calls as unknown as ReadonlyArray<readonly [string, ArrayBuffer]>
+      fireEvent.focus(screen.getByRole('combobox', { name: 'Font family' }))
+      fireEvent.click(screen.getByRole('option', { name: /^Roboto$/ }))
+      await waitFor(() => expect(sent).toHaveLength(2))
+      const kinds = sent.map(([, buffer]) => (JSON.parse(new TextDecoder().decode(buffer)) as Record<string, unknown>)['kind'])
+      expect(kinds).toEqual(['addFontChain', 'updateComponentProperties'])
+      // NOTHING WAS READ. `embedFontFamily` is the only command that carries
+      // bytes, and it is not here; no bundle asset was fetched either.
+      expect(fetchStub).not.toHaveBeenCalled()
+      const payload = JSON.parse(new TextDecoder().decode(sent[0][1])) as Record<string, unknown>
+      expect(payload['name']).toBe('Roboto')
+      expect(payload['data'], 'a named family carries no bytes; naming a face is not embedding it').toBeUndefined()
+      // THE CUTS, DECLARED. This is the assertion the whole story exists for:
+      // the entry names the shipped face and says what Roboto's three cuts are,
+      // so the element can bold without anything being inferred from a name.
+      //
+      // ⚠ AND IT CARRIES THE SAME PROPOSED FALLBACK TAIL THE EMBED PATH
+      // COMPUTES. The declare path replaced an embed that computed one, and the
+      // first cut of it sent a ONE-entry chain: latin kept working and every
+      // Thai and CJK run in the document silently lost its fallback. Roboto's
+      // catalogue `scripts` is `["latin"]`, so the answer is exactly the
+      // three-entry chain `starter.folio` already declares — which
+      // `pick_declares_cuts_ext_test.go` compares against that file itself, so
+      // this expectation and the shipped document cannot drift apart.
+      expect(payload['entries']).toEqual([
+        { face: 'Roboto', bold: 'Roboto Bold', italic: 'Roboto Italic', boldItalic: 'Roboto Bold Italic' },
+        { face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' },
+        'Noto Sans SC',
+      ])
+      // AND NO VARIANT NAMES ITS OWN BASE — such a pick would author a document
+      // this story's own parse narrowing refuses to reload (D-11.2.11).
+      const entry = (payload['entries'] as ReadonlyArray<Record<string, string>>)[0]
+      for (const key of ['bold', 'italic', 'boldItalic']) expect(entry[key]).not.toBe(entry['face'])
+      // THE PROPERTY IS COMMITTED SECOND, and only after the chain exists.
+      const property = JSON.parse(new TextDecoder().decode(sent[1][1])) as Record<string, unknown>
+      expect(property['changes']).toEqual({ fontFamily: { op: 'set', value: 'Roboto' } })
     } finally {
       globalThis.fetch = restore
     }

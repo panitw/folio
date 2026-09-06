@@ -13,6 +13,11 @@ const parsed = (payload: ArrayBuffer): Record<string, unknown> => JSON.parse(tex
 const awkward = 'a"b\\c'
 const controlled = 'a\u0001b'
 
+// The twelve fields `embedFontFamily` requires, minus the one under test. The
+// bytes are one byte of nothing: this file asserts the WIRE, and Go is what
+// decides whether a face is readable.
+const pick = { chain: 'Inter', family: 'Inter', style: 'Regular', licence: 'OFL-1.1', licenceText: 'terms', copyright: 'c', source: 'https://example.invalid', mediaType: 'font/ttf', bytes: new Uint8Array([0]).buffer, tail: [] as ReadonlyArray<string> }
+
 describe('the six font chain commands are exactly the payloads the engine reads', () => {
   it('encodes every kind with its exact field arity', () => {
     // componentFields(raw, N) counts EVERY top-level key, `kind` and `version`
@@ -25,8 +30,26 @@ describe('the six font chain commands are exactly the payloads the engine reads'
     expect(text(moveFontChainEntryCommand('body', 2, 0))).toBe('{"kind":"moveFontChainEntry","version":1,"name":"body","from":2,"to":0}')
     expect(text(removeFontChainEntryCommand('body', 1))).toBe('{"kind":"removeFontChainEntry","version":1,"name":"body","index":1}')
 
+    // STORY 11.4 — ROUTE C: an entry may be an OBJECT naming a face and the cuts
+    // it has. THE FIELD COUNTS DO NOT MOVE, which is the whole reason route C
+    // was taken over widening an arity: `entries` is one field whatever shape
+    // its members are, so `componentFields(raw, 4)` is untouched in Go.
+    expect(text(addFontChainCommand('Roboto', [{ face: 'Roboto', bold: 'Roboto Bold', italic: 'Roboto Italic', boldItalic: 'Roboto Bold Italic' }]))).toBe('{"kind":"addFontChain","version":1,"name":"Roboto","entries":[{"face":"Roboto","bold":"Roboto Bold","italic":"Roboto Italic","boldItalic":"Roboto Bold Italic"}]}')
+    // AN ABSENT CUT IS AN ABSENT KEY, never an empty string: Go refuses `""` as
+    // a variant, so a family with only a bold must emit only `bold`.
+    expect(text(addFontChainCommand('x', [{ face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' }]))).toBe('{"kind":"addFontChain","version":1,"name":"x","entries":[{"face":"Noto Sans Thai","bold":"Noto Sans Thai Bold"}]}')
+    // AND A FAMILY WITH NO CUT STAYS A BARE STRING — the shape a variant-free
+    // entry canonicalises to, which is what keeps such a document at 1.0.
+    expect(text(addFontChainCommand('x', ['Noto Sans SC']))).toBe('{"kind":"addFontChain","version":1,"name":"x","entries":["Noto Sans SC"]}')
+    // THE TAIL TAKES THE SAME SHAPE, through the same encoder.
+    expect(text(embedFontFamilyCommand({ ...pick, tail: [{ face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' }, 'Noto Sans SC'] }))).toContain('"tail":[{"face":"Noto Sans Thai","bold":"Noto Sans Thai Bold"},"Noto Sans SC"]')
+
     const arity: ReadonlyArray<readonly [ArrayBuffer, number, readonly string[]]> = [
       [addFontChainCommand('heading', ['Noto Sans']), 4, ['kind', 'version', 'name', 'entries']],
+      // THE SAME COUNT AND THE SAME KEYS with an object entry. A row that only
+      // ever passed bare strings could not see route C move an arity.
+      [addFontChainCommand('heading', [{ face: 'Roboto', bold: 'Roboto Bold' }]), 4, ['kind', 'version', 'name', 'entries']],
+      [embedFontFamilyCommand({ ...pick, tail: [{ face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' }] }), 12, ['kind', 'version', 'name', 'family', 'style', 'licence', 'licenceText', 'copyright', 'source', 'mediaType', 'data', 'tail']],
       [renameFontChainCommand('body', 'text'), 4, ['kind', 'version', 'name', 'to']],
       [deleteFontChainCommand('body'), 3, ['kind', 'version', 'name']],
       [addFontChainEntryCommand('body', 0, 'Noto Sans'), 5, ['kind', 'version', 'name', 'index', 'face']],

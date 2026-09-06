@@ -445,6 +445,40 @@ func unknownEntryKeyReason(key string) string {
 		` The legal shape is ` + fontChainEntryGrammar()
 }
 
+// selfReferentialVariantReason: the sibling names the entry's OWN base, on
+// either arm (D-11.2.11 / DW-241).
+//
+// It joins the shared grammar like its three siblings above, and it DERIVES
+// the key enumeration rather than spelling it: the three keys appear in this
+// sentence only through quotedKeyList, so a set the parser no longer enforces
+// cannot be named by a refusal.
+//
+// IT NAMES THE ONE AXIS, because the near-miss is the thing a reader will get
+// wrong. The base is PRIVILEGED and it is the only comparison made: two
+// DIFFERENT variants of one entry naming the same face —
+// `{"face":"Roboto","bold":"X","italic":"X"}` — is legal and silent, and this
+// narrowing must never quietly become "no two variants may agree".
+//
+// ⚠ THE CLAUSE ORDER IS LOAD-BEARING AND IT IS MEASURED, NOT ARRANGED BY TASTE.
+// LoadError.Error() cuts Reason at loadErrorReasonRunes (256) with a `…`, and
+// the first draft of this sentence was 917 runes: the rendered message an
+// author actually reads stopped mid-clause, BEFORE the remedy and BEFORE "only
+// the base is privileged" — the one sentence D-11.2.11 requires, without which
+// the narrowing reads as "no two variants may agree", which is wider than what
+// was ruled. So the claim, the remedy and the one-axis clause come FIRST, in
+// 245 runes; the elaboration and the shared grammar follow and are the parts
+// the cut may take. TestASelfReferentialVariantSaysWHYAndSaysItFromTheCLOSEDSet
+// asserts on Error(), not on Reason, because Reason is not what the author sees.
+func selfReferentialVariantReason() string {
+	return `a style variant may not name the entry's OWN base. ` + quotedKeyList(fontChainVariantKeys()) +
+		` name the face drawn INSTEAD of the base, so one naming the base declares no cut, silently.` +
+		` Write no key at all, or name the cut's face; only the base is privileged` +
+		` — two DIFFERENT variants of one entry may name the same face, and that is legal (D-11.2.11).` +
+		` "The entry's OWN base" is the face name the entry declares, or its assets key when the entry is embedded.` +
+		` An entry that DECLARES a variant is not an entry that declares none, so the warning that announces a missing cut never fires.` +
+		` The legal shape is ` + fontChainEntryGrammar()
+}
+
 // decodeFontChainEntry decodes ONE chain entry at field, which already
 // carries the chain name and the index.
 //
@@ -554,6 +588,39 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 			}
 			if name == "" {
 				return FontChainEntry{}, newLoadError(sibField, "", string(sibRaw), "an empty string names no face")
+			}
+			// D-11.2.11 / DW-241: A VARIANT MAY NOT NAME ITS OWN BASE.
+			//
+			// ONE PREDICATE PER ARM, AGAINST THAT ARM'S OWN DISCRIMINANT
+			// VALUE. Both `entry.Face` and `entry.AssetKey` are already set
+			// above — before this loop — which is what lets one check site
+			// serve a `face` entry and an `asset` entry without either arm
+			// growing its own copy of it.
+			//
+			// IT SITS AFTER THE EMPTY CHECK AND BEFORE THE NAMESPACE BLOCK,
+			// deliberately: a self-reference is trivially IN namespace, so the
+			// namespace check below can never fire on one, and running it
+			// first would also make requireEmbeddedFaceLicence run a second
+			// time over the asset this entry already cleared.
+			//
+			// ⚠ ITS LIMIT, STATED HERE BECAUSE THIS IS WHERE A READER MEETS
+			// THE CHECK (DW-245). This is STRING EQUALITY against the entry's
+			// own discriminant value, and that is all it can be. It cannot see
+			// `{"face":"Roboto","bold":"Roboto Copy"}` where two distinct
+			// FontSet keys happen to hold IDENTICAL BYTES — that renders
+			// bold-as-regular just as silently, and the entry looks entirely
+			// well-formed. Detecting it would mean comparing the two faces'
+			// CONTENTS, and D-11.2.1 forbids the engine to resolve or compare
+			// faces by anything read out of the binaries. So the failure is
+			// closed for the case an author reaches by mistake and open for
+			// the case an author reaches by a stranger route; a check whose
+			// limit is unstated ages into a false reassurance.
+			own := entry.Face
+			if entry.Embedded() {
+				own = entry.AssetKey
+			}
+			if name == own {
+				return FontChainEntry{}, newLoadError(sibField, "", name, selfReferentialVariantReason())
 			}
 			// AD-8's NAMESPACE MATCH, BOTH DIRECTIONS. A sibling of a
 			// `face` entry is a FontSet face name; a sibling of an

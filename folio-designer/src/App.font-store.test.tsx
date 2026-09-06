@@ -993,6 +993,161 @@ describe('a fetched face stays on this machine', () => {
     expect(sent.map((payload) => payload['kind']), 'still exactly one embed for the two picks').toEqual(['embedFontFamily'])
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // STORY 11.4 — THE DECLARE PATH'S TWO CONCURRENCY GUARDS.
+  //
+  // ⚠ BOTH WERE DELETABLE WITH A GREEN SUITE, PROVED BY MUTATION: removing
+  // `declareShippedFamily`'s busy guard AND its post-await
+  // document/selection-generation guard left the designer suite at exactly the
+  // same file and test counts. The embed path's twins are driven by the
+  // neighbouring test above, which uses a WEB-tier family and therefore never
+  // reaches this function at all — the fork routes a shipped family somewhere
+  // else, so the coverage that looked like it covered both covered one.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GUARD ONE: THE DESIGNER-WIDE HOLD.
+  //
+  // Selecting the second box REMOUNTS the family control with a fresh
+  // per-control `pendingRef`, so the only thing standing between two declares
+  // at that instant is `fontChainBusyRef`. Without it two resolutions run side
+  // by side and two `addFontChain` commands commit for one author gesture each
+  // — and the second is refused by the engine as a duplicate chain name, which
+  // is a refusal the author did nothing to earn.
+  //
+  // IT IS ALSO WHAT PINS `{ action: 'embed' }` ON THIS PATH. `FontFamilyProperty`
+  // paints a pick refusal only when `pickError.control.action === 'embed'`, so
+  // the alert asserted below is on screen ONLY because the declare path — which
+  // embeds nothing — sends that exact string. A well-meaning rename to
+  // `'declare'` without moving the painter's predicate would silently stop
+  // surfacing every refusal this function makes; this assertion is what reds.
+  it('refuses a second declare of a shipped family while the first is in flight, and sends one addFontChain', async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const sent: Record<string, unknown>[] = []
+    let holdTheDeclare = true
+    const twoBoxes = { ...canvas, components: [textComponent, { ...textComponent, id: 'e2', y: 48_000 }] }
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        if (holdTheDeclare && parsed['kind'] === 'addFontChain') await held
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: twoBoxes } }
+    })
+    render(<App engine={engine(request)} blankBytes={new Uint8Array([1, 2, 3]).buffer} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: twoBoxes }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+
+    expect(pick('Roboto', /^Roboto$/), 'Roboto is a shipped family the catalogue offers').toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['addFontChain']))
+
+    fireEvent.click(screen.getByLabelText('text component e2'))
+    expect(pick('Roboto', /^Roboto$/), 'the row is still offered against the second component').toBe(true)
+    // SETTLED GENEROUSLY, so a second resolution that DID start has reached its
+    // own command by the time this is read — otherwise the count would agree
+    // merely because nothing had run yet.
+    for (let tick = 0; tick < 10; tick++) await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.map((payload) => payload['kind']), 'one resolution at a time: the second pick declares nothing of its own').toEqual(['addFontChain'])
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent, 'the second pick is refused IN WORDS, at the control the author used').toBe('Roboto was not used: the designer was busy with another change. Try it again.')
+
+    holdTheDeclare = false
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(sent.map((payload) => payload['kind']), 'still exactly one declare for the two picks').toEqual(['addFontChain'])
+  })
+
+  // GUARD TWO: THE DOCUMENT AND SELECTION THE ANSWER COMES BACK TO.
+  //
+  // The chain command is awaited, and the property commit that follows it names
+  // the element ids the control was mounted with. If the selection — or the
+  // whole document — moves under a slow machine while that await is open, the
+  // commit would arrive carrying ids from a selection the author has left, or
+  // from a document that no longer exists. Setting a property on a component
+  // the author is not looking at is the failure; a document replacement is the
+  // worse half of it, and it takes the SAME branch, because replacing the
+  // document bumps `documentGeneration` AND clears the selection
+  // (`setCurrentSnapshot`'s `clearDocumentInteraction`).
+  //
+  // THE CHAIN IS STILL DECLARED, and that is correct rather than a shortfall:
+  // the command was accepted by the engine before the author moved, and undoing
+  // it is the author's to decide.
+  it('declares the chain but sets no component when the selection moves while the declare is in flight', async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const sent: Record<string, unknown>[] = []
+    let holdTheDeclare = true
+    const twoBoxes = { ...canvas, components: [textComponent, { ...textComponent, id: 'e2', y: 48_000 }] }
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload) {
+        const parsed = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>
+        sent.push(parsed)
+        if (holdTheDeclare && parsed['kind'] === 'addFontChain') await held
+      }
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: twoBoxes } }
+    })
+    render(<App engine={engine(request)} blankBytes={new Uint8Array([1, 2, 3]).buffer} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: twoBoxes }} />)
+    fireEvent.click(screen.getByLabelText('text component e1'))
+
+    expect(pick('Roboto', /^Roboto$/)).toBe(true)
+    await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['addFontChain']))
+
+    // THE AUTHOR MOVES ON, and only then does the engine answer.
+    fireEvent.click(screen.getByLabelText('text component e2'))
+    holdTheDeclare = false
+    release()
+    for (let tick = 0; tick < 10; tick++) await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(sent.map((payload) => payload['kind']), 'no property is committed into a selection the author has left').toEqual(['addFontChain'])
+    // AND THE ID IS NAMED, so the assertion above cannot pass for the wrong
+    // reason on some later day when a second command is legitimately sent.
+    const properties = sent.filter((payload) => payload['kind'] === 'updateComponentProperties')
+    expect(properties.flatMap((payload) => payload['ids'] as ReadonlyArray<string>), 'a stale commit would carry e1, the element the pick was started on').toEqual([])
+  })
+
+  // STORY 11.4 / P19 — A STORED ROW FOR A FAMILY THE RELEASE ALREADY SHIPS
+  // ROUTES TO THE DECLARE PATH, AND ITS FETCHED BYTES GO UNUSED. DELIBERATELY.
+  //
+  // `Noto Sans` and `Noto Sans Thai` are installable from the web index, so a
+  // `stored` row for one of them can reach the family control's fork carrying
+  // bytes this designer fetched and kept. The fork asks the DECLARED MIRROR,
+  // not the tier, so that row is NAMED rather than embedded — which is the
+  // right answer and not an accident: embedding would put a copy of a face
+  // every machine already has into the document, as a Regular-only entry that
+  // can never bold while the shipped Bold sits in the same FontSet.
+  //
+  // The stored copy is not wasted — it is what the specimen is painted with —
+  // and nothing is deleted from the store. This fork decides what a DOCUMENT
+  // carries, not what this machine keeps.
+  it('names a shipped family even when this machine holds fetched bytes for it', async () => {
+    const key = await storedFaceKey(kanitFace)
+    const opened = await openFontStore(globalThis.indexedDB)
+    if (!opened.ok) throw new Error(opened.reason)
+    const written = await opened.value.put({ ...storedOnly(key, kanitFace), family: 'Noto Sans', licenceText: kanitLicence, copyright: 'Copyright 2026 The Noto Project Authors' })
+    expect(written.ok, 'the fixture face must really be in the store before the designer opens it').toBe(true)
+
+    globalThis.fetch = upstreamFetch() as never
+    const request = commandRequest()
+    mount(request)
+    await waitForStoredFamily('Noto Sans')
+
+    expect(pick('Noto Sans', /^Noto Sans$/), 'the stored family must be offered for first use').toBe(true)
+    await waitFor(() => expect(embedPayloads(request).map((payload) => payload['kind'])).toEqual(['addFontChain', 'updateComponentProperties']))
+    const declared = embedPayloads(request)[0]
+    // NO BYTES TRAVELLED. `embedFontFamily` is the only command that carries
+    // any, and it was not sent.
+    expect(declared['data'], 'a shipped family is named, never carried, whatever this machine happens to hold').toBeUndefined()
+    // AND IT DECLARED THE SHIPPED FAMILY'S CUTS, which is the thing the stored
+    // Regular-only copy could never have provided.
+    expect(declared['entries']).toEqual([
+      { face: 'Noto Sans', bold: 'Noto Sans Bold', italic: 'Noto Sans Italic', boldItalic: 'Noto Sans Bold Italic' },
+      { face: 'Noto Sans Thai', bold: 'Noto Sans Thai Bold' },
+      'Noto Sans SC',
+    ])
+    // THE STORE IS UNTOUCHED: routing a pick past the bytes does not throw them
+    // away, and the specimen is still painted from them.
+    expect((await faceRecordsOnThisMachine()).map((record) => record.family)).toContain('Noto Sans')
+  })
+
   // THE DEGRADED CONFIRM WARNING, ASSERTED AGAINST THE CODE THAT DECIDES IT AND
   // NOT THE CODE THAT DISPLAYS IT.
   //

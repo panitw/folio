@@ -258,6 +258,37 @@ for (const [script, family] of Object.entries(scriptFallbacks)) {
   if (!shippedRegularFamilies.includes(family)) throw new Error(`scriptFallbacks maps the script '${script}' to the face ${JSON.stringify(family)}, which is not one of the upright Regular shipped families (${shippedRegularFamilies.join(', ')}). That string becomes a chain entry in the author's document: the engine SKIPS an entry naming a face it was not given rather than failing — so a name nobody supplies silently proposes a fallback that draws nothing and the chain renders tofu — and a name that IS supplied but is a bold or italic CUT is worse, because it works: an entire script would render bold or sloped in every author's document, for every chain that reached the tail.`)
 }
 
+// AND EVERY FALLBACK FACE IS A ROW IN THE DECLARED FAMILY→CUTS MIRROR.
+//
+// STORY 11.4 GAVE THESE THREE NAMES A SECOND JOB AND A SECOND WAY TO GO WRONG.
+// A proposed tail entry no longer only NAMES a shipped face: it declares the
+// cuts that face has, looked up in `src/shipped-face-cuts.ts` — the one place
+// in the tree that says which faces are one family's cuts. Both pick paths
+// compute it as `shippedFamilyEntry(shipped) ?? shipped`, and that `??` is a
+// SILENT DEGRADE: a fallback the mirror has no row for falls back to a bare
+// face name, which is a perfectly legal chain entry that renders perfectly
+// well and simply cannot bold. Nothing downstream can tell that apart from a
+// family that genuinely has no cuts.
+//
+// So the two lists can drift, and the drift is invisible in every author's
+// document: rename a family on one side and every Thai run proposed by every
+// pick quietly loses its bold, for good, with a green build and a green suite.
+// The check above refuses a fallback naming a face nobody SUPPLIES; this one
+// refuses a fallback naming a face nobody DECLARED THE CUTS OF.
+//
+// The mirror is read as SOURCE TEXT rather than imported, for the reason
+// `canvas-font-stack.test.ts` reads `fonts.go` as text: this is a build script
+// with no TypeScript program around it, and the tie wanted is between two
+// authored lists, not between two module graphs.
+const mirrorSource = readFileSync(join(designerRoot, 'src', 'shipped-face-cuts.ts'), 'utf8')
+const mirrorTable = /export const shippedFamilyCuts: ReadonlyArray<ShippedFamilyCuts> = \[([\s\S]*?)\n\]/.exec(mirrorSource)
+if (mirrorTable === null) throw new Error("src/shipped-face-cuts.ts no longer declares shippedFamilyCuts the way build-wasm.mjs reads it, so the scriptFallbacks tie below would pass over an empty list; re-derive the parse before trusting this build")
+const mirrorFamilies = [...mirrorTable[1].matchAll(/\bfamily: '([^']+)'/g)].map((row) => row[1])
+if (mirrorFamilies.length === 0) throw new Error('read no families out of src/shipped-face-cuts.ts, so the scriptFallbacks tie below is vacuous')
+for (const [script, family] of Object.entries(scriptFallbacks)) {
+  if (!mirrorFamilies.includes(family)) throw new Error(`scriptFallbacks maps the script '${script}' to the face ${JSON.stringify(family)}, which src/shipped-face-cuts.ts declares no row for (it declares ${mirrorFamilies.join(', ')}). A pick computes a tail entry as shippedFamilyEntry(face) ?? face, so a face with no row falls back to a BARE NAME — a legal entry that renders correctly and can never bold. Every document whose ${script} fallback came from a pick would silently lose that family's cuts, with nothing anywhere to say so.`)
+}
+
 const catalogueIds = new Set()
 const catalogueFamilies = new Set(shippedFamilies)
 const catalogueFaces = catalogue.map((entry) => {

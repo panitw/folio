@@ -1633,8 +1633,14 @@ func TestFontChainAddRefusesEveryMalformedEntryList(t *testing.T) {
 		// still be four fields: a MISSPELLED key, which is the shape the
 		// mistake actually takes.
 		{`{"kind":"addFontChain","version":1,"name":"caption","faces":["Noto Sans"]}`, "font chain entries are required"},
-		{`{"kind":"addFontChain","version":1,"name":"caption","entries":"Noto Sans"}`, "font chain entries must be a string array"},
-		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[7]}`, "font chain entries must be a string array"},
+		// STORY 11.4 MOVED TWO OF THESE SENTENCES AND NO VERDICT. `entries` is
+		// no longer an array of strings — it is an array of the format's own
+		// chain entries — so a message saying "string array" would send the
+		// author to fix the one thing that was not wrong. The INPUTS and the
+		// refusals are the same;
+		// TestRouteCWidenedAFieldsShapeAndNoDoorsVERDICT is what asserts that.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":"Noto Sans"}`, "font chain entries must be an array of font chain entries"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[7]}`, "a font chain entry must be " + fontChainEntryShape},
 		{`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans",""]}`, "a font chain entry must be a non-empty string"},
 		{`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans","` + long + `"]}`, "font chain entry exceeds the projection bound"},
 	} {
@@ -1885,7 +1891,13 @@ func TestEmbedFontFamilyWritesTheAssetAndDeclaresTheChain(t *testing.T) {
 	face := testShippedNotoSansThai
 	key := embeddedKeyOf(face)
 
-	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face, `["Noto Sans","Noto Sans SC"]`))
+	// ⚠ THE TAIL IS WRITTEN IN THE OBJECT FORM, and it has to be. A mutation
+	// that rebuilt every tail entry as template.FaceEntry(e.Face) — dropping
+	// EVERY declared cut on EVERY tail entry — left the whole Go suite green,
+	// because nothing on this side ever read a tail entry's cuts back. A tail
+	// of bare strings cannot see that regression at all.
+	fontChainAccepted(t, tpl, embedCommand(t, "Noto Sans Thai", face,
+		`[{"face":"Noto Sans","bold":"Noto Sans Bold","italic":"Noto Sans Italic","boldItalic":"Noto Sans Bold Italic"},"Noto Sans SC"]`))
 
 	asset, ok := tpl.doc.Assets[key]
 	if !ok {
@@ -1925,6 +1937,45 @@ func TestEmbedFontFamilyWritesTheAssetAndDeclaresTheChain(t *testing.T) {
 	}
 	if chain[1].Face != "Noto Sans" || chain[2].Face != "Noto Sans SC" {
 		t.Errorf("the proposed tail did not survive: %#v", chain[1:])
+	}
+	// AND NEITHER DID ITS DECLARED CUTS. The tail is where a pick carries what
+	// the engine ships for the scripts the embedded face does not cover, so a
+	// tail that arrives stripped of its cuts silently un-bolds every fallback
+	// run in the document — with no warning anywhere, because an entry that
+	// declares no cut is a legal entry.
+	for _, want := range []struct {
+		at    int
+		style template.FontStyle
+		cut   string
+	}{
+		{1, template.FontStyleBold, "Noto Sans Bold"},
+		{1, template.FontStyleItalic, "Noto Sans Italic"},
+		{1, template.FontStyleBoldItalic, "Noto Sans Bold Italic"},
+		// D-A, and ORDINARY: Noto Sans SC has no cut at any weight, so the
+		// entry declares none and stays a bare face name.
+		{2, template.FontStyleBold, ""},
+	} {
+		if got := chain[want.at].Variant(want.style); got != want.cut {
+			t.Errorf("tail entry %d declares %v = %q, want %q", want.at, want.style, got, want.cut)
+		}
+	}
+	// NON-VACUITY of the "" row above, and of the whole block: at least one cut
+	// really did reach the model, so a writer that dropped every one of them
+	// could not pass this test by agreeing with the empty expectations.
+	if chain[1].Bold == "" {
+		t.Fatal("no tail cut reached the model at all, so every expectation above was vacuous")
+	}
+	// AND THE PICKED ENTRY ITSELF DECLARES NO CUT, which is the claim the
+	// designer test used to make with an assertion that could not fail — it
+	// inspected the TOP LEVEL of the command payload, where no variant key has
+	// ever been able to appear (D-11.2.8). The entry is built inside this
+	// function from the bytes it hashed, and here is where it can be read back.
+	// One embedded face is one face: a pick carries a single upright Regular
+	// and an entry may declare only a cut the document actually holds.
+	for _, style := range []template.FontStyle{template.FontStyleBold, template.FontStyleItalic, template.FontStyleBoldItalic} {
+		if got := chain[0].Variant(style); got != "" {
+			t.Errorf("the embedded entry declares %v = %q; a pick embeds ONE face and has no cut to declare", style, got)
+		}
 	}
 	// AND THE DOCUMENT IS STILL A DOCUMENT. applyFontChainCommand reparses its
 	// own canonical bytes, so this also proves the writer cannot emit a record
@@ -2735,5 +2786,433 @@ func TestComponentPropertyNullReportsTheCauseAndTheField(t *testing.T) {
 	}
 	if !strings.Contains(overflow.Message, "overflows millipoints") {
 		t.Fatalf("message = %q, want it to still report an overflow", overflow.Message)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORY 11.4 — ROUTE C: `entries` AND `tail` CARRY THE FORMAT'S OWN CHAIN ENTRY
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestRouteCWidenedAFieldsShapeAndNoDoorsVERDICT is Story 15.2a's inherited
+// obligation, made testable rather than asserted in prose.
+//
+// 15.2a's norm — "the accept-set of both doors is narrowed or unchanged at
+// every input; no draft may be accepted that was refused before" — binds the
+// JUDGMENT OF EXISTING INPUT SHAPES, not the set of expressible commands. Read
+// as a bar on the product ever gaining a capability it would be a permanent
+// freeze on the command surface, which its own "Valid command, unchanged"
+// matrix row contradicts. So the obligation this story inherits is: for every
+// command shape that exists today, the accept/refuse VERDICT is unchanged at
+// every input.
+//
+// ⚠ IT IS DELIBERATELY NOT A TEST THAT THE NEW SHAPE IS ACCEPTED. A case
+// showing `{"face": …, "bold": …}` going through proves nothing about whether
+// widening a field's SHAPE softened a VERDICT. Every row below is an input that
+// was REFUSED before route C and must still be refused after it — an arity
+// violation, which is a judgment about a field set that already existed, and
+// each malformed-entry-list row from the test above.
+func TestRouteCWidenedAFieldsShapeAndNoDoorsVERDICT(t *testing.T) {
+	long := strings.Repeat("f", maxCanvasPropertyString+1)
+	// ARITY, ON AN EXISTING FIELD SET AND IN BOTH DIRECTIONS. componentFields
+	// counts an exact arity and route C moved no constant: addFontChain is
+	// still 4 and embedFontFamily still 12. These refusals are UNLOCATED — the
+	// count is checked before any field is read, so there is no chain name to
+	// name — which is why they are asserted here rather than through
+	// fontChainRefusal.
+	for _, command := range []string{
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans"],"extra":1}`,
+		`{"kind":"addFontChain","version":1,"name":"caption"}`,
+		`{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","mediaType":"font/ttf","data":"AA==","tail":[]}`,
+	} {
+		tpl := fontChainTemplate(t)
+		before, err := SerializeTemplate(tpl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, applyErr := ApplyComponentCommand(tpl, []byte(command)); applyErr == nil {
+			t.Errorf("an arity violation was accepted after route C: %s", command)
+		}
+		after, err := SerializeTemplate(tpl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("a refused command mutated the document: %s", command)
+		}
+	}
+	for _, command := range []string{
+		// THE MALFORMED ENTRY LISTS, unchanged inputs to the letter.
+		`{"kind":"addFontChain","version":1,"name":"caption","faces":["Noto Sans"]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":"Noto Sans"}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[7]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans",""]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans","` + long + `"]}`,
+		// AND THE NAME RULES THE ENTRY SHAPE NEVER TOUCHED.
+		`{"kind":"addFontChain","version":1,"name":"body","entries":["Noto Sans"]}`,
+		`{"kind":"addFontChain","version":1,"name":"","entries":["Noto Sans"]}`,
+	} {
+		fontChainRefusal(t, fontChainTemplate(t), command)
+	}
+	// POSITIVE CONTROL: the door is not simply refusing everything. The one
+	// command shape that was accepted before route C is accepted after it, and
+	// it is the SAME bytes — a chain of bare face-name strings.
+	fontChainAccepted(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans","Noto Sans Thai"]}`)
+}
+
+// TestAddFontChainDeclaresTheCutsAPickNAMES is route C's capability half: a
+// chain entry a command writes may declare the cuts its family has.
+//
+// It reads the entry back off the MODEL through FontChainEntry.Variant, which
+// is the closed set's own authority (model.go's fontChainVariants), so the tie
+// between the wire's key spellings and the fields they land in is asserted
+// rather than assumed to hold because both lists were typed the same day.
+func TestAddFontChainDeclaresTheCutsAPickNAMES(t *testing.T) {
+	tpl := fontChainTemplate(t)
+	fontChainAccepted(t, tpl, `{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":"Roboto Bold","italic":"Roboto Italic","boldItalic":"Roboto Bold Italic"},{"face":"Noto Sans Thai","bold":"Noto Sans Thai Bold"},"Noto Sans SC"]}`)
+	chain, ok := tpl.doc.Fonts["caption"]
+	if !ok || len(chain) != 3 {
+		t.Fatalf("the pick declared %#v, want three entries", chain)
+	}
+	for _, want := range []struct {
+		at    int
+		face  string
+		style template.FontStyle
+		cut   string
+	}{
+		{0, "Roboto", template.FontStyleBold, "Roboto Bold"},
+		{0, "Roboto", template.FontStyleItalic, "Roboto Italic"},
+		{0, "Roboto", template.FontStyleBoldItalic, "Roboto Bold Italic"},
+		{1, "Noto Sans Thai", template.FontStyleBold, "Noto Sans Thai Bold"},
+		{1, "Noto Sans Thai", template.FontStyleItalic, ""},
+		// D-A, AND IT IS ORDINARY BEHAVIOUR: Noto Sans SC has no cut at any
+		// weight, so the entry declares none and stays a bare face name.
+		{2, "Noto Sans SC", template.FontStyleBold, ""},
+		{2, "Noto Sans SC", template.FontStyleBoldItalic, ""},
+	} {
+		entry := chain[want.at]
+		if entry.Face != want.face {
+			t.Fatalf("entry %d names %q, want %q", want.at, entry.Face, want.face)
+		}
+		if entry.Embedded() {
+			t.Fatalf("entry %d is an EMBEDDED entry; a command writes FACE names and never an asset sibling", want.at)
+		}
+		if got := entry.Variant(want.style); got != want.cut {
+			t.Errorf("entry %d (%q) declares %v = %q, want %q", want.at, want.face, want.style, got, want.cut)
+		}
+	}
+	// AND THE DOCUMENT CARRIES NO ASSET. Naming a shipped family is not
+	// embedding it: that is the whole of what Story 11.4 changed about a pick.
+	if len(tpl.doc.Assets) != 0 {
+		t.Errorf("naming a shipped family wrote %d assets; a pick that names must embed nothing", len(tpl.doc.Assets))
+	}
+	// NON-VACUITY of the "" rows above: at least one cut really was declared,
+	// so a decoder that dropped every variant could not pass this test.
+	if chain[0].Bold == "" {
+		t.Fatal("no cut reached the model at all, so every empty-string row above was vacuous")
+	}
+}
+
+// TestACommandMayNotWriteAnAssetSiblingOrAnUnknownKey is the guarantee the
+// `assetKeyReferenced` out-of-scope ruling rests on, asserted rather than
+// remembered.
+//
+// Before route C the guarantee was the wire type: `[]string` had nowhere to put
+// an asset. Now it is this refusal, so it is the thing that must be tested — an
+// invariant whose mechanism changed and whose test did not is an invariant
+// nobody is checking.
+func TestACommandMayNotWriteAnAssetSiblingOrAnUnknownKey(t *testing.T) {
+	for _, probe := range []struct {
+		command, mustSay string
+		// A refusal about the ENTRY tells the author what an entry may be. A
+		// refusal about one variant's VALUE does not, because the shape was
+		// never the thing that was wrong.
+		statesShape bool
+	}{
+		// THE ASSET ARM, ON BOTH DOORS AND IN BOTH POSITIONS.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"asset":"9f86d0"}]}`, "never an assets key", true},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","asset":"9f86d0"}]}`, "never an assets key", true},
+		// A FOURTH VARIANT KEY. The set is CLOSED, and the closure is what keeps
+		// an unknown key inside an entry a refusal rather than a decoration.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","weight":700}]}`, "CLOSED", true},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","oblique":"Roboto Italic"}]}`, "CLOSED", true},
+		// A NON-STRING VARIANT — `bold` is a boolean on `style` and a FACE here.
+		// It is NOT the closed-set refusal: the key is a member, the value is
+		// the wrong kind of thing, and telling this author the set is closed
+		// would send them to fix the one thing that was not wrong.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":true}]}`, `"bold" must be a string naming a face`, true},
+		// AN OBJECT WITH NO DISCRIMINANT AT ALL.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"bold":"Roboto Bold"}]}`, "must name the face it is", true},
+		// AN EXPLICIT EMPTY CUT. Absence is an absent KEY: an empty string names
+		// no face and the loader refuses it, so a command that let it through
+		// would author a document the product cannot reopen.
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":""}]}`, "write no key at all", false},
+		// AND THE TAIL TAKES EVERY ONE OF THE SAME RULES, because it is the same
+		// decoder. `data` is one byte of nothing, which never gets read: the
+		// tail is refused before the face is decoded.
+		{`{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","source":"s","mediaType":"font/ttf","data":"AA==","tail":[{"asset":"9f86d0"}]}`, "never an assets key", true},
+	} {
+		failure := fontChainRefusal(t, fontChainTemplate(t), probe.command)
+		if !strings.Contains(failure.Message, probe.mustSay) {
+			t.Errorf("refusal = %q, want it to mention %q\n  for %s", failure.Message, probe.mustSay, probe.command)
+		}
+		// Every ENTRY-shaped refusal still tells the author what they MAY write.
+		if probe.statesShape && !strings.Contains(failure.Message, fontChainEntryShape) {
+			t.Errorf("refusal = %q never states the legal entry shape\n  for %s", failure.Message, probe.command)
+		}
+	}
+	// THE SHAPE SENTENCE NAMES THE CLOSED SET AND THE ONE DISCRIMINANT A
+	// COMMAND MAY WRITE, and never `asset`.
+	for _, key := range []string{"face", "bold", "italic", "boldItalic"} {
+		if !strings.Contains(fontChainEntryShape, `"`+key+`"`) {
+			t.Errorf("the legal-shape sentence never names %q", key)
+		}
+	}
+	if strings.Contains(fontChainEntryShape, `"asset"`) {
+		t.Error("the legal-shape sentence offers `asset`, which no command may write")
+	}
+}
+
+// TestTheCommandDoorRefusesEveryNULLShapedHoleInAnEntryObject is the review
+// finding that made route C real rather than nominal, and every row below was
+// MEASURED as accepted before the decoder read a key map.
+//
+// Route C was chosen over a new command kind and over a widened arity for ONE
+// reason above the cost ones: it makes "a variant key is a face name, never an
+// assets key" a thing the DECODER enforces instead of a rule someone remembers.
+// A `*string` struct field with DisallowUnknownFields could not carry that
+// weight. A JSON null decodes to a nil pointer, so `{"asset":null}` named the
+// key and read as absent, and the guarantee had a null-shaped hole straight
+// through it. Two more holes came with it: a null CUT was dropped silently
+// while the loader refuses it with a located load error, and encoding/json
+// matches field names case-INSENSITIVELY, so `{"FACE":…}` and `{"BOLDITALIC":…}`
+// were accepted where the loader refuses them.
+//
+// Each arm is its own row, and each is mutation-proved by DELETING its own
+// guard rather than by deleting the decoder: one fix covering four findings is
+// a claim, not a demonstration.
+func TestTheCommandDoorRefusesEveryNULLShapedHoleInAnEntryObject(t *testing.T) {
+	for _, probe := range []struct{ name, command, mustSay string }{
+		{
+			"a null asset key still names the asset arm",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","asset":null}]}`,
+			"never an assets key",
+		},
+		{
+			"a null asset key with no face beside it",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"asset":null}]}`,
+			"never an assets key",
+		},
+		{
+			"a null cut is a value, not an absence",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":null}]}`,
+			`"bold" is present and null`,
+		},
+		{
+			"a null face names no face",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":null}]}`,
+			`"face" is present and null`,
+		},
+		{
+			"the discriminant is CASE-SENSITIVE",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"FACE":"Roboto"}]}`,
+			"CASE-SENSITIVE",
+		},
+		{
+			"and so is every cut key",
+			`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","BOLDITALIC":"Roboto Bold Italic"}]}`,
+			"CASE-SENSITIVE",
+		},
+		{
+			"and the tail takes the same rules, because it is the same decoder",
+			`{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","source":"s","mediaType":"font/ttf","data":"AA==","tail":[{"face":"Noto Sans Thai","bold":null}]}`,
+			`"bold" is present and null`,
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			failure := fontChainRefusal(t, fontChainTemplate(t), probe.command)
+			if !strings.Contains(failure.Message, probe.mustSay) {
+				t.Errorf("refusal = %q, want it to say %q", failure.Message, probe.mustSay)
+			}
+		})
+	}
+	// THE THREE REFUSALS ARE THREE DIFFERENT SENTENCES. An unrecognised key, a
+	// value of the wrong type and a null are three different author mistakes,
+	// and a decoder that collapses them into one sentence has told the author
+	// only that something is wrong.
+	distinct := map[string]string{}
+	for _, command := range []string{
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","weight":700}]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":true}]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":null}]}`,
+		`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":""}]}`,
+	} {
+		message := fontChainRefusal(t, fontChainTemplate(t), command).Message
+		if seen, ok := distinct[message]; ok {
+			t.Errorf("two different defects share one refusal %q:\n  %s\n  %s", message, seen, command)
+		}
+		distinct[message] = command
+	}
+	// POSITIVE CONTROL, and it is the near-miss rather than an easy one: the
+	// legitimate spellings of every arm above are ACCEPTED. Without it a
+	// decoder that refused every object would pass every row.
+	fontChainAccepted(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":"Roboto Bold","boldItalic":"Roboto Bold Italic"}]}`)
+}
+
+// TestARepeatedKeyInsideAChainEntryIsRefusedAtTheDoor is the fourth arm of the
+// same finding, and it is here to record that the answer is NOT in the entry
+// decoder.
+//
+// refuseDuplicateCommandKeys token-scans the WHOLE command at every depth —
+// arrays and nested objects are not special cases anywhere else and are not
+// special cases there — so a repeated key inside one entry object is refused
+// before addFontChain runs, with the path of the object that carries it. A
+// second duplicate check inside commandFontChainEntry would be a second answer
+// to a solved question, and two answers can disagree. This test is what keeps
+// the reuse honest: if the door's scan ever stopped descending into `entries`,
+// nothing else would notice.
+func TestARepeatedKeyInsideAChainEntryIsRefusedAtTheDoor(t *testing.T) {
+	for _, probe := range []struct{ command, at string }{
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"A","bold":"B","bold":"C"}]}`, "$.entries[0]"},
+		{`{"kind":"addFontChain","version":1,"name":"caption","entries":["Noto Sans",{"face":"A","face":"B"}]}`, "$.entries[1]"},
+		{`{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","source":"s","mediaType":"font/ttf","data":"AA==","tail":[{"face":"A","italic":"B","italic":"C"}]}`, "$.tail[0]"},
+	} {
+		tpl := fontChainTemplate(t)
+		_, err := ApplyComponentCommand(tpl, []byte(probe.command))
+		if err == nil {
+			t.Fatalf("a repeated key inside a chain entry was accepted, last-wins and silently: %s", probe.command)
+		}
+		if !strings.Contains(err.Error(), "twice at "+probe.at) {
+			t.Errorf("refusal = %q, want it to locate the repeat at %s", err.Error(), probe.at)
+		}
+	}
+}
+
+// TestASelfReferentialVariantThroughTheCOMMANDDoorIsRefused closes the gap
+// between the two doors' WORDING on a defect they already agreed the verdict of.
+//
+// Before Story 11.4's review a command writing `{"face":"Roboto","bold":"Roboto"}`
+// was refused only by applyFontChainCommand's reparse, which surfaces as the
+// UNLOCATED "font chains did not pass format validation" — a sentence that
+// names neither the chain, the entry, nor the key, and leaves an author who
+// wrote one cut wrong staring at their whole font section. The loader is still
+// the authority for the rule; the command door now states it where the author
+// can act on it.
+func TestASelfReferentialVariantThroughTheCOMMANDDoorIsRefused(t *testing.T) {
+	for _, probe := range []struct{ name, command string }{
+		{"entries", `{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":"Roboto"}]}`},
+		{"a tail entry", `{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","source":"s","mediaType":"font/ttf","data":"AA==","tail":[{"face":"Noto Sans Thai","italic":"Noto Sans Thai"}]}`},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			failure := fontChainRefusal(t, fontChainTemplate(t), probe.command)
+			for _, phrase := range []string{"OWN base face", "only the base is privileged"} {
+				if !strings.Contains(failure.Message, phrase) {
+					t.Errorf("refusal = %q does not say %q", failure.Message, phrase)
+				}
+			}
+			if failure.DataPath == "" {
+				t.Error("the command door's self-reference refusal is unlocated, which is the whole defect it replaces")
+			}
+		})
+	}
+	// AND THE NARROWING IS THE ONE AXIS. A cross-variant collision names the
+	// same face twice and never names the base — legal at the loader
+	// (D-11.2.11) and it must stay legal here, or the command door has
+	// quietly become stricter than the format.
+	fontChainAccepted(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","bold":"X","italic":"X"}]}`)
+}
+
+// TestTheCommandDoorsCutSetIsTheFormatsCutSet ties the command layer's local
+// enumeration of the closed variant set to the format's authority.
+//
+// The authority is internal/template's fontChainVariants, declared "THE
+// authority for the closed variant set" — and it is UNEXPORTED, so the command
+// door (package folio) cannot import it and holds its own projection. Two
+// hand-kept lists that agree only because they were typed the same day is the
+// drift this repo has been bitten by before, so this test reads the Go source
+// as text, which is the established idiom for a two-language / two-package list
+// tie (canvas-font-stack.test.ts parses fonts.go the same way).
+func TestTheCommandDoorsCutSetIsTheFormatsCutSet(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("internal", "template", "model.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := regexp.MustCompile(`var fontChainVariants = \[\]struct \{[\s\S]*?\n\}\{\n([\s\S]*?)\n\}`).FindSubmatch(source)
+	if block == nil {
+		t.Fatal("fontChainVariants is no longer declared the way this test reads it; re-derive the parse before trusting a green")
+	}
+	var authority []string
+	for _, row := range regexp.MustCompile(`\{"([^"]+)",`).FindAllSubmatch(block[1], -1) {
+		authority = append(authority, string(row[1]))
+	}
+	// NON-VACUITY: a parse that found nothing would make every comparison below
+	// trivially true.
+	if len(authority) == 0 {
+		t.Fatal("read no variant keys out of model.go, so the tie below is vacuous")
+	}
+	if got := commandFontChainCutKeys(); !slices.Equal(got, authority) {
+		t.Errorf("the command door writes %v; the format's authority is %v", got, authority)
+	}
+	// AND THE FIELDS, not only the names: a key that lands in the wrong field
+	// would satisfy the list tie and still write bold into italic. Each key is
+	// driven through the real door and read back through the model's own
+	// Variant accessor, which is derived from the same authority.
+	for _, tc := range []struct {
+		key   string
+		style template.FontStyle
+	}{
+		{"bold", template.FontStyleBold},
+		{"italic", template.FontStyleItalic},
+		{"boldItalic", template.FontStyleBoldItalic},
+	} {
+		if !slices.Contains(authority, tc.key) {
+			t.Fatalf("%q is not in the format's authority, so this row asserts nothing", tc.key)
+		}
+		tpl := fontChainTemplate(t)
+		fontChainAccepted(t, tpl, `{"kind":"addFontChain","version":1,"name":"caption","entries":[{"face":"Roboto","`+tc.key+`":"A Cut"}]}`)
+		if got := tpl.doc.Fonts["caption"][0].Variant(tc.style); got != "A Cut" {
+			t.Errorf("%q landed in the field for %v as %q, want it to carry the cut", tc.key, tc.style, got)
+		}
+	}
+}
+
+// TestAMalformedTailIsReportedAsTheTailAndNotAsEntries is the whole reason
+// commandFontChainEntries takes a `subject` argument, and nothing asserted it.
+//
+// One decoder serves two fields — addFontChain's `entries` and
+// embedFontFamily's `tail` — which is what keeps the two doors from drifting in
+// what a pick may write. The cost of sharing it is that its array-level
+// refusals would name one field while the author was writing the other, sending
+// someone who mistyped a fallback face to go and look at a key their command
+// does not have. `subject` is the fix; this is the test that it is wired up.
+func TestAMalformedTailIsReportedAsTheTailAndNotAsEntries(t *testing.T) {
+	embed := func(tail string) string {
+		return `{"kind":"embedFontFamily","version":1,"name":"c","family":"F","style":"Regular","licence":"OFL-1.1","licenceText":"t","copyright":"c","source":"s","mediaType":"font/ttf","data":"AA==","tail":` + tail + `}`
+	}
+	// ⚠ `null` is in this table because it was NOT refused when the table was
+	// first written: encoding/json decodes null into a slice as a no-op, so a
+	// null tail arrived as an EMPTY tail and the command was accepted. It is
+	// the same null-shaped hole the entry decoder had, one level up.
+	for _, tail := range []string{`"Noto Sans"`, `{"face":"Noto Sans"}`, `7`, `null`} {
+		failure := fontChainRefusal(t, fontChainTemplate(t), embed(tail))
+		if !strings.Contains(failure.Message, "the fallback tail ") {
+			t.Errorf("refusal = %q, want it to name the fallback tail\n  for tail %s", failure.Message, tail)
+		}
+		if strings.Contains(failure.Message, "font chain entries must be") {
+			t.Errorf("refusal = %q names `entries`, a key this command does not have\n  for tail %s", failure.Message, tail)
+		}
+	}
+	// AND THE OTHER DIRECTION, or the row above passes for a decoder that
+	// simply says "the fallback tail" whatever it is decoding.
+	failure := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":"Noto Sans"}`)
+	if !strings.Contains(failure.Message, "font chain entries must be an array of font chain entries") {
+		t.Errorf("refusal = %q, want it to name `entries`", failure.Message)
+	}
+	nullEntries := fontChainRefusal(t, fontChainTemplate(t), `{"kind":"addFontChain","version":1,"name":"caption","entries":null}`)
+	if !strings.Contains(nullEntries.Message, "font chain entries is present and null") {
+		t.Errorf("refusal = %q, want a null `entries` refused by name", nullEntries.Message)
+	}
+	if strings.Contains(failure.Message, "fallback tail") {
+		t.Errorf("refusal = %q names the fallback tail, a key this command does not have", failure.Message)
 	}
 }

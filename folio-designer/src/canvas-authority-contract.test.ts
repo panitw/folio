@@ -193,10 +193,29 @@ const refusalVocabulary = [
   // plausible English; with comments stripped they cost nothing to add, and
   // leaving them out left five refusals a browser copy could have used.
   /font chain entries are required/,
-  /must be a string array/,
   /must be a non-empty string/,
   /declares more entries than the projection bound/,
   /declares more font chains than the projection bound/,
+  // STORY 11.4 — ROUTE C GAVE THE ENTRY DECODER SEVEN NEW SENTENCES, and every
+  // one of them is a rule about what a chain entry may be. They are exactly the
+  // shape a browser-side copy takes: a pick builder that "helpfully" validated
+  // its own entries before sending them would reproduce these one for one, pass
+  // every behavioural test the control has, and quietly become a second
+  // authority over the format — the failure this whole scan exists for.
+  //
+  // ⚠ `/must be a string array/` LEFT THIS LIST WITH THE SENTENCE IT NAMED.
+  // `entries` and `tail` are no longer string arrays, so the engine no longer
+  // says that; the first row below is the sentence that replaced it. Keeping
+  // the retired one would have been a pattern that can never fire, which reads
+  // as coverage and is not.
+  /must be an array of font chain entries/,
+  /is not a key a font chain entry may carry/,
+  /never an assets key/,
+  /must name the face it is/,
+  /is present and null/,
+  /must be a string naming a face/,
+  /write no key at all rather than an empty string/,
+  /names this entry's OWN base face/,
 ]
 
 // withoutComments removes line and block comments while leaving string and
@@ -294,7 +313,14 @@ describe('canvas projection authority contract', () => {
     expect(refusalForSource('const bound = "font chain name ' + 'exceeds the projection bound"')).not.toEqual([])
     expect(refusalForSource('const missing = `no font chain named "${name}" ' + 'is declared`')).not.toEqual([])
     expect(refusalForSource('const required = "font chain ' + 'entries are required"')).not.toEqual([])
-    expect(refusalForSource('const shape = "font chain entries ' + 'must be a string array"')).not.toEqual([])
+    expect(refusalForSource('const shape = "font chain entries ' + 'must be an array of font chain entries"')).not.toEqual([])
+    expect(refusalForSource('const key = `"${key}" ' + 'is not a key a font chain entry may carry"`')).not.toEqual([])
+    expect(refusalForSource('const asset = "a font chain entry written by a command names a FACE, ' + 'never an assets key"')).not.toEqual([])
+    expect(refusalForSource('const none = "a font chain entry object ' + 'must name the face it is"')).not.toEqual([])
+    expect(refusalForSource('const nulled = `"bold" ' + 'is present and null"`')).not.toEqual([])
+    expect(refusalForSource('const typed = `"bold" ' + 'must be a string naming a face"`')).not.toEqual([])
+    expect(refusalForSource('const empty = "for a cut this family does not have, ' + 'write no key at all rather than an empty string"')).not.toEqual([])
+    expect(refusalForSource('const self = `"bold" ' + 'names this entry\'s OWN base face"`')).not.toEqual([])
     expect(refusalForSource('const face = "a font chain entry ' + 'must be a non-empty string"')).not.toEqual([])
     expect(refusalForSource('const many = "a font chain ' + 'declares more entries than the projection bound"')).not.toEqual([])
     expect(refusalForSource('const chains = "document ' + 'declares more font chains than the projection bound"')).not.toEqual([])

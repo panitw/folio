@@ -288,6 +288,54 @@ func TestTheChainIsNeverWALKEDForWeight(t *testing.T) {
 	}
 }
 
+// TestACrossVariantCollisionLOADSANDRENDERS is DW-241's other direction at
+// the RENDER end, and it is not optional (D-11.2.11).
+//
+// Story 11.4 made a variant naming its entry's own base a load error. The
+// comparison is against THAT ARM'S OWN DISCRIMINANT and nothing else, so one
+// face declared as both the bold and the italic cut is a real declaration and
+// stays legal — and it must actually DRAW, not merely parse. Without this the
+// narrowing quietly becomes "no two variants may agree", which is wider than
+// what was ruled and is the failure a load-side test alone cannot see.
+//
+// ⚠ THE ASSERTION IS THE FACE, AND THE WARNING COUNT IS ZERO. A declared cut
+// is a declared cut: an element asking for italic against this entry must be
+// drawn in the face the entry names for italic, with no absence Warning — that
+// is what makes this the LEGITIMATE spelling of the pattern the guard refuses,
+// rather than a defect the guard happened to let through (D-11.3.7).
+func TestACrossVariantCollisionLOADSANDRENDERS(t *testing.T) {
+	const collided = `[{"face": "Roboto", "bold": "Roboto Bold", "italic": "Roboto Bold"}]`
+	for _, tc := range []struct{ name, style, want string }{
+		{"bold takes the declared cut", `{"fontFamily": "body", "fontSize": 12, "bold": true}`, "Roboto Bold"},
+		{"italic takes the SAME declared cut", `{"fontFamily": "body", "fontSize": 12, "italic": true}`, "Roboto Bold"},
+		// And the base is still the base: the collision decorates the entry, it
+		// does not replace it.
+		{"unstyled still draws the base", `{"fontFamily": "body", "fontSize": 12}`, "Roboto"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			faces, diags := renderedFacesAndDiags(t, styleFaceDoc(collided, tc.style, `"A"`))
+			requireFaces(t, faces, tc.want)
+			if w := styleFaceWarnings(diags); len(w) != 0 {
+				t.Fatalf("a DECLARED cut owes no absence Warning, got %+v", w)
+			}
+		})
+	}
+	// THE VACUITY GUARD, AND IT IS THE ONE THAT MATTERS HERE: the two faces
+	// this test discriminates between must actually be different, or "italic
+	// drew Roboto Bold" would be satisfied by an engine that ignored the
+	// declaration entirely and drew the base.
+	base, _ := renderedFacesAndDiags(t, styleFaceDoc(collided, `{"fontFamily": "body", "fontSize": 12}`, `"A"`))
+	italic, _ := renderedFacesAndDiags(t, styleFaceDoc(collided, `{"fontFamily": "body", "fontSize": 12, "italic": true}`, `"A"`))
+	if len(base) != 1 || len(italic) != 1 || base[0] == italic[0] {
+		t.Fatalf("the styled and unstyled renders drew the same face (%v / %v), so the assertions above cannot tell a declaration from an absence", base, italic)
+	}
+	// AND THE NEAREST DEFECT IS STILL REFUSED, so this green is a statement
+	// about the collision rather than about the guard being absent.
+	if _, err := ParseTemplate([]byte(styleFaceDoc(`[{"face": "Roboto", "bold": "Roboto", "italic": "Roboto Bold"}]`, `{"fontFamily": "body", "fontSize": 12}`, `"A"`))); err == nil {
+		t.Fatal("a variant naming its own base loaded; the collision above proves nothing about a check that is not there")
+	}
+}
+
 // TestAPartialStyleMatchIsAnAbsence: bold+italic against an entry
 // declaring only `bold` resolves to the BASE face and warns. Choosing
 // the bold cut would be a nearest-fit search — the inference this design

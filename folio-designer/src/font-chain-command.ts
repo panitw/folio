@@ -23,7 +23,14 @@
 // embedFontFamily 12. An extra field is not ignored, it is a refusal — which
 // is why every builder below still lists its own fields, in order, at the
 // call site.
-import { commandBytes, jsonArray, jsonNumber, jsonString } from './command-json'
+//
+// STORY 11.4 CHANGED A FIELD'S SHAPE AND NO FIELD'S COUNT. `addFontChain`'s
+// `entries` and `embedFontFamily`'s `tail` used to be arrays of strings and
+// are now arrays of `FontChainEntryAsk` — the format's own chain-entry shape,
+// so a pick can DECLARE the cuts a family has instead of writing a chain that
+// can never bold. Both arities are exactly what they were.
+import type { JsonField } from './command-json'
+import { commandBytes, jsonArray, jsonNumber, jsonObject, jsonString } from './command-json'
 
 const quote = jsonString
 // Go reads these with commandInt, which requires an integer literal. They are
@@ -31,8 +38,51 @@ const quote = jsonString
 // encoded rather than spliced so this module has exactly one encoder.
 const index = jsonNumber
 
-export function addFontChainCommand(name: string, entries: ReadonlyArray<string>): ArrayBuffer {
-  return commandBytes('addFontChain', [['name', quote(name)], ['entries', jsonArray(entries.map(quote))]])
+/**
+ * A CHAIN ENTRY AS A COMMAND MAY ASK FOR IT — the FORMAT'S OWN chain-entry
+ * shape, minus the one arm a command may not write (Story 11.4, route C).
+ *
+ * A bare string is a face name. An object is a `face` discriminant plus any of
+ * the CLOSED variant set — `bold`, `italic`, `boldItalic` — naming the face
+ * that entry is drawn in at that weight and slope. There is deliberately no
+ * `asset` arm and no way to add one: `folio-format.md` gives an entry three
+ * legal shapes and this type admits two of them.
+ *
+ * ⚠ THAT OMISSION IS THE POINT, AND IT REPLACES A RULE WITH A MECHANISM.
+ * Before this story `entries` and `tail` were `[]string` in Go, and the reason
+ * written beside them was that every entry a caller can express is a FACE
+ * NAME, so a caller cannot put a second asset entry in a chain by writing one
+ * down. `[]string` was the MECHANISM for that; the property is what mattered,
+ * and it is unchanged — the object form refuses `asset` on both sides, so the
+ * guarantee is still structural rather than something a person must remember.
+ *
+ * IT IS NOT A SECOND GRAMMAR. A `variants` sidecar keyed by index was refused
+ * on D-11.2.2's own ground: it invents a second way to say what the format
+ * already says.
+ */
+export type FontChainEntryAsk = string | Readonly<{ face: string; bold?: string; italic?: string; boldItalic?: string }>
+
+// THE CLOSED VARIANT SET, spelled once in this module and consumed by the one
+// encoder below, so the two builders that carry entries cannot disagree about
+// it. Widening it is a MAJOR format change the format doc already prices; the
+// engine refuses a fourth key at load whatever this list says.
+const variantKeys = ['bold', 'italic', 'boldItalic'] as const
+
+// An absent cut is an ABSENT KEY, never an empty string: Go refuses `""` as a
+// variant ("an empty string names no face") and would refuse a whole pick for
+// a cut the family simply does not have.
+const chainEntry = (entry: FontChainEntryAsk): string => {
+  if (typeof entry === 'string') return quote(entry)
+  const fields: JsonField[] = [['face', quote(entry.face)]]
+  for (const key of variantKeys) {
+    const cut = entry[key]
+    if (cut !== undefined) fields.push([key, quote(cut)])
+  }
+  return jsonObject(fields)
+}
+
+export function addFontChainCommand(name: string, entries: ReadonlyArray<FontChainEntryAsk>): ArrayBuffer {
+  return commandBytes('addFontChain', [['name', quote(name)], ['entries', jsonArray(entries.map(chainEntry))]])
 }
 
 export function renameFontChainCommand(name: string, to: string): ArrayBuffer {
@@ -84,7 +134,7 @@ export function embedFontFamilyCommand(face: {
   source: string
   mediaType: string
   bytes: ArrayBuffer
-  tail: ReadonlyArray<string>
+  tail: ReadonlyArray<FontChainEntryAsk>
 }): ArrayBuffer {
   return commandBytes('embedFontFamily', [
     ['name', quote(face.chain)],
@@ -92,7 +142,7 @@ export function embedFontFamilyCommand(face: {
     ['licence', quote(face.licence)], ['licenceText', quote(face.licenceText)],
     ['copyright', quote(face.copyright)], ['source', quote(face.source)],
     ['mediaType', quote(face.mediaType)], ['data', quote(base64(face.bytes))],
-    ['tail', jsonArray(face.tail.map(quote))],
+    ['tail', jsonArray(face.tail.map(chainEntry))],
   ])
 }
 

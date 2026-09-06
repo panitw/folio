@@ -226,7 +226,7 @@ chain produces a diagnostic naming the element and the rune; it is never silentl
 |---|---|
 | `face` | The discriminant of a shipped/supplied face, written as an object so it can carry variants. `{"face": "Roboto"}` and the bare string `"Roboto"` are the same entry; the bare string is what a variant-free entry serialises back to. |
 | `asset` | The discriminant of a face the document carries — a key of the top-level `assets` object, exactly as shape 2. |
-| `bold`, `italic`, `boldItalic` | *Optional.* The face this entry is drawn in for that weight and slope. **This is a CLOSED set of exactly three keys**, and extending it later is a **MAJOR** change, not an additive one — the closure is what keeps an unknown key inside an entry a load error rather than a decoration that rides along. ⚠ **The type differs from `style`'s keys of the same name**: on a `style` block `bold` and `italic` are **booleans** saying *what the author asked for*; on a chain entry they are **face names** (or `assets` keys) saying *what to draw it with*. |
+| `bold`, `italic`, `boldItalic` | *Optional.* The face this entry is drawn in for that weight and slope. **This is a CLOSED set of exactly three keys**, and extending it later is a **MAJOR** change, not an additive one — the closure is what keeps an unknown key inside an entry a load error rather than a decoration that rides along. ⚠ **The type differs from `style`'s keys of the same name**: on a `style` block `bold` and `italic` are **booleans** saying *what the author asked for*; on a chain entry they are **face names** (or `assets` keys) saying *what to draw it with*. A variant may **not name its own entry's base** — see below. |
 
 A variant's namespace **matches its entry's discriminant**: a `face` entry's variants are face
 names, an `asset` entry's variants are `assets` keys. A cross-namespace sibling —
@@ -234,6 +234,34 @@ names, an `asset` entry's variants are `assets` keys. A cross-namespace sibling 
 **load error naming the sibling**, e.g. `fonts.body[1].bold`. Nothing is ever *inferred* from a
 face name: an entry that declares no variant for the requested style has none, however the
 renderer's own faces happen to be named.
+
+**A variant naming its entry's OWN base face is a load error naming the sibling**, on either arm:
+`{"face": "Roboto", "bold": "Roboto"}` and `{"asset": "<key>", "bold": "<the same key>"}` are both
+refused at `fonts.body[1].bold`. Such an entry declares nothing — the face drawn at that weight is
+the face that would have been drawn anyway — and it does so *silently*, because an entry that
+declares a variant is not an entry that declares none, so the warning the three absence conditions
+below all earn never fires. Write **no key at all** to say this entry has no such cut. **The base is
+the only privileged name:** two *different* variants of one entry may name the same face —
+`{"face": "Roboto", "bold": "X", "italic": "X"}` loads and renders — and that is deliberate, not an
+oversight.
+
+⚠ **The limit of that refusal, stated so it is not mistaken for more than it is.** It is **string
+equality** against the entry's own discriminant, so it cannot see
+`{"face": "Roboto", "bold": "Roboto Copy"}` where two distinct face names hold **identical bytes**.
+That renders bold-as-regular just as silently and the entry looks entirely well-formed. Detecting it
+would mean comparing what is *inside* the two faces, and nothing in this format is ever resolved or
+compared by anything read out of a font binary — the same rule that makes a chain entry's `family`
+display identity rather than a resolver. The refusal closes the mistake an author reaches by
+writing the same name twice; it does not close the case reached by a stranger route.
+
+⚠ **This narrowing makes a `2.0` reader STRICTER than the one before it, and no version marks that.**
+A document that a `2.0` reader written before this refusal accepted — one whose variant names its own
+base — is refused by a `2.0` reader written after it, at the same declared version. The variant keys
+were introduced at `2.0` and no such document was ever written by this product, so nothing in the
+world is known to be affected; but the honest description of the change is a **narrowing inside a
+version**, not an additive one, and a reader who assumes "same version, same accept-set" would be
+wrong about these two documents. It is recorded here rather than in a changelog because the format
+doc is where that assumption is formed.
 
 **Three conditions all end the same way**, and an author needs all three to predict what a page
 will look like. In each, the rune is drawn in **that entry's own base face** — never in a later

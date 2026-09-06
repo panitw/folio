@@ -10,6 +10,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -3019,23 +3020,15 @@ func addFontChain(t *Template, raw map[string]json.RawMessage) error {
 	if !ok {
 		return componentFailure("", fontChainPath(name), "font chain entries are required")
 	}
-	var entries []string
-	if json.Unmarshal(entriesRaw, &entries) != nil {
-		return componentFailure("", fontChainPath(name), "font chain entries must be a string array")
+	entries, err := commandFontChainEntries(entriesRaw, name, "font chain entries")
+	if err != nil {
+		return err
 	}
 	if len(entries) == 0 {
 		return componentFailure("", fontChainPath(name), "a font chain must declare at least one entry")
 	}
 	if len(entries) > maxCanvasFontChainEntries {
 		return componentFailure("", fontChainPath(name), "a font chain declares more entries than the projection bound")
-	}
-	for _, face := range entries {
-		if face == "" {
-			return componentFailure("", fontChainPath(name), "a font chain entry must be a non-empty string")
-		}
-		if len(face) > maxCanvasPropertyString {
-			return componentFailure("", fontChainPath(name), "font chain entry exceeds the projection bound")
-		}
 	}
 	if len(t.doc.Fonts)+1 > maxCanvasFontFamilies {
 		return componentFailure("", fontChainPath(name), "document declares more font chains than the projection bound")
@@ -3044,14 +3037,12 @@ func addFontChain(t *Template, raw map[string]json.RawMessage) error {
 		t.doc.Fonts = template.Fonts{}
 	}
 	// Every entry this command can express is a FACE NAME. Story 8.6's
-	// pick-and-embed command is what will express an embedded entry;
-	// `entries` arrives here as a []string and there is deliberately no
-	// spelling in the command vocabulary that produces anything else.
-	chainEntries := make([]template.FontChainEntry, 0, len(entries))
-	for _, face := range entries {
-		chainEntries = append(chainEntries, template.FaceEntry(face))
-	}
-	t.doc.Fonts[name] = chainEntries
+	// pick-and-embed command is what expresses an embedded entry; there is
+	// deliberately no spelling in the command vocabulary that produces
+	// anything else, and since Story 11.4 that is enforced by
+	// commandFontChainEntries refusing `asset` rather than by the wire type
+	// having nowhere to put one.
+	t.doc.Fonts[name] = entries
 	return nil
 }
 
@@ -3382,14 +3373,19 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 		t.doc.Fonts = template.Fonts{}
 	}
 	// THE PICKED FACE FIRST, THE PROPOSED TAIL BEHIND IT (AC3). The tail is
-	// the shipped faces for the scripts the picked face does not cover; the
-	// author edits it with the chain commands 8.1 already shipped, which is
-	// why nothing here is privileged or locked.
+	// the shipped faces for the scripts the picked face does not cover — since
+	// Story 11.4 carrying the CUTS each of those faces has, so a document whose
+	// Thai fallback is `Noto Sans Thai` can bold its Thai even though the
+	// embedded face itself has no bold to declare. The author edits it with the
+	// chain commands 8.1 already shipped, which is why nothing here is
+	// privileged or locked.
+	//
+	// THE PICKED ENTRY DECLARES NO CUT, and that is not an omission: a pick
+	// embeds ONE face, the catalogue is one upright static Regular per family,
+	// and an entry may only declare a cut the document actually carries.
 	entries := make([]template.FontChainEntry, 0, len(tail)+1)
 	entries = append(entries, template.AssetEntry(key))
-	for _, face := range tail {
-		entries = append(entries, template.FaceEntry(face))
-	}
+	entries = append(entries, tail...)
 	t.doc.Fonts[name] = entries
 	return nil
 }
@@ -3467,34 +3463,314 @@ func embeddedFaceBytes(raw map[string]json.RawMessage, name string) ([]byte, err
 	return decoded, nil
 }
 
-// embeddedFontTail reads the proposed fallback tail: the shipped face names
-// that follow the picked face in the chain. It is a []string on the wire for
-// the same reason addFontChain's `entries` is — every entry it can express is
-// a FACE NAME, and the ONE entry that names an asset is the one this command
+// embeddedFontTail reads the proposed fallback tail: the shipped faces that
+// follow the picked face in the chain.
+//
+// THE INVARIANT, UNCHANGED SINCE STORY 8.6: every entry it can express is a
+// FACE NAME, and the ONE entry that names an asset is the one this command
 // builds itself from the bytes it just hashed. A caller cannot put a second
 // asset entry in a chain by writing one down.
+//
+// ⚠ ONLY THE MECHANISM MOVED (Story 11.4, route C). A `[]string` used to be
+// what made that true; the wire shape is now the format's own chain entry —
+// a bare face name, or an object naming a face and the cuts it has — and what
+// makes it true is commandFontChainEntries REFUSING the `asset` discriminant.
+// `[]string` was never the point: it could not express a tail entry's declared
+// bold either, so a pick proposed `Noto Sans Thai` behind an embedded face and
+// silently threw away the fact that the engine ships `Noto Sans Thai Bold`.
+// This is the same mechanism-versus-property move D-11.2.2 made to admit the
+// object form over the one-key rule.
 //
 // AN EMPTY TAIL IS LEGAL: a face that covers every script the document renders
 // needs no fallback behind it, and a chain of one embedded entry is a chain
 // (TestLoadNeitherResolvesNorRefusesAnEmbeddedEntry).
-func embeddedFontTail(raw map[string]json.RawMessage, name string) ([]string, error) {
+func embeddedFontTail(raw map[string]json.RawMessage, name string) ([]template.FontChainEntry, error) {
 	tailRaw, ok := raw["tail"]
 	if !ok {
 		return nil, componentFailure("", fontChainPath(name), "the proposed fallback tail is required — write [] for a face that needs none")
 	}
-	var tail []string
-	if json.Unmarshal(tailRaw, &tail) != nil {
-		return nil, componentFailure("", fontChainPath(name), "the fallback tail must be a string array")
+	return commandFontChainEntries(tailRaw, name, "the fallback tail")
+}
+
+// commandFontChainCuts is the CLOSED style-variant set a command may write,
+// paired with the model field each key lands in — the command door's local
+// projection of internal/template's fontChainVariants, which is the format's
+// authority and is unexported.
+//
+// ⚠ IT IS THE ONLY SPELLING OF THE THREE KEYS ON THIS SIDE OF THE WALL. The
+// key list this decoder validates against, the sentence that tells an author
+// what they may write, and the fields the values land in are all derived from
+// this one table, so a fourth cut cannot arrive in the grammar and be dropped
+// by the decoder, or vice versa. TestTheCommandDoorsCutSetIsTheFormatsCutSet
+// ties it to the format's own enumeration.
+var commandFontChainCuts = []struct {
+	key   string
+	field func(*template.FontChainEntry) *string
+}{
+	{"bold", func(e *template.FontChainEntry) *string { return &e.Bold }},
+	{"italic", func(e *template.FontChainEntry) *string { return &e.Italic }},
+	{"boldItalic", func(e *template.FontChainEntry) *string { return &e.BoldItalic }},
+}
+
+// commandFontChainCutKeys projects the cut keys in their fixed order.
+func commandFontChainCutKeys() []string {
+	out := make([]string, 0, len(commandFontChainCuts))
+	for _, cut := range commandFontChainCuts {
+		out = append(out, cut.key)
 	}
-	for _, face := range tail {
-		if face == "" {
-			return nil, componentFailure("", fontChainPath(name), "a font chain entry must be a non-empty string")
-		}
-		if len(face) > maxCanvasPropertyString {
-			return nil, componentFailure("", fontChainPath(name), "font chain entry exceeds the projection bound")
-		}
+	return out
+}
+
+// commandFontChainEntryKeys is the whole key set an entry object may carry on
+// the wire. `asset` is a MEMBER so that writing one is reported as the defect
+// it is — "a command names a face, never an assets key" — rather than as an
+// unrecognised key, which would send the author looking for a typo.
+func commandFontChainEntryKeys() []string {
+	return append([]string{"face", "asset"}, commandFontChainCutKeys()...)
+}
+
+// commandQuotedKeyList spells a key enumeration for a refusal, the way
+// internal/template's quotedKeyList does for the loader's refusals, so no
+// message on this side hand-writes a set the decoder no longer enforces.
+func commandQuotedKeyList(keys []string) string {
+	quoted := make([]string, len(keys))
+	for i, key := range keys {
+		quoted[i] = `"` + key + `"`
 	}
-	return tail, nil
+	return strings.Join(quoted, ", ")
+}
+
+// fontChainEntryShape is what a COMMAND may write for one chain entry, spelled
+// once and quoted by every refusal below so an author is always told what they
+// MAY write and never only what they may not. It is folio-format.md's entry
+// grammar with the `asset` arm removed — see embeddedFontTail for why that
+// removal is the mechanism rather than a restriction.
+//
+// It is DERIVED from commandFontChainCuts rather than typed out, for the reason
+// Story 8.3 gave: "unpinned wording in a refusal is wording that goes stale
+// silently and sends the author to fix the one thing that was not wrong."
+var fontChainEntryShape = `a face name (a string), or an object {"face": "<face name>"} carrying any of ` +
+	commandQuotedKeyList(commandFontChainCutKeys()) +
+	` naming the face it is drawn in at that weight and slope`
+
+// commandFontChainEntries decodes a command's array of chain entries — the one
+// decoder both `addFontChain`'s `entries` and `embedFontFamily`'s `tail` use,
+// so the two doors cannot drift in what a pick may write.
+//
+// `subject` names the field in every array-level refusal ("font chain
+// entries", "the fallback tail"), because a caller who wrote a malformed tail
+// must not be sent to look at `entries`.
+//
+// WHAT IT DOES NOT CHECK, deliberately: whether the faces named exist in this
+// build's FontSet. A chain naming a face the renderer was not given is a legal
+// chain — the format's standing tolerance — and the same document is correct
+// wherever that face IS supplied.
+//
+// WHAT IT DOES CHECK, and did not until Story 11.4's review: a variant naming
+// its entry's own base. That refusal is the loader's (D-11.2.11) and the
+// loader remains its authority — applyFontChainCommand reparses this decoder's
+// output before installing it — but the reparse's refusal is the UNLOCATED
+// "font chains did not pass format validation", which names neither the chain
+// nor the key. Two doors that agree on the verdict may still disagree on what
+// the author is told (TestASelfReferentialVariantThroughTheCOMMANDDoorIsRefused).
+func commandFontChainEntries(raw json.RawMessage, name, subject string) ([]template.FontChainEntry, error) {
+	refuse := func(reason string) error { return componentFailure("", fontChainPath(name), reason) }
+	// A NULL ARRAY IS ITS OWN REFUSAL, for the reason a null cut is
+	// (commandChainEntryString): encoding/json decodes null into a slice as a
+	// NO-OP, so `"tail": null` arrived here as an EMPTY tail and was accepted —
+	// a pick that meant to propose three fallback faces and mistyped the value
+	// would have written a one-entry chain and been told nothing. Null is a
+	// value; absence is a missing key, and embeddedFontTail already refuses
+	// that one by name.
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return nil, refuse(subject + " is present and null. Null is a VALUE, not an absence: write an array, and [] where it is meant to be empty")
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil, refuse(subject + " must be an array of font chain entries")
+	}
+	entries := make([]template.FontChainEntry, 0, len(items))
+	for _, item := range items {
+		entry, err := commandFontChainEntry(item, refuse)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+// commandFontChainEntry decodes ONE entry. The arm is chosen from the raw
+// JSON's first non-space byte, the way the format's own decoder chooses it
+// (internal/template/parse.go's decodeFontChainEntry), so a number, an array or
+// a null is told what the legal shapes are instead of being reported as a
+// failed object decode.
+//
+// ⚠ THE OBJECT ARM DECODES INTO A KEY MAP AND VALIDATES EXPLICITLY, AND IT MUST.
+// A struct with `*string` fields and DisallowUnknownFields — what this decoder
+// was until the shape was probed — cannot express three of the four rules
+// below, and each hole was MEASURED through ApplyComponentCommand rather than
+// reasoned about:
+//
+//	{"face":"Roboto","asset":null}          err=nil. A JSON null decodes to a
+//	                                        nil pointer, so the key is PRESENT
+//	                                        and reads as ABSENT — the `asset`
+//	                                        refusal, the structural guarantee
+//	                                        route C was chosen for, was
+//	                                        bypassable by writing null.
+//	{"face":"Roboto","bold":null}           err=nil, the cut silently dropped,
+//	                                        while the LOADER refuses a null
+//	                                        variant with a located load error.
+//	                                        A command door and a load door
+//	                                        disagreeing is how a document
+//	                                        becomes unloadable by the product
+//	                                        that wrote it.
+//	{"FACE":"X"} / {"BOLDITALIC":"Y"}       err=nil. encoding/json matches field
+//	                                        names CASE-INSENSITIVELY and
+//	                                        DisallowUnknownFields cannot see it,
+//	                                        so both were accepted where the
+//	                                        loader (which reads a key map)
+//	                                        refuses them.
+//
+// A REPEATED KEY IS THE ONE ARM THIS FUNCTION DOES NOT ANSWER, and deliberately:
+// refuseDuplicateCommandKeys (:103) already answers it for the whole command,
+// at every depth — it token-scans arrays and nested objects alike, so
+// `entries:[{"face":"A","bold":"B","bold":"C"}]` is refused at the door, before
+// any handler runs, naming the path `$.entries[0]`. Writing a second duplicate
+// check here would be a second answer to a solved question and could disagree
+// with the first. TestARepeatedKeyInsideAChainEntryIsRefusedAtTheDoor pins it.
+//
+// EVERY REFUSAL BELOW IS ITS OWN SENTENCE. An unrecognised key, a value of the
+// wrong type, and a null are three different author mistakes, and one sentence
+// covering all three tells an author only that something is wrong.
+func commandFontChainEntry(item json.RawMessage, refuse func(string) error) (template.FontChainEntry, error) {
+	trimmed := strings.TrimSpace(string(item))
+	switch {
+	case strings.HasPrefix(trimmed, `"`):
+		var face string
+		if json.Unmarshal(item, &face) != nil {
+			return template.FontChainEntry{}, refuse("a font chain entry must be " + fontChainEntryShape)
+		}
+		if err := boundedChainFaceName(face, refuse); err != nil {
+			return template.FontChainEntry{}, err
+		}
+		return template.FaceEntry(face), nil
+
+	case strings.HasPrefix(trimmed, "{"):
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(item, &obj) != nil {
+			return template.FontChainEntry{}, refuse("a font chain entry object is malformed JSON. It is " + fontChainEntryShape)
+		}
+		// THE CLOSED SET, CHECKED CASE-SENSITIVELY AND IN SORTED ORDER so an
+		// author with two unrecognised keys is always sent to the same one —
+		// the discipline decodeFontChainEntry uses for the same reason.
+		for _, key := range slices.Sorted(maps.Keys(obj)) {
+			if !slices.Contains(commandFontChainEntryKeys(), key) {
+				return template.FontChainEntry{}, refuse(`"` + key + `" is not a key a font chain entry may carry. The key set is CLOSED and it is CASE-SENSITIVE — ` +
+					commandQuotedKeyList(commandFontChainEntryKeys()) + ` and nothing else, so "Bold" is not "bold". It is ` + fontChainEntryShape)
+			}
+		}
+		// THE ASSET ARM, REFUSED BY NAME AND ON PRESENCE ALONE. The format
+		// admits it; a command does not, because the ONE entry that may name an
+		// asset is the one embedFontFamily builds itself from bytes it hashed.
+		// ⚠ PRESENCE, NOT VALUE: `{"asset":null}` names the key, and a guard
+		// that read the value would have let the whole guarantee through a null.
+		if _, present := obj["asset"]; present {
+			return template.FontChainEntry{}, refuse("a font chain entry written by a command names a FACE, never an assets key — the only entry that may name an asset is the one embedFontFamily builds from the bytes it was given. It is " + fontChainEntryShape)
+		}
+		// THE DISCRIMINANT IS REQUIRED, and its absence is a defect of its own
+		// rather than "the face name is empty": an object carrying only variant
+		// keys names no entry for them to decorate.
+		faceRaw, present := obj["face"]
+		if !present {
+			return template.FontChainEntry{}, refuse("a font chain entry object must name the face it is: " + fontChainEntryShape)
+		}
+		face, err := commandChainEntryString("face", faceRaw, refuse)
+		if err != nil {
+			return template.FontChainEntry{}, err
+		}
+		if err := boundedChainFaceName(face, refuse); err != nil {
+			return template.FontChainEntry{}, err
+		}
+		entry := template.FaceEntry(face)
+		for _, cut := range commandFontChainCuts {
+			// AN ABSENT KEY IS AN ABSENT CUT, and that is a first-class answer:
+			// the engine reports the base face and a Warning. It is not the
+			// same as a key present with nothing in it, which is why presence
+			// is read from the map rather than from a decoded zero value.
+			declaredRaw, present := obj[cut.key]
+			if !present {
+				continue
+			}
+			declared, err := commandChainEntryString(cut.key, declaredRaw, refuse)
+			if err != nil {
+				return template.FontChainEntry{}, err
+			}
+			if declared == "" {
+				return template.FontChainEntry{}, refuse(`"` + cut.key + `" names the face this entry is drawn in at that weight and slope, and an empty string names none — for a cut this family does not have, write no key at all rather than an empty string`)
+			}
+			if len(declared) > maxCanvasPropertyString {
+				return template.FontChainEntry{}, refuse("font chain entry exceeds the projection bound")
+			}
+			// THE SELF-REFERENCE, REFUSED HERE AND LOCATED (D-11.2.11).
+			// ⚠ Only the BASE is privileged: two DIFFERENT cuts of one entry
+			// may name the same face, and this comparison must never be
+			// widened into "no two cuts may agree".
+			//
+			// The loader refuses this too, and until Story 11.4's review it was
+			// the ONLY thing that did: applyFontChainCommand reparses what this
+			// decoder built, so the author got the reparse's UNLOCATED "font
+			// chains did not pass format validation" — a sentence naming
+			// neither the chain, the entry, nor the key. The reparse is still
+			// the backstop; this is the refusal an author can act on.
+			if declared == face {
+				return template.FontChainEntry{}, refuse(`"` + cut.key + `" names this entry's OWN base face, ` + strconv.Quote(face) +
+					` — a cut names the face drawn INSTEAD of the base, so one naming the base declares no cut, and does it silently. Write no key at all, or name the face that IS the cut; two DIFFERENT cuts may agree, only the base is privileged (D-11.2.11)`)
+			}
+			*cut.field(&entry) = declared
+		}
+		return entry, nil
+
+	default:
+		return template.FontChainEntry{}, refuse("a font chain entry must be " + fontChainEntryShape)
+	}
+}
+
+// commandChainEntryString reads one entry key's value, and it separates the two
+// ways a value can fail to be a face name because they are two different author
+// mistakes.
+//
+// ⚠ A NULL IS ITS OWN REFUSAL AND NOT "the wrong type". encoding/json decodes
+// null into a string as a NO-OP — no error, the zero value — so a null read
+// through an ordinary decode is indistinguishable from a key that was never
+// written. That is exactly the confusion the format refuses to allow: an ABSENT
+// key declares no cut, and the loader (decodeFontChainEntry) refuses a null
+// with a located load error. If this door dropped it silently the two doors
+// would disagree, and a document the product wrote would be one the product
+// cannot reopen.
+func commandChainEntryString(key string, raw json.RawMessage, refuse func(string) error) (string, error) {
+	if string(bytes.TrimSpace(raw)) == "null" {
+		return "", refuse(`"` + key + `" is present and null. Null is a VALUE, not an absence: to say this entry has no such cut write no key at all, and to declare one name the face. It is ` + fontChainEntryShape)
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return "", refuse(`"` + key + `" must be a string naming a face. It is ` + fontChainEntryShape)
+	}
+	return value, nil
+}
+
+// boundedChainFaceName is the two rules every face name a command writes obeys,
+// in both arms: non-empty, and inside the projection's identifier bound. They
+// are the rules addFontChain's `entries` and embedFontFamily's `tail` each
+// carried separately before Story 11.4.
+func boundedChainFaceName(face string, refuse func(string) error) error {
+	if face == "" {
+		return refuse("a font chain entry must be a non-empty string")
+	}
+	if len(face) > maxCanvasPropertyString {
+		return refuse("font chain entry exceeds the projection bound")
+	}
+	return nil
 }
 
 // fontChainBands is the three top-level band element lists in DOCUMENT ORDER

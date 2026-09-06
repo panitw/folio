@@ -722,6 +722,61 @@ func TestAnUnknownEntryKeyIsRefusedByTheCLOSEDSetAndSaysSo(t *testing.T) {
 	}
 }
 
+// TestASelfReferentialVariantSaysWHYAndSaysItFromTheCLOSEDSet is DW-241's
+// MESSAGE, and it needs its own test for the reason the unknown-key row does:
+// requireLoadError asserts the FIELD only, so the two rows added to
+// TestADefectiveVariantIsRefusedAtTheSiblingItself cannot see the wording at
+// all (D-000.25).
+//
+// It pins two things. First, the closed set's members appear in the sentence
+// DERIVED from the parser's own enumeration rather than spelled here, so the
+// three keys are never written down a second time. Second, the sentence says
+// WHY — that such an entry declares nothing and does it silently — because
+// "that is not allowed" sends an author to delete a key without ever learning
+// that the cut they wanted has to be NAMED.
+//
+// ⚠ IT ASSERTS ON Error(), NOT ON THE Reason FIELD, and the difference is the
+// whole point of the test. Error() is what the author reads, and it cuts Reason
+// at loadErrorReasonRunes with a `…`. Asserting on the raw field passed happily
+// over a 917-rune sentence whose rendered form stopped BEFORE the remedy and
+// BEFORE "only the base is privileged" — a test that cannot see what the author
+// sees is a test of something else.
+func TestASelfReferentialVariantSaysWHYAndSaysItFromTheCLOSEDSet(t *testing.T) {
+	for _, tc := range []struct{ name, chain, field string }{
+		{"the face arm", `["Noto Sans", {"face": "Roboto", "bold": "Roboto"}]`, "fonts.body[1].bold"},
+		{"the embedded arm", `[{"asset": "` + embeddedFontKey + `", "boldItalic": "` + embeddedFontKey + `"}]`, "fonts.body[0].boldItalic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			le := requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), tc.field)
+			read := le.Error()
+			for _, key := range fontChainVariantKeys() {
+				if !strings.Contains(read, `"`+key+`"`) {
+					t.Errorf("the refusal %q does not name the closed set's member %q — the message must be DERIVED from the enumeration, not hand-written", read, key)
+				}
+			}
+			// It says what is wrong, not merely that something is.
+			for _, phrase := range []string{"OWN base", "silently", "no key at all"} {
+				if !strings.Contains(read, phrase) {
+					t.Errorf("the refusal %q never says %q, so an author is told a rule and not a reason", read, phrase)
+				}
+			}
+			// AND IT NAMES THE ONE AXIS. Without this sentence the next reader
+			// concludes that no two variants may agree, which is wider than the
+			// narrowing that was ruled.
+			if !strings.Contains(read, "only the base is privileged") {
+				t.Errorf("the refusal %q does not say that only the BASE is privileged, so it reads as a ban on any two variants agreeing", read)
+			}
+			// NON-VACUITY, and it is what makes the four assertions above a
+			// measurement rather than a hope: the rendered message really is
+			// truncated, so landing the load-bearing clauses inside the window
+			// was necessary and remains necessary.
+			if !strings.Contains(read, loadErrorElision) {
+				t.Errorf("the rendered refusal is no longer truncated, so this test no longer proves the load-bearing clauses come FIRST: %q", read)
+			}
+		})
+	}
+}
+
 // TestACrossNamespaceVariantIsALocatedLoadError is AD-8's namespace match,
 // asserted in BOTH directions. A sibling naming the other namespace is the
 // substitution AD-8 forbids, arriving inside a single entry where no
@@ -771,6 +826,13 @@ func TestADefectiveVariantIsRefusedAtTheSiblingItself(t *testing.T) {
 		{"a null variant", `["Noto Sans", {"face": "Noto Sans", "italic": null}]`, "fonts.body[1].italic"},
 		{"a numeric boldItalic", `["Noto Sans", {"face": "Noto Sans", "boldItalic": 700}]`, "fonts.body[1].boldItalic"},
 		{"an empty face discriminant", `["Noto Sans", {"face": "", "bold": "Noto Sans Bold"}]`, "fonts.body[1].face"},
+		// D-11.2.11 / DW-241, ONE ROW PER ARM. A variant naming its entry's own
+		// base declares nothing and renders bold-as-regular while bypassing the
+		// Warning that exists to announce exactly that state — the one outcome
+		// AC3 exists to prevent. The comparand is the ARM's own discriminant:
+		// `entry.Face` on a face entry, `entry.AssetKey` on an embedded one.
+		{"a face entry whose variant names its own face", `["Noto Sans", {"face": "Roboto", "bold": "Roboto"}]`, "fonts.body[1].bold"},
+		{"an embedded entry whose variant names its own asset", `[{"asset": "` + embeddedFontKey + `", "italic": "` + embeddedFontKey + `"}]`, "fonts.body[0].italic"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireLoadError(t, embeddedFontDoc(fontAssetBody, tc.chain), tc.field)

@@ -9987,3 +9987,315 @@ chain-entry half, which **does** have its consumer in this story; the table half
 through a `TableHeaderStyleField` union widened to the same nine fields the Go command layer already
 accepts — or a recorded decision that the header takes no B/I control, which would make the four members
 removable rather than merely unconsumed.
+
+---
+
+### DW-247 — the multi-cut fetch is HALF-BUILT: `parseFamilyMetadata` already reads every upstream cut and `fetchWebFamily` throws them away
+
+- source_spec: `_bmad-output/implementation-artifacts/11-4-picking-a-family-declares-the-cuts-it-has.md`
+- **Deferred by:** Story 11.4 (2026-09-06), registered **as part of shipping it** — D-11.4.2 declined to
+  schedule the general capability now and required the rest to be registered rather than narrated later.
+- **Owner:** **unassigned.** It is the load-bearing entry for *"bold works for the fonts people actually
+  pick"*, and it needs a story of its own.
+- **Severity:** **HIGH by consequence, LOW by defect.** Nothing is broken; a capability is missing, and it
+  is the one the epic's headline promise rests on.
+- **Status:** OPEN.
+
+**What Story 11.4 actually bought, so this entry is not read as a footnote.** Exactly ONE family became
+boldable by a pick: `Roboto`. The three Notos are uncatalogued shipped faces the family control never
+offers (D-11.1.5), and **all 31 catalogue faces and every fetched face are Regular-only by construction** —
+`build-wasm.mjs`'s `font-catalogue.ts` emitter hardcodes `style: "Regular"` into every emitted `catalogueFaces` row (the `catalogueFaces.map(...)` line inside the `writeFileSync(join(generatedDir, 'font-catalogue.ts'), …)` call, `:459` at the time of writing) and `fetchWebFamily` takes `regularFilename(metadata)`.
+So AC1 stopped being vacuous, and **its non-vacuous population has one member**.
+
+**The capability is half-built, which is what makes this cheap to pick up.** `parseFamilyMetadata`
+(`folio-designer/src/font-source.ts:138`) **already parses every upstream `fonts { style, weight, filename }`
+block** out of `METADATA.pb` — the whole family, every cut it publishes. `fetchWebFamily` then selects
+`regularFilename(metadata)` and **discards the rest**. Nothing needs to learn to read upstream cuts; a
+story needs to decide what to do with the ones already read.
+
+**What a discharging story has to answer**, and none of these is settled here:
+- **How many cuts a pick embeds.** Four cuts of one family is roughly four times the bytes in the
+  document, and D-16.5's "the moment a font starts travelling" was priced against one face.
+- **What a partial family means.** Upstream publishes bold with no italic for many families; the format
+  already answers that (an absent cut is absent, and AC3 warns), so the question is what the PICK does.
+- **Where the cuts are declared.** The pick would write the same object-form entry Story 11.4 writes, with
+  the variants naming **assets keys** rather than face names — which is the arm route C's command decoder
+  deliberately refuses today — and **DW-251** is the blind spot that arm would make reachable. (The
+  pointer here said *DW-249* until Story 11.4's review: DW-249 is the Go factory-list guard and says
+  nothing about `assetKeyReferenced`, and DW-251 did not yet exist to point at.)
+
+**What discharges it:** a pick that embeds a family's cuts and declares them, with the byte cost decided
+rather than discovered — or a recorded decision that fetched families stay Regular-only, which would make
+"bold" a property of the shipped four and nothing else, permanently.
+
+---
+
+### DW-248 — the duplicate embed is closed for SHIPPED families and still open for a fetched face that happens to be byte-identical to one
+
+- source_spec: `_bmad-output/implementation-artifacts/11-4-picking-a-family-declares-the-cuts-it-has.md`
+- **Deferred by:** Story 11.4 (2026-09-06), registered **so the fix does not read as complete**.
+- **Owner:** **unassigned.**
+- **Severity:** LOW.
+- **Status:** OPEN in one direction, and that direction is stated rather than implied.
+
+**What Story 11.4 closed.** Picking `Roboto` embedded a byte-identical duplicate of the `Roboto` the engine
+already ships — the same digest, `e688a215e0841b6e4edb…`, measured on both copies — as a Regular-only entry
+that could never bold while `Roboto Bold` sat unreachable in the same FontSet. A pick of a family the
+release ships now **names** it, so ~348 KB of duplicate stops being written into documents.
+
+**What is still open, and why it is not the same fix.** The criterion Story 11.4 uses is **membership in
+the declared mirror** (`folio-designer/src/shipped-face-cuts.ts`) — a family the release ships, by name. A
+face that arrives by a DIFFERENT route and happens to hold **bytes identical to a shipped face** still
+embeds: the mirror is keyed by family name, and the fetched face's family name is whatever upstream calls
+it. Detecting that case needs the binary comparison **D-11.2.1 refuses** — the same refusal DW-245 rests
+on — so it is not a check somebody forgot to add.
+
+**Why the limit is registered rather than left implicit.** *"The duplicate embed is fixed"* is true of the
+case that actually occurs and false as a general statement. The next reader of `declareShippedFamily`
+should not conclude that the designer can no longer put a byte-duplicate of a shipped face into a document.
+
+**What discharges it:** a ruling that content comparison for *deduplication* is admissible where it is
+forbidden for *resolution* (the same question DW-245 asks for *detection*), or an explicit acceptance.
+
+---
+
+### DW-249 — the Go factory-list guard names SIX designer factories and there are NINE, and the gap is a measured FALSE NEGATIVE
+
+- source_spec: `_bmad-output/implementation-artifacts/11-4-picking-a-family-declares-the-cuts-it-has.md`
+- **Deferred by:** Story 11.4's Code Map (2026-09-06). Route C was chosen partly because it keeps this list
+  out of scope: no new command kind, no new file, no factory list moves. **Registering it was the price of
+  not touching it.**
+- **Owner:** **unassigned.**
+- **Severity:** MEDIUM. It is a guard that reports green over code it never reads.
+- **Status:** OPEN.
+
+**The gap.** `folio-go/command_json_authority_wire_test.go`'s
+`TestEveryDesignerCommandFactoryRoutesThroughTheAuthority` lists **six** designer factories in its own
+`factories := []string{…}` literal (`:181-188` at the time of writing) and
+the designer has **nine**: it is missing `band-height-command.ts`, `document-settings-command.ts` and
+`table-style-command.ts`. It is green, because it only ever checks the six it names.
+`command-json-soleness.test.ts` names all nine (twice, deliberately), so the drift is one-sided.
+
+**It is a FALSE NEGATIVE, not mere under-reporting, and here is the measured hole.** The
+`strings.Contains(withoutLineComments(string(source)), "charCodeAt(")` check (`:208` at the time of
+writing) runs **inside** that same `for _, factory := range factories` loop, and **no designer-side test scans command factories for
+`charCodeAt(` at all** — searched every designer `*.test.ts*`; the only hits are prose and fixture decoding.
+**Positive control:** `charCodeAt` appears in six designer source files, so the search does find it when it
+is there. So for those three factories **a hand-rolled escape table is seen by nothing** — which is exactly
+the class of defect `command-json.ts` was consolidated to close.
+
+**Why the six-name loop is not simply widened here.** Story 11.4 touches neither that list nor the three
+missing factories, and its Boundaries make editing the list Ask-First for that reason: a list edit made by
+a story that never exercised those factories is a list edit nobody has tested.
+
+**One measured detail a discharging story will want:** `component-asset-command.ts` does contain
+`charCodeAt`, **inside the line comment above its `import { commandBytes, jsonString } from './command-json'`**
+recording the Story 15.2a deletion (`:10` at the time of writing) — which is why the guard strips line comments and why the
+suite is green rather than red on a file it does check.
+
+**What discharges it:** the Go list widened to the nine `command-json-soleness.test.ts` already names, with
+the `charCodeAt(` check exercised against each — or a designer-side scan that covers all nine, which would
+make the Go list's membership a reporting detail rather than a coverage boundary.
+
+---
+
+### DW-250 — a `.folio` that names shipped faces is not self-contained, and nothing in the format says which FontSet it was written against
+
+- source_spec: `_bmad-output/implementation-artifacts/11-4-picking-a-family-declares-the-cuts-it-has.md`
+- **Deferred by:** Story 11.4 (2026-09-06). The story made NAMING a shipped face the ordinary outcome of a
+  pick, which raises the standing limit's exposure from "hand-authored documents only" to "every document
+  whose author picked a shipped family".
+- **Owner:** **unassigned.**
+- **Severity:** LOW **today** and **re-priced by the first request for a `.folio` that renders against a
+  foreign FontSet** — an integrator embedding the engine with their own faces, or a document exchanged
+  between two builds of Folio whose shipped sets differ.
+- **Status:** OPEN.
+
+**The limit.** A chain entry naming `Roboto Bold` resolves against whatever FontSet the render is given.
+That is the format's standing tolerance and it is deliberate (AD-8: a chain exists precisely so a document
+survives a host missing one of its faces, and a face the renderer was not given is skipped in silence
+rather than refused). The consequence is that **the same file renders differently on two hosts**, with no
+diagnostic distinguishing "this host has a different Roboto" from "this host has the same one".
+
+**What Story 11.4 changed about it.** Before this story, the only documents naming shipped faces were
+hand-authored — `starter.folio` and test fixtures. A pick embedded, so a picked family travelled with the
+file. Now a pick of a shipped family **names**, deliberately (D-16.5: a face already on every machine is
+not travelling, and embedding it cost ~348 KB per document for nothing). That is the right trade for the
+population Folio ships to today, **and it makes this limit ordinary rather than exceptional.**
+
+**Why it is not a bug to be fixed here.** The alternatives all have a cost this story has no mandate to
+spend: embedding shipped faces again (the duplicate DW-248 records), recording a FontSet identity in the
+file (a new format field, and a MAJOR question about what a mismatch DOES), or refusing to render against
+an unrecognised set (which would break the tolerance AD-8 exists for).
+
+**What discharges it:** the first concrete request for cross-FontSet rendering, answered with a ruling —
+or a recorded acceptance that a `.folio` naming shipped faces is a document *about* Folio's own shipped
+set and not a portable artifact.
+
+
+---
+
+### DW-251 — `assetKeyReferenced` never walks a chain entry's VARIANT siblings, so deleting a chain can orphan an asset a variant still names
+
+- source_spec: `_bmad-output/implementation-artifacts/11-4-picking-a-family-declares-the-cuts-it-has.md`
+- **Deferred by:** Story 11.4 (2026-09-06). Its Design Notes ruled the defect out of scope **on a
+  checkable test** — *"this story writes FACE-name variants, never ASSET-key variants"* — and said the
+  entry was registered. **It was not**; DW-247 pointed at DW-249, which is a different subject entirely.
+  Story 11.4's review found the dangling pointer and this entry is what it should have pointed at.
+- **Owner:** **unassigned** — whichever story first writes an ASSET-key variant, or first touches
+  `deleteFontChain`'s orphan sweep.
+- **Severity:** MEDIUM. Not reachable through any UI today; reachable by a hand-authored document now.
+- **Status:** OPEN.
+
+**The gap.** `assetKeyReferenced` (`folio-go/component_commands.go`, the walk called by
+`dropUnnamedFontAssets`) tests only `entry.Embedded() && entry.AssetKey == key`. It **never calls**
+`FontChainEntry.EmbeddedAssetKeys()` (`internal/template/model.go`), whose only production caller is
+`embedded_face.go`'s site index. Since Story 11.2 a **variant sibling of an `asset` entry IS an assets
+key**, so the walk is blind to a whole class of reference.
+
+**Both consequences, measured.**
+- `deleteFontChain` → `dropUnnamedFontAssets` can delete an asset a **variant** still names. The reparse
+  that follows then dies as the **unlocated** `"font chains did not pass format validation"` — a sentence
+  naming neither the chain nor the key.
+- Removing `{"asset":"K1","bold":"K2"}` orphans `K2`, against the function's own stated contract.
+
+**Why Story 11.4 did not make it worse, and how to check that claim rather than trust it.** Every path
+that story built writes **FontSet FACE NAMES** as variants, never assets keys — and route C's command
+decoder now **refuses the `asset` key outright** in an entry a command writes
+(`commandFontChainEntry`, and `TestACommandMayNotWriteAnAssetSiblingOrAnUnknownKey` /
+`TestTheCommandDoorRefusesEveryNULLShapedHoleInAnEntryObject` pin it, including through a `null`). So the
+defect stays hand-authored-only, exactly as it was. **A story that adds an asset-key variant arm — DW-247's
+multi-cut embed is the obvious one — makes this reachable and must discharge it first.**
+
+**What discharges it:** `assetKeyReferenced` walking `EmbeddedAssetKeys()` instead of `AssetKey`, with a
+test that embeds two faces, names the second from a **variant**, deletes the chain, and asserts the second
+asset survives — the arm the current walk can never reach.
+
+---
+
+### DW-252 — EVERY chain-entry refusal reason is over the 256-rune render cap, so authors have been reading truncated sentences since Story 11.2
+
+- **Deferred by:** Story 11.4's review round (2026-09-06). Found by the edge-case layer against 11.4's own
+  new refusal; **measured to be a family rather than an instance** before it was triaged.
+- **Owner:** unassigned. It is a diagnostics-surface question, not a font question.
+- **Severity:** MEDIUM. Every one of these sentences ends in `…` for the author who trips it.
+- **Status:** OPEN.
+
+`internal/template/errors.go` bounds a rendered reason at `loadErrorReasonRunes = 256` (declared `:161`,
+applied in `LoadError.Error()` at `:229`). Measured rune counts for the chain-entry refusals Story 11.2
+shipped:
+
+```
+noDiscriminantReason      569        unknownEntryKeyReason    547
+bothDiscriminantsReason   546        fontChainEntryGrammar    291   (a fragment, quoted BY the others)
+```
+
+**All four exceed the cap**, and `fontChainEntryGrammar()` alone does — so any reason that quotes it is
+over before it says anything else. Story 11.4 fixed **only its own** (`selfReferentialVariantReason`,
+917 → load-bearing head inside 245) because that one had a *ruled* clause beyond the cut. The rest are
+untouched and still truncated.
+
+**Why it went unseen for two stories.** The tests assert on `LoadError.Reason` — the raw field — and the
+cap is applied in `Error()`. **A test reading the raw field cannot see what the author reads**, so the
+whole family is green. Story 11.4's fix flipped its own assertion to `Error()`; nothing else did.
+
+**What discharges it:** either shortening the four reasons to fit, or raising the cap deliberately with a
+stated reason, or moving the grammar sentence out of the reason into a second field the renderer bounds
+separately. Plus a guard asserting **every** minted reason fits, so the next one cannot join them —
+red-provable by lengthening any one of them.
+
+---
+
+### DW-253 — the shipped-face mirror's tie test parses a sibling TEST file by regex, and the `fonts.go` parse now exists twice
+
+- **Deferred by:** Story 11.4's review round (2026-09-06).
+- **Owner:** unassigned.
+- **Severity:** LOW, and it is a false-red risk rather than a false-green one.
+- **Status:** OPEN.
+
+`shipped-face-cuts.test.ts`'s `binaryVerifiedSlots` matches
+`/\{ cssFamily: '([^']+)', family: '([^']+)', subfamily: '([^']+)'/g` against **`font-catalogue.test.ts`**
+— a sibling *test* file. Reordering those object keys, switching to double quotes, or any reflow reds the
+tie for a non-defect. Reading a test file as data is unusual even by this repo's text-parse idiom.
+
+Separately, the regex that lifts `Shipped()`'s keys out of `fonts.go` now lives in **two** designer test
+files — `canvas-font-stack.test.ts` (`shippedFaceNames`) and `shipped-face-cuts.test.ts`. Two copies of one
+parse is the shape that has to be kept in step by hand.
+
+**What discharges it:** exporting the binary-verified slot table from a module both tests import, or
+deriving the mirror's witness from the committed binaries directly, and collapsing the `fonts.go` parse to
+one helper.
+
+---
+
+### DW-254 — a cut can be declared only when a chain is CREATED; no command can add or change one afterwards
+
+- **Deferred by:** Story 11.4's review round (2026-09-06).
+- **Owner:** unassigned. The natural owner is whichever story next gives the designer a chain editor.
+- **Severity:** MEDIUM as a capability gap; **not** a defect in anything shipped.
+- **Status:** OPEN.
+
+Story 11.4 taught `addFontChain` and `embedFontFamily`'s `tail` to carry variants. **`addFontChainEntry`
+was not taught**: it still builds a bare `template.FaceEntry(face)`, so an entry appended to an existing
+chain can never declare a cut, and no command anywhere can amend a cut on an entry that already exists.
+
+In practice a document acquires cuts exactly once, when its author picks a family, and can only get
+different ones by picking again. That is consistent with I-5 (no migration) and with 11.4's ACs, so it is
+recorded as a **boundary of what shipped**, not as a bug — but a reader who finds `addFontChainEntry`
+alongside the other two will reasonably expect symmetry and not find it.
+
+**What discharges it:** routing `addFontChainEntry`'s `face` field through `commandFontChainEntries` so an
+added entry may declare cuts like any other — a small change, gated on someone wanting the capability.
+
+---
+
+### DW-255 — a command's chain-entry refusal names the chain but not WHICH entry, while the loader names the sibling exactly
+
+- **Deferred by:** Story 11.4's review round (2026-09-06).
+- **Owner:** unassigned.
+- **Severity:** LOW.
+- **Status:** OPEN.
+
+`commandFontChainEntries` refuses through `componentFailure("", fontChainPath(name), reason)`, so a
+malformed entry at position 7 of a 20-entry tail reports the **chain** and nothing more. The loader locates
+the identical defect at `fonts.body[1].bold`. The asymmetry is invisible today because every chain a
+command writes is short and machine-generated, and it becomes an author-facing problem only if a chain
+editor ever lets a person hand-write a long one.
+
+**What discharges it:** threading the entry index (and, for a variant, the key) into the refusal path so a
+command's location is as precise as the loader's — plus a test asserting the index appears, which nothing
+does today.
+
+### DW-256 - two literal NUL bytes make the designer's largest source file invisible to every default grep, so every review layer that searched it got a false clean
+
+- **Deferred by:** the orchestrator, verifying Story 11.4's gates (2026-09-06).
+- **Owner:** unassigned.
+- **Severity:** HIGH - this is a defect in the run's verification apparatus, not in the product.
+- **Status:** OPEN.
+
+`App.tsx:3201-3202` writes its family-key separator as a **literal NUL byte** inside the string literals
+(`.join(...)` and `.split(...)`) rather than as the escape '\u0000'. The runtime behaviour is correct and this
+is pre-existing - `git show HEAD:folio-designer/src/App.tsx` carries the same two bytes, so no story
+introduced it.
+
+The consequence is not in the product. The project's shell `grep` is a function wrapping **ugrep with
+`-I`**, which skips files it classifies as binary. Two NUL bytes are enough. So
+`grep proposedFallbackTail folio-designer/src/App.tsx` **exits 1 with no output and no warning** on a file
+where the symbol is defined at line 126 and called at 1261 and 1320. `grep -a` finds all three.
+
+Every agent in this run - every review layer, every investigation step, every Code Map - has been searching
+the designer's 3,585-line core file with a tool that silently declined to open it. **A no-match result on
+App.tsx has meant nothing this entire program**, and no-findings was indistinguishable from
+not-having-looked. This is D-11.2.4's rule (an absence is a lead, not a result) failing at the tooling
+layer, where no amount of agent discipline could have caught it: the search reported clean because it never
+looked. It surfaced only because a claimed symbol was checkable against `sed`, which does not filter.
+
+**What discharges it:** replace the two literal NUL bytes with '\u0000' - identical semantics, and the file
+becomes text to ugrep again. Then add a repository guard that fails when a tracked source file under
+`folio-designer/src/`, `folio-go/` or `lint/` contains a NUL byte, with the allowlist naming
+`folio-go/internal/text/data/thai_words.trie` (a genuine binary) explicitly. Per D-11.3.7 the guard must be
+RUN against a planted NUL and against the legitimate `.trie`, not read.
+
+**Also invisible today, same cause:**
+`_bmad-output/implementation-artifacts/8-3-a-font-travels-inside-the-template.md` (2 NULs) - a spec file no
+agent's grep can see.
