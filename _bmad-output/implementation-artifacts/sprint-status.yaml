@@ -451,6 +451,13 @@ development_status:
   # edits it. 11.4 is what makes bold reachable in a document the author already has. It touches the
   # family control that Epic 16 rebuilt and Epic 14 will rebuild again; the owner priced that.
   11-4-picking-a-family-declares-the-cuts-it-has: backlog
+  # 11.5 SPLIT OUT OF 11.3 on 2026-09-06 by D-11.2.12. It was the only item in 11.3 that moves a
+  # rendered byte, and it was forcing the full four-target matrix onto an otherwise designer-side
+  # story; split out, 11.3 runs no matrix at all. This is the INVERSE of D-11.1.18, where splitting
+  # would have multiplied the same gate -- the two rulings are consistent, not contradictory.
+  # Depends on 11.2 alone, NOT on the canvas, so it may run before or after 11.3/11.4.
+  # It HALTS for an owner attestation: an expected.pdf is human-attested under AD-21 / D-4.7.1.
+  11-5-a-bold-document-is-a-pinned-golden: backlog
   epic-11-retrospective: optional
 
   # 12.4's ruling is SETTLED: D-12.4.1 (owner, 2026-09-05, epic-11-14-decision-log.md).

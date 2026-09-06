@@ -9871,3 +9871,42 @@ own test asserts the per-rune count deliberately, so moving it moves a guard as 
 
 **See also DW-242**, which is the same question asked about the *other* Warning that coalesces in
 `shapeSegments` — the two now differ in scope, and any bound chosen here should be chosen for both.
+
+---
+
+### DW-245 — the self-reference check is string equality, so two FontSet keys holding identical bytes defeat it silently
+
+- **Deferred by:** the engineering lead's DW-241 ruling (2026-09-06), registered **as part of that ruling
+  rather than discovered afterwards** — the lead required the guard's limit to be written down at the same
+  time as the guard.
+- **Owner:** **unassigned, deliberately.** It is not clear anything *can* own it (see below).
+- **Severity:** LOW, and bounded by how implausible the setup is.
+- **Status:** OPEN, and it may be permanently open. That is the point of the entry.
+
+**The guard.** DW-241 rules that a variant naming its own base — `{"face":"Roboto","bold":"Roboto"}` — is a
+located load error, because it reduces to no declaration at all and so renders bold-as-regular while
+bypassing the AC3 Warning that exists to announce exactly that state.
+
+**Its limit.** The check is **string equality against the entry's own discriminant value**. It cannot see
+`{"face":"Roboto","bold":"Roboto Copy"}` where two distinct `FontSet` keys happen to hold **identical
+bytes**. That renders bold-as-regular just as silently, and the entry looks entirely well-formed.
+
+**And nothing can detect it within the current direction.** Detecting it requires comparing the two faces'
+*contents* — either hashing the byte slices or reading their name tables — and **D-11.2.1 forbids the
+engine to resolve or compare faces by anything read out of the binaries.** So this is not a gap someone
+forgot to close; it is the residue of a ruling that was made for stronger reasons (AD-8, and render bytes
+not being a function of unnamed `FontSet` members). A future fix would have to distinguish "comparing
+content to detect a mistake" from "comparing content to resolve a face", and argue that the first does not
+smuggle in the second.
+
+**Why it is registered rather than tolerated silently.** *A check whose limit is unstated ages into a false
+reassurance.* The next person to read the self-reference guard will otherwise conclude that the
+bold-as-regular-with-no-warning failure is closed. It is closed for the case an author reaches by mistake
+and open for the case an author reaches by a stranger route.
+
+**What discharges it:** either a ruling that content comparison for *detection* is admissible where it is
+forbidden for *resolution*, or an explicit decision to accept it permanently — recorded as an acceptance
+rather than left as an omission. **Either is a discharge; silence is not.**
+
+**Required by the DW-241 ruling and not optional:** the limit is stated **in the code beside the check and
+in the format doc's chain-entry row**, not only here.

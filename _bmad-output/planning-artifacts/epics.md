@@ -4065,6 +4065,54 @@ follows
 **When** it is rendered
 **Then** the bytes are identical to before this story (AD-21)
 
+### Story 11.5: A bold document is a pinned golden
+
+As a maintainer,
+I want a rendered bold document pinned byte-for-byte,
+So that a face that silently changes is caught by the corpus rather than by a reader.
+
+**Covers:** FR57 · AD-21, AD-22
+**Design:** no mockup — this story ships a fixture and its goldens, not a surface.
+
+**Split out of Story 11.3 by D-11.2.12.** Of everything 11.3 carried, this was the only item that moves a
+rendered byte, and it was forcing the full four-target matrix onto a story that is otherwise entirely
+designer-side. Splitting it means 11.3 runs no matrix at all — **the inverse of D-11.1.18, where splitting
+would have multiplied the same gate.** This story depends on Story 11.2 alone; it does not depend on the
+canvas.
+
+**Why it exists (DW-237, measured).** `grep -rn '"bold"\|"italic"' fixtures/` returns **zero** across all
+30 fixture directories — positive control `'"fontFamily"'` returns 23 files — and `worked-example.json`,
+the one in-tree document that declares bold, has its rendered bytes pinned nowhere. **So a resolver that
+silently switched face would fire no Warning, red no test and move no golden.** Story 11.2's DW-233
+tripwire covers the *mechanism* behaviourally; this story covers the *outcome*.
+
+**Acceptance Criteria:**
+
+**Given** a new fixture document declaring bold and italic on a chain that declares its variants
+**When** it is rendered on all four targets
+**Then** the bytes are identical across targets and pinned by an `expected.json` and an `expected.pdf`,
+registered in `goldenDigestRecord` and in CI's matrix slug list, and the full `-tags=matrix` suite runs
+UNFILTERED in-story (D-11.1.9)
+
+**Given** the new `expected.pdf`
+**When** it is committed
+**Then** it carries a **human attestation** — an `expected.pdf` is a human-attested artifact under
+AD-21 / D-4.7.1, attestation is an OWNER action, and the story HALTS for it rather than self-attesting or
+shipping the fixture without a golden
+
+**Given** the resolver pointed at the base face instead of the declared variant
+**When** the suite runs
+**Then** the new golden moves and the story's own test fails — the red proof that this fixture is a witness
+rather than a decoration
+
+**Given** every existing fixture
+**When** the corpus is rendered
+**Then** its bytes are unchanged: this story adds a document, it does not alter one (AD-21)
+
+**Do not edit `worked-example.json` to satisfy this.** `goldenfixture_test.go:16` byte-compares it against
+the `## Worked example` fence at `folio-format.md:876`, so it is a document *and* a doc example and the two
+move together. Ship a new fixture.
+
 ## Epic 12: The inspector reaches the engine that is already there
 
 Six capabilities are shipped in the engine, tested by goldens, carried by the format — and reachable

@@ -3999,3 +3999,115 @@ Split instead: the **destruction** half is **Story 11.4's hard precondition**; t
 
 *Generalisable: a deferred item whose trigger is a race between two stories has no owner. Name one story
 per half, or accept that neither will do it.*
+
+### D-11.2.11 — RULING (DW-241): a variant that names its own base is a load error; a sibling collision is legal
+
+**Verdict.** A self-referential variant — `{"face":"Roboto","bold":"Roboto"}` — is a **located load error**
+at `fonts.<chain>[<i>].bold`, and the same on the embedded arm (`{"asset":"k","bold":"k"}`). One predicate
+per arm, measured against **that arm's own discriminant value**; an asymmetry would be arbitrary and would
+become a "which arm am I on?" trap. **A cross-variant collision — `{"face":"Roboto","bold":"X","italic":"X"}`
+— is LEGAL and silent.**
+
+**AC3's trigger does not move.** It stays a *declaration* property ("no variant declared"), because under
+this verdict the self-referential case never reaches the resolver at all. **DW-233's tripwire is untouched
+— option 1 dissolves that worry rather than managing it**, which was the deciding practical difference
+against option 2.
+
+**The structure this reveals, and it is exactly one axis: the base is privileged.** Every variant is
+measured against `face`/`asset`; **no variant is ever measured against a sibling.** One axis, not a
+lattice. The reason is that only the base collision is something the format can honestly call meaningless:
+`bold: "Roboto"` on `face: "Roboto"` **reduces to no declaration at all** — byte-identical to declaring
+nothing, which is precisely the state AC3 exists to announce, and this door bypasses the announcement. By
+contrast `bold: "X"` and `italic: "X"` declares a real face distinct from the base; it may be an odd choice,
+but it is a **choice**, it is legible in the file, and bold text visibly does not come out as regular. The
+format models no face semantics — D-11.2.1 forbids the engine to read a name table — so it has no ground on
+which to call one variant assignment more wrong than another. It has exact ground for the one that
+collapses to the base.
+
+**The precedent is one line above the rows 11.2 was editing.** `parse.go:400` already refuses an empty face
+name — *"a font chain entry must name a face — an empty string names none"* — and D-8.3.2's note records
+why: before Story 8.3, `["Noto Sans", ""]` *"LOADED AND RENDERED — resolveRuneFace silently skipped the
+empty entry and drew with Noto Sans, which is the silent substitution AD-8 forbids by name."* **A
+self-referential variant is that same defect with a value in it instead of an empty string.**
+
+**Option 3 refused on a category ground, not a product one.** "Deliberate suppression" is coherent, and it
+is a **warning-suppression channel smuggled into a font-resolution field**. Its effect is not "this author
+accepted the shortfall" — it is that the document renders bold-as-regular **with no signal to anyone**,
+including a colleague who receives the file and never saw the warning. If authors should be able to
+acknowledge and silence a diagnostic, that is a diagnostics feature under AD-14, designed once, applying to
+every warning, with the acknowledgement legible as one.
+
+═══ MY DEADLINE REASONING WAS INVERTED, AND THE CORRECTION IS THE MOST USEFUL PART ═══
+
+I wrote that option 1 *"forecloses option 3 permanently"* and that options 2 and 3 *"can wait"*. **It runs
+the other way:**
+
+- **Refusing now is the REVERSIBLE direction.** Accepting later what you refuse today is a **widening**, and
+  widenings are free after the tag, always.
+- **Accepting now is the IRREVERSIBLE one.** Refusing later what you accept today is a **narrowing**, and
+  D-7.8.3 makes narrowing free exactly once, before 15.3.
+
+**So option 1 preserves the freedom to adopt option 3; options 2 and 3 spend it.** And **no document in
+existence carries a self-referential variant** — the object form shipped at `d0ded7e` and `starter.folio`
+does not gain variants until 11.3 — so the narrowing costs zero documents now and would cost real ones
+later.
+
+**Generalise it, because I will make this error again otherwise:** *the reversible direction is the strict
+one.* Refusing is undoable by widening; accepting is undoable only by narrowing, and narrowing is the thing
+with a deadline. When a permission decision is uncertain and a tag is coming, **strict is the option that
+keeps the choice open**, which is the opposite of how "let's not foreclose it" instinctively reads.
+
+**Guardrails.**
+- **Disclose what the check does NOT catch**, in the code and in the format doc row. It is string equality
+  against the entry's own discriminant. It cannot see `{"face":"Roboto","bold":"Roboto Copy"}` where two
+  FontSet keys hold identical bytes — that renders bold-as-regular silently and nothing can detect it
+  without reading binaries, which D-11.2.1 forbids. Registered separately, because **a check whose limit is
+  unstated ages into a false reassurance.**
+- The refusal message is **derived from the closed set**, never hand-written — the three keys must not be
+  spelled a second time in a sentence.
+- **Both directions asserted:** a self-referential variant reds; a cross-variant collision **loads and
+  renders**, so the narrowing cannot quietly become "no two variants may agree."
+
+**OWNER: Story 11.4**, assigned by the orchestrator (the lead ruled the verdict; the placement was mine).
+It is a **narrowing and must land before Story 15.3 cuts the tag.** If 11.4 were ever to fall after 15.3
+this becomes an escalation rather than a deferral — a before-the-tag narrowing with no named owner is the
+shape D-7.8.3's window exists to prevent.
+
+### D-11.2.12 — the 11.3 seam: split the golden out, and this is the INVERSE of D-11.1.18
+
+**Of everything assigned to 11.3, exactly one item moves a rendered byte: DW-237's bold golden.** The
+projection (DW-239), the canvas paint, the B control's third state, the no-synthetic contract test and
+DW-240 are all designer-side; `starter.folio` is a document edit that reds nothing on its own.
+
+**RULING: the bold golden leaves 11.3 and becomes its own story. Everything else stays together.**
+Consequence: **11.3 runs no `-tags=matrix` suite at all.**
+
+**And D-11.1.18 does not apply here, though it will be quoted.** There, splitting would have **multiplied**
+the four-target matrix because both halves needed it, so `[K]` was the saving. Here the matrix is forced by
+**one artifact**, so splitting it out **removes** the matrix from the larger half. *Same gate, opposite
+arithmetic, opposite answer.* Recorded together so the two rulings are not read as inconsistent.
+
+**What remains must not split further — it is one mirrored invariant (D-7.4.5).** The canvas is told the
+**resolved outcome**, not the requested flag, so the B control's third state is *derived from* the
+projection. A projection shipped without its consumer is unconsumed; a control shipped without its
+projection is guessing.
+
+**Sequencing that falls out of the seam:** `starter.folio` must be written **before** the paint can be
+demonstrated, not left as a closing tidy-up — 11.3's acceptance needs a document that declares variants,
+and the starter is now inside 11.3. *A story that leaves its own fixture until last discovers at the end
+that it had nothing to test against.*
+
+**DW-240 placed on 11.3's side** — a designer-side read-back that moves no rendered byte.
+
+### D-11.2.13 — DW-243 stays unassigned, with one condition
+
+Leave it unassigned, but **re-price it once at Epic 11's boundary gate rather than never.** The open
+question is narrow and explicitly unverified: `forChain`'s stated purpose in `table_render.go` is that a
+located capability error names the chain the label draws through, so **as filed this is an error-address
+defect and LOW is right.** What has not been measured is whether **11.2 gave a chain-scoped cache a second
+job — variant resolution** — in which case a footer row shaping through the unscoped cache would resolve
+against the **wrong chain's variants**, which is a rendering defect and not a message defect.
+
+One read at the gate settles it. **If it comes back address-only, leave it unassigned with that measurement
+attached**, so the next person does not re-ask. *An entry that has been deliberately left alone is only
+distinguishable from one nobody looked at if the looking is recorded.*
