@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -586,6 +587,55 @@ var goldenDigestRecord = []struct {
 			{kind: "signoff", relPath: "fixtures/embedded-font/signoff.json"},
 		},
 	},
+	{
+		// RECORDED by Story 11.5, CLOSING DW-237. THE FIRST COMMITTED
+		// DOCUMENT IN THIS REPOSITORY THAT DECLARES BOLD OR ITALIC AT
+		// ALL.
+		//
+		// Measured at 11.5's baseline, twice and by two independent
+		// mechanisms: `grep -a` for "bold" and for "italic" over every
+		// file under fixtures/ returned ZERO, and a python3 byte-walk
+		// over every file in all 29 fixture directories returned ZERO
+		// too — with the positive control "fontFamily" returning 23
+		// files, so the instrument was live. Story 11.2 resolves a
+		// declared cut per rune through the DECLARED chain; until this
+		// entry the OUTCOME of that resolution was pinned by no recorded
+		// byte, so an engine that quietly drew every bold run in the
+		// regular face would have moved no golden, reddened no test and
+		// raised no diagnostic.
+		//
+		// A NEW DIGEST, NOT A MOVED ONE, and by construction: only a
+		// document that declares a cut can be touched by face
+		// resolution's styled arm at all, and this is the only one in
+		// the repository that does. The manifest of committed
+		// expected.pdf digests differs from its 8d7015a baseline by
+		// exactly this one added line.
+		//
+		// Its e1–e4 name the cut they are set in, so the page witnesses
+		// itself to a human reader; its e5/e6 are the CENTRED PAIR — the
+		// same string in the same box, one regular and one bold — whose
+		// line-start x values (132.548 against 130.724) are what pin
+		// that bold METRICS reached layout and not merely that bold
+		// glyphs reached the page. Its README quotes the digest.
+		//
+		// ATTESTED. Story 11.5 halted rather than self-attesting
+		// (D-11.5.1, arm [A]): it shipped the artifact recorded,
+		// registered and byte-pinned, with the human reading it is owed
+		// held open by a transient RED gate in
+		// declared_variants_signoff_matrix_test.go. That countdown then
+		// ran down INSIDE the story — Panit Wechasil read the page on
+		// 2026-09-06 and the record landed — so the signoff site below
+		// is declared and the gate is green. The halt happened; it was
+		// simply short.
+		dir:    "declared-variants",
+		sha256: "2405d005bbb1297556e41770cfa9353e1171b2d85af809dc1d21b0504f75ef4d",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/declared-variants/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/declared-variants/README.md"},
+			{kind: "signoff", relPath: "fixtures/declared-variants/signoff.json"},
+		},
+	},
 }
 
 // goldenDigestSearchScope is where the completeness half looks for a
@@ -954,6 +1004,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-file: expected_breaks_signoff_matrix_test.go",    // Story 2.4 — Thai BREAK sign-off (D-2.4.3)
 	"matrix-file: statement_signoff_matrix_test.go",          // Story 4.7 — the Customer Account Statement READING sign-off, ONE record over FOUR digests (engineering lead's ruling, this story; D-2.3.5 mechanism, D-000.41 dilution)
 	"matrix-file: embedded_font_signoff_matrix_test.go",      // Story 8.4 follow-up (DW-88), authorised by D-8.4.8 — the gate over the corpus's only TRANSFERRED reading. It is NOT a human-reading gate and its record deliberately carries no `reader`, `date` or `examined`; what it holds open is the LAPSE CONDITION: the transfer is valid only while fixtures/thai-stacked-marks/expected.pdf still hashes to the anchor digest the owner's 2026-08-31 reading was of. Re-record that golden and this gate goes RED, because the borrowed reading then covers bytes nobody looked at and BOTH fixtures need a real human reading. A gate that only checked the record's presence would let the transfer silently outlive its own basis, which is the DW-23 shape
+	"matrix-file: declared_variants_signoff_matrix_test.go",  // Story 11.5 — the READING sign-off for fixtures/declared-variants/, the first pinned document that declares bold or italic at all (DW-237). Authorised by D-11.5.1, which ruled arm [A] explicitly: "ship the red gate". That ruling is what makes this obligation legitimate rather than an addition nobody sanctioned — the story HALTS with the candidate expected.pdf recorded and unattested, and this gate is the halt. It is a TRANSIENT red, and D-11.5.1 draws the distinction by name: TestCorpusMeetsP6ExerciseFloors and its P6g subtest are PERMANENT mandated reds, a floor nobody has met; this one clears the moment the owner reads the page and writes the record. A permanent red teaches everyone to ignore a number; a transient one is a countdown. Both must be enumerated BY NAME in every baseline, and a failure whose name is not on that list is still a hard stop. The attestation obligation itself descends D-000.22 → D-2.3.5 and is DOCTRINAL, not architectural (D-11.5.2) — AD-21 says nothing about human attestation and D-4.7.1 is scoped to the statement family; had it lived in AD-21 the red-gate arm would have been forced rather than chosen
 	"matrix-file: thai_stacked_marks_signoff_matrix_test.go", // Story 8.0 — the READING sign-off for the first artifact whose marks are placed by a GPOS vertical displacement and emitted through the text-rise operator (DW-28 HIGH; D-2.3.5 mechanism). It is a SEPARATE obligation from shaped_signoff_matrix_test.go rather than an extension of it, because that record attests marks placed by a GSUB lowered-form substitution at ZERO offset — a different mechanism, which can be correct in the shaper while this one is wrong on the page. Authorised by Story 8.0's close, which filed the missing sign-off as a HIGH deferral owned by the human reader (DW-56) and forbade any agent from writing it; discharged 2026-08-31 when the owner read the page
 
 	// The documents whose four legs the gate runs and compares.
@@ -980,6 +1031,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: keep-together",          // Story 7.7 (FR51) — the first cross-target artifact whose column is broken by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2. Authorised by the story's own Verification section, which makes 7.7's correctness byte-identity-shaped (D-R7.1): this story changes PAGINATION INPUTS, and a page assignment that agrees with itself on one host and disagrees across four is exactly the defect the four legs exist to catch. Its four legs are wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND were run in-story: TestTargetRenderHash once per FOLIO_MATRIX_TARGET, plus TestCrossTargetByteIdentity
 	"matrix-document: thai-stacked-marks",     // Story 8.0 (DW-28, HIGH) — the first cross-target artifact carrying a glyph the shaper gives a non-zero YOffset, and therefore the first whose content stream contains a text-rise operator at all. It is HERE because the rise is derived by geom.ScaleRound from the run's font size, which is precisely the integer half-to-even arithmetic AD-21's four legs exist to hold to one answer, and because until this entry no document the matrix renders could contain the operator. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: embedded-font",          // Story 8.3 (FR53/FR56), inverted by Story 8.4 (FR54) — THE FIRST cross-target artifact that CARRIES a font face rather than naming one, and the first declaring format version 2.0 for a reason other than align: "justify". Story 8.3 registered it for a NEGATIVE property (the carried face reached the loader on every target and the page on none of them) and shipped no expected.pdf, correctly: an expected.pdf is a human-attested artifact (AD-21/D-4.7.1) and 8.3 could not produce the page that mattered. Story 8.4 renders FROM the carried face, so the property inverted: the document's text is pure Thai now, the shipped Latin face its chain names first covers not one codepoint of it, and what the four legs certify is that a font program decoded out of the document's own base64, subset and embedded, produces identical bytes on darwin/arm64, linux/amd64, linux/arm64 and js/wasm. The per-leg guard asserts WHICH face reached the page by identity (requireEmbeddedFaceDrawsThePage), never by counting programs — the count is 1 on both implementations. It ships an expected.pdf from Story 8.4 onwards. The obligation itself is UNCHANGED: this line is the same one Story 8.3 declared, re-described, not a new obligation added without a ruling
+	"matrix-document: declared-variants",      // Story 11.5 (DW-237) — the first cross-target artifact that declares bold or italic at all, and therefore the first whose recorded bytes depend on a chain entry's DECLARED cuts being read (Story 11.2's chainFaceNames). Measured at 11.5's baseline, twice and by two independent mechanisms, no committed fixture contained the string "bold" or "italic" anywhere — so a resolver that silently answered every declared variant with the entry's base face would have moved no golden, reddened no test and raised no diagnostic. THE AUTHORISING RULING IS THIS STORY'S OWN ACCEPTANCE CRITERION (D-11.5.1, Q2): "Given the fixture rendered on all four targets, when TestCrossTargetByteIdentity runs, then all four legs agree with each other and with expected.pdf." Four cuts also mean four subset operations and four embedded programs per leg, which is four times the surface AD-21's four targets exist to hold to one answer. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: alignment-rounding",     // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
 
@@ -1046,21 +1098,60 @@ func TestEpic2GateObligationsMatchTheDeclaredSet(t *testing.T) {
 	//     guard's reach for the entire time both sign-offs were
 	//     outstanding. Both records are checked below, symmetrically,
 	//     now that the gap is found.
-	assertSignOffIsRealAndStillBinding(t, root,
-		filepath.Join("fixtures", "shaped-text", "thai-signoff.json"),
-		liveShapedTextSignOffDigest(t, root),
-	)
+	// THE SET OF RECORDS CHECKED HERE IS DERIVED, NOT LISTED (D-11.5.1,
+	// Story 11.5). It used to be three hand-written calls carrying the
+	// comment "adding a third record without adding it here would repeat
+	// exactly that" — a warning that was live, correct, and did not
+	// prevent the fourth record from arriving unchecked anyway. A warning
+	// that did not stop the fourth will not stop the fifth, so the list
+	// is gone: every {kind: "signoff"} site declared in
+	// goldenDigestRecord is field-checked here automatically, and a new
+	// record becomes covered by declaring its site, with no edit to this
+	// block. "A declared sign-off site with no completeness check" is now
+	// inexpressible rather than merely discouraged.
+	var fieldChecked, exempted []string
+	for _, relPath := range declaredSignOffRecordPaths() {
+		if why := signOffRecordsExemptFromFieldCheck[relPath]; why != "" {
+			exempted = append(exempted, relPath)
+			continue
+		}
+		fieldChecked = append(fieldChecked, relPath)
+		assertSignOffIsRealAndStillBinding(t, root,
+			filepath.FromSlash(relPath),
+			liveFixtureDigestForSignOff(t, root, relPath),
+		)
+	}
+	// Vacuity guard: a derivation that resolved to nothing would report a
+	// clean run for a corpus it never looked at, which is the precise
+	// failure this block was rewritten to stop being possible.
+	if len(fieldChecked) == 0 {
+		t.Fatal("presence precondition: the derived sign-off set is empty, so this guard field-checked no record at all")
+	}
+	// Witness, in the shape matrixdocs_source_test.go uses: the set is
+	// derived, so the only way a reader can tell WHICH records it reached
+	// is if it says so.
+	t.Logf("sign-off field-check witness — %d record(s) checked %v; %d exempt by declared reason %v; plus fixtures/expected-breaks/break-signoff.json, which ships no expected.pdf and so has no site to derive from",
+		len(fieldChecked), fieldChecked, len(exempted), exempted)
+	// A stale exemption is the mirror failure and is caught in the other
+	// direction: an entry naming a site that is no longer declared would
+	// silently excuse nothing while looking like it excused something.
+	declared := map[string]bool{}
+	for _, relPath := range declaredSignOffRecordPaths() {
+		declared[relPath] = true
+	}
+	for relPath := range signOffRecordsExemptFromFieldCheck {
+		if !declared[relPath] {
+			t.Errorf("signOffRecordsExemptFromFieldCheck excuses %q, but no {kind: \"signoff\"} site declares it any more — remove the exemption or restore the site", relPath)
+		}
+	}
+	// fixtures/expected-breaks/ ships no expected.pdf, so it has no
+	// goldenDigestRecord entry and therefore no declared site for the
+	// derivation above to reach. Its record is checked explicitly, and
+	// this call is NOT redundant with the loop — it is the one human
+	// record the derivation structurally cannot see.
 	assertSignOffIsRealAndStillBinding(t, root,
 		filepath.Join("fixtures", "expected-breaks", "break-signoff.json"),
 		liveExpectedBreaksDigest(t, root),
-	)
-	// Story 8.0's record, checked here for the same reason and in the
-	// same way. The comment above records that this guard once
-	// overclaimed its reach while a sign-off sat outside it; adding a
-	// third record without adding it here would repeat exactly that.
-	assertSignOffIsRealAndStillBinding(t, root,
-		filepath.Join("fixtures", "thai-stacked-marks", "signoff.json"),
-		liveThaiStackedMarksDigest(t, root),
 	)
 	// D-8.4.8's TRANSFERRED record — fixtures/embedded-font/signoff.json — is
 	// the fourth, and it is deliberately NOT checked through the helper
@@ -1193,7 +1284,7 @@ func assertSignOffIsRealAndStillBinding(t *testing.T, root, relPath, wantDigest 
 
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		t.Errorf("%s does not exist. Its own matrix-gated test (shaped_signoff_matrix_test.go or expected_breaks_signoff_matrix_test.go) still tracks that obligation as outstanding; this guard only asserts the record once it exists, so its absence here is not itself a failure of THIS guard — but if you expected it to be present, it is not.", relPath)
+		t.Errorf("%s does not exist. Its own //go:build matrix sign-off gate still tracks that obligation as outstanding; this guard only asserts the record once it exists, so its absence here is not itself a failure of THIS guard — but if you expected it to be present, it is not. (This message once named shaped_signoff_matrix_test.go and expected_breaks_signoff_matrix_test.go specifically; the checked set is DERIVED now, so it reaches records those two files know nothing about.)", relPath)
 		return
 	}
 	if err != nil {
@@ -1234,6 +1325,90 @@ func assertSignOffIsRealAndStillBinding(t *testing.T, root, relPath, wantDigest 
 				"paste the new digest in.",
 			relPath, rec.SHA256, wantDigest)
 	}
+}
+
+// signOffRecordsExemptFromFieldCheck names every declared
+// {kind: "signoff"} site whose record is deliberately NOT field-checked
+// by assertSignOffIsRealAndStillBinding, with the reason it is not. It
+// is the sanctioned escape hatch for the derivation above, and it is a
+// map rather than a slice so the reason is mandatory: an exemption
+// without a stated reason is indistinguishable from an oversight.
+//
+// Both entries below are checked SOMEWHERE — neither is a hole being
+// waved through — but they are not checked by THAT helper, because that
+// helper demands a top-level reader/date/examined/sha256 shape neither
+// record has.
+var signOffRecordsExemptFromFieldCheck = map[string]string{
+	"fixtures/embedded-font/signoff.json": "D-8.4.8's TRANSFERRED reading, which carries no reader, date or examined BY DESIGN — it borrows another fixture's human reading rather than recording a new one, so demanding those fields would reject a correct record. Its schema, its impersonation check and its LAPSE condition are enforced by assertTransferredReadingIsRealAndStillBinding in embedded_font_signoff_transfer_test.go, which is UNTAGGED — so the ordinary suite covers it continuously, on the same terms as the derived set above.",
+
+	"fixtures/statement-signoff.json": "Story 4.7's ONE-record-over-four-digests shape (D-4.7.1): its digests live in a `digests` map keyed by fixture slug, not a top-level sha256, so this helper cannot read it. ⚠ PARTIAL, AND SAID PLAINLY: its DIGESTS are checked untagged by statementSignOffStaleness, but its FIELDS (reader/date/examined) are checked only by statement_signoff_matrix_test.go, which is //go:build matrix and which no workflow runs. That is a real residual gap of exactly the shape this derivation was built to close, it is PRE-EXISTING rather than introduced by Story 11.5, and it is registered as a deferral rather than fixed here because widening the field check to a second record shape is a different change from deriving the set.",
+}
+
+// declaredSignOffRecordPaths returns every distinct slash-separated
+// relPath declared as a {kind: "signoff"} site anywhere in
+// goldenDigestRecord, in sorted order so the checks run deterministically.
+// Sorted rather than map order because a failing subtest's position in
+// the output is part of how a reader locates it.
+//
+// Deduplicated because Story 4.7's one record is declared as a site on
+// all FOUR statement fixtures; checking it four times would say nothing
+// four times.
+func declaredSignOffRecordPaths() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, fx := range goldenDigestRecord {
+		for _, site := range fx.sites {
+			if site.kind != "signoff" || seen[site.relPath] {
+				continue
+			}
+			seen[site.relPath] = true
+			out = append(out, site.relPath)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// liveFixtureDigestForSignOff returns the digest the record at relPath
+// must name: the sha256 recorded in the expected.json of the fixture
+// whose site declared it.
+//
+// It reads the SIDECAR rather than goldenDigestRecord's own literal, for
+// the reason liveShapedTextSignOffDigest gives: a check that compared
+// this file's literal against this file's literal would move with a
+// re-record and assert nothing.
+func liveFixtureDigestForSignOff(t *testing.T, root, relPath string) string {
+	t.Helper()
+	var dir string
+	for _, fx := range goldenDigestRecord {
+		for _, site := range fx.sites {
+			if site.kind == "signoff" && site.relPath == relPath {
+				dir = fx.dir
+				break
+			}
+		}
+		if dir != "" {
+			break
+		}
+	}
+	if dir == "" {
+		t.Fatalf("no goldenDigestRecord entry declares %q as a signoff site", relPath)
+	}
+	path := filepath.Join(root, "fixtures", dir, "expected.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc struct {
+		SHA256 string `json:"sha256"`
+	}
+	if uerr := json.Unmarshal(body, &doc); uerr != nil {
+		t.Fatalf("%s is not valid JSON: %v", path, uerr)
+	}
+	if doc.SHA256 == "" {
+		t.Fatalf("%s records no sha256", path)
+	}
+	return doc.SHA256
 }
 
 // liveShapedTextSignOffDigest returns the digest fixtures/shaped-text's

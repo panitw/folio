@@ -880,6 +880,24 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessDeclaredVariantsEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(declaredVariantsTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		// Data("{}") — the document binds nothing, and Render refuses a
+		// nil report body outright rather than reading it as "no data".
+		// Spelled the way this document's two other call sites spell it
+		// (declared_variants_fixture_test.go, missing_glyph_corpus_test.go),
+		// so all three read as one idiom.
+		res, err := Render(tpl, Data("{}"), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessEmbeddedFontEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(embeddedFontTemplateJSON()))
 		if err != nil {
@@ -1008,6 +1026,33 @@ const subprocessThaiStackedMarksEnvVar = "FOLIO_SUBPROCESS_RENDER_THAISTACKEDMAR
 // the shipped face, or with none, fails its own leg rather than merely
 // diverging from the other three.
 const subprocessEmbeddedFontEnvVar = "FOLIO_SUBPROCESS_RENDER_EMBEDDEDFONT"
+
+// subprocessDeclaredVariantsEnvVar is Story 11.5's selector, rendering
+// fixtures/declared-variants/ — THE FIRST DOCUMENT IN THIS REPOSITORY
+// THAT DECLARES BOLD OR ITALIC AT ALL, and the first whose chain entry
+// declares its three cuts in the object form Story 11.2 introduced — in
+// a FRESH process, for the same reason embedded-font and
+// thai-stacked-marks needed one: a golden recorded from one process
+// pins whatever that process happened to do.
+//
+// EVERY LEG RENDERS FROM THE COMMITTED TEMPLATE CONST, IN A FRESH
+// PROCESS, AND THAT IS THE INVARIANT. The four legs render
+// declaredVariantsTemplateJSON — the same const
+// fixtures/declared-variants/input.folio is kept byte-identical to — so
+// no leg can certify a document the repository does not carry. There IS
+// an in-process render of that same const (renderDeclaredVariants, in
+// declared_variants_fixture_test.go), and the untagged golden test
+// hashes its bytes; what the matrix adds is the FRESH PROCESS on four
+// targets, because a golden recorded from one process pins whatever that
+// process happened to do.
+//
+// It matters here specifically because face resolution is where the
+// four targets could quietly disagree: chainFaceNames maps an entry to
+// a base name and a styled name at ONE boundary, and a target that read
+// the variant differently — or constructed one — would embed a
+// different font program, subset differently and hash differently, with
+// nothing in the corpus before this document able to say so.
+const subprocessDeclaredVariantsEnvVar = "FOLIO_SUBPROCESS_RENDER_DECLAREDVARIANTS"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

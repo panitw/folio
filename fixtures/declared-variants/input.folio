@@ -1,0 +1,126 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "height": 40,
+          "id": "e1",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 24
+          },
+          "type": "text",
+          "value": "Handgloves — Roboto Regular",
+          "width": 500,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 40,
+          "id": "e2",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 24
+          },
+          "type": "text",
+          "value": "Handgloves — Roboto Bold",
+          "width": 500,
+          "x": 0,
+          "y": 40
+        },
+        {
+          "height": 40,
+          "id": "e3",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 24,
+            "italic": true
+          },
+          "type": "text",
+          "value": "Handgloves — Roboto Italic",
+          "width": 500,
+          "x": 0,
+          "y": 80
+        },
+        {
+          "height": 40,
+          "id": "e4",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 24,
+            "italic": true
+          },
+          "type": "text",
+          "value": "Handgloves — Roboto Bold Italic",
+          "width": 500,
+          "x": 0,
+          "y": 120
+        },
+        {
+          "height": 40,
+          "id": "e5",
+          "style": {
+            "align": "center",
+            "fontFamily": "body",
+            "fontSize": 24
+          },
+          "type": "text",
+          "value": "Handgloves quickly",
+          "width": 400,
+          "x": 0,
+          "y": 170
+        },
+        {
+          "height": 40,
+          "id": "e6",
+          "style": {
+            "align": "center",
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 24
+          },
+          "type": "text",
+          "value": "Handgloves quickly",
+          "width": 400,
+          "x": 0,
+          "y": 210
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [],
+      "height": 20
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": [
+      {
+        "bold": "Roboto Bold",
+        "boldItalic": "Roboto Bold Italic",
+        "face": "Roboto",
+        "italic": "Roboto Italic"
+      }
+    ]
+  },
+  "locale": "en",
+  "nextId": 7,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}

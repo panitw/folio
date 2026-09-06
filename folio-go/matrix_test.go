@@ -725,6 +725,38 @@ func requireThaiStackedMarksCarriesTheRise(t *testing.T, target matrixTarget, ra
 	})
 }
 
+// captureDeclaredVariantsRender runs Story 11.5's selector, rendering
+// fixtures/declared-variants/ in a FRESH process — the same reason
+// thai-stacked-marks needed one: a golden recorded from one process
+// pins whatever that process happened to do.
+func captureDeclaredVariantsRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessDeclaredVariantsEnvVar: "1"})
+}
+
+// requireDeclaredVariantsUsesFourCuts is Story 11.5's per-leg feature
+// guard, and it is why registering these legs is not a formality.
+//
+// "Contains a FontFile2" is satisfied by any embedding at all, and every
+// line of this document fits its box, so a target that answered every
+// declared variant with the entry's BASE face would still emit all six
+// baselines — one face, six runs, a perfectly well-formed page — and
+// four such legs would agree with each other byte for byte and certify
+// nothing. That is DW-237's failure, and it is precisely the failure a
+// digest cannot explain.
+//
+// It reads declaredVariantsAssertFourCuts — the SAME guard the untagged
+// fixture test uses, declared once in declared_variants_fixture_test.go
+// rather than copied here (D-7.4.5).
+func requireDeclaredVariantsUsesFourCuts(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	// Fatal here: a matrix leg comparing bytes it has not first
+	// established are the RIGHT bytes is worse than no leg.
+	declaredVariantsAssertFourCuts(t, raw, func(format string, args ...any) {
+		t.Fatalf("%s: declared-variants leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureAlignmentRoundingRender runs Story 7.3's second selector,
 // rendering fixtures/alignment-rounding/ in a FRESH process.
 func captureAlignmentRoundingRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -1905,6 +1937,47 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "justified-thai", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireJustifiedThaiIsJustified,
+		wantPages:        1,
+	},
+	{
+		// Story 11.5's document (DW-237). It is HERE because it is THE
+		// FIRST CROSS-TARGET ARTIFACT THAT DECLARES BOLD OR ITALIC AT
+		// ALL: measured at this story's baseline, `grep -a` for "bold"
+		// and for "italic" under fixtures/ returned NOTHING, and an
+		// independent byte-walk over all 29 fixture directories agreed
+		// (with "fontFamily" returning 23 files as the positive
+		// control). Face resolution is a per-target question — a leg
+		// that read a declared variant differently, or constructed one,
+		// would subset and embed a DIFFERENT font program and hash
+		// differently — and until this entry no document these four
+		// legs render asked the chain for a cut.
+		//
+		// Its extraGuard is the reason the legs are not a formality: a
+		// target that answered every declared variant with the entry's
+		// base face still emits six well-formed baselines in one face,
+		// and four such legs agree byte for byte while certifying
+		// nothing.
+		//
+		// ITS expected.pdf IS ATTESTED. Under D-000.22 -> D-2.3.5 the
+		// reading is owed to a person, and D-11.5.1 arm [A] shipped that
+		// obligation as a RED gate
+		// (declared_variants_signoff_matrix_test.go) rather than a
+		// register entry. The red was TRANSIENT and it cleared inside the
+		// story: Panit Wechasil read the page on 2026-09-06 and the
+		// record landed in fixtures/declared-variants/signoff.json. It
+		// reds again on the next re-record, by digest.
+		//
+		// Registered on the same terms as thai-stacked-marks below — the
+		// slug lives in .github/workflows/matrix.yml's `docs="…"` list
+		// and in an upload-artifact path for every target under
+		// `if-no-files-found: error`, pinned by
+		// TestMatrixDocumentSlugsAreRegisteredInCI.
+		label:            "declared-variants (four cuts, read off one chain entry)",
+		slug:             "declared-variants",
+		capture:          captureDeclaredVariantsRender,
+		fixtureRelPath:   []string{"fixtures", "declared-variants", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireDeclaredVariantsUsesFourCuts,
 		wantPages:        1,
 	},
 	{

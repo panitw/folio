@@ -457,7 +457,7 @@ development_status:
   # would have multiplied the same gate -- the two rulings are consistent, not contradictory.
   # Depends on 11.2 alone, NOT on the canvas, so it may run before or after 11.3/11.4.
   # It HALTS for an owner attestation: an expected.pdf is human-attested under AD-21 / D-4.7.1.
-  11-5-a-bold-document-is-a-pinned-golden: backlog
+  11-5-a-bold-document-is-a-pinned-golden: review
   epic-11-retrospective: optional
 
   # 12.4's ruling is SETTLED: D-12.4.1 (owner, 2026-09-05, epic-11-14-decision-log.md).

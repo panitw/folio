@@ -1,0 +1,6 @@
+{
+  "reader": "Panit Wechasil",
+  "date": "2026-09-06",
+  "examined": "Opened expected.pdf as a full-page render and judged the four cuts by eye. Reported: \"The pdf rendered correctly.\" Confirmed on direct question that this covers the specific judgment the gate asks for and not merely that the page displayed: line 2 is a real Roboto Bold font program rather than the regular face thickened, and lines 3 and 4 are drawn italics rather than slanted regulars. Transcribed verbatim into this file by the orchestrating agent at the reader's explicit instruction, with the reader choosing transcription over writing the file themselves; the judgment, the words and the decision to accept are the reader's.",
+  "sha256": "2405d005bbb1297556e41770cfa9353e1171b2d85af809dc1d21b0504f75ef4d"
+}

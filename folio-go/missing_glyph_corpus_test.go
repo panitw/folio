@@ -216,6 +216,27 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
 		},
 		{
+			// Story 11.5 (DW-237). It matters here specifically because
+			// it is the only committed document that asks its chain for
+			// a CUT: coverage chooses an entry on its BASE face, and the
+			// declared variant is then applied WITHIN that entry — so a
+			// rune the base face covers and the variant does not is a
+			// case no other fixture in this table can reach. Roboto's
+			// four cuts all cover this document's Latin, which is
+			// exactly why a Warning here would mean the resolution went
+			// somewhere it should not have.
+			name: "declared-variants",
+			tpl: func(t *testing.T) *Template {
+				tpl, err := ParseTemplate([]byte(declaredVariantsTemplateJSON))
+				if err != nil {
+					t.Fatalf("parse declared-variants template: %v", err)
+				}
+				return tpl
+			},
+			data: Data("{}"),
+			fs:   func(t *testing.T) FontSet { return testShippedFontSet() },
+		},
+		{
 			// Story 7.3, closing DW-24.
 			name: "alignment-rounding",
 			tpl: func(t *testing.T) *Template {
@@ -259,6 +280,7 @@ func TestCorpusFixturesProduceNoMissingGlyphWarnings(t *testing.T) {
 		"alignment-rounding": "Story 7.3, closing DW-24 — the first committed document declaring align center or valign at all, and therefore the first that reaches any of the branches which halve a slack",
 		"thai-stacked-marks": "Story 8.0 (DW-28) — the first committed document carrying a glyph the shaper gives a non-zero YOffset, and the only one whose runs are split into segments by a text rise",
 		"embedded-font":      "Story 8.3 (FR53/FR56), rendering from the carried face since Story 8.4 (FR54) — the first committed document that CARRIES a font face rather than naming one, and the only one whose text no face the CALLER supplies covers a rune of",
+		"declared-variants":  "Story 11.5 (DW-237) — the first committed document that declares bold or italic at all, and the only one that asks its chain for a CUT. It is the NEGATIVE CONTROL for the narrower-variant hazard, not an instance of it: coverage picks an entry on its BASE face and the declared variant is then applied WITHIN that entry, so a variant whose cmap is narrower than its base would warn here — and Roboto's four cuts all cover this document's Latin, so a Warning from this row means the resolution went somewhere it should not have",
 		"keep-together":      "Story 7.7 (FR51) — the first committed document that declares a keep-together group, the first whose page break is placed by an author's own declaration rather than by the four pagination rules alone, and the first declaring format version 1.2",
 	}
 
