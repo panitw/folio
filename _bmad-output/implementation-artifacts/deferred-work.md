@@ -9613,7 +9613,47 @@ nothing. A new golden added here inherits that gap until 15.2 closes it.
 
 ---
 
-### DW-238 — a chain edit DESTROYS declared style variants, and today nothing can reach the code that would
+### DW-238 — DISCHARGED BY MEASUREMENT 2026-09-06: there is no destroying code, and this entry contradicted itself
+
+> **DISCHARGED — NOT A DEFECT.** Read this box before the entry below it, which is preserved as written
+> and is **wrong on three of its four evidence claims**. Story 11.4's builder queried one citation
+> (`setFontChain`), which sent the orchestrator to read the whole command family
+> (`component_commands.go:273-286` — **seven** font-chain cases, not the three either of us had named):
+>
+> ```
+> addFontChainEntry     Fonts[name] = slices.Insert(slices.Clone(chain), index, FaceEntry(face))
+> moveFontChainEntry    moved := slices.Clone(chain)   … reorder
+> removeFontChainEntry  Fonts[name] = slices.Delete(slices.Clone(chain), index, index+1)
+> addFontChain          if _, exists := Fonts[name]; exists { → "a font chain named %q already exists" }
+> embedFontFamily       same refusal
+> ```
+>
+> **Every entry-mutating command clones the existing chain and preserves each entry verbatim.** Only a
+> *newly inserted* entry is a bare `FaceEntry`, which is correct — a new entry has no variants yet. **Both
+> whole-chain constructors refuse to overwrite an existing chain.** So:
+> 1. `setFontChain` **does not exist.**
+> 2. `addFontChain` builds from a `[]string`, but **cannot touch an existing chain**, so it can never
+>    flatten one.
+> 3. *"any variant the document carried is dropped on the next chain edit"* — **false**; the three
+>    commands that *are* chain edits all clone and preserve.
+> 4. *"`embedFontFamily` rebuilds similarly"* — it refuses, exactly as this entry's own later paragraph
+>    says.
+>
+> **The entry contradicts itself between its quoted evidence and its own measurement**, and the
+> orchestrator routed it on the summary line without reading down. *"The destroying code is written,
+> tested and shipped"* is false: there is no destroying code. **Severity was never "LOW because
+> unreachable" — it is "not a defect", for an entirely different reason than the one recorded.**
+>
+> **Epic 11's boundary gate no longer waits on this** (D-11.2.10 amended). **One real obligation survives
+> and it is Story 11.4's own AC1, not a pre-existing bug:** replacing a family means delete-then-add, and
+> `addFontChain` builds entries from a `[]string` — so **11.4's control must write variants as it
+> constructs the chain**, or the author loses them because the new code never wrote them.
+>
+> **Method note — the third instance in two days.** A finding's summary line gets quoted forward while its
+> own qualifying paragraph stays behind (cf. DW-193's dropped four words, D-000.31's retraction). This
+> entry carried both the false claim and the true measurement three paragraphs apart.
+
+### DW-238 (original text, preserved) — a chain edit DESTROYS declared style variants, and today nothing can reach the code that would
 
 - **Deferred by:** Story 11.2's review round (2026-09-06), as the destruction half of a single finding
   the builder registered as *"whichever story lands first must close it."* **Split and re-routed by the
