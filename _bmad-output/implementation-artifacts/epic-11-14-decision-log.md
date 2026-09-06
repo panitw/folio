@@ -3896,3 +3896,106 @@ Also settled here: 11.2's builder held the spec at `draft` rather than freezing 
 while Fork A was open — three I/O matrix rows turned on the answer, and only a human can reopen a frozen
 block. **Freezing to look like progress and reopening later is strictly worse than waiting.** Correct, and
 recorded so the pattern is available to later builders.
+
+### D-11.2.6 — `patch` over `bad_spec` when the spec was right and the code was not
+
+11.2's builder routed all 16 review findings as `patch` where step-04 says to prefer `bad_spec` when in
+doubt, and flagged it as the call it most wanted second-guessed. **Ratified**, and the rule already covers
+it from the other side.
+
+**D-11.1.24 says `bad_spec` exists to stop code being derived from a WRONG SPEC**, and its test is *would
+re-deriving from the corrected spec produce different code?* Here the spec was **correct** — the frozen
+Boundaries, AC4 and the Design Notes all specified the behaviour — and the **code failed to honour it**.
+That is a bug. Re-deriving ~1,600 lines would have reproduced the same code at high cost **and discarded
+the review that found the defect**, which is the part that makes the mechanical route actively worse than
+useless here.
+
+*"Prefer `bad_spec` when in doubt"* is a tie-breaker for doubt. The builder did not have doubt; it had a
+measurement. Recording the invariant in the Spec Change Log is exactly what a `bad_spec` amendment would
+have written, so nothing was lost.
+
+**Two related calls, ratified as one rule.** The implementer changed production code after being told to
+escalate instead, **and said so plainly**; the builder let it stand because the spec was unambiguous and
+the code disagreed with it. Same rule: *a disagreement between clear spec and code is a bug, not an intent
+gap.* **The failure mode to police is the silent change, not the reported one** — an implementer that
+deviates and announces it is doing what you want.
+
+**And the implementer pushed back on two patch instructions and was right twice.** P9 as framed was
+**vacuous** — `versionForSave` never lowers, so it answers 2.0 regardless — and was restated over
+`versionRequiredByContent` with both directions pinned. On P5 it fixed its own warning duplication,
+measured that the shipped `TEXT_MISSING_GLYPH` twin has the identical defect, and **deliberately did not
+widen the fix**, citing the Ask First fence. *Declining to fix a bug you can see, because fixing it is out
+of scope, and registering it instead, is the discipline that keeps stories closeable.*
+
+### D-11.2.7 — the verification-gap review layer runs ALONE. Standing rule.
+
+11.2's builder reported: *"A reviewer mutated the working tree while the other two were reading it… I
+verified the tree byte-for-byte afterwards and it was correctly restored, but that is luck, not design."*
+
+**It is worse than a race on files.** The verification-gap layer's whole method is to **revert code and
+watch a test stay green**. So while it runs, the other layers are reading a tree that may not be the tree
+under review, and a finding they report may be about a mutation rather than about the code.
+
+**The asymmetry is what makes it a standing rule rather than a preference.** A false *finding* is
+recoverable — someone checks it and it dissolves. A **false CLEAN is not**: a reviewer that reads reverted
+code and sees no defect **reports nothing**, and an absence of findings is indistinguishable from an
+absence of defects. It is D-11.2.4's lesson arriving through a different door — an unexamined absence,
+this time manufactured by a peer.
+
+**RULE: the verification-gap layer runs alone**, before or after the read-only layers, never beside them.
+Binding on every remaining story in this run. That layer **proved three of 11.2's findings**, so the
+answer is to sequence it, never to drop it.
+
+### D-11.2.8 — an assertion whose two sides could be equal is not yet an assertion
+
+The new leading test for the metrics-chain defect **would have passed either way**: Noto Sans Thai and Noto
+Sans SC both give 13920, so the assertion could not distinguish the fixed code from the broken code. The
+implementer caught it, swapped the fixture's faces to **13920 vs 12732**, and — the durable half — **added
+a guard pinning that the two values genuinely differ.**
+
+Without that second half a later face substitution silently restores the vacuity and nobody learns. With
+it, the vacuity becomes a failure.
+
+> **An assertion whose two sides could be equal is not an assertion until something pins that they are
+> not.**
+
+This is the run's dominant defect class in its purest form — a guard that cannot distinguish a correct
+outcome from a plausible wrong one — and the first time it has been caught **inside a test being written
+for that very class.** Add "could both sides of this comparison be equal?" to the census questions
+alongside *which population is this quantified over?* and *is this record enforced in both directions?*
+
+### D-11.2.9 — two things about 11.2 worth keeping, and one number to watch
+
+**The Matrix Test Audit is not a formality.** It found the metrics-chain defect: one uncovered matrix row →
+a missing test → a production bug. That is the complete chain from coverage gap to shipped defect, and it
+is the clearest evidence this run has produced for keeping the audit.
+
+**AC2 caught nothing, and that is the criterion working.** D-11.2.5 wrote the failure mode *into* the
+criterion — that the table-header arm reaches `chainFaceNames` directly and bypasses `fontChain`. The
+implementer read it and routed style into `chainFaceNames` from the start. **A guard that changes
+behaviour before it can fire has already paid for itself**, and it will not appear in any findings count.
+
+**The number to watch: the AC3 Warning is per (element, distinct rune).** `worked-example.json` emits 16.
+**For CJK body text that is thousands per render.** Per spec, and not a defect — but it is the kind of
+figure that becomes a defect at a scale nobody tested. Registered for 11.3/11.4 to revisit.
+
+### D-11.2.10 — the data-loss path is latent, and split across two owners rather than raced between them
+
+11.2 created a path where a chain edit destroys declared variants — `setFontChain`/`addFontChain` rebuild
+entries from a `[]string` — and its own Ask First fences both halves out. The builder registered it as
+*"whichever story lands first must close it."*
+
+**Re-routed, after measuring reachability rather than accepting it.** No live path destroys variants today:
+the font-chain command builders have **no production caller** (`FontChainEntry` and `fontChainCommand`
+appear nowhere in `App.tsx`; Story 16.9 deleted that UI), and the one live command **cannot rebuild an
+existing chain** — `embedFontFamily` refuses at `component_commands.go:3356`, *"a font chain named %q
+already exists"*. It creates; it does not overwrite. **Severity is LOW today and HIGH the moment 11.4
+builds the surface.**
+
+**"Whichever lands first must close it" names two owners, and that is how an item gets dropped by both.**
+Split instead: the **destruction** half is **Story 11.4's hard precondition**; the **projection** half —
+`CanvasFontChainEntry` cannot see variants, so the designer can author a weight it cannot read back — is
+**Story 11.3's**. Neither is optional and **Epic 11 does not close with either open.**
+
+*Generalisable: a deferred item whose trigger is a race between two stories has no owner. Name one story
+per half, or accept that neither will do it.*
