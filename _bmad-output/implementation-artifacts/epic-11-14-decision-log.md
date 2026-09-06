@@ -3411,3 +3411,38 @@ cases — a threshold **above the ceiling** and one **below the floor** — unde
 a warning that can never fire."* **The obvious failure of an approach warning is not that it is absent
 but that it is set somewhere it can never trip**, and nothing in the ruling would have produced that
 check. Recorded because it is the defect class caught *prospectively* for the first time in this run.
+
+### D-11.1.23 — the same-arm control exists now, it passed, and its limit is part of the measurement
+
+D-11.1.11 replaced a stale justification with a better instruction: build the same arm twice and quote
+the cross-arm delta against that repeat. **This is the first story in the run to actually have the
+control, and it passed.**
+
+**Two consecutive clean `npm run build` runs, compared on `s1.assetCount`, `s1.cachedBytes`, all twelve
+rows, and every asset URL with its bytes: IDENTICAL.**
+
+**The limit, stated because it is part of the measurement.** Both builds ran at HEAD `ffec48c` — the
+manifest was written 10:03:21 and commit `4a03678` landed 10:03:56. So this is **reproducibility at a
+fixed tree**, which is what D-11.1.11 asked for, and **not** a cross-commit demonstration. It must not be
+read as one.
+
+**So the vcs question was settled directly on the artifact rather than inferred from the timing.**
+`strings` over `dist/assets/folio-engine.0230bd76b83f1e373a3e-DJc1Bw29.wasm` matching
+`vcs.revision|vcs.time|vcs.modified|build\tvcs=` returns **zero markers**. `-buildvcs=false` is in force
+**in the emitted binary**, not merely declared in `wasm-vcs-stamp.mjs`. DW-100's drift mechanism is
+confirmed closed by inspection of the artifact — a better basis than reading the flag, and a better basis
+than my timestamp reasoning, which I had begun to lean on before checking.
+
+**The general lesson, and it is one this run keeps re-learning in new costumes.** I nearly reported the
+repeat as evidence that the commit-hash input was closed, on the strength of a plausible interleaving I
+had not pinned. The interleaving turned out to be the *other* way round — both builds preceded the
+commit — so the inference would have been false even though the conclusion happens to be true. **A true
+conclusion reached through an unchecked premise is not a measurement**, and it is worth exactly as much
+as the premise. Checking the artifact cost one command.
+
+**Recorded figures for the Delivery Log**, in order of durability:
+- **3,136,768 B of new font binary**, measured directly from the files — needs no arm comparison and will
+  still mean something in a year.
+- `s1.assetCount` 54 → 61, margin 10 → 3, twelve rows, `cachedBytes` 53,939,356, all at this arm.
+- The control: two consecutive clean builds byte-identical at a fixed tree; emitted wasm carries zero vcs
+  markers.
