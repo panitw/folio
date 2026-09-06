@@ -9552,3 +9552,61 @@ against the engine copies, or extend the Go-side table beyond Roboto to all elev
 is preferred: it puts the check inside the fonts pipeline, where someone changing a face will
 actually run it.
 
+
+---
+
+### DW-237 — no golden renders a bold-declaring document, so a silent face swap would move no bytes and red no test
+
+- **Deferred by:** Story 11.2's plan gate (2026-09-06). Surfaced by the builder while measuring AC5's blast
+  radius; **verified independently by the orchestrator** before it was registered, because it is an absence
+  claim and D-11.2.4 makes an unverified absence a lead rather than a result.
+- **Owner:** **Story 11.3.** It is the first point at which a person can look at a genuinely bold page and
+  attest to it — 11.3 makes bold reachable and updates `starter.folio` to declare variants (D-11.0.1).
+- **Severity:** MEDIUM while open, and the severity is a function of what else guards the same thing.
+- **Status:** OPEN, with the mechanism covered in the meantime (see below).
+
+**Measured, each with its population and a positive control:**
+
+```
+grep -rn '"bold"\|"italic"' fixtures/                         -> 0
+positive control  grep -rln '"fontFamily"' fixtures/          -> 23 files
+'worked-example' in byte_neutrality_test.go / matrix_test.go
+                 / statement_golden_fixture_test.go            -> 0, 0, 0
+positive control 'statement-1' in byte_neutrality_test.go      -> 5
+```
+
+**So: not one of the 30 fixture directories declares bold or italic, and `worked-example.json` — the one
+in-tree document that does declare bold — has its rendered bytes pinned nowhere.**
+
+**The failure it leaves open.** If the resolver ever fell back to constructing a `"<family> Bold"` name
+lookup — the exact mechanism D-11.2.1 forbids — then `worked-example.json`'s `e1` would **silently switch
+face**. No Warning would fire (the fallback would have succeeded), the single expected red
+(`component_commands_test.go:156`) would stay green, and **no golden would move, because no golden covers
+it.** A wrong face, shipped, with every gate green.
+
+**What covers the mechanism today, and why it is not enough on its own.** Story 11.2's DW-233 tripwire — a
+chain entry `"Roboto"` with no declared variant, in a `FontSet` that *does* contain `"Roboto Bold"`, plus an
+element declaring bold, must render Regular and warn — catches construction **behaviourally**. That is the
+right guard and it is the only thing standing there. But it pins a *behaviour*, not *bytes*: it would not
+catch a face change arriving by some route other than name construction. **The tripwire covers the
+mechanism; a golden covers the outcome.**
+
+**Why it was NOT added to Story 11.2, ruled rather than skipped.** Under DW-12 a new pinned document needs
+its own golden plus the full four-target matrix in-story, and an `expected.pdf` is a **human-attested
+artifact** (AD-21 / D-4.7.1). Attestation is an owner action, and **nobody can honestly attest a bold page
+before 11.3 makes bold reachable** — adding it at 11.2 would mean either an unattested golden or a person
+signing off on a page assembled purely from a test fixture. That is the wrong trade for a story whose
+mechanism guard already exists.
+
+**What discharges it.** A fixture document declaring bold (and ideally italic) with a chain that declares
+its variants, carrying `expected.json` and a **human-attested** `expected.pdf`, registered in
+`goldenDigestRecord` and in CI's matrix slug list, exercised across all four targets. Red-provable by
+pointing the resolver at the base face and confirming the golden moves.
+
+**One trap for whoever does it:** `worked-example.json` **cannot be edited alone** —
+`goldenfixture_test.go:16` byte-compares it against the `## Worked example` fence at `folio-format.md:876`.
+It is a document *and* a doc example, and the two move together. Prefer a new fixture over editing that
+one.
+
+**See also DW-230** — the golden record is enforced record→disk and in the disk→record direction by
+nothing. A new golden added here inherits that gap until 15.2 closes it.
