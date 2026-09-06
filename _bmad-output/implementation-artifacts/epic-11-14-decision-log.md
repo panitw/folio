@@ -4238,3 +4238,54 @@ as a bare string**; and `"version": "2.0"` is **mandatory**, not optional.
 
 **No release build for 11.3** — the starter is fingerprinted only into gitignored regenerated output, and
 `verify-offline-release.mjs:113` class-checks `.folio` rather than pinning a digest.
+
+### D-000.30 — the e2e suite is NOT dead, and DW-193's wording would have made me plan as if it were
+
+**Measured before Epic 13 dispatches, because fifteen designer stories were about to depend on the
+answer.** DW-193 says *"the e2e suite is compiled but never executed in CI"*, and the lead's grounding
+carried it forward as *"the e2e suite is compiled and never executed"* — the load-bearing four words having
+quietly lost *"in CI"*. I had accepted that framing and written it into 11.3's dispatch.
+
+**What is true:**
+- **CI runs only the typecheck.** `.github/workflows/ci.yml:249` runs `npm run test:e2e:compile`, which is
+  `tsc -p tsconfig.e2e.json --noEmit`. `git log -S'npm run test:e2e"'` over that workflow returns
+  **nothing** — CI has **never** run the real suite, going back to `05c8c70` when the compile step was
+  introduced.
+- **42 test cases across 16 spec files** are covered by that typecheck and by no execution in CI.
+- **Playwright 1.63.0 is installed with chromium browsers present**, so the suite is runnable on this
+  machine — it is not blocked, merely unscheduled.
+
+**What is FALSE, and this is the part that changes the plan:** the suite is **not** unexecuted. The most
+recent change to `folio-designer/e2e/` is commit **`0c0f3e9` (2026-09-06)** — *"Fix the two e2e failures
+Epic 12's boundary gate found, one of them a regression"* — touching `band-boundary-drag.spec.ts` and
+`image-asset.spec.ts`. **Epic 12's boundary gate ran the suite, it failed, and one of the two failures was
+a genuine regression.** The suite works, it catches real defects, and somebody runs it — at epic
+boundaries, by hand, not per story and not in CI.
+
+**Why the distinction is worth a decision entry rather than a footnote.** *"Never executed"* invites the
+conclusion that the suite has rotted and that turning it on is an unbounded excavation. **The measurement
+says the opposite: it was green enough at Epic 12's gate that exactly two failures surfaced, and both were
+fixed the same day.** Those are very different inputs to the question *should Epics 13 and 14 proceed
+before e2e is in CI?* — and I would have answered it wrongly from the register's wording alone.
+
+**Consequences for the remaining program, recorded now rather than discovered at Epic 13:**
+1. **Per-story verification for Epics 13 and 14 does not include e2e**, and every designer story's
+   Verification section must say so — a green `test:e2e:compile` is a **typecheck**, and reading it as
+   coverage is the false-clean shape (D-11.2.7).
+2. **The boundary gate is the net**, and it is the only net. That makes each epic's boundary gate
+   load-bearing in a way it is not for engine epics, and it must run the suite **unfiltered** — the same
+   rule D-000.28 established after I opened Epic 12's gate with a filtered matrix run.
+3. **Story 15.2 — "CI's red means something" — is the right owner** for putting the suite into CI, and
+   this measurement makes its scope knowable rather than open-ended.
+4. **Fifteen designer stories will land between now and then.** Each one that a boundary gate later finds
+   broken is a story that closed green. That is a real cost and it is now a priced one rather than an
+   invisible one.
+
+**The register entry itself is wrong as written and must be amended** — DW-193's *"never executed"* becomes
+*"never executed IN CI; executed by epic boundary gates, most recently at Epic 12's, which found two
+failures including a regression (`0c0f3e9`)"*. Assigned to 11.3's closer, since the tree is mid-story.
+
+**The general lesson, and it is the third time this run:** *a register entry ages into a stronger claim
+than it was written to make.* DW-193 was accurate on the day it was filed and the four words that bounded
+it were dropped in one hand-off. **D-11.1.11 said to check a DW entry's status before leaning on it; this
+says to check its scope too** — not just *is it still true?* but *is it still saying only what it said?*
