@@ -1,0 +1,118 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { declaredCacheAssetWarning } from './offline-release-contract.mjs'
+import { reportCacheAssetApproach } from './verify-offline-release.mjs'
+// THE TYPESCRIPT DECLARATION ITSELF, IMPORTED AS A VALUE. See the tie below for
+// why this import is the point rather than a convenience.
+import { cacheAssetApproachWarning } from '../src/release-payload'
+
+// ---------------------------------------------------------------------------
+// THE CACHE-ASSET APPROACH WARNING, EXECUTED (Story 11.1, D-11.1.10).
+//
+// THE GAP THIS CLOSES. The warning is the sole realization of an acceptance
+// criterion — "the build warns that the cache-asset margin has fallen to 3" —
+// and until this file the only test near it exercised the READER
+// (`declaredCacheAssetWarning`, in `offline-release-contract.test.mjs`) and
+// never the emission. The reader validates that the threshold sits inside
+// [minimum, maximum]; raising `warnCacheAssets` from 56 to 64 stays inside that
+// envelope, so it would have stopped the warning firing on a 61-asset release
+// with every test in the repository still green. An acceptance criterion whose
+// only realization is unexecuted code is an acceptance criterion nothing holds.
+//
+// WHY THE EMISSION IS OBSERVABLE AT ALL. `reportCacheAssetApproach` takes its
+// `warn` sink as an option and returns the message it emitted (or `null`),
+// so a test asserts on the emission itself rather than scraping stderr — and
+// the return value is checked to BE the argument the sink received, so a
+// function that returned the right string and printed nothing cannot pass.
+// ---------------------------------------------------------------------------
+
+const { warnCacheAssets, maximumCacheAssets } = declaredCacheAssetWarning()
+
+describe('the offline release approach warning', () => {
+  // NON-VACUITY FIRST. Every assertion below is parameterised on the two
+  // declared numbers, and a threshold equal to the maximum would make the
+  // "below the threshold" case and the margin arithmetic degenerate.
+  it('is driven by a threshold that leaves room to warn in', () => {
+    expect(Number.isSafeInteger(warnCacheAssets)).toBe(true)
+    expect(Number.isSafeInteger(maximumCacheAssets)).toBe(true)
+    expect(warnCacheAssets, 'a threshold at or above the maximum makes the warning unreachable and every case below vacuous').toBeLessThan(maximumCacheAssets)
+    expect(warnCacheAssets, 'a threshold of 1 or 0 leaves no "below the threshold" case to assert silence on').toBeGreaterThan(1)
+  })
+
+  // AND THE NUMBER THE VERIFIER READS IS THE NUMBER TypeScript DECLARES.
+  //
+  // THIS IS `cacheAssetApproachWarning`'s ONE CONSUMER, and it is a real one.
+  // `scripts/offline-release-contract.mjs` deliberately CANNOT import
+  // `src/release-payload.ts` (it needs node:crypto; tsconfig.app.json includes
+  // only src/), so it derives the threshold by reading the `const` line as
+  // TEXT. That reader is a regex over source, and a regex can read a number out
+  // of a line the TypeScript compiler treats differently — a duplicated
+  // declaration in a scope the pattern cannot see, a value the module then
+  // shadows. This is the only assertion in the repository that puts the
+  // text-derived number beside the value the module actually evaluates to, and
+  // it is why the export exists rather than existing to satisfy
+  // `noUnusedLocals`.
+  it('reads the same threshold the TypeScript module declares, text reader against evaluated value', () => {
+    expect(declaredCacheAssetWarning().warnCacheAssets, 'scripts/offline-release-contract.mjs reads `warnCacheAssets` out of src/release-payload.ts as TEXT; this is the value that file actually evaluates to').toBe(cacheAssetApproachWarning)
+  })
+
+  it('emits the warning for a release AT the declared threshold, and names the remaining margin', () => {
+    const warn = vi.fn()
+    const message = reportCacheAssetApproach(warnCacheAssets, { warn })
+    expect(warn, 'a release standing exactly on the threshold is the first release the warning exists for').toHaveBeenCalledTimes(1)
+    expect(message, 'the returned message must BE the emitted one; a reporter that returns a string and prints nothing warns nobody').toBe(warn.mock.calls[0][0])
+    expect(message).toContain(`carries ${warnCacheAssets} cache assets`)
+    expect(message).toContain(`a declared maximum of ${maximumCacheAssets}`)
+    // THE MARGIN IS THE POINT. DW-162's figure aged 41 -> 20 -> 10 while three
+    // stories walked past it, because the number nobody printed was the number
+    // nobody watched. A warning that named only the count would have the same
+    // defect.
+    expect(message, 'the warning must state the REMAINING MARGIN, not just the count').toContain(`the margin is ${maximumCacheAssets - warnCacheAssets}`)
+    expect(message).toContain('`warnCacheAssets`')
+  })
+
+  it('emits it for every release ABOVE the threshold, with the margin each one actually has', () => {
+    for (let assetCount = warnCacheAssets; assetCount <= maximumCacheAssets; assetCount++) {
+      const warn = vi.fn()
+      const message = reportCacheAssetApproach(assetCount, { warn })
+      expect(warn, `a release of ${assetCount} assets is at or over the threshold ${warnCacheAssets} and must warn`).toHaveBeenCalledTimes(1)
+      expect(message, `the margin at ${assetCount} of ${maximumCacheAssets}`).toContain(`the margin is ${maximumCacheAssets - assetCount}`)
+    }
+  })
+
+  it('is SILENT below the threshold, and says so by returning null rather than by printing nothing', () => {
+    for (const assetCount of [warnCacheAssets - 1, Math.floor(warnCacheAssets / 2), 1, 0]) {
+      const warn = vi.fn()
+      expect(reportCacheAssetApproach(assetCount, { warn }), `a release of ${assetCount} assets is under the threshold ${warnCacheAssets} and must not warn`).toBeNull()
+      expect(warn, `a release of ${assetCount} assets is under the threshold ${warnCacheAssets} and must not warn`).not.toHaveBeenCalled()
+    }
+  })
+
+  // AND THE REPORTER IS WIRED INTO THE VERIFIER, on an explicit option.
+  //
+  // The four assertions above drive `reportCacheAssetApproach` directly, so
+  // they would all stay green if its CALL SITE were deleted — the shape of
+  // vacuous green this file exists against. `verifyOfflineRelease` needs a
+  // whole built dist to execute, which is what put the warning out of a test's
+  // reach in the first place, so the wiring is asserted against the source text
+  // instead: the one property a unit test can hold without a release build.
+  //
+  // AND THE LATCH IS GONE. `approachWarningReported` was module scope, never
+  // reset, and was set INSIDE the firing branch — so it latched on the first
+  // FIRING rather than the first CALL. Under `--red-only` the real release is
+  // never passed to `verifyOfflineRelease` at all, so the single warning line a
+  // run printed could describe a deliberately mutated red-proof fixture while
+  // reading as a statement about the release. Its absence is asserted, not
+  // assumed.
+  it('is called by verifyOfflineRelease on an explicit option, and by the CLI only for the real release', () => {
+    // `import.meta.dirname` rather than `new URL(..., import.meta.url)`: under
+    // Vitest's jsdom environment `import.meta.url` is not a file: URL, and
+    // `offline-release-contract.test.mjs` already uses this idiom next door.
+    const source = readFileSync(join(import.meta.dirname, 'verify-offline-release.mjs'), 'utf8')
+    expect(source, 'verifyOfflineRelease no longer calls the reporter, so the warning is unreachable in a real build however green this file is').toContain('if (reportApproach) reportCacheAssetApproach(release.assets.length)')
+    expect(source, 'the CLI must ask for the report on the branch that verifies the REAL dist').toContain('verifyOfflineRelease(dist, { wasmWitness, reportApproach: true })')
+    expect(source, 'the option must default to OFF, so the two dozen red-proof calls over a mutated dist stay quiet without a latch').toContain('reportApproach = false')
+    expect(source, 'a module-scope first-call latch is what let a red-proof fixture consume the one warning the real release was owed').not.toContain('approachWarningReported')
+  })
+})

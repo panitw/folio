@@ -69,6 +69,33 @@ function readDeclaredConstant(source, name, label) {
   return Number(matches[0][1])
 }
 
+// THE APPROACH WARNING'S THRESHOLD, READ THROUGH THE SAME LINE-ANCHORED READER
+// (Story 11.1). It is a SEPARATE export rather than a third field on
+// `declaredCacheAssetBounds` deliberately: that function's return shape is
+// asserted by exact equality in `offline-release-contract.test.mjs`, and its
+// failure cases are driven with two-constant fixture strings — widening it
+// would have made every one of those fixtures throw for a reason that has
+// nothing to do with the case under test.
+//
+// IT IS NOT A BOUND AND NOTHING FAILS ON IT. `maximumCacheAssets` is still the
+// only number that refuses a release; this one only decides when the build says
+// out loud how much margin is left. That distinction is why the warning names
+// the MARGIN rather than the count: DW-162's figure aged 41 -> 20 -> 10 while
+// three stories walked past it, precisely because the number nobody printed was
+// the number nobody watched.
+export function declaredCacheAssetWarning(source, label = source === undefined ? 'src/release-payload.ts' : 'the injected release-payload source') {
+  const text = source === undefined ? readFileSync(releasePayloadSource, 'utf8') : source
+  const warnCacheAssets = readDeclaredConstant(text, 'warnCacheAssets', label)
+  const { minimumCacheAssets, maximumCacheAssets } = declaredCacheAssetBounds(text, label)
+  // A THRESHOLD OUTSIDE THE ENVELOPE IS A WARNING THAT CANNOT FIRE, or one that
+  // fires on every release ever emitted. Either way the fault is in the
+  // declaration and not in a release, so it is named here rather than left to
+  // read as an ordinary quiet build.
+  if (warnCacheAssets > maximumCacheAssets) throw new Error(`${label} declares \`warnCacheAssets\` ${warnCacheAssets} above \`maximumCacheAssets\` ${maximumCacheAssets}: a release over the warning threshold is already refused by the bound, so this warning could never fire and the fault is in the declaration rather than in any release`)
+  if (warnCacheAssets < minimumCacheAssets) throw new Error(`${label} declares \`warnCacheAssets\` ${warnCacheAssets} below \`minimumCacheAssets\` ${minimumCacheAssets}: every emittable release would warn, which is the same as no warning at all`)
+  return { warnCacheAssets, maximumCacheAssets }
+}
+
 export function declaredCacheAssetBounds(source, label = source === undefined ? 'src/release-payload.ts' : 'the injected release-payload source') {
   const text = source === undefined ? readFileSync(releasePayloadSource, 'utf8') : source
   const minimumCacheAssets = readDeclaredConstant(text, 'minimumCacheAssets', label)

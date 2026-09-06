@@ -42,6 +42,13 @@ import (
 // TestShippedSpecCoversEverythingShipped fails if someone adds a face
 // to fonts.Shipped() and forgets the spec row.
 //
+// THAT FUTURE BOLD STORY IS STORY 11.1, AND THE PREDICTION HELD ONLY
+// PARTLY. The seven weighted and sloped cuts inherited the table's
+// assertions for free, as designed — but one assertion below was written
+// as a bare literal rather than off the row (`name[6]` ends "-Regular"),
+// and a literal quantified over a population inherits nothing. It is
+// parameterised now; see assertShippedFaceMatchesSpec.
+//
 // WHICH ARTIFACT CARRIES WHICH PROPERTY — this split is load-bearing and
 // was got wrong once during this story. The embedded font programs in
 // the PDF carry NO `name` table: textshape's subsetter lists `name` in
@@ -73,9 +80,11 @@ import (
 // assertShippedFaceMatchesSpec, but it is keyed on the exact string that
 // burned us: a face defaulting to Light, ExtraLight or Black sails
 // straight past it. THE POSITIVE ASSERTIONS ARE THE GUARD — name[1]
-// equals the exact family, name[2] == "Regular", name[6] ends
-// "-Regular", usWeightClass == 400. A denylist entry must never be
-// counted as coverage.
+// equals the row's exact family, name[2] equals the row's exact
+// subfamily, name[6] equals the row's exact PostScript name and ends in
+// that subfamily's PostScript spelling, and usWeightClass equals the
+// row's weight class. A denylist entry must never be counted as
+// coverage.
 
 // shippedFaceSpec is one record per shipped face: what folio INTENDS
 // that face to be. Every field is checked against the produced artifact
@@ -91,9 +100,11 @@ type shippedFaceSpec struct {
 	File string
 	// Family is name record 1, exactly.
 	Family string
-	// Subfamily is name record 2, exactly. Regular-only for now, on
-	// purpose: fontset.go exposes no way to request a non-default
-	// instance, so a Bold face would be selectable by nothing (D-2.2.4).
+	// Subfamily is name record 2, exactly. Regular-only until Story
+	// 11.1; from 11.1 it also takes "Bold", "Italic" and "Bold Italic",
+	// each a face of its own under its own Key rather than an instance
+	// selected out of a shared one (D-B). It is also what the PostScript
+	// name's tail is checked against — see postScriptSuffix.
 	Subfamily string
 	// PostScriptName is name record 6, exactly. This is also what
 	// /BaseFont must carry after its six-letter subset tag.
@@ -111,6 +122,24 @@ type shippedFaceSpec struct {
 // shippedFaceSpecs is the whole intended shipped set. Adding a face here
 // without adding it to fonts.Shipped() (or the reverse) fails
 // TestShippedSpecCoversEverythingShipped in both directions.
+//
+// ⚠ THE TWO ITALIC NOTO CUTS' POSTSCRIPT NAMES LOOK LIKE TYPOS AND ARE
+// NOT. `NotoSansItalic-Italic` and `NotoSansItalic-BoldItalic` are the
+// names fontTools actually emitted, and they are correct output: with
+// --update-name-table, name[6] is composed from the SOURCE variable
+// font's variations-PostScript prefix, and the italic VF's prefix is
+// `NotoSansItalic` where the roman VF's is `NotoSans`. That is why the
+// Bold cut escapes the doubling and the two italic cuts do not.
+//
+// DO NOT "CORRECT" THESE TWO ROWS. Changing them here reds
+// TestShippedFacesMatchSpec, because the assertion is spec-against-
+// artifact and the artifact says `NotoSansItalic-Italic`. Correcting the
+// ARTIFACT instead would mean post-processing a derived face's name
+// table by hand — a manual edit inside the byte-identity regime that the
+// replayable-derivation discipline (D-2.2.4, AD-22) exists specifically
+// to forbid, and it would break `make fonts-verify` against the recorded
+// out_sha256. Both names are also load-bearing beyond this file: name[6]
+// is what /BaseFont carries behind its subset tag.
 var shippedFaceSpecs = []shippedFaceSpec{
 	{
 		Key: "Noto Sans", Dir: "notosans", File: "NotoSans-Regular.ttf",
@@ -119,10 +148,49 @@ var shippedFaceSpecs = []shippedFaceSpec{
 		AxisPins: "wght=400 wdth=100",
 	},
 	{
+		// Story 11.1. Same roman VF as "Noto Sans" above, pinned at
+		// wght=700 instead of 400 — a face of its own under its own Key,
+		// never an instance selected out of the Regular (D-B).
+		Key: "Noto Sans Bold", Dir: "notosans-bold", File: "NotoSans-Bold.ttf",
+		Family: "Noto Sans", Subfamily: "Bold",
+		PostScriptName: "NotoSans-Bold", WeightClass: 700,
+		AxisPins: "wght=700 wdth=100",
+	},
+	{
+		// Story 11.1, and the first of the two rows whose PostScript name
+		// reads like a typo. See the ⚠ above this table: `NotoSansItalic`
+		// is the italic VF's own variations-PostScript prefix, so
+		// fontTools composes `NotoSansItalic-Italic`. It is correct.
+		Key: "Noto Sans Italic", Dir: "notosans-italic", File: "NotoSans-Italic.ttf",
+		Family: "Noto Sans", Subfamily: "Italic",
+		PostScriptName: "NotoSansItalic-Italic", WeightClass: 400,
+		AxisPins: "wght=400 wdth=100",
+	},
+	{
+		// Story 11.1, the second such row. `NotoSansItalic-BoldItalic`,
+		// not `NotoSans-BoldItalic`. Same reason. Also correct.
+		Key: "Noto Sans Bold Italic", Dir: "notosans-bolditalic", File: "NotoSans-BoldItalic.ttf",
+		Family: "Noto Sans", Subfamily: "Bold Italic",
+		PostScriptName: "NotoSansItalic-BoldItalic", WeightClass: 700,
+		AxisPins: "wght=700 wdth=100",
+	},
+	{
 		Key: "Noto Sans Thai", Dir: "notosansthai", File: "NotoSansThai-Regular.ttf",
 		Family: "Noto Sans Thai", Subfamily: "Regular",
 		PostScriptName: "NotoSansThai-Regular", WeightClass: 400,
 		AxisPins: "wght=400 wdth=100",
+	},
+	{
+		// Story 11.1, and BOLD ONLY — the count is measured, not assumed.
+		// folio-designer/font-index.json records Noto Sans Thai's styles
+		// as 100–900 with no italic variants at all, and upstream
+		// publishes none, so there is no Thai italic row to be missing
+		// here. Seven new cuts is the whole realizable set (D-A's "nine"
+		// rested on a premise this measurement falsifies).
+		Key: "Noto Sans Thai Bold", Dir: "notosansthai-bold", File: "NotoSansThai-Bold.ttf",
+		Family: "Noto Sans Thai", Subfamily: "Bold",
+		PostScriptName: "NotoSansThai-Bold", WeightClass: 700,
+		AxisPins: "wght=700 wdth=100",
 	},
 	{
 		// ONE axis. This is the face whose `wght` default is 100 — the
@@ -143,6 +211,43 @@ var shippedFaceSpecs = []shippedFaceSpec{
 		PostScriptName: "Roboto-Regular", WeightClass: 400,
 		AxisPins: "n/a — static upstream release, no instancer step (Story 16.8)",
 	},
+	{
+		// Story 11.1. Like the Regular above and UNLIKE the four Noto
+		// cuts, the three Roboto cuts are not derived at all: the
+		// upstream static release publishes each one directly, so there
+		// is no instancer invocation to record and no name-table
+		// composition to be surprised by — name[6] is upstream's own.
+		Key: "Roboto Bold", Dir: "roboto-bold", File: "Roboto-Bold.ttf",
+		Family: "Roboto", Subfamily: "Bold",
+		PostScriptName: "Roboto-Bold", WeightClass: 700,
+		AxisPins: "n/a — static upstream release, no instancer step (Story 11.1)",
+	},
+	{
+		Key: "Roboto Italic", Dir: "roboto-italic", File: "Roboto-Italic.ttf",
+		Family: "Roboto", Subfamily: "Italic",
+		PostScriptName: "Roboto-Italic", WeightClass: 400,
+		AxisPins: "n/a — static upstream release, no instancer step (Story 11.1)",
+	},
+	{
+		Key: "Roboto Bold Italic", Dir: "roboto-bolditalic", File: "Roboto-BoldItalic.ttf",
+		Family: "Roboto", Subfamily: "Bold Italic",
+		PostScriptName: "Roboto-BoldItalic", WeightClass: 700,
+		AxisPins: "n/a — static upstream release, no instancer step (Story 11.1)",
+	},
+}
+
+// postScriptSuffix is the tail name[6] must end with, DERIVED FROM THE
+// ROW rather than written out as a literal: PostScript names carry no
+// spaces, so the subfamily "Bold Italic" appears in name[6] as
+// "BoldItalic".
+//
+// It is a second, weaker reading of the same field the exact
+// PostScriptName assertion already covers, and it is kept because it
+// answers to a DIFFERENT pair of spec fields: it fails a row whose
+// Subfamily and PostScriptName disagree with each other, which the exact
+// comparison — spec against artifact, one field at a time — cannot see.
+func postScriptSuffix(spec shippedFaceSpec) string {
+	return "-" + strings.ReplaceAll(spec.Subfamily, " ", "")
 }
 
 // ---------------------------------------------------------------------
@@ -337,8 +442,30 @@ func assertShippedFaceMatchesSpec(t *testing.T, spec shippedFaceSpec, data []byt
 	if got := names[6]; got != spec.PostScriptName {
 		t.Errorf("%s: name[6] (PostScript name) is %q, want exactly %q", label, got, spec.PostScriptName)
 	}
-	if !strings.HasSuffix(names[6], "-Regular") {
-		t.Errorf("%s: name[6] is %q, which does not end \"-Regular\"", label, names[6])
+	// PARAMETERISED AT STORY 11.1, NOT DELETED, AND THE DISTINCTION IS
+	// THE WHOLE POINT. This line used to read
+	//
+	//     if !strings.HasSuffix(names[6], "-Regular") { ... }
+	//
+	// and it went red on all seven new cuts. That is not a stale check:
+	// it is a CORRECT ASSERTION QUANTIFIED OVER A POPULATION THAT JUST
+	// CHANGED — every face it was written against still satisfies it, and
+	// what moved is the set of faces, not the property.
+	//
+	// Deleting it because it reddened would have removed real coverage to
+	// make a build green — the same SHAPE as the shipped-slot metadata gap
+	// this story also closes (thirteen hardcoded slots with no metadata
+	// assertion at all, made load-bearing by the first non-Regular face
+	// landing in that population). That would have been the third instance
+	// of this defect class in one story, and the only one we introduced
+	// ourselves. So the literal moves onto the row and the check stays.
+	if want := postScriptSuffix(spec); !strings.HasSuffix(names[6], want) {
+		t.Errorf(
+			"%s: name[6] is %q, which does not end %q (the row's Subfamily %q in PostScript spelling). "+
+				"Either the face is not the cut the row claims, or the row's Subfamily and PostScriptName "+
+				"disagree with each other.",
+			label, names[6], want, spec.Subfamily,
+		)
 	}
 
 	// --- belt-and-braces only; NOT counted as coverage ---

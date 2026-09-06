@@ -103,14 +103,42 @@ const assets = {
   mono: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexmono', 'IBMPlexMono-Regular.ttf'), 'ibm-plex-mono.ttf'),
   plexSans: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsans', 'IBMPlexSans-Regular.ttf'), 'ibm-plex-sans.ttf'),
   plexSansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'ibmplexsansthai', 'IBMPlexSansThai-Regular.ttf'), 'ibm-plex-sans-thai.ttf'),
+  // STORY 11.1'S SEVEN WEIGHTED AND SLOPED CUTS. Each is a face of its own
+  // under its own family name (D-11.1.5), so each needs its own slot, its own
+  // hand-written rule below and its own `shippedFamilies` entry — and NO
+  // catalogue entry, because `src/font-catalogue.test.ts` asserts every
+  // catalogue face is an upright Regular 400 and a bold cut fails all four of
+  // those checks. The catalogue legitimately stays Regular-only.
+  //
+  // ONE `fingerprint()` CALL IS ONE DIST ASSET IS ONE CACHE SLOT, and being
+  // inside the engine wasm exempts nothing: the three Story 2.2 Notos are
+  // `//go:embed`'d AND hold three of the hardcoded slots, because a CSS
+  // `@font-face` needs a URL and the wasm's copy has none. These seven take the
+  // release from 54 slots to 61 against `maximumCacheAssets` 64 — which is why
+  // `warnCacheAssets` ships in this story, in src/release-payload.ts.
+  //
+  // THE LABELS BELOW ARE DISTINGUISHED BY A DOT, not by a prefix.
+  // `generate-offline-release.mjs` finds each row's asset with
+  // `url.includes('/noto-sans.')` and friends, so `/noto-sans-bold.` and
+  // `/noto-sans-thai-bold.` are unreachable by the Regular faces' needles and
+  // vice versa — the trailing dot is what makes that true, and dropping it
+  // would let `/noto-sans.` match the bold cut's asset instead.
+  sansBold: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans-bold', 'NotoSans-Bold.ttf'), 'noto-sans-bold.ttf'),
+  sansItalic: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans-italic', 'NotoSans-Italic.ttf'), 'noto-sans-italic.ttf'),
+  sansBoldItalic: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans-bolditalic', 'NotoSans-BoldItalic.ttf'), 'noto-sans-bold-italic.ttf'),
+  sansThaiBold: fingerprint(join(designerRoot, 'public', 'fonts', 'notosansthai-bold', 'NotoSansThai-Bold.ttf'), 'noto-sans-thai-bold.ttf'),
+  robotoBold: fingerprint(join(designerRoot, 'public', 'fonts', 'roboto-bold', 'Roboto-Bold.ttf'), 'roboto-bold.ttf'),
+  robotoItalic: fingerprint(join(designerRoot, 'public', 'fonts', 'roboto-italic', 'Roboto-Italic.ttf'), 'roboto-italic.ttf'),
+  robotoBoldItalic: fingerprint(join(designerRoot, 'public', 'fonts', 'roboto-bolditalic', 'Roboto-BoldItalic.ttf'), 'roboto-bold-italic.ttf'),
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// THE CATALOGUE (Story 8.5). The six slots above are HARDCODED BY NAME because
+// THE CATALOGUE (Story 8.5). The thirteen font slots above (six from Stories
+// 8.4c/8.5, seven from Story 11.1) are HARDCODED BY NAME because
 // each one is load-bearing under a name: `src/main.tsx` and
 // `src/engine.worker.ts` import them out of `runtimeAssetUrls`,
-// `generate-offline-release.mjs` finds three of them by URL substring to build
-// the S1 payload, and `src/font-binary-identity.test.ts` pins the six-family
+// `generate-offline-release.mjs` finds ten of them by URL substring to build
+// the S1 payload, and `src/font-binary-identity.test.ts` pins the thirteen-family
 // join family by family. They are a vocabulary, not a list.
 //
 // THE CATALOGUE IS A LIST, and so it is driven by one. `font-catalogue.json` is
@@ -133,7 +161,16 @@ const assets = {
 const catalogue = JSON.parse(readFileSync(join(designerRoot, 'font-catalogue.json'), 'utf8'))
 if (!Array.isArray(catalogue) || catalogue.length === 0) throw new Error('font-catalogue.json declares no catalogue faces')
 
-// THE SIX FAMILY NAMES THE HAND-WRITTEN RULES BELOW DECLARE.
+// THE THIRTEEN FAMILY NAMES THE HAND-WRITTEN RULES BELOW DECLARE.
+//
+// SIX UNTIL STORY 11.1, THIRTEEN AFTER IT. Each of the seven weighted and
+// sloped cuts is its OWN family name (D-11.1.5) rather than a `font-weight`
+// descriptor on an existing family: a `font-weight: 700` rule under
+// `Noto Sans` would break the one-static-Regular-per-family convention this
+// file's rules are machine-asserted against, and would put a weight axis into
+// CSS that the document format deliberately excludes. The same string is the
+// `fonts.Shipped()` key, the `@font-face` family, and the family the canvas
+// paints with — READABLE by design, and PARSED BY NOTHING.
 //
 // ⚠ THIS USED TO READ `new Set(Object.keys(assets))`, AND THAT WAS A GUARD THAT
 // COULD NOT FIRE. `assets`' keys are SLOT names — `wasmExec`, `wasm`, `starter`,
@@ -145,13 +182,25 @@ if (!Array.isArray(catalogue) || catalogue.length === 0) throw new Error('font-c
 // duplicate half worked; this half asserted nothing.
 //
 // IT IS A LITERAL LIST AND IT IS CHECKED AGAINST THE RULES, which is the only
-// honest shape available here: the six rules must spell their families as
+// honest shape available here: the thirteen rules must spell their families as
 // literals (`src/font-binary-identity.test.ts` and `src/canvas-font-stack.test.ts`
 // both parse them out of this file's TEXT, and an interpolated name is invisible
 // to both). So the list cannot be derived from the template — instead the
 // template is checked against the list, at the point of emission below, and a
 // name that falls out of either side reds there rather than here.
-const shippedFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+const shippedFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC', 'Noto Sans Bold', 'Noto Sans Italic', 'Noto Sans Bold Italic', 'Noto Sans Thai Bold', 'Roboto Bold', 'Roboto Italic', 'Roboto Bold Italic']
+// AND NO NAME APPEARS TWICE, WHICH NEITHER THROW BELOW CAN SEE.
+// The two emission-time throws are "every name has a rule" and "the rule count
+// equals the name count". A DUPLICATED name satisfies both — it has a rule, and
+// with thirteen names and thirteen rules the counts still agree — while the
+// thirteenth RULE has no name in the list, so the catalogue collision guard
+// (`catalogueFamilies`, a Set built from this array) never learns about it and a
+// `font-catalogue.json` entry could redeclare that family. The browser would
+// then be handed two `@font-face` rules for one family, the second silently
+// winning: exactly the defect the collision guard exists to refuse, reached
+// through the guard's own input. A Set comparison is the whole fix, and it goes
+// here rather than at emission because the list is the thing that is wrong.
+if (new Set(shippedFamilies).size !== shippedFamilies.length) throw new Error(`shippedFamilies names ${shippedFamilies.length} families and only ${new Set(shippedFamilies).size} of them are distinct. A duplicate satisfies both emission throws — every name still has a rule, and the counts still agree — while leaving one hand-written rule outside the catalogue's collision guard, so a catalogue face could redeclare it and the browser would get two rules for one family.`)
 
 // A family name is interpolated UNESCAPED into a single-quoted CSS string
 // (`font-family: '${face.family}'`). A quote closes it, a backslash escapes the
@@ -185,11 +234,28 @@ const scriptFallbacks = { latin: 'Noto Sans', thai: 'Noto Sans Thai', cjk: 'Noto
 // That is the exact failure the closed `scripts` vocabulary above was justified
 // by, reached from the other side.
 //
-// `shippedFamilies` is the right anchor because it is itself checked against
-// the hand-written @font-face rules at the point of emission below, so this
-// guard sits on a list that cannot quietly drift out of the stylesheet.
+// AND THE ANCHOR IS THE UPRIGHT REGULARS, NOT THE WHOLE SHIPPED SET.
+//
+// `shippedFamilies` was the anchor until Story 11.1 widened it from six upright
+// Regulars to thirteen, seven of which are WEIGHTED OR SLOPED CUTS. Anchored
+// there, `scriptFallbacks` could name `Noto Sans Bold` or `Roboto Italic` and
+// the build would accept it — and a fallback is not a preference: it is the
+// face every chain gets stapled behind it for the runes its picked face cannot
+// draw. A bold fallback would render an entire script bold in EVERY author's
+// document, silently, everywhere the tail was reached, and nothing downstream
+// would flag it because a bold face is a perfectly valid face. The check that
+// exists to refuse a fallback naming a face nobody supplies must not admit one
+// naming the wrong face instead.
+//
+// It is still checked against a list that cannot drift out of the stylesheet:
+// every member below is asserted to be one of `shippedFamilies`, which is
+// itself held to the hand-written @font-face rules at the point of emission.
+const shippedRegularFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+for (const family of shippedRegularFamilies) {
+  if (!shippedFamilies.includes(family)) throw new Error(`shippedRegularFamilies names ${JSON.stringify(family)} and shippedFamilies does not, so the script-fallback anchor has drifted off the population that is held to the emitted stylesheet`)
+}
 for (const [script, family] of Object.entries(scriptFallbacks)) {
-  if (!shippedFamilies.includes(family)) throw new Error(`scriptFallbacks maps the script '${script}' to the face ${JSON.stringify(family)}, which shippedFamilies does not name. That string becomes a chain entry in the author's document, and the engine SKIPS an entry naming a face it was not given rather than failing — so a renamed face here would silently propose a fallback that draws nothing, and the chain would render tofu for exactly the script the fallback exists to cover.`)
+  if (!shippedRegularFamilies.includes(family)) throw new Error(`scriptFallbacks maps the script '${script}' to the face ${JSON.stringify(family)}, which is not one of the upright Regular shipped families (${shippedRegularFamilies.join(', ')}). That string becomes a chain entry in the author's document: the engine SKIPS an entry naming a face it was not given rather than failing — so a name nobody supplies silently proposes a fallback that draws nothing and the chain renders tofu — and a name that IS supplied but is a bold or italic CUT is worse, because it works: an entire script would render bold or sloped in every author's document, for every chain that reached the tail.`)
 }
 
 const catalogueIds = new Set()
@@ -212,7 +278,7 @@ const catalogueFaces = catalogue.map((entry) => {
     if (!segmentShape.test(value) || value.includes('..')) throw new Error(`font-catalogue.json face ${entry.id} declares a ${field} ${JSON.stringify(value)} that is not a single plain path segment; it is joined into a filesystem path, so a separator or a '..' would read bytes from outside public/fonts/`)
   }
   if (!familyShape.test(entry.family)) throw new Error(`font-catalogue.json face ${entry.id} declares a family ${JSON.stringify(entry.family)} carrying a character that is CSS syntax; it is interpolated unescaped into font-family: '<name>' in the emitted stylesheet`)
-  if (catalogueFamilies.has(entry.family)) throw new Error(`font-catalogue.json declares the family ${JSON.stringify(entry.family)} twice, or over a family the six shipped rules already declare`)
+  if (catalogueFamilies.has(entry.family)) throw new Error(`font-catalogue.json declares the family ${JSON.stringify(entry.family)} twice, or over a family the thirteen shipped rules already declare`)
   catalogueIds.add(entry.id)
   catalogueFamilies.add(entry.family)
   if (!entry.file.endsWith('.ttf')) throw new Error(`font-catalogue.json face ${entry.id} is ${entry.file}; the emitted @font-face rule declares format('truetype') and the engine decodes only font/ttf and font/otf`)
@@ -279,7 +345,7 @@ const faceCopyright = (file) => {
 // left to be rediscovered — a smaller bundle is not a reason to publish the
 // wrong terms. The `?url` imports below are unaffected, so no build ASSET is
 // added and the release cache does not grow by one slot on account of this
-// module (it is 54 since Story 16.1a's batch).
+// module (it is 61 since Story 11.1's seven cuts; it was 54 after Story 16.1a's batch).
 const licenceTextOf = (face) => {
   const directory = join(designerRoot, 'public', 'fonts', face.directory)
   const licences = readdirSync(directory).filter((name) => name.startsWith('LICENSE'))
@@ -348,7 +414,8 @@ const committedFaceSource = (face) => {
 // NO NEW BUILD ASSET. Every `?url` import below names a file the catalogue loop
 // above already fingerprinted into `src/generated/runtime/`; this module names
 // them, it does not create them. The release cache's slot count is unchanged
-// by this module — 54 of the 64 since Story 16.1a's batch, and it was 44 before.
+// by this module — 61 of the 64 since Story 11.1's seven cuts, 54 after Story
+// 16.1a's batch, 44 before that.
 writeFileSync(join(generatedDir, 'font-catalogue.ts'),
   `// GENERATED by scripts/build-wasm.mjs from font-catalogue.json. Do not edit.\n`
   + catalogueFaces.map((face, index) => `import catalogueUrl${index} from './runtime/${face.filename}?url'`).join('\n')
@@ -367,19 +434,29 @@ rmSync(starterPath, { force: true })
 writeFileSync(join(generatedDir, 'offline-assets.ts'), Object.entries(assets)
   .map(([key, filename]) => `import ${key}Url from './runtime/${filename}?url'`).join('\n') + `\n\nexport const runtimeAssetUrls = { ${Object.keys(assets).map((key) => `${key}: ${key}Url`).join(', ')} } as const\n`)
 writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and standard fonts in Vite's immutable asset graph.\nexport const pdfjsRuntimeAssets = import.meta.glob('./runtime/pdfjs-*/**/*', { eager: true, query: '?url', import: 'default' })\nexport const pdfjsViewerAssets = { cMapUrl: '/assets/${pdfjsCMapDirectory}/', standardFontDataUrl: '/assets/${pdfjsStandardFontDirectory}/', cMapPacked: true } as const\n`)
-// SIX RULES, TWO VOCABULARIES (Story 8.4b), NOW OVER DIFFERENT FILES (8.4c).
+// THIRTEEN RULES, TWO VOCABULARIES (Story 8.4b), NOW OVER DIFFERENT FILES (8.4c).
 // The first three register the DESIGN SYSTEM's family names, which is what every
-// `--type-*` token in tokens.css resolves through. The second three register the
+// `--type-*` token in tokens.css resolves through. The other ten register the
 // ENGINE's own face names — the exact spellings `fonts.Shipped()` keys its FontSet
 // by — so the canvas can ASK FOR THE FACE THE ENGINE MEASURED WITH by name (AD-17
 // makes the browser a rasterizer only, and it cannot rasterize with the engine's
 // face while it has no way to name it).
 //
+// THE ENGINE HALF WENT FROM THREE TO TEN AT STORY 11.1. `fonts.Shipped()` now
+// carries eleven keys; ten of them need a hand-written rule here and the
+// eleventh, `Roboto`, is declared by the CATALOGUE emitter below because it is
+// also a `font-catalogue.json` face — a hand-written rule under a family the
+// catalogue already declares is the duplicate-`@font-face` hazard the collision
+// guard above exists to refuse. That split is what
+// `src/font-binary-identity.test.ts`'s mirror guard enforces: every
+// `Shipped()` key that is NOT a catalogue family must have a rule here.
+//
 // Story 8.4b registered both halves over THE SAME THREE FILES, a deliberate
 // interval in which the IBM Plex names were IBM Plex in name only — `IBM Plex
 // Mono` was Noto Sans SC, a CJK sans with no monospacing. Story 8.4c ended it:
 // SIX RULES OVER SIX FILES, each family declared from bytes that call themselves
-// by that family's name.
+// by that family's name. Story 11.1's seven cuts extend that discipline rather
+// than dilute it: thirteen rules over thirteen files, no file reached twice.
 //
 // The three Noto slots STAY whatever the chrome points at. The engine half
 // declares them, generate-offline-release.mjs requires `/noto-sans.`,
@@ -388,24 +465,34 @@ writeFileSync(join(generatedDir, 'pdfjs-assets.ts'), `// Keep PDF.js CMaps and s
 // remain the dominant font payload. `sansCjk` in particular now backs ONE rule
 // rather than two; deleting it would throw at release-build time.
 //
-// ONE STATIC REGULAR PER FAMILY, and no `font-weight`/`font-style` descriptor on
-// any rule, so every weight and italic the design system asks for is
-// browser-synthesised from one face — exactly as it already was from the Noto
-// files. Which file is behind which family name is pinned, family by family, by
+// ONE STATIC FACE PER FAMILY, and no `font-weight`/`font-style` descriptor on
+// any rule — including on the seven weighted and sloped cuts, which is the
+// point of giving each cut its own family NAME. A `font-weight: 700` descriptor
+// under `Noto Sans` would be the other way of doing this and it is the wrong
+// one: it puts a weight axis into CSS that the document format excludes, and it
+// breaks the no-descriptor convention every rule here is read against. So the
+// design system's own weights and italics stay browser-synthesised from ONE
+// face exactly as before, and the engine's cuts are separate families the
+// canvas asks for BY NAME rather than by descriptor.
+// Which file is behind which family name is pinned, family by family, by
 // src/font-binary-identity.test.ts, which opens each file and reads its own
 // `name` table: a family name is an assertion about bytes, and that is where it
-// is checked rather than discovered by a designer squinting at glyphs.
+// is checked rather than discovered by a designer squinting at glyphs. Note
+// that a cut's own `name` table calls itself by its BASE family — `Noto Sans
+// Bold` is name[1] `Noto Sans`, name[2] `Bold` — so the per-cut metadata claim
+// is made in src/font-catalogue.test.ts against the intended subfamily and
+// weight class rather than against the CSS family string.
 // THE COLLISION GUARD'S LIST IS HELD TO THE RULES IT CLAIMS TO DESCRIBE.
 // `shippedFamilies` above is what stops a catalogue entry redeclaring one of
-// these six; a name that drifts out of either side would make that guard silent
-// again, in exactly the way `Object.keys(assets)` did. Checked here, where both
-// the list and the template are in scope.
-const shippedRules = `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n`
+// these thirteen; a name that drifts out of either side would make that guard
+// silent again, in exactly the way `Object.keys(assets)` did. Checked here,
+// where both the list and the template are in scope.
+const shippedRules = `@font-face { font-family: 'IBM Plex Sans'; src: url('./runtime/${assets.plexSans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Mono'; src: url('./runtime/${assets.mono}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'IBM Plex Sans Thai'; src: url('./runtime/${assets.plexSansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans'; src: url('./runtime/${assets.sans}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai'; src: url('./runtime/${assets.sansThai}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans SC'; src: url('./runtime/${assets.sansCjk}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Bold'; src: url('./runtime/${assets.sansBold}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Italic'; src: url('./runtime/${assets.sansItalic}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Bold Italic'; src: url('./runtime/${assets.sansBoldItalic}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Noto Sans Thai Bold'; src: url('./runtime/${assets.sansThaiBold}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Roboto Bold'; src: url('./runtime/${assets.robotoBold}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Roboto Italic'; src: url('./runtime/${assets.robotoItalic}') format('truetype'); font-display: swap; }\n@font-face { font-family: 'Roboto Bold Italic'; src: url('./runtime/${assets.robotoBoldItalic}') format('truetype'); font-display: swap; }\n`
 for (const family of shippedFamilies) if (!shippedRules.includes(`font-family: '${family}'`)) throw new Error(`shippedFamilies names ${JSON.stringify(family)} and no hand-written @font-face rule declares it, so the catalogue's collision guard is describing a family that is not there`)
 if (shippedRules.split('@font-face').length - 1 !== shippedFamilies.length) throw new Error(`the hand-written stylesheet emits ${shippedRules.split('@font-face').length - 1} rules and shippedFamilies names ${shippedFamilies.length}, so a rule exists that the catalogue's collision guard does not know about`)
 writeFileSync(join(generatedDir, 'runtime-fonts.css'), shippedRules
   // AND THE CATALOGUE, one rule per declared face, emitted from the manifest
-  // rather than written out. Same shape as the six above, deliberately: no
+  // rather than written out. Same shape as the thirteen above, deliberately: no
   // `font-weight`, no `font-style`, one static Regular per family (AC6).
   + catalogueFaces.map((face) => `@font-face { font-family: '${face.family}'; src: url('./runtime/${face.filename}') format('truetype'); font-display: swap; }\n`).join(''))
 

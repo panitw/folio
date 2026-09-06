@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { declaredCacheAssetBounds, normalizePublicPath, pageIdentity, releaseIdentity } from './offline-release-contract.mjs'
+import { declaredCacheAssetBounds, declaredCacheAssetWarning, normalizePublicPath, pageIdentity, releaseIdentity } from './offline-release-contract.mjs'
 
 describe('offline release contract', () => {
   it('normalizes the single Windows separator emitted by path.relative', () => {
@@ -76,5 +76,34 @@ describe('declared cache-asset bounds', () => {
   // count is coherent, and refusing it would be a second bound nobody declared.
   it('accepts an envelope whose two ends are equal', () => {
     expect(declaredCacheAssetBounds('const minimumCacheAssets = 23\nconst maximumCacheAssets = 23\n')).toEqual({ minimumCacheAssets: 23, maximumCacheAssets: 23 })
+  })
+})
+
+// THE APPROACH WARNING'S THRESHOLD (Story 11.1). It is read by the same
+// line-anchored reader the two bounds use, so the rename/duplicate/comment-out
+// cases are already covered above by construction; what is asserted here is
+// what is NEW — that the number comes from the real declaration, and that a
+// threshold outside the envelope is named as a fault in the declaration rather
+// than left as a warning that can never fire.
+describe('declared cache-asset approach warning', () => {
+  it('reads the threshold src/release-payload.ts actually declares, and the ceiling it is measured against', () => {
+    expect(declaredCacheAssetWarning()).toEqual({ warnCacheAssets: reReadDeclared('warnCacheAssets'), maximumCacheAssets: reReadDeclared('maximumCacheAssets') })
+  })
+
+  it('throws when the threshold is absent, naming it rather than a bound', () => {
+    expect(() => declaredCacheAssetWarning('const minimumCacheAssets = 10\nconst maximumCacheAssets = 64\n')).toThrow(/`warnCacheAssets` as a single live constant: found 0 /)
+  })
+
+  // A warning above the ceiling is unreachable — the bound refuses that release
+  // first — and one below the floor fires on every release ever emitted. Both
+  // are faults in the declaration, and both are silent unless said so here.
+  it('refuses a threshold that could never fire, and one that would always fire', () => {
+    expect(() => declaredCacheAssetWarning('const minimumCacheAssets = 10\nconst maximumCacheAssets = 64\nconst warnCacheAssets = 65\n')).toThrow(/`warnCacheAssets` 65 above `maximumCacheAssets` 64/)
+    expect(() => declaredCacheAssetWarning('const minimumCacheAssets = 10\nconst maximumCacheAssets = 64\nconst warnCacheAssets = 9\n')).toThrow(/`warnCacheAssets` 9 below `minimumCacheAssets` 10/)
+  })
+
+  it('accepts a threshold at either end of the envelope', () => {
+    expect(declaredCacheAssetWarning('const minimumCacheAssets = 10\nconst maximumCacheAssets = 64\nconst warnCacheAssets = 64\n')).toEqual({ warnCacheAssets: 64, maximumCacheAssets: 64 })
+    expect(declaredCacheAssetWarning('const minimumCacheAssets = 10\nconst maximumCacheAssets = 64\nconst warnCacheAssets = 10\n')).toEqual({ warnCacheAssets: 10, maximumCacheAssets: 64 })
   })
 })

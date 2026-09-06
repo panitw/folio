@@ -2,16 +2,19 @@
 
 // fontgen_matrix_test.go is Story 2.2's REGENERATION test (D-2.2.4).
 //
-// THREE of the FOUR faces under folio-go/fonts/ are static, Regular-only
-// instances DERIVED from upstream variable builds, and the derived files
-// are committed rather than produced at build time. (The fourth, Story
-// 16.8's Roboto, is not derived at all: upstream publishes a static TTF, so
-// it is copied verbatim and its provenance is the identity of its source and
-// shipped digests. It is accounted for by the `static-upstream` route in
+// SEVEN of the ELEVEN faces under folio-go/fonts/ are static instances
+// DERIVED from upstream variable builds, and the derived files are
+// committed rather than produced at build time. (The other four — Story
+// 16.8's Roboto and Story 11.1's Roboto Bold, Italic and Bold Italic — are
+// not derived at all: upstream publishes static TTFs, so they are copied
+// verbatim and their provenance is the identity of their source and
+// shipped digests. They are accounted for by the `static-upstream` route in
 // folio-go/fonts/accounting_test.go, which runs untagged on every commit.
 // This file used to open by saying "the three shipped faces", which stopped
-// being true at 4d2b27e — the exact stale-premise class this story exists to
-// remove, in the file the story is editing.) That choice is what
+// being true at 4d2b27e — the exact stale-premise class the 16.8 story
+// existed to remove, in the file that story was editing — and "three of the
+// four" stopped being true again at Story 11.1, which is why the counts here
+// are restated rather than left to age.) That choice is what
 // keeps the shipped font from being a function of the build environment
 // — a different fontTools produces a different font, which produces a
 // different PDF, which is AD-22's drift class reintroduced at the asset
@@ -93,9 +96,21 @@ func TestShippedFacesReproduceFromUpstream(t *testing.T) {
 				"This test FAILS rather than skipping on purpose: a skip would make \"the sources were not "+
 				"present\" read exactly like \"the faces reproduce\".\n\n"+
 				"Obtain them (each face's NOTICE.md carries the release URL and the source sha256):\n"+
-				"  NotoSans-VF.ttf      bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d\n"+
-				"  NotoSansThai-VF.ttf  5a1c559bb539583c8a1fd99d1c5b9491e5e14478c9cd2bd0970d5c3096cc9ef8\n"+
-				"  NotoSansSC-VF.ttf    a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da\n\n"+
+				"  NotoSans-VF.ttf         bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d\n"+
+				"                          -> Noto Sans (wght=400) and Noto Sans Bold (wght=700), wdth=100\n"+
+				"  NotoSans-Italic-VF.ttf  58e6e0ebd1931b29a365aa2d3e2ee9a9e831a3af7cf3ad1462d4e72154f0b291\n"+
+				"                          -> Noto Sans Italic (wght=400) and Noto Sans Bold Italic (wght=700), wdth=100\n"+
+				"                          Story 11.1's FOURTH source. It comes from the SAME\n"+
+				"                          NotoSans-v2.015 archive as the roman VF above — the src_url\n"+
+				"                          differs only after the '->', at\n"+
+				"                          NotoSans/googlefonts/variable-ttf/NotoSans-Italic[wdth,wght].ttf\n"+
+				"  NotoSansThai-VF.ttf     5a1c559bb539583c8a1fd99d1c5b9491e5e14478c9cd2bd0970d5c3096cc9ef8\n"+
+				"                          -> Noto Sans Thai (wght=400) and Noto Sans Thai Bold (wght=700), wdth=100\n"+
+				"  NotoSansSC-VF.ttf       a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da\n"+
+				"                          -> Noto Sans SC (wght=400; ONE axis, no wdth pin)\n\n"+
+				"Four source files, SEVEN derived faces: three of the four are instanced twice, at two\n"+
+				"different wght pins. The three Roboto cuts are NOT here and never will be — they take the\n"+
+				"static-upstream route, accounted for by folio-go/fonts/accounting_test.go.\n\n"+
 				"then either set FOLIO_FONT_SOURCES=<dir> or place them in %s and re-run.\n"+
 				"stat error: %v",
 			sources, sources, err,
@@ -236,7 +251,17 @@ func TestShippedFacesReproduceFromUpstream(t *testing.T) {
 	// It is pinned against the shipped intersection, not against fontgen's raw
 	// output, so when it does fire the message is about the shipped set rather
 	// than about `3 of 3`.
-	const wantDerivedShippedFaces = 3
+	//
+	// MOVED 3 -> 7 AT STORY 11.1, deliberately and with the reviewed change
+	// this comment demands: the derived population really did change. The four
+	// new derived cuts are Noto Sans Bold, Noto Sans Italic, Noto Sans Bold
+	// Italic and Noto Sans Thai Bold. Story 11.1's other three cuts — Roboto
+	// Bold, Italic and Bold Italic — are NOT derived and must not be counted
+	// here: they take the static-upstream route, so `len(shipped)` grows by
+	// seven while this pin grows by four, and folio-go/fonts/accounting_test.go
+	// is what proves the remaining three are accounted rather than merely
+	// unmatched.
+	const wantDerivedShippedFaces = 7
 	if len(derived) != wantDerivedShippedFaces {
 		t.Fatalf(
 			"%d of the %d face(s) fonts.Shipped() carries are derived by tools/fontgen (%s); this test is "+

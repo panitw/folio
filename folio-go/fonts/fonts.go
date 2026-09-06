@@ -1,6 +1,8 @@
 // Package fonts holds folio-go's shipped production faces — Story 2.2's
-// three (Noto Sans, Noto Sans Thai and Noto Sans SC) plus Story 16.8's
-// fourth (Roboto) — each embedded from its own subdirectory under
+// three (Noto Sans, Noto Sans Thai and Noto Sans SC), Story 16.8's fourth
+// (Roboto) and Story 11.1's seven weighted and sloped cuts (Noto Sans
+// Bold / Italic / Bold Italic, Noto Sans Thai Bold, Roboto Bold / Italic
+// / Bold Italic) — each embedded from its own subdirectory under
 // folio-go/fonts/, alongside its OFL-1.1 licence text and NOTICE (AD-26,
 // AC25). It is declared at the module root, NOT under internal/: AD-8's
 // "no package under internal/ embeds font data" binds internal/ packages
@@ -14,8 +16,10 @@
 // folio-go/*.go, none of which imports this package. AC9's blockquote
 // makes that direction load-bearing: "folio must NOT import
 // folio/fonts... two-package import is load-bearing" — reversing it
-// would force every consumer of package folio to pull in ~11.3 MB of
-// embedded font data whether or not it uses the shipped set — go:embed
+// would force every consumer of package folio to pull in ~14.8 MB of
+// embedded font data whether or not it uses the shipped set (11,645,836
+// raw bytes before Story 11.1, 14,782,604 after — measured, not
+// estimated) — go:embed
 // stores RAW bytes, so that is the figure that lands in every binary,
 // not the compressed download budget NFR7 is written in.
 package fonts
@@ -66,9 +70,72 @@ var notoSansSC []byte
 //go:embed roboto/Roboto-Regular.ttf
 var roboto []byte
 
+// ---------------------------------------------------------------------
+// Story 11.1's seven weighted and sloped cuts.
+// ---------------------------------------------------------------------
+//
+// Before this story every face here was upright Regular, so Style.Bold
+// and Style.Italic had nothing to resolve to and a bold heading printed
+// in book weight. These seven give them something. NOTHING IN THIS
+// PACKAGE RESOLVES A WEIGHT: 11.2 resolves and 11.3 paints; this file
+// only ships the faces and keys them.
+//
+// EACH CUT IS A FACE OF ITS OWN UNDER ITS OWN KEY (D-B). The keys below
+// are chosen to be READABLE, and nothing may derive a family from one:
+// a `strings.TrimSuffix(key, " Bold")` anywhere would reinstate the
+// naming-convention weight carrier D-B explicitly foreclosed, and would
+// silently reinterpret a caller's already-legal key. The
+// machine-readable family is the face's own sfnt name ID 1.
+// `shippedFaceSpecs.Family` (folio-go/shipped_faces_test.go) is the TEST
+// that asserts name ID 1 against the binary — it is not a symbol
+// production code can import, and naming it as one sent an earlier draft
+// of this comment chasing an unreachable authority.
+//
+// FOUR ARE DERIVED AND THREE ARE COPIED, exactly as above. The Noto cuts
+// are instanced from their upstream variable builds by
+// tools/fontgen/instance_faces.py and committed as output; the three
+// Roboto cuts come byte-for-byte out of the same upstream static release
+// the Regular does. accounting_test.go's
+// TestEveryShippedFaceIsAccountedForByExactlyOneRoute holds each cut to
+// exactly one of those two routes.
+//
+// NOTO SANS SC IS DELIBERATELY ABSENT FROM THIS LIST (D-A), and its
+// absence is a ruling rather than an oversight: its Regular alone is
+// 10,595,932 bytes, so three instances of it would take the offline
+// payload from ~11 MB to ~45 MB. A family with no face at a requested
+// weight is therefore a permanent, shipped condition 11.2 must state
+// rather than a corner case.
+
+//go:embed notosans-bold/NotoSans-Bold.ttf
+var notoSansBold []byte
+
+//go:embed notosans-italic/NotoSans-Italic.ttf
+var notoSansItalic []byte
+
+//go:embed notosans-bolditalic/NotoSans-BoldItalic.ttf
+var notoSansBoldItalic []byte
+
+//go:embed notosansthai-bold/NotoSansThai-Bold.ttf
+var notoSansThaiBold []byte
+
+// Noto Sans Thai gains BOLD ONLY, and the count is measured rather than
+// assumed: folio-designer/font-index.json records the family's styles as
+// 100–900 with no italic variants at all, and upstream publishes none.
+// Seven is the whole realizable set, not eight or nine.
+
+//go:embed roboto-bold/Roboto-Bold.ttf
+var robotoBold []byte
+
+//go:embed roboto-italic/Roboto-Italic.ttf
+var robotoItalic []byte
+
+//go:embed roboto-bolditalic/Roboto-BoldItalic.ttf
+var robotoBoldItalic []byte
+
 // Shipped returns folio-go's shipped font set — the three Story 2.2 Noto
-// faces plus Story 16.8's Roboto — keyed by the exact face names a
-// `.folio` document's `fonts` fallback chains reference. A new document's
+// faces, Story 16.8's Roboto and Story 11.1's seven weighted and sloped
+// cuts — keyed by the exact face names a `.folio` document's `fonts`
+// fallback chains reference. A new document's
 // starter template names its default chain `"Roboto": ["Roboto", "Noto
 // Sans Thai", "Noto Sans SC"]` (folio-designer/public/templates/
 // starter.folio); the three original Noto names remain shipped unchanged
@@ -76,11 +143,22 @@ var roboto []byte
 // story included. One expression, no arguments (AC9) — callers wire the shipped
 // set into a render with `fonts.Shipped()`, never a package-level
 // variable a caller could mutate out from under another caller.
+//
+// NEVER PARSE ONE OF THESE KEYS (D-B). They are readable strings for a
+// human writing a chain, not an encoding: the family lives in the face's
+// own name table and is asserted there.
 func Shipped() folio.FontSet {
 	return folio.FontSet{
-		"Noto Sans":      notoSans,
-		"Noto Sans Thai": notoSansThai,
-		"Noto Sans SC":   notoSansSC,
-		"Roboto":         roboto,
+		"Noto Sans":             notoSans,
+		"Noto Sans Bold":        notoSansBold,
+		"Noto Sans Italic":      notoSansItalic,
+		"Noto Sans Bold Italic": notoSansBoldItalic,
+		"Noto Sans Thai":        notoSansThai,
+		"Noto Sans Thai Bold":   notoSansThaiBold,
+		"Noto Sans SC":          notoSansSC,
+		"Roboto":                roboto,
+		"Roboto Bold":           robotoBold,
+		"Roboto Italic":         robotoItalic,
+		"Roboto Bold Italic":    robotoBoldItalic,
 	}
 }

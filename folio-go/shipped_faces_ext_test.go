@@ -22,21 +22,44 @@ import (
 // same keys against testShippedFontSet(). Both chains terminate at
 // fonts.Shipped(), so a face added there and nowhere else fails in this
 // file, and a face added to the spec and nowhere else fails in that one.
+//
+// ⚠ "Noto Sans Italic" and "Noto Sans Bold Italic" map to
+// `NotoSansItalic-Italic` and `NotoSansItalic-BoldItalic`. Those are not
+// typos — fontTools composes name[6] from the SOURCE variable font's
+// variations-PostScript prefix, which for the italic VF is
+// `NotoSansItalic`. shipped_faces_test.go's shippedFaceSpecs carries the
+// full explanation; "correcting" either string here reds this file and
+// shipped_faces_test.go together, because both are compared against the
+// binary rather than against each other.
 var shippedPostScriptNames = map[string]string{
-	"Noto Sans":      "NotoSans-Regular",
-	"Noto Sans Thai": "NotoSansThai-Regular",
-	"Noto Sans SC":   "NotoSansSC-Regular",
-	"Roboto":         "Roboto-Regular",
+	"Noto Sans":             "NotoSans-Regular",
+	"Noto Sans Bold":        "NotoSans-Bold",
+	"Noto Sans Italic":      "NotoSansItalic-Italic",
+	"Noto Sans Bold Italic": "NotoSansItalic-BoldItalic",
+	"Noto Sans Thai":        "NotoSansThai-Regular",
+	"Noto Sans Thai Bold":   "NotoSansThai-Bold",
+	"Noto Sans SC":          "NotoSansSC-Regular",
+	"Roboto":                "Roboto-Regular",
+	"Roboto Bold":           "Roboto-Bold",
+	"Roboto Italic":         "Roboto-Italic",
+	"Roboto Bold Italic":    "Roboto-BoldItalic",
 }
 
 // shippedFaceFiles is where each shipped face's bytes are supposed to
 // come from, so this test can prove fonts.Shipped() returns the bytes of
 // the COMMITTED file rather than something built another way.
 var shippedFaceFiles = map[string]string{
-	"Noto Sans":      "notosans/NotoSans-Regular.ttf",
-	"Noto Sans Thai": "notosansthai/NotoSansThai-Regular.ttf",
-	"Noto Sans SC":   "notosanssc/NotoSansSC-Regular.ttf",
-	"Roboto":         "roboto/Roboto-Regular.ttf",
+	"Noto Sans":             "notosans/NotoSans-Regular.ttf",
+	"Noto Sans Bold":        "notosans-bold/NotoSans-Bold.ttf",
+	"Noto Sans Italic":      "notosans-italic/NotoSans-Italic.ttf",
+	"Noto Sans Bold Italic": "notosans-bolditalic/NotoSans-BoldItalic.ttf",
+	"Noto Sans Thai":        "notosansthai/NotoSansThai-Regular.ttf",
+	"Noto Sans Thai Bold":   "notosansthai-bold/NotoSansThai-Bold.ttf",
+	"Noto Sans SC":          "notosanssc/NotoSansSC-Regular.ttf",
+	"Roboto":                "roboto/Roboto-Regular.ttf",
+	"Roboto Bold":           "roboto-bold/Roboto-Bold.ttf",
+	"Roboto Italic":         "roboto-italic/Roboto-Italic.ttf",
+	"Roboto Bold Italic":    "roboto-bolditalic/Roboto-BoldItalic.ttf",
 }
 
 // TestFontsShippedMatchesExpectedFaceSet is the outermost link in the

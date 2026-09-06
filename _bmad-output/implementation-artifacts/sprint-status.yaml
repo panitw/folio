@@ -441,8 +441,8 @@ development_status:
   # faces, or retire the toggles. SPEC-fonts records the same question as open. The epic
   # specifies only the "realize" branch; the "retire" branch replaces 11.1-11.2 with one
   # removal story.
-  epic-11: backlog
-  11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: backlog
+  epic-11: in-progress
+  11-1-the-shipped-families-gain-a-weighted-and-a-sloped-face: review
   11-2-the-engine-resolves-a-face-from-the-declared-weight-and-slop: backlog
   11-3-the-canvas-paints-the-weight-the-engine-resolved: backlog
   epic-11-retrospective: optional

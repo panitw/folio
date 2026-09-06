@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
 import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
-import { RELEASE_RUNTIME, declaredCacheAssetBounds, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
+import { RELEASE_RUNTIME, declaredCacheAssetBounds, declaredCacheAssetWarning, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -20,7 +20,45 @@ const brotliOptions = { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constan
 const walk = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)])
 const runtimeOutputUrls = (outputDir) => new Set(['/index.html', ...walk(join(outputDir, 'assets')).filter((file) => !file.endsWith('.br')).map((file) => `/${relative(outputDir, file).replaceAll('\\', '/')}`)])
 
-export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } = {}) {
+/**
+ * THE CACHE-ASSET APPROACH WARNING (Story 11.1, D-11.1.10), AS A FUNCTION A
+ * TEST CAN EXECUTE.
+ *
+ * The bound in `verifyOfflineRelease` REFUSES a release; this only says how
+ * much room is left before it would. It ships in this story because THIS is
+ * the story that knows the margin is about to be small: seven cuts take the
+ * release from 54 slots to 61 of 64, and 11.3 is the story that will be busy
+ * spending what is left.
+ *
+ * THE THRESHOLD IS NEVER A LITERAL. It is read out of `src/release-payload.ts`
+ * by the same line-anchored reader the two bounds use, so the number has ONE
+ * authority and a second copy cannot drift from it.
+ *
+ * The message names the MARGIN rather than the count, because the margin is
+ * the quantity that goes stale unwatched: DW-162's figure aged 41 -> 20 -> 10
+ * while three stories walked past it, precisely because the number nobody
+ * printed was the number nobody watched.
+ *
+ * IT IS A SEPARATE, EXPORTED FUNCTION AND THAT IS THE POINT. Inline in
+ * `verifyOfflineRelease` it was realized by code no test could reach — the
+ * only way to execute it was a full `npm run build` — while being the sole
+ * realization of an acceptance criterion. Extracted, `scripts/verify-offline-release.test.mjs`
+ * drives it directly at the threshold and one below it, and `warn` is injected
+ * so the emission itself is observable rather than inferred from stderr.
+ *
+ * Returns the emitted message, or `null` when the count is below the
+ * threshold, so a caller and a test can both tell silence from a warning
+ * without parsing console output.
+ */
+export function reportCacheAssetApproach(assetCount, { warn = console.warn } = {}) {
+  const { warnCacheAssets, maximumCacheAssets } = declaredCacheAssetWarning()
+  if (assetCount < warnCacheAssets) return null
+  const message = `offline release approach warning: the release carries ${assetCount} cache assets against a declared maximum of ${maximumCacheAssets} — the margin is ${maximumCacheAssets - assetCount}. The warning threshold is \`warnCacheAssets\` = ${warnCacheAssets} in src/release-payload.ts; nothing fails until the maximum is exceeded.`
+  warn(message)
+  return message
+}
+
+export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false, reportApproach = false } = {}) {
   assertPinnedRuntime()
   const manifestFile = join(outputDir, 'offline-release-manifest.json')
   if (!existsSync(manifestFile)) fail('missing generated manifest')
@@ -50,6 +88,25 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   const { minimumCacheAssets, maximumCacheAssets } = declaredCacheAssetBounds()
   if (release.assets.length > maximumCacheAssets) fail(`release carries ${release.assets.length} cache assets, over the declared maximum of ${maximumCacheAssets}`)
   if (release.assets.length < minimumCacheAssets) fail(`release carries ${release.assets.length} cache assets, under the declared minimum of ${minimumCacheAssets}`)
+  // THE APPROACH WARNING, REPORTED ONLY WHEN THE CALLER SAYS THIS IS THE REAL
+  // RELEASE. It WARNS and does not fail, and the two are deliberately
+  // different outcomes: crossing 64 is a release that the browser's own parser
+  // would refuse, while approaching it is information a person needs before
+  // planning the next story.
+  //
+  // `reportApproach` IS AN EXPLICIT OPTION, NOT A FIRST-CALL ASSUMPTION.
+  // `runRedProofs` calls `verifyOfflineRelease` two dozen times over a
+  // deliberately mutated dist, and an unguarded warning prints two dozen lines
+  // about asset counts no release will ever have. The previous shape suppressed
+  // those with a module-scope latch set inside this branch — so it latched on
+  // the first FIRING rather than the first CALL, and under
+  // `npm run verify:offline:red:controls` (`--red-only`) the real release is
+  // never verified at all, which meant the one warning line printed was about a
+  // deliberately mutated fixture. A warning that describes a fixture while
+  // reading as a statement about the release is worse than no warning. Now only
+  // the CLI's real-release call asks for it, and a fixture cannot consume it
+  // because a fixture never requests it.
+  if (reportApproach) reportCacheAssetApproach(release.assets.length)
   const outputUrls = runtimeOutputUrls(outputDir)
   if (!sameSet(manifestUrls, outputUrls)) fail('manifest and production runtime output are not an exact set')
   if (!manifestUrls.has('/index.html')) fail('navigation entry is absent')
@@ -75,9 +132,14 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   if (markerWrite < 0 || finalVerified < markerWrite) fail('emitted worker can report 100% before its complete marker')
   if (release.thaiDictionary?.delivery !== 'emitted-wasm-digest-witness' || !manifestUrls.has(release.thaiDictionary.wasmUrl) || !/^[a-f0-9]{64}$/.test(release.thaiDictionary.sha256)) fail('Thai dictionary containment is not declared against the emitted wasm')
   const s1 = release.s1
-  const s1Ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'thai-dictionary']
+  // THE ORDERED SHAPE OF THE S1 ROWS, extended by Story 11.1's seven cuts.
+  // `thai-dictionary` stays LAST and `engine` stays FIRST: the two rows the
+  // checks below single out are addressed BY ID from here on, so nothing depends
+  // on those positions any more — but the ordered join is still what states the
+  // manifest's shape, and an id inserted in the wrong place reds it.
+  const s1Ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'noto-sans-bold-font', 'noto-sans-italic-font', 'noto-sans-bold-italic-font', 'noto-sans-thai-bold-font', 'roboto-bold-font', 'roboto-italic-font', 'roboto-bold-italic-font', 'thai-dictionary']
   if (!s1 || JSON.stringify(bootS1) !== JSON.stringify(s1) || s1.version !== 1 || s1.releaseId !== release.id || s1.pageId !== release.pageId || s1.unit !== 'MiB' || s1.decimals !== 2 || s1.assetCount !== release.assets.length || !Array.isArray(s1.cacheAssets) || !Array.isArray(s1.rows) || s1.rows.length !== s1Ids.length || s1.rows.map((row) => row.id).join(',') !== s1Ids.join(',')) fail('S1 payload metadata is incomplete or not exactly page/release bound')
-  const semanticLabels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Thai dictionary']
+  const semanticLabels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Noto Sans Bold', 'Noto Sans Italic', 'Noto Sans Bold Italic', 'Noto Sans Thai Bold', 'Roboto Bold', 'Roboto Italic', 'Roboto Bold Italic', 'Thai dictionary']
   if (s1.rows.map((row) => row.label).join(',') !== semanticLabels.join(',') || s1.rows.some((row) => /cloud|download|account|sync/i.test(row.label))) fail('S1 semantic labels contain delivery fiction')
   if (s1.cacheAssets.length !== release.assets.length || new Set(s1.cacheAssets.map((asset) => asset.assetUrl)).size !== release.assets.length) fail('S1 cache assets are incomplete')
   for (const asset of release.assets) {
@@ -86,14 +148,30 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false } =
   }
   if (s1.cachedBytes !== s1.cacheAssets.reduce((total, asset) => total + asset.bytes, 0)) fail('S1 cache denominator is not all release assets')
   const cachedRows = s1.rows.filter((row) => row.delivery === 'cached-asset')
-  if (cachedRows.length !== 4 || !cachedRows.every((row) => typeof row.assetUrl === 'string' && Number.isSafeInteger(row.bytes) && row.bytes > 0 && /^[a-f0-9]{64}$/.test(row.sha256))) fail('S1 cached rows are invalid')
+  // DERIVED FROM `s1Ids`, NEVER RE-TYPED (D-11.1.16, extended). Every row but
+  // `thai-dictionary` is a cached asset, so the expected cardinality IS
+  // `s1Ids.length - 1` — the same expression `src/release-payload.ts` already
+  // uses for the same quantity (`cached.length !== ids.length - 1`). It was a
+  // literal `11` here, which is a second copy of a number this same function
+  // declares eight lines above: an id added to `s1Ids` without touching this
+  // line would fail with "S1 cached rows are invalid" about a release that is
+  // correct, and the fix would look like relaxing the guard. This is the same
+  // positional-literal defect the story spent five bullet points removing from
+  // the row reads, one layer up.
+  const expectedCachedRows = s1Ids.length - 1
+  if (cachedRows.length !== expectedCachedRows || !cachedRows.every((row) => typeof row.assetUrl === 'string' && Number.isSafeInteger(row.bytes) && row.bytes > 0 && /^[a-f0-9]{64}$/.test(row.sha256))) fail(`S1 cached rows are invalid: expected ${expectedCachedRows} cached-asset rows (every id in the declared shape but the one embedded row) and found ${cachedRows.length}`)
   for (const row of cachedRows) {
     const asset = release.assets.find((candidate) => candidate.url === row.assetUrl)
     if (!asset || asset.sha256 !== row.sha256) fail(`S1 row is not bound to an emitted asset ${row.id}`)
     if (readFileSync(`${join(outputDir, row.assetUrl.slice(1))}.br`).byteLength !== row.bytes) fail(`S1 row size is not its emitted Brotli sidecar ${row.id}`)
   }
-  const dictionaryRow = s1.rows[4]
-  if (dictionaryRow.delivery !== 'embedded-in-engine' || dictionaryRow.assetUrl !== release.thaiDictionary.wasmUrl || dictionaryRow.bytes !== readFileSync(join(root, '..', 'folio-go', 'internal', 'text', 'data', 'thai_words.trie')).byteLength || dictionaryRow.sha256 !== release.thaiDictionary.sha256) fail('S1 Thai dictionary row is not a real embedded witness')
+  // KEYED BY ID, NOT BY POSITION (D-11.1.16). This read was `s1.rows[4]`; the
+  // index moved once at Story 11.1 and will move again at 11.3, and an index
+  // that has drifted onto another row does not fail — it checks the WRONG ROW
+  // and passes. The file's own better convention is two lines below
+  // (`rows.find((row) => row.id === 'cjk-font')`) and is adopted here.
+  const dictionaryRow = s1.rows.find((row) => row.id === 'thai-dictionary')
+  if (!dictionaryRow || dictionaryRow.delivery !== 'embedded-in-engine' || dictionaryRow.assetUrl !== release.thaiDictionary.wasmUrl || dictionaryRow.bytes !== readFileSync(join(root, '..', 'folio-go', 'internal', 'text', 'data', 'thai_words.trie')).byteLength || dictionaryRow.sha256 !== release.thaiDictionary.sha256) fail('S1 Thai dictionary row is not a real embedded witness')
   if (release.s1VisibleBytes !== cachedRows.reduce((total, row) => total + row.bytes, 0)) fail('S1 visible payload total is not row arithmetic')
   const cjk = s1.rows.find((row) => row.id === 'cjk-font')
   if (!cjk || cjk.bytes !== Math.max(...cachedRows.filter((row) => row.id.endsWith('font')).map((row) => row.bytes))) fail('S1 CJK row is not the dominant font payload')
@@ -260,6 +338,23 @@ function rewriteRelease(outputDir, release) {
   writeFileSync(join(outputDir, 'sw.js'), serviceWorkerSource(release))
 }
 
+/**
+ * The S1 row a red proof intends to mutate, resolved BY ID.
+ *
+ * `rows[0]` and `rows[4]` were the two positional reads in this file's
+ * falsifiers, and neither said which row it meant: `rows[0]` means "the engine
+ * wasm row" and said so nowhere. Story 11.1 inserted seven rows between them.
+ * This throws rather than returning undefined, because the failure it is
+ * guarding against is a proof that stops proving anything — a mutation applied
+ * to `undefined` throws a TypeError the harness would report as the guard
+ * having gone red, which is a red proof passing for the wrong reason.
+ */
+function s1RowById(release, id, proof) {
+  const row = release.s1?.rows?.find((candidate) => candidate.id === id)
+  if (!row) fail(`red proof ${proof} could not find the S1 row it exists to mutate: no row carries the id '${id}'. A falsifier that cannot locate its subject proves nothing, and must never be allowed to look like a pass.`)
+  return row
+}
+
 function redProof(name, mutate, expected) {
   let restore
   try {
@@ -292,7 +387,16 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
   })
   redProof('s1-total-mismatch', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cachedBytes++; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
-  redProof('s1-delivery-fiction', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[4].delivery = 'cached-asset'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  // A FALSIFIER MUST TARGET ITS SUBJECT BY IDENTITY, NEVER BY POSITION
+  // (D-11.1.16). Both of these mutations used to address a row by index —
+  // `rows[4]` for the dictionary, `rows[0]` for the engine — and Story 11.1
+  // inserted seven rows between them. An index-keyed red proof that lands on
+  // the wrong row after an insertion either fails to go red at all, or goes
+  // red FOR THE WRONG REASON, and a red proof passing for the wrong reason is
+  // the defect class wearing the costume of the thing meant to catch it. So
+  // `s1RowById` resolves by id and FAILS LOUDLY when the id is gone: a
+  // falsifier that cannot find its subject must never read as a proof.
+  redProof('s1-delivery-fiction', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); s1RowById(release, 'thai-dictionary', 's1-delivery-fiction').delivery = 'cached-asset'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   // THE ENVELOPE, BOTH ENDS, PROVED BY MANUFACTURING A RELEASE OUTSIDE IT.
   // These follow the `missing-*-row` shape rather than the `s1-*` one: the bound
   // is a property of the asset POPULATION, so the only faithful mutation is a
@@ -322,7 +426,7 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
     rewriteRelease(outputDir, release)
     return () => { writeFileSync(manifest, oldManifest); writeFileSync(worker, oldWorker) }
   }, 'under the declared minimum of')
-  redProof('s1-cloud-label', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.rows[0].label = 'Cloud download'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
+  redProof('s1-cloud-label', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); s1RowById(release, 'engine', 's1-cloud-label').label = 'Cloud download'; writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-progress-denominator', (outputDir) => { const manifest = join(outputDir, 'offline-release-manifest.json'); const original = readFileSync(manifest); const release = JSON.parse(original); release.s1.cacheAssets.pop(); writeFileSync(manifest, JSON.stringify(release)); return () => writeFileSync(manifest, original) })
   redProof('s1-bootstrap-drift', (outputDir) => { const index = join(outputDir, 'index.html'); const original = readFileSync(index); writeFileSync(index, original.toString().replace('"releaseId":"', '"releaseId":"0')); return () => writeFileSync(index, original) })
   redProof('dev-bypass-shipped', (outputDir) => {
@@ -385,6 +489,10 @@ export function runRedProofs(baseline = verifyOfflineRelease()) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const redOnly = process.argv.includes('--red-only')
   const wasmWitness = process.argv.includes('--wasm-witness')
-  const baseline = redOnly ? JSON.parse(readFileSync(join(dist, 'offline-release-manifest.json'), 'utf8')) : verifyOfflineRelease(dist, { wasmWitness })
+  // `reportApproach` ONLY HERE, and only on the branch that verifies the REAL
+  // dist. `--red-only` reads the manifest straight off disk and never calls
+  // `verifyOfflineRelease` on it, so that run legitimately emits no approach
+  // warning rather than emitting one about the first mutated fixture.
+  const baseline = redOnly ? JSON.parse(readFileSync(join(dist, 'offline-release-manifest.json'), 'utf8')) : verifyOfflineRelease(dist, { wasmWitness, reportApproach: true })
   if (process.argv.includes('--red-proof') || redOnly) runRedProofs(baseline)
 }

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Derive folio-go's three shipped STATIC faces from their upstream variable builds.
+"""Derive folio-go's derived shipped STATIC faces from their upstream variable builds.
 
-Story 2.2 / D-2.2.4 (binding). folio-go ships static, Regular-only instances —
-not the upstream variable builds — for three reasons, each measured:
+Story 2.2 / D-2.2.4 (binding). folio-go ships static instances — not the
+upstream variable builds — for three reasons, each measured. STORY 11.1 ENDED
+THE "REGULAR-ONLY" HALF OF THAT SENTENCE, which used to stand here: the derived
+set now also carries Noto Sans Bold, Noto Sans Italic, Noto Sans Bold Italic and
+Noto Sans Thai Bold, each a face of its own under its own family name. The three
+reasons below are about STATIC versus VARIABLE and none of them depended on the
+set being Regular-only; only the weight and slope coverage changed.
 
   1. `NotoSansSC-VF`'s `wght` axis has default=100. Pinning axes to their
      DEFAULTS (what the render seam used to do) embedded Simplified Chinese as
@@ -78,9 +83,15 @@ Usage:
     python3 tools/fontgen/instance_faces.py --sources DIR [--repo-root DIR]
                                             [--verify-only] [--out DIR]
 
-`--sources DIR` must hold the three upstream variable builds under the exact
-filenames in UPSTREAM below. They are NOT committed (20 MB of inputs for 11 MB of
-outputs); each entry records the release URL and the sha256 to fetch them by.
+`--sources DIR` must hold the upstream variable builds under the exact filenames
+in UPSTREAM below. They are NOT committed: as of Story 11.1 that is FOUR source
+files totalling 22,362,688 bytes, for the 13,314,992 bytes of derived output this
+script writes (the whole shipped set under folio-go/fonts/ is 14,782,604 bytes
+once the four upstream-static Roboto cuts, which this script does not touch, are
+counted). Each entry records the release URL and the sha256 to fetch them by.
+Story 11.1 added a FOURTH source file, `NotoSans-Italic-VF.ttf`, from the SAME
+`NotoSans-v2.015` archive the roman VF already comes from — one new `src`
+filename against a `src_url` that differs only after the `->`.
 
 Every hash below is asserted in BOTH directions (D-000.21: assert on the produced
 thing, never on the thing you asked for):
@@ -132,6 +143,54 @@ UPSTREAM = [
         "out_bytes": 646160,
     },
     {
+        "key": "Noto Sans Bold",
+        "dir": "notosans-bold",
+        "src": "NotoSans-VF.ttf",
+        "out": "NotoSans-Bold.ttf",
+        "axes": ["wght=700", "wdth=100"],
+        "family": "Noto Sans",
+        "src_sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+        "src_url": (
+            "https://github.com/notofonts/latin-greek-cyrillic/releases/download/"
+            "NotoSans-v2.015/NotoSans-v2.015.zip"
+            "  ->  NotoSans/googlefonts/variable-ttf/NotoSans[wdth,wght].ttf"
+        ),
+        "out_sha256": "652b4b154d1c41f01de4c69b6d37d6a73a1c942e43bfcf4f95d4490b2fca6787",
+        "out_bytes": 648284,
+    },
+    {
+        "key": "Noto Sans Italic",
+        "dir": "notosans-italic",
+        "src": "NotoSans-Italic-VF.ttf",
+        "out": "NotoSans-Italic.ttf",
+        "axes": ["wght=400", "wdth=100"],
+        "family": "Noto Sans",
+        "src_sha256": "58e6e0ebd1931b29a365aa2d3e2ee9a9e831a3af7cf3ad1462d4e72154f0b291",
+        "src_url": (
+            "https://github.com/notofonts/latin-greek-cyrillic/releases/download/"
+            "NotoSans-v2.015/NotoSans-v2.015.zip"
+            "  ->  NotoSans/googlefonts/variable-ttf/NotoSans-Italic[wdth,wght].ttf"
+        ),
+        "out_sha256": "b3f9077e2c43979d1509bead91c46068742f16f3dd131b8005149451aaf40338",
+        "out_bytes": 663520,
+    },
+    {
+        "key": "Noto Sans Bold Italic",
+        "dir": "notosans-bolditalic",
+        "src": "NotoSans-Italic-VF.ttf",
+        "out": "NotoSans-BoldItalic.ttf",
+        "axes": ["wght=700", "wdth=100"],
+        "family": "Noto Sans",
+        "src_sha256": "58e6e0ebd1931b29a365aa2d3e2ee9a9e831a3af7cf3ad1462d4e72154f0b291",
+        "src_url": (
+            "https://github.com/notofonts/latin-greek-cyrillic/releases/download/"
+            "NotoSans-v2.015/NotoSans-v2.015.zip"
+            "  ->  NotoSans/googlefonts/variable-ttf/NotoSans-Italic[wdth,wght].ttf"
+        ),
+        "out_sha256": "1a1882aa2efca4388498a9db2ced6eca5dd6141d2cd989248e2bf1d189718df1",
+        "out_bytes": 665508,
+    },
+    {
         "key": "Noto Sans Thai",
         "dir": "notosansthai",
         "src": "NotoSansThai-VF.ttf",
@@ -146,6 +205,22 @@ UPSTREAM = [
         ),
         "out_sha256": "c94562c15cbff8c9af93042adb1c63981b5deeeba40693ea8d98cd3b33b73caf",
         "out_bytes": 47788,
+    },
+    {
+        "key": "Noto Sans Thai Bold",
+        "dir": "notosansthai-bold",
+        "src": "NotoSansThai-VF.ttf",
+        "out": "NotoSansThai-Bold.ttf",
+        "axes": ["wght=700", "wdth=100"],
+        "family": "Noto Sans Thai",
+        "src_sha256": "5a1c559bb539583c8a1fd99d1c5b9491e5e14478c9cd2bd0970d5c3096cc9ef8",
+        "src_url": (
+            "https://github.com/notofonts/thai/releases/download/"
+            "NotoSansThai-v2.002/NotoSansThai-v2.002.zip"
+            "  ->  NotoSansThai/googlefonts/variable/NotoSansThai[wdth,wght].ttf"
+        ),
+        "out_sha256": "fe60f91611714dc6a57d5facb1818292b08c22cf88a55c60084173ea92e2ddbd",
+        "out_bytes": 47800,
     },
     {
         # ONE axis (wght only) — no wdth pin. This is the face whose wght
@@ -230,7 +305,7 @@ def main() -> int:
         "--sources",
         required=True,
         type=Path,
-        help="directory holding the three upstream variable builds",
+        help="directory holding the upstream variable builds",
     )
     ap.add_argument(
         "--repo-root",

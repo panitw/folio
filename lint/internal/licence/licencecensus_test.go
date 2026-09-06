@@ -20,10 +20,16 @@ type censusVerdict struct {
 }
 
 // pinnedCensus is the WHOLE licence population of this repository with
-// its verdict written down — 67 rows: 58 committed LICENSE*/COPYING
+// its verdict written down — 82 rows: 73 committed LICENSE*/COPYING
 // files (every row whose `where` is a repository-relative path) plus the
 // 9 dependency licences the three Go module graphs resolve to (every row
 // whose `where` begins "dep ").
+//
+// BOTH NUMBERS WERE ALREADY WRONG BY ONE BEFORE STORY 11.1 TOUCHED THEM:
+// this sentence read "67 rows: 58 committed" while the table held 68 and
+// 59. The figures above were COUNTED off the rows, not obtained by adding
+// fourteen to a number that was already wrong — which is the same defect
+// the next paragraph records, reaching its second instance here.
 //
 // THOSE COUNTS ARE PROPERTIES OF THE ROWS BELOW, not a second source of
 // truth, and this sentence is the ONLY place either is typed by hand.
@@ -45,6 +51,18 @@ type censusVerdict struct {
 // FONT ASSET this repository has ever carried, so it is the first row
 // that exercises the second of the owner's four ids (D-8.5.3) from the
 // asset side rather than from a dependency or a fixture.
+//
+// AND BY 14 AT STORY 11.1: the seven weighted and sloped cuts, each
+// committed TWICE — once under folio-go/fonts/ and once under
+// folio-designer/public/fonts/ — because AD-26 binds the directory, not
+// the family, so a cut that ships on both sides carries its OFL text on
+// both sides. All fourteen are OFL-1.1 and all fourteen are the same
+// upstream text as the Regular beside them; they are pinned one by one
+// anyway, in path order with the rest, because the population is what
+// this table records and a duplicated text is still a redistributed
+// file. MEASURED, not assumed: with the rows absent the cross-check at
+// the end of this test named exactly these fourteen paths and printed
+// (permissive, "OFL-1.1") for every one.
 //
 // THIS TEST IS WHY `-count=1` IS NOT OPTIONAL. The census walks the
 // filesystem, so its verdict changes when FILES change and not when Go
@@ -106,8 +124,12 @@ var pinnedCensus = []censusVerdict{
 	{"folio-designer/public/fonts/literata/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/lora/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/montserrat/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosans-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosans-bolditalic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosans-italic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/notosansthai-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notosansthailooped/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/notoserif/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
@@ -115,6 +137,9 @@ var pinnedCensus = []censusVerdict{
 	{"folio-designer/public/fonts/opensans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/oswald/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/plusjakartasans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/roboto-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/roboto-bolditalic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-designer/public/fonts/roboto-italic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/roboto/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/robotocondensed/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-designer/public/fonts/robotomono/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
@@ -132,9 +157,16 @@ var pinnedCensus = []censusVerdict{
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-APACHE-2.0", FamilyPermissive, "Apache-2.0"},
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-CMAPS", FamilyPermissive, "BSD-3-Clause"},
 	{"folio-designer/third-party-notices/pdfjs-dist/LICENSE-LIBERATION", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosans-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosans-bolditalic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosans-italic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-go/fonts/notosans/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-go/fonts/notosanssc/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/notosansthai-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-go/fonts/notosansthai/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/roboto-bold/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/roboto-bolditalic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
+	{"folio-go/fonts/roboto-italic/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-go/fonts/roboto/LICENSE-OFL.txt", FamilyPermissive, "OFL-1.1"},
 	{"folio-go/internal/text/wordlist/LICENSE-CC0-1.0.txt", FamilyPermissive, "CC0-1.0"},
 	{"folio-go/testdata/fonts/LICENSE-Roboto.txt", FamilyPermissive, "Apache-2.0"},

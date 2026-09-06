@@ -394,13 +394,14 @@ describe('the canvas paints with the faces the engine measured', () => {
   // passes by having nothing to compare. A regex that stops matching
   // because a file's shape changed is the failure mode this catches.
   //
-  // THE FLOOR IS SIX, RAISED FROM THREE BY STORY 8.4b, because six is the
-  // true count: three files, each declared twice — once under the design
-  // system's family name and once under the engine's own face name. A floor
-  // that sits below the real number has stopped discriminating; at three it
-  // would have survived the deletion of the entire engine-named half.
+  // THE FLOOR IS THIRTEEN, RAISED FROM SIX BY STORY 11.1 — which raised it from
+  // three at Story 8.4b. Thirteen is the true count: three design-system
+  // families, the three Story 2.2 engine faces, and seven weighted and sloped
+  // cuts, each over bytes of its own. A floor that sits below the real number
+  // has stopped discriminating; left at six it would have survived the deletion
+  // of every cut this story adds.
   it('reads a non-empty declaration set from the generator', () => {
-    expect(declared.length).toBeGreaterThanOrEqual(6)
+    expect(declared.length).toBeGreaterThanOrEqual(13)
   })
 
   // AND A CEILING, NOT ONLY A FLOOR — closing the route a floor cannot.
@@ -424,12 +425,13 @@ describe('the canvas paints with the faces the engine measured', () => {
   // different ones.
   it('declares no @font-face outside the exact rule spelling the guards parse', () => {
     const wellFormed = wellFormedRuleFamilies(withoutComments(generator))
-    // SEVEN SINCE STORY 8.5: the six hand-written rules, plus the ONE
+    // FOURTEEN SINCE STORY 11.1: the thirteen hand-written rules — six from
+    // Stories 8.4c/8.5 and seven weighted and sloped cuts — plus the ONE
     // catalogue rule the emitter templates over `font-catalogue.json`. It is a
     // count of RULE SPELLINGS IN THE GENERATOR, not of emitted rules — the
-    // catalogue's twenty-one are counted where they are declared, in
+    // catalogue's thirty-one are counted where they are declared, in
     // `src/font-catalogue.test.ts`, against the manifest and the binaries.
-    expect(wellFormed.length, `read no well-formed @font-face rules out of ${generatorPath}`).toBe(7)
+    expect(wellFormed.length, `read no well-formed @font-face rules out of ${generatorPath}`).toBe(14)
     expect(
       declared,
       'the generator declares an @font-face whose src is not a `${assets.<slot>}` interpolation, so it is invisible to the '
@@ -522,7 +524,7 @@ describe('the canvas paints with the faces the engine measured', () => {
     // 'IBM Plex Sans', so the three families stay present while a chrome token
     // has been collapsed onto the engine's vocabulary. The face names come from
     // `fonts.Shipped()`, not from a literal restated here.
-    expect(engineFaces.length, 'the engine face names must have been read').toBe(4)
+    expect(engineFaces.length, 'the engine face names must have been read').toBe(11)
     for (const face of engineFaces) {
       expect(
         fontTokens.filter(([, value]) => value.includes(`'${face}'`)).map(([name]) => name),
@@ -787,11 +789,11 @@ describe('the canvas paints with the faces the engine measured', () => {
   // which would have kept passing, while having become false, if folio-go ever
   // shipped a different FontSet. Both halves of the claim below come from
   // `fonts.Shipped()` itself.
-  it('declares the engine\'s own face names and asks the canvas for exactly them', () => {
+  it('declares every engine face name, and asks the canvas for the ones the degrade stack carries', () => {
     // NON-VACUITY BEFORE ANYTHING ELSE. A parse that yields nothing makes every
     // `filter(...).toEqual([])` below pass over an empty set, which is the
     // classic way this shape of guard goes quiet.
-    expect(engineFaces.length, `read no face names out of Shipped() in ${enginePath}`).toBe(4)
+    expect(engineFaces.length, `read no face names out of Shipped() in ${enginePath}`).toBe(11)
 
     // THE CHROME HALF, UNWEAKENED. The design system's vocabulary must remain
     // declared; the canvas no longer asks for it, but every type token does.
@@ -802,19 +804,19 @@ describe('the canvas paints with the faces the engine measured', () => {
     // `font-catalogue.json` catalogue face (`AVAILABLE LOCALLY`) — its
     // `@font-face` is the catalogue emitter's own templated rule, invisible
     // to `declared`'s literal-text parse (see `catalogueDeclaredFamilies`'s
-    // note above), and it is never added to the fixed `.canvas-text-fragment`
-    // fallback stack this section ties order to: that stack is the DEGRADE
-    // PATH for a fragment the engine attributed to NOTHING, spelled once in
-    // App.css and once in shipped-face-family.ts's `canvasFragmentFallbackStack`,
-    // and widening it is a change to what every UNATTRIBUTED fragment in
-    // EVERY existing document falls back to — outside this story's own
-    // boundary ("no existing document changes"). Roboto's own ties — that the
+    // note above). Roboto's own ties — that the
     // catalogue declares an @font-face for it, and that the browser has the
     // SAME bytes folio-go embeds — are asserted on their own, immediately
     // after this test, the same way font-binary-identity.test.ts routes them.
+    //
+    // TEN SINCE STORY 11.1, three before it: the three Story 2.2 Noto faces
+    // plus the seven weighted and sloped cuts. Roboto's three CUTS are on this
+    // side of the split, not the catalogue side — a bold cut cannot be a
+    // catalogue face, because `font-catalogue.test.ts` holds every catalogue
+    // entry to upright Regular 400.
     const catalogueFamilySet = new Set(catalogueDeclaredFamilies())
     const handWrittenEngineFaces = engineFaces.filter((face) => !catalogueFamilySet.has(face))
-    expect(handWrittenEngineFaces, 'expected exactly the three Story 2.2 Noto faces once the catalogue-declared half (Roboto) is set aside').toHaveLength(3)
+    expect(handWrittenEngineFaces, 'expected the three Story 2.2 Noto faces plus Story 11.1\'s seven cuts, once the catalogue-declared half (Roboto) is set aside').toHaveLength(10)
 
     // THE BROWSER CAN NAME THE FACE THE ENGINE MEASURED WITH. Every
     // HAND-WRITTEN-declared face in the shipped FontSet has an @font-face of
@@ -822,25 +824,64 @@ describe('the canvas paints with the faces the engine measured', () => {
     // the separate, stronger claim made in src/font-binary-identity.test.ts.
     expect(handWrittenEngineFaces.filter((face) => !declared.includes(face))).toEqual([])
 
-    // AND THE CANVAS ASKS FOR THEM. Containment, not equality: the stack ends
-    // in the generic `sans-serif` keyword, which is guarded separately below.
-    expect(handWrittenEngineFaces.filter((face) => !requested.includes(face))).toEqual([])
+    // ────────────────────────────────────────────────────────────────────
+    // THE FRAGMENT FALLBACK STACK DID NOT MOVE AT STORY 11.1, AND THE TWO
+    // ASSERTIONS THAT USED TO RANGE OVER `handWrittenEngineFaces` ARE NARROWED
+    // TO THE STACK'S OWN POPULATION RATHER THAN DROPPED (D-11.1.17, D-11.1.19).
+    //
+    // WHY THE OBVIOUS EDIT IS THE WRONG ONE. `.canvas-text-fragment`'s stack is
+    // the DEGRADE PATH: it is what a fragment the engine attributed to NOTHING
+    // falls through. Adding the seven cuts to it would change what every
+    // unattributed fragment in EVERY EXISTING DOCUMENT rasterizes with — a
+    // silent rendering change to documents nobody edited, under a
+    // byte-determinism regime whose premise is that output moves only when
+    // input does. It would arrive disguised as a tidy-up, and it is written
+    // into this story's spec as a `Never`.
+    //
+    // SO THE CLAIM MOVES RATHER THAN SHRINKS. What the stack is still held to:
+    // (a) it names nothing the browser has no hand-written rule for, and
+    // (b) the faces it does name appear in `fonts.Shipped()`'s own relative
+    //     order — a SUBSEQUENCE now rather than a prefix, because the cuts sit
+    //     between `Noto Sans` and `Noto Sans Thai` in the engine's own map.
+    // What replaces the dropped half is (c) below: the seven faces the stack
+    // does not name are reachable BY ATTRIBUTION, named first, with the whole
+    // stack behind them — which is a stronger statement than stack membership,
+    // because it is per fragment rather than fixed.
+    const stackFaces = handWrittenEngineFaces.filter((face) => requested.includes(face))
+    expect(
+      requested.filter((family) => !handWrittenEngineFaces.includes(family)),
+      'the .canvas-text-fragment stack names a family that is not a hand-written-declared engine face, so a fragment falling through to it asks for something the browser may have no @font-face for',
+    ).toEqual([])
+    expect(stackFaces, 'the degrade stack is the three Story 2.2 faces and Story 11.1 deliberately did not widen it').toEqual(['Noto Sans', 'Noto Sans Thai', 'Noto Sans SC'])
 
-    // AND IN THE ENGINE'S OWN ORDER, which containment alone does not say.
+    // AND IN THE ENGINE'S OWN ORDER, which membership alone does not say.
     // The acceptance criterion and the I/O matrix both require the ORDER, and
     // for good reason: a CSS stack is a first-match-wins search per codepoint,
     // the three faces' cmaps overlap (339 / 529 / 230 codepoints pairwise,
     // measured) and all three cover `A` and `5`. Reordering the stack CJK-first
     // changes which face rasterizes every overlapping codepoint — a metric
-    // change the containment assertion above waves straight through. The
-    // expected order is `fonts.Shipped()`'s own source order, parsed above
-    // and then narrowed to the hand-written half, so this ties the browser's
-    // search order to the engine's declaration order rather than to a
-    // literal restated here.
+    // change the membership assertion above waves straight through. The
+    // expected order is `fonts.Shipped()`'s own source order, parsed above and
+    // then narrowed to the faces the stack actually names, so this ties the
+    // browser's search order to the engine's declaration order rather than to
+    // a literal restated here.
     expect(
-      requested.slice(0, handWrittenEngineFaces.length),
-      'the .canvas-text-fragment stack must name the engine\'s hand-written-declared faces first and in the order fonts.Shipped() writes them',
-    ).toEqual([...handWrittenEngineFaces])
+      requested,
+      'the .canvas-text-fragment stack must name its engine faces in the order fonts.Shipped() writes them',
+    ).toEqual(stackFaces)
+
+    // (c) THE FACES THE STACK DOES NOT NAME ARE NOT UNREACHABLE — they reach
+    // the canvas by ATTRIBUTION. This is the positive claim that replaces the
+    // narrowed one, and it is asserted over exactly the faces the narrowing
+    // exempted, so the exemption cannot quietly grow to cover a face nothing
+    // else checks.
+    const outsideTheStack = handWrittenEngineFaces.filter((face) => !requested.includes(face))
+    expect(outsideTheStack, 'Story 11.1 put seven cuts outside the degrade stack; if none is outside it, this exemption is describing nothing and the narrowing above is unjustified').toHaveLength(7)
+    for (const face of outsideTheStack) {
+      const families = familiesIn(shippedFaceFamily(face) as string)
+      expect(families[0], `${face} is not in the degrade stack, so the ONLY way the browser ever asks for it is the per-fragment derivation — which must name it FIRST`).toBe(face)
+      expect(families.slice(1), `${face}'s derived value must carry the whole declared stack behind it, or a codepoint it does not cover falls to the browser default rather than to the other shipped faces`).toEqual(canvasFragmentFallbackStack.map((entry) => entry.replace(/^'|'$/g, '')))
+    }
 
     // AND TIED TO THE THIRD AUTHORITY TOO — THE BROWSER-SIDE PREDICATE THAT
     // DECIDES WHETHER A FACE NAME CAN BE ASKED FOR AT ALL (Story 8.4e).
@@ -854,10 +895,11 @@ describe('the canvas paints with the faces the engine measured', () => {
     // names are read against the predicate as well, and as a SET DIFFERENCE
     // rather than a count: a count is lossy (Design Note 7).
     //
-    // THIS PAIR IS OVER ALL FOUR `engineFaces`, ROBOTO INCLUDED: the shape
-    // predicate and the "names itself first" derivation hold for it exactly
-    // as they do for the three hand-written faces — nothing about either
-    // rule depends on WHERE the browser's @font-face for a name comes from.
+    // THIS PAIR IS OVER ALL ELEVEN `engineFaces`, ROBOTO AND ALL SEVEN CUTS
+    // INCLUDED: the shape predicate and the "names itself first" derivation
+    // hold for them exactly as they do for the three Story 2.2 faces — nothing
+    // about either rule depends on WHERE the browser's @font-face for a name
+    // comes from, or on whether the degrade stack happens to name it.
     expect(
       engineFaces.filter((face) => !isShippedFaceName(face)),
       'shipped-face-family.ts declines a face name fonts.Shipped() actually ships. A fragment attributed to it would set no inline family and fall back to the fixed stack, silently, with nothing else in this file red.',

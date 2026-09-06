@@ -59,8 +59,24 @@ const cataloguePath = path.join(designerRoot, 'font-catalogue.json')
 const generatorPath = path.join(designerRoot, 'scripts', 'build-wasm.mjs')
 const fontsRoot = path.join(designerRoot, 'public', 'fonts')
 
-/** The six families the generator declares by hand, which the catalogue must not collide with. */
-const shippedFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai', 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC']
+/**
+ * The families the generator declares BY HAND, which the catalogue must not
+ * collide with — DERIVED from this file's own `shippedSlotFaces` table below
+ * rather than re-typed beside it.
+ *
+ * IT WAS A SECOND COPY AND IT HAD ALREADY DRIFTED. This list stood at the six
+ * pre-Story-11.1 families while `scripts/build-wasm.mjs` widened its own
+ * `shippedFamilies` to THIRTEEN, so a `font-catalogue.json` entry redeclaring
+ * `Roboto Bold` satisfied the collision assertion below and was refused only
+ * by the generator's build-time throw. Story 11.1 then put a thirteen-row slot
+ * table in this same file, making the disagreement internal to one file — so
+ * the copy is deleted and the population read off the table instead.
+ *
+ * A FUNCTION, not a `const`: `shippedSlotFaces` is declared further down and
+ * this would be a temporal-dead-zone read at module scope. Every caller is
+ * inside a test body, which runs after the whole module has evaluated.
+ */
+const shippedFamilies = (): ReadonlyArray<string> => Object.values(shippedSlotFaces).map((face) => face.cssFamily)
 
 interface CatalogueFace { id: string; directory: string; file: string; family: string; licence: string; scripts: ReadonlyArray<string> }
 
@@ -303,7 +319,7 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
   // NON-VACUITY FIRST. Every loop below is over `catalogue`, and an empty or
   // truncated manifest would satisfy all of them silently — the exact shape of
   // vacuous green this story's design notes are written against.
-  it('declares at least twenty NEW families, none of them a family the six shipped rules already declare', () => {
+  it('declares at least twenty NEW families, none of them a family the thirteen shipped rules already declare', () => {
     // THE POPULATION FLOOR — ONE OF FOUR, AND ALL FOUR MOVE TOGETHER.
     // The other three are `src/font-index.test.ts` ("is the whole bundled catalogue, unchanged"),
     // `src/font-name-table.test.ts` ("reads a copyright out of every committed
@@ -319,7 +335,13 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
     expect(catalogue.length, 'AC3 requires at least 20 new families beyond the 6 already shipped; Story 16.1a raised the floor to 31').toBeGreaterThanOrEqual(31)
     const families = catalogue.map((face) => face.family)
     expect(new Set(families).size, 'two catalogue entries declare the same family').toBe(families.length)
-    expect(families.filter((family) => shippedFamilies.includes(family)), 'a catalogue face must not redeclare one of the six shipped families').toEqual([])
+    // THIRTEEN SINCE STORY 11.1, and read off `shippedSlotFaces` rather than
+    // from a list of its own — six was this assertion's population until the
+    // seven cuts landed, and a stale copy here quietly stopped refusing the
+    // seven names it had never heard of.
+    const shipped = shippedFamilies()
+    expect(shipped.length, 'the hand-written shipped population is thirteen since Story 11.1; a shorter list stops refusing the names it has not heard of').toBe(13)
+    expect(families.filter((family) => shipped.includes(family)), 'a catalogue face must not redeclare one of the thirteen shipped families').toEqual([])
     const directories = catalogue.map((face) => face.directory)
     expect(new Set(directories).size, 'two catalogue entries share a directory, so two families would resolve to one file').toBe(directories.length)
     const ids = catalogue.map((face) => face.id)
@@ -516,5 +538,211 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
 
     // And the generator reads the manifest rather than a hardcoded list.
     expect(generator).toContain("readFileSync(join(designerRoot, 'font-catalogue.json'), 'utf8')")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE HARDCODED-SLOT FACES, HELD TO THEIR OWN BYTES (Story 11.1, D-11.1.7).
+//
+// THE POPULATION NOTHING VERIFIED. Every metadata assertion above is quantified
+// over the CATALOGUE — `font-catalogue.json`'s entries, each held to upright
+// Regular 400. The thirteen faces `scripts/build-wasm.mjs` fingerprints by NAME
+// are a different population, they reach the browser by a hand-written
+// `@font-face` rather than by the catalogue emitter, and until this story not
+// one metadata claim was made about any of them. A `pyftsubset` cut, a swapped
+// weight or a variable build dropped into one of those slots satisfied every
+// gate in this repository.
+//
+// STORY 11.1 IS WHAT MAKES THAT GAP LOAD-BEARING, which is why it is closed
+// here rather than deferred: seven of the thirteen are now NON-Regular, so this
+// is the first time the one unguarded population contains a face whose
+// correctness is not "Regular 400". The assertion is therefore per face against
+// its INTENDED instance — never a blanket Regular, which would be false the
+// moment the cuts landed and would have to be deleted rather than widened.
+//
+// ⚠ THE CSS FAMILY AND THE FILE'S OWN FAMILY ARE DIFFERENT STRINGS FOR A CUT,
+// AND THAT IS CORRECT. `Noto Sans Bold` is the `fonts.Shipped()` key, the
+// `@font-face` family and the family the canvas paints with — one readable
+// string on three surfaces (D-11.1.5). The face's own `name` table calls itself
+// family `Noto Sans`, subfamily `Bold`, because that is what it IS. Nothing may
+// derive one from the other: a `TrimSuffix(key, " Bold")` anywhere reinstates
+// the naming-convention weight carrier D-B foreclosed. The table below states
+// both, separately, and each is checked against a different authority — the
+// CSS family against the generator's own rule, the sfnt family against the
+// bytes.
+// ---------------------------------------------------------------------------
+
+/**
+ * The `assets` half of the generator: slot name -> source path under the
+ * designer root, for every slot fingerprinted out of `public/fonts`.
+ *
+ * DUPLICATED FROM `src/font-binary-identity.test.ts`, deliberately and on this
+ * repository's standing convention: importing it would register that file's
+ * whole suite a second time under this one, and this guard must be able to
+ * redden on its own. The `wasm`, `wasmExec` and `starter` slots are
+ * fingerprinted from build products rather than from a committed path and are
+ * not matched by construction.
+ */
+function shippedSlotSourcePaths(generator: string): Readonly<Record<string, string>> {
+  const entries = [...generator.matchAll(/(\w+):\s*fingerprint\(join\(designerRoot,\s*((?:'[^']*'\s*,\s*)*'[^']*')\)\s*,/g)]
+  return Object.fromEntries(entries.map((match) => [match[1], [...match[2].matchAll(/'([^']*)'/g)].map((segment) => segment[1]).join('/')]))
+}
+
+/** The `@font-face` half: the `assets` slot each hand-written rule interpolates -> the family it declares. */
+function slotCssFamilies(generator: string): Readonly<Record<string, string>> {
+  return Object.fromEntries([...generator.matchAll(/@font-face \{ font-family: '([^']+)'; src: url\('\.\/runtime\/\$\{assets\.(\w+)\}'\) format\('truetype'\); font-display: swap; \}/g)].map((match) => [match[2], match[1]]))
+}
+
+/**
+ * WHAT EACH HARDCODED SLOT IS INTENDED TO BE. `cssFamily` is the name the
+ * browser is given; `family`/`subfamily` are what the binary must call itself;
+ * `bold`/`italic`/`oblique` are the intent the OS/2, head and post tables are
+ * then held to agree with, so a face cannot claim Bold in its name and Regular
+ * in its bits.
+ *
+ * ⚠ `oblique` IS PER FACE AND THE SHIPPED ITALICS DISAGREE ON IT. fsSelection
+ * bit 9 (0x0200) is the one style bit this table cannot state as a rule, and
+ * every value below is MEASURED off the committed binary with fontTools 4.63.0,
+ * not predicted:
+ *
+ *   Roboto Italic       0x0201  ITALIC + OBLIQUE
+ *   Roboto Bold Italic  0x0221  ITALIC + BOLD + OBLIQUE
+ *   Noto Sans Italic    0x0081  ITALIC + USE_TYPO_METRICS, no OBLIQUE
+ *   Noto Sans Bold Ital 0x00a1  ITALIC + BOLD + USE_TYPO_METRICS, no OBLIQUE
+ *
+ * Two shipped italic cuts of the same shape, from two upstreams, differing on
+ * a bit that is recorded NOWHERE ELSE in this repository. The catalogue loop
+ * above asserts 0x0200 is clear for all 21 catalogue faces, so its absence
+ * here would have been the one style bit the whole repository stopped watching
+ * at exactly the moment it stopped being uniform. A blanket rule — "italic
+ * implies oblique", or "oblique is never set" — is FALSE of this population in
+ * both directions, which is why the intent is stated per row.
+ *
+ * A CLOSED TABLE OVER A DERIVED POPULATION: the slot names are parsed out of
+ * the generator and asserted to be exactly these keys, so a fourteenth slot
+ * added without a row here reds rather than shipping unverified.
+ */
+const shippedSlotFaces: Readonly<Record<string, { cssFamily: string; family: string; subfamily: string; usWeightClass: number; bold: boolean; italic: boolean; oblique: boolean }>> = {
+  // The design system's three, and the three Story 2.2 engine faces.
+  plexSans: { cssFamily: 'IBM Plex Sans', family: 'IBM Plex Sans', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  mono: { cssFamily: 'IBM Plex Mono', family: 'IBM Plex Mono', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  plexSansThai: { cssFamily: 'IBM Plex Sans Thai', family: 'IBM Plex Sans Thai', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  sans: { cssFamily: 'Noto Sans', family: 'Noto Sans', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  sansThai: { cssFamily: 'Noto Sans Thai', family: 'Noto Sans Thai', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  // NOTO SANS SC HAS NO CUT, AND THAT IS A RULING (D-A) rather than an
+  // oversight: its Regular alone is 10,595,932 bytes, so three instances would
+  // take the offline payload from ~11 MB to ~45 MB. A family with no face at a
+  // requested weight is a permanent shipped condition, not a corner case.
+  sansCjk: { cssFamily: 'Noto Sans SC', family: 'Noto Sans SC', subfamily: 'Regular', usWeightClass: 400, bold: false, italic: false, oblique: false },
+  // Story 11.1's seven. Noto Sans Thai gains BOLD ONLY — `font-index.json`
+  // records the family's styles as 100–900 with no italic variants at all, and
+  // upstream publishes none, so seven is the whole realizable set.
+  //
+  // The four derived Noto cuts inherit `0x0080` (USE_TYPO_METRICS) and no
+  // OBLIQUE from their variable-font sources; the three Roboto statics come
+  // from upstream's own `android/static/` build, which sets OBLIQUE on both
+  // its italics and sets neither REGULAR nor USE_TYPO_METRICS on its Bold.
+  sansBold: { cssFamily: 'Noto Sans Bold', family: 'Noto Sans', subfamily: 'Bold', usWeightClass: 700, bold: true, italic: false, oblique: false },
+  sansItalic: { cssFamily: 'Noto Sans Italic', family: 'Noto Sans', subfamily: 'Italic', usWeightClass: 400, bold: false, italic: true, oblique: false },
+  sansBoldItalic: { cssFamily: 'Noto Sans Bold Italic', family: 'Noto Sans', subfamily: 'Bold Italic', usWeightClass: 700, bold: true, italic: true, oblique: false },
+  sansThaiBold: { cssFamily: 'Noto Sans Thai Bold', family: 'Noto Sans Thai', subfamily: 'Bold', usWeightClass: 700, bold: true, italic: false, oblique: false },
+  robotoBold: { cssFamily: 'Roboto Bold', family: 'Roboto', subfamily: 'Bold', usWeightClass: 700, bold: true, italic: false, oblique: false },
+  robotoItalic: { cssFamily: 'Roboto Italic', family: 'Roboto', subfamily: 'Italic', usWeightClass: 400, bold: false, italic: true, oblique: true },
+  robotoBoldItalic: { cssFamily: 'Roboto Bold Italic', family: 'Roboto', subfamily: 'Bold Italic', usWeightClass: 700, bold: true, italic: true, oblique: true },
+}
+
+describe('the hardcoded shipped slots are the faces the generator claims they are', () => {
+  const generator = fs.readFileSync(generatorPath, 'utf8')
+  const slots = shippedSlotSourcePaths(generator)
+
+  // NON-VACUITY AND THE POPULATION TIE, FIRST. Both halves are parsed out of
+  // source text by regex, and a regex that stops matching yields an empty
+  // object over which every loop below passes silently.
+  it('reads every hardcoded font slot out of the generator, and knows what each one is meant to be', () => {
+    expect(Object.keys(slots).sort(), `read the wrong hardcoded font slots out of ${generatorPath}; a slot with no row in shippedSlotFaces would ship a face nothing checks`).toEqual(Object.keys(shippedSlotFaces).sort())
+    expect(Object.keys(slots).length, 'six until Story 11.1, thirteen after it').toBe(13)
+    // AND THE OBLIQUE COLUMN GENUINELY DISCRIMINATES. A per-face expectation
+    // whose column holds one value everywhere is a blanket rule wearing a
+    // table, and would be satisfied by an assertion this population has now
+    // outgrown. Roboto's two italics set 0x0200 and Noto's two do not, so both
+    // values must be present for the per-face check below to be worth its row.
+    expect([...new Set(Object.values(shippedSlotFaces).map((face) => face.oblique))].sort(), 'the intended-oblique column carries one value, so asserting it per face proves nothing the catalogue loop did not already prove').toEqual([false, true])
+  })
+
+  // THE CSS FAMILY IS THE GENERATOR'S, READ FROM IT. The other end of the
+  // table: a rule repointed at a different slot, or a family renamed, reds
+  // here rather than making the metadata assertion below check the right bytes
+  // under the wrong name.
+  it('declares each slot under the family name the table says it does', () => {
+    const declared = slotCssFamilies(generator)
+    expect(Object.keys(declared).length, `read no hand-written @font-face rules out of ${generatorPath}`).toBe(13)
+    expect(declared).toEqual(Object.fromEntries(Object.entries(shippedSlotFaces).map(([slot, face]) => [slot, face.cssFamily])))
+  })
+
+  // AND THE BYTES AGREE WITH THE INTENT — per face, never a blanket Regular.
+  it('ships each hardcoded slot as the instance it is intended to be, read from its own name, OS/2, head and post tables', () => {
+    for (const [slot, intended] of Object.entries(shippedSlotFaces)) {
+      const relative = slots[slot]
+      expect(relative, `the generator declares no source path for the '${slot}' slot`).toBeDefined()
+      const file = path.join(designerRoot, relative)
+      expect(fs.existsSync(file), `${relative} is fingerprinted for the '${slot}' slot and is not committed`).toBe(true)
+      const instance = instanceOfFile(file)
+      const say = `${relative} is declared to the browser as '${intended.cssFamily}'`
+
+      // (1) THE MACHINE-READABLE FAMILY IS THE sfnt NAME, NEVER THE CSS FAMILY.
+      // For the seven cuts these two strings differ on purpose.
+      expect(instance.family, `${say}, and its own name table must call itself '${intended.family}' — the CSS family is a readable KEY and nothing may derive a family from it (D-B)`).toBe(intended.family)
+      expect(instance.subfamily, `${say}, and its own name table must call itself subfamily '${intended.subfamily}'`).toBe(intended.subfamily)
+      expect(instance.usWeightClass, `${say} and must carry OS/2.usWeightClass ${intended.usWeightClass}`).toBe(intended.usWeightClass)
+
+      // (2) THE BITS AGREE WITH THE NAME. A face naming itself Bold while its
+      // head.macStyle and OS/2.fsSelection say Regular is the shape a swapped
+      // or hand-edited binary takes, and the name check alone cannot see it.
+      expect(Boolean(instance.macStyle & 0x0001), `${say}: head.macStyle bold bit must be ${intended.bold}`).toBe(intended.bold)
+      expect(Boolean(instance.macStyle & 0x0002), `${say}: head.macStyle italic bit must be ${intended.italic}`).toBe(intended.italic)
+      expect(Boolean(instance.fsSelection & 0x0020), `${say}: OS/2.fsSelection BOLD bit must be ${intended.bold}`).toBe(intended.bold)
+      expect(Boolean(instance.fsSelection & 0x0001), `${say}: OS/2.fsSelection ITALIC bit must be ${intended.italic}`).toBe(intended.italic)
+      expect(Boolean(instance.fsSelection & 0x0040), `${say}: OS/2.fsSelection REGULAR bit must be set for an upright Regular and clear for every cut`).toBe(!intended.bold && !intended.italic)
+      // AND THE OBLIQUE BIT (0x0200), WHICH IS NOT DERIVABLE FROM THE OTHERS.
+      // Roboto's two italics set it and Noto's two do not, so this is the one
+      // style bit that must be stated per face — see the table's own note. The
+      // catalogue loop above holds all 21 catalogue faces to a CLEAR oblique
+      // bit; without this line the thirteen hardcoded slots were the only
+      // shipped population whose 0x0200 nothing looked at, and they are now
+      // the only population in which it varies.
+      expect(Boolean(instance.fsSelection & 0x0200), `${say}: OS/2.fsSelection OBLIQUE bit must be ${intended.oblique} (measured off the committed binary; Roboto's italics set it, Noto's do not, and neither is derivable from the italic bit)`).toBe(intended.oblique)
+
+      // (3) THE SLOPE IS IN THE OUTLINES, not only in a bit. An upright face
+      // must measure zero; a sloped one must be genuinely sloped, and the
+      // amount is upstream's (-12.02 for the Noto italics, -12 for Roboto's),
+      // so the sign is what is asserted rather than a pinned constant.
+      if (intended.italic) expect(instance.italicAngle, `${say} and is an italic cut, so post.italicAngle must be negative`).toBeLessThan(0)
+      else expect(instance.italicAngle, `${say} and is upright, so post.italicAngle must be exactly 0`).toBe(0)
+
+      // (4) STATIC, ALWAYS. A variable build in one of these slots would let
+      // the browser and the engine disagree about which instance was drawn,
+      // and neither AD-21's byte identity nor AD-17's rasterizer-only contract
+      // survives that.
+      expect(instance.variableTables, `${say} and must be a STATIC instance; a variable build carries an axis the engine never asked for`).toEqual([])
+      expect(instance.outlineTables, `${say} and must carry TrueType outlines — the emitted rule declares format('truetype')`).toEqual(['glyf'])
+    }
+  })
+
+  // AND THE READER DISCRIMINATES, so the loop above means "each face is what it
+  // claims" rather than "instanceOfFile answers the same thing to everything".
+  // The Regular and the Bold of ONE family are the pair that matters: they share
+  // a name[1], and every check that separates them is a check this suite would
+  // be worthless without.
+  it('tells a Regular from the Bold cut of the same family', () => {
+    const regular = instanceOfFile(path.join(designerRoot, 'public/fonts/notosans/NotoSans-Regular.ttf'))
+    const bold = instanceOfFile(path.join(designerRoot, 'public/fonts/notosans-bold/NotoSans-Bold.ttf'))
+    const italic = instanceOfFile(path.join(designerRoot, 'public/fonts/notosans-italic/NotoSans-Italic.ttf'))
+    expect(regular.family, 'all three call themselves the same family, which is exactly why the family check alone cannot separate them').toBe(bold.family)
+    expect(regular.family).toBe(italic.family)
+    expect([regular.subfamily, bold.subfamily, italic.subfamily]).toEqual(['Regular', 'Bold', 'Italic'])
+    expect([regular.usWeightClass, bold.usWeightClass]).toEqual([400, 700])
+    expect([regular.macStyle, bold.macStyle, italic.macStyle]).toEqual([0x0000, 0x0001, 0x0002])
+    expect(regular.italicAngle).toBe(0)
+    expect(italic.italicAngle).toBeLessThan(0)
   })
 })

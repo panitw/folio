@@ -23,10 +23,13 @@ import { describe, expect, it } from 'vitest'
 //
 //   1. THE TWO VOCABULARIES ARE SEPARATE BY DESIGN. Story 8.4b declared both
 //      over the SAME three files — a deliberate INTERVAL, in which the IBM
-//      Plex names were IBM Plex in name only. Story 8.4c ended it: six rules,
-//      six distinct files, no family sharing bytes with another. A file
-//      reached by two family names is now a defect rather than the expected
-//      state, and the assertion below is where that is caught.
+//      Plex names were IBM Plex in name only. Story 8.4c ended it: one rule
+//      per family, each over a distinct file, no family sharing bytes with
+//      another. It was six rules over six files then and is THIRTEEN over
+//      thirteen since Story 11.1 — the invariant is one-file-per-family, not
+//      the count. A file reached by two family names is now a defect rather
+//      than the expected state, and the assertion below is where that is
+//      caught.
 //
 //   2. THE FACE THE ENGINE MEASURED. Every family named after a shipped face
 //      is declared from bytes IDENTICAL to the bytes `folio-go/fonts/fonts.go`
@@ -103,11 +106,11 @@ const chromeFamilies = ['IBM Plex Sans', 'IBM Plex Mono', 'IBM Plex Sans Thai'] 
 // hazard `font-catalogue.json`'s own collision guard exists to refuse
 // (`catalogueFamilies.has(entry.family)` in build-wasm.mjs). The catalogue's
 // per-face rule is therefore invisible to `declaredFamilies`/
-// `familySourcePaths` below, which see the SIX hand-written rules only, so
+// `familySourcePaths` below, which see the THIRTEEN hand-written rules only, so
 // the two ties this story's own boundary calls out — "does the browser have
 // a face for it" and "are the two Roboto files byte-identical" — are made
 // here explicitly, against the catalogue path, rather than assumed to fall
-// out of the six-rule machinery built for the other three faces.
+// out of the hand-written-rule machinery built for the other three faces.
 const catalogueEngineRobotoFile = 'public/fonts/roboto/Roboto-Regular.ttf'
 
 /** Family names `font-catalogue.json` declares, read as data rather than re-derived from build-wasm.mjs's loop. */
@@ -198,8 +201,8 @@ function slotSourcePaths(generator: string): Readonly<Record<string, string>> {
 // by a different route is not reading that spec. What is owed is a BEHAVIOURAL
 // guard — a test that fails when ANY font file reaching the runtime bundle
 // carries an extension the gate does not recognise. So the check below is a
-// population claim over two independent populations, not a check of the six
-// files that happen to be here today:
+// population claim over two independent populations, not a check of the
+// thirteen files that happen to be here today:
 //
 //   1. every font asset SLOT the generator fingerprints into the runtime
 //      bundle, and
@@ -694,11 +697,11 @@ describe('the family names the browser is given are the files the engine measure
   it('reads both halves of the generator, and neither is empty', () => {
     const slots = slotSourcePaths(generator)
     expect(Object.keys(slots).length, `read no font asset slots out of ${generatorPath}`).toBeGreaterThanOrEqual(3)
-    expect(familySlots(generator).length, `read no @font-face rules out of ${generatorPath}`).toBe(6)
-    expect(shippedFaceNames(fontsGo).length, `read no face names out of Shipped() in ${enginePath}`).toBe(4)
+    expect(familySlots(generator).length, `read no @font-face rules out of ${generatorPath}`).toBe(13)
+    expect(shippedFaceNames(fontsGo).length, `read no face names out of Shipped() in ${enginePath}`).toBe(11)
   })
 
-  // AND NEITHER HALF COUNTS COMMENTED-OUT TEXT. The floor of six above is a
+  // AND NEITHER HALF COUNTS COMMENTED-OUT TEXT. The rule count above is a
   // text count, so without the strip a rule that had been commented out still
   // satisfied it — the measured mutation that left every guard here green while
   // the emitted stylesheet dropped to three rules.
@@ -718,7 +721,7 @@ describe('the family names the browser is given are the files the engine measure
 
   // THE LICENCE GATE SEES EVERY FONT THAT SHIPS (D-8.4.23).
   //
-  // Not "these six files are .ttf" — that is the instance, and the instance was
+  // Not "these thirteen files are .ttf" — that is the instance, and the instance was
   // never the risk. The risk is the next font added by a different route: the
   // obvious procurement path for IBM Plex is `@ibm/plex-*` on npm, which ships
   // `.woff2`/`.woff` and no `.ttf` at all, and a `.woff2` reaching the bundle
@@ -955,13 +958,23 @@ describe('the family names the browser is given are the files the engine measure
       'Noto Sans': 'public/fonts/notosans/NotoSans-Regular.ttf',
       'Noto Sans Thai': 'public/fonts/notosansthai/NotoSansThai-Regular.ttf',
       'Noto Sans SC': 'public/fonts/notosanssc/NotoSansSC-Regular.ttf',
+      // STORY 11.1'S SEVEN CUTS. Each is its own family name over its own
+      // directory, so the exact map below is also the statement that no cut
+      // shares bytes with the Regular it was derived from.
+      'Noto Sans Bold': 'public/fonts/notosans-bold/NotoSans-Bold.ttf',
+      'Noto Sans Italic': 'public/fonts/notosans-italic/NotoSans-Italic.ttf',
+      'Noto Sans Bold Italic': 'public/fonts/notosans-bolditalic/NotoSans-BoldItalic.ttf',
+      'Noto Sans Thai Bold': 'public/fonts/notosansthai-bold/NotoSansThai-Bold.ttf',
+      'Roboto Bold': 'public/fonts/roboto-bold/Roboto-Bold.ttf',
+      'Roboto Italic': 'public/fonts/roboto-italic/Roboto-Italic.ttf',
+      'Roboto Bold Italic': 'public/fonts/roboto-bolditalic/Roboto-BoldItalic.ttf',
     })
   })
 
   // THE INTERVAL, ENDED. Story 8.4b pinned three files reached by two names
   // each — the design system's and the engine's — and said in as many words
-  // that Story 8.4c is what splits them. It has: six rules now reach six
-  // distinct files, and no family shares bytes with any other. What replaced
+  // that Story 8.4c is what splits them. It has: thirteen rules now reach
+  // thirteen distinct files, and no family shares bytes with any other. What replaced
   // the interval is stronger than it was, because a shared file is now a
   // defect rather than the expected state.
   it('gives every declared family a source file of its own, the interval Story 8.4b pinned now ended', () => {
@@ -985,7 +998,7 @@ describe('the family names the browser is given are the files the engine measure
       + 'record, where "letters rendered on top of each other". A rule "simplified" away is the way this happens.',
     ).toEqual([])
 
-    expect(Object.keys(perFile).length, 'the six @font-face rules must reach six distinct source files').toBe(6)
+    expect(Object.keys(perFile).length, 'the thirteen @font-face rules must reach thirteen distinct source files').toBe(13)
 
     // EVERY GROUPING KEY IS A REAL FILE. `familySourcePaths` falls back to a
     // sentinel string when a rule names an `assets` slot that does not
@@ -1077,21 +1090,38 @@ describe('the family names the browser is given are the files the engine measure
     const shipped = shippedFacePaths(fontsGo)
 
     // THE NAME SETS ARE EQUAL, OVER THE HAND-WRITTEN HALF ONLY. Story 16.8
-    // adds Roboto to `fonts.Shipped()` without a seventh hand-written rule
+    // adds Roboto to `fonts.Shipped()` without a hand-written rule
     // (see the note above `catalogueDeclaredFamilies`), so `engineNamed` —
-    // sourced from the six hand-written rules alone — is one name short of
+    // sourced from the hand-written rules alone — is one name short of
     // `shipped` by construction. It is excluded here, BY NAME rather than by
     // a bare count adjustment, and checked its own way immediately below:
     // add a face to `fonts.Shipped()` that is neither hand-written NOR a
-    // catalogue face, or drop one of the three Noto faces, and this still
+    // catalogue face, or drop one of the Noto faces, and this still
     // reddens.
+    //
+    // ELEVEN AND TEN SINCE STORY 11.1, three and four before it. Note which
+    // side each of the seven cuts landed on: `Roboto Bold`, `Roboto Italic`
+    // and `Roboto Bold Italic` are HAND-WRITTEN, not catalogue-routed, because
+    // a bold cut cannot be a catalogue face at all — `font-catalogue.test.ts`
+    // holds every catalogue entry to upright Regular 400. Only `Roboto` itself
+    // is the dual-vocabulary face; its three cuts are ordinary members of the
+    // set below and are digest-tied here like every other one.
     const shippedViaCatalogue = new Set(['Roboto'])
     const shippedHandWritten = Object.fromEntries(Object.entries(shipped).filter(([face]) => !shippedViaCatalogue.has(face)))
     expect([...engineNamed].sort()).toEqual(Object.keys(shippedHandWritten).sort())
-    expect(Object.keys(shipped).length).toBe(4)
-    expect(Object.keys(shippedHandWritten).length).toBe(3)
+    expect(Object.keys(shipped).length).toBe(11)
+    expect(Object.keys(shippedHandWritten).length).toBe(10)
 
-    // AND SO ARE THE BYTES, face by face, over the hand-written three.
+    // THE SEVEN CUTS ARE IN THE DIGEST LOOP, NAMED. The loop below is derived,
+    // so it would silently shrink to three if a cut lost its rule or its
+    // `Shipped()` key — and an empty-by-attrition loop passes. Naming them is
+    // what turns "seven engine/designer pairs are compared" from a property of
+    // today's parse into an assertion.
+    for (const cut of ['Noto Sans Bold', 'Noto Sans Italic', 'Noto Sans Bold Italic', 'Noto Sans Thai Bold', 'Roboto Bold', 'Roboto Italic', 'Roboto Bold Italic']) {
+      expect(Object.keys(shippedHandWritten), `${cut} must be one of the faces whose engine and designer bytes are compared below`).toContain(cut)
+    }
+
+    // AND SO ARE THE BYTES, face by face, over all ten hand-written faces.
     for (const face of Object.keys(shippedHandWritten)) {
       const browserFile = path.join(designerRoot, declaredPaths[face])
       const engineFile = path.join(engineFontsDir, shippedHandWritten[face])
@@ -1202,13 +1232,13 @@ describe('the bytes behind a chrome family name are the face that name claims', 
   // other assertion in this file green while the whole chrome rendered in the
   // wrong face — and each NOTICE's digest silently became a false statement.
   //
-  // ALL SIX DECLARED FACES, not just the three chrome ones. The Noto pin above
+  // ALL THIRTEEN DECLARED FACES, not just the three chrome ones. The Noto pin above
   // proves the designer's copy MIRRORS the engine's; it says nothing about
   // whether either is the file its provenance record describes. This is the
-  // other question, and it costs the same to ask of all six.
+  // other question, and it costs the same to ask of all thirteen.
   it('ships every declared face at the exact bytes its own NOTICE.md records', () => {
     const declared = familySourcePaths(generator)
-    expect(Object.keys(declared).length, 'nothing to pin means the generator parse went blind').toBe(6)
+    expect(Object.keys(declared).length, 'nothing to pin means the generator parse went blind').toBe(13)
     for (const [family, relative] of Object.entries(declared)) {
       const file = path.join(designerRoot, relative)
       const notice = path.join(path.dirname(file), 'NOTICE.md')

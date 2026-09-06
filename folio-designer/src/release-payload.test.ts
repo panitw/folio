@@ -3,8 +3,25 @@ import { isDevBypassReason, loadS1Payload, parseS1Payload, payloadForLifecycle, 
 
 const hash = 'a'.repeat(64)
 const cacheAssets = ['/index.html', '/engine', '/latin', '/thai', '/cjk', ...Array.from({ length: 15 }, (_, index) => `/asset-${index}`)]
+// TWELVE ROWS SINCE STORY 11.1 — the emitted shape, in the emitted order. It is
+// written out rather than generated so a reader can see which ids the parser is
+// keyed to; `parseS1Payload` checks the ids and labels positionally, so a
+// fixture short of a row rejects as `payload-shape` and every case below would
+// then be asserting the wrong reason.
+const cachedRow = (id: string, label: string, assetUrl: string) => ({ id, label, delivery: 'cached-asset', assetUrl, bytes: 10, sha256: hash })
 const payload = () => ({ version: 1, releaseId: hash, pageId: 'b'.repeat(64), unit: 'MiB', decimals: 2, cachedBytes: 200, assetCount: 20, cacheAssets: cacheAssets.map((assetUrl) => ({ assetUrl, bytes: 10 })), rows: [
-  { id: 'engine', label: 'Engine', delivery: 'cached-asset', assetUrl: '/engine', bytes: 10, sha256: hash }, { id: 'latin-font', label: 'Latin font', delivery: 'cached-asset', assetUrl: '/latin', bytes: 10, sha256: hash }, { id: 'thai-font', label: 'Thai font', delivery: 'cached-asset', assetUrl: '/thai', bytes: 10, sha256: hash }, { id: 'cjk-font', label: 'CJK font', delivery: 'cached-asset', assetUrl: '/cjk', bytes: 10, sha256: hash }, { id: 'thai-dictionary', label: 'Thai dictionary', delivery: 'embedded-in-engine', assetUrl: '/engine', bytes: 5, sha256: hash },
+  cachedRow('engine', 'Engine', '/engine'),
+  cachedRow('latin-font', 'Latin font', '/latin'),
+  cachedRow('thai-font', 'Thai font', '/thai'),
+  cachedRow('cjk-font', 'CJK font', '/cjk'),
+  cachedRow('noto-sans-bold-font', 'Noto Sans Bold', '/asset-0'),
+  cachedRow('noto-sans-italic-font', 'Noto Sans Italic', '/asset-1'),
+  cachedRow('noto-sans-bold-italic-font', 'Noto Sans Bold Italic', '/asset-2'),
+  cachedRow('noto-sans-thai-bold-font', 'Noto Sans Thai Bold', '/asset-3'),
+  cachedRow('roboto-bold-font', 'Roboto Bold', '/asset-4'),
+  cachedRow('roboto-italic-font', 'Roboto Italic', '/asset-5'),
+  cachedRow('roboto-bold-italic-font', 'Roboto Bold Italic', '/asset-6'),
+  { id: 'thai-dictionary', label: 'Thai dictionary', delivery: 'embedded-in-engine', assetUrl: '/engine', bytes: 5, sha256: hash },
   ] })
 
 // A rejection is only evidence if it NAMES its cause, so every assertion below
@@ -16,7 +33,11 @@ const reasonOf = (value: unknown): S1PayloadRejection | 'accepted' => { const re
 const overBound = () => { const over = payload(); over.assetCount = 65; over.cacheAssets = Array.from({ length: 65 }, (_, index) => ({ assetUrl: `/asset-${index}`, bytes: 10 })); over.cachedBytes = 650; return over }
 const underBound = () => { const under = payload(); under.assetCount = 9; under.cacheAssets = under.cacheAssets.slice(0, 9); under.cachedBytes = 90; return under }
 const staleArithmetic = () => { const total = payload(); total.cachedBytes = 41; return total }
-const deliveryFiction = () => { const delivery = payload(); delivery.rows[4].delivery = 'cached-asset'; return delivery }
+// KEYED BY ID, LIKE THE ASSERTION IT FALSIFIES. `rows[4]` was the dictionary
+// until Story 11.1 inserted seven rows in front of it; an index-keyed mutation
+// would now flip a FONT row's delivery and still produce a rejection — for the
+// wrong reason, which is a red proof that has stopped proving its own claim.
+const deliveryFiction = () => { const delivery = payload(); const dictionary = delivery.rows.find((row) => row.id === 'thai-dictionary'); if (!dictionary) throw new Error('the delivery-fiction fixture has no thai-dictionary row to mutate'); dictionary.delivery = 'cached-asset'; return delivery }
 const surplusField = () => ({ ...payload(), document: 'must-not-cross-boundary' })
 const rowNotAnObject = () => { const rows = payload(); (rows.rows as unknown[])[2] = null; return rows }
 const rowMislabelled = () => { const rows = payload(); rows.rows[1].label = 'Engine'; return rows }

@@ -314,8 +314,12 @@ the list (Story 8.4j).
 | folio-designer/public/fonts/literata/Literata-Regular.ttf | OFL-1.1 | Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata) | committed asset (folio-designer/public/fonts/literata) |
 | folio-designer/public/fonts/lora/Lora-Regular.ttf | OFL-1.1 | Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name "Lora". | committed asset (folio-designer/public/fonts/lora) |
 | folio-designer/public/fonts/montserrat/Montserrat-Regular.ttf | OFL-1.1 | Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat) | committed asset (folio-designer/public/fonts/montserrat) |
+| folio-designer/public/fonts/notosans-bold/NotoSans-Bold.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans-bold) |
+| folio-designer/public/fonts/notosans-bolditalic/NotoSans-BoldItalic.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans-bolditalic) |
+| folio-designer/public/fonts/notosans-italic/NotoSans-Italic.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans-italic) |
 | folio-designer/public/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notosans) |
 | folio-designer/public/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | committed asset (folio-designer/public/fonts/notosanssc) |
+| folio-designer/public/fonts/notosansthai-bold/NotoSansThai-Bold.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthai-bold) |
 | folio-designer/public/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthai) |
 | folio-designer/public/fonts/notosansthailooped/NotoSansThaiLooped-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | committed asset (folio-designer/public/fonts/notosansthailooped) |
 | folio-designer/public/fonts/notoserif/NotoSerif-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | committed asset (folio-designer/public/fonts/notoserif) |
@@ -323,6 +327,9 @@ the list (Story 8.4j).
 | folio-designer/public/fonts/opensans/OpenSans-Regular.ttf | OFL-1.1 | Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans) | committed asset (folio-designer/public/fonts/opensans) |
 | folio-designer/public/fonts/oswald/Oswald-Regular.ttf | OFL-1.1 | Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont) | committed asset (folio-designer/public/fonts/oswald) |
 | folio-designer/public/fonts/plusjakartasans/PlusJakartaSans-Regular.ttf | OFL-1.1 | Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans) | committed asset (folio-designer/public/fonts/plusjakartasans) |
+| folio-designer/public/fonts/roboto-bold/Roboto-Bold.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto-bold) |
+| folio-designer/public/fonts/roboto-bolditalic/Roboto-BoldItalic.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto-bolditalic) |
+| folio-designer/public/fonts/roboto-italic/Roboto-Italic.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto-italic) |
 | folio-designer/public/fonts/roboto/Roboto-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/roboto) |
 | folio-designer/public/fonts/robotocondensed/RobotoCondensed-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | committed asset (folio-designer/public/fonts/robotocondensed) |
 | folio-designer/public/fonts/robotomono/RobotoMono-Regular.ttf | OFL-1.1 | Copyright 2015 The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono) | committed asset (folio-designer/public/fonts/robotomono) |
@@ -333,9 +340,16 @@ the list (Story 8.4j).
 | folio-designer/public/fonts/spacegrotesk/SpaceGrotesk-Regular.ttf | OFL-1.1 | Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk) | committed asset (folio-designer/public/fonts/spacegrotesk) |
 | folio-designer/public/fonts/ubuntusans/UbuntuSans-Regular.ttf | Ubuntu-font-1.0 | Copyright 2011, 2022, 2023 Canonical Ltd. Licensed under the Ubuntu Font Licence 1.0 | committed asset (folio-designer/public/fonts/ubuntusans) |
 | folio-designer/public/fonts/ubuntusansmono/UbuntuSansMono-Regular.ttf | Ubuntu-font-1.0 | Copyright 2011, 2022, 2023 Canonical Ltd. Licensed under the Ubuntu Font Licence 1.0 | committed asset (folio-designer/public/fonts/ubuntusansmono) |
+| folio-go/fonts/notosans-bold/NotoSans-Bold.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
+| folio-go/fonts/notosans-bolditalic/NotoSans-BoldItalic.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
+| folio-go/fonts/notosans-italic/NotoSans-Italic.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
 | folio-go/fonts/notosans/NotoSans-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic) | folio-go shipped |
 | folio-go/fonts/notosanssc/NotoSansSC-Regular.ttf | OFL-1.1 | Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | folio-go shipped |
+| folio-go/fonts/notosansthai-bold/NotoSansThai-Bold.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | folio-go shipped |
 | folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf | OFL-1.1 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai) | folio-go shipped |
+| folio-go/fonts/roboto-bold/Roboto-Bold.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | folio-go shipped |
+| folio-go/fonts/roboto-bolditalic/Roboto-BoldItalic.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | folio-go shipped |
+| folio-go/fonts/roboto-italic/Roboto-Italic.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | folio-go shipped |
 | folio-go/fonts/roboto/Roboto-Regular.ttf | OFL-1.1 | Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) | folio-go shipped |
 | folio-go/internal/text/wordlist/words_th.txt | CC0-1.0 | Copyright: none asserted (CC0-1.0 public domain dedication). Original | folio-go shipped (embedded dictionary) |
 | folio-go/testdata/fonts/Roboto-Regular.ttf | Apache-2.0 | Copyright 2011 Google Inc. All Rights Reserved. | folio-go test fixture |

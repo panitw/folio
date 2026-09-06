@@ -1,4 +1,4 @@
-export type S1Row = Readonly<{ id: 'engine' | 'latin-font' | 'thai-font' | 'cjk-font' | 'thai-dictionary'; label: 'Engine' | 'Latin font' | 'Thai font' | 'CJK font' | 'Thai dictionary'; delivery: 'cached-asset' | 'embedded-in-engine'; assetUrl: string; bytes: number; sha256: string }>
+export type S1Row = Readonly<{ id: 'engine' | 'latin-font' | 'thai-font' | 'cjk-font' | 'noto-sans-bold-font' | 'noto-sans-italic-font' | 'noto-sans-bold-italic-font' | 'noto-sans-thai-bold-font' | 'roboto-bold-font' | 'roboto-italic-font' | 'roboto-bold-italic-font' | 'thai-dictionary'; label: 'Engine' | 'Latin font' | 'Thai font' | 'CJK font' | 'Noto Sans Bold' | 'Noto Sans Italic' | 'Noto Sans Bold Italic' | 'Noto Sans Thai Bold' | 'Roboto Bold' | 'Roboto Italic' | 'Roboto Bold Italic' | 'Thai dictionary'; delivery: 'cached-asset' | 'embedded-in-engine'; assetUrl: string; bytes: number; sha256: string }>
 export type S1Payload = Readonly<{ version: 1; releaseId: string; pageId: string; unit: 'MiB'; decimals: 2; cachedBytes: number; assetCount: number; cacheAssets: readonly Readonly<{ assetUrl: string; bytes: number }>[]; rows: readonly S1Row[] }>
 // EVERY REJECTION CARRIES ITS OWN NAME. The bound and the fifteen unrelated shape
 // checks used to share one bare `undefined`, so "this release lists more assets
@@ -21,16 +21,58 @@ export type S1PayloadRejection =
 export type S1PayloadResult = Readonly<{ ok: true; payload: S1Payload }> | Readonly<{ ok: false; reason: S1PayloadRejection }>
 
 const hash = /^[a-f0-9]{64}$/
-const ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'thai-dictionary'] as const
-const labels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Thai dictionary'] as const
-// scripts/offline-release-contract.mjs DERIVES these two numbers from these two
-// lines and scripts/verify-offline-release.mjs fails the build on a release
-// outside them, so a release over the bound can no longer be emitted in silence.
+// TWELVE ROWS SINCE STORY 11.1: the four the release always carried, the seven
+// weighted and sloped cuts, and the dictionary. Itemised per face rather than
+// aggregated (D-11.1.15) — the manifest is a record before it is a screen, and
+// "which face cost what" is the one question an aggregate cannot answer.
+// Ordered, and read positionally against `rows` below: `engine` first and
+// `thai-dictionary` last is the emitted shape, and an id in the wrong slot reds
+// here. The two rows this module makes a CLAIM about are keyed by id instead.
+const ids = ['engine', 'latin-font', 'thai-font', 'cjk-font', 'noto-sans-bold-font', 'noto-sans-italic-font', 'noto-sans-bold-italic-font', 'noto-sans-thai-bold-font', 'roboto-bold-font', 'roboto-italic-font', 'roboto-bold-italic-font', 'thai-dictionary'] as const
+const labels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Noto Sans Bold', 'Noto Sans Italic', 'Noto Sans Bold Italic', 'Noto Sans Thai Bold', 'Roboto Bold', 'Roboto Italic', 'Roboto Bold Italic', 'Thai dictionary'] as const
+// scripts/offline-release-contract.mjs DERIVES these numbers from these lines —
+// the two bounds here and the approach-warning threshold below them — and
+// scripts/verify-offline-release.mjs fails the build on a release outside the
+// bounds, so a release over the bound can no longer be emitted in silence.
 // Keep each on its own line as `const <name> = <digits>`: that reader is
 // line-anchored and requires exactly one live match, so reformatting, renaming
-// or duplicating either line fails the build loudly rather than disabling it.
+// or duplicating any of these lines fails the build loudly rather than
+// disabling it.
 const minimumCacheAssets = 10
 const maximumCacheAssets = 64
+// THE APPROACH WARNING'S THRESHOLD (Story 11.1, D-11.1.10). NOT A BOUND:
+// nothing in this module reads it, nothing rejects a payload for crossing it,
+// and `maximumCacheAssets` above is still the only number that refuses a
+// release. `scripts/verify-offline-release.mjs` reads it — through
+// `declaredCacheAssetWarning`, never as a literal of its own — and WARNS,
+// naming the remaining margin, when a release reaches it.
+//
+// 56 IS "ONE STORY LIKE THIS ONE BELOW THE CEILING". Story 11.1 spent seven
+// slots in a single change and left the release at 61 of 64, so a threshold
+// eight below the maximum is the point at which the next comparable batch
+// would no longer fit. It is declared here, beside the two bounds, because
+// this is the file the derivation reader is anchored to, and it obeys the same
+// `const <name> = <digits>` shape on a line of its own for the same reason
+// they do.
+const warnCacheAssets = 56
+// THE DECLARATION ABOVE IS SHAPED FOR A TEXT READER IN ANOTHER LANGUAGE
+// (`scripts/offline-release-contract.mjs` matches `^const <name> = <digits>$`),
+// not for a TypeScript importer, so nothing in `src/` reads it. It is exported
+// here under a name that says what the number is for.
+//
+// AND IT HAS A CONSUMER, which is the only reason it is exported at all: a
+// public symbol that exists to satisfy `noUnusedLocals` is a symbol that will
+// be deleted by the next person who greps for its callers and finds none.
+// `scripts/verify-offline-release.test.mjs` imports it and asserts it EQUALS
+// `declaredCacheAssetWarning().warnCacheAssets` — the value the regex reader
+// pulls out of this file's source text. That is the one assertion in the
+// repository that puts the text-derived number beside the value this module
+// actually evaluates to, and it is what makes the cross-language derivation a
+// measurement rather than a convention.
+//
+// A REFERENCE, never a second copy of the value: the `const` line stays the
+// single authority, and changing it changes this too.
+export const cacheAssetApproachWarning = warnCacheAssets
 const reject = (reason: S1PayloadRejection): S1PayloadResult => ({ ok: false, reason })
 
 export function parseS1Payload(value: unknown): S1PayloadResult {
@@ -53,8 +95,24 @@ export function parseS1Payload(value: unknown): S1PayloadResult {
     if (Object.keys(item).length !== 6 || item.id !== ids[index] || item.label !== labels[index] || (item.delivery !== 'cached-asset' && item.delivery !== 'embedded-in-engine') || typeof item.assetUrl !== 'string' || !item.assetUrl.startsWith('/') || item.assetUrl.length > 256 || typeof item.bytes !== 'number' || !Number.isSafeInteger(item.bytes) || item.bytes <= 0 || typeof item.sha256 !== 'string' || !hash.test(item.sha256)) return reject('row-shape')
     rows.push(item as S1Row)
   }
+  // ONE LINE, THREE COUPLINGS, ALL THREE KEYED BY ID SINCE STORY 11.1
+  // (D-11.1.16). It read `cached.length !== 4 || rows[4].… || rows[0].…`, and
+  // the two indices were the whole problem: `rows[4]` meant "the Thai
+  // dictionary row" and `rows[0]` meant "the engine wasm row", and NEITHER said
+  // so. Seven rows were inserted between them in this story and the indices
+  // will move again in 11.3; an index that has drifted onto another row does
+  // not fail, it checks the wrong row and passes.
+  //
+  // The composition claim itself is unchanged: every row is a cached asset
+  // except the dictionary, which is embedded in the engine and therefore
+  // reports the ENGINE's own asset URL rather than one of its own. That is why
+  // the third clause compares the two — the dictionary is not a second
+  // download, and a row saying otherwise would be a delivery fiction on the
+  // first screen a user sees.
   const cached = rows.filter((row) => row.delivery === 'cached-asset')
-  if (cached.length !== 4 || rows[4].delivery !== 'embedded-in-engine' || rows[4].assetUrl !== rows[0].assetUrl) return reject('row-delivery-composition')
+  const dictionary = rows.find((row) => row.id === 'thai-dictionary')
+  const engine = rows.find((row) => row.id === 'engine')
+  if (cached.length !== ids.length - 1 || !dictionary || !engine || dictionary.delivery !== 'embedded-in-engine' || dictionary.assetUrl !== engine.assetUrl) return reject('row-delivery-composition')
   return { ok: true, payload: { version: 1, releaseId: candidate.releaseId as string, pageId: candidate.pageId as string, unit: 'MiB', decimals: 2, cachedBytes: candidate.cachedBytes, assetCount: candidate.assetCount, cacheAssets: cacheAssets as { assetUrl: string; bytes: number }[], rows } }
 }
 

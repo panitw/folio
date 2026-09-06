@@ -62,6 +62,37 @@ var testShippedNotoSansSC []byte
 //go:embed fonts/roboto/Roboto-Regular.ttf
 var testShippedRoboto []byte
 
+// Story 11.1's seven weighted and sloped cuts, duplicated here for the
+// SAME reason as the four above — this file is `package folio`, and
+// importing `fonts` from it is the cycle described in the header. The
+// hand-copy is forced by the package boundary, not chosen; what closes
+// it is TestTestShippedFontSetMatchesFontsShipped and
+// TestShippedSpecCoversEverythingShipped, which compare this map's keys
+// AND bytes against fonts.Shipped() in both directions, so a cut added
+// on one side and not the other fails rather than silently missing the
+// matrix fixture.
+
+//go:embed fonts/notosans-bold/NotoSans-Bold.ttf
+var testShippedNotoSansBold []byte
+
+//go:embed fonts/notosans-italic/NotoSans-Italic.ttf
+var testShippedNotoSansItalic []byte
+
+//go:embed fonts/notosans-bolditalic/NotoSans-BoldItalic.ttf
+var testShippedNotoSansBoldItalic []byte
+
+//go:embed fonts/notosansthai-bold/NotoSansThai-Bold.ttf
+var testShippedNotoSansThaiBold []byte
+
+//go:embed fonts/roboto-bold/Roboto-Bold.ttf
+var testShippedRobotoBold []byte
+
+//go:embed fonts/roboto-italic/Roboto-Italic.ttf
+var testShippedRobotoItalic []byte
+
+//go:embed fonts/roboto-bolditalic/Roboto-BoldItalic.ttf
+var testShippedRobotoBoldItalic []byte
+
 // testShippedNotoSansThaiLicence is Story 8.6's addition, and it is here
 // for the SAME reason the three faces above are: fixtures/embedded-font/
 // now has to state the face's terms, embeddedFontTemplateJSON() builds
@@ -95,9 +126,16 @@ var testShippedNotoSansThaiLicence string
 // the bytes behind them, in both directions.
 func testShippedFontSet() FontSet {
 	return FontSet{
-		"Noto Sans":      testShippedNotoSans,
-		"Noto Sans Thai": testShippedNotoSansThai,
-		"Noto Sans SC":   testShippedNotoSansSC,
-		"Roboto":         testShippedRoboto,
+		"Noto Sans":             testShippedNotoSans,
+		"Noto Sans Bold":        testShippedNotoSansBold,
+		"Noto Sans Italic":      testShippedNotoSansItalic,
+		"Noto Sans Bold Italic": testShippedNotoSansBoldItalic,
+		"Noto Sans Thai":        testShippedNotoSansThai,
+		"Noto Sans Thai Bold":   testShippedNotoSansThaiBold,
+		"Noto Sans SC":          testShippedNotoSansSC,
+		"Roboto":                testShippedRoboto,
+		"Roboto Bold":           testShippedRobotoBold,
+		"Roboto Italic":         testShippedRobotoItalic,
+		"Roboto Bold Italic":    testShippedRobotoBoldItalic,
 	}
 }

@@ -50,17 +50,68 @@ export function generateOfflineRelease(outputDir = dist) {
     writeFileSync(output, brotliCompressSync(readFileSync(join(outputDir, asset.url.slice(1))), { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC, [constants.BROTLI_PARAM_LGWIN]: 22 } }))
     brotliSidecarBytes.set(asset.url, statSync(output).size)
   }
+  // EXACTLY ONE, OR THROW. This was `Array.prototype.find`, which returns the
+  // FIRST of several matches and reports nothing about the rest — so a needle
+  // matching two emitted assets produced two S1 rows pointing at ONE file, with
+  // the second asset in no row at all, and nothing in the build could see it.
+  //
+  // The trailing dot in every needle below is what keeps `/noto-sans.` off
+  // `/noto-sans-bold.`, and the comment there argues that at length — but a
+  // convention is not an invariant until something refuses to build when it is
+  // broken. A future slot named so that its URL contains an existing needle
+  // (`/roboto-italic.` inside a hypothetical `/x/roboto-italic.v2.ttf`, a
+  // directory rename, a Vite output layout change) is exactly the silent
+  // duplicate this now refuses. The ambiguous case names every match, because
+  // "which two" is the whole question a reader will have.
   const find = (needle) => {
-    const asset = initialAssets.find((candidate) => candidate.url.includes(needle))
-    if (!asset) throw new Error(`production build has no ${needle} runtime asset`)
-    return asset
+    const matches = initialAssets.filter((candidate) => candidate.url.includes(needle))
+    if (matches.length === 0) throw new Error(`production build has no ${needle} runtime asset`)
+    if (matches.length > 1) throw new Error(`production build has ${matches.length} runtime assets matching ${needle}, and an S1 row must name exactly one: ${matches.map((asset) => asset.url).join(', ')}. The needles are disambiguated by a trailing dot (so /noto-sans. does not reach /noto-sans-bold.); two matches means that no longer holds, and picking the first would emit two rows pointing at one file while the other asset went unrowed.`)
+    return matches[0]
   }
   const cachedRow = (id, label, asset) => ({ id, label, delivery: 'cached-asset', assetUrl: asset.url, bytes: statSync(join(outputDir, `${asset.url.slice(1)}.br`)).size, sha256: asset.sha256 })
   const engine = find('.wasm')
   const latin = find('/noto-sans.')
   const thai = find('/noto-sans-thai.')
   const cjk = find('/noto-sans-cjk.')
-  const rows = [cachedRow('engine', 'Engine', engine), cachedRow('latin-font', 'Latin font', latin), cachedRow('thai-font', 'Thai font', thai), cachedRow('cjk-font', 'CJK font', cjk)]
+  // STORY 11.1'S SEVEN CUTS, ONE ROW EACH (D-11.1.15). Itemised rather than
+  // aggregated, because `rows` is a MANIFEST SURFACE before it is a screen:
+  // `verify-offline-release.mjs` checks the ids and the labels by ordered exact
+  // join, and the one question a reader will have after a 26.9% payload growth
+  // is WHICH FACE COST WHAT — the single shape an aggregate cannot answer. If
+  // twelve rows read badly on the load screen that is a rendering problem with
+  // a rendering fix, in the component, never by thinning the record.
+  //
+  // THE NEEDLES END IN A DOT for the reason `build-wasm.mjs`'s slot labels do:
+  // `/noto-sans.` must not reach `/noto-sans-bold.`, and `/noto-sans-thai.`
+  // must not reach `/noto-sans-thai-bold.`. `find` throws when a needle matches
+  // nothing, so a renamed slot reds here rather than emitting a short manifest.
+  //
+  // EVERY ID ENDS IN `font` ON PURPOSE. The verifier asserts `cjk-font` is the
+  // `Math.max` of the `*font` rows, and an id outside that suffix would quietly
+  // shrink that guard's population to the three faces it had before this story
+  // — a narrowing dressed as an addition. CJK's Brotli weight (4,948,312) still
+  // dominates the largest new cut, and now the guard is measuring that.
+  const latinBold = find('/noto-sans-bold.')
+  const latinItalic = find('/noto-sans-italic.')
+  const latinBoldItalic = find('/noto-sans-bold-italic.')
+  const thaiBold = find('/noto-sans-thai-bold.')
+  const robotoBold = find('/roboto-bold.')
+  const robotoItalic = find('/roboto-italic.')
+  const robotoBoldItalic = find('/roboto-bold-italic.')
+  const rows = [
+    cachedRow('engine', 'Engine', engine),
+    cachedRow('latin-font', 'Latin font', latin),
+    cachedRow('thai-font', 'Thai font', thai),
+    cachedRow('cjk-font', 'CJK font', cjk),
+    cachedRow('noto-sans-bold-font', 'Noto Sans Bold', latinBold),
+    cachedRow('noto-sans-italic-font', 'Noto Sans Italic', latinItalic),
+    cachedRow('noto-sans-bold-italic-font', 'Noto Sans Bold Italic', latinBoldItalic),
+    cachedRow('noto-sans-thai-bold-font', 'Noto Sans Thai Bold', thaiBold),
+    cachedRow('roboto-bold-font', 'Roboto Bold', robotoBold),
+    cachedRow('roboto-italic-font', 'Roboto Italic', robotoItalic),
+    cachedRow('roboto-bold-italic-font', 'Roboto Bold Italic', robotoBoldItalic),
+  ]
   const visibleBytes = rows.reduce((total, row) => total + row.bytes, 0)
   if (!rows.every((row) => Number.isSafeInteger(row.bytes) && row.bytes > 0)) throw new Error('S1 payload rows are incomplete')
   const s1 = { version: 1, releaseId, pageId, unit: 'MiB', decimals: 2, cachedBytes: 0, assetCount: initialAssets.length, cacheAssets: initialAssets.map((asset) => ({ assetUrl: asset.url, bytes: statSync(join(outputDir, asset.url.slice(1))).size })), rows: [...rows, { id: 'thai-dictionary', label: 'Thai dictionary', delivery: 'embedded-in-engine', assetUrl: engine.url, bytes: thaiDictionary.byteLength, sha256: sha256(thaiDictionary) }] }
