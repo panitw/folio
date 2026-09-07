@@ -10858,3 +10858,31 @@ resize listener - a new prohibition-adjacent mechanism that deserves its own dec
 
 **What discharges it:** a resize path that re-resolves the active fit, with the listener's own scope ruled
 rather than assumed, and a browser-level proof (jsdom performs no layout, so no unit test can see it).
+
+
+### DW-284 - Save PDF sits in the Inspector's properties tabpanel, and the owner asked for it in the preview area
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Raised by:** the project owner, 2026-09-07, on first use of the shipped control - verbatim: *"Later
+  this button should be moved to the preview area."* **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+Story 13.1 put the control beside the thing that produces the bytes: `Render local PDF`, inside the
+Inspector's properties tabpanel (`App.tsx:2006`, `hidden={inspectorTab !== 'properties'}`). The owner
+wants it in the preview `<main>` instead - beside the PDF it saves rather than beside the button that
+made it.
+
+**This is not only placement, which is why it is registered rather than left as taste.** `inspectorTab`
+is state that survives the Design/Preview mode switch (`App.tsx:202`), so an author who left the Inspector
+on DATA enters Preview and the control is not merely inconvenient - it is `hidden`, absent from the
+accessibility tree, with no indication it exists. That is exactly the failure Story 13.1 already fixed for
+the `fileStatus`/`fileError` pair by moving that pair out of the tabpanel and into the preview `<main>`
+(see the comment at `App.tsx:1998`: *"an alert that tests as present and behaves as absent"*). The control
+has the same shape as the messages did; at the time it was read as a placement choice rather than as the
+same defect. **The owner found it by not being able to find the button.**
+
+**What discharges it:** render the button and its `pdfExportUnavailable` reason line in the preview
+`<main>`, near the heading's Return control, and leave `Render local PDF` where it is. `pdfExportLabel`,
+the disabled predicate and both in-flight latches move unchanged - the behaviour is already correct. Doing
+so also lands the reason line in the same region as the alert pair, which is the region DW-272 has to
+reason about.
