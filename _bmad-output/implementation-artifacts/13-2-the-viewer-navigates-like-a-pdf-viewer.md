@@ -2,11 +2,34 @@
 title: 'The viewer navigates like a PDF viewer'
 type: 'feature'
 created: '2026-09-07'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '15b80c66809e4b7f56c239bcd882a6af3b94ea1f'
 review_loop_iteration: 0
 context: []
 ---
+
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative, rewritten at close to describe what actually shipped. The frozen Intent below governs
+what was built.*
+
+Preview now reads like a PDF viewer. You can type a page number or step through pages, pick a zoom or
+type a percentage, and choose fit-width or fit-page. The page area now scrolls sideways as well as up
+and down instead of dragging the whole screen with it, and the controls moved into the status bar.
+Leaving Preview and coming back returns you to the page, zoom and position you left.
+
+The headline finding is that the defect this story set out to fix was not fixed by the change the plan
+said would fix it. The plan asserted as fact something about the viewer that was untrue, so the first
+attempt left the fault fully live: every scroll still threw the rendered page away and drew it again. It
+was found by watching the running application, not by reading code, and the plan was amended after
+approval rather than quietly corrected — which is why a sentence known to be false still sits in it
+beside its correction.
+
+Two things will look wrong later and are deliberate. The verification notes say the browser test runs on
+every push; that was untrue when written, and this story's has so far only ever been run by hand. And
+the new zoom control's shape was chosen here rather than drawn by a designer, so it stays open to
+objection. Nothing in the routine test suite can see how any of this looks — one browser test is the
+only witness.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -574,3 +597,94 @@ The count stays four; the line numbers do not, and the new anchors are reported 
   disagreement is itself the halt.
 - The new `--status-bar-height-preview` token is confirmed to be **used, not merely defined** — an unused
   token is indistinguishable from its own absence (the lesson `design-contract.test.ts:60` records).
+
+## Delivery Log
+
+### 2026-09-08 — done
+
+Baseline `15b80c6`. Shipped at `3dd6be9` — 12 files, +2056/−87, no Go byte, no engine byte. The story's
+ten deferrals were registered by the orchestrator separately at `631a9c9`, which touches
+`deferred-work.md` and nothing else; `folio-designer/` is byte-identical across the two commits, so every
+gate below holds at either. Both are pushed: `origin/main` went live during this epic and `HEAD` ==
+`origin/main` == `631a9c9`.
+
+**DW-191 was not fixed by the change that was meant to fix it.** The frozen Code Map asserted, as measured
+fact, that the viewer's three callbacks were already stable and that only the fresh `state` literal had to
+leave the render effect's dependency array. Two of the three are not stable: they are wrapped in inline
+arrows at the JSX site to bind `preview.token`, so they are new identities on every App render and both
+sat in that array. Removing `state` alone left the tear-down entirely live. The premise was amended after
+approval as **D-13.2.1**, with the false sentence deliberately left in place above the amendment so the
+correction is legible against what it corrects rather than replacing it silently.
+
+**It was found by instrumenting the running page, not by reading code.** `set 300 → 300`, `after 800ms →
+0`, two scroll events recorded, the CSS verified correct, every ancestor confirmed non-scrolling. That
+measurement is what separates "scrolling doesn't work" from "the application is destroying the scroll" —
+and only the second sentence locates a defect. No amount of re-reading the dependency array would have
+produced it, because the array read correctly.
+
+**The fix is structural, not local.** The callbacks move into a ref and leave the dependency array:
+rendering *calls* them, it is not *driven* by them, so the property now holds regardless of what the
+caller passes. A `useCallback` in `App.tsx` would have fixed this one caller and left the next JSX edit
+free to undo it silently. The caller-side residue is registered as **DW-293**, open, owner: the
+orchestrator.
+
+**"The props a test constructs are part of the claim it makes."** The guard that existed for DW-191 could
+prove it could tell a re-render from no re-render, but never that its inputs matched the caller's — its
+helper built the callbacks once and reused them, so it tested a viewer given props the application never
+supplies. Under the fix removed, only the new fresh-identity arm reds; the old arm stays green. That is a
+guard failing *correctly about the wrong subject*, which is a different and harder defect than a guard
+that cannot fail at all.
+
+**Three checks in this story read as coverage and were not**, in three different ways: a `waitFor`
+open-count assertion that passed on its first poll; two e2e specs reported as CI-executed that had **never
+run**, because this pipeline had never pushed (41 unpushed commits at the time, and CI had therefore never
+executed once); and the DW-191 unit test above. In all three, the config said covered and the report said
+covered, and nothing had exercised the claim. The Verification section above still carries the
+"executed by CI on every push" instruction that was falsified mid-story; it is left as written, and the
+Spec Change Log's step-04 entry is the correction of record.
+
+**Review caught product defects the unit suite structurally could not**: a Tab keypress silently
+destroying an active fit (both typed fields committed their derived readout on blur); `Zoom out`
+*enlarging* the page 65% from fit-page, because the fit scale is deliberately unclamped while the stepper
+clamps; and `overflow: hidden` able to clip the preview chrome unreachable — the exact inverse of the
+condition attached at approval. Thirteen further guards that could not fail were repaired and
+mutation-proved. The blur defect reached review alive because the one test walking that gesture compared
+two sides that were equal by construction.
+
+**Every CSS claim in this story is guarded by nothing in the unit suite.** Eight mutations, including
+deleting the new token outright and dropping `safe` from `safe center`, all stayed green. The Playwright
+witness is the only thing that can see them — which is why the run mattered. That `--status-bar-height-preview` has no unit-level
+guard is registered rather than papered over (**DW-289**).
+
+**Decisions applied:** D-13.2.1 (the post-approval Code Map amendment); D-000.8 (DW-191 fixed with, never
+after, the height cap); D-000.9 (mutation-prove by deletion, restore by `cp`, report the digest); D-11.3.7
+(the canvas-authority scan is *run* against each admitted and each still-banned name, never read);
+D-13.4.3 extended to design provenance (the select-plus-typed-input idiom is recorded as the
+orchestrator's call, not a mockup requirement); Q1(c) — two property names spelled individually,
+`clientWidth` and `clientHeight`, never as a group; Q5(a) — no resize recompute and no `window` resize
+listener in this story, the gap registered instead; Q6(a) — the untested view-state reset at `App.tsx:628`
+deleted rather than preserved, so that 13.2 is where the choice was made.
+
+**Findings triage:** this story file carries **no findings, review or triage section** — searched by
+heading over the whole spec as committed (all 576 lines of it at `3dd6be9`), and there is none. No numbered patched/deferred/rejected tally exists to
+quote. From the commit message and the register: 3 product defects patched, 13 unfalsifiable guards
+repaired, 10 deferred. **Rejections are enumerated nowhere I could find**; the count is unknown rather
+than zero.
+
+**Deferred, all open, owner: the orchestrator** — DW-285 (inert scroll-restore effect whose one live
+behaviour is now harmful), DW-286 (`Math.ceil` makes Fit width overflow by one pixel), DW-287 (fit-page's
+non-convergent window), DW-288 (re-picking the selected fit fires no `change`), DW-289 (the new token has
+no unit-level used-not-merely-defined guard), DW-290 (status bar can overflow at the shell's declared
+minimum width), DW-291 (an uncommitted typed entry survives a mode switch, uncancellable), DW-292
+(`steppedPreviewScale`'s redundant `tidy`), DW-293 (the caller still hands the viewer two fresh callbacks
+per render), DW-294 (the evidence manifest pins a Chromium that no longer exists).
+
+**Gates, measured at close** (`631a9c9`, source identical to `3dd6be9`): `npm test` **66 files / 1043
+tests, 0 failures**; `npx tsc -b --force` exit 0, **0 lines** of output; `npx oxlint` **exactly 4**
+warnings, all `react(only-export-components)`, at `src/preview/pdf-viewer.tsx:17:14` and `:18:14` and
+`src/App.tsx:3830:14` and `:3837:17`; `npm run test:e2e:compile` exit 0; `gofmt -l` over **458** absolute
+Go paths, **0 lines** of output (no Go file appears in `git show --stat 3dd6be9`). **Playwright 40/40 was
+run by the orchestrator by hand at `3dd6be9`, under an exception to the frozen Never list that was granted
+rather than taken, and is not re-run here** — it invokes `npm run build` and rewrites the story-6.7
+evidence manifest. This story's browser witness has still never been executed by CI: `3dd6be9` was
+unpushed when the claim that CI executes it was written.

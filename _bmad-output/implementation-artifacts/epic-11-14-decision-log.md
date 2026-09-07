@@ -5039,3 +5039,58 @@ birth") to an agent's entry while committing the same defect in the ruling that 
 session transcripts and quote the result — the population, the command, and the hit count — in the ruling
 itself. If the transcripts are unavailable, the ruling is "unverifiable, attribution retained pending the
 owner", never "fabricated".
+
+
+### D-13.2.1 — BACKFILL: the viewer's callbacks were not stable, and DW-191 survived its first fix
+
+**Backfilled 2026-09-08.** Story 13.2's closer found that this ruling, and D-13.4.2, exist only as citations
+inside their own story files and appear in **no decision log** — `D-13.2.` returns 0 hits across all five.
+Every other 13.x ruling has an entry. **The two that reversed a frozen-block premise after approval are
+precisely the two the log could not find**, which is the worst possible selection: an amendment to a sealed
+block is the thing a later reader most needs to locate, and it was the least findable.
+
+**The ruling.** Story 13.2's frozen Code Map asserted as measured fact that the viewer's three callbacks
+were *"already stable — `viewerError`, `viewerPages` and `changePreviewViewState` are all
+`useCallback(…, [])` — so only `state` has to leave."* Only `changePreviewViewState` is passed directly.
+The other two are wrapped in **inline arrows at the JSX site** (`App.tsx:2148`) to bind `preview.token`, so
+both are fresh identities on every App render, and both sat in the render effect's dependency array.
+**Removing `state` alone did not fix DW-191**: every scroll still disposed the `PDFDocumentProxy`,
+re-rasterized, and zeroed the scroll.
+
+**How it was found, which is the part worth keeping.** Not by reading the code — by instrumenting the
+running page: `set-300 → 300` (the browser accepts it), `after-800ms → 0` (something writes it back),
+`scroll-events = 2, top = 0`, with the CSS verified correct and the whole ancestor chain non-scrolling.
+That sequence separates *"scrolling does not work"* from *"the application is destroying the scroll"*, and
+only the second locates the defect.
+
+**Ruled: fix structurally in `pdf-viewer.tsx`** — hold the callbacks in a ref and drop them from the
+dependency array, because rendering **calls** them and is not **driven** by them. A `useCallback` in
+`App.tsx` fixes this caller and leaves the next JSX edit free to undo it silently. The caller-side hoist was
+ruled **optional and not the fix**, and is registered as DW-293 rather than lost.
+
+**The condition that made it provable:** a test arm that re-creates all three callbacks on every render, as
+App does. The existing guard built them once and reused them — it tested a viewer the application never
+renders. Under the fix removed, only the new arm reds; the old arm stays green.
+
+> **The props a test constructs are part of the claim it makes.** A guard can be rigorous, mutation-proof
+> and about the wrong subject. Mutation testing does not catch it, because the mutation and the assertion
+> agree with each other in a world the application never enters. This belongs *alongside* D-11.2.8, not
+> inside it.
+
+### D-13.4.2 — BACKFILL: the conditional-disclosure clause was mine and it was too narrow
+
+**Backfilled 2026-09-08**, same gap as D-13.2.1 above.
+
+Story 13.4's approval condition — mine — required the no-data notice to disclose fabricated conditions only
+when the template carries a `visibleIf`. But `conditionalRule` also fabricates `if(cond, …)`'s first
+argument, so an `if()`-only template rendered a literal branch chosen by no data **with the disclosure
+withheld**, and the frozen matrix row made the correct behaviour a test failure.
+
+**The builder refused to soften it to a patch on its own authority** even though the substantive fix is one
+predicate and one row — because that would edit a frozen block to match code. It brought it as an intent
+gap. I chose the cheap remedy, and the point stands: **who decides is a different question from what gets
+decided**, and cost asymmetry is an argument to present, not to decide with.
+
+Amending it caught what the rename alone would have missed: the negative fixture had **zero components**
+and could not distinguish an `if()`-only template from a condition-free one. It was passing while asserting
+nothing.
