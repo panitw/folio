@@ -18,6 +18,15 @@ import { fileURLToPath } from 'node:url'
 const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio-go/testdata/example/first-pdf.folio'))
 
 test('previews a bound template with no sample data, and claims nothing about production', async ({ page }) => {
+  // THE FALLBACK FILE TIER, FORCED (repaired 2026-09-07, Story 13.2's gate).
+  // Headless Chromium HAS the File System Access API, so without this the app
+  // takes the native tier, calls `showOpenFilePicker()` and emits no
+  // `filechooser` event at all — the wait below timed out at 90s. This spec had
+  // never been executed: it was written under the belief that CI ran the
+  // Playwright suite per push, and the first real run failed it. Eight of the
+  // ten `filechooser` specs already did this; this was one of the two that did
+  // not. See `local-file-actions.spec.ts:11` for the model.
+  await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
