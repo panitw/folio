@@ -33,6 +33,7 @@ import { TableEditor } from './TableEditor'
 import { isHexColour, swatchColor } from './swatch-color'
 import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand } from './table-style-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
+import { clampPreviewScale, PREVIEW_ZOOM_CHOICES, steppedPreviewScale, typedPreviewPage, typedPreviewZoom } from './preview/viewer-navigation'
 import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
 import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
@@ -216,6 +217,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
   const [locateStatus, setLocateStatus] = useState<string>()
   const [previewViewState, setPreviewViewState] = useState<PDFPreviewViewState>(initialPDFPreviewViewState)
+  // THE PAGE COUNT LIVES HERE NOW, because the page indicator does. The
+  // viewer has always reported it through `onPageCount`; App used the call
+  // only to promote the preview's status and threw the number itself away,
+  // which is why a status-bar indicator had nothing to read.
+  const [previewPages, setPreviewPages] = useState<number>()
+  // Two uncommitted typed entries. `undefined` means "the field is reading the
+  // view state", which is also how a refused entry puts the real value back.
+  const [previewPageDraft, setPreviewPageDraft] = useState<string>()
+  const [previewZoomDraft, setPreviewZoomDraft] = useState<string>()
   // Accepted bytes and editor draft are intentionally separate. The engine
   // receives only accepted raw text; invalid local input cannot silently turn
   // into an alternate runtime value.
@@ -554,6 +564,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (clear) {
       installPreview(undefined)
       setPreviewViewState(initialPDFPreviewViewState)
+      setPreviewPages(undefined)
       setPreviewStatus('idle')
     } else {
       setPreviewStatus(previewRef.current ? 'stale' : 'idle')
@@ -625,7 +636,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation, standIn: !sample })
       previewNeedsFreshRender.current = false
       setDismissedDiagnostics(new Set())
-      setPreviewViewState(initialPDFPreviewViewState)
+      // STORY 13.2 — THE VIEW STATE IS NOT RESET HERE ANY MORE, AND THAT IS THE
+      // WHOLE OF "leaving Preview and coming back keeps your place". Leaving
+      // Preview marks the render stale, so `runPreview`'s nothing-changed early
+      // return cannot fire and execution always reached this line: every return
+      // to Preview threw the author's page, zoom, scroll and fit away. The reset
+      // inside `invalidatePreview(clear)` stays — there the preview really is
+      // gone — and a document that got SHORTER is handled where it always was,
+      // by the viewer's own `safePage` clamp.
       // PDF.js is a separate boundary. The bytes become current only when its
       // matching document has admitted successfully through onPageCount. The
       // candidate remains marked stale while it is visible but unconfirmed.
@@ -733,7 +751,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }, [])
   const viewerPages = useCallback((token: number, pages: number) => {
     const current = previewRef.current
-    if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) { previewNeedsFreshRender.current = false; setPreviewIssue(undefined); setPreviewStatus('current') }
+    if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) { previewNeedsFreshRender.current = false; setPreviewIssue(undefined); setPreviewPages(pages); setPreviewStatus('current') }
   }, [])
   const changePreviewViewState = useCallback((next: PDFPreviewViewState) => setPreviewViewState((current) => samePDFPreviewViewState(current, next) ? current : next), [])
   const clearInteraction = () => { setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined); abortBoundaryDrag() }
@@ -2040,7 +2058,74 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       })}
     </section>
   }
-  return <div className="app-shell" aria-label="Folio designer application shell" aria-busy={fileBusy}>
+  // STORY 13.2 — THE VIEWER'S NAVIGATION, IN THE APPLICATION'S STATUS BAR.
+  //
+  // AC6 puts the page stepper, the page indicator and the zoom in the bottom
+  // bar "so the page area carries the page and nothing else". That bar is a
+  // sibling of `.workbench`, outside both `<main>`s, so App has to own the
+  // controls and the viewer has to give them up. The view state was already
+  // App's, which is what makes this a move rather than a lift.
+  //
+  // THE CONTROL SHAPE IS THE ORCHESTRATOR'S CALL AT THIS STORY'S PLAN GATE, NOT
+  // A MOCKUP-DERIVED REQUIREMENT. `Preview.dc.html` is a static picture — no
+  // button, input or select anywhere in it — and the strings "Fit width" and
+  // "Fit page" appear nowhere in the design tree. What the mockup does settle is
+  // the left-to-right order below and the bar's 32px preview height.
+  const previewPageValue = previewPageDraft ?? String(previewViewState.page)
+  const previewZoomValue = previewZoomDraft ?? String(Math.round(previewViewState.scale * 100))
+  const goToPreviewPage = (page: number) => changePreviewViewState({ ...previewViewState, page })
+  // A MANUAL ZOOM CLEARS THE FIT. Both answer the same question, so they cannot
+  // both stand; and because the viewer writes the RESOLVED fit scale back into
+  // the view state, stepping from here starts wherever the page actually is.
+  const setPreviewScale = (scale: number) => changePreviewViewState({ ...previewViewState, scale, fit: undefined })
+  const stepPreviewZoom = (steps: number) => { const next = steppedPreviewScale(previewViewState.scale, steps); if (next !== undefined) setPreviewScale(next) }
+  // Accepted or refused, the field goes back to reading the view state, so a
+  // rejected entry shows the page the viewer is really on rather than the typo.
+  //
+  // NOTHING TO COMMIT MEANS NOTHING TO WRITE. Both handlers also run on `blur`,
+  // and with no draft the field is showing the DERIVED readout — so merely
+  // moving focus through it would re-commit that readout. `setPreviewScale`
+  // sets `fit: undefined`, so a Tab keypress would silently destroy an active
+  // fit; and a resolved scale the readout rounds (800/612 = 1.30719…, shown as
+  // `131`) would drift to 1.31. The frozen matrix clears a fit when the author
+  // presses `+` OR TYPES A ZOOM, and a focus traversal is neither, so each
+  // handler returns the moment it finds it has no draft of its own to commit.
+  const commitPreviewPage = () => { if (previewPageDraft === undefined) return; const parsed = typedPreviewPage(previewPageDraft, previewPages); if (parsed !== undefined) goToPreviewPage(parsed); setPreviewPageDraft(undefined) }
+  const commitPreviewZoom = () => { if (previewZoomDraft === undefined) return; const parsed = typedPreviewZoom(previewZoomDraft); if (parsed !== undefined) setPreviewScale(parsed); setPreviewZoomDraft(undefined) }
+  const previewZoomChoice = previewViewState.fit === 'width' ? 'fit-width' : previewViewState.fit === 'page' ? 'fit-page' : PREVIEW_ZOOM_CHOICES.includes(previewViewState.scale) ? String(previewViewState.scale) : 'custom'
+  const choosePreviewZoom = (value: string) => {
+    if (value === 'fit-width' || value === 'fit-page') { changePreviewViewState({ ...previewViewState, fit: value === 'fit-width' ? 'width' : 'page' }); return }
+    const scale = clampPreviewScale(Number(value))
+    if (scale !== undefined) setPreviewScale(scale)
+  }
+  // Every name carries the `PDF` qualifier the viewer's controls already did,
+  // so none of them collides with `.canvas-tools`' `Zoom in`/`Zoom out`/`Canvas
+  // zoom` in Design mode. They are ordinary buttons, inputs and a select, so
+  // keyboard reach, activation and the focus ring are the platform's own.
+  const previewNavigation = <span className="preview-nav" role="group" aria-label="PDF navigation">
+    <span className="preview-nav-group">
+      <button type="button" onClick={() => goToPreviewPage(Math.max(1, previewViewState.page - 1))} disabled={previewViewState.page <= 1} aria-label="Previous PDF page">◀</button>
+      <input type="text" inputMode="numeric" aria-label="PDF page number" value={previewPageValue} onChange={(event) => setPreviewPageDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') commitPreviewPage() }} onBlur={commitPreviewPage} />
+      <output aria-live="polite" aria-label="PDF page status">{previewPages ? `Page ${previewViewState.page} of ${previewPages}` : 'Rendering PDF'}</output>
+      <button type="button" onClick={() => goToPreviewPage(previewPages ? Math.min(previewPages, previewViewState.page + 1) : previewViewState.page + 1)} disabled={!previewPages || previewViewState.page >= previewPages} aria-label="Next PDF page">▶</button>
+    </span>
+    <span className="preview-nav-divider" aria-hidden="true" />
+    <span className="preview-nav-group">
+      <button type="button" onClick={() => stepPreviewZoom(-1)} aria-label="Zoom out PDF">−</button>
+      <select aria-label="PDF zoom" value={previewZoomChoice} onChange={(event) => choosePreviewZoom(event.target.value)}>
+        <option value="fit-width">Fit width</option>
+        <option value="fit-page">Fit page</option>
+        {PREVIEW_ZOOM_CHOICES.map((choice) => <option key={choice} value={String(choice)}>{`${Math.round(choice * 100)}%`}</option>)}
+        {/* Offered only while the scale is one no listed choice names — a zoom
+            stepped by hand, or a fit resolved to a ratio like 133%. Picking it
+            changes nothing; it exists so the select never mislabels the zoom. */}
+        {previewZoomChoice === 'custom' && <option value="custom">Custom</option>}
+      </select>
+      <input type="text" inputMode="numeric" aria-label="PDF zoom percentage" value={previewZoomValue} onChange={(event) => setPreviewZoomDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') commitPreviewZoom() }} onBlur={commitPreviewZoom} />
+      <button type="button" onClick={() => stepPreviewZoom(1)} aria-label="Zoom in PDF">+</button>
+    </span>
+  </span>
+  return <div className={`app-shell${mode === 'preview' ? ' app-shell-preview' : ''}`} aria-label="Folio designer application shell" aria-busy={fileBusy}>
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
       <div className="document-actions" aria-label="Local file actions"><button className="icon-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template"><Icon name="open" /></button><button className="icon-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}><Icon name="save" /></button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
@@ -2101,7 +2186,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         which is placeholder data rather than a specification. No grid reading,
         no snap state and no selection content is added: those are three more
         claims about the canvas, and this story is not the place to make them. */}
-    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code><span className="status-spacer" />{canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
+    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code>{mode === 'preview' && previewNavigation}<span className="status-spacer" />{canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
   </div>
 }
 

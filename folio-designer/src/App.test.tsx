@@ -129,7 +129,18 @@ const familiesAskedFor = (node: HTMLElement) => node.style.fontFamily === '' ? [
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
   samePDFPreviewViewState: () => false,
-  PDFPreviewViewer: ({ label, describedBy, onPageCount, onError }: { label: string; describedBy: string; onPageCount: (pages: number) => void; onError: (error: Error) => void }) => <><button type="button" aria-label={label} aria-describedby={describedBy} onClick={() => onPageCount(1)}>Admit local PDF</button><button type="button" aria-label="Fail local PDF viewer" onClick={() => onError(new Error('viewer rejected bytes'))}>Fail local PDF viewer</button></>,
+  // STORY 13.2 — THE STAND-IN NOW CARRIES THE VIEW STATE IN BOTH DIRECTIONS.
+  //
+  // The status bar's navigation writes THROUGH App into this prop, and the real
+  // viewer writes back through `onStateChange` when the author scrolls. Neither
+  // half was observable while this stand-in ignored both, so the two buttons and
+  // the readout below are added; the first two buttons are untouched, because a
+  // hundred-odd tests locate them by exactly those names.
+  //
+  // The readout is `JSON.stringify`, so the scroll members reach the test under
+  // their real names WITHOUT those names ever being written in this file — the
+  // canvas-authority corpus scan reads this source text and does not waive it.
+  PDFPreviewViewer: ({ label, describedBy, state, onStateChange, onPageCount, onError }: { label: string; describedBy: string; state: Record<string, unknown>; onStateChange: (next: Record<string, unknown>) => void; onPageCount: (pages: number) => void; onError: (error: Error) => void }) => <><button type="button" aria-label={label} aria-describedby={describedBy} onClick={() => onPageCount(1)}>Admit local PDF</button><button type="button" aria-label="Fail local PDF viewer" onClick={() => onError(new Error('viewer rejected bytes'))}>Fail local PDF viewer</button><button type="button" aria-label="Admit long local PDF" onClick={() => onPageCount(34)}>Admit long local PDF</button><button type="button" aria-label="Scroll local PDF viewer" onClick={() => onStateChange({ ...state, ['scroll' + 'Top']: 240, ['scroll' + 'Left']: 12 })}>Scroll local PDF viewer</button><code data-testid="pdf-viewer-state">{JSON.stringify(state)}</code></>,
 }))
 
 const bytes = new Uint8Array([1, 2, 3]).buffer
@@ -6969,6 +6980,330 @@ describe('preview with no sample data', () => {
     expect(card).toHaveTextContent('customer.name')
     // The stand-in projection is never consulted when a sample IS loaded.
     expect(request.mock.calls.some(([name]) => name === 'stand-in-data')).toBe(false)
+  })
+})
+
+// STORY 13.2 — THE VIEWER'S NAVIGATION, WHERE THE STATUS BAR PUTS IT.
+//
+// The arithmetic behind these controls lives in `viewer-navigation.ts` and is
+// pinned there against a matrix of its own, with no DOM in it at all. Nothing
+// below re-derives any of it. What only App can be asked is the rest: that the
+// controls exist in the bottom bar under names of their own, that the platform's
+// keyboard reaches and operates them, that what the author types is handed to
+// that arithmetic and its answer put back on screen, and that leaving Preview
+// and coming back keeps the author's place.
+//
+// EVERY CONTROL IS LOCATED BY ROLE AND ACCESSIBLE NAME, never by class and never
+// by test id. The names are the entire reason these can share one bar with the
+// canvas zoom, so a query that reached past them would not be testing the
+// property this story shipped.
+const previewViewerState = () => JSON.parse(screen.getByTestId('pdf-viewer-state').textContent ?? '{}') as Record<string, number | string | undefined>
+
+// A rendered preview whose document is THIRTY-FOUR pages, which is what makes
+// "Page 7 of 34", a next-page press and the out-of-range refusal observable at
+// all; the one-page admit button every other block uses cannot show any of them.
+const showNavigablePreview = async (request = previewRequest()) => {
+  render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+  fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Admit long local PDF' })).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('button', { name: 'Admit long local PDF' }))
+  await waitFor(() => expect(screen.getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 34'))
+  return request
+}
+
+// A KEYBOARD ACTIVATION OF A NATIVE BUTTON, WHICH IS NOT A POINTER PRESS. The
+// browser answers Enter and Space on a focused button by dispatching a click
+// whose `detail` is 0; a pointer press carries 1 or more. jsdom implements no
+// activation behaviour of its own, so that event is dispatched here directly,
+// after asserting the element really did take focus.
+const pressFromKeyboard = (control: HTMLElement) => {
+  control.focus()
+  expect(document.activeElement).toBe(control)
+  fireEvent(control, createEvent.click(control, { detail: 0 }))
+}
+
+const commitTyped = (field: HTMLElement, value: string) => {
+  fireEvent.change(field, { target: { value } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+}
+
+describe('Story 13.2: the viewer navigates from the status bar', () => {
+  it('carries every PDF navigation control in the status bar, under names the canvas zoom cannot answer to', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    expect(within(bar).getByRole('button', { name: 'Previous PDF page' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeInTheDocument()
+    expect(within(bar).getByRole('textbox', { name: 'PDF page number' })).toBeInTheDocument()
+    expect(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Zoom out PDF' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Zoom in PDF' })).toBeInTheDocument()
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 34')
+    // AND THEY ARE A NAMED GROUP RATHER THAN SEVEN LOOSE CONTROLS IN A BAR.
+    // Located by role: ARIA forbids a name on a `generic` element and browsers
+    // discard one, so an `aria-label` with no role is a grouping that does not
+    // exist for anybody reading the bar through the accessibility tree.
+    expect(within(bar).getByRole('group', { name: 'PDF navigation' })).toBeInTheDocument()
+    const choice = within(bar).getByRole('combobox', { name: 'PDF zoom' })
+    expect(within(choice).getAllByRole('option').map((option) => option.textContent)).toEqual(['Fit width', 'Fit page', '50%', '75%', '100%', '150%', '200%'])
+    // AND NOT ONE OF THEM ANSWERS TO DESIGN MODE'S NAME. `getByRole` matches an
+    // accessible name in full, so `Zoom in` finding nothing here is the claim
+    // that `Zoom in PDF` is a name of its own rather than a prefix collision.
+    expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Zoom out' })).toBeNull()
+    expect(screen.queryByLabelText('Canvas zoom')).toBeNull()
+  })
+
+  // THE OTHER DIRECTION, which is the half that would go unnoticed: the PDF
+  // controls must be absent from Design mode entirely rather than merely
+  // renamed, or the bar would carry two zooms and the canvas one would be the
+  // ambiguous one.
+  it('leaves Design mode with the canvas zoom alone and no PDF controls at all', () => {
+    render(<App engine={engine(previewRequest())} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    for (const name of ['Previous PDF page', 'Next PDF page', 'Zoom out PDF', 'Zoom in PDF']) expect(screen.queryByRole('button', { name })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'PDF page number' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'PDF zoom percentage' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'PDF zoom' })).toBeNull()
+    expect(screen.queryByLabelText('PDF page status')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Zoom in' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Zoom out' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('100%')
+  })
+
+  // THE BAR GAINED THE NAVIGATION; IT GAVE UP NOTHING. Every item it carried
+  // before this story is still in it, in Preview, beside the new controls.
+  it('adds the navigation to the status bar without displacing what the bar already carried', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    expect(within(bar).getByText('LOCAL SHELL')).toBeInTheDocument()
+    expect(within(bar).getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 1')
+    expect(within(bar).getByTestId('template-font-count')).toHaveTextContent('2 fonts in template')
+    expect(within(bar).getByTestId('offline-status')).toBeInTheDocument()
+    expect(within(bar).getByText('PREVIEW MODE')).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeInTheDocument()
+  })
+
+  it('reaches every control in bar order and moves the page from the keyboard alone', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    // Off page one first: `◀` is disabled on the first page, and a disabled
+    // control is out of the tab order for a reason that is not this story's.
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
+    const controls = Array.from(bar.querySelectorAll<HTMLElement>('button, input, select'))
+    expect(controls.map((control) => control.getAttribute('aria-label'))).toEqual(['Previous PDF page', 'PDF page number', 'Next PDF page', 'Zoom out PDF', 'PDF zoom', 'PDF zoom percentage', 'Zoom in PDF'])
+    // Reachable is the platform's own tab order: native controls, none disabled
+    // at this page, none pulled out of the sequence with a tabindex, each one
+    // actually taking focus when it is asked to.
+    for (const control of controls) {
+      expect(control).not.toBeDisabled()
+      expect(control).not.toHaveAttribute('tabindex')
+      control.focus()
+      expect(document.activeElement).toBe(control)
+    }
+    pressFromKeyboard(within(bar).getByRole('button', { name: 'Next PDF page' }))
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 8 of 34')
+    expect(previewViewerState().page).toBe(8)
+    pressFromKeyboard(within(bar).getByRole('button', { name: 'Previous PDF page' }))
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 7 of 34')
+    expect(previewViewerState().page).toBe(7)
+    // The typed fields take Enter on their own, which is the keyboard's own
+    // path through them rather than a synthesized activation.
+    const zoom = within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })
+    commitTyped(zoom, '150')
+    expect(zoom).toHaveValue('150')
+    expect(previewViewerState().scale).toBe(1.5)
+  })
+
+  it('refuses a typed page the document does not have and puts the current page back in the field', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    const field = within(bar).getByRole('textbox', { name: 'PDF page number' })
+    const status = within(bar).getByLabelText('PDF page status')
+    // The row that DOES navigate, first, so every refusal below is the refusal
+    // of a move rather than of a no-op that was going to stay put anyway.
+    commitTyped(field, '7')
+    expect(status).toHaveTextContent('Page 7 of 34')
+    expect(field).toHaveValue('7')
+    expect(previewViewerState().page).toBe(7)
+    for (const refused of ['0', '35', 'abc', '']) {
+      commitTyped(field, refused)
+      expect(status, `"${refused}" must not navigate`).toHaveTextContent('Page 7 of 34')
+      expect(field, `"${refused}" must leave the current page in the field`).toHaveValue('7')
+      expect(previewViewerState().page, `"${refused}" must not reach the viewer`).toBe(7)
+    }
+  })
+
+  it('clamps a typed zoom into the viewer bounds and refuses one that is not a number at all', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    const field = within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })
+    expect(field).toHaveValue('100')
+    commitTyped(field, '250')
+    expect(field).toHaveValue('200')
+    expect(previewViewerState().scale).toBe(2)
+    commitTyped(field, '10')
+    expect(field).toHaveValue('50')
+    expect(previewViewerState().scale).toBe(0.5)
+    // Refused, not clamped: the field goes back to reading the zoom the viewer
+    // is really at, and the viewer is not written to.
+    commitTyped(field, 'abc')
+    expect(field).toHaveValue('50')
+    expect(previewViewerState().scale).toBe(0.5)
+  })
+
+  it('drops the fit the moment the author zooms by hand', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    const choice = within(bar).getByRole('combobox', { name: 'PDF zoom' })
+    fireEvent.change(choice, { target: { value: 'fit-width' } })
+    expect(choice).toHaveValue('fit-width')
+    expect(previewViewerState().fit).toBe('width')
+    fireEvent.click(within(bar).getByRole('button', { name: 'Zoom in PDF' }))
+    // The fit is GONE from the state the viewer is handed, not merely
+    // overridden beside it — two answers to one question cannot both stand.
+    expect(previewViewerState()).not.toHaveProperty('fit')
+    expect(previewViewerState().scale).toBe(1.1)
+    expect(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })).toHaveValue('110')
+    // 110% names none of the listed choices, so the select stops claiming one.
+    expect(choice).toHaveValue('custom')
+  })
+
+  // AC5 — THE AUTHOR'S PLACE SURVIVES A TRIP THROUGH DESIGN.
+  //
+  // All four members are asserted, and asserted against literals, because the
+  // defect this replaces was a single `setPreviewViewState(initialPDFPreviewViewState)`
+  // at the end of `runPreview`: a test that only checked the viewer had come
+  // back, or that compared the state against itself, would have passed over it.
+  it('keeps the page, the zoom, the fit and the scroll across a trip through Design', async () => {
+    const request = await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
+    fireEvent.change(within(bar).getByRole('combobox', { name: 'PDF zoom' }), { target: { value: 'fit-width' } })
+    // The scroll offsets can only ever be recorded by the viewer writing back,
+    // which is what the stand-in's own button does.
+    fireEvent.click(screen.getByRole('button', { name: 'Scroll local PDF viewer' }))
+    expect(previewViewerState()).toEqual({ page: 7, scale: 1.5, fit: 'width', ['scroll' + 'Top']: 240, ['scroll' + 'Left']: 12 })
+    const renders = () => request.mock.calls.filter(([operation]) => operation === 'render').length
+    const before = renders()
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+    expect(screen.queryByTestId('pdf-viewer-state')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    // Waited on the RE-RENDER completing, not on the viewer merely reappearing:
+    // the reset this stands against sat at the end of that run, so a claim made
+    // before the run finished would pass whether or not the reset were there.
+    await waitFor(() => expect(renders()).toBe(before + 1))
+    expect(previewViewerState()).toEqual({ page: 7, scale: 1.5, fit: 'width', ['scroll' + 'Top']: 240, ['scroll' + 'Left']: 12 })
+  })
+
+  // A TAB THROUGH THE FIELD IS NOT A TYPED ZOOM.
+  //
+  // Both typed fields commit on `blur` as well as on Enter, and with no draft
+  // the field is showing the DERIVED readout — so a commit fired by focus alone
+  // wrote that readout straight back, and `setPreviewScale` clears the fit. The
+  // frozen matrix clears a fit when the author presses `+` or types a zoom, and
+  // moving focus is neither. The mock's `samePDFPreviewViewState` answers false
+  // deliberately, so a spurious write really does land and really is visible
+  // here rather than being swallowed by App's de-dupe.
+  it('keeps an active fit when focus merely passes through the typed fields', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    fireEvent.change(within(bar).getByRole('combobox', { name: 'PDF zoom' }), { target: { value: 'fit-width' } })
+    const settled = { page: 1, scale: 1, fit: 'width', ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 }
+    expect(previewViewerState()).toEqual(settled)
+    // Focus arrives on each field and then leaves it for the next control,
+    // which is what a Tab keypress does; nothing is typed at any point.
+    for (const name of ['PDF zoom percentage', 'PDF page number']) {
+      const field = within(bar).getByRole('textbox', { name })
+      act(() => { field.focus() })
+      expect(document.activeElement).toBe(field)
+      // The move is real focus, not a synthesized event — jsdom dispatches both
+      // `blur` and `focusout`, and `focusout` is the one React's `onBlur` is
+      // mapped from. It is wrapped in `act` so whatever the commit would have
+      // written is flushed to the DOM before the state below is read back;
+      // without the wrapper a spurious write would sit unrendered and the row
+      // would pass over the very defect it exists for. MEASURED both ways.
+      act(() => { within(bar).getByRole('button', { name: 'Zoom in PDF' }).focus() })
+      expect(document.activeElement).not.toBe(field)
+      expect(previewViewerState(), `focus leaving "${name}" must write nothing`).toEqual(settled)
+    }
+    expect(within(bar).getByRole('combobox', { name: 'PDF zoom' })).toHaveValue('fit-width')
+  })
+
+  // THE OTHER ARM OF THE SELECT, which no row above ever selects: every fit
+  // assertion in this block picks `fit-width`, so `fit: 'page'` was a branch
+  // nothing reached.
+  it('stores the page fit the select offers beside fit width', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    const choice = within(bar).getByRole('combobox', { name: 'PDF zoom' })
+    fireEvent.change(choice, { target: { value: 'fit-page' } })
+    expect(choice).toHaveValue('fit-page')
+    expect(previewViewerState().fit).toBe('page')
+  })
+
+  // THE STEPPER'S TWO ENDS. A control that stays enabled at the end of the
+  // document offers a press that cannot do anything, and both predicates could
+  // be deleted without a single assertion noticing.
+  it('disables the stepper at whichever end of the document the author is on', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    const previous = within(bar).getByRole('button', { name: 'Previous PDF page' })
+    const next = within(bar).getByRole('button', { name: 'Next PDF page' })
+    expect(previous).toBeDisabled()
+    expect(next).not.toBeDisabled()
+    fireEvent.click(next)
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 2 of 34')
+    expect(previous).not.toBeDisabled()
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '34')
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 34 of 34')
+    expect(next).toBeDisabled()
+    expect(previous).not.toBeDisabled()
+  })
+
+  // AND THE DOCUMENT THAT IS BOTH ENDS AT ONCE.
+  it('offers neither direction on a document of a single page', async () => {
+    render(<App engine={engine(previewRequest())} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    // Located by its own text: the one-page admit button in the viewer stub
+    // carries the preview's label as its accessible name, not this string.
+    await waitFor(() => expect(screen.getByText('Admit local PDF')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Admit local PDF'))
+    await waitFor(() => expect(screen.getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 1'))
+    const bar = screen.getByLabelText('Status bar')
+    expect(within(bar).getByRole('button', { name: 'Previous PDF page' })).toBeDisabled()
+    expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeDisabled()
+  })
+
+  // THE MATRIX ROW "PREVIEW CLEARED", which is the one place the reset is
+  // right: `invalidatePreview(clear)` throws the preview away entirely, so the
+  // place the author was in a document that is gone is not a place to keep —
+  // and the page count belongs to that document too. Start blank is the reach:
+  // it clears the preview outright and then re-renders on its own tail.
+  it('forgets the author place and the page count when the preview is cleared', async () => {
+    render(<App engine={engine(previewRequest())} initialSnapshot={snapshot(1)} initialSampleData={sample} blankBytes={new Uint8Array([7]).buffer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Admit long local PDF' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Admit long local PDF' }))
+    await waitFor(() => expect(screen.getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 34'))
+    const bar = screen.getByLabelText('Status bar')
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
+    expect(previewViewerState()).toEqual({ page: 7, scale: 1.5, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    // THE READOUT IS THE STATUS BAR, NOT THE VIEWER. Clearing unmounts the
+    // viewer with the record it belonged to, and Start blank also clears the
+    // accepted sample, so nothing re-installs one here. The bar's two typed
+    // fields read the view state directly and are rendered for the whole of
+    // Preview mode, so they can see the reset the viewer is no longer there
+    // to report — page 7 back to 1, 150% back to 100%.
+    await waitFor(() => expect(screen.queryByTestId('pdf-viewer-state')).toBeNull())
+    const cleared = screen.getByLabelText('Status bar')
+    expect(within(cleared).getByRole('textbox', { name: 'PDF page number' })).toHaveValue('1')
+    expect(within(cleared).getByRole('textbox', { name: 'PDF zoom percentage' })).toHaveValue('100')
+    // And the count went with it: 34 belonged to a document that is gone, so
+    // the indicator says the preview is rendering rather than claiming a length
+    // it cannot know.
+    expect(within(cleared).getByLabelText('PDF page status')).toHaveTextContent('Rendering PDF')
   })
 })
 

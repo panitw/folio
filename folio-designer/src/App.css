@@ -17,6 +17,15 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
   ::-webkit-scrollbar-corner { background: transparent; }
 }
 .app-shell { min-width: 1024px; height: 100%; overflow: hidden; display: grid; grid-template-rows: var(--doc-bar-height) minmax(0, 1fr) var(--status-bar-height); background: var(--color-base); color: var(--color-ink); font: var(--type-body); }
+/* STORY 13.2 — THE PREVIEW STATUS BAR IS THE TALLER OF THE TWO DECLARED SIZES.
+   `--status-bar-height` cannot simply be raised: the same token is the size of
+   `.icon-button`, `.file-button` and `.mode-switch button` below, so raising it
+   would resize the document bar's controls to make room for a page stepper.
+   `DESIGN.md` declares `status-bar.heightPreview: '32px'` already, so the
+   second token implements a declared value rather than inventing one, and the
+   class that selects it is derived from the same `mode` the rest of the shell
+   switches on — never a second, parallel answer to "are we in preview". */
+.app-shell-preview { grid-template-rows: var(--doc-bar-height) minmax(0, 1fr) var(--status-bar-height-preview); }
 .document-bar { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-5); background: var(--color-panel); border-bottom: var(--hairline) solid var(--color-line); }
 .brand { color: var(--color-ink-high); font: var(--type-brand); letter-spacing: var(--tracking-brand); }
 .document-name, .later-control { font: var(--type-mono); color: var(--color-ink); }
@@ -33,7 +42,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .mode-switch { display: flex; border: var(--hairline) solid var(--color-edge); }
 .mode-switch button { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); border: 0; background: transparent; color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }
 .mode-switch .mode-active { background: var(--color-active); color: var(--color-ink-high); font-weight: 500; }
-.mode-switch button:focus-visible, .pdf-preview button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+.mode-switch button:focus-visible, .pdf-preview-scroll:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .workbench { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: var(--palette-width) minmax(0, 1fr) var(--panel-width); }
 .palette-rail { overflow: auto; padding: var(--space-5) var(--space-panel-x); background: var(--color-panel); border-right: var(--hairline) solid var(--color-line); }
 .inspector-panel { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: var(--color-panel); border-left: var(--hairline) solid var(--color-line); }
@@ -424,6 +433,19 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .status-bar { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5); border-top: var(--hairline) solid var(--color-line); background: var(--color-panel); color: var(--color-ink); font: var(--type-mono); }
 .status-bar code { color: var(--color-ink); font: inherit; }
 .status-spacer { flex: 1; }
+/* STORY 13.2 — THE PAGE STEPPER AND THE ZOOM, IN THE BAR THE DESIGN PUTS THEM
+   IN. Purely additive: every item the bar already carried keeps its place and
+   its name. The controls are ordinary buttons, an input and a select, so
+   keyboard reach, activation and the focus ring are the platform's. */
+.preview-nav { display: flex; align-items: center; gap: var(--space-3); }
+.preview-nav-group { display: flex; align-items: center; gap: var(--space-1); }
+.preview-nav button { min-height: 20px; padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); }
+.preview-nav button:disabled { color: var(--color-ink-disabled); cursor: not-allowed; }
+.preview-nav input { width: 46px; min-height: 20px; text-align: center; }
+.preview-nav select { width: auto; min-height: 20px; }
+.preview-nav output { color: var(--color-ink-high); font: var(--type-mono); white-space: nowrap; }
+.preview-nav-divider { width: var(--hairline); height: 16px; background: var(--color-line); }
+.preview-nav :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .load-screen { height: 100%; overflow: auto; display: grid; place-items: center; padding: var(--space-10); background: var(--color-ground); color: var(--color-ink); font: var(--type-body); }
 .load-column { width: 560px; display: grid; gap: var(--space-9); }
 .load-column h1 { margin: 0; color: var(--color-ink-high); font: var(--type-display); letter-spacing: var(--tracking-display); }
@@ -448,13 +470,42 @@ textarea { width: 100%; min-height: 120px; resize: vertical; padding: var(--spac
    horizontal padding to sit clear of its own ring. */
 input:not([type="checkbox"], [type="color"]), select { padding: 0 var(--space-2); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
-.preview-region { min-width: 0; overflow: auto; padding: var(--space-6); background: var(--color-ground-preview); color: var(--color-ink-high); }
-.preview-heading, .pdf-preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+/* STORY 13.2 — THE PAGE AREA SCROLLS; THE REGION AROUND IT HOLDS STILL.
+   Until now `.preview-region` was the scroller and `.pdf-preview-scroll` had no
+   height at all, so its own `overflow: auto` never activated vertically and the
+   whole region — heading, freshness line, no-data notice, diagnostics, evidence
+   — scrolled away with the page. The region is now height-constrained and the
+   page area takes what is left, so the chrome that describes the page stays
+   visible and reachable while the page moves under it.
+   The vertical axis is `auto` rather than `hidden` for the case the flex floor
+   cannot fit: every child but the page area is fixed-size, so below roughly the
+   sum of the chrome plus the page area's 120px floor the evidence line and the
+   file-message pair would be clipped with no scrollbar anywhere — `.app-shell`
+   and `.workbench` both clip too. Whenever the chrome does fit, which is every
+   case this story tests, `auto` paints exactly as `hidden` did and the page
+   area is still the only thing that scrolls; when it genuinely cannot, the
+   author can reach the chrome instead of losing it. Two longhands, never the
+   two-value shorthand. */
+.preview-region { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-6); background: var(--color-ground-preview); color: var(--color-ink-high); }
+.preview-region > * { flex: 0 0 auto; }
+.preview-region > .pdf-preview { min-height: 120px; flex: 1 1 auto; }
+/* A long diagnostic list gives ground before the page does, and scrolls in
+   place rather than pushing itself off the bottom of a region that clips. */
+.preview-region > .diagnostic-list { min-height: 0; flex: 0 1 auto; overflow: auto; }
+.preview-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .preview-heading p, .preview-evidence, .preview-status { margin: 0; color: var(--color-ink); font: var(--type-mono); }
-.preview-status { width: max-content; max-width: 100%; margin-bottom: var(--space-5); padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-high); font-weight: 600; }
-.pdf-preview-controls { position: sticky; top: 0; z-index: 1; padding: var(--space-2); background: var(--color-panel); border: var(--hairline) solid var(--color-line-strong); }
-.pdf-preview-controls button { min-height: 28px; border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
-.pdf-preview-scroll { min-height: 240px; overflow: auto; display: grid; justify-content: center; padding: var(--space-6); background: var(--color-base); }
+.preview-status { width: max-content; max-width: 100%; padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-high); font-weight: 600; }
+.pdf-preview { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* THE MEASURED ELEMENT, AND WHY IT CARRIES NO PADDING. `Fit width` reads this
+   box's own pixel size; that reading includes padding, and the property that
+   could subtract it is banned — so the visual inset lives on `.preview-region`
+   above instead of here, where a hardcoded mirror of `--space-6` would drift.
+   `scrollbar-gutter: stable` closes the other half of the loop: without it a
+   fit-width scale computed before a vertical scrollbar appears overshoots the
+   moment it does. Both centring keywords are `safe`, because with the
+   horizontal overflow the rule below guarantees, plain `center` puts the left
+   edge of a zoomed page permanently out of reach. */
+.pdf-preview-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; scrollbar-gutter: stable; display: grid; justify-content: safe center; align-content: safe center; background: var(--color-base); }
 .pdf-preview-scroll canvas { max-width: none; box-shadow: var(--shadow-page); background: var(--color-page); }
 .diagnostic-list { display: grid; gap: var(--space-3); margin: var(--space-5) 0; }
 .diagnostic-card { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px dashed var(--color-bind-edge-dash); border-left: 3px dashed var(--color-bind); background: var(--color-bind-tint-warm); color: var(--color-ink-high); }

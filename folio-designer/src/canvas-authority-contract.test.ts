@@ -543,6 +543,104 @@ describe('canvas projection authority contract', () => {
   })
 })
 
+// STORY 13.2 — THE FIT MEASUREMENT'S EXCEPTION, PROVED BY RUNNING THE SCAN.
+//
+// `Fit width` and `Fit page` are the first thing in the designer that needs the
+// browser's own answer to "how big is this box". AD-17 does not forbid that
+// outright; it forbids it going unnamed. So the exception admits TWO property
+// spellings — fit-page's available height is not derivable from the width and
+// the page's aspect ratio, so one name was never enough — inside ONE function
+// in ONE file, and every row below runs the scan rather than reading the regex.
+//
+// The rows that matter most are the negative ones. A widening that slipped past
+// would be invisible: `clientLeft`, `clientTop` and every `offset*` spelling
+// were red in `src/preview/` before this story and are asserted red after it,
+// which is the difference between two named rewrites and a group made lazy.
+describe('the fit measurement\'s exception is two names in one function (Story 13.2)', () => {
+  const previewRelative = path.join('src', 'preview', 'pdf-viewer.tsx')
+  const previewSource = fs.readFileSync(path.join(designerRoot, previewRelative), 'utf8')
+  // The line the plants are injected after, so each one lands INSIDE the seam.
+  const anchor = '  if (!host) return { width: 0, height: 0 }\n'
+  const group = String(prohibited[2])
+
+  it('admits the two fit names inside the seam, in the file as committed', () => {
+    expect(previewSource).toContain(anchor)
+    expect(violationsForFile(previewRelative, previewSource)).toEqual([])
+    // Positive control that the file really does take both readings: an
+    // exception over a measurement that is not there proves nothing.
+    expect(previewSource).toMatch(/host\.client(?:Width|Height)\b/)
+    expect(previewSource.match(/host\.client(?:Width|Height)\b/g) ?? []).toHaveLength(2)
+  })
+
+  it('leaves every neighbouring measurement red INSIDE the seam', () => {
+    for (const [line, rule] of [
+      ['const l = host.clientLeft', prohibited[2]],
+      ['const t = host.clientTop', prohibited[2]],
+      ['const w = host.offsetWidth', prohibited[2]],
+      ['const h = host.offsetHeight', prohibited[2]],
+      ['const p = host.offsetParent', prohibited[2]],
+      ['const rect = host.getBoundingClientRect()', prohibited[1]],
+      ['const observer = new ResizeObserver(() => undefined)', prohibited[4]],
+      ['const style = getComputedStyle(host)', prohibited[9]],
+      ['const dpr = devicePixelRatio', prohibited[7]],
+    ] as const) {
+      const planted = previewSource.replace(anchor, `${anchor}${line}\n`)
+      expect(planted).not.toEqual(previewSource)
+      expect(violationsForFile(previewRelative, planted).map(String)).toContain(String(rule))
+    }
+  })
+
+  it('leaves the two admitted names red OUTSIDE the seam in the same file', () => {
+    for (const stray of ['const w = host.clientWidth', 'const h = host.clientHeight']) {
+      const planted = `${previewSource}\n${stray}\n`
+      expect(violationsForFile(previewRelative, planted).map(String)).toEqual([group])
+    }
+    // The control the reds are measured against: the same file without them.
+    expect(violationsForFile(previewRelative, previewSource)).toEqual([])
+  })
+
+  it('leaves the two admitted names red in every other file, preview directory included', () => {
+    for (const line of ['const w = node.clientWidth', 'const h = node.clientHeight']) {
+      // A production module outside `src/preview/` entirely.
+      expect(violationsForFile('src/component-command.ts', line).map(String)).toEqual([group])
+      // AND ANOTHER FILE IN THE SAME DIRECTORY. The carve-out is one file, not
+      // the folder — the distinction `e2e/` already turns on at ROW 3 below.
+      expect(violationsForFile(path.join('src', 'preview', 'freshness.ts'), line).map(String)).toEqual([group])
+      expect(violationsForFile(path.join('src', 'preview', 'diagnostic-presenter.tsx'), line).map(String)).toEqual([group])
+    }
+  })
+
+  it('fails the exception\'s OWN assertion when the measurement seam is gone', () => {
+    // `function ` prefixes the DECLARATION only, so this renames the seam and
+    // not its call site — `String.replace` substitutes the first occurrence.
+    const renamed = previewSource.replace('function measuredViewerBox(host', 'function measuredViewerArea(host')
+    expect(renamed).not.toEqual(previewSource)
+    // Pinned to the `toMatch` assertion, so a path error or a future TypeError
+    // cannot pass for the seam having died with its reason.
+    expect(() => violationsForFile(previewRelative, renamed)).toThrow(/to match/)
+    // And a SECOND copy of the seam is refused too: the lazy match would
+    // otherwise select the prepended one and bound the waiver around it.
+    // Pinned to the exactly-once length check for the reason its sibling three
+    // lines above gives: a bare `toThrow()` here is satisfied by ANY throw, so
+    // a path error or an unrelated TypeError would read as the second copy
+    // having been refused.
+    const doubled = `${previewSource}\nfunction measuredViewerBox(host: HTMLDivElement | null): PreviewBox {\n  return { width: 0, height: 0 }\n}\n`
+    expect(() => violationsForFile(previewRelative, doubled)).toThrow(/to have a length of 1/)
+    expect(() => violationsForFile(previewRelative, previewSource)).not.toThrow()
+  })
+
+  it('leaves the transient scroll waiver exactly where it was, directory-wide', () => {
+    const scrolling = 'const top = host.scrollTop + host.scrollLeft'
+    // In the file that also holds the fit seam the seam must still be there for
+    // the exception to run at all, so the plant is appended to the real source;
+    // in the sibling, which has no seam, it stands alone.
+    expect(violationsForFile(previewRelative, `${previewSource}\n${scrolling}\n`)).toEqual([])
+    expect(violationsForFile(path.join('src', 'preview', 'freshness.ts'), scrolling)).toEqual([])
+    // And still red outside the directory, which is what makes it a waiver.
+    expect(violationsForFile('src/component-command.ts', scrolling).map(String)).toEqual([group])
+  })
+})
+
 // STORY 17.6. ONE TEST PER ROW OF THE STORY'S I/O MATRIX — NINE ROWS, NINE
 // TESTS — driven through `violationsForFile`, the harness that addresses the
 // scan BY NAME so a file-scoped exception can be proved to hold there and to
@@ -769,7 +867,40 @@ function withoutApprovedLocalPointerInput(file: string, source: string): string 
   if (file.includes(`${path.sep}preview${path.sep}`)) {
     // PDF viewer scroll is deliberately transient viewer navigation, never a
     // document/canvas measurement. Keep that exception narrow to this owner.
-    return source.replace(/scroll(?:Width|Height|Left|Top)\b/g, 'viewerTransientState')
+    const transient = source.replace(/scroll(?:Width|Height|Left|Top)\b/g, 'viewerTransientState')
+    // STORY 13.2 — THE FIT MEASUREMENT, AND THE ONLY TWO NAMES IT CONSUMES.
+    //
+    // `Fit width` and `Fit page` need the scroll container's real pixel box.
+    // The available height is NOT derivable from the width and the page's
+    // aspect ratio, so fit-page forces a SECOND name, and each of the two is
+    // spelled on its own `.replace` below rather than by widening the
+    // `client(?:Width|Height|Left|Top)` group — widening the group would waive
+    // `clientLeft` and `clientTop` in the same stroke, silently and with
+    // nothing to notice it. Those two, every `offset*` spelling and
+    // `getBoundingClientRect` all stay red inside this directory, and the rows
+    // in `the fit measurement's exception is two names in one function` RUN the
+    // scan against each rather than reading this regex back.
+    //
+    // A fit scale is not the fidelity constant `previewOversample` is. That
+    // constant exists precisely BECAUSE the display's pixel ratio is banned and
+    // an image can be oversampled by a fixed multiple instead; a container's
+    // pixel size has no constant that can stand in for it, and AD-17's own
+    // answer for that case is a named, scoped exception rather than a guess.
+    //
+    // THE CARVE-OUT IS ONE FUNCTION IN ONE FILE, not this directory. It is
+    // written in the shape of the `embedded-face-registry.ts` sibling above —
+    // scoped by `path.basename`, bounded to a matched region rather than to the
+    // file, and asserting the seam that earns it is still present, so the
+    // exception dies with its reason instead of outliving it. This exception is
+    // the one carve-out in this file that asserted no seam at all; now it does.
+    if (path.basename(file) !== 'pdf-viewer.tsx') return transient
+    const seam = /function measuredViewerBox\(host: HTMLDivElement \| null\): PreviewBox \{[\s\S]*?\n}\n/
+    expect(transient).toMatch(seam)
+    // AND EXACTLY ONCE, for the reason the Story 17.6 sibling gives: a second
+    // copy of the seam prepended above this one would otherwise be the region
+    // the lazy match selects, waiving a reading this story exists to bound.
+    expect(transient.match(new RegExp(seam, 'g')) ?? []).toHaveLength(1)
+    return transient.replace(seam, (region) => region.replace(/\bclientWidth\b/g, 'viewerFitContainerWidth').replace(/\bclientHeight\b/g, 'viewerFitContainerHeight'))
   }
   if (path.basename(file) !== 'App.tsx') return source
   // The sole approved pointer coordinate is isolated to a named transient

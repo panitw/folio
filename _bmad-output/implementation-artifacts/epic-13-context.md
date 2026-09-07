@@ -10,8 +10,9 @@ the middle column exists — the page itself. This epic builds the rest of the s
 rail that doubles as a diagnostic map, an evidence rail carrying render facts and the output hash as a
 first-class block, real PDF-viewer navigation (fit, typed zoom, typed page, persistent scroll), an
 export path so the exact bytes can leave the tab, chrome that states freshness honestly, and a preview
-that runs with no sample data at all. No engine byte changes: every PDF this epic displays, exports and
-describes is one the engine already produced.
+that runs with no sample data at all. The epic's standing promise is that it touches no engine byte:
+every PDF it displays, exports and describes is one the engine already produced. Story 13.4 carries a
+knowingly-taken owner exception to that promise, recorded below.
 
 ## Stories
 
@@ -25,14 +26,14 @@ describes is one the engine already produced.
 
 - **Save the exact bytes.** The previewed PDF must be writable to a local file byte-for-byte as the
   engine produced it — never re-rendered for the save, never re-serialized. The saved file's digest is
-  the digest the screen shows.
+  the digest the screen shows. Where no preview has rendered, the control is absent or disabled with
+  its reason stated, never one that fails when pressed.
 - **Real viewer navigation.** Fit-width, fit-page, a zoom the author can type or choose, a typed page
   number, and a scroll position that survives leaving and re-entering Preview.
-- **Exactness is the product.** The previewed document is the production document byte for byte, and
-  the interface must *earn* that claim rather than assert it. Any affirmation the product cannot
-  substantiate is the one thing this screen must never print. Nothing in the interface may imply server
-  rendering, a cloud round-trip, or an account — the standing "no network · nothing left this machine"
-  assurance belongs where it is always visible.
+- **Exactness is the product.** The interface must *earn* the byte-identity claim rather than assert
+  it. An affirmation the product cannot substantiate is the one thing this screen must never print.
+  Nothing in the interface may imply server rendering, a cloud round-trip, or an account — the standing
+  "no network · nothing left this machine" assurance belongs where it is always visible.
 - **Staleness is the state failure that matters.** A stale preview must be visibly invalidated or
   re-rendered, never presented unmarked — and that rule governs export and the evidence statistics
   exactly as it governs the page. Chrome, status line and rail must never disagree about freshness.
@@ -46,32 +47,41 @@ describes is one the engine already produced.
 
 ## Technical Decisions
 
-- **Preview identity (AD-18).** A rendered preview is keyed by a hash over serialized template ∥ data ∥
-  params ∥ engine version ∥ font-set identity; the key is recomputed on every committed command and any
+- **Preview identity.** A rendered preview is keyed by a hash over serialized template ∥ data ∥ params
+  ∥ engine version ∥ font-set identity; the key is recomputed on every committed command and any
   difference marks the preview stale. The preview surface is a controlled pdf.js canvas — never the
-  browser's built-in viewer in an iframe or embed — because diagnostics overlay it and long renders need
-  progress.
-- **The browser never measures text (AD-17).** Every metric and line break comes from the engine's
-  measure API. `src/preview/` holds a narrow, explicitly-enumerated exception to the canvas-authority
-  contract (today for `scroll*`); the fit-width/fit-page container measurement must be added to that
-  exception **by name**, never by widening it with a wildcard — a rasterized PDF's display scale is
-  viewer navigation, not document measurement. Guards are widened deliberately, never deleted.
-- **File access is two-tier and capability-detected (AD-20).** Where `showSaveFilePicker` exists, save
-  through a held handle; otherwise fall back to a download. Save PDF must reuse the single file-access
-  interface the designer already has for `.folio`, parameterising picker type and suggested filename —
-  not a second, parallel download path.
-- **Cross-target identity is a build property, not a live comparison.** The tab cannot compare itself
-  to a native render. What is true is that the wasm engine is the same engine compiled to another
-  target and that byte identity across `darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` is
-  proven by the CI matrix for the release the browser is running. Wording on screen must say that, not
-  more.
-- **Engine semantics are untouched.** No-data empty-value substitution is scoped strictly to *preview
-  with no data supplied*. The absent-binding error contract, its diagnostic codes and the golden corpus
-  stay exactly as they are; the same template rendered by the Go library with absent data still fails.
-  A path absent from data that *was* supplied remains a located error — absent data and
+  browser's built-in viewer in an iframe or embed — because diagnostics overlay it and long renders
+  need progress.
+- **The browser never measures text.** Every metric and line break comes from the engine's measure API.
+  `src/preview/` holds a narrow, explicitly-enumerated exception to the canvas-authority contract
+  (today for `scroll*`); the fit-width/fit-page container measurement must be added to that exception
+  **by name**, never by widening it with a wildcard — a rasterized PDF's display scale is viewer
+  navigation, not document measurement. Guards are widened deliberately, never deleted.
+- **File access is two-tier and capability-detected.** Where `showSaveFilePicker` exists, save through a
+  held handle; otherwise fall back to a download. Save PDF must reuse the single file-access interface
+  the designer already has for `.folio`, parameterising picker type and suggested filename — not a
+  second, parallel download path.
+- **Cross-target identity is a build property, not a live comparison.** The tab cannot compare itself to
+  a native render. What is true is that the wasm engine is the same engine compiled to another target
+  and that byte identity across `darwin/arm64`, `linux/amd64`, `linux/arm64` and `js/wasm` is proven by
+  the CI matrix for the release the browser is running. Wording on screen must say that, not more.
+- **`Render`'s semantics are untouched.** No-data empty-value substitution is scoped strictly to
+  *preview with no data supplied*. The absent-binding error contract, its diagnostic codes and the
+  golden corpus stay exactly as they are; the same template rendered by the Go library with absent data
+  still fails. A path absent from data that *was* supplied remains a located error — absent data and
   absent-from-present-data are different conditions.
+- **Story 13.4's owner exception (D-13.4.1, 2026-09-07).** The epic's "no engine byte" promise has one
+  knowingly-taken exception, and only this one: 13.4 adds a **new read-only Go function** — a
+  type-directed stand-in document generator — plus a wasm op to expose it. It was taken because the
+  story's empty-value criterion is not otherwise deliverable: no single value renders empty
+  (`upper`/`lower` reject null; `formatNumber` rejects both null and `""`; `formatDate` accepts neither
+  and has no empty form; and a null under `visibleIf` silently deletes the element). `Render` itself is
+  still untouched — it is invoked with genuinely supplied data — so the promise's *intent*, that every
+  displayed PDF is one the engine really produced, holds; its literal wording does not. Do not treat
+  this as licence to widen engine changes elsewhere in the epic.
 - **A no-data preview's hash is not evidence** of cross-target equality, because the inputs were not the
-  production inputs.
+  production inputs, and the screen must say plainly that it is a no-data preview whose empty values
+  are stand-ins.
 - **Layout frame.** Preview mode swaps the palette rail for a ~132 px page-thumbnail rail and the
   properties panel for a ~320 px render panel, and the status bar grows to ~32 px for page navigation —
   the one place the frame changes height. The component palette must not render in preview mode at all,
@@ -85,8 +95,8 @@ describes is one the engine already produced.
 - **Three columns.** Left: PAGES thumbnail rail, one numbered thumbnail per page, current page marked in
   the select accent, a page carrying a diagnostic marked in the bind accent, clicking navigates, and a
   long document truncates (`… 29 more`) rather than rendering every thumbnail. Middle: the page on the
-  darker preview ground, carrying the PRODUCTION OUTPUT badge and nothing competing with it. Right: the
-  evidence rail.
+  dark ground, carrying the PRODUCTION OUTPUT badge and nothing competing with it. Right: the evidence
+  rail.
 - **Evidence rail** carries RENDER (engine version, target, pages, rows, elapsed, byte size), OUTPUT
   HASH as its own bordered block with the digest in mono wrapped across two lines so it can be compared
   by eye, DIAGNOSTICS with counts in the header (total, and errors separately), and a paired Re-render /
@@ -103,12 +113,9 @@ describes is one the engine already produced.
 - **Chrome states the Preview-mode fact.** In Preview the document bar shows render freshness
   ("rendered 412 ms ago · current", or stale in the same words the status line uses) rather than the
   Design-mode page setup.
-- **Two-accent grammar holds:** cyan means structure, focus and authority (the production marker and the
-  output hash carry it); amber means data only. Green appears once, on the hash affirmation; red is
-  reserved for a failed render. Every machine-readable value — hash, path, byte count, filename — is set
-  in mono.
-- **Voice is terse and technical**: state the fact, name the location, offer no comfort. A no-data
-  preview must say plainly that it is one and that empty values are stand-ins.
+- **Two-accent grammar holds:** cyan means structure, focus and authority; amber means data only. Every
+  machine-readable value — hash, path, byte count, filename — is set in mono.
+- **Voice is terse and technical**: state the fact, name the location, offer no comfort.
 
 ## Cross-Story Dependencies
 
