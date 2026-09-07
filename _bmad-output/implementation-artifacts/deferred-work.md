@@ -10895,3 +10895,248 @@ same defect. **The owner found it by not being able to find the button.**
 the disabled predicate and both in-flight latches move unchanged - the behaviour is already correct. Doing
 so also lands the reason line in the same region as the alert pair, which is the region DW-272 has to
 reason about.
+
+
+### DW-285 - the viewer's standalone scroll-restore effect is inert, and its one live behaviour is now harmful
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (adversarial and verification-gap layers, independently).
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`folio-designer/src/preview/pdf-viewer.tsx:172-176` re-applies the recorded offsets from a passive effect
+keyed on `[state.scrollLeft, state.scrollTop]`. **Deleting it whole stays green across all 1043 designer
+tests** - measured, not inferred. So does deleting `restoreViewerScroll(host.current, live.current)` at
+`:154`, which is the call that actually does the work, right after `replaceChildren` swaps in a new canvas.
+
+**It is not merely dead code.** Its dependencies change on every `onScroll`, so it rewrites the DOM offset
+after every scroll event, after paint. During a continuous gesture - trackpad, momentum, a held wheel - the
+browser has already advanced past the value React committed, so the write pulls the page backwards.
+Story 13.2 is what makes that reachable: before it, `.pdf-preview-scroll` had no height and never scrolled
+vertically at all, so the effect was live only on the horizontal axis.
+
+**Why it survived this story.** Removal appears in no 13.2 task, and the spec's own Code Map discusses the
+effect explicitly (*"It is the code the epic calls dead; it is dead only vertically"*), so deleting it was a
+production behaviour change outside the fence rather than a guard cleanup under D-000.9.
+
+**What discharges it:** delete `:172-176`, keep `restoreViewerScroll`, and give that call the guard it does
+not have - a test that mounts with non-zero recorded offsets and asserts the host carries them after the
+canvas swap. A browser-level check of a momentum scroll would be better still; jsdom cannot see it.
+
+### DW-286 - `Math.ceil` on the displayed width makes "Fit width" overflow its own container by one pixel
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (adversarial and edge-case layers), arithmetic re-verified by
+  the builder. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`folio-designer/src/preview/pdf-viewer.tsx:148` sets `canvas.style.width` from `Math.ceil(shown.width)`,
+where `shown.width = pageWidth * (clientWidth / pageWidth)`. That product is not always exactly
+`clientWidth` in IEEE-754, and `Math.ceil` then rounds a one-ulp excess up to a whole pixel.
+
+**Measured: 165 of 3204 combinations overflow** - container widths 600-1400 against the four common page
+widths (612, 595.28, 841.89, 792). Example: container 602, page 595.28 gives `shown.width`
+602.0000000000001, and `ceil` makes it **603**. The result is a permanent horizontal scrollbar under the
+one control whose entire promise is that the page fits the width.
+
+**No test can see it.** `pdf-viewer.test.tsx` fits a 20x30 page into a 200x150 box, where 200/20 is exactly
+10, and the e2e witness asserts only that the canvas is no wider than the page area - which holds anyway,
+because `boundingBox()` on the scroll host is its border box and includes the stable scrollbar gutter the
+canvas does not get.
+
+**What discharges it:** floor, or round with a tolerance, at the fit-resolved width specifically - `ceil`
+is there to avoid a sub-pixel crop, which flooring an exact-fit value does not risk - plus a test row using
+a container/page pair from the measured overflowing set. Discharging this also removes DW-287's trigger.
+
+### DW-287 - fit-page has a narrow non-convergent window that `scrollbar-gutter: stable` does not close
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (adversarial layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+The fit resolution writes `scale`, which is a dependency of the effect that resolved it, so each resolution
+costs a full dispose plus re-rasterize. Convergence rests on the second measurement matching the first.
+
+**The mitigation covers one axis only.** `scrollbar-gutter: stable` (`App.css:508`) reserves the inline-end
+gutter, so `clientWidth` is stable against a vertical scrollbar. It does **not** reserve the block-end
+gutter, so `clientHeight` still drops when a horizontal scrollbar appears - and fit-page is the arm that
+reads `clientHeight`. The Design Notes claim the loop is closed; it is closed for fit-width.
+
+**The geometry that oscillates:** fit-page resolving width-bound with the resulting page height within one
+scrollbar height of the container, combined with DW-286's `ceil` bump. Pass 1 resolves width-bound; the
+ceil'd canvas raises a horizontal scrollbar; pass 2 measures a shorter box and resolves smaller; the smaller
+canvas removes the scrollbar; pass 3 measures the original height again. Each cycle re-opens the PDF.
+
+**Doubly narrow, so low confidence anyone hits it** - and stated as a bounded hazard rather than an
+observed failure; it was reasoned from the code and the geometry, not reproduced in a browser.
+
+**What discharges it:** discharge DW-286 (which removes the trigger), or make the fit resolution idempotent
+against a one-scrollbar change in the measured box, with the convergence bound asserted rather than assumed.
+
+### DW-288 - an active fit cannot be re-asked for, because re-picking the selected option fires no `change`
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (adversarial layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN. **Extends DW-283** - discharge them together.
+
+`choosePreviewZoom` (`folio-designer/src/App.tsx`) is wired to the zoom select's `onChange`. A select fires
+no `change` event when the already-selected option is picked again, so an author sitting on `Fit width` who
+then widens a panel has **no way to ask for the fit again**: they must pick `Fit page` and come back, or
+type a zoom - which clears the fit outright.
+
+**Why it matters more than it looks.** DW-283 ruled that a resize re-resolves only on the next re-render,
+which reads as an acceptable limitation because the author can re-ask. They cannot. The registered gap
+assumed a re-trigger that does not exist.
+
+**Adjacent, in the same function:** the `value === 'custom'` path falls through to a `NaN` clamp and a
+no-op. `Custom` is rendered only when it is already selected, so that branch cannot fire - a guard with no
+reachable failure (D-000.9).
+
+**What discharges it:** a re-trigger for the active fit that does not depend on the select's change event -
+a dedicated control, an `onClick` on the option, or DW-283's resize path, which makes the question moot.
+
+### DW-289 - `--status-bar-height-preview` has no unit-level guard that it is used rather than merely defined
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (verification-gap layer). **Owner:** unassigned.
+  **Severity:** LOW. **Status:** OPEN.
+
+Story 13.2's own `## Verification` requires the new token to be confirmed **used, not merely defined** - the
+lesson `design-contract.test.ts:60` records. That confirmation was made by hand (`tokens.css:16` defines it,
+`App.css:28` references it) and, in the suite, by nothing.
+
+**Measured:** deleting `.app-shell-preview` from `App.css`, or the token from `tokens.css`, leaves the whole
+designer suite green at 1043/1043. `vite.config.ts`'s test block sets no `css` option, so jsdom applies no
+stylesheet and no rendering test can observe any of it. Positive control in the same population: adding an
+`@media` rule to `App.css` **does** red the reduced-motion scan, and a hex literal **does** red the colour
+scan - the file is read; this claim simply is not checked.
+
+**Partially covered, and honestly so.** `e2e/preview-navigation.spec.ts:119` asserts the status bar is 32px,
+which is the one observable that separates a used token from a forgotten one. But that spec runs only under
+`npm run test:e2e`, which invokes `npm run build` and therefore needs explicit authorization each time.
+**It is not part of any routine gate.**
+
+**What discharges it:** a source-text assertion in `design-contract.test.ts` that every token defined in
+`tokens.css` is referenced somewhere in the CSS that consumes it - which would cover this token and every
+future one - or the browser suite becoming a routine gate.
+
+### DW-290 - the preview status bar can overflow at the shell's own declared minimum width
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (adversarial layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+`App.css:433` makes `.status-bar` a flex row with a gap, no wrap and no overflow handling; `.preview-nav`
+carries no `flex-shrink: 0`. At `.app-shell { min-width: 1024px }` (`App.css:19`) the seven controls Story
+13.2 added come to roughly 400px, and with `LOCAL SHELL`, the engine snapshot, the font count, the offline
+status and `PREVIEW MODE` the row is around 1050px before padding. `.status-spacer` collapses first, then
+the text items and the new controls are squeezed.
+
+**Estimated from the shipped widths, not observed** - Playwright's default viewport is 1280 and the browser
+witness passes there. `#root` is `overflow-x: auto` (`App.css:4`), so a narrow window scrolls the whole
+shell rather than reflowing, which is what keeps this cosmetic rather than functional.
+
+**What discharges it:** a shrink and truncation policy for the bar - which items give ground and in what
+order - decided rather than left to flex defaults, with a browser check at 1024px. **Story 13.5 owns the
+Preview bar's final composition** and may remove the Design-mode items from it entirely, which would
+dissolve this; do not fix it in isolation before that decision.
+
+### DW-291 - an uncommitted typed entry survives a mode switch, and there is no way to cancel one
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (edge-case layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+`previewPageDraft` and `previewZoomDraft` (`folio-designer/src/App.tsx`) are cleared only inside the two
+commit handlers. So a half-typed entry survives `invalidatePreview(clear)`, a DESIGN to PREVIEW round trip
+and a viewer-driven page clamp: the field goes on showing a value the viewer is not at, and the next commit
+writes it. There is no Escape or cancel path that returns a field to reading the view state.
+
+**Bounded by the fix for the blur defect**, applied in this story: a commit now returns early when its own
+draft is `undefined`, so a *draft-less* field can no longer write anything. This entry is the remaining
+case - a draft that really was typed and then abandoned.
+
+**Untested.** Population: all 66 designer test files and all 19 `e2e/` specs, searched with `grep -arn`
+(`App.tsx` holds two NUL bytes, so every search used `-a`); the drafts appear only in `App.tsx` itself and
+in Story 13.2's own block in `App.test.tsx`, which always commits what it types.
+
+**What discharges it:** clear both drafts wherever the view state is reset or the mode changes, add Escape
+as an explicit cancel, and cover the abandoned-draft path.
+
+### DW-292 - `steppedPreviewScale`'s `tidy` call is redundant and cannot be pinned by any reachable input
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 review (verification-gap layer), refined during patch application.
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`folio-designer/src/preview/viewer-navigation.ts:82` applies `tidy` inside a call to `clampPreviewScale`,
+which applies the same `tidy` (`:32`) last, on the same value. Deleting the inner call changes no reachable
+output.
+
+**Measured rather than argued.** `tidy` is idempotent over the domain: 0 counterexamples in 3,000,000
+random doubles across [0.4, 2.6]. The only separating inputs are magnitudes at or above about 1e303, where
+`tidy` overflows to `Infinity` and the result flips, and magnitudes below about 5e-7, where it floors to 0
+and trips the refusal. Neither is reachable from a zoom control, and pinning either would assert
+arguably-wrong behaviour.
+
+**It is redundant, not unguarded** - a distinction worth keeping. `clampPreviewScale`'s own `tidy` **is**
+independently pinned (`clampPreviewScale(0.7 + 0.6)` must be `1.3`; that sum is 1.2999999999999998).
+Note also that the module comment's illustration is wrong on its own terms: `1 - 0.1 - 0.1` is **exactly**
+0.8 in IEEE-754, so the case it names does not demonstrate the hazard it describes.
+
+**What discharges it:** delete the inner `tidy` and correct the comment's illustration to a pair that really
+does accumulate - or keep it and say in the comment that it is defence-in-depth with no separating input,
+so the next reader does not go looking for one.
+
+### DW-293 - `App.tsx` still hands the viewer two freshly-created callbacks on every render
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's step-04 browser run. **Deliberately not done, ruled by the orchestrator
+  (2026-09-08).** **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`App.tsx:2148` wraps `viewerError` and `viewerPages` in inline arrows to bind `preview.token`, so both props
+are new function identities on every App render. That is what made DW-191 survive its first fix: those
+identities sat in the render effect's dependency array, so a scroll re-ran the effect, disposed the
+`PDFDocumentProxy` and zeroed the scroll. Proved by instrumenting the running page - set 300, read 300,
+read 0 eight hundred milliseconds later, two scroll events recorded, with the CSS verified correct and the
+whole ancestor chain non-scrolling.
+
+**That defect is fixed, and this is not it.** The ruling was to fix it structurally in `pdf-viewer.tsx` -
+the callbacks are held in a ref and dropped from the dependency array, so the property holds for *any*
+caller rather than resting on a discipline at each call site. Hoisting `preview.token` and wrapping the two
+arrows in `useCallback` was explicitly ruled **optional and not the fix**, and was left undone so that a
+second change to the same mechanism would not blur which one the mutation proofs were pinning.
+
+**Why register it at all:** it is still a real improvement - it would stop the viewer being re-notified
+through identities that change for no reason, and it preserves the stale-token rejection those wrappers
+exist for at the call site rather than relying on the viewer's own guards alone.
+
+**What discharges it:** hoist `preview.token` above the JSX and wrap both arrows in `useCallback` keyed on
+the token, with the viewer's fresh-identity arm (`pdf-viewer.test.tsx`) left in place - it is what makes the
+structural property provable and must not be traded away for the call-site fix.
+
+### DW-294 - a durable evidence manifest records how the suite was invoked, and the pinned Chromium no longer exists
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+  (raised there; the defect belongs to Story 6.7's evidence mechanism, not to 13.2).
+- **Found by:** the orchestrator, during Story 13.2's step-04 browser runs. **Owner:** unassigned.
+  **Severity:** MEDIUM. **Status:** OPEN.
+
+`folio-designer/e2e/browser-native-roundtrip.spec.ts` writes
+`_bmad-output/implementation-artifacts/evidence/story-6.7-roundtrip-manifest.json`, which is **committed**,
+and one of its fields records the browser as `"Playwright default"` or `"explicit Chromium executable"`
+depending on how that run happened to be launched. A durable record that describes a one-off invocation
+will mislead whoever reads it next: the field says nothing about the artefact it is evidence for.
+
+**The underlying cause, which is the larger half.** `playwright-core/browsers.json` pins chromium **1208**.
+That revision is no longer present on the authoring machine at all - the cache holds 1217, 1223 and 1228 -
+and the 1208 archive returns HTTP 400 from the download host, so `npx playwright install chromium` does not
+repair it. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` is therefore the only way to launch by hand, and setting it
+is exactly what flips the manifest field. **The manifest was reverted twice during this story** for that
+reason alone.
+
+**CI may hit this differently or not at all**, since it installs browsers rather than reusing a local cache -
+which is itself worth confirming rather than assuming, given that the Playwright jobs added at `adf905a`
+ran for the first time only after the owner ruled that main be pushed.
+
+**What discharges it:** stop writing invocation detail into the durable manifest - record the browser
+*version* if anything, not how it was resolved - and settle the pin: either align `browsers.json` with an
+installable revision or make the env-var override the documented, single supported route.
