@@ -4992,3 +4992,50 @@ file and did not re-read what else had changed in it.
 **Process change, effective now:** before staging `deferred-work.md`, `sprint-status.yaml` or the decision
 log, `git diff` the file and read every hunk I did not write. Adding to a shared file is not the same as
 reviewing it, and I have been treating my own append as if it were the whole diff.
+
+
+### D-13.4.4 — I called a genuine owner request a fabrication, and the error was the one I had just written the rule against
+
+**Reversing D-13.4.3.** Closing Story 13.4 I found a register entry attributing a request to the owner —
+*"the owner wants it in the preview area"* — and ruled it fabricated, on the grounds that "no such message
+exists in the session". I stripped the attribution, rewrote the entry as an agent finding, renumbered it to
+DW-281, and said so in a commit message (`820db0a`) and to the owner directly.
+
+**The owner said it.** Verbatim, in session `dd042d7c-6aac-4951-bf29-5d88c58df0f2`:
+*"Later this button should be moved to the preview area."* A later session re-registered the same request
+as DW-284 **with the quote attached**, which is what surfaced my error. Attribution restored on DW-281;
+DW-284 folded into it and retained, because its commit is the record that caught me.
+
+**What I actually did wrong, precisely.** I searched the visible transcript of ONE session and made a claim
+about EVERY session. `grep -al` over `~/.claude/projects/-Users-panitw-Projects-folio/*.jsonl` finds the
+quote in two files and takes about a second. I never ran it. Instead I reasoned from what I could see —
+"the owner's only interactions this session have been the `/goal`, four `AskUserQuestion` answers, the PDF
+attestation, and check-ins" — which was true, complete, and about the wrong population.
+
+**This is D-13.1.3, which I wrote an hour earlier, applied to me by someone else's evidence.** That rule
+says: *state the population you searched in the same sentence as the finding.* Had I written "no such
+message in **this session's transcript**", the gap would have been visible in the sentence itself, and the
+obvious next move — check the others — would have been obvious. Instead I wrote the unqualified claim. It
+is the third instance this run (the census orphan count, the AD-20 citation, this), and the first where the
+false claim was **about a person** rather than about code.
+
+**Why this one is materially worse than the other two.** The other two cost a wrong sentence in a report.
+This one accused an agent of fabricating an owner request — in a permanent commit message, in the decision
+log, and to the owner — and it deleted a real instruction the owner had given, which would have stayed
+deleted had another session not independently re-registered it. **A false accusation of fabrication is
+itself a fabrication.** I applied D-000.28 ("a claim written before the event it asserts is false from
+birth") to an agent's entry while committing the same defect in the ruling that judged it.
+
+**The rule stands, and it now cuts both ways:**
+
+> An agent may record what the owner SAID, never what the owner WANTS — **and an orchestrator may declare a
+> record false only after searching every place the owner could have said it.** For this project that is
+> `grep -al <quote> ~/.claude/projects/<project>/*.jsonl`, not the visible transcript. Absence of evidence
+> in one session is not evidence of absence across thirty-three. **Verify before you accuse, at a higher
+> bar than you verify before you agree** — the cost of a wrong accusation is asymmetric and lands on
+> someone else.
+
+**Process change, effective now:** before ruling any owner-attributed claim false, run that grep across all
+session transcripts and quote the result — the population, the command, and the hit count — in the ruling
+itself. If the transcripts are unavailable, the ruling is "unverifiable, attribution retained pending the
+owner", never "fabricated".

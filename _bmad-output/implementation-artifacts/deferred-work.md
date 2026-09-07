@@ -10729,21 +10729,22 @@ which is a preference, not a proof, and it is recorded here as one.
 nothing to catch it. Guarding the property needs the module to export the strip or admit a test-visible
 format; `knownFileFormats` is private today.
 
-### DW-281 - Save PDF sits inside the Inspector's hidden tabpanel, the defect 13.1 fixed for the alert pair
+### DW-281 - Save PDF sits in the Inspector's hidden tabpanel, and the owner asked for it in the preview area
 
 - source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
-- **Raised by:** an agent during Story 13.4, provenance unknown. **Owner:** unassigned.
-  **Severity:** LOW (placement, not behaviour). **Status:** OPEN.
+- **Raised by:** the project owner, 2026-09-07, on first use of the shipped control - verbatim:
+  *"Later this button should be moved to the preview area."* **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
 
-> **PROVENANCE CORRECTED BY THE ORCHESTRATOR, 2026-09-07 (D-13.4.3).** This entry was written claiming
-> *"the owner wants it in the preview area"* and *"Raised by: the project owner, 2026-09-07, on first use
-> of the shipped control."* **The owner said no such thing.** No such message exists in the session; the
-> owner has not used the shipped control and has made no request about its placement. The attribution was
-> fabricated. **The technical observation below is TRUE and I verified it independently** — the control
-> really is inside `hidden={inspectorTab !== 'properties'}` at `App.tsx:2086` — so the entry is kept on
-> its own merits, with the false attribution removed and the desired-placement framing rewritten as a
-> finding rather than a request. D-000.28: a claim written before the event it asserts is false from
-> birth, and a fabricated owner request is the worst-case instance of it.
+> **MY CORRECTION WAS WRONG, AND THIS BOX RECORDS THAT (D-13.4.4, 2026-09-07).** I previously rewrote this
+> entry to strip its owner attribution, asserting the request was fabricated because "no such message
+> exists in the session". **The owner did say it.** The verbatim line above is in session
+> `dd042d7c-6aac-4951-bf29-5d88c58df0f2`. I searched only the visible transcript of one session and stated
+> a claim about every session - the exact failure I had written up as D-13.1.3 an hour earlier: **state the
+> population you searched in the same sentence as the finding.** The original attribution was accurate; my
+> correction was the false claim, and it accused an agent of fabricating an owner request in a permanent
+> commit message. Attribution restored. See also DW-284, which re-registered the same request with the
+> quote attached and is now folded into this entry.
 
 Story 13.1 put the control beside the thing that produces the bytes: `Render local PDF`, inside the
 Inspector's properties tabpanel (`App.tsx:2086`, `hidden={inspectorTab !== 'properties'}`). It arguably
@@ -10860,7 +10861,15 @@ resize listener - a new prohibition-adjacent mechanism that deserves its own dec
 rather than assumed, and a browser-level proof (jsdom performs no layout, so no unit test can see it).
 
 
-### DW-284 - Save PDF sits in the Inspector's properties tabpanel, and the owner asked for it in the preview area
+### DW-284 - SUPERSEDED, folded into DW-281 (same owner request, registered twice)
+
+> **This entry and DW-281 are the same finding.** DW-281 was raised first and is the one cited by Story
+> 13.4's spec; this one was registered independently after I wrongly stripped DW-281's attribution, and it
+> carried the verbatim owner quote that proved my correction wrong. The quote now lives in DW-281.
+> **Discharge DW-281, not this.** Kept rather than deleted because its commit (`438540c`) is the record
+> that caught my error.
+
+### DW-284 (original text, retained) - Save PDF sits in the Inspector's properties tabpanel, and the owner asked for it in the preview area
 
 - source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
 - **Raised by:** the project owner, 2026-09-07, on first use of the shipped control - verbatim: *"Later
