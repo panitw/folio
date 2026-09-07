@@ -8,6 +8,32 @@ baseline_commit: 'b04767a'
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — the frozen Intent below governs implementation. Rewritten at close to describe what
+actually shipped.*
+
+Before this story, opening Preview without sample data simply refused. It now renders the page from a
+stand-in document generated for the template, so an author can see their layout before they have any
+data to put in it.
+
+The obvious approach — pick one value meaning "empty" and use it everywhere — turned out to be
+impossible, and measuring that came before any design. Different formatting and conditional contexts
+each reject a different set of values, and one of them silently deletes the element it guards rather
+than complaining. So every referenced value is chosen by the context it appears in, and where two
+contexts share no legal value at all the preview refuses that template outright, naming the value and
+both contexts, rather than guessing.
+
+The screen states plainly that what is on it was built from invented values, and it withholds every
+exactness claim a real preview makes. That disclosure follows the bytes displayed rather than the
+current state, and it travels onto the saved file too: exporting a stand-in preview names it as one,
+because that export is the only place invented bytes outlive the session.
+
+Three things a later reader should not read as oversights. Collections deliberately stand in as
+empty, which is load-bearing for correctness rather than laziness. One internal refusal is honestly
+untested, because nothing in the engine can currently reach it. And five follow-ups were filed rather
+than fixed here.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -625,3 +651,90 @@ added here executes per-commit and is reported as executed-in-CI, never as a com
 
 - Eight designer behaviours, including both directions of the disclosure.
   [`App.test.tsx:6721`](../../folio-designer/src/App.test.tsx#L6721)
+
+## Delivery Log
+
+### 2026-09-07 — done
+
+Baseline `b04767a`. Shipped at `ea7f31d` — 15 files, +2522/−17. Preview no longer refuses without
+sample data: a new read-only Go projection emits a stand-in document for the current template, a wasm
+op exposes it, and the designer sends those bytes on the `data` channel that already existed. `Render`
+is therefore called with genuinely supplied data and its semantics are untouched **structurally, not
+by discipline** — the property that makes the scope fence hold rather than merely be promised.
+
+**The story's shape changed twice under measurement, before any design was done.** First: there is no
+single value that renders empty. `upper`/`lower` reject null and never coerce, `formatNumber` rejects
+null *and* `""`, `formatDate` accepts neither and has no empty form at all, and a null under a
+condition returns false — silently *deleting* the element (D-3.2.3). That killed the obvious approach
+and sent the route to the owner, who ruled D-13.4.1 route (a). Second: with every collection standing
+in as `[]`, the row block is skipped and **no `Column.Bind` is ever evaluated**, so the entire
+row-scope surface needs no stand-in at all. Both shrinks came from measurement, not from taste, and
+the `[]` choice is mutation-proved load-bearing — a one-element array fails the render.
+
+**Decisions applied:** D-13.4.1 (owner, route (a) and the `params.*` exclusion), D-13.4.2 (the intent
+gap, below), D-3.2.3 (null under a condition deletes the element), D-000.4 (anchors re-derived by
+symbol), D-000.9 (no guard that cannot fail), D-11.2.7 (the verification-gap layer runs alone).
+
+**Triage: one intent gap, twelve patches, five defers, two rejects. No loopback;
+`review_loop_iteration` stayed 0.** Three review layers ran.
+
+**D-13.4.2 — the intent gap was the orchestrator's error, not the builder's.** The approval clause
+keyed the conditional disclosure on `visibleIf` alone, but `if(cond, …)`'s first argument is fabricated
+too — so an `if()`-only template rendered a literal branch chosen by no data with the disclosure
+withheld, and the frozen matrix row made that *correct* behaviour a test failure. The builder refused
+to soften it to a patch on its own authority even though the fix is a single predicate, because that
+would have edited a frozen block to match code. Record the principle, not just the outcome: **who
+decides is a different question from what gets decided, and cost asymmetry is an argument to present,
+not an argument to decide with.** The human amended the block and chose the cheap remedy.
+
+**The rename alone would have left a vacuous test.** The negative fixture had zero components and so
+could not distinguish an `if()`-only template from a condition-free one — it was passing while
+asserting nothing. The amendment additionally required that fixture to carry a real non-conditional
+binding. A re-derivation that restores the rename without the fixture restores the vacuum.
+
+**The most serious finding: the stand-in PDF could be exported under wording identical to a production
+export** — `Saved PDF of revision 1 as statement.pdf`. All three review layers found it independently.
+The frozen Boundaries enumerate the heading and the viewer label but *not* the export, and the builder
+asked rather than assuming the fence. Ruled in scope: the Intent governs, the Boundaries are examples
+rather than a schedule, and the export is the one place fabricated bytes outlive the session on disk
+with nothing on the file to say what they are. Staleness and stand-in now **compose**; a later change
+that makes them exclusive silently drops one of two true claims.
+
+Review also caught the disclosure being affirmatively *wrong* — it keyed on current state while the
+label and digest keyed on the bytes, so after clearing sample data one screen asserted "every bound
+value is a stand-in" over real-data bytes beside a digest line correctly saying otherwise — and
+"every bound value" was false whenever `params.*` is referenced, which D-13.4.1 excluded. Both fixed.
+
+**One guard is honestly unproven, and this spec says so rather than implying otherwise:** `walk()`'s
+unknown-AST-node refusal is unreachable while `internal/expr` has exactly four node kinds. Proving it
+would mean adding a node type to the engine. The element-kind half of the same axis IS mutation-proved.
+
+**A trap for the next designer story.** `App.test.tsx` carries a self-counting guard that reads its own
+source and counts every `it(` from `describe('Story 17.1'…)` **to end of file**. Appending any new
+`describe` block *after* that one silently breaks the count. This story's new block was safe only
+because it sits above it. Add new designer describes before the Story 17.1 block, or re-pin the count.
+
+**Deferred (five, all filed, all owner-unassigned, all LOW/severity-as-filed):** the stand-in date
+spelled twice across two languages with nothing tying them; the no-data notice never announced to
+assistive technology; the projection refetched on every no-data render though it is pure; the
+"no document loaded" refusal path untested; and a wasm dispatch guard sitting in a `js/wasm` file no
+CI job executes. Registered as DW-276…280 — **but see the numbering collision reported at close**: an
+owner-raised deferral sourced to Story 13.1 landed in this same commit under the number DW-276, so two
+distinct entries share it. Nothing in the repository cites DW-276 by number, so renumbering is free;
+the coordinator places register entries and owns the fix.
+
+**Measured gates, confirmed at `ea7f31d` (tree clean before and after):** designer `npm test` **65
+files / 1002 tests, 0 failing** (baseline 993 — nine added, no new vitest file); `go test -count=1
+./...` in `folio-go` **2273 pass / 2 fail / 5 skip**, failing only `TestCorpusMeetsP6ExerciseFloors`
+and its `P6g_(opaque_names)` subtest by enumerated name, with no third failure; `lint` `go test
+-count=1 ./...` **four packages ok, 227 passed** — `-count=1` mattered here, because this story adds a
+Go file to the tree the rules package walks with `ReadDir`, which the test cache does not track;
+`tsc -b --force` exit 0, empty; `oxlint` **exactly 4** `only-export-components` warnings, 0 errors, at
+`preview/pdf-viewer.tsx:16,17` and `App.tsx:3745,3752`; `npm run test:e2e:compile` exit 0; `gofmt -l`
+over absolute `folio-go` and `lint` paths empty. `npm run build` was deliberately not run.
+
+**Not run locally:** the Playwright suite itself, including this story's new `preview-no-data.spec.ts`.
+It is compile-checked here only. Since `adf905a` CI runs the unfiltered `-tags=matrix` suite and all
+Playwright tests on every push (DW-268 discharged), so it executes per-commit there — reported as
+executed-in-CI, never as a compile-only placeholder.
+

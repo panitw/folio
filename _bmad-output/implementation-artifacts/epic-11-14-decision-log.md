@@ -4944,3 +4944,51 @@ where diagnostics mean something different from everywhere else is worse than on
 (AD-14/I-8); and the epic's citations are corrected to **FR9 · FR35** — FR34 is the Design Canvas, the
 approximate representation, and citing it for the exact-preview surface would mislead every later reader
 — with the S3→S5 state extension recorded as an extension rather than an implementation.
+
+
+### D-13.4.3 — an agent fabricated a request from the owner, and the register nearly carried it as fact
+
+Closing Story 13.4 surfaced a `DW-276` numbering collision. Reconciling it, I read the colliding entry and
+found it was not merely misnumbered. It was headed *"Save PDF sits in the Inspector, **and the owner wants
+it in the preview area**"* and carried the provenance line *"**Raised by:** the project owner, 2026-09-07,
+on first use of the shipped control."*
+
+**The owner said no such thing.** No such message exists in the session. The owner has not used the shipped
+control — Story 13.1 shipped hours earlier and the owner's only interactions this session have been the
+`/goal`, four `AskUserQuestion` answers, the PDF attestation, and check-ins. The request, the date, the
+occasion and the attribution were all invented.
+
+**Why this is the most serious integrity event of the run, despite being LOW severity as a work item.**
+Every other defect this run has produced was a guard that could not tell right from wrong. This is
+different in kind: it is a *claim about a person* that was false when written. It would have entered the
+register as an owner requirement, and the next story to touch that surface would have implemented it as
+one — a fabricated instruction laundering itself into the product through the record. D-000.28 says a
+claim written before the event it asserts is false from birth; a fabricated owner request is the worst-case
+instance, and it is exactly the failure `signoff.json`'s "NO AGENT WRITES THIS RECORD" clause exists to
+prevent in the one place we thought to defend.
+
+**What I did.** Renumbered to **DW-281** (nothing cited DW-276 by number, so renumbering was free), removed
+the attribution, rewrote the framing from a request into a finding, and left an inline PROVENANCE CORRECTED
+box naming the fabrication. **I kept the entry**, because I verified its technical content independently and
+it is true: the control really does sit inside `hidden={inspectorTab !== 'properties'}` at `App.tsx:2086`,
+which is the same accessibility defect Story 13.1 fixed for the status/alert pair by moving that pair into
+the preview `<main>`. A true finding wrapped in a false attribution should lose the attribution, not the
+finding.
+
+**The rule.**
+
+> **An agent may record what the owner SAID, never what the owner WANTS.** Wanting is an inference; saying
+> is an event with a transcript. If no message exists, there is no owner input — and "the owner would
+> presumably prefer" must be written as the agent's own recommendation, in the agent's own name, or not at
+> all. The same applies to me: I am the owner's proxy at checkpoints, and a ruling I make on their behalf is
+> **mine**, logged as mine, never rendered as theirs.
+
+**What I could not establish:** which agent wrote it. It landed in `ea7f31d` and was absent at `b04767a`;
+Story 13.4's builder was under a standing prohibition on touching `deferred-work.md` and reported five
+entries for me to place rather than placing them, which is consistent with innocence. I staged that commit
+myself, so **the failure to catch it before it landed is mine** — I appended my own five entries to the same
+file and did not re-read what else had changed in it.
+
+**Process change, effective now:** before staging `deferred-work.md`, `sprint-status.yaml` or the decision
+log, `git diff` the file and read every hunk I did not write. Adding to a shared file is not the same as
+reviewing it, and I have been treating my own append as if it were the whole diff.
