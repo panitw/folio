@@ -10816,3 +10816,45 @@ the new dispatch arm and its `WASM_INPUT_INVALID` guard are compiled by `go buil
 executed by any Go test. **Pre-existing dormancy the new arm inherits, not a regression** - and the arm's
 happy path IS covered by the Playwright spec, which now runs per-commit since `adf905a`. What is uncovered
 is the guard.
+
+
+### DW-282 - the design-contract token check cannot see a sub-key, so a minted size token trips nothing
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's plan gate, measured. **PRE-EXISTING - not caused by this story.**
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`design-contract.test.ts:22` asserts token-**name** equality between `design-tokens.ts` and `DESIGN.md`,
+per group. `namesFromDesign` harvests only **2-space-indented** keys, so a nested sub-key is invisible to
+it: `DESIGN.md:182-188` declares `status-bar:` with `height` and `heightPreview` beneath it, and the check
+sees `status-bar` alone.
+
+Consequently Story 13.2's `--status-bar-height-preview: 32px` is **a declared value the contract cannot
+confirm was implemented** - and, the sharper half, a token minted with **no** declaration in `DESIGN.md`
+would equally trip nothing. The guard reads as covering the component token block and covers only its top
+level.
+
+**What discharges it:** harvest nested keys and assert each declared sub-key resolves to a
+correspondingly-named CSS custom property, then RUN the guard against a planted undeclared token AND a
+declared-but-unimplemented one (D-11.3.7). Reading it is what let this through.
+
+### DW-283 - a fit scale goes stale when the container is resized, because nothing re-measures until the next render
+
+- source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
+- **Found by:** Story 13.2's plan gate. **Deliberate, ruled by the orchestrator (Q5(a), 2026-09-07).**
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Fit-width and fit-page resolve the container's pixel size inside `src/preview/` when the viewer renders -
+on a page, bytes, zoom or fit change. Nothing re-measures on a resize, so a fit chosen at one container
+width keeps its resolved scale until the next such event, and the page then no longer fits.
+
+**It is reachable, not theoretical.** `App.css:19` sets `min-width: 1024px` on `.app-shell` and `App.css:4`
+sets `overflow-x: auto` on `#root`, so the container's width really does change with the window.
+
+**Why it was ruled rather than fixed.** AC2 requires only that a fit persist across page changes until the
+author zooms manually; recompute-on-resize is behaviour no criterion asks for, in the epic's largest story.
+`ResizeObserver` is banned outright by the canvas-authority contract, so the only route is a `window`
+resize listener - a new prohibition-adjacent mechanism that deserves its own decision.
+
+**What discharges it:** a resize path that re-resolves the active fit, with the listener's own scope ruled
+rather than assumed, and a browser-level proof (jsdom performs no layout, so no unit test can see it).
