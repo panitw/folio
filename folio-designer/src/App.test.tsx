@@ -6711,6 +6711,267 @@ describe('Story 13.1: the preview keeps the PDF', () => {
   })
 })
 
+// STORY 13.4 — PREVIEW RUNS WITHOUT SAMPLE DATA.
+//
+// Three gates used to make Preview refuse a template with no sample loaded:
+// renderPreview's early return, `disabled` on Render local PDF, and a status
+// line whose highest-priority branch said the preview was unavailable. None of
+// them was guarded by a test, so nothing would have caught the refusal being
+// reintroduced either. These are those guards.
+describe('preview with no sample data', () => {
+  const STAND_IN = '{"customer":{"name":""}}'
+  const CONDITIONAL_SENTENCE = /Conditional content may be present or absent/
+  // THREE FIXTURES, BECAUSE A FABRICATED CONDITION HAS TWO SHAPES (D-13.4.2).
+  //
+  // `plainCanvas` is the negative case and it CARRIES A REAL BOUND COMPONENT on
+  // purpose. The original negative fixture had zero components, so it could not
+  // tell an `if()`-only template from a condition-free one — it asserted the
+  // sentence was absent from a canvas that had nothing in it at all, which is
+  // true of every possible predicate.
+  const boundComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true, value: 'Hello, {{customer.name}}!' }
+  const plainCanvas = { ...canvas, components: [boundComponent] }
+  const conditionalCanvas = { ...canvas, components: [boundComponent, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 0, y: 20_000, width: 72_000, height: 12_000, resizable: true, visibleIf: 'flags.vip' }] }
+  const inlineConditionCanvas = { ...canvas, components: [{ ...boundComponent, value: 'Status {{if(flags.vip, "member", "guest")}}' }] }
+
+  // noDataEngine answers every operation the no-data path needs. `standIn` is
+  // the document the ENGINE generated; the assertions below read the bytes the
+  // engine was handed back on the data channel, so a designer that invented a
+  // document of its own would fail rather than agree with itself.
+  const noDataEngine = (projection: CanvasProjection = plainCanvas, standIn = STAND_IN) => {
+    const loaded = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: projection }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'stand-in-data') return { snapshot: loaded, bytes: new TextEncoder().encode(standIn).buffer }
+      if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: loaded, bytes }
+      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: loaded }
+    })
+    return { request, loaded }
+  }
+
+  // Guarded: an unguarded index into find()'s result fails with a bare
+  // TypeError, which says nothing about WHICH operation never happened.
+  const dataChannel = (calls: ReadonlyArray<ReadonlyArray<unknown>>, operation: string) => {
+    const call = calls.find((entry) => entry[0] === operation)
+    if (!call) throw new Error(`the engine was never asked for '${operation}'; it received ${JSON.stringify(calls.map((entry) => entry[0]))}`)
+    const payload = call[1] as { data?: ArrayBuffer } | undefined
+    if (!payload?.data) throw new Error(`the '${operation}' request carried no data channel`)
+    return new TextDecoder().decode(payload.data)
+  }
+
+  it('renders a page from the engine\'s own stand-in document and withholds every production claim', async () => {
+    const { request, loaded } = noDataEngine()
+    render(<App engine={engine(request)} initialSnapshot={loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+
+    // The bytes the engine received on the data channel ARE the projection it
+    // produced — not a guessed empty document assembled in the browser.
+    expect(dataChannel(request.mock.calls, 'identity')).toBe(STAND_IN)
+    expect(dataChannel(request.mock.calls, 'render')).toBe(STAND_IN)
+    expect(screen.queryByText('Preview unavailable: no sample data loaded')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Render local PDF' })).toBeEnabled()
+
+    // Admit the PDF, which is what would otherwise promote the screen to the
+    // exact-production claim.
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    expect(screen.queryByText('EXACT LOCAL PRODUCTION PDF')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Current no-data layout PDF/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Current exact local production PDF/ })).not.toBeInTheDocument()
+    expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Current no-data layout PDF')
+    expect(document.getElementById('preview-freshness-status')).not.toHaveTextContent('exact')
+    expect(screen.getByText(/Stand-in local digest/)).toBeInTheDocument()
+    expect(screen.queryByText(/Historical producer digest/)).not.toBeInTheDocument()
+    // UX-DR25: the notice is labelled and keyboard-reachable, and App.css
+    // gives it the shell's ordinary `:focus-visible` outline.
+    expect(screen.getByRole('note', { name: 'No-data preview notice' })).toHaveAttribute('tabindex', '0')
+  })
+
+  it('names the fabricated condition only when the template declares one', async () => {
+    // SHAPE ONE: a visibleIf.
+    const withCondition = noDataEngine(conditionalCanvas)
+    const conditionView = render(<App key="conditional" engine={engine(withCondition.request)} initialSnapshot={withCondition.loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toHaveTextContent(CONDITIONAL_SENTENCE)
+    conditionView.unmount()
+
+    // SHAPE TWO (D-13.4.2): an if() condition in a text binding. The generator
+    // fabricates its first argument exactly as it fabricates a visibleIf, so a
+    // literal branch is chosen by no data and the disclosure is owed.
+    const withInline = noDataEngine(inlineConditionCanvas)
+    const inlineView = render(<App key="inline" engine={engine(withInline.request)} initialSnapshot={withInline.loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toHaveTextContent(CONDITIONAL_SENTENCE)
+    inlineView.unmount()
+
+    // THE NEGATIVE DIRECTION IS THE ONE THAT MATTERS, and its fixture carries a
+    // real bound component. A zero-component canvas would satisfy every
+    // possible predicate, which is what made the first version of this row
+    // vacuous: it passed against a widened predicate and against a broken one
+    // alike. Making the sentence unconditional reds this.
+    const plain = noDataEngine()
+    render(<App key="plain" engine={engine(plain.request)} initialSnapshot={plain.loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const plainNotice = await screen.findByRole('note', { name: 'No-data preview notice' })
+    expect(plainNotice).toHaveTextContent('No sample data is loaded')
+    expect(plainNotice).toHaveTextContent(/Parameters are excluded/)
+    expect(plainNotice).not.toHaveTextContent(CONDITIONAL_SENTENCE)
+  })
+
+  it('marks the no-data preview stale when a sample is loaded, then re-renders on the exact-production path', async () => {
+    const sampleBytes = new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer
+    const openSample = vi.fn(async () => ({ name: 'sample.json', bytes: sampleBytes }))
+    const { request, loaded } = noDataEngine()
+    render(<App engine={engine(request)} initialSnapshot={loaded} sampleFileAccess={{ openSample }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    expect(screen.getByRole('button', { name: /Current no-data layout PDF/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load sample JSON' }))
+    // The identity key is over `data`, so replacing the stand-in bytes with
+    // real ones re-keys the preview for free.
+    await waitFor(() => expect(request.mock.calls.filter(([name]) => name === 'render')).toHaveLength(2))
+    const renders = request.mock.calls.filter(([name]) => name === 'render') as unknown as ReadonlyArray<ReadonlyArray<unknown>>
+    expect(new TextDecoder().decode(((renders[1] as unknown[])[1] as { data: ArrayBuffer }).data)).toBe('{"customer":{"name":"Ada"}}')
+    // Wait on the DIGEST LINE, not on the viewer label: the label reads
+    // `Stale historical PDF` for the stand-in record too, so waiting on it
+    // would assert against whichever record happened to be installed.
+    await waitFor(() => expect(screen.getByText(/Historical producer digest/)).toBeInTheDocument())
+    expect(screen.queryByRole('note', { name: 'No-data preview notice' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    expect(screen.getByText('EXACT LOCAL PRODUCTION PDF')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument()
+    expect(screen.getByText(/Historical producer digest/)).toBeInTheDocument()
+  })
+
+  it('lands on a no-data preview when the sample is cleared, not on an empty idle screen', async () => {
+    const { request, loaded } = noDataEngine()
+    render(<App engine={engine(request)} initialSnapshot={loaded} initialSampleData={sample} blankBytes={new Uint8Array([7]).buffer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    expect(screen.queryByRole('note', { name: 'No-data preview notice' })).not.toBeInTheDocument()
+
+    // Start blank clears the accepted sample through clearSampleData.
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(request.mock.calls.some(([name]) => name === 'stand-in-data')).toBe(true))
+    expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
+    expect(document.getElementById('preview-freshness-status')).not.toHaveTextContent('Preview is waiting for local inputs')
+  })
+
+  it('installs no preview and invents no empty document when the stand-in projection is unavailable', async () => {
+    const { loaded } = noDataEngine()
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'stand-in-data') throw new Error('Stand-in data is unavailable for this template')
+      if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: loaded, bytes }
+      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      return { snapshot: loaded }
+    })
+    render(<App engine={engine(request)} initialSnapshot={loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Stand-in data is unavailable for this template'))
+    expect(request.mock.calls.some(([name]) => name === 'render')).toBe(false)
+    expect(request.mock.calls.some(([name]) => name === 'identity')).toBe(false)
+    expect(screen.queryByRole('button', { name: /Stale historical PDF/ })).not.toBeInTheDocument()
+  })
+
+  // PATCH 3 — THE NOTICE DESCRIBES THE BYTES ON SCREEN, NOT THE CURRENT INPUTS.
+  //
+  // Both transitions are asserted, and the second render is HELD so the window
+  // between them is a state this test can stand in rather than a race. Keying
+  // the notice on `!sampleData` passes the second half and fails the first: the
+  // notice would unmount the instant a sample is loaded, while the stand-in PDF
+  // is still the thing displayed and the digest line still says so.
+  it('keeps the notice on screen while stand-in bytes are displayed, and drops it when real bytes replace them', async () => {
+    const sampleBytes = new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer
+    const openSample = vi.fn(async () => ({ name: 'sample.json', bytes: sampleBytes }))
+    const loaded = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: plainCanvas }
+    let renders = 0
+    let releaseSecondRender: () => void = () => undefined
+    const held = new Promise<void>((resolve) => { releaseSecondRender = resolve })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'stand-in-data') return { snapshot: loaded, bytes: new TextEncoder().encode(STAND_IN).buffer }
+      if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: loaded, bytes }
+      if (operation === 'render') {
+        renders++
+        if (renders === 2) await held
+        return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      }
+      return { snapshot: loaded }
+    })
+    render(<App engine={engine(request)} initialSnapshot={loaded} sampleFileAccess={{ openSample }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByText(/Stand-in local digest/)).toBeInTheDocument())
+    expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
+
+    // TRANSITION ONE: a sample is loaded and the second render is in flight.
+    // The bytes on screen are still the stand-in ones, so the notice stays and
+    // the digest line still names them — one PDF, one story about it.
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load sample JSON' }))
+    await waitFor(() => expect(renders).toBe(2))
+    expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
+    expect(screen.getByText(/Stand-in local digest/)).toBeInTheDocument()
+
+    // TRANSITION TWO: the real record installs and both lines change together.
+    releaseSecondRender()
+    await waitFor(() => expect(screen.getByText(/Historical producer digest/)).toBeInTheDocument())
+    expect(screen.queryByRole('note', { name: 'No-data preview notice' })).not.toBeInTheDocument()
+  })
+
+  // PATCH 1 — SAVING IS WHERE THESE BYTES LEAVE THE MACHINE.
+  //
+  // The file outlives the session and nothing inside a PDF says its values were
+  // fabricated, so the control and the completion both name it. The two
+  // qualifiers are independent: this asserts each alone and both together,
+  // against the existing `Save stale PDF` / `Saved PDF of stale revision 1`
+  // wording, which must keep working unchanged.
+  it('names the stand-in on the export control and on the completion, composing with staleness', async () => {
+    const written: number[][] = []
+    const files: FileAccess = {
+      open: vi.fn(),
+      acquireSaveTarget: vi.fn(async () => ({ name: 'statement.pdf', format: pdfFileFormat } as AcquiredSaveTarget)),
+      writeSave: vi.fn(async (_target, payload: { bytes: ArrayBuffer }): Promise<SavedLocalFile> => { written.push([...new Uint8Array(payload.bytes)]); return { name: 'statement.pdf', target: {} as never } }),
+    }
+    const { request, loaded } = noDataEngine()
+    render(<App engine={engine(request)} fileAccess={files} initialSnapshot={loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+
+    // BOTH QUALIFIERS AT ONCE: unadmitted stand-in bytes.
+    expect(screen.getByRole('button', { name: 'Save stale no-data PDF' })).toBeInTheDocument()
+
+    // ONE QUALIFIER: admitted stand-in bytes.
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    const control = screen.getByRole('button', { name: 'Save no-data PDF' })
+    expect(screen.queryByRole('button', { name: 'Save PDF' })).not.toBeInTheDocument()
+    fireEvent.click(control)
+    await waitFor(() => expect(written).toHaveLength(1))
+    expect(screen.getByText('Saved PDF of no-data revision 1 as statement.pdf')).toBeInTheDocument()
+  })
+
+  it('leaves a path absent from data that WAS supplied as the located producer Error it already was', async () => {
+    const failure = Object.assign(new Error('folio: Render: element e1: binding "customer.name" is absent from the report data'), { code: 'BINDING_PATH_ABSENT', elementId: 'e1', dataPath: 'customer.name', producerRenderFailure: true as const })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') throw failure
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    const card = await screen.findByLabelText('Local render failure')
+    expect(card).toHaveTextContent('BINDING_PATH_ABSENT')
+    expect(card).toHaveTextContent('customer.name')
+    // The stand-in projection is never consulted when a sample IS loaded.
+    expect(request.mock.calls.some(([name]) => name === 'stand-in-data')).toBe(false)
+  })
+})
+
 // STORY 17.1: THE CANVAS FOLLOWS THE CONTENT FIELD.
 //
 // TWENTY-THREE tests. NINE are the story's I/O matrix, one per row. The other

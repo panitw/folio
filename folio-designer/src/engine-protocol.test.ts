@@ -737,6 +737,21 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound({ ...response, parameterReferences: { revision: 7, names: ['reportDate'], expression: 'params.reportDate' } })).toBeUndefined()
   })
 
+  // STORY 13.4 — THE STAND-IN DOCUMENT RIDES THE ENVELOPE THAT ALREADY
+  // CARRIED BYTES. No new request field, no new response field, no protocol
+  // version change: the success envelope's key list already permits `bytes`,
+  // so a bytes-returning projection needed nothing widened for it.
+  it('admits a byte-returning stand-in data projection on the existing envelope', () => {
+    const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'standin-1', operation: 'stand-in-data' }
+    expect(parseRequest(request)).toBeDefined()
+    // It takes NO byte input, exactly as parameter-references does.
+    expect(parseRequest({ ...request, payload: new Uint8Array([1]).buffer })).toBeUndefined()
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'standin-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, bytes: new TextEncoder().encode('{"customer":{"name":""}}').buffer }
+    expect(parseInbound(response)).toBeDefined()
+    // And nothing extra rides along with it.
+    expect(parseInbound({ ...response, standInData: '{}' })).toBeUndefined()
+  })
+
   it('admits only a selected, revision-correlated table-column paint projection', () => {
     const payload = new TextEncoder().encode('{"id":"e7"}').buffer
     const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'table-1', operation: 'table-columns', payload }

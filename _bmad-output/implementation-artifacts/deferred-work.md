@@ -10728,3 +10728,80 @@ which is a preference, not a proof, and it is recorded here as one.
 **What discharges it:** a third declared format would make the two diverge on reachable inputs with
 nothing to catch it. Guarding the property needs the module to export the strip or admit a test-visible
 format; `knownFileFormats` is private today.
+
+### DW-276 - Save PDF sits in the Inspector, and the owner wants it in the preview area
+
+- source_spec: `_bmad-output/implementation-artifacts/13-1-the-preview-keeps-the-pdf.md`
+- **Raised by:** the project owner, 2026-09-07, on first use of the shipped control.
+  **Owner:** unassigned. **Severity:** LOW (placement, not behaviour). **Status:** OPEN.
+
+Story 13.1 put the control beside the thing that produces the bytes: `Render local PDF`, inside the
+Inspector's properties tabpanel (`App.tsx:2006`, `hidden={inspectorTab !== 'properties'}`). The owner
+wants it in the preview `<main>` instead - beside the PDF it saves rather than beside the button that
+made it.
+
+**The reason this is not a one-line move.** `inspectorTab` survives the mode switch, so an author who
+left the Inspector on DATA enters Preview and the control is not merely inconvenient, it is **absent
+from the accessibility tree** - which is exactly the failure 13.1 already fixed for the status/alert
+pair by moving that pair out of the tabpanel and into the preview `<main>` (see the comment at
+`App.tsx:1998`). The control has the same defect the messages had; it just was not read that way at
+the time.
+
+**What discharges it:** render the button and its `pdfExportUnavailable` reason line in the preview
+`<main>`, next to the heading's Return control, and keep `Render local PDF` where it is. The label,
+the disabled predicate and both latches move unchanged - this is placement only. Doing so also lands
+the reason line and the alert pair in one region, which is what DW-272 will have to reason about.
+
+
+### DW-276 - the stand-in date is spelled twice, in two languages, with nothing tying them
+
+- source_spec: `_bmad-output/implementation-artifacts/13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt.md`
+- **Found by:** Story 13.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`StandInInstant` in Go and the designer's notice copy both name **2024-01-15** independently. Changing the
+Go constant silently makes the UI text lie - it would keep telling the author dates read 2024-01-15 while
+the page showed something else, and the notice's whole job is to describe what is on screen.
+
+**What discharges it:** the repo's own idiom for a cross-language invariant, a mirror test in the shape of
+`engine-bounds-mirror.test.ts`.
+
+### DW-277 - the no-data notice is never announced to assistive technology
+
+- source_spec: `_bmad-output/implementation-artifacts/13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt.md`
+- **Found by:** Story 13.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+It mounts asynchronously after a render completes, so a screen-reader user is told nothing when the page
+they are reading turns out to be built from fabricated values - or when it stops being. `App.css` already
+carries `.diagnostic-announcement`, the visually-hidden live-region pattern for exactly this.
+
+**Why it matters more here than for a typical notice:** every other claim on this screen is a claim about
+provenance. A sighted reader gets the amber block; a screen-reader user currently gets a page that reads
+as ordinary output.
+
+### DW-278 - the stand-in projection is refetched on every no-data render though it is pure
+
+- source_spec: `_bmad-output/implementation-artifacts/13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt.md`
+- **Found by:** Story 13.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+It is a pure function of the template revision, but every parameter keystroke and debounce re-generates and
+re-marshals the whole document on the worker. `loadParameterReferences` already caches per request and
+generation and is the model to copy.
+
+### DW-279 - StandInData's "no document loaded" branch and StandInData(nil) have no test
+
+- source_spec: `_bmad-output/implementation-artifacts/13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt.md`
+- **Found by:** Story 13.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Both are natively testable and neither is covered; `wasm/engine_test.go` covers `StandInData` nowhere. An
+untested refusal path is a refusal nobody has watched refuse.
+
+### DW-280 - the stand-in-data dispatch arm sits in a js/wasm file no CI job executes
+
+- source_spec: `_bmad-output/implementation-artifacts/13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt.md`
+- **Found by:** Story 13.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`wasm/cmd/engine/main.go` and its test are both `//go:build js && wasm` and CI runs `go test` natively, so
+the new dispatch arm and its `WASM_INPUT_INVALID` guard are compiled by `go build -tags` but never
+executed by any Go test. **Pre-existing dormancy the new arm inherits, not a regression** - and the arm's
+happy path IS covered by the Playwright spec, which now runs per-commit since `adf905a`. What is uncovered
+is the guard.

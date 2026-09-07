@@ -107,6 +107,15 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: engine.Snapshot(), ParameterReferences: &references, ParameterReferenceRevision: revision}
+	case "stand-in-data":
+		if in.PayloadBase64 != "" || in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
+			return failure("WASM_INPUT_INVALID", errors.New("stand-in data requires no byte inputs"))
+		}
+		data, err := engine.StandInData()
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(data)}
 	case "table-columns":
 		if in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
 			return failure("WASM_INPUT_INVALID", errors.New("table columns require exactly one selected table id"))

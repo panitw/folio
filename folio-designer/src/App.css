@@ -460,6 +460,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .diagnostic-card { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px dashed var(--color-bind-edge-dash); border-left: 3px dashed var(--color-bind); background: var(--color-bind-tint-warm); color: var(--color-ink-high); }
 .diagnostic-card p { margin: 0 0 var(--space-2); }
 .diagnostic-triangle { color: var(--color-bind); font-size: 1.1em; line-height: 1; }
+/* STORY 13.4 — THE NO-DATA NOTICE TAKES THE BIND AMBER, NEVER THE SELECT CYAN.
+   Cyan is the authority colour that marks production output and its hash
+   (DESIGN.md, Colors), and a page built from stand-in values withholds exactly
+   that claim — so the one state that must never look authoritative may not
+   borrow the colour that says it is. Amber is the same vocabulary
+   `.diagnostic-card` above already uses for a condition the engine reports
+   about a page it did render — INCLUDING ITS DASHED EDGE, which is the half
+   this rule originally got wrong. Under shape-before-colour a solid 3px edge
+   is `.preview-failure`'s danger grammar and means the render stopped; dashed
+   means it proceeded, which is what happened here. The focus ring is the
+   shell's ordinary cyan `:focus-visible`, which is chrome and not a claim
+   about the page. */
+.preview-standin-notice { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: start; margin-bottom: var(--space-5); padding: var(--space-3); border: 1px dashed var(--color-bind-edge-dash); border-left: 3px dashed var(--color-bind); background: var(--color-bind-tint-warm); color: var(--color-ink-high); }
+.preview-standin-notice p { margin: 0 0 var(--space-2); }
+.preview-standin-notice p:last-child { margin-bottom: 0; }
+.preview-standin-notice:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
+.preview-standin-marker { color: var(--color-bind); font-size: 1.1em; line-height: 1; }
 .diagnostic-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .diagnostic-code, .diagnostic-location { font: var(--type-mono); }
 .diagnostic-location { display: block; color: var(--color-ink); }

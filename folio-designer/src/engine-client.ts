@@ -156,6 +156,10 @@ function matchesOperationPayload(operation: EngineOperation, message: Extract<En
     case 'identity': return message.bytes === undefined && message.preview !== undefined && message.preview.pdfSha256 === undefined && message.preview.diagnostics === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'serialize': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'asset': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    // The stand-in data document arrives as BYTES on the envelope that
+    // already carries them. No new response field, no protocol version
+    // change: a bytes-returning operation was already representable.
+    case 'stand-in-data': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'parameter-references': return message.bytes === undefined && message.preview === undefined && message.parameterReferences !== undefined && message.tableColumns === undefined
     case 'table-columns': return message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns !== undefined
     default: return none

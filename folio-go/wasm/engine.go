@@ -64,6 +64,29 @@ func (e *Engine) ParameterReferences() ([]string, uint64, error) {
 	return out, e.revision, nil
 }
 
+// StandInData exposes the read-only stand-in data projection for the
+// current document: a real JSON document whose value at each referenced
+// path is chosen by the expression WRAPPING that path.
+//
+// It returns BYTES on the existing response envelope, and that is the
+// whole point: the browser sends them on the `data` channel it already
+// has, so Render is called with genuinely supplied data and its
+// semantics, error contract and codes are untouched STRUCTURALLY rather
+// than by discipline.
+//
+// IT RETURNS NO REVISION OF ITS OWN, deliberately, unlike
+// ParameterReferences. The dispatch arm answers with the SAME
+// engine.Snapshot() every other arm does, and that snapshot's revision
+// is the one the browser correlates against — a second copy returned
+// here would be the same number arriving twice, and the only caller
+// discarded it.
+func (e *Engine) StandInData() ([]byte, error) {
+	if e.template == nil {
+		return nil, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	return folio.StandInData(e.template)
+}
+
 // TableColumns exposes one revision-correlated selected-table projection.
 // It is intentionally a query, not a browser-side document model.
 func (e *Engine) TableColumns(tableID string) (TableColumnsResult, error) {

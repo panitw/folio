@@ -137,7 +137,13 @@ const scriptsOfSource = (source: FamilySource): ReadonlyArray<string> => {
   return source.row.scripts
 }
 
-type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number }>
+// STORY 13.4 — `standIn` IS ON THE RECORD, NOT DERIVED FROM `sampleData`.
+// A no-data render that is later superseded by a real one stays visible while
+// it is stale, and the screen must keep withholding the production claim for
+// the bytes it is actually showing. `!sampleData` answers "what would we build
+// now"; this answers "what were these bytes built from", which is the question
+// the label and the digest line are about.
+type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number; standIn: boolean }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
 export default function App({ engine, fileAccess, sampleFileAccess, imageFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
@@ -558,21 +564,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     retryingFailure.current = undefined
     setDismissedDiagnostics(new Set())
   }
+  // STORY 13.4 — NO SAMPLE-DATA GATE. Laying out a page is not gated on
+  // inventing data the author does not have: with no sample loaded, runPreview
+  // asks the engine for a stand-in document and renders that. The engine never
+  // required data either — the CLI passes Data("{}") when -data is omitted.
   const renderPreview = (force = false) => {
-    if (!sampleDataRef.current) { setPreviewStatus('idle'); return }
     if (previewTimer.current !== undefined) clearTimeout(previewTimer.current)
     previewTimer.current = undefined
     previewScheduler.current.submit(() => runPreview(force))
   }
   const runPreview = async (force = false) => {
     const sample = sampleDataRef.current
-    if (!engine || !snapshotRef.current || !sample) return
+    if (!engine || !snapshotRef.current) return
     const generation = previewGeneration.current
     const documentAtStart = documentGeneration.current
     const revisionAtStart = snapshotRef.current.revision
-    // The engine receives the accepted file bytes, not the local inspection
-    // projection. ArrayBuffer slicing is a transport copy, never a rewrite.
-    const data = sample.bytes.slice(0)
     const params = new TextEncoder().encode(previewParamsRef.current).buffer
     const token = ++previewToken.current
     const controller = new AbortController()
@@ -581,6 +587,27 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const mustRender = force || previewNeedsFreshRender.current
     setPreviewStatus(previewRef.current ? 'stale' : 'checking'); setPreviewError(undefined); setPreviewIssue(undefined)
     try {
+      // THE DATA CHANNEL, AND ONLY ITS CONTENTS DIFFER. With a sample loaded
+      // the engine receives the accepted file bytes, not the local inspection
+      // projection; with none, it receives the stand-in document IT generated
+      // for this template. ArrayBuffer slicing is a transport copy, never a
+      // rewrite, in both arms.
+      //
+      // The projection is admitted under the same request/generation/revision
+      // agreement loadParameterReferences uses: `current()` re-checks the
+      // request token, the abort signal, the mode, the preview generation, the
+      // document generation and the LIVE snapshot's revision against the one
+      // captured at entry, and the response's OWN snapshot revision is compared
+      // against that same captured value on the line below. An unavailable
+      // projection is NEVER turned into a guessed empty document: the render
+      // simply does not happen.
+      let data: ArrayBuffer
+      if (sample) data = sample.bytes.slice(0)
+      else {
+        const projected = await engine.request('stand-in-data', undefined, controller.signal)
+        if (!projected.bytes || projected.snapshot.revision !== revisionAtStart || !current()) return
+        data = projected.bytes.slice(0)
+      }
       const checked = await engine.request('identity', { data, params }, controller.signal)
       const identity = checked.preview?.identity
       if (!identity || checked.preview.revision !== revisionAtStart || !current(identity)) return
@@ -595,7 +622,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       setPreviewStatus(previewRef.current ? 'stale' : 'rendering')
       const result = await engine.request('render', { template: canonical.bytes, data, params }, controller.signal)
       if (!result.bytes || !result.preview?.pdfSha256 || !result.preview.diagnostics || result.preview.identity !== identity || result.preview.revision !== revision || !current(identity)) return
-      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation })
+      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation, standIn: !sample })
       previewNeedsFreshRender.current = false
       setDismissedDiagnostics(new Set())
       setPreviewViewState(initialPDFPreviewViewState)
@@ -1664,6 +1691,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     clearPreviewParameters()
     // Clearing a previously accepted sample is itself a Preview input change.
     invalidatePreview(true)
+    // STORY 13.4 — AND IT NOW LANDS ON A NO-DATA PREVIEW, not on an empty
+    // 'idle' screen, WITH NOTHING ADDED HERE. Both callers (open, startBlank)
+    // already re-render on their own tail — `if (modeRef.current ===
+    // 'preview') { … renderPreview() }` — and what used to make that re-render
+    // land on 'idle' was renderPreview's sample gate, which is gone. A
+    // schedulePreview() call here would be a guard that cannot fail: measured,
+    // deleting it reds nothing, because those two tails already cover it.
   }
   const loadSample = async () => {
     if (!sampleFileAccess || sampleBusy) return
@@ -1812,7 +1846,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // reason used to say "Save PDF is unavailable" under a button labelled `Save
   // stale PDF`, and to call the export "another local file action" while the
   // action in progress WAS the export.
-  const pdfExportLabel = preview && !admittedPreview(preview) ? 'Save stale PDF' : 'Save PDF'
+  // STORY 13.4 — THE EXPORT NAMES THE STAND-IN, FOR A DIFFERENT REASON THAN
+  // STALENESS. Saving is the one place these bytes leave the machine: the file
+  // outlives the session, and nothing inside a PDF says its values were
+  // fabricated. The two qualifiers are independent and both can apply at once,
+  // so they compose rather than choosing between them.
+  const pdfExportStale = Boolean(preview) && !admittedPreview(preview)
+  const pdfExportQualifier = `${pdfExportStale ? ' stale' : ''}${preview?.standIn ? ' no-data' : ''}`
+  const pdfExportLabel = `Save${pdfExportQualifier} PDF`
   const pdfExportUnavailable = !fileAccess ? `${pdfExportLabel} is unavailable: this browser exposes no local file access.`
     : !preview ? `${pdfExportLabel} is unavailable: no local PDF has been rendered yet.`
     : fileBusy ? `${pdfExportLabel} is unavailable while a local file action is in progress.`
@@ -1835,13 +1876,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const pdfBytes = record.bytes
     const pdfRevision = record.revision
     const stale = !admittedPreview(record)
-    exportInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus(stale ? 'Preparing stale PDF save…' : 'Preparing PDF save…')
+    // Read off the SAME record the bytes came from, for the reason the
+    // staleness comment above gives: a second read of `preview` could describe
+    // a different PDF than the one being written.
+    const qualifier = `${stale ? ' stale' : ''}${record.standIn ? ' no-data' : ''}`
+    exportInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus(`Preparing${qualifier} PDF save…`)
     try {
       // Inside the gesture, before any await that is not the picker itself: the
       // native picker is gated on the click's transient user activation.
       const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, saveAs: true, format: pdfFileFormat })
       const saved = await fileAccess.writeSave(acquired, { bytes: pdfBytes })
-      const revision = stale ? `stale revision ${pdfRevision}` : `revision ${pdfRevision}`
+      const revision = `${qualifier.trim() ? `${qualifier.trim()} ` : ''}revision ${pdfRevision}`
       setFileStatus(saved.target ? `Saved PDF of ${revision} as ${saved.name}` : `Downloaded PDF of ${revision} as ${saved.name}`)
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
@@ -1883,6 +1928,41 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const shortcuts = shortcutHintsFor()
+  // STORY 13.4 — THE NO-DATA SCREEN, AND THE FABRICATED CONDITION IT NAMES.
+  //
+  // `noDataPreview` is "this screen is previewing without sample data": it is
+  // what the heading and the status line withhold their production claim on.
+  //
+  // `standInNotice` IS A DIFFERENT QUESTION AND MUST STAY ONE. The notice
+  // describes THE BYTES ON SCREEN, not the current inputs — the same subject
+  // the viewer label and the digest line already have. Keying it on
+  // `!sampleData` was wrong in both directions: loading a sample unmounted the
+  // notice while the stand-in PDF was still displayed and still stale, and the
+  // reverse transition would have printed "built from stand-ins" beside a
+  // digest line correctly reading `Historical producer digest` — one PDF, two
+  // contradictory claims. So: when a record is installed, follow the record;
+  // when none is (before the first render, and after a clear), the screen
+  // state is the only thing there is to follow.
+  const noDataPreview = mode === 'preview' && !sampleData
+  const standInNotice = mode === 'preview' && (preview !== undefined ? preview.standIn : !sampleData)
+  // A FABRICATED CONDITION IS EITHER SHAPE, and D-13.4.2 is why this is not
+  // `visibleIf` alone: `conditionalRule` in stand_in_data.go fabricates
+  // `if(cond, …)`'s first argument exactly as it fabricates a `visibleIf`, so
+  // an `if()`-only template rendered a literal branch chosen by no data with
+  // the disclosure withheld.
+  //
+  // Both shapes are read off the canvas projection Go already sends —
+  // `visibleIf` and `value` are projected strings — so the notice needs no
+  // second engine surface. A column `bind` is deliberately NOT consulted: it is
+  // row scope, and every collection stand-in is `[]`, so it is never evaluated
+  // and fabricates nothing. The `{{ }}` scan is the same quote-blind one
+  // internal/expr/scan.go documents; for a disclosure predicate that bound is
+  // acceptable and stated rather than hidden.
+  const conditionalContent = Boolean(canvas?.components.some((component) => {
+    if (typeof component.visibleIf === 'string' && component.visibleIf.length > 0) return true
+    const value = typeof component.value === 'string' ? component.value : ''
+    return [...value.matchAll(/\{\{([^}]*)\}\}/g)].some((match) => /(^|[^A-Za-z0-9_.])if\s*\(/.test(match[1] ?? ''))
+  }))
   const currentDiagnostics = previewStatus === 'current' && mode === 'preview' && preview?.revision === snapshot?.revision ? preview : undefined
   const currentFailure = previewError && ['error', 'stale'].includes(previewStatus) && mode === 'preview' && previewError.revision === snapshot?.revision ? previewError : undefined
   const engineLabel = initializationError ? 'ENGINE UNAVAILABLE' : snapshot ? `GO SNAPSHOT · REVISION ${snapshot.revision}` : 'ENGINE STARTING'
@@ -1989,7 +2069,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{!sampleData ? 'Preview unavailable: no sample data loaded' : previewStatus === 'current' ? 'Current exact local PDF' : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus === 'current' ? `Current exact local production PDF, revision ${preview.revision}` : `Stale historical PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `Historical producer digest ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p>{/* THE LOCAL-FILE MESSAGES, IN PREVIEW (Story 13.1). The pair below the
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{noDataPreview ? 'NO-DATA LAYOUT PREVIEW' : previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewStatus === 'current' ? (noDataPreview ? 'Current no-data layout PDF' : 'Current exact local PDF') : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{standInNotice && <div className="preview-standin-notice" role="note" aria-label="No-data preview notice" tabIndex={0}><span className="preview-standin-marker" aria-hidden="true">▲</span><div><p>No sample data is loaded. Every path this page reads from report data holds a stand-in value: bound text renders empty, numbers render zero, dates render 2024-01-15, and every collection is empty. This page is not production output.</p>{conditionalContent && <p>Conditional content may be present or absent: this template fabricates at least one condition, and each was resolved from a stand-in because there was no data to evaluate it against.</p>}<p>Parameters are excluded from this: params.* still resolves from Preview inputs, and an absent parameter still fails the render.</p></div></div>}{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus !== 'current' ? `Stale historical PDF, revision ${preview.revision}` : preview.standIn ? `Current no-data layout PDF, revision ${preview.revision}` : `Current exact local production PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} />}</>}<p className="preview-evidence">{preview ? `${preview.standIn ? 'Stand-in local digest' : 'Historical producer digest'} ${preview.digest}` : 'Go production digest pending'}{preview ? ` · ${preview.diagnostics.length} diagnostics retained` : ''}</p>{/* THE LOCAL-FILE MESSAGES, IN PREVIEW (Story 13.1). The pair below the
         canvas lives inside the DESIGN main, which Preview replaces wholesale, so
         before Save PDF existed nothing in Preview could announce a local file
         outcome and a failed save here would have failed silently. The two mains
@@ -2003,7 +2083,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         tests as present and behaves as absent is worse than no alert. */}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}</main>}
       <aside className="inspector-panel" aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)} disabled={!sampleData}>Render local PDF</button><button type="button" className="file-button" onClick={() => void exportPreviewPdf()} disabled={Boolean(pdfExportUnavailable)} aria-describedby={pdfExportUnavailable ? 'preview-pdf-export-reason' : undefined}>{pdfExportLabel}</button>{pdfExportUnavailable && <p id="preview-pdf-export-reason" className="honest-note">{pdfExportUnavailable}</p>}<p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><button type="button" className="file-button" onClick={() => void renderPreview(true)}>Render local PDF</button><button type="button" className="file-button" onClick={() => void exportPreviewPdf()} disabled={Boolean(pdfExportUnavailable)} aria-describedby={pdfExportUnavailable ? 'preview-pdf-export-reason' : undefined}>{pdfExportLabel}</button>{pdfExportUnavailable && <p id="preview-pdf-export-reason" className="honest-note">{pdfExportUnavailable}</p>}<p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
       </aside>
     </div>
