@@ -457,6 +457,69 @@ weakened; recorded because it is the incident that forced D-000.7.
 (grep exit 1; positive control: `15.2a` matches once). A tracked story with no epic text is either a lost
 story or a phantom, and Epic 15 is the release-blocker set.
 
+### Re-grounding refresh — 2026-09-08 (third session, Story 13.5's plan gate)
+
+*Third lead of this run. Re-grounded from this section and the numbered rulings below it — NOT
+re-derived from the spine, the ADRs or `epics.md`. Verified at HEAD **`ab3fc1a`**, tree clean but for
+the untracked 13.5 draft spec, re-measured with `git rev-parse` rather than inherited from the session's
+opening `gitStatus` — which said `0d395ca` and was already two commits stale when I read it.*
+
+**Sources read, CLOSED:** `## Lead Grounding` in full; `D-000.32`, `D-000.33`, `D-13.1.1`–`D-13.1.4`,
+`D-13.2.1`, `D-13.3.1`, `D-13.4.1`–`D-13.4.4`; the 13.5 draft spec (225 lines) in full; AD-17 and AD-18
+verbatim from the spine. `D-15.1.1` located and read (`folio-mvp-decision-log.md:14718`) — it is the
+`+4 B/page` golden attribution and bears on nothing in Epic 13; recorded so the next reader does not
+re-open it.
+
+**The dispatch baseline moved under the spec, and it is safe.** The 13.5 Code Map states every anchor
+"re-measured at `0d395ca` (the dispatch HEAD)". HEAD is now `ab3fc1a`. `git diff --stat 0d395ca ab3fc1a`
+returns **one file, `deferred-work.md`** (227b276, ab3fc1a). **No `folio-designer/` file changed**, so
+every Code Map anchor and every browser width measurement still holds — but the Code Map's stated
+baseline should be advanced to `ab3fc1a` with that null diff as its evidence, or the next reader
+re-verifies from scratch. This is [D-000.4]/[the opening-`gitStatus` rule] paying out in the cheap
+direction for once.
+
+**One stale constraint found inside a block about to be frozen.** The draft's Never tier reads *"Never
+touch `e2e/preview-no-data.spec.ts:47` (DW-296)"*. **DW-296 is CLOSED** (`deferred-work.md:11193`,
+"fixed AND observed green", 2026-09-08) and its fix rewrote 29 lines of that very file at `0d395ca`, so
+the line number is no longer the line the constraint means. Freezing a citation to a closed item with a
+moved anchor is the [D-000.28] shape in a boundary tier. Reword to the file, drop the line number and
+the DW citation, before approval.
+
+**Two measurement corrections carried into the 13.5 rulings, both against claims made TO me:**
+
+1. *"`offline-status` … a `data-testid` that two e2e specs read — removed from Preview entirely"* is
+   **false as a cost**. Population: `folio-designer/e2e/offline-update.spec.ts` (65 lines) and
+   `e2e/engine-worker.spec.ts` (30 lines), the only two specs reading that testid. `/usr/bin/grep -ain
+   "preview\|Alt+P\|mode-switch\|DESIGN"` returns **exit 1 on both** — neither spec ever enters Preview
+   mode. Both exercise Design mode only. The real cost of dropping it from Preview is the
+   accessibility one (`offlineLabel` has five states including `update-available`, which can transition
+   while the author is in Preview) plus `App.test.tsx:7090`.
+2. *"`Date.now()` appears 0 times in all of `folio-designer/src`"* is **false at literal width and true
+   at the width that matters**. `/usr/bin/grep -arn 'Date\.now'` over `src` returns **1** hit —
+   `src/generated/runtime/wasm-exec.*.js`, the vendored Go shim. Population restated: **zero outside
+   `src/generated/`**, which is the claim the story needs. Same measurement found the precedents the
+   builder reported as absent: `requestAnimationFrame` **2** (`App.tsx:2205`, `DataPanel.tsx:45`), and
+   `new Date()` **3**, one of them production at `font-source.ts:403` where the clock read is a
+   **defaulted parameter** — the repo's existing idiom for a testable clock. `setInterval` is genuinely
+   **0** outside `src/generated/` (positive control, same population: `setTimeout` = 27).
+
+**AD-17 confirmed at source, because a ruling was about to rest on a paraphrase.**
+`ARCHITECTURE-SPINE.md:361-372` — *"the canvas paints DOM and SVG, and gets **every** text metric and
+line break from the engine's measure API."* It is a ban on the browser measuring **text**. Reading the
+browser's own clock is not a text metric and is not touched by it; the machine-enforced scan
+(`canvas-authority-contract.test.ts`) names no clock API (`/usr/bin/grep -an "Date\|Interval\|now\b"`
+over that file returns comment prose only).
+
+**State.** Epic 13 is at its last story. 13.1–13.4 are `done`; 13.5 is at CHECKPOINT 1 with a draft
+spec whose `## Tasks & Acceptance` is deliberately empty pending Q1–Q4. Under [D-000.33] this is the
+**first** story on the epic-boundary cadence: no browser or integration suite runs in it, and the Epic
+13 boundary gate is the first to carry the CI wait. Every e2e spec written or amended in 13.5 is
+**unexecuted** until that gate and must be reported in those words.
+
+**Carried forward, unclosed:** DW-304 (the PAGES thumbnail rail, promised by `epic-13-context.md`'s
+Goal paragraph and owned by no story) is still the open scope question at Epic 13's boundary. 13.5 must
+not absorb it.
+
 ---
 
 ### D-A — Epic 11 realizes bold and italic for the Latin and Thai families only
