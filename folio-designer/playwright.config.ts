@@ -5,8 +5,26 @@ export default defineConfig({
   workers: 1,
   timeout: 90_000,
   expect: { timeout: 30_000 },
+  // DW-297. Until 2026-09-08 this config named NO reporter and NO trace, so
+  // `playwright-report/` was never created -- not in CI and not here. The CI
+  // job's `if: failure()` step has been uploading a directory that does not
+  // exist, with `if-no-files-found: ignore` turning that into silence: five red
+  // runs, zero artefacts, while the step's own comment claimed a red run's
+  // traces are "the difference between a reproducible defect and 'it went red
+  // on CI once'". The reasoning was right; nothing implemented it.
+  //
+  // `open: 'never'` because CI must not try to launch a browser at the end of a
+  // run, and neither should a scripted local run. `list` is kept alongside so
+  // the console output a human reads is unchanged.
+  reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    // retain-on-failure, not `on`: a green run's traces are storage cost for
+    // evidence nobody reads, and a red run's are the whole point. There are no
+    // retries configured, so `on-first-retry` would capture nothing at all --
+    // the obvious-looking setting is the one that would reproduce the defect
+    // being fixed here.
+    trace: 'retain-on-failure',
     launchOptions: {
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     },

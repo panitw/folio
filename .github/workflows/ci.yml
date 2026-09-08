@@ -432,4 +432,13 @@ jobs:
           name: playwright-report
           path: folio-designer/playwright-report/
           retention-days: 7
-          if-no-files-found: ignore
+          # `error`, not `ignore` (changed 2026-09-08, DW-297). This step spent
+          # five red runs uploading a directory that playwright.config.ts never
+          # created, because no reporter was configured -- and `ignore` is what
+          # made that silent instead of obvious. The config now writes an html
+          # report with `trace: 'retain-on-failure'`, so on a red run this path
+          # exists. If it ever stops existing, that is a defect in the evidence
+          # chain and this job should SAY so, even though it is already failing
+          # for another reason. A missing report is not a tidy edge case; it is
+          # the difference between a reproducible defect and a rumour.
+          if-no-files-found: error
