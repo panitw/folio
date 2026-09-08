@@ -5305,3 +5305,72 @@ is scorekeeping; recording it as acceptance criteria is engineering.
 
 **Related:** [D-13.3.1], [D-000.33], DW-304, DW-303.
 
+### D-13.5.1 — OWNER DECISION: the offline label is hidden in Preview, and the lead reversed itself to get there
+
+**Ruled by the owner, 2026-09-08.** In Preview, `offline-status` becomes `.sr-only` — visually hidden,
+keeping `role="status"`, its `aria-label`, its `data-testid` and its full announcement. `LOCAL SHELL` and the
+template font count stay dropped; `engine-snapshot` and `PREVIEW MODE` stay visible.
+
+**How the question came back after being answered once.** At the Q1 gate the lead ruled the minimal
+two-item drop and, on my ask, put the wider option to the owner as optional; the owner declined to engage
+with it. The lead then discovered its own ruling was **wrong, not incomplete**: it had priced
+`offline-status` at 90px, which is the width of *one* of its five reachable states. Rebuilding the width
+model from the mono advance — validated against five of the builder's Chromium figures exactly — showed
+**four** states exceeding the 34.9px margin. It called this out in its own words as "ruling on a snapshot of
+a variable and calling it a measurement", named it as the same error this run has logged three times, and
+re-put the fork rather than patching its own ruling quietly.
+
+**The reversal is the interesting part.** On corrected numbers, keeping the label *visible* required dropping
+all four remaining items, while hiding it required dropping none — so the widening the lead had declined on
+the owner's behalf turned out to be **the narrowing**. It said so in those words rather than presenting the
+new recommendation as though it had always held.
+
+**There was a product problem under the pixel problem**, and it is what makes this a judgment rather than
+arithmetic: the assurance reads `no network · nothing left this machine` while `offline-status` can
+simultaneously read `Offline cache unavailable` — this machine lacks what it needs and would want the
+network. The two sentences sat 12px apart contradicting each other. Hiding one resolves that; a third drop
+would merely have made room for both to be visible and wrong together.
+
+**Disclosed cost, registered as DW-310:** a sighted author in Preview gets no offline signal until switching
+back to DESIGN. Screen-reader users lose nothing.
+
+**Two measurements I got wrong and want on the record.** I estimated the resulting margin at ≈89px; it is
+**124.94px**, because `.sr-only` is `position: absolute`, so the element leaves flex flow and takes its 12px
+gap with it — I had subtracted the element and forgotten the gap. And I relayed a `+37px` figure the lead
+flagged as contradicted by its model at `+72px`; **both were right**, measuring different quantities — the
+builder measured the bar's overflow past the viewport, the lead measured the label's growth from its base
+state, and 72 − 34.9 = 37.1 with 210 − 34.9 = 175.1. I checked that rather than letting either stand
+corrected, because the lead had partly framed its escalation on a discrepancy that did not exist.
+
+**Related:** [D-000.33], DW-310, DW-305.
+
+### D-13.5.2 — a guardrail that cannot be satisfied is not a stricter guardrail
+
+**Ruled by me, 2026-09-08**, rather than round-tripped to the lead, because the defect was demonstrable
+rather than a matter of judgment and the builder had measured it against the shipped copy.
+
+The lead's Q2 guardrail 5 required the document bar's freshness token to be a prefix-case-match of the status
+line's head word **for every one of the seven states**, while the same ruling required the status line's copy
+to be **unchanged**. Those are jointly unsatisfiable: `error` reads `Local Preview work failed` and `idle`
+reads `Preview is waiting for local inputs`, whose head words are `Local` and `Preview` — not freshness
+tokens. Five of seven states match; two cannot.
+
+**The builder's second reason is the stronger one and is what decided it.** `error` can coexist with an
+installed record: `App.tsx:664`'s digest mismatch sets `error` *without* installing, over a surviving
+preview. There the bar must read `stale`, deliberately diverging from the status line's more specific copy —
+because a rule forcing the bar to mirror the status line would have re-created the exact defect Story 13.3
+spent a patch removing, the evidence screen affirming a render the app had just refused for corruption.
+
+**Adopted formulation:** token `'current'` **iff** `statusLine` begins with `Current`; token `'stale'` implies
+`statusLine` never begins with `Current`; token `undefined` exactly when there is no record — iterated over
+the seven values read from the module's own exported state list, never a restated literal. Every property the
+guardrail was protecting survives: one producer, state-list-driven, exhaustive, non-vacuous in both
+directions, no hand-maintained mirror.
+
+**The rule.** A guardrail's purpose clause outranks its mechanism clause. When the two conflict, the
+mechanism is what yields — and an implementer who reports the conflict is doing the job, while one who
+"satisfies" it by quietly reinterpreting it has broken the thing the guardrail existed to hold. This builder
+reported it, twice, including once when my own later ruling retired half of its red proof.
+
+**Related:** [D-11.2.8] (an assertion whose two sides could be equal is not an assertion), [D-13.4.2].
+
