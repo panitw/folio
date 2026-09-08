@@ -4660,11 +4660,48 @@ So that I can see the shape of the document and jump straight to the page a prob
 Story 13.3 that was split off at its plan gate (DW-304, D-13.3.1)
 **Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
 
-**OWNER DECISION 2026-09-08 (D-13.6.1): built on `pdfjs-dist`'s viewer components**
-(`pdfjs-dist/web/pdf_viewer.mjs` - `PDFViewer` and `PDFThumbnailViewer`), not on a bespoke rail over the
-core API. Same package, already a dependency, no new licence. The orchestrator recommended the core-API
-route and the owner chose the viewer bundle; the consequences below are ACs precisely because they are the
-costs that choice carries.
+**OWNER DECISION 2026-09-09 (D-13.6.2), AMENDING D-13.6.1: the rail is built from pdf.js's thumbnail
+modules, VENDORED into this repository.**
+
+D-13.6.1 said "built on `pdfjs-dist`'s viewer components - `PDFViewer` and `PDFThumbnailViewer`". **That
+decision rested on a false premise supplied by the orchestrator: `PDFThumbnailViewer` is not in the published
+package.** Verified on independent instruments with a positive control - it appears 0 times in
+`web/pdf_viewer.mjs` while `PDFViewer` appears 4, and the bundle's own export statement lists 22 names with
+no thumbnail class. Mozilla ships those modules in its repository and excludes them from the components
+bundle.
+
+Re-put to the owner with that correction and with both alternatives, the owner chose to **vendor
+`pdf_thumbnail_viewer.js` and its dependencies from mozilla/pdf.js at a tag matching the installed
+`pdfjs-dist` version**. The orchestrator and the story's builder both recommended against it and both were
+overruled. As with D-13.6.1, the objections raised become acceptance criteria rather than caveats.
+
+**Acceptance Criteria:**
+
+**Given** vendored third-party source
+**When** it lands in this repository
+**Then** its provenance is recorded and checkable: the exact upstream tag or commit, the file list, a hash
+per file, the preserved Apache-2.0 headers, and a written procedure for re-vendoring. This project has a
+precedent for that audit in `2-3a-audit-the-vendor-boundary.md` and it is followed, not reinvented
+
+**Given** that `PDFViewer` hard-throws on any version drift between core and viewer builds
+**When** the thumbnail modules are vendored
+**Then** they are taken from a tag matching `pdfjs-dist` 6.2.108 exactly, and a test asserts the pin so a
+future `pdfjs-dist` bump cannot silently desynchronise the fork
+
+**Given** `canvas-authority-contract.test.ts:8` walks **all** of `src` recursively, and AD-17 forbids the
+browser measuring text
+**When** vendored pdf.js code - which measures its own rendered output - is added
+**Then** the vendored tree is placed and excluded **deliberately and narrowly**, with the exclusion justified
+in the test itself: pdf.js measures a PDF it rasterised, which is not folio text layout, and that is the
+whole reason the exclusion is legitimate. A blanket exemption for a directory is not acceptable; the scan
+must still see every file this project authors
+
+**Given** `maximumCacheAssets = 64` at `src/release-payload.ts:42` and a current built count of **61**
+**When** this story adds anything to the release
+**Then** the offline release still builds and still passes, with the measured `assetCount` reported. There
+are **three** free slots. `vite.config.ts:16` sets `assetsInlineLimit: 0`, so nothing is inlined, and
+`web/pdf_viewer.css` alone references 36 unique images - importing it wholesale fails the release outright.
+Whatever CSS the rail needs is written or vendored selectively against that bound
 
 **Acceptance Criteria:**
 
@@ -4687,14 +4724,24 @@ part `pdfjs-dist` does not supply: the derivation from diagnostic to page number
 
 **Given** Preview mode
 **When** the rail is shown
-**Then** the component palette is not rendered
+**Then** the component palette is not rendered. **This is real work, not a regression guard** - measured,
+`App.tsx:2261` renders `<nav className="palette-rail">` as an unconditional child of `.workbench`, the mode
+ternary does not begin until `:2276`, no CSS override hides it, and no existing test asserts its absence
+(population searched: all `folio-designer/src/**/*.test.ts(x)` and all 20 `folio-designer/e2e/*.spec.ts`).
+It renders at its full width in Preview today. Note `.workbench`'s `grid-template-columns` at `App.css:46`
+is the declaration Story 13.3 deliberately left free for this rail, and the authority contract forbids
+adding a second `@media` rule, so the rail's width cannot be responsive
 
-**Given** that `PDFViewer` owns page state itself
-**When** this story adopts it
-**Then** there is exactly ONE page-state authority in the preview - Story 13.2's `viewer-navigation.ts` is
-retired or subordinated to it, never run in parallel. Two authorities for the same fact is the defect shape
-this run has found most often, and adopting the viewer bundle is what makes this a live risk rather than a
-hypothetical one.
+**Given** that page state in the preview has exactly one owner today
+**When** this story adds a rail that knows which page is current
+**Then** that owner remains `App.tsx:254`'s `previewViewState`, written through its single funnel at
+`App.tsx:814`, and the rail reads from it rather than keeping its own. **CORRECTED 2026-09-09:** this AC
+originally said Story 13.2's `viewer-navigation.ts` must be retired or subordinated. That rested on a false
+premise - measured, that file is 108 lines of pure arithmetic with no imports, no React, no DOM and no state
+of any kind, so it is not a page-state authority and never was. It stays: retiring it would delete ten
+zoom/fit tests encoding two measured regressions, including the one where Zoom out enlarged the page by 65%.
+The AC's intent is unchanged and matters more than its original wording, because any vendored or adopted
+pdf.js viewer component that tracks `currentPageNumber` internally WOULD be a genuine second authority.
 
 **Given** the product promises "no network - nothing left this machine" and ships an offline release
 **When** the viewer bundle is added

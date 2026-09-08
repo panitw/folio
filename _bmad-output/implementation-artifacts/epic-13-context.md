@@ -5,14 +5,16 @@
 ## Goal
 
 Preview is the screen where Folio's central claim lands: the document on screen is the production
-document, produced in this tab, and the evidence for that is visible rather than asserted. Today only
-the middle column exists — the page itself. This epic builds the rest of the screen: a page-thumbnail
-rail that doubles as a diagnostic map, an evidence rail carrying render facts and the output hash as a
-first-class block, real PDF-viewer navigation (fit, typed zoom, typed page, persistent scroll), an
-export path so the exact bytes can leave the tab, chrome that states freshness honestly, and a preview
-that runs with no sample data at all. The epic's standing promise is that it touches no engine byte:
-every PDF it displays, exports and describes is one the engine already produced. Story 13.4 carries a
-knowingly-taken owner exception to that promise, recorded below.
+document, produced in this tab, and the evidence for that is visible rather than asserted. When the epic
+opened, only the middle column existed — the page itself. This epic builds the rest of the screen: a
+page-thumbnail rail that doubles as a diagnostic map, an evidence rail carrying render facts and the
+output hash as a first-class block, real PDF-viewer navigation (fit, typed zoom, typed page, persistent
+scroll), an export path so the exact bytes can leave the tab, chrome that states freshness honestly, and
+a preview that runs with no sample data at all. Stories 13.1–13.5 are delivered; the remaining work is
+Story 13.6, the thumbnail rail, which was split off from 13.3 at its plan gate (DW-304, D-13.3.1) and
+carries its own owner decision about how it is built. The epic's standing promise is that it touches no
+engine byte: every PDF it displays, exports and describes is one the engine already produced. Story 13.4
+carries a knowingly-taken owner exception to that promise, recorded below.
 
 ## Stories
 
@@ -21,6 +23,7 @@ knowingly-taken owner exception to that promise, recorded below.
 - Story 13.3: The preview screen is the evidence screen
 - Story 13.4: Preview runs without sample data, and an absent value is empty
 - Story 13.5: The chrome tells the truth about the preview
+- Story 13.6: The preview navigates by page thumbnails
 
 ## Requirements & Constraints
 
@@ -42,6 +45,9 @@ knowingly-taken owner exception to that promise, recorded below.
   a bindings-free template with no data argument), so the screen must not disable itself ahead of it.
 - **Diagnostics belong where the consequence is visible** — surfaced in Preview, non-blocking,
   dismissible, naming the offending element and path, and locating back to it on the canvas.
+- **The offline promise is a measured budget, not an assumption.** Any payload the release grows by must
+  be measured and recorded before it is accepted, because "no network · nothing left this machine" means
+  the whole viewer ships to the author's machine.
 - **Accessibility floor** applies to every new control: keyboard-reachable, operable, labelled, with
   visible focus, and diagnostics distinguished by shape before colour.
 
@@ -79,6 +85,22 @@ knowingly-taken owner exception to that promise, recorded below.
   still untouched — it is invoked with genuinely supplied data — so the promise's *intent*, that every
   displayed PDF is one the engine really produced, holds; its literal wording does not. Do not treat
   this as licence to widen engine changes elsewhere in the epic.
+- **Story 13.6's owner decision (D-13.6.1, 2026-09-08).** The thumbnail rail is built on `pdfjs-dist`'s
+  **viewer components** — `pdfjs-dist/web/pdf_viewer.mjs`, using `PDFViewer` and `PDFThumbnailViewer` —
+  not on a bespoke rail over the core API. Same package, already a dependency, no new licence. The
+  orchestrator recommended the core-API route and was overruled; the consequences below are constraints,
+  not preferences, precisely because they are the costs that choice carries.
+- **One page-state authority.** `PDFViewer` owns page state itself, so the preview must have exactly one
+  page-state authority: Story 13.2's `viewer-navigation.ts` is retired or subordinated to it, never run
+  in parallel. Two authorities for the same fact is the defect shape this run has found most often, and
+  adopting the viewer bundle is what makes it a live risk rather than a hypothetical one.
+- **The diagnostic-to-page derivation is our own work.** `pdfjs-dist` supplies thumbnails and page state;
+  it does not supply the mapping from a diagnostic to the page it falls on. That derivation — the
+  "diagnostic map" half of the rail — is Story 13.6's own code.
+- **The viewer bundle's payload is measured, not assumed.** Measured before dispatch at `pdf_viewer.mjs`
+  307 KB + `pdf_viewer.css` 160 KB + 328 KB of images, against the 853 KB core `pdf.mjs` already shipped
+  — roughly a 90% increase in the PDF.js payload before minification and gzip. The actual release-size
+  change must be measured and recorded, never asserted.
 - **A no-data preview's hash is not evidence** of cross-target equality, because the inputs were not the
   production inputs, and the screen must say plainly that it is a no-data preview whose empty values
   are stand-ins.
@@ -119,6 +141,15 @@ knowingly-taken owner exception to that promise, recorded below.
 
 ## Cross-Story Dependencies
 
+- 13.1–13.5 are delivered; 13.6 is the remaining story and lands on top of all of them.
+- 13.6 completes the PAGES rail that 13.3 scoped but did not build — 13.3 owns the evidence rail and the
+  screen frame, 13.6 owns the thumbnail rail itself and the diagnostic-to-page marking.
+- 13.6 must reconcile with 13.2: `PDFViewer` owns page state, so `viewer-navigation.ts` is retired or
+  subordinated. The status-bar page/zoom controls 13.2 placed must read from the same single authority,
+  and the `src/preview/` exception list in the canvas-authority contract test — a shared guard other
+  epics also assert against — must still be extended by name rather than by wildcard.
+- 13.6's diagnostic marking depends on 13.3's diagnostic model and on the page/path/element/band location
+  the diagnostic cards already carry.
 - 13.3 re-dresses the diagnostic card and its Locate-on-canvas / Dismiss behaviour already built earlier
   in the designer; it changes presentation, not that behaviour.
 - 13.1's Save PDF and 13.3's evidence rail land the same paired action row — 13.3 owns its placement,

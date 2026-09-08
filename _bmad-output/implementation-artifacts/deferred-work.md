@@ -11444,6 +11444,15 @@ left as caveats:
 Neither is an argument against the ruling; the owner had both numbers before deciding. They are here so the
 story is built against them.
 
+**AMENDED 2026-09-09 — D-13.6.1's mechanism was impossible and the owner has re-ruled (D-13.6.2).**
+`PDFThumbnailViewer` is not in `pdfjs-dist` 6.2.108: 0 occurrences against a positive control of 4 for
+`PDFViewer`, and the bundle's export statement lists 22 names without it. **The orchestrator supplied that
+false premise** — it verified the class was unused in our tree and assumed it was present in the package.
+The owner, re-asked with the correction, chose to **vendor** the thumbnail modules from mozilla/pdf.js.
+Story 13.6's ACs in `epics.md` are amended accordingly, including two further false premises of the
+orchestrator's own: `viewer-navigation.ts` is not a page-state authority (it is stateless arithmetic), and
+the palette's absence in Preview is real work rather than a regression guard.
+
 ### DW-305 - the contrast contract is a hand-written five-pair list, and the pairing under test was not in it
 
 - **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`

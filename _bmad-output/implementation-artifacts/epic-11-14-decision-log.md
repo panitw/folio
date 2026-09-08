@@ -5374,3 +5374,60 @@ reported it, twice, including once when my own later ruling retired half of its 
 
 **Related:** [D-11.2.8] (an assertion whose two sides could be equal is not an assertion), [D-13.4.2].
 
+### D-13.6.2 — OWNER DECISION: vendor the thumbnail modules; and the premise I gave for D-13.6.1 was false
+
+**Ruled by the owner, 2026-09-09**, amending [D-13.6.1].
+
+**My error, first, because it is the reason this decision had to be made twice.** When the owner asked
+*"Can we embed pdf.js? I understand that we get this for free"*, I answered that `PDFViewer` and
+`PDFThumbnailViewer` were "already sitting in the same package on disk, referenced zero times across `src`,
+`e2e` and `vite.config.ts`". The second half was measured and true. **The first half I never checked.** I
+confirmed that `web/pdf_viewer.mjs` exists and that *our* code does not import it, and from that inferred
+that the classes it supposedly contains are available. `PDFThumbnailViewer` is not in the published package
+at all.
+
+That is [D-13.1.3] and [D-11.2.4] committed by the orchestrator in the sentence that shaped an owner
+decision: **an absence verified in our tree, and a presence assumed in theirs.** Story 13.6's builder caught
+it at step-02 investigation, before a spec was drafted or a line written, and refused to design against a
+mechanism it could not find.
+
+**Verified independently before I took it back to the owner**, with a positive control so the result could
+not be a false negative: `PDFThumbnailViewer` appears **0** times in `web/pdf_viewer.mjs`; `PDFViewer`
+appears **4** by the same instrument; the bundle's own export statement lists 22 names and no thumbnail
+class. Mozilla ships the thumbnail modules in its repository and excludes them from the components bundle.
+
+**A second blocker, independent of the first.** `src/release-payload.ts:42` sets `maximumCacheAssets = 64`
+and the current built manifest reports `assetCount = 61` — **three free slots**, already past the file's own
+approach-warning threshold of 56. `web/pdf_viewer.css` references 36 unique images and `vite.config.ts:16`
+sets `assetsInlineLimit: 0`, so importing that stylesheet fails the offline release outright — in the story
+whose own AC exists to prevent that.
+
+**The owner's choice: vendor `pdf_thumbnail_viewer.js` and its dependencies from mozilla/pdf.js.** Both I and
+the builder recommended against it — it converts "no new dependency, no new licence" into a third-party fork
+this project hand-maintains against a pinned version. The owner had that recommendation twice over and chose
+otherwise. It is their call and it is made.
+
+**So the objections become acceptance criteria again, as with D-13.6.1.** Provenance recorded and checkable
+against the existing `2-3a-audit-the-vendor-boundary.md` precedent; a version pin asserted by test, because
+pdf.js hard-throws on core/viewer drift; the offline asset bound measured against its three remaining slots;
+and — the one I would not have found by reasoning — a **narrow, justified** exclusion from the AD-17
+authority scan, because `canvas-authority-contract.test.ts:8` walks all of `src` recursively and vendored
+pdf.js measures its own rasterised output. That exclusion is legitimate precisely because pdf.js measures a
+PDF it rendered rather than folio text layout, and it must be written that way rather than as a blanket
+directory exemption.
+
+**Two false premises in Story 13.6's own ACs, both mine, both corrected in `epics.md` rather than left to
+mislead a builder.** "Retire or subordinate `viewer-navigation.ts`" — that file is 108 lines of pure
+arithmetic with no state at all, so it is not a page-state authority; the real one is `previewViewState`, and
+retiring the arithmetic would have deleted ten zoom/fit tests encoding two measured regressions. And "the
+palette is not rendered in Preview" was written as a regression guard when it is real work: the palette
+renders unconditionally at `App.tsx:2261`, and no test in either population asserts otherwise.
+
+**The rule, and it is aimed at me.** An orchestrator's answer to an owner's question is load-bearing in a way
+a subagent's is not, because the owner cannot check it and will not ask twice. Before telling an owner a
+capability exists, run the instrument that would show it missing — and include a positive control, so a
+silent zero cannot pass for a confirmed presence. I did that verification *after* the builder found the
+error. Doing it first was the whole job.
+
+**Related:** [D-13.6.1], [D-13.1.3], [D-11.2.4], [D-000.32], DW-304.
+
