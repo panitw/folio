@@ -11235,3 +11235,107 @@ that never ran, silently, while being cited in a comment as though it had.
 run's uploaded artefact** - not from reading the config, which is precisely the error being corrected here.
 Consider dropping `if-no-files-found: ignore` so a missing report is loud rather than silent.
 
+### DW-298 - `wasm/cmd/engine/main.go` is outside every Go gate, and this story added two fields to it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's step-04 verification-gap layer, confirmed by the builder. **Owner:** unassigned.
+  **Severity:** MEDIUM. **Status:** OPEN.
+
+The file carries `//go:build js && wasm`, so no Go test compiles it. Measured: `go list ./wasm/...` returns
+only `github.com/panitw/folio/folio-go/wasm` - `cmd/engine` is absent. CI runs `go test -count=1 ./...` on
+`ubuntu-24.04`, also linux/amd64, so the exclusion holds there identically. Its sibling `main_test.go`
+carries the same tag and is likewise never executed. The only thing that compiles the file is
+`npm run build:wasm`, which catches a syntax error and not a dropped struct member.
+
+**Proved rather than argued:** dropping `ElapsedMs: rendered.ElapsedMs` from the render response literal
+leaves every Go test, the whole vitest suite and `build:wasm` green; the rail then prints `elapsed 0 ms`
+forever.
+
+**Mitigated, not fixed.** Story 13.3 tightened `e2e/preview-evidence-rail.spec.ts` to require a non-zero
+elapsed, which is now the only executed path through those fields - and it is a browser suite that, under
+D-000.33, runs at the epic boundary rather than per story. See DW-303 for what that mitigation costs.
+
+**What discharges it:** a `GOOS=js GOARCH=wasm go test` step in CI via `go_js_wasm_exec`, which would make
+the existing wasm-tagged `main_test.go` a real suite rather than a compile-only file.
+
+### DW-299 - `crypto.subtle` is secure-context-only, and two features now depend on it unconditionally
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's step-04 review (blind and edge-case layers). **PRE-EXISTING - not caused by this
+  story.** **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`crypto.subtle` is `undefined` outside a secure context - an ordinary plain-`http://` LAN address, which is a
+normal way to serve a local designer. `font-store.ts:182`'s `storedFaceKey` has always assumed it; Story
+13.3's `preview/pdf-digest.ts` is the second consumer, and it sits on the render path, so the failure mode
+widens from "fonts do not cache" to "no preview ever installs", surfacing as a generic local-Preview issue
+with no named cause.
+
+**What discharges it:** an explicit capability probe with a stated reason, the way `selectFileAccess` handles
+the file tiers, rather than a TypeError falling into a generic catch.
+
+### DW-300 - the evidence rail has no live region, so Re-render from the DATA tab announces nothing
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's step-04 review (blind layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+13.3 put Re-render and Save PDF in the rail specifically so they stay reachable with the DATA tab selected
+(DW-281). But pressing Re-render updates the hash, the five render facts and both counts silently: the only
+live region in Preview is `#preview-freshness-status`, in the other pane. A screen-reader user who takes the
+action the story made reachable is told nothing about its result. `App.css` already carries
+`.diagnostic-announcement`, the visually-hidden live-region idiom, so the pattern exists. Same shape as
+DW-277.
+
+### DW-301 - the rail's scroller is not keyboard-reachable
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's step-04 review (blind layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+`.rail-scroll` is `overflow: auto` with no `tabindex`, and the only focusable controls - the two action
+buttons - sit outside it, at the rail's foot. A keyboard-only user can reach the actions but cannot scroll
+the evidence blocks above them to read the hash or the diagnostics. UX-DR25's floor is met for the new
+*controls*, which is what the story's AC required; it is not met for the content. `pdf-viewer.tsx`'s scroll
+host already uses the `tabIndex={0}` remedy.
+
+### DW-302 - copying the digest yields a string broken across two lines
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's step-04 review (blind layer). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+The 64-character digest is rendered as two `<span>` children inside one `<code>` so it can wrap as the design
+draws it. Select-and-copy therefore inserts a line break mid-hash in most browsers, and there is no copy
+control. The whole premise of promoting the hash to a bordered block is that a person compares it against a
+producer's value - and the most likely way to do that is to paste it somewhere. Whitespace-tolerant
+comparison is not something the product can assume of whatever tool the reader uses.
+
+**What discharges it:** a copy control that writes the unbroken 64 characters, or a single selectable text
+node with the wrap done visually.
+
+### DW-303 - the non-zero elapsed guard can red a correct build on a fast enough host
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md`
+- **Found by:** Story 13.3's implementer, agreed by its builder, **registered by the orchestrator** - the
+  builder reported it as a note rather than a deferral and it is too load-bearing to leave in prose.
+  **Owner:** unassigned. **Severity:** LOW today, MEDIUM if a faster CI runner is ever adopted.
+  **Status:** OPEN, ACCEPTED DELIBERATELY.
+
+`e2e/preview-evidence-rail.spec.ts` asserts the rail's elapsed value is non-zero against a 1 ms threshold. It
+measured 22 ms on the authoring machine, 22x the threshold. But `ElapsedMs` is
+`time.Since(...).Milliseconds()`, which **truncates**, so a host fast enough to render a single page in under
+a millisecond reports `0` for a completely correct build and reds the suite.
+
+**This is the inverse of this run's dominant defect** and deserves naming as such. The usual finding is a
+guard that cannot fail when the product is wrong; this is a guard that can fail when the product is right.
+Both are failures of the same property - the assertion is not measuring what it claims to.
+
+**It was kept on purpose and the reasoning holds.** It is the only executed guard on the wasm response hop
+that DW-298 shows no Go test compiles. Removing it would restore a silent gap; loosening it to
+"`elapsedMs` is a number" would pass against the exact mutation it exists to catch, since a dropped field
+yields Go's zero value and `0` is a number. Non-zero is the only separator currently available.
+
+**What discharges it:** close DW-298, then relax this assertion - the wasm-targeted Go test would guard the
+field's presence directly and this spec would no longer need to infer it from a duration. Alternatively,
+report elapsed in microseconds or as a float so a sub-millisecond render is still a non-zero reading.
+
