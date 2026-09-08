@@ -34,7 +34,7 @@ import { isHexColour, swatchColor } from './swatch-color'
 import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand } from './table-style-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
 import { clampPreviewScale, PREVIEW_ZOOM_CHOICES, steppedPreviewScale, typedPreviewPage, typedPreviewZoom } from './preview/viewer-navigation'
-import { canInstallPreview, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, staleCopy } from './preview/freshness'
+import { canInstallPreview, formatRenderAge, freshnessChrome, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, renderAgeTickMs } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
 import { PreviewEvidenceRail } from './preview/evidence-rail'
 import { diagnosticDismissalKey, RENDER_TARGET } from './preview/evidence-rail-facts'
@@ -152,7 +152,17 @@ const scriptsOfSource = (source: FamilySource): ReadonlyArray<string> => {
 // record keeps reporting its own render's numbers while its own PDF is on
 // screen. Reading them off anything current would describe a render the author
 // is not looking at.
-type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number; standIn: boolean; elapsedMs: number; version: string }>
+// STORY 13.5 — `installedAt` OBEYS THAT SAME RULE, and obeying it is the whole
+// of "leave Preview and come back and the age keeps counting from the render".
+// It is the instant THESE bytes were installed, stamped once at the single
+// install site and never re-stamped, so it survives a trip through Design
+// exactly as `elapsedMs` does. A stamp taken on entering Preview would be a
+// fact about the author's navigation, not about the render on screen.
+// The name is `installedAt` rather than anything shorter for a mechanical
+// reason as well: `engine-ownership-contract.test.ts` refuses a type literal
+// carrying two or more of `version`/`page`/`bands`/`elements`/`assets`, and
+// this record already carries `version`.
+type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number; standIn: boolean; elapsedMs: number; version: string; installedAt: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
 export default function App({ engine, fileAccess, sampleFileAccess, imageFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
@@ -220,6 +230,23 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [staleReason, setStaleReason] = useState<'inputs-changed' | 'render-failed'>('inputs-changed')
   const [previewError, setPreviewError] = useState<PreviewFailureRecord>()
   const [previewIssue, setPreviewIssue] = useState<string>()
+  // STORY 13.5 — THE `now` THE AGE IS MEASURED AGAINST, held as state rather
+  // than read during render. `formatRenderAge` is pure and takes
+  // `(installedAt, now)`; this is the `now` it is given, and it is advanced by
+  // the ticking effect below and by nothing else. Reading `Date.now()` inside
+  // the JSX instead would make the render impure and the ladder untestable
+  // without fake timers.
+  //
+  // THE CLOCK IS READ IN EXACTLY THREE PLACES, all of them in this file and all
+  // of them outside render: this initializer, the install stamp in `runPreview`,
+  // and the ticker's own `tick`/mount reads. Population searched: the whole of
+  // `folio-designer/src` with `grep -arn` (so `App.tsx`'s two NUL bytes cannot
+  // hide a fourth); the only other hit anywhere is the vendored Go wasm shim
+  // under `src/generated/runtime`, which is not ours. What is single here is
+  // not the call count but the SOURCE: every age on screen is this one value
+  // minus one stamp, so no two parts of the chrome can be dating the render
+  // against different clocks.
+  const [renderAgeNow, setRenderAgeNow] = useState(() => Date.now())
   const [dismissedDiagnostics, setDismissedDiagnostics] = useState<ReadonlySet<string>>(new Set())
   const [undoAvailable, setUndoAvailable] = useState(initialSnapshot?.canUndo === true)
   const [redoAvailable, setRedoAvailable] = useState(initialSnapshot?.canRedo === true)
@@ -664,7 +691,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         setPreviewStatus('error')
         return
       }
-      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation, standIn: !sample, elapsedMs: result.preview.elapsedMs, version: result.preview.version })
+      installPreview({ bytes: result.bytes.slice(0), revision, identity, digest: result.preview.pdfSha256, diagnostics: result.preview.diagnostics, token, generation, standIn: !sample, elapsedMs: result.preview.elapsedMs, version: result.preview.version, installedAt: Date.now() })
       previewNeedsFreshRender.current = false
       setDismissedDiagnostics(new Set())
       // STORY 13.2 — THE VIEW STATE IS NOT RESET HERE ANY MORE, AND THAT IS THE
@@ -1971,6 +1998,49 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
 
   useEffect(() => () => cancelPreviewWork(), [])
 
+  // STORY 13.5 — THE TICKER, AND THE TWO CONDITIONS THAT FENCE IT.
+  //
+  // The document bar states how long ago the render on screen finished, and a
+  // figure that is true for one instant and false forever after is not what
+  // this story's title claims. So it advances on its own.
+  //
+  // IT MOUNTS ONLY IN PREVIEW, AND ONLY OVER AN INSTALLED RECORD. Both
+  // conditions are folded into `previewInstalledAt` rather than tested
+  // separately in the effect body, so there is ONE expression deciding whether
+  // a live interval exists and Design mode cannot acquire one by a second
+  // route. When it goes `undefined` — leaving Preview, or clearing the preview
+  // — the effect re-runs and its cleanup clears the interval.
+  //
+  // THE PERIOD COMES OFF THE LADDER, NOT OFF A CONSTANT. `renderAgeTickMs` is
+  // the same function `formatRenderAge` shares its tiers with, so a display
+  // printing whole minutes cannot go on repainting ten times a second, and a
+  // display printing milliseconds cannot go a second between repaints. Crossing
+  // a tier re-arms at the new period, which is why this is a rescheduling
+  // interval and not one fixed `setInterval`.
+  const previewInstalledAt = mode === 'preview' ? preview?.installedAt : undefined
+  useEffect(() => {
+    if (previewInstalledAt === undefined) return
+    const installedAt = previewInstalledAt
+    let handle: ReturnType<typeof setInterval> | undefined
+    let period = 0
+    function arm(now: number): void {
+      const next = renderAgeTickMs(installedAt, now)
+      if (next === period) return
+      if (handle !== undefined) clearInterval(handle)
+      period = next
+      handle = setInterval(tick, next)
+    }
+    function tick(): void {
+      const now = Date.now()
+      setRenderAgeNow(now)
+      arm(now)
+    }
+    const started = Date.now()
+    setRenderAgeNow(started)
+    arm(started)
+    return () => { if (handle !== undefined) clearInterval(handle) }
+  }, [previewInstalledAt])
+
   if (loadState && !engine) {
     if (engineMayStart(loadState) && engineState !== 'failed') return <main className="engine-starting" aria-label="Engine preparation"><p role="status" aria-live="polite" aria-label="Engine preparation status">Starting local engine</p></main>
     return <LoadScreen lifecycle={loadState} payload={payload} engineState={engineState} onRetry={onRetry} />
@@ -2014,6 +2084,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }))
   const currentDiagnostics = previewStatus === 'current' && mode === 'preview' && preview?.revision === snapshot?.revision ? preview : undefined
   const currentFailure = previewError && ['error', 'stale'].includes(previewStatus) && mode === 'preview' && previewError.revision === snapshot?.revision ? previewError : undefined
+  // STORY 13.5 — ONE CALL, TWO RENDERINGS. The document bar's token and the
+  // preview heading's status line are the same fact said at two lengths, and
+  // they used to be two independent expressions in this file. `freshnessChrome`
+  // returns both from one switch, so they cannot disagree; no call site here
+  // may build either string itself.
+  const previewChrome = freshnessChrome({ status: previewStatus, staleReason, standIn: noDataPreview, hasRecord: preview !== undefined, issue: previewIssue, failureMessage: currentFailure?.error.message })
+  // `no render yet` IS THE HONEST READING BEFORE THE FIRST RENDER: with no
+  // record there is no instant to count from, so the bar states the absence
+  // instead of an age of zero. The token is never `undefined` while a record
+  // exists, and the guard says so rather than trusting that.
+  const renderFreshness = preview && previewChrome.token ? `rendered ${formatRenderAge(preview.installedAt, renderAgeNow)} · ${previewChrome.token}` : 'no render yet'
   const engineLabel = initializationError ? 'ENGINE UNAVAILABLE' : snapshot ? `GO SNAPSHOT · REVISION ${snapshot.revision}` : 'ENGINE STARTING'
   const offlineLabel = import.meta.env.DEV && offlineState === 'dev-bypass' ? 'Offline layer bypassed (dev)' : offlineState === 'ready' ? 'Offline ready' : offlineState === 'checking' ? 'Offline cache checking' : offlineState === 'update-available' ? 'Update available; current release remains usable' : 'Offline cache unavailable'
   const dirty = !snapshot || savedRevision === undefined || snapshot.revision !== savedRevision
@@ -2160,7 +2241,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
       <div className="document-actions" aria-label="Local file actions"><button className="icon-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template"><Icon name="open" /></button><button className="icon-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}><Icon name="save" /></button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
-      <span className="later-control" aria-label="Current page setup">{canvas ? `${canvas.preset} · ${canvas.orientation}` : 'Page setup unavailable'}</span>
+      {/* STORY 13.5 — THE SLOT SAYS SOMETHING ABOUT WHAT IS ON SCREEN.
+          In Design that is the page setup; in Preview the page setup is a fact
+          about a template nobody is looking at, and the render's own freshness
+          is the fact the frame owes the author.
+
+          NO `role="status"`, NO `aria-live`, and no `title` or
+          `aria-describedby` either. Every neighbour in this bar is a live
+          region and copying one here would announce the age on every tick —
+          once a second, then once a minute, forever. The two ARIA associations
+          are refused because no acceptance criterion asks for either and a
+          cross-region association fails silently the moment either end moves. */}
+      {mode === 'preview'
+        ? <span className="later-control" aria-label="Render freshness">{renderFreshness}</span>
+        : <span className="later-control" aria-label="Current page setup">{canvas ? `${canvas.preset} · ${canvas.orientation}` : 'Page setup unavailable'}</span>}
       <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
     </header>
     <div className="workbench" id="future-features">
@@ -2185,7 +2279,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
-      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{noDataPreview ? 'NO-DATA LAYOUT PREVIEW' : previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p><button type="button" className="file-button" onClick={returnToDesign}>{['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Cancel and return to Design' : 'Return to Design'}</button></div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewStatus === 'current' ? (noDataPreview ? 'Current no-data layout PDF' : 'Current exact local PDF') : previewStatus === 'stale' ? `${staleCopy(staleReason)}${currentFailure ? `; local PDF render failed: ${currentFailure.error.message}` : previewIssue ? `; ${previewIssue}` : ''}` : ['checking', 'debouncing', 'rendering'].includes(previewStatus) ? 'Rendering local PDF' : previewStatus === 'error' ? `Local Preview work failed${previewIssue ? `: ${previewIssue}` : currentFailure ? `: ${currentFailure.error.message}` : ''}` : 'Preview is waiting for local inputs'}</p>{standInNotice && <div className="preview-standin-notice" role="note" aria-label="No-data preview notice" tabIndex={0}><span className="preview-standin-marker" aria-hidden="true">▲</span><div><p>No sample data is loaded. Every path this page reads from report data holds a stand-in value: bound text renders empty, numbers render zero, dates render 2024-01-15, and every collection is empty. This page is not production output.</p>{conditionalContent && <p>Conditional content may be present or absent: this template fabricates at least one condition, and each was resolved from a stand-in because there was no data to evaluate it against.</p>}<p>Parameters are excluded from this: params.* still resolves from Preview inputs, and an absent parameter still fails the render.</p></div></div>}{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus !== 'current' ? `Stale historical PDF, revision ${preview.revision}` : preview.standIn ? `Current no-data layout PDF, revision ${preview.revision}` : `Current exact local production PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} components={admittedPreview(currentDiagnostics) ? canvas?.components : undefined} />}</>}{/* STORY 13.3 — THE DIGEST LEFT THIS LINE AND BECAME THE RAIL'S OWN BLOCK.
+      </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{noDataPreview ? 'NO-DATA LAYOUT PREVIEW' : previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p>{/* STORY 13.5 — THE SECOND WAY BACK TO DESIGN IS GONE. The document
+        bar's DESIGN button calls `returnToDesign`, the SAME reference this
+        button called, so the ability to abandon a render in flight — token
+        bumped, controller aborted, debounce cleared, scheduler cleared — is
+        unchanged; what is gone is a second mode control where the design draws
+        one. The failure card's own `Return to Design` is a DIFFERENT control
+        with the same name and stays exactly where it is. */}</div><p id="preview-freshness-status" className="preview-status" role="status" aria-live="polite" aria-atomic="true">{previewChrome.statusLine}</p>{standInNotice && <div className="preview-standin-notice" role="note" aria-label="No-data preview notice" tabIndex={0}><span className="preview-standin-marker" aria-hidden="true">▲</span><div><p>No sample data is loaded. Every path this page reads from report data holds a stand-in value: bound text renders empty, numbers render zero, dates render 2024-01-15, and every collection is empty. This page is not production output.</p>{conditionalContent && <p>Conditional content may be present or absent: this template fabricates at least one condition, and each was resolved from a stand-in because there was no data to evaluate it against.</p>}<p>Parameters are excluded from this: params.* still resolves from Preview inputs, and an absent parameter still fails the render.</p></div></div>}{currentFailure && <PreviewFailure error={currentFailure.error} onRetry={() => retryFromFailure(currentFailure)} onReturn={() => returnFromFailure(currentFailure)} />}{preview && <><PDFPreviewViewer bytes={preview.bytes} label={previewStatus !== 'current' ? `Stale historical PDF, revision ${preview.revision}` : preview.standIn ? `Current no-data layout PDF, revision ${preview.revision}` : `Current exact local production PDF, revision ${preview.revision}`} describedBy="preview-freshness-status" state={previewViewState} onStateChange={changePreviewViewState} onError={(error) => viewerError(preview.token, error)} onPageCount={(pages) => viewerPages(preview.token, pages)} />{currentDiagnostics && <PreviewDiagnostics diagnostics={currentDiagnostics.diagnostics} dismissed={dismissedDiagnostics} onDismiss={(key) => setDismissedDiagnostics((current) => new Set([...current, key]))} onLocate={(location) => locateDiagnostic(currentDiagnostics, location)} components={admittedPreview(currentDiagnostics) ? canvas?.components : undefined} />}</>}{/* STORY 13.3 — THE DIGEST LEFT THIS LINE AND BECAME THE RAIL'S OWN BLOCK.
         A grey footnote nobody can read a hash off is not evidence, and two
         copies of one digest on one screen is two things that can disagree.
         `Stand-in local digest` / `Historical producer digest` and the retained
@@ -2251,7 +2351,42 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         which is placeholder data rather than a specification. No grid reading,
         no snap state and no selection content is added: those are three more
         claims about the canvas, and this story is not the place to make them. */}
-    <footer className="status-bar" aria-label="Status bar"><span>LOCAL SHELL</span><code data-testid="engine-snapshot">{engineLabel}</code>{mode === 'preview' && previewNavigation}<span className="status-spacer" />{canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status">{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code></footer>
+    {/* STORY 13.5 — IN PREVIEW THE BAR STATES THE PRODUCT'S STANDING PROMISE,
+        and it pays for the room by dropping exactly two Design-mode items.
+        `LOCAL SHELL` goes because the assurance line says in words what that
+        shorthand says in two; the template font count goes because it is a fact
+        about the TEMPLATE and not about the render, and in Preview the frame
+        should be describing the render. It is not relocated and nothing else
+        carries it: the evidence rail states engine, target, pages, elapsed,
+        size, the output hash and the diagnostics, and NO font fact at all
+        (population searched: `preview/evidence-rail.tsx` and
+        `preview/evidence-rail-facts.ts` entire, `grep -ain font` — zero hits).
+        The count is simply not shown in Preview, and it returns the moment the
+        author is back in Design, where it is about the thing on screen.
+        NOTHING ELSE IS DROPPED: `engine-snapshot`, the offline live region and
+        `PREVIEW MODE` all stay, and DESIGN MODE'S BAR IS UNTOUCHED — every
+        fence here is on `mode`, so none of it can leak out of Preview.
+
+        THE OFFLINE LIVE REGION IS VISUALLY HIDDEN IN PREVIEW, NOT REMOVED.
+        `.sr-only` (`App.css:7`, and this is its first use anywhere) takes it
+        out of the painted bar while `role="status"`, `aria-live="polite"`, its
+        label, its testid and its full announcement text are every one of them
+        untouched — so a screen reader still receives all five `offlineLabel`
+        states, including 'Update available; current release remains usable' and
+        'Offline cache unavailable', which can arrive while an author sits in
+        Preview. Because `.sr-only` is `position: absolute` the span stops being
+        a flex item, so it contributes neither width nor a `gap`, and the bar's
+        spare room stops varying by the 24 characters that separate the longest
+        offline label from the shortest. In Design the span carries no class at
+        all and renders exactly as it always has.
+
+        THE ASSURANCE IS NON-INTERACTIVE AND LAST. Non-interactive because the
+        bar's `button, input, select` set is pinned exhaustively by name; last
+        because that is where the design puts it, and because it makes the
+        overflow assertion in `e2e/preview-navigation.spec.ts` mean something:
+        if the bar ever stops fitting, this is the element pushed past the
+        bar's right edge. */}
+    <footer className="status-bar" aria-label="Status bar">{mode === 'design' && <span>LOCAL SHELL</span>}<code data-testid="engine-snapshot">{engineLabel}</code>{mode === 'preview' && previewNavigation}<span className="status-spacer" />{mode === 'design' && canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status" className={mode === 'preview' ? 'sr-only' : undefined}>{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code>{mode === 'preview' && <span data-testid="local-only-assurance">no network · nothing left this machine</span>}</footer>
   </div>
 }
 

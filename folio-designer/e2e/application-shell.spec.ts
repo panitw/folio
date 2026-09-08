@@ -38,12 +38,22 @@ test('Preview renders local identity evidence and marks an edited last-good PDF 
   await expect(page.getByLabel('Preview region')).toBeVisible()
   await expect(page.getByLabel('Canvas region')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'Raw parameter JSON' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /return to design/i })).toBeVisible()
+  // STORY 13.5 — THE EXISTENCE CONTRACT RETIRED, IN THE OTHER DIRECTION. This
+  // line used to assert the preview heading's own Return-to-Design button was
+  // visible. That was a SECOND mode control beside the document bar's switch,
+  // where the design draws one, and it is gone; asserting its ABSENCE is what
+  // keeps the removal from being quietly undone. `count(0)` is over the whole
+  // page, so it also witnesses that no failure card is up — the failure card's
+  // identically-named button is a different control and stays.
+  await expect(page.getByRole('button', { name: /return to design/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'DESIGN' })).toBeVisible()
   await expect(page.locator('#preview-freshness-status')).toHaveText('Current exact local PDF')
   await page.getByRole('textbox', { name: 'Raw parameter JSON' }).fill('{"preview":"changed"}')
   await expect(page.locator('#preview-freshness-status')).toContainText('STALE — inputs changed')
   await expect(page.getByRole('region', { name: /Stale historical PDF|Current exact local production PDF/ })).toBeVisible()
-  await page.getByRole('button', { name: 'Return to Design' }).click()
+  // Driven from the surviving control: the mode switch calls the same
+  // `returnToDesign` the removed button called.
+  await page.getByRole('button', { name: 'DESIGN' }).click()
   await expect(page.getByLabel('Canvas region')).toBeVisible()
 })
 

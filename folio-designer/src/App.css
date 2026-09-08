@@ -430,7 +430,21 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .table-editor-header output { color: var(--color-ink); font: var(--type-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-editor-header :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .table-matrix { display: grid; min-width: 1320px; gap: var(--space-2); overflow-x: auto; }.matrix-header, .matrix-row { display: grid; grid-template-columns: minmax(150px, 2fr) minmax(96px, 1fr) minmax(130px, 1fr) minmax(170px, 2fr) minmax(100px, 1fr) minmax(170px, 2fr) minmax(140px, 1fr) minmax(72px, auto) minmax(72px, auto) minmax(80px, auto) minmax(94px, auto); gap: var(--space-2); align-items: end; padding: var(--space-3); border-left: 2px solid var(--color-line); background: var(--color-raised); }.matrix-header { align-items: center; color: var(--color-ink); font: var(--type-label); letter-spacing: var(--tracking-label); }.matrix-row[aria-selected="true"] { border-left-color: var(--color-select); background: var(--color-select-fill); }.matrix-row label { margin: 0; }.matrix-row output { display: block; overflow: hidden; color: var(--color-ink); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }.matrix-row button { min-height: 28px; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-mono); }.matrix-actions { display: flex; gap: var(--space-1); }.matrix-row :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
-.status-bar { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5); border-top: var(--hairline) solid var(--color-line); background: var(--color-panel); color: var(--color-ink); font: var(--type-mono); }
+/* STORY 13.5 — `white-space: nowrap` HERE IS LOAD-BEARING RATHER THAN
+   COSMETIC. A flex row that is allowed to wrap absorbs an overfull bar by
+   growing TALLER, which the fixed 32px Preview grid track then clips — the bar
+   would look fine while the standing local-only assurance was cut in half.
+   Held on one line, an overfull bar overflows HORIZONTALLY instead, which is
+   the failure `e2e/preview-navigation.spec.ts`'s viewport-relative geometry
+   assertion can actually see.
+
+   AND THE ASSURANCE LINE TAKES NO COLOUR OF ITS OWN. It inherits this rule's
+   `color: var(--color-ink)` over `background: var(--color-panel)` — the pairing
+   `design-contract.test.ts` already enforces above the contrast floor. An
+   earlier draft dimmed it with `--color-ink-ghost`, which sits under the WCAG
+   AA floor on this background; the fix was to delete the override, not to
+   swap one dim token for another. */
+.status-bar { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5); border-top: var(--hairline) solid var(--color-line); background: var(--color-panel); color: var(--color-ink); font: var(--type-mono); white-space: nowrap; }
 .status-bar code { color: var(--color-ink); font: inherit; }
 .status-spacer { flex: 1; }
 /* STORY 13.2 — THE PAGE STEPPER AND THE ZOOM, IN THE BAR THE DESIGN PUTS THEM

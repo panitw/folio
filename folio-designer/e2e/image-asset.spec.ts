@@ -133,7 +133,10 @@ test('the File System Access tier sets a local image through one committed comma
   // Preview: the canvas region is replaced and comes back without a crash.
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   await expect(page.getByLabel('Canvas region')).toHaveCount(0)
-  await page.getByRole('button', { name: /return to design/i }).click()
+  // STORY 13.5 — the preview heading's Return-to-Design button was removed; the
+  // document bar's mode switch is the same `returnToDesign` and the only
+  // in-page exit that remains.
+  await page.getByRole('button', { name: 'DESIGN' }).click()
   await expect(page.getByLabel('Canvas region')).toBeVisible()
 
   // Save writes canonical bytes carrying the new asset under its real

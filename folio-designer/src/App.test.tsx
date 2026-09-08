@@ -677,7 +677,11 @@ describe('application shell', () => {
     expect(screen.queryByLabelText('Canvas region')).not.toBeInTheDocument()
     expect(screen.getByText('Rendering local PDF')).toBeInTheDocument()
     await waitFor(() => expect(request).toHaveBeenCalledWith('serialize', undefined, expect.any(AbortSignal)))
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel and return to Design' }))
+    // STORY 13.5 — DRIVEN FROM THE MODE SWITCH, WHICH IS NOW THE ONLY ONE.
+    // The preview heading's second Return-to-Design button was removed; the
+    // document bar's DESIGN button carries the SAME `returnToDesign` reference,
+    // so what this row proves about cancellation is unchanged.
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     releaseSerialize({ snapshot: snapshot(1), bytes })
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.queryByText(/Go production digest/)).not.toBeInTheDocument()
@@ -705,10 +709,15 @@ describe('application shell', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[1]}' } })
       fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[2]}' } })
       fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
-      await vi.runAllTimersAsync()
+      // STORY 13.5 — ADVANCED BY A BOUND, NOT DRAINED. Preview now holds a
+      // ticking interval that re-arms itself while a render is installed, and
+      // `runAllTimersAsync` drains until the queue is EMPTY: against a timer
+      // that schedules its own successor that is a loop with no end. A bound
+      // well past the 250 ms debounce settles everything this row is about.
+      await vi.advanceTimersByTimeAsync(2000)
       expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
       releaseIdentity()
-      await vi.runAllTimersAsync()
+      await vi.advanceTimersByTimeAsync(2000)
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
       expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(2)
     } finally {
@@ -963,7 +972,11 @@ describe('application shell', () => {
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel and return to Design' }))
+    // STORY 13.5 — DRIVEN FROM THE MODE SWITCH, WHICH IS NOW THE ONLY ONE.
+    // The preview heading's second Return-to-Design button was removed; the
+    // document bar's DESIGN button carries the SAME `returnToDesign` reference,
+    // so what this row proves about cancellation is unchanged.
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     rejectRender(Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.queryByLabelText('Local render failure')).not.toBeInTheDocument()
@@ -6482,7 +6495,11 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     // in place through the retained handle with no third picker.
     expect(screen.getByText('held.folio')).toBeInTheDocument()
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
+    // STORY 13.5 — THE MODE SWITCH. There is no failure card on screen in this
+    // row, so the `Return to Design` this used to press was the preview
+    // heading's, which is gone; the surviving control with that exact name
+    // belongs to the failure card and is a different button.
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
     await waitFor(() => expect(templateWrites).toHaveLength(2))
     expect(showSaveFilePicker).toHaveBeenCalledTimes(2)
@@ -6597,7 +6614,11 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     // author's next plain Save, which would then open a picker instead of
     // writing the file they already named — so the surviving handle is asserted
     // by taking that next Save and reading the request it produced.
-    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
+    // STORY 13.5 — THE MODE SWITCH. There is no failure card on screen in this
+    // row, so the `Return to Design` this used to press was the preview
+    // heading's, which is gone; the surviving control with that exact name
+    // belongs to the failure card and is a different button.
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
     await waitFor(() => expect(requests).toHaveLength(3))
     expect(requests[2]).toEqual({ suggestedName: 'held.folio', currentTarget: heldTarget, saveAs: false, format: folioFileFormat })
@@ -6807,6 +6828,35 @@ describe('preview with no sample data', () => {
     // UX-DR25: the notice is labelled and keyboard-reachable, and App.css
     // gives it the shell's ordinary `:focus-visible` outline.
     expect(screen.getByRole('note', { name: 'No-data preview notice' })).toHaveAttribute('tabindex', '0')
+  })
+
+  // MATRIX ROW "No-data render" — THE BAR'S HEAD WORD IS A FRESHNESS CLAIM AND
+  // NEVER AN EXACTNESS CLAIM, asserted at the app rather than at the pure
+  // function, which is where the only coverage was.
+  //
+  // The temptation this row exists to forbid is real and it looks like care:
+  // the screen is being scrupulous about exactness everywhere else on it, so
+  // suppressing the token or narrowing it to something like `stand-in` reads
+  // like more honesty. It is not. The bar answers HOW OLD, and a no-data render
+  // that is current is exactly as current as any other. Story 13.4's exactness
+  // disclosure stays where 13.4 put it, and this test pins all three of those
+  // places alongside the token so the token cannot quietly take over their job.
+  it('reads current in the bar for a no-data render while every exactness withholding stays where 13.4 put it', async () => {
+    const { request, loaded } = noDataEngine()
+    render(<App engine={engine(request)} initialSnapshot={loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current no-data layout PDF/ })).toBeInTheDocument())
+
+    // THE HEAD WORD IS `current`, WHOLE AND UNQUALIFIED — no suppression, no
+    // second disclosure smuggled into the frame.
+    expect(freshnessText()).toMatch(FRESH_CURRENT)
+    expect(screen.getByLabelText('Render freshness').textContent).not.toMatch(/stand|no-data|layout|exact/i)
+    // AND THE THREE PLACES THAT DO CARRY THE EXACTNESS CLAIM STILL CARRY IT.
+    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Current no-data layout PDF')
+    expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
   })
 
   it('names the fabricated condition only when the template declares one', async () => {
@@ -7079,17 +7129,26 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('100%')
   })
 
-  // THE BAR GAINED THE NAVIGATION; IT GAVE UP NOTHING. Every item it carried
-  // before this story is still in it, in Preview, beside the new controls.
-  it('adds the navigation to the status bar without displacing what the bar already carried', async () => {
+  // THE BAR GAINED THE NAVIGATION, AND STORY 13.5 PRICED IT. Until 13.5 this
+  // row read "it gave up nothing". The assurance line needs room the bar does
+  // not have, so Preview now drops exactly two items — and the row that used to
+  // assert "nothing moved" is the right place to say precisely WHICH two, and
+  // that the other three did not go with them.
+  it('keeps the snapshot, the offline region and the mode beside the navigation, having dropped exactly two items', async () => {
     await showNavigablePreview()
     const bar = screen.getByLabelText('Status bar')
-    expect(within(bar).getByText('LOCAL SHELL')).toBeInTheDocument()
     expect(within(bar).getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 1')
-    expect(within(bar).getByTestId('template-font-count')).toHaveTextContent('2 fonts in template')
     expect(within(bar).getByTestId('offline-status')).toBeInTheDocument()
     expect(within(bar).getByText('PREVIEW MODE')).toBeInTheDocument()
     expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeInTheDocument()
+    // THE TWO THAT WENT, and nothing else. `offline-status` in particular stays
+    // — it is a live region with five states, two of which ('Update available',
+    // 'Offline cache unavailable') can arrive while an author sits in Preview.
+    // In Preview it is VISUALLY hidden with `.sr-only` and nothing more; the
+    // node, its role, its name and its text are all still here, which is why
+    // this row still finds it. That pair of claims has its own test below.
+    expect(within(bar).queryByText('LOCAL SHELL')).toBeNull()
+    expect(within(bar).queryByTestId('template-font-count')).toBeNull()
   })
 
   it('reaches every control in bar order and moves the page from the keyboard alone', async () => {
@@ -7562,7 +7621,7 @@ describe('Story 13.3: the preview screen is the evidence screen', () => {
       // THE AUTHOR LEAVES, which is what `current()` reads: `cancelPreviewWork`
       // advances the request token and aborts the controller, and the mode ref
       // moves to design.
-      fireEvent.click(screen.getByRole('button', { name: /return to Design/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
       await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
 
       // Now let the digest resolve, into a world its caller has already left.
@@ -7603,6 +7662,517 @@ describe('Story 13.3: the preview screen is the evidence screen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'INPUTS' }))
     expect(screen.getByText('PREVIEW INPUTS')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Re-render' })).toBeInTheDocument()
+  })
+})
+
+// STORY 13.5 — THE CHROME AROUND THE PREVIEW.
+//
+// Two claims, and they are different claims: the frame states the render's own
+// freshness (the document bar), and the application states its standing promise
+// (the status bar). The first ticks; the second never changes.
+//
+// THE CLOCK IS FAKE IN EVERY TICKING ROW AND FROZEN WHILE THE PREVIEW IS BUILT.
+// `advanceTimersByTimeAsync(0)` yields a real macrotask WITHOUT moving the
+// clock, which is what lets the browser-side digest (a thread-pool promise, not
+// a microtask) resolve at a known instant — so `installedAt` is a number this
+// file knows, and every age below is asserted exactly rather than by pattern.
+//
+// TWELVE PASSES, AND THE HELPER PROVES THEY WERE ENOUGH RATHER THAN ASSUMING
+// IT. Ten tests below rest on this drain, and a bare loop over a magic count is
+// load-bearing in exactly the way that fails silently: let the preview pipeline
+// grow past the count and the last state update lands AFTER the helper returns,
+// so every age assertion after it reads a bar one step behind — green, wrong,
+// and about nothing. So the helper watches the document across its own passes
+// and records the last pass that changed it; if the chain ever grows to within
+// `SETTLE_MARGIN` of the cap, this fails loudly and names the number it
+// reached.
+//
+// EACH PASS IS ITS OWN `act`, WHICH IS WHAT MAKES THE DOCUMENT READABLE AT ALL.
+// With one `act` wrapped around the whole loop, React commits nothing until the
+// scope exits, so the markup is identical on every pass and the guard reads
+// `-1` forever — an assertion that cannot fail, which is the defect it was
+// written to remove. Measured with one `act` per pass: every settle in this
+// block lands its change on pass 0 and the remaining eleven are quiet, so the
+// margin here is real headroom and not a hopeful constant.
+//
+// A settle in which NOTHING changes is legitimate and stays legitimate (the
+// cancellation row drains a result that must never reach the screen), which is
+// why the claim is about the margin and not about a change having happened.
+const SETTLE_PASSES = 12
+const SETTLE_MARGIN = 3
+const settleFrozen = async () => {
+  let markup = document.body.innerHTML
+  let lastChange = -1
+  for (let step = 0; step < SETTLE_PASSES; step += 1) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    const next = document.body.innerHTML
+    if (next !== markup) { lastChange = step; markup = next }
+  }
+  expect(lastChange).toBeLessThan(SETTLE_PASSES - SETTLE_MARGIN)
+}
+// THE FIGURE'S SHAPE, TIER-AGNOSTIC ON PURPOSE. The three real-timer rows below
+// assert this rather than a `ms`-only pattern: they run on the wall clock, and
+// the age they read is however long the render, the digest and jsdom actually
+// took. Pinning `ms` pinned a measurement of the machine — and it degraded in
+// one direction only, because the age never shrinks: once a slow run crossed
+// the 1000 ms boundary the `waitFor` form could never match again and would
+// burn its whole timeout. What these rows are for survives intact: the head
+// word, the `rendered … ago · <token>` shape, and the fact that the slot is the
+// render's and not the page setup's. The EXACT ages are pinned where they can
+// be — under the frozen clock, in `the age advances on its own`.
+const FRESH_CURRENT = /^rendered \d+ (ms|s) ago · current$/
+const freshnessText = () => screen.getByLabelText('Render freshness').textContent
+const elapsedFigure = () => within(screen.getByLabelText('Render facts')).getByText('elapsed').nextElementSibling?.textContent
+
+describe('Story 13.5: the chrome tells the truth about the preview', () => {
+  // DESIGN MODE'S DOCUMENT BAR, ASSERTED FOR THE FIRST TIME. The page-setup slot
+  // had no test at all before this story, which meant a Preview-only swap could
+  // have taken Design's reading with it and nothing would have gone red.
+  it('states the page setup in Design and says nothing about a render there', () => {
+    render(<App engine={engine(previewRequest())} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    expect(screen.getByLabelText('Current page setup')).toHaveTextContent('A4 · portrait')
+    expect(screen.queryByLabelText('Render freshness')).toBeNull()
+  })
+
+  it('names the absent page setup rather than an empty slot', () => {
+    render(<App engine={engine(previewRequest())} initialSnapshot={{ documentState: 'loaded' as const, revision: 1, byteLength: 3 }} />)
+    expect(screen.getByLabelText('Current page setup')).toHaveTextContent('Page setup unavailable')
+  })
+
+  // THE SLOT SWAPS, AND WHAT IT SWAPS TO IS THE RENDER'S OWN FRESHNESS. The page
+  // setup is a fact about a template nobody is looking at in Preview.
+  it('replaces the page setup with the render freshness in Preview', async () => {
+    await showRenderedPreview(previewRequest())
+    expect(screen.queryByLabelText('Current page setup')).toBeNull()
+    expect(freshnessText()).toMatch(FRESH_CURRENT)
+  })
+
+  // NOT A LIVE REGION, AND THAT IS A DECISION RATHER THAN AN OMISSION. Every
+  // neighbour in this bar is one — `status-copy`, and the status bar's own
+  // offline element — so copying a neighbour here is the obvious mistake, and it
+  // would announce the age to a screen-reader user once a second, then once a
+  // minute, for as long as the preview is open. The two ARIA associations are
+  // refused for a separate reason: nothing asks for them, and a cross-region
+  // association breaks silently when either end moves.
+  it('keeps the ticking figure out of the accessibility live region entirely', async () => {
+    await showRenderedPreview(previewRequest())
+    const slot = screen.getByLabelText('Render freshness')
+    for (const attribute of ['role', 'aria-live', 'aria-atomic', 'title', 'aria-describedby']) expect(slot).not.toHaveAttribute(attribute)
+  })
+
+  // NO RECORD, NO AGE. Before the first render there is no instant to count
+  // from, and the bar says so rather than printing an age of zero for a render
+  // that has not happened.
+  it('reads no render yet while the first render is still in flight', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return new Promise<never>(() => undefined)
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(1))
+    expect(freshnessText()).toBe('no render yet')
+    expect(screen.getByText('Rendering local PDF')).toBeInTheDocument()
+  })
+
+  // MATRIX ROW "Idle, no record" — AND THE FIRST QUESTION WAS WHETHER THE APP
+  // CAN EVEN BE IN IT, because a contrived mount that reaches an unreachable
+  // state proves nothing about the product.
+  //
+  // IT IS REACHABLE, by one route, and the route is synchronous-then-awaited.
+  // `startBlank` (`App.tsx:1838`) and `open` (`App.tsx:1789`) both call
+  // `invalidatePreview(true)` before their first `await`; that clears the
+  // record and sets `idle` (`App.tsx:589-593`) and it does NOT touch `mode`.
+  // So an author who starts a blank template from inside Preview sits in
+  // Preview / `idle` / no record for as long as the engine's `load` takes to
+  // answer, with the document bar on screen the whole time. Held open here, the
+  // window is a state to stand in rather than a race to win.
+  it('reads no render yet in Preview once the record is cleared and nothing has replaced it', async () => {
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+      if (operation === 'load') return new Promise<never>(() => undefined)
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} initialSampleData={sample} blankBytes={new Uint8Array([7]).buffer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    // THE PRECONDITION, ASSERTED: there is a dated render on the bar first, so
+    // its disappearance below is a transition rather than a fixture that never
+    // had one.
+    await waitFor(() => expect(freshnessText()).toMatch(FRESH_CURRENT))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'load')).toBe(true))
+    expect(screen.queryByTestId('pdf-viewer-state')).toBeNull()
+    expect(freshnessText()).toBe('no render yet')
+    // AND THE SLOT IS STILL THE RENDER'S. Falling back to the page setup when
+    // there is no record would be a plausible reading of "the bar has nothing
+    // to say about a render" and it is the wrong one: the author is looking at
+    // Preview, and the page setup is a fact about a template nobody is looking
+    // at. Nothing else in the suite forbids that fallback.
+    expect(screen.queryByLabelText('Current page setup')).toBeNull()
+    expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Preview is waiting for local inputs')
+  })
+
+  describe('the age advances on its own', () => {
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    // Built at a frozen clock so `installedAt` is the instant this helper
+    // returns at, and every age below is measured from zero.
+    const previewAtZero = async (request = previewRequest()) => {
+      render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      await settleFrozen()
+      fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+      await settleFrozen()
+      expect(freshnessText()).toBe('rendered 0 ms ago · current')
+      return request
+    }
+
+    // A render that is honest FIRST and dishonest SECOND, so the second pass
+    // arrives over a record the first pass installed. `renders === 1` decides
+    // which digest is reported, and only the digest differs: the bytes are the
+    // same fixture both times, so nothing but the mismatch can explain the
+    // refusal.
+    const secondRenderCorrupted = () => {
+      let renders = 0
+      return vi.fn(async (operation: string) => {
+        if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+        if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+        if (operation === 'render') {
+          renders++
+          return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: renders === 1 ? exportedPdfDigest : replacementPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+        }
+        return { snapshot: snapshot(1) }
+      })
+    }
+
+    // MATRIX ROW "Inputs changed" — AND THE AGE IS PINNED, NOT PATTERNED.
+    //
+    // This row previously asserted `/^rendered \d+ ms ago · stale$/`, and `\d+`
+    // is satisfied by ZERO: a bar that dated a stale record from the moment the
+    // inputs changed rather than from the render — which is the whole thing the
+    // stamp exists to prevent — kept that row green. Under the frozen clock the
+    // figure is a number this file chose, so the assertion is about the
+    // render's own stamp and not merely about the shape of the string.
+    it('moves the bar and the status line together when the inputs change, still counting from the render', async () => {
+      await previewAtZero()
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
+      expect(freshnessText()).toBe('rendered 4 s ago · current')
+      expect(screen.getByText('Current exact local PDF')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: 'INPUTS' }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"changed":1}' } })
+      // No clock movement at all — only the queued work is drained — so the
+      // debounced re-render cannot fire and the record under the bar is still
+      // the one installed four seconds ago.
+      await settleFrozen()
+      expect(screen.getByText('STALE — inputs changed')).toBeInTheDocument()
+      expect(freshnessText()).toBe('rendered 4 s ago · stale')
+    })
+
+    // MATRIX ROW "Digest mismatch over a good preview", AT THE APP AND NOT AT
+    // THE PURE FUNCTION.
+    //
+    // `freshness.test.ts` covers this row by PASSING `hasRecord: true` in as an
+    // argument, so it never reaches the expression in `App.tsx` that decides
+    // whether a record exists. Measured: rewriting that call site's
+    // `hasRecord: preview !== undefined` as
+    // `hasRecord: previewStatus !== 'error' && preview !== undefined` makes the
+    // bar read `no render yet` over a preview that is still on screen, and the
+    // whole suite stayed green. This row is the witness of that decision.
+    //
+    // A digest mismatch NEITHER INSTALLS NOR CLEARS, which is what makes the
+    // state expressible: the refused render leaves the earlier record on
+    // screen, so the bar has a render to date and must go on dating it while
+    // refusing to affirm it.
+    it('keeps dating the surviving record and refuses to affirm it when a re-render is refused for corruption', async () => {
+      await previewAtZero(secondRenderCorrupted() as never)
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+      expect(freshnessText()).toBe('rendered 3 s ago · current')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
+      await settleFrozen()
+      expect(document.getElementById('preview-freshness-status')).toHaveTextContent('does not match the digest the engine reported')
+      // THE PRECONDITION THE ROW RESTS ON: a record really did survive the
+      // refusal, so `no render yet` would be a false reading rather than a
+      // defensible one.
+      expect(screen.getByTestId('pdf-viewer-state')).toBeInTheDocument()
+      // NEITHER `no render yet` NOR `current`. The bar dates the bytes it is
+      // showing and calls them stale, because the app has just refused them.
+      expect(freshnessText()).toBe('rendered 3 s ago · stale')
+    })
+
+    // MATRIX ROW "Render failed" — A DIFFERENT ROW, AND IT HAD NO APP-LEVEL
+    // WITNESS AT ALL. Population searched: `src/` and `e2e/` entire, with
+    // `grep -ran` (so `App.tsx`'s two NUL bytes cannot hide a hit).
+    // `STALE — latest local render failed` appeared in exactly two places,
+    // `preview/freshness.ts` and its own unit test — nothing drove the app into
+    // the state that produces it.
+    //
+    // It shares the record-detection decision with the row above but NOT the
+    // path into it: this one goes through `runPreview`'s catch, which sets
+    // `staleReason` to `render-failed` and installs a `previewError`, and it is
+    // `staleReason` that the status line branches on.
+    it('dates the surviving record and names the failed render when a re-render rejects', async () => {
+      let renders = 0
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+        if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+        if (operation === 'render') {
+          if (++renders > 1) throw Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const })
+          return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+        }
+        return { snapshot: snapshot(1) }
+      })
+      await previewAtZero(request as never)
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+      expect(freshnessText()).toBe('rendered 6 s ago · current')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
+      await settleFrozen()
+      expect(document.getElementById('preview-freshness-status')).toHaveTextContent('STALE — latest local render failed')
+      expect(screen.getByTestId('pdf-viewer-state')).toBeInTheDocument()
+      expect(freshnessText()).toBe('rendered 6 s ago · stale')
+    })
+
+    // AC1, AND THE QUANTITY IT MUST NOT BE CONFUSED WITH. `elapsed` is how long
+    // the render TOOK; the bar's figure is how long ago it FINISHED. They are
+    // equal for one instant and diverge forever after, and both are on this
+    // screen at the same time in the same 10px mono — so the row that proves one
+    // moves is the row that must prove the other did not.
+    it('advances the figure with no new render while the engine elapsed stays put', async () => {
+      await previewAtZero()
+      expect(elapsedFigure()).toBe('7 ms')
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      expect(freshnessText()).toBe('rendered 400 ms ago · current')
+      await act(async () => { await vi.advanceTimersByTimeAsync(2800) })
+      expect(freshnessText()).toBe('rendered 3 s ago · current')
+      await act(async () => { await vi.advanceTimersByTimeAsync(56_800) })
+      expect(freshnessText()).toBe('rendered 1 min ago · current')
+      // NOT ONE RE-RENDER PAID FOR ANY OF THAT, and the engine's own number is
+      // exactly where it was an hour of wall clock earlier.
+      expect(elapsedFigure()).toBe('7 ms')
+    })
+
+    // THE OTHER HALF OF THE STAMP, AND IT WAS THE UNASSERTED ONE.
+    //
+    // Every other ticking row here drives a path that does NOT install — a
+    // digest mismatch, a rejected render, an abandoned one — or asserts that the
+    // age SURVIVES something. All of them are satisfied by a `PreviewRecord`
+    // stamped once and never again. Measured: rewriting the single install site
+    // as `installedAt: previewRef.current?.installedAt ?? Date.now()` — stamp
+    // only when there is no record yet — leaves the entire suite green without
+    // this row. And that implementation is a bar that dates the bytes on screen
+    // by when some EARLIER bytes finished: it would read `9 s ago` over a render
+    // that had just completed, and go on drifting for as long as the author kept
+    // re-rendering. `installedAt` describes THESE bytes, so new bytes re-stamp
+    // it, and the figure returns to a fresh age.
+    it('re-stamps the age when new bytes land, so the figure is about the render on screen', async () => {
+      await previewAtZero()
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+      expect(freshnessText()).toBe('rendered 9 s ago · current')
+
+      // A SECOND RENDER THAT REALLY LANDS. Same engine, same bytes, same digest
+      // — the only thing that differs from the record on screen is that this one
+      // is new, which is the whole point: the age must reset on an install and
+      // not on a change of content.
+      fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
+      await settleFrozen()
+      // The install marks the candidate stale until the viewer admits it, and
+      // the clock has not moved a millisecond across either step.
+      expect(freshnessText()).toBe('rendered 0 ms ago · stale')
+      fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+      await settleFrozen()
+      expect(freshnessText()).toBe('rendered 0 ms ago · current')
+      expect(screen.getByText('Current exact local PDF')).toBeInTheDocument()
+
+      // AND IT COUNTS FROM THE NEW STAMP AFTERWARDS, not from the old one: a
+      // reset that immediately jumped back would satisfy the line above.
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000) })
+      expect(freshnessText()).toBe('rendered 2 s ago · current')
+    })
+
+    // THE STAMP IS THE RENDER'S, NOT THE VISIT'S. Leaving Preview and coming
+    // back must not restart the count, or the bar would be describing the
+    // author's navigation instead of the bytes on screen.
+    it('keeps counting from the original render across a trip through Design', async () => {
+      // The second render never lands, so the FIRST record is still the one on
+      // screen when Preview comes back — which is the only condition under
+      // which "the age survived" is a claim about anything.
+      let renders = 0
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+        if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+        if (operation === 'render') {
+          if (++renders > 1) return new Promise<never>(() => undefined)
+          return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+        }
+        return { snapshot: snapshot(1) }
+      })
+      await previewAtZero(request as never)
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+      expect(freshnessText()).toBe('rendered 5 s ago · current')
+      fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      await settleFrozen()
+      // Ten seconds since the render, not zero since the return.
+      expect(freshnessText()).toBe('rendered 10 s ago · stale')
+    })
+
+    // DESIGN MODE MUST NEVER HOLD A LIVE INTERVAL. `setInterval` appears nowhere
+    // else in `src`, so every call the spy sees is this story's, and the two
+    // directions are asserted separately: none is armed while the canvas is up,
+    // and the one armed in Preview is cleared on the way out.
+    it('arms the interval only in Preview and clears it on the way back to Design', async () => {
+      const armed = vi.spyOn(globalThis, 'setInterval')
+      const cleared = vi.spyOn(globalThis, 'clearInterval')
+      try {
+        render(<App engine={engine(previewRequest())} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+        await settleFrozen()
+        expect(armed).not.toHaveBeenCalled()
+        fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+        await settleFrozen()
+        expect(armed).toHaveBeenCalled()
+        const clearedBefore = cleared.mock.calls.length
+        fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+        expect(cleared.mock.calls.length).toBeGreaterThan(clearedBefore)
+        // AND NOTHING RE-ARMS IT BEHIND THE CANVAS. A cleanup that ran while a
+        // tick was already scheduled would show up here as a fresh call.
+        const armedBefore = armed.mock.calls.length
+        await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+        expect(armed.mock.calls.length).toBe(armedBefore)
+      } finally {
+        armed.mockRestore()
+        cleared.mockRestore()
+      }
+    })
+
+    // AC3. THE HEADING'S BUTTON IS GONE AND THE ABILITY IT CARRIED IS NOT.
+    // Asserting only that the mode changed is a test that passes over a
+    // completely broken cancel, so all four halves of `cancelPreviewWork` are
+    // read off observable consequences: the controller is aborted, the late
+    // result is refused, no follow-up work is scheduled, and nothing the engine
+    // said after the author left ever reached the screen.
+    it('abandons a render in flight when the author presses DESIGN, and never installs its late result', async () => {
+      const signals: AbortSignal[] = []
+      let land!: (result: unknown) => void
+      const request = vi.fn(async (operation: string, _payload: unknown, signal: AbortSignal) => {
+        if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+        if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+        if (operation === 'render') { signals.push(signal); return new Promise((resolve) => { land = resolve }) }
+        return { snapshot: snapshot(1) }
+      })
+      render(<App engine={engine(request as never)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      await settleFrozen()
+      expect(signals).toHaveLength(1)
+      expect(signals[0]!.aborted).toBe(false)
+      expect(freshnessText()).toBe('no render yet')
+
+      // THE ONLY EXIT LEFT, and it aborts synchronously.
+      fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+      expect(signals[0]!.aborted).toBe(true)
+      expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
+
+      // The result lands in a world its caller has already left.
+      land({ snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } })
+      await settleFrozen()
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+
+      // NOT INSTALLED — there is no viewer anywhere in the document — and the
+      // debounce and the scheduler are both empty: five seconds past a 250 ms
+      // debounce produced no second render and no further engine traffic.
+      expect(screen.queryByTestId('pdf-viewer-state')).toBeNull()
+      expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(1)
+      expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(0)
+      expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
+
+      // AND IT IS STILL REFUSED ON THE WAY BACK IN: returning to Preview starts
+      // a NEW render rather than showing the bytes the abandoned one produced.
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      await settleFrozen()
+      expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(2)
+      expect(screen.queryByTestId('pdf-viewer-state')).toBeNull()
+      expect(freshnessText()).toBe('no render yet')
+    })
+  })
+
+  // AC4 — GOAL B, WHICH SHARES NONE OF THE MACHINERY ABOVE. The status bar's
+  // two-item drop is fenced on `mode` in both directions, and BOTH directions
+  // are asserted: the Design-mode half is what stops the drop leaking out of
+  // Preview, and it is the half that would go unnoticed.
+  it('carries the standing local-only assurance in Preview and the two dropped items in Design', async () => {
+    await showRenderedPreview(previewRequest())
+    const bar = screen.getByLabelText('Status bar')
+    expect(within(bar).getByTestId('local-only-assurance')).toHaveTextContent('no network · nothing left this machine')
+    expect(within(bar).queryByText('LOCAL SHELL')).toBeNull()
+    expect(within(bar).queryByTestId('template-font-count')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+    expect(within(bar).getByText('LOCAL SHELL')).toBeInTheDocument()
+    expect(within(bar).getByTestId('template-font-count')).toHaveTextContent('2 fonts in template')
+    expect(within(bar).queryByTestId('local-only-assurance')).toBeNull()
+    // NEITHER MODE LOSES THE THREE THAT STAY.
+    expect(within(bar).getByTestId('engine-snapshot')).toBeInTheDocument()
+    expect(within(bar).getByTestId('offline-status')).toBeInTheDocument()
+    expect(within(bar).getByText('DESIGN MODE')).toBeInTheDocument()
+  })
+
+  // RULING Q6 — THE OFFLINE LIVE REGION IS VISUALLY HIDDEN IN PREVIEW, NOT
+  // DROPPED, AND NOT ALTERED IN ANY OTHER WAY. Hiding it is what makes the
+  // Preview bar's spare room constant instead of varying by the 24 characters
+  // between the shortest and the longest of `offlineLabel`'s five states;
+  // keeping every ARIA affordance is what stops that being an accessibility
+  // regression. BOTH HALVES ARE ASSERTED IN BOTH MODES: a class applied
+  // unconditionally would take the region out of DESIGN's painted bar too, and
+  // that is the half nothing else in this file would notice.
+  it('hides the offline live region from the painted Preview bar while a screen reader loses nothing', async () => {
+    await showRenderedPreview(previewRequest())
+    const bar = screen.getByLabelText('Status bar')
+    const inPreview = within(bar).getByTestId('offline-status')
+    expect(inPreview).toHaveClass('sr-only')
+    expect(inPreview).toHaveAttribute('role', 'status')
+    expect(inPreview).toHaveAttribute('aria-live', 'polite')
+    expect(inPreview).toHaveAttribute('aria-label', 'Offline availability')
+    expect(inPreview).toHaveTextContent('Offline cache unavailable')
+    // The assistive-technology view of the bar is unchanged: the region is
+    // still reachable by role and accessible name, and it is the same node.
+    expect(within(bar).getByRole('status', { name: 'Offline availability' })).toBe(inPreview)
+
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+    const inDesign = within(bar).getByTestId('offline-status')
+    expect(inDesign).not.toHaveClass('sr-only')
+    // Not merely 'a different class' — Design's span carries no class at all,
+    // which is exactly what it carried before this story touched the bar.
+    expect(inDesign.getAttribute('class')).toBeNull()
+    expect(inDesign).toHaveAttribute('role', 'status')
+    expect(inDesign).toHaveAttribute('aria-live', 'polite')
+    expect(inDesign).toHaveAttribute('aria-label', 'Offline availability')
+    expect(inDesign).toHaveTextContent('Offline cache unavailable')
+  })
+
+  // THE ASSURANCE IS A STATEMENT, NOT A CONTROL. The bar's interactive set is
+  // pinned exhaustively by name elsewhere in this file; this is the same claim
+  // said from the other side, at the element that was added.
+  it('adds nothing interactive and nothing announced to the status bar', async () => {
+    await showRenderedPreview(previewRequest())
+    const assurance = screen.getByTestId('local-only-assurance')
+    expect(assurance.querySelectorAll('button, input, select, a')).toHaveLength(0)
+    expect(assurance.tagName).toBe('SPAN')
+    for (const attribute of ['role', 'aria-live', 'tabindex']) expect(assurance).not.toHaveAttribute(attribute)
   })
 })
 

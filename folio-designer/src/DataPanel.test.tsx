@@ -45,13 +45,14 @@ describe('docked sample data panel', () => {
     await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'identity')).toBe(true))
     const data = request.mock.calls.find(([operation]) => operation === 'identity')![1] as unknown as { data: ArrayBuffer }
     expect(new Uint8Array(data.data)).toEqual(new Uint8Array(sampleBytes))
-    // MATCHED BY PATTERN, BECAUSE THE ONE CONTROL CARRIES TWO NAMES. While
-    // Preview is still working the button reads `Cancel and return to Design`;
-    // once a PDF is installed it reads `Return to Design`. Story 13.3 added an
-    // await (the browser-side digest check) before the install, so which of the
-    // two is on screen at this line is a timing property of the render pipeline
-    // and never what this test is about.
-    fireEvent.click(screen.getByRole('button', { name: /return to Design/i }))
+    // STORY 13.5 — ONE MODE CONTROL, AND ITS NAME DOES NOT MOVE. This used to
+    // match by pattern because the preview heading's button carried two names —
+    // `Cancel and return to Design` while a render was in flight, `Return to
+    // Design` once a PDF was installed — which made the wording on screen at
+    // this line a timing property of the render pipeline. That button is gone.
+    // The document bar's DESIGN switch calls the same `returnToDesign` and is
+    // named the same in both states, so the pattern is no longer needed.
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     fireEvent.click(screen.getByRole('button', { name: 'Replace sample JSON' }))
     await waitFor(() => expect(screen.getByText('sample.json')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Replace sample JSON' }))
