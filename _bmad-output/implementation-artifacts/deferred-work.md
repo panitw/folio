@@ -11190,7 +11190,7 @@ it from the YAML.
 - **Found by:** the orchestrator, from CI run `34176422177` (commit `cf1adc0`) - the first run in which the
   browser suite executed to completion rather than timing out. **Owner:** the orchestrator.
   **Severity:** HIGH - it was the sole red in the workflow and, under D-000.33, Epic 13 cannot close while CI
-  is red. **Status: FIXED 2026-09-08, awaiting CI confirmation.**
+  is red. **Status: CLOSED 2026-09-08 - fixed AND observed green.**
 
 `folio-designer/e2e/preview-no-data.spec.ts:47` fails on ubuntu-24.04 while passing on the authoring machine:
 
@@ -11229,9 +11229,15 @@ no separating power, since `Current` is unreachable except *through* the pre-adm
 surviving line implies it. The comment above it now carries the snapshot, so the next reader gets the
 evidence rather than the reasoning.
 
-**What remains before this is closed outright:** a green `folio-designer-e2e` job. The fix is compile-checked
-and reasoned from the snapshot, but under D-000.32 that is not the same as observed - this entry stays open
-until a CI run says so, for exactly the reason the whole run keeps relearning.
+**OBSERVED GREEN, and that is what closes this rather than the reasoning above.** Run `34178639637` on
+`0d395ca`: **all seven jobs pass**, `folio-designer-e2e` among them - `folio-go`, `folio-go-matrix`,
+`folio-go-known-red`, `folio-designer`, `folio-designer-e2e`, `hashmatrix`, `lint`. It is the first fully
+green workflow of this run.
+
+The gap between "fixed" and "closed" was held open on purpose for about twenty minutes. The fix was
+compile-checked and reasoned from a page snapshot, which is a good standard and still not the standard:
+D-000.32 was written the same day, after four pushes in which an uninvoked job read as a passing one. An
+entry that closes itself on the strength of its own argument is the same error wearing better clothes.
 
 **Not Story 13.3's.** 13.3 modifies this file, but its diff begins at line 48 and leaves line 47 untouched.
 This is Story 13.4's test and it is now the Epic 13 boundary gate's business.
