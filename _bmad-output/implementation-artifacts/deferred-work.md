@@ -11133,10 +11133,33 @@ repair it. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` is therefore the only way to la
 is exactly what flips the manifest field. **The manifest was reverted twice during this story** for that
 reason alone.
 
-**CI may hit this differently or not at all**, since it installs browsers rather than reusing a local cache -
-which is itself worth confirming rather than assuming, given that the Playwright jobs added at `adf905a`
-ran for the first time only after the owner ruled that main be pushed.
+**CI does not hit this** - now observed, not assumed. Run `34172421900` (commit `1551891`) reached the
+`npm run test:e2e` step and failed *there*, at `Timed out waiting 180000ms from config.webServer`, which is
+downstream of `npx playwright install --with-deps chromium`. That install step succeeded, so the 1208 pin is
+installable from the download host onto a clean runner; what is broken is one local browser cache, not the
+pin. The rest of this entry stands: the manifest field still records invocation detail, and the authoring
+machine still cannot launch without the env var.
 
 **What discharges it:** stop writing invocation detail into the durable manifest - record the browser
 *version* if anything, not how it was resolved - and settle the pin: either align `browsers.json` with an
 installable revision or make the env-var override the documented, single supported route.
+
+### DW-295 - no Go job in the CI workflow caches its modules, and the e2e job timed out because of it
+
+- **Found by:** the orchestrator, reading the first real CI results after the owner ruled main be pushed.
+  **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+All seven `actions/setup-go@v5` steps in `.github/workflows/ci.yml` (lines 110, 163, 214, 241, 267, 411 and
+the matrix job) pass only `go-version`. None passes `cache-dependency-path`, and the module lives at
+`folio-go/go.sum`, not the repository root - so `setup-go` cannot find a checksum file, logs
+`Restore cache failed: Dependencies file is not found`, and silently disables caching. Every Go job on every
+push therefore downloads and compiles the dependency graph from nothing.
+
+This is not merely slow. It is the reason `folio-designer-e2e` failed four consecutive runs: that job's
+server command is a cold `npm run build`, which includes `build:wasm`, and an uncached Go toolchain pushed it
+past the 180s `webServer` budget. The budget was raised to 600_000 because the job's own comment forbids it
+from pre-building - the config owns the build - but the raise treats the symptom.
+
+**What discharges it:** add `cache-dependency-path: folio-go/go.sum` (and `lint/go.sum` where the job builds
+`lint/`) to every `setup-go` step, then confirm from a run log that the cache is restored rather than assuming
+it from the YAML.
