@@ -11384,8 +11384,9 @@ report elapsed in microseconds or as a float so a sub-millisecond render is stil
 
 - **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md` (its `## Spec Change Log`, which until now was the only place this existed)
 - **Found by:** Story 13.3's closer, during the record sweep; **registered and escalated by the orchestrator.**
-  **Owner:** THE OWNER - this is a scope question, not a defect. **Severity:** MEDIUM.
-  **Status:** OPEN, AWAITING AN OWNER DECISION AT THE EPIC 13 BOUNDARY GATE.
+  **Owner:** Story 13.6. **Severity:** MEDIUM.
+  **Status: DISCHARGED 2026-09-08 by owner ruling D-13.6.1** - built as a new story, on `pdfjs-dist`'s
+  viewer components. See below.
 
 Story 13.3 was dispatched with two goals and split at the plan gate. Goal B shipped as the evidence rail.
 **Goal A - the PAGES thumbnail rail - was deferred and then recorded nowhere that anyone would look:** no DW
@@ -11414,3 +11415,31 @@ rather than being re-derived:
 a later epic, or amend Epic 13's stated goal so the epic's claim matches what it shipped. Any of the three is
 a legitimate answer; leaving the promise and the delivery mismatched is not.
 
+
+
+**RESOLVED 2026-09-08 — OWNER RULING D-13.6.1.** Asked to choose between minting a story, deferring to a
+later epic, or amending Epic 13's goal, the owner chose to **build it**, and further chose to build it on
+`pdfjs-dist`'s **viewer component bundle** (`pdfjs-dist/web/pdf_viewer.mjs` - `PDFViewer`,
+`PDFThumbnailViewer`) rather than on the core API this codebase already uses.
+
+Minted as **Story 13.6, "The preview navigates by page thumbnails"**, written into `epics.md` under Epic 13
+and keyed in `sprint-status.yaml` as `backlog`. Epic 13 will therefore close having delivered the rail its
+goal paragraph promises, and the two inherited decisions recorded above travel into that story.
+
+**The orchestrator recommended the other route and was overruled, which is recorded here because the costs
+are now design constraints rather than opinions.** The recommendation was to render thumbnails through the
+core API already in use - a thumbnail is `getPage(n).render(...)` at a small scale, which
+`preview/pdf-viewer.tsx` already calls - on the grounds that it adds no import, no bytes, and no second
+page-state authority. Both costs the owner accepted are written into 13.6 as acceptance criteria rather than
+left as caveats:
+
+- **One page-state authority.** `PDFViewer` owns page state itself, and Story 13.2's `viewer-navigation.ts`
+  owns it today. 13.6 must retire or subordinate one of them, never run both. Two authorities for one fact
+  is this run's most frequently found defect shape, and this choice converts it from hypothetical to live.
+- **Offline payload, measured before dispatch rather than after:** `pdf_viewer.mjs` 307 KB +
+  `pdf_viewer.css` 160 KB + 328 KB of images, against the 853 KB core `pdf.mjs` already shipped - roughly a
+  90% increase in PDF.js payload before minification and gzip, in a release whose status bar promises
+  "no network - nothing left this machine".
+
+Neither is an argument against the ruling; the owner had both numbers before deciding. They are here so the
+story is built against them.

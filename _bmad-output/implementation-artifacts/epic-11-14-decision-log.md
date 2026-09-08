@@ -5263,3 +5263,45 @@ an epic against a goal it did not meet.
 
 **Related:** [D-13.1.3], [D-000.32], [D-11.2.4], DW-304.
 
+### D-13.6.1 — OWNER DECISION: the thumbnail rail is built, and built on the pdf.js viewer bundle
+
+**Ruled by the owner, 2026-09-08.** Two questions were put to them together: what becomes of the
+page-thumbnail rail Epic 13 promises but no story delivers (DW-304, D-13.3.1), and how far Story 13.5 should
+strip the Preview status bar.
+
+**The rail: build it, as a new story, on `pdfjs-dist`'s viewer components.** The owner opened by asking a
+question rather than picking an option — *"Can we embed pdf.js? I understand that we get this for free and
+also other PDF viewing / zooming / navigation options"* — which was the right question and changed the
+pricing. Established before answering, rather than assumed: `pdfjs-dist` 6.2.108 is already one of exactly
+three runtime dependencies, a fact `font-store.test.ts:426` and `font-name-table.test.ts:160` both assert; we
+import only the core API through `pdfjs-dist/build/pdf.mjs` behind a seven-line type shim; and
+`pdf_viewer.mjs` / `PDFThumbnailViewer` / `PDFViewer` have **zero references** across `src`, `e2e` and
+`vite.config.ts` while sitting on disk in the same package.
+
+**I recommended the core-API route and was overruled.** My argument was that a thumbnail is
+`getPage(n).render(...)` at a small scale — a call `preview/pdf-viewer.tsx` already makes — so the rendering
+half needs no new import, no bytes and no second page-state authority, while the half the epic actually names
+(*"doubles as a diagnostic map"*) is ours to build either way, since `pdfjs-dist` knows nothing about folio
+diagnostics. The owner had that argument, and both measurements below, and chose the viewer bundle.
+
+**That is their call and it is made.** What I did with it is turn the two costs into acceptance criteria of
+Story 13.6 rather than leave them as caveats I could later say I had raised:
+
+1. **One page-state authority.** `PDFViewer` owns page state; Story 13.2's `viewer-navigation.ts` owns it
+   today. 13.6 retires or subordinates one, never runs both. This run's most common defect is two sources of
+   truth for one fact, and this choice makes that risk live rather than theoretical.
+2. **Offline payload measured before dispatch:** `pdf_viewer.mjs` 307 KB + `pdf_viewer.css` 160 KB + 328 KB
+   images, against 853 KB of core `pdf.mjs` already shipped — about a 90% increase in PDF.js payload before
+   minification and gzip, in a product whose status bar promises "no network · nothing left this machine".
+
+**The status bar question, they declined**: *"The second question, I don't see it's usefulness."* I read that
+as declining the question rather than the feature, and proceeded on the engineering lead's recommendation —
+Story 13.5 drops only the two items AC4 forces and the design divergence is registered. If the owner meant
+the assurance line itself is not worth having, that reverses an AC and they will say so.
+
+**The rule this leaves.** When an owner overrules a recommendation, the recommendation's reasoning does not
+evaporate — it becomes the constraint list the work is built against. Recording it as "I advised otherwise"
+is scorekeeping; recording it as acceptance criteria is engineering.
+
+**Related:** [D-13.3.1], [D-000.33], DW-304, DW-303.
+

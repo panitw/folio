@@ -4650,6 +4650,58 @@ which is the product's central promise stated where it is always visible (UX-DR2
 **Then** the freshness reads stale rather than `current`, in the same words the status line uses, so
 the two never disagree
 
+### Story 13.6: The preview navigates by page thumbnails
+
+As a template author,
+I want a rail of page thumbnails beside the preview that marks which pages carry diagnostics,
+So that I can see the shape of the document and jump straight to the page a problem is on.
+
+**Covers:** the Epic 13 goal's "page-thumbnail rail that doubles as a diagnostic map" - the half of
+Story 13.3 that was split off at its plan gate (DW-304, D-13.3.1)
+**Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
+
+**OWNER DECISION 2026-09-08 (D-13.6.1): built on `pdfjs-dist`'s viewer components**
+(`pdfjs-dist/web/pdf_viewer.mjs` - `PDFViewer` and `PDFThumbnailViewer`), not on a bespoke rail over the
+core API. Same package, already a dependency, no new licence. The orchestrator recommended the core-API
+route and the owner chose the viewer bundle; the consequences below are ACs precisely because they are the
+costs that choice carries.
+
+**Acceptance Criteria:**
+
+**Given** a rendered preview of any length
+**When** the author is in Preview
+**Then** a rail shows a thumbnail of every page, numbered, with the current page marked
+
+**Given** a thumbnail
+**When** the author clicks it
+**Then** the preview navigates to that page
+
+**Given** a render that produced diagnostics
+**When** the rail is shown
+**Then** the pages those diagnostics fall on are marked - this is the "diagnostic map" half, and it is the
+part `pdfjs-dist` does not supply: the derivation from diagnostic to page number is this story's own work
+
+**Given** a document longer than the rail's bound
+**When** the rail is shown
+**Then** it truncates with `... N more` rather than growing without limit
+
+**Given** Preview mode
+**When** the rail is shown
+**Then** the component palette is not rendered
+
+**Given** that `PDFViewer` owns page state itself
+**When** this story adopts it
+**Then** there is exactly ONE page-state authority in the preview - Story 13.2's `viewer-navigation.ts` is
+retired or subordinated to it, never run in parallel. Two authorities for the same fact is the defect shape
+this run has found most often, and adopting the viewer bundle is what makes this a live risk rather than a
+hypothetical one.
+
+**Given** the product promises "no network - nothing left this machine" and ships an offline release
+**When** the viewer bundle is added
+**Then** the release's size change is measured and recorded, not assumed. Measured before dispatch at
+`pdf_viewer.mjs` 307 KB + `pdf_viewer.css` 160 KB + 328 KB of images, against the 853 KB core `pdf.mjs`
+already shipped - roughly a 90% increase in PDF.js payload before minification and gzip.
+
 ## Epic 14: The designer's controls read as one product
 
 The inspector and the document bar were built story by story, and it shows. There are five button
