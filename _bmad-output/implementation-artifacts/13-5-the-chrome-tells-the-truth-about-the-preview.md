@@ -8,6 +8,29 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — the frozen Intent below governs implementation. Written at close to describe what
+actually shipped.*
+
+In Preview, the frame around the page used to describe the editor rather than the render inside it.
+The document bar announced the page size — a fact about the template, not about the PDF on screen —
+while how fresh the render was lived only in a preview-pane sentence that stopped being true
+the moment it was written. The bar now states the render's own age and counts it up on its own,
+saying whether what you are looking at is current or stale. The short label and the longer sentence
+are produced together in one place, so they cannot drift apart and contradict each other.
+
+The preview heading's second way back to the editor is gone. The mode switch was always the same
+control performing the same complete cancellation, so nothing was lost. The space freed in the status
+strip now carries the product's standing promise: nothing leaves this machine.
+
+Three things a later reader should not take for oversights. The promise line is drawn brighter than
+the mockup asks, deliberately, because the mockup's shade fails the project's own contrast floor and
+no dimmer shade in the palette passes it. A sighted author in Preview no longer sees the offline
+notice — the owner's call, and screen-reader users keep it. And the story's real finding was that the
+test meant to prove the promise line fits on screen could never have failed; that is fixed here, with
+the proof executed in a real browser.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -411,3 +434,127 @@ here are **written-and-compiled-only** and do not execute until the Epic 13 boun
 
 - The exhaustive invariant, iterated off the module's own state list.
   [`freshness.test.ts:89`](../../folio-designer/src/preview/freshness.test.ts#L89)
+
+## Delivery Log
+
+### 2026-09-08 — done
+
+Baseline `0a1f1f7`. Shipped at `4c733c6` — 11 files, +1759/−32 (9 under `folio-designer/`, this spec,
+and one tracker line). The register and decision entries follow in `5299d00` (DW-305…310) and `b6fde25`
+(D-13.5.1, D-13.5.2). In Preview the document bar stops reporting a template fact and reports the
+render's own freshness, ticking; the preview heading's Return-to-Design button is gone, leaving the
+mode switch as the sole mode control; and the status bar carries the standing local-only assurance in
+space freed by dropping two Design-mode items.
+
+**One producer, by construction.** Both renderings — the bar's short token and the status line's long
+copy — come out of a single switch, so AC5's "the two never disagree" is a structural property rather
+than a review obligation. The exhaustiveness guard iterates the module's own exported state list
+instead of a restated literal, which is the failure mode this run has been bitten by repeatedly.
+
+**Decisions applied:** D-13.5.1 (owner — hide the offline label in Preview as an `sr-only` live
+region), D-13.5.2 (the lead's prefix-match guardrail overridden as unsatisfiable by construction),
+D-000.33 (the heavy suites moved to the Epic 13 boundary gate), D-000.32 (a guard that cannot fail is
+indistinguishable from a passing one — the shape of this story's headline finding).
+
+**Triage: 12 patched, 4 deferred, the remainder rejected. `review_loop_iteration` stayed 0** — no
+loopback, no intent gap, no bad spec. *The rejection count was never enumerated to me and I did not
+spot-check it; I am reporting the absence rather than implying a verification.* Note also that the
+register carries **six** entries against four triage deferrals: DW-308 is pre-existing and 13.4's, and
+DW-310 is the disclosed cost of the owner's own ruling rather than a review finding, so the two
+populations legitimately differ. Both are attributed in their own entries.
+
+**The review's headline finding: the mandated fit assertion could not fail.** It compared the assurance
+line against the status bar's own right edge — but `.app-shell` is `display: grid; overflow: hidden`
+and `.status-bar` is its item, so an overfull `nowrap` bar grows its own border box and both sides of
+the comparison moved together. Measured: a bar 163px overfull with two thirds of the line clipped
+off-screen passed all five assertions, `toBeInViewport()` included at an intersection ratio of 0.337.
+It now measures against `page.viewportSize()`, which does not move with the content. This landed inside
+the one story whose subject is chrome that tells the truth.
+
+**The frozen block was amended twice, and both times because it worked.** The orchestrator — not the
+builder — made both edits. First the I/O matrix's *"Assurance line fits"* row stated the same unfailable
+observable the finding had just disproved. Then the owner's ruling to hide the offline label returned
+~90px plus its 12px gap, taking the fit margin to 124.94px, which made that row's *"restoring either
+dropped item must fail"* clause false for `LOCAL SHELL` — it now genuinely fits with 46.94px to spare.
+The governing property was restated as non-vacuousness rather than as any particular item overflowing.
+In both cases the builder found a defect in human-owned intent, did not quietly reinterpret it, did not
+revert correct work over one comparison, and escalated with the evidence; a human then renegotiated the
+wording. That is the transaction the block exists to force.
+
+**Verified at close: the frozen block is byte-identical to its approved state**, md5
+`4106d7318306ee68a341d5e51740cbd6`. **Its line range moved** from 11–100 to **34–123** when this close
+inserted the plain-terms opener above it — the span is unchanged at 89 lines and the content is
+unchanged byte for byte. Bound any future check by line number: the Spec Change Log and Verification
+sections quote the `frozen-after-approval` marker in prose, so a marker-delimited range re-triggers on
+those quotations and reports a false mismatch.
+
+### Three disclosures a later reader is owed
+
+**1 — The assurance line ships brighter than the mockup, deliberately.** The mockup draws it
+de-emphasised at `#4E565F` (`--color-ink-ghost`). We ship it at the status bar's own weight instead.
+Independently recomputed at close against `--color-panel #1A1E23`, which is the bar's background:
+`ink-ghost` is **2.25:1** and fails the project's own 4.5:1 floor outright. There was no dimmer
+compliant answer available — `ink-faint` is 2.88 and `ink-low` is **3.95**, both short of the floor,
+and the next step up the ink ramp is `ink` at **7.81**, which is what shipped. "Pick a dimmer token"
+was never on the table. An auditor should find this exception recorded, not a contradiction. The
+guard that should have caught the original pairing could not: see DW-305.
+
+**2 — A sighted author in Preview now gets no offline signal at all** until switching back to DESIGN.
+Screen-reader users lose nothing: the element keeps `role="status"` and `aria-live="polite"` and is
+hidden visually only. This is owner ruling D-13.5.1 and is registered as DW-310. Under the pixel
+problem was a product problem — the assurance says *nothing left this machine* while the label could
+simultaneously say the cache is unavailable, 12px apart.
+
+**3 — `.sr-only` had zero uses in the app before this story; 13.5 is its first.** Confirmed at close by
+searching the baseline commit: the only occurrence anywhere in `folio-designer` at `0a1f1f7` was the
+rule's own definition at `App.css:7`. It was a dead rule that had been shipping unused, and this story
+is what first applies it.
+
+### Also worth keeping
+
+**Advancing the engine revision in the browser needs Shift+Arrow.** The unshifted 1000-unit step is
+swallowed by the engine's `GridIncrement = 6000` snap (`folio-go/page_setup.go:21`) and changes no
+bytes at all — so an unshifted arrow press produces a "changed" document that is byte-identical, and
+any staleness probe built on it silently proves nothing. Incidental to this story, but it is the kind
+of fact that costs an afternoon the second time.
+
+**Two files outside the Execution list were touched, both necessarily.**
+`e2e/image-asset.spec.ts` and `src/DataPanel.test.tsx` each clicked the removed heading button; both
+now drive the document bar's `DESIGN` switch, which calls the same `returnToDesign`. Both carry a
+comment saying so. These are call sites of the deleted control rather than scope creep — but they are
+files the Execution list did not name, and the record should say so plainly.
+
+### Measured gates
+
+Per D-000.33 the heavy suites belong to the **Epic 13 boundary gate**, not to this story. Re-run at
+close against `b6fde25`, tree clean:
+
+- `npm run typecheck` — exit 0, no output. Additionally ran `npx tsc -b --force` (exit 0, empty),
+  because `tsc -b` is incremental and can exit 0 without actually typechecking.
+- `npm run lint` — exit 0, **exactly 4** `react(only-export-components)` warnings, **0 errors**.
+  Anchors re-measured at this commit, not carried forward: `preview/pdf-viewer.tsx:17:14`, `:18:14`,
+  `App.tsx:4030:14`, `App.tsx:4037:17`. These moved three times during the story.
+- `npm test -- --run` — **68 files / 1102 tests / 0 failures.**
+- `npm run test:e2e:compile` — exit 0. This is `tsc -p tsconfig.e2e.json --noEmit` only. It is **not**
+  a browser run and must never be described as one.
+
+**Heavy evidence produced by the builder, not reproduced here:** `npx playwright test
+preview-navigation` executed in real Chromium (2 passed) plus two mutation runs, as the mandated
+executed red proof for the fit guard.
+
+**Did not run, in those words:** `npm run test:e2e` as a suite, every Go suite, the `-tags=matrix`
+legs, the `lint` module, the integration suites, `npm run build` as a gate, the `verify:offline*`
+chain, and the font-host scans. All belong to the Epic 13 boundary gate, which the orchestrator runs.
+`e2e/application-shell.spec.ts` and `e2e/image-asset.spec.ts` are **written and compiled only** and
+have not executed.
+
+### Deferred
+
+Six entries, all filed at `5299d00`, **all owner-unassigned**: DW-305 (the contrast contract is a
+hand-written five-pair list — the one that matters, and the reason disclosure 1 exists), DW-306
+(nothing now tells an author a render can be abandoned), DW-307 (a contract test asserts in prose that
+no gate runs Playwright, which is now false — D-000.32 inverted, and it costs the same), DW-308
+(`standIn` read off live state rather than off the record it describes; pre-existing, 13.4's), DW-309
+(the template font count now has no home anywhere in Preview), DW-310 (disclosure 2's cost).
+
+**Epic 13 stays `in-progress`.** Story 13.6 exists at `backlog` and the boundary gate has not run.
