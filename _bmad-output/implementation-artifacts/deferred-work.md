@@ -11163,3 +11163,75 @@ from pre-building - the config owns the build - but the raise treats the symptom
 **What discharges it:** add `cache-dependency-path: folio-go/go.sum` (and `lint/go.sum` where the job builds
 `lint/`) to every `setup-go` step, then confirm from a run log that the cache is restored rather than assuming
 it from the YAML.
+
+### DW-296 - the no-data spec waits for a transient label, and CI is the first machine to miss it
+
+- **Found by:** the orchestrator, from CI run `34176422177` (commit `cf1adc0`) - the first run in which the
+  browser suite executed to completion rather than timing out. **Owner:** unassigned. **Severity:** HIGH -
+  it is the sole red in the workflow and, under D-000.33, Epic 13 cannot close while CI is red.
+  **Status:** OPEN.
+
+`folio-designer/e2e/preview-no-data.spec.ts:47` fails on ubuntu-24.04 while passing on the authoring machine:
+
+    expect(page.getByRole('region', { name: /Stale historical PDF/ })).toBeVisible({ timeout: 60_000 })
+    Error: element(s) not found
+
+39 of 40 tests passed; this is the only failure, and the suite took 6.1 minutes.
+
+**Why this assertion is fragile by construction.** The spec's own comment states the mechanism: the viewer
+carries the name `Stale historical PDF` *the moment bytes are handed to it*, and `App.tsx` reaches
+`'current'` only from the viewer's `onPageCount`. So the two waits on lines 47 and 48 are the same region
+before and after PDF.js admits the bytes. Line 48 asserts a settled state and is reachable only through
+admission; line 47 asserts an intermediate state that exists only in the window between hand-off and
+admission. An assertion that must *catch a transition* passes or fails on whether a poll lands inside that
+window - which is a property of the machine, not of the product. That is why it survived every local run
+and failed on the first foreign one.
+
+**What is NOT established, and I am not going to assert it.** I have not confirmed *why* the window closes
+too fast (or never opens) on Linux specifically. The obvious candidate is that admission of a small stand-in
+PDF completes inside one poll interval, but a second candidate is that on a first preview there is no
+historical PDF at all and the label is never applied on that platform. Distinguishing them needs the page
+snapshot at the moment of failure - **which DW-297 is the reason I do not have.** Fix DW-297 first; it is a
+prerequisite for diagnosing this, not merely adjacent to it.
+
+**What likely discharges it** (to be confirmed against evidence, not adopted on the strength of this
+paragraph): drop line 47. Line 48 already implies it - `Current` is unreachable except *through* the
+pre-admission state - so the transient assertion adds no separating power while contributing all of the
+flakiness. If the pre-admission label is genuinely worth guarding, it belongs in a unit test that controls
+the clock, not in a browser test that races it.
+
+**Not Story 13.3's.** 13.3 modifies this file, but its diff begins at line 48 and leaves line 47 untouched.
+This is Story 13.4's test and it is now the Epic 13 boundary gate's business.
+
+### DW-297 - the CI job promises traces on a red run and has never produced one
+
+- **Found by:** the orchestrator, on trying to download the evidence for DW-296 and getting
+  `no valid artifacts found to download`. **Owner:** unassigned. **Severity:** HIGH - it is what stands
+  between a reproducible defect and "it went red on CI once", which is the job's own phrasing.
+  **Status:** OPEN.
+
+`folio-designer/playwright.config.ts` sets **no `reporter` and no `trace`**. Playwright's default reporter
+for a non-CI-detected run writes no `playwright-report/` directory at all, and none exists on the authoring
+machine either. The `folio-designer-e2e` job ends with:
+
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-report
+        path: folio-designer/playwright-report/
+        if-no-files-found: ignore
+
+so on a red run it uploads a directory that was never created, and `if-no-files-found: ignore` turns that
+into silence rather than a warning. The job's comment above the step reads: *"Only on failure, and only the
+report: a green run's traces are noise and cost storage, while a red run's are the difference between a
+reproducible defect and 'it went red on CI once'."* The reasoning is right and the promise is unkept - there
+were four red runs before this one and not one of them left an artefact behind.
+
+**This is the same defect shape as D-000.32**, one level down: not a guard that never ran, but a *diagnostic*
+that never ran, silently, while being cited in a comment as though it had.
+
+**What discharges it:** configure `reporter: [['html', { open: 'never' }], ['list']]` and
+`use.trace: 'retain-on-failure'` (or `on-first-retry`) in `playwright.config.ts`, then **prove it from a red
+run's uploaded artefact** - not from reading the config, which is precisely the error being corrected here.
+Consider dropping `if-no-files-found: ignore` so a missing report is loud rather than silent.
+
