@@ -11443,3 +11443,132 @@ left as caveats:
 
 Neither is an argument against the ruling; the owner had both numbers before deciding. They are here so the
 story is built against them.
+
+### DW-305 - the contrast contract is a hand-written five-pair list, and the pairing under test was not in it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** Story 13.5's step-04 review; **ruled a deferral by the engineering lead**, deliberately, at
+  the orchestrator's request to consider fixing it in-story. **Owner:** unassigned. **Severity:** MEDIUM.
+  **Status:** OPEN.
+
+`design-contract.test.ts:159-166` computes true WCAG relative luminance and asserts `>= 4.5`. The project has
+therefore **adopted the AA floor as a rule.** But it asserts it over a **hand-written list of five pairs**,
+and the pairing Story 13.5 introduced was not among them - so the assurance line shipped at **2.25:1**, and
+nothing failed.
+
+The numbers make the gap undeniable rather than theoretical. Against `--color-panel #1A1E23`: ink-high 13.74
+· ink 7.81 · ink-low 3.95 · ink-faint 2.88 · ink-ghost 2.25 · ink-disabled 1.93 · bind-on-page 4.60. The
+value shipped and the value now shipping differ by **3.5x in contrast**, and the guard that exists precisely
+to catch that could not see either.
+
+**This is the run's dominant defect shape in a contract test:** a guard whose coverage is a literal list, so
+its silence means "not checked" while reading as "checked and fine".
+
+**Why it was NOT fixed in 13.5, which is a real argument and not an excuse.** An honest exhaustive check
+cannot be the cartesian product of forty-odd tokens - most pairs never co-occur, so most of that product is
+meaningless. It must **derive the actually-rendered foreground/background pairings from `App.css`**, which is
+a new instrument rather than a widened literal, and it will red on pre-existing violations Story 13.5 did not
+cause. Dragging unrelated fixes into the last story of an epic is how epics stop closing.
+
+**What discharges it:** derive the pairings from the stylesheet, run the existing luminance assertion over
+all of them, and treat the pre-existing failures it surfaces as their own triage - not as 13.5's.
+
+### DW-306 - after 13.5, nothing tells an author that a render can be abandoned
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** Story 13.5's plan gate; ruled in-scope-to-disclose, out-of-scope-to-fix. **Owner:** unassigned.
+  **Severity:** LOW. **Status:** OPEN.
+
+Story 13.5 removed the preview heading's `Return to Design` button, which carried the only copy in the
+product saying a render in progress could be abandoned - `Cancel and return to Design`.
+
+**No capability was lost, and that was proved rather than assumed:** `returnToDesign` (`App.tsx:769`) is the
+same function reference behind the heading button, the DESIGN mode switch and Alt+P, and it calls
+`cancelPreviewWork` (`App.tsx:562-565`), which bumps the token, aborts the `AbortController` passed to every
+`engine.request`, clears the debounce and clears the scheduler. Story 13.5 added a test proving cancellation
+rather than mere navigation - that a late-arriving result is never installed.
+
+What is gone is the *telling*. An author mid-render has no on-screen indication that leaving is allowed and
+safe. Note the copy was already nearly unreachable before this story: every status setter uses
+`previewRef.current ? 'stale' : X`, so once any PDF is installed the `rendering` state is unreachable, and
+the wording only ever appeared on the very first render of a session.
+
+**What discharges it:** a decision about whether the product should say this at all, and if so where - the
+design does not draw it anywhere.
+
+### DW-307 - a contract test states in prose that no gate runs Playwright, and CI now does
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** Story 13.5's step-04 review. **Owner:** unassigned. **Severity:** LOW, but it misleads
+  precisely the reader who is trying to be careful. **Status:** OPEN.
+
+`design-contract.test.ts:116` carries prose stating that no gate in this epic executes the Playwright suite,
+citing D-000.4. That was true when written. It is **false now**: the `folio-designer-e2e` job runs the full
+browser suite on every push, and as of 2026-09-08 it passes - run `34178639637`, all seven jobs green.
+
+A reader who trusts that comment will **wrongly discount browser evidence** as unexecuted, which is the exact
+inverse of D-000.32's error and just as costly: there, an unrun guard read as green; here, a run guard reads
+as unrun. Both are the comment and the world disagreeing about whether something executed.
+
+**What discharges it:** correct the prose to say the suite runs in CI per push, and cite the run that proves
+it rather than asserting it.
+
+### DW-308 - `standIn` is read off live state, not off the record it describes
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** Story 13.5's step-04 review. **PRE-EXISTING - Story 13.4's, not caused by 13.5**, which
+  propagates it without widening it. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`noDataPreview` is computed as `mode === 'preview' && !sampleData` - a fact about the app *right now*, not
+about the PDF on screen. So removing sample data over an **exact** render flips the heading and the status
+line to no-data language while the installed record is still exact. The screen then describes a document
+that is not the one it is showing.
+
+This is the same family as the defect Story 13.3 patched: a screen making a claim about a render, derived
+from something other than that render. There the digest-mismatch path let the rail affirm a refused render;
+here a state change relabels a good one.
+
+**What discharges it:** carry `standIn` on the `PreviewRecord` at install time, the way 13.5 carries
+`installedAt`, so the label describes the bytes rather than the session.
+
+### DW-309 - in Preview the template font count has no home anywhere on screen
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** Story 13.5's builder, as a consequence of the ruled drop. **Not a defect** - a disclosed
+  consequence. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 13.5 drops `n fonts in template` from the Preview status bar to make room for the assurance line, on
+the reasoning that it is a template fact rather than a render fact. That reasoning holds, but the fact now
+appears **nowhere** in Preview: 13.3's evidence rail carries engine, target, pages, elapsed, size, hash and
+diagnostics, and **no font fact at all** - verified by `grep -ain font` over `evidence-rail.tsx` and
+`evidence-rail-facts.ts`, which returns zero hits.
+
+Recording this because the Q1 ruling's grounding originally asserted the opposite - that the count's
+"render-side siblings moved to 13.3's evidence rail". They did not. The drop stands on its other half; the
+false half is corrected here so nobody rebuilds on it.
+
+**What discharges it:** decide whether the count belongs in the evidence rail as a render-time fact (how many
+faces this render actually embedded, which the engine could report and which is a different and better
+number), or nowhere in Preview at all.
+
+### DW-310 - a sighted author gets no offline signal in Preview
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-5-the-chrome-tells-the-truth-about-the-preview.md`
+- **Found by:** the orchestrator, registering the disclosed cost of owner ruling D-13.5.1. **Owner:**
+  unassigned. **Severity:** LOW. **Status:** OPEN, ACCEPTED DELIBERATELY.
+
+By owner ruling, `offline-status` is visually hidden in Preview - `.sr-only`, keeping `role="status"`, its
+`aria-label`, its `data-testid` and its full announcement text. Screen-reader users lose nothing. **A sighted
+author in Preview sees nothing**, including in the two states that most warrant seeing:
+`Offline cache unavailable` and `Update available; current release remains usable`. The signal returns on the
+DESIGN switch.
+
+This was chosen over the alternatives with the numbers in hand: keeping it visible would have required
+dropping all four remaining items, costing *more* sighted surface than hiding it; truncation would have
+shipped `Update avail...`, whose removed half is the informative half. Hiding it also resolved a genuine
+contradiction rather than displaying it - the assurance reads `no network - nothing left this machine` while
+the label could simultaneously read that the cache is unavailable, 12px away.
+
+**What discharges it:** a Preview-appropriate offline affordance that is not a full sentence competing for
+the same row - an icon, a badge on the DESIGN switch, or promotion into the evidence rail.
+
