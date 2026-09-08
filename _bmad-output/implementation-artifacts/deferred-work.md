@@ -11167,9 +11167,9 @@ it from the YAML.
 ### DW-296 - the no-data spec waits for a transient label, and CI is the first machine to miss it
 
 - **Found by:** the orchestrator, from CI run `34176422177` (commit `cf1adc0`) - the first run in which the
-  browser suite executed to completion rather than timing out. **Owner:** unassigned. **Severity:** HIGH -
-  it is the sole red in the workflow and, under D-000.33, Epic 13 cannot close while CI is red.
-  **Status:** OPEN.
+  browser suite executed to completion rather than timing out. **Owner:** the orchestrator.
+  **Severity:** HIGH - it was the sole red in the workflow and, under D-000.33, Epic 13 cannot close while CI
+  is red. **Status: FIXED 2026-09-08, awaiting CI confirmation.**
 
 `folio-designer/e2e/preview-no-data.spec.ts:47` fails on ubuntu-24.04 while passing on the authoring machine:
 
@@ -11187,18 +11187,30 @@ admission. An assertion that must *catch a transition* passes or fails on whethe
 window - which is a property of the machine, not of the product. That is why it survived every local run
 and failed on the first foreign one.
 
-**What is NOT established, and I am not going to assert it.** I have not confirmed *why* the window closes
-too fast (or never opens) on Linux specifically. The obvious candidate is that admission of a small stand-in
-PDF completes inside one poll interval, but a second candidate is that on a first preview there is no
-historical PDF at all and the label is never applied on that platform. Distinguishing them needs the page
-snapshot at the moment of failure - **which DW-297 is the reason I do not have.** Fix DW-297 first; it is a
-prerequisite for diagnosing this, not merely adjacent to it.
+**RESOLVED WITH EVIDENCE, 2026-09-08.** The paragraph that stood here declined to name a mechanism, because
+two candidates remained and the page snapshot needed to separate them did not exist. DW-297's fix produced
+it: run `34177610962` uploaded a 15.3 MB report, the first artefact any red run in this repository has ever
+left behind. The snapshot at the moment of failure reads:
 
-**What likely discharges it** (to be confirmed against evidence, not adopted on the strength of this
-paragraph): drop line 47. Line 48 already implies it - `Current` is unreachable except *through* the
-pre-admission state - so the transient assertion adds no separating power while contributing all of the
-flakiness. If the pre-admission label is genuinely worth guarding, it belongs in a unit test that controls
-the clock, not in a browser test that races it.
+    - main "Preview region":
+      - status: Current no-data layout PDF
+      - region "Current no-data layout PDF, revision 2":
+        - img "Current no-data layout PDF, revision 2"
+
+**The product was never at fault.** The preview had rendered, been admitted, and reached revision 2. Every
+assertion from line 48 down would have passed. The removed line spent its full 60 seconds waiting for a state
+the app had already left - so of the two candidates, it is the first: the pre-admission window closes before
+a poll lands, not that the label is never applied.
+
+**The fix:** the wait on `Stale historical PDF` is deleted. It asserted no fact about the product, only that
+a poll would land inside the hand-off-to-admission window, which is a property of the machine. It also added
+no separating power, since `Current` is unreachable except *through* the pre-admission state, so the
+surviving line implies it. The comment above it now carries the snapshot, so the next reader gets the
+evidence rather than the reasoning.
+
+**What remains before this is closed outright:** a green `folio-designer-e2e` job. The fix is compile-checked
+and reasoned from the snapshot, but under D-000.32 that is not the same as observed - this entry stays open
+until a CI run says so, for exactly the reason the whole run keeps relearning.
 
 **Not Story 13.3's.** 13.3 modifies this file, but its diff begins at line 48 and leaves line 47 untouched.
 This is Story 13.4's test and it is now the Epic 13 boundary gate's business.
@@ -11230,10 +11242,12 @@ were four red runs before this one and not one of them left an artefact behind.
 **This is the same defect shape as D-000.32**, one level down: not a guard that never ran, but a *diagnostic*
 that never ran, silently, while being cited in a comment as though it had.
 
-**What discharges it:** configure `reporter: [['html', { open: 'never' }], ['list']]` and
-`use.trace: 'retain-on-failure'` (or `on-first-retry`) in `playwright.config.ts`, then **prove it from a red
-run's uploaded artefact** - not from reading the config, which is precisely the error being corrected here.
-Consider dropping `if-no-files-found: ignore` so a missing report is loud rather than silent.
+**DISCHARGED 2026-09-08, and proven the way this entry demanded.** `playwright.config.ts` now declares
+`reporter: [['html', { open: 'never' }], ['list']]` and `use.trace: 'retain-on-failure'`, and the CI step's
+`if-no-files-found` went from `ignore` to `error` so a missing report can never be silent again. The proof is
+not that the config reads correctly - that is the error being corrected - but that red run `34177610962`
+uploaded `playwright-report`, **15,288,285 bytes**. Its snapshot is what diagnosed DW-296 within minutes of
+arriving, after that defect had been undiagnosable for six runs. **Status: CLOSED.**
 
 ### DW-298 - `wasm/cmd/engine/main.go` is outside every Go gate, and this story added two fields to it
 

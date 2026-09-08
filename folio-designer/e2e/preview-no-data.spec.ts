@@ -38,13 +38,28 @@ test('previews a bound template with no sample data, and claims nothing about pr
   // binds {{customer.name}} — the shape that used to refuse three ways over.
   await page.getByRole('button', { name: 'PREVIEW' }).click()
 
-  // A REAL PDF ARRIVES, AND PDF.js ADMITS IT. The alternation this line used
-  // to accept — `Stale historical PDF|Current no-data layout PDF` — is
-  // satisfied by the FIRST name, which the viewer carries the moment bytes are
-  // handed to it. Admission is what promotes it to `Current`: App.tsx only
-  // reaches `'current'` from the viewer's own onPageCount, so waiting for the
-  // admitted name is the assertion the comment was claiming to make.
-  await expect(page.getByRole('region', { name: /Stale historical PDF/ })).toBeVisible({ timeout: 60_000 })
+  // A REAL PDF ARRIVES, AND PDF.js ADMITS IT. Waiting for the ADMITTED name is
+  // the whole assertion: the viewer carries `Stale historical PDF` the moment
+  // bytes are handed to it, and only admission promotes it to `Current`, since
+  // App.tsx reaches `'current'` nowhere except the viewer's own onPageCount.
+  //
+  // DW-296, fixed 2026-09-08 with evidence rather than reasoning. A second wait
+  // on `Stale historical PDF` used to sit above this line. It passed on the
+  // authoring machine and spent the full 60s failing on ubuntu-24.04 — the only
+  // red in the workflow across six runs. The page snapshot from run
+  // `34177610962` settles why, and the product was never at fault:
+  //
+  //     - main "Preview region":
+  //       - status: Current no-data layout PDF
+  //       - region "Current no-data layout PDF, revision 2":
+  //
+  // Already admitted, already at revision 2. The removed line was not asserting
+  // a fact about the product; it was asserting that a poll would land inside the
+  // window between hand-off and admission, which is a property of how fast the
+  // machine is. It also added no separating power — `Current` is unreachable
+  // EXCEPT through the pre-admission state, so the line below implies it. If
+  // that transient label is ever worth guarding, it belongs in a unit test that
+  // controls the clock, not a browser test that races it.
   await expect(page.getByRole('region', { name: /Current no-data layout PDF, revision \d+/ })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('note', { name: 'No-data preview notice' })).toBeVisible()
   await expect(page.getByText('NO-DATA LAYOUT PREVIEW')).toBeVisible()
