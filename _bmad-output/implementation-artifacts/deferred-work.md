@@ -11018,11 +11018,12 @@ which is the one observable that separates a used token from a forgotten one. Bu
 `tokens.css` is referenced somewhere in the CSS that consumes it - which would cover this token and every
 future one - or the browser suite becoming a routine gate.
 
-### DW-290 - the preview status bar can overflow at the shell's own declared minimum width
+### DW-290 - the preview status bar does NOT overflow today, but adding the assurance line overflows it by 163px
 
 - source_spec: `_bmad-output/implementation-artifacts/13-2-the-viewer-navigates-like-a-pdf-viewer.md`
-- **Found by:** Story 13.2's step-04 review (adversarial layer). **Owner:** unassigned. **Severity:** LOW.
-  **Status:** OPEN.
+- **Found by:** Story 13.2's step-04 review (adversarial layer). **MEASURED AND CORRECTED 2026-09-08** by
+  Story 13.5's builder at its plan gate. **Owner:** Story 13.5. **Severity:** LOW as a present-tense defect
+  (there is none); MEDIUM as a constraint on 13.5. **Status:** OPEN, now with numbers instead of an estimate.
 
 `App.css:433` makes `.status-bar` a flex row with a gap, no wrap and no overflow handling; `.preview-nav`
 carries no `flex-shrink: 0`. At `.app-shell { min-width: 1024px }` (`App.css:19`) the seven controls Story
@@ -11034,10 +11035,30 @@ the text items and the new controls are squeezed.
 witness passes there. `#root` is `overflow-x: auto` (`App.css:4`), so a narrow window scrolls the whole
 shell rather than reflowing, which is what keeps this cosmetic rather than functional.
 
-**What discharges it:** a shrink and truncation policy for the bar - which items give ground and in what
-order - decided rather than left to flex defaults, with a browser check at 1024px. **Story 13.5 owns the
-Preview bar's final composition** and may remove the Design-mode items from it entirely, which would
-dissolve this; do not fix it in isolation before that decision.
+**THE ESTIMATE WAS WRONG, AND THE HEDGE ABOVE IS WHY THAT IS ALL IT WAS.** Story 13.5's builder took a real
+Chromium run at 1024px before designing anything, then deleted the probes. Measured:
+
+- `.status-spacer` = **76.9px** of genuine free space. The bar **fits today.** The ~1050px figure estimated
+  above is roughly 100px too high, and that error is the whole difference between "fits" and "overflows".
+- `no network - nothing left this machine` needs **228px** + a 12px gap = **240px**. **Deficit 163px.**
+- Droppable, each with its 12px gap: `LOCAL SHELL` 78 - `GO SNAPSHOT - REVISION n` 156 -
+  `n fonts in template` 120 - `Offline ready` 90 - `PREVIEW MODE` 84.
+
+So the defect is not that the bar overflows - it does not. It is that **this bar has 76.9px of headroom and
+Story 13.5's AC needs 240px**, which makes the composition question the story must answer unavoidable rather
+than optional.
+
+**Worth recording as a positive, because this register is mostly a catalogue of the opposite.** The original
+entry labelled itself "estimated from the shipped widths, not observed" and named the viewport its evidence
+did not cover. That hedge is the entire reason a wrong number stayed a wrong *estimate* rather than becoming
+a false claim someone acted on: the builder read the hedge, took the measurement the entry itself asked for,
+and corrected it before writing a line of code. Compare [D-000.28] - a claim written before the event it
+asserts is false from birth. This one declined to make that claim, and the discipline held.
+
+**What discharges it:** Story 13.5's composition ruling, which is a live Open Question as of 2026-09-08 -
+adopt the mockup's Preview bar wholesale, drop a minimal pair, or keep everything and let it overflow. The
+browser check at 1024px that this entry listed under "what discharges it" **has now been done**, so whatever
+ships is decided against measurements rather than flex defaults. Do not fix it in isolation; 13.5 owns it.
 
 ### DW-291 - an uncommitted typed entry survives a mode switch, and there is no way to cancel one
 
