@@ -13,21 +13,25 @@ context: []
 *Non-normative — the frozen Intent below governs implementation. Rewritten at close to describe what
 actually shipped.*
 
-The preview screen shows you a PDF and, in small grey type at the bottom, a hash. The hash is the
-whole point of the product: it is supposed to prove that the document on screen is the exact
-document the engine produced. Today it is a footnote, and — worse — nobody ever checks it. The
-browser is told a hash by the engine and prints it without ever computing the hash of the bytes it
-is holding.
+The preview screen now carries its evidence beside the page. Down the right-hand side is a rail with
+the facts of the render that actually happened — engine version, target, page count, elapsed time,
+file size — the output hash in its own bordered block in monospace so a person can compare it by
+eye, and the diagnostics with their counts and a legend that says explicitly when there were none.
+Re-render and Save PDF moved into that rail, where they stay reachable whichever tab is selected;
+that was an owner request, and it is met.
 
-This story builds the evidence rail the design drew: a panel down the right-hand side carrying the
-facts about the render (engine version, target, page count, how long it took, how big it is), the
-hash in its own bordered block in monospace so a person can actually compare it by eye, and the
-diagnostics with their counts and a legend. Re-render and Save PDF move here, next to the evidence,
-instead of being buried in a tab.
+Before any of it is shown, the browser computes the hash of the bytes it holds and refuses to
+display a preview whose stated hash does not describe them. The screen no longer repeats a claim it
+never checked itself.
 
-And before any of that is shown, the browser now computes the SHA-256 of the PDF it is holding and
-refuses to display a preview whose hash does not describe its own bytes. Asking someone to compare a
-hash by eye that we never checked ourselves would be worse than not showing it at all.
+Two things it deliberately does not do. There is no row count and no page number on a diagnostic:
+both would have meant changing the engine's published contract, and the owner chose five honest
+values over six with one invented. And the page-thumbnail half that once shared this story's number
+was split off before work began — it is not here and not owed here.
+
+Two things that look wrong and are not. The rail is deliberately twenty pixels narrower than the
+mockup. And six follow-ups were registered rather than fixed, the largest being that the one place
+the new facts cross into the browser host is outside every automated gate this project owns.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -650,3 +654,77 @@ config says — and 13.2's spec asserted CI execution in wording that was false 
 
 - Browser witness for the layout half, which jsdom cannot observe at all.
   [`preview-evidence-rail.spec.ts`](../../folio-designer/e2e/preview-evidence-rail.spec.ts)
+
+## Delivery Log
+
+### 2026-09-08 — done
+
+Baseline `40427ee`. Shipped in two commits made by the orchestrator: `3d4e065`, the 28 code, test and
+spec files, and `0205abc`, the deferral register and the tracker's move to `review`. This close made
+no commit; its edits to the opener, this log and `sprint-status.yaml` are handed to the orchestrator.
+
+**What shipped.** The evidence rail took the Inspector's column in Preview as a sibling of the
+tabpanels — never inside a `hidden` one, which is the whole of what discharges **DW-281**, the
+owner's request from session `dd042d7c` (*"Later this button should be moved to the preview area"*),
+correctly attributed here per **D-13.4.4**, which records that this run once wrongly stripped that
+attribution and corrected itself at `a5b7a10`. The engine reply gained exactly two fields, measured
+and read inside the engine, with the elapsed bracket around the render call alone. And **DW-270**
+closed: the browser recomputes SHA-256 over the bytes it holds and refuses to install a preview whose
+reported digest does not describe them.
+
+**Decisions applied.** Owner Q1 — `rows` dropped rather than extending `folio.Result` and `Render`'s
+exported contract; the coordinator corrected a false premise in its own summary rather than stretching
+the ruling. Owner Q2 — no page number on a diagnostic; the location ships in three parts. Lead Q3 —
+the byte-identity wording approved as written, with no affirmation of a live comparison. Lead Q4(a),
+corrected at CHECKPOINT 1 — the rail is a sibling of the tabpanels, not a replacement for the INPUTS
+tabpanel's content; the two readings pull apart, and the tabpanel reading would have inherited the
+very defect DW-281 records. **D-13.4.1** held: the byte-identity sentence is withheld entirely for a
+stand-in preview, and every 13.4 withholding survives.
+
+**What this story turned out not to be.** At the plan gate the owner split it in two. Goal A — the
+PAGES thumbnail rail, its numbering, diagnostic marking, click-to-navigate and truncation, and not
+rendering the component palette in Preview — was deferred out before implementation began. It is
+recorded in this file's Spec Change Log and **nowhere else**: it has no deferred-work number, no
+decision-log entry and no story key. Flagged to the orchestrator at close.
+
+**Triage.** 11 patched, 5 deferred, 5 rejected. `review_loop_iteration` 0 — no loopback, no intent
+gap, nothing reached the frozen block. The review's most useful catch was structural rather than
+textual: that a rail placed inside the `hidden` tabpanel would have satisfied the words of Q4(a)
+while discharging nothing.
+
+**Deferred, all owner unassigned.** DW-298, the load-bearing one — the host response file is
+`//go:build js && wasm`, so no Go test compiles it and CI's linux/amd64 runner excludes it
+identically; dropping a field there leaves every Go test, all of vitest and the wasm build green
+while the rail prints `elapsed 0 ms` forever, and this story added two fields to that file. DW-299,
+`crypto.subtle` is secure-context-only and now has a second consumer on the render path. DW-300, the
+rail announces nothing to a screen reader, which undercuts the DW-281 fix. DW-301, the rail's
+scroller is not keyboard-reachable. DW-302, copying the digest yields a string broken across two
+lines. DW-303, registered by the orchestrator rather than the builder: the non-zero elapsed guard
+measured 22 ms against a 1 ms threshold, but the field truncates, so a host fast enough to render one
+page in under a millisecond reds a correct build — kept deliberately, because it is the only executed
+guard on the hop DW-298 leaves uncompiled.
+
+**Gates measured at close, at `0205abc`, tree clean.** Unit 68 files / 1076 tests, all passed
+(baseline 66 / 1043 at `40427ee`); the builder's test-name diff of 0 GONE / 33 NEW stands as measured
+at implementation and was not re-derived here, since re-deriving it needs a baseline checkout this
+close is not permitted to make. `tsc -b --force` exit 0. `oxlint` exactly 4
+`react(only-export-components)`, re-measured at `preview/pdf-viewer.tsx:17:14`, `:18:14`,
+`App.tsx:3895:14` and `:3902:17` — the spec's recorded `App.tsx:3830`/`:3837` anchors moved exactly as
+it predicted they would. `test:e2e:compile` exit 0. `folio-go` `go test -count=1 ./...`: 14 packages
+ok, failing only `TestCorpusMeetsP6ExerciseFloors` and its `P6g_(opaque_names)` subtest (got 7, need
+≥20) — the two enumerated standing reds, by name, with no third distinct failure. `lint`
+`go test -count=1 ./...`: four packages ok. `gofmt -l` over both Go trees: empty.
+`git status --porcelain`: empty.
+
+**Gates not run at close, and why.** The Playwright browser suite, `npm run build` as a gate, the
+`verify:offline*` chain, the font-host scans and the Go cross-target matrix were **not run**. Under
+**D-000.33** they belong to Epic 13's boundary gate, which also carries the first CI wait. 13.3's
+heavy record is the builder's own full run — **41 passed in 3.7 minutes, LOCALLY EXECUTED, never
+CI-observed** — and 13.3 is the last story in this run to close on the old every-story cadence; 13.5
+is the first on the new one. Saying which suites did not run is the obligation D-000.33 created, not
+a caveat on it.
+
+**Not this story's, and left alone.** `e2e/preview-no-data.spec.ts:47` fails on Linux in CI (DW-296)
+while passing locally; it is 13.4's assertion and 13.3's diff to that file begins at line 48. It
+belongs to the Epic 13 boundary gate. `evidence/story-6.7-roundtrip-manifest.json` (DW-294) is
+rewritten by any browser run; it was already reverted and is correctly absent from `3d4e065`.

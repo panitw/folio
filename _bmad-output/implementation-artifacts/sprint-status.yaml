@@ -477,7 +477,7 @@ development_status:
   epic-13: in-progress
   13-1-the-preview-keeps-the-pdf: done
   13-2-the-viewer-navigates-like-a-pdf-viewer: done
-  13-3-the-preview-screen-is-the-evidence-screen: review
+  13-3-the-preview-screen-is-the-evidence-screen: done
   13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt: done
   13-5-the-chrome-tells-the-truth-about-the-preview: backlog
   epic-13-retrospective: optional
