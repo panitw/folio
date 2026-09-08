@@ -48,7 +48,15 @@ test('previews a bound template with no sample data, and claims nothing about pr
   await expect(page.getByRole('region', { name: /Current no-data layout PDF, revision \d+/ })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('note', { name: 'No-data preview notice' })).toBeVisible()
   await expect(page.getByText('NO-DATA LAYOUT PREVIEW')).toBeVisible()
-  await expect(page.getByText(/Stand-in local digest [a-f0-9]{64}/)).toBeVisible()
+  // STORY 13.3 — THE DIGEST IS IN THE RAIL NOW, IN TWO FIXED LINES.
+  // `Stand-in local digest` labels the block; the 64 characters live in
+  // `.rail-hash-value` as two 32-character lines, so they are asserted off the
+  // block's own text rather than as one run in a sentence.
+  const hashBlock = page.getByLabel('Output hash')
+  await expect(hashBlock).toContainText('Stand-in local digest')
+  await expect(hashBlock.locator('.rail-hash-value')).toHaveText(/^[a-f0-9]{64}$/)
+  // AND THE PRODUCTION CLAIM IS WITHHELD FROM A NO-DATA DIGEST (D-13.4.1).
+  await expect(hashBlock).not.toContainText('Byte-identical across')
 
   // AND NOTHING ON THE SCREEN CLAIMS PRODUCTION.
   await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toHaveCount(0)
@@ -59,6 +67,6 @@ test('previews a bound template with no sample data, and claims nothing about pr
   // The control the third gate disabled is reachable and usable, and the
   // export names what it would be writing.
   await page.getByRole('tab', { name: 'INPUTS' }).click()
-  await expect(page.getByRole('button', { name: 'Render local PDF' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Re-render' })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Save no-data PDF' })).toBeVisible()
 })

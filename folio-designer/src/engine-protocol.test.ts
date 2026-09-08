@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ENGINE_PROTOCOL_VERSION, LOCALE_TAGS, MAX_CANVAS_BODY_TEXT_LINES, MAX_ENGINE_CONTENT_WINDOWS, MAX_ENGINE_FONT_CHAIN_ENTRIES, MAX_ENGINE_FONT_FAMILIES, MAX_CANVAS_PROPERTY_STRING, MAX_ENGINE_BINDING_LENGTH, MAX_ENGINE_DATA_PATH_LENGTH, MAX_ENGINE_ELEMENT_ID_LENGTH, MAX_ENGINE_PAYLOAD_BYTES, MAX_ENGINE_RENDER_PDF_BYTES, deepFreeze, parseInbound, parseRequest } from './engine-protocol'
 
@@ -702,7 +703,7 @@ describe('canvas projection protocol guard', () => {
     expect(parseRequest(render)).toBeDefined()
     expect(parseRequest({ ...render, payload: { template: part, data: part.slice(0) } })).toBeUndefined()
     expect(parseRequest({ ...render, viewport: 900 })).toBeUndefined()
-    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'render-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, bytes: part, preview: { revision: 7, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'render-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, bytes: part, preview: { revision: 7, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [], elapsedMs: 7, version: '0.0.0-dev' } }
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, pdfSha256: 'not-a-digest' } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, identity: 'not-an-identity' } })).toBeUndefined()
@@ -712,6 +713,20 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound({ ...response, bytes: new ArrayBuffer(MAX_ENGINE_RENDER_PDF_BYTES + 1) })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, diagnostics: [{}] } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, diagnostics: [], snapshot: {} } })).toBeUndefined()
+    // STORY 13.3 — THE RENDER ARM IS ALL FOUR MEMBERS OR NONE, AND EACH IS
+    // NAMED IN ITS OWN ROW so a failure says which one went missing rather
+    // than only that the reply was invalid.
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: undefined } }), 'a render reply that lost elapsedMs must be refused, not displayed with a gap').toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, version: undefined } }), 'a render reply that lost version must be refused, not displayed with a gap').toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: -1 } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: 1.5 } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: '7' } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, version: '' } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, version: 'v'.repeat(65) } })).toBeUndefined()
+    // A ZERO IS ADMITTED. `0 ms` is what a very fast render reports, and an
+    // implementation that rejected it by truthiness would silently refuse the
+    // fastest documents — which is why neither Go struct is `omitempty`.
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: 0 } })).toBeDefined()
   })
 
   it('accepts only an identity-only engine response with revision-bound opaque evidence', () => {
@@ -723,6 +738,11 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, pdfSha256: 'b'.repeat(64) } })).toBeUndefined()
     expect(parseInbound({ ...response, preview: { ...response.preview, revision: 6 } })).toBeUndefined()
+    // THE OTHER HALF OF THE ALL-OR-NOTHING ARM. An identity reply carries
+    // neither render fact; one arriving alone is a protocol breach, not a
+    // bonus.
+    expect(parseInbound({ ...response, preview: { ...response.preview, elapsedMs: 7 } })).toBeUndefined()
+    expect(parseInbound({ ...response, preview: { ...response.preview, version: '0.0.0-dev' } })).toBeUndefined()
   })
 
   it('admits only a bounded, revision-correlated engine parameter-reference projection', () => {
@@ -847,5 +867,51 @@ describe('canvas projection protocol guard', () => {
     // still an INTEGER count of millipoints and still a number.
     expect(parseInbound(responseFor({ ...table, headerHeight: -5.5 }))).toBeUndefined()
     expect(parseInbound(responseFor({ ...table, headerFontSizeResolved: null }))).toBeUndefined()
+  })
+})
+
+// STORY 13.3 — THE TWO HAND-ENUMERATED HOPS, WHICH DROP UNKNOWN FIELDS IN
+// SILENCE.
+//
+// `isPreview` above is a guard on the SHAPE that arrives; it cannot see a field
+// that was thrown away before it. Between Go and React the preview object is
+// rebuilt member by member TWICE — once in `engine.worker.ts` when the wasm
+// response is turned into a protocol message, and once in `engine-client.ts`
+// inside `deepFreeze` — and a Go field named in neither literal never reaches
+// App.tsx at all. That is not a hypothetical: `engine-client.ts`'s own comment
+// records Story 12.3's table projection being lost exactly this way, with no
+// protocol failure and nothing in the DOM to say so.
+//
+// A behavioural test cannot separate the two hops (the worker's output is the
+// client's input, so one covers for the other), and it cannot say WHICH field
+// went missing. This reads the two literals directly and names the field.
+describe('the preview literal is rebuilt in full at both protocol hops', () => {
+  const hops = [
+    ['engine.worker.ts', /const preview = request\.operation === 'render' \? \{([^}]*)\}/],
+    ['engine-client.ts', /\.\.\.\(message\.preview\.pdfSha256 \? \{([\s\S]*?)\} : \{\}\)/],
+  ] as const
+
+  it('names every render-arm member at each hop, so a dropped field reds here rather than vanishing', () => {
+    for (const [file, pattern] of hops) {
+      const source = readFileSync(`src/${file}`, 'utf8')
+      const literal = source.match(pattern)?.[1]
+      expect(literal, `${file} no longer spells the render preview literal this scan reads; re-derive the extraction rather than deleting the check`).toBeTruthy()
+      for (const field of ['pdfSha256', 'diagnostics', 'elapsedMs', 'version']) {
+        expect(literal, `${file} builds the render preview without naming '${field}', which is dropped in silence before anything downstream can notice`).toContain(field)
+      }
+    }
+  })
+
+  // THE RED PROOF, so the scan cannot pass by matching nothing: deleting a
+  // field from either literal must make the extraction stop containing it.
+  it('turns a field deleted from either literal red', () => {
+    for (const [file, pattern] of hops) {
+      const source = readFileSync(`src/${file}`, 'utf8')
+      for (const field of ['elapsedMs', 'version']) {
+        const mutated = source.replace(new RegExp(`, ${field}: [^,}]+`), '')
+        expect(mutated, `the mutation must actually change ${file}`).not.toEqual(source)
+        expect(mutated.match(pattern)?.[1] ?? '').not.toContain(field)
+      }
+    }
   })
 })

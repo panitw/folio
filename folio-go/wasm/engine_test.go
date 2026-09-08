@@ -3,6 +3,7 @@ package wasm
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -174,6 +175,52 @@ func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 			wantDigest := sha256.Sum256(want.Bytes)
 			if evidence.PDFSHA256 != fmt.Sprintf("%x", wantDigest) {
 				t.Fatalf("digest = %q", evidence.PDFSHA256)
+			}
+			// STORY 13.3 — THE TWO RENDER FACTS THE BROWSER'S EVIDENCE RAIL PRINTS.
+			//
+			// ⚠ THE VERSION IS COMPARED AGAINST THE PACKAGE CONSTANT, WHICH IS ONLY
+			// A REAL COMPARISON WHILE THE CONSTANT IS NON-EMPTY. Blanking
+			// `folio.Version` would satisfy `evidence.Version == folio.Version`
+			// tautologically while `isPreview` in the browser rejects `version: ''`
+			// — no preview would render at all, with the whole Go suite green. So
+			// the constant is checked for content first, and the projection against
+			// the constant second. A literal expectation here would be worse than
+			// either: a version invented for display is the exact defect the
+			// evidence surface exists to prevent, and a literal would agree with an
+			// invented one.
+			if folio.Version == "" {
+				t.Fatal("folio.Version is empty, which makes the comparison below vacuous and makes every browser preview unrenderable")
+			}
+			if evidence.Version != folio.Version {
+				t.Fatalf("engine version = %q, want %q", evidence.Version, folio.Version)
+			}
+			// ⚠ `> 0`, AND ONLY ON THE FIXTURE THAT TAKES REAL TIME. The earlier
+			// `>= 0` here could not fail: an `int64` nobody assigns is 0, and
+			// 0 >= 0 — measured, by deleting the measurement outright and watching
+			// `go test ./wasm/...` stay green. `multipage-text-font` is a genuine
+			// five-page, multi-script, shipped-font render that takes roughly 0.9 s
+			// under `go test`, which is about 900x the threshold below, so this is
+			// a real reading of the clock rather than a tolerance. The one-page
+			// `simple` fixture is deliberately exempt: it can legitimately finish
+			// inside a millisecond and report `0 ms`, which is exactly the answer
+			// neither Go struct marks `omitempty` in order to preserve.
+			if evidence.ElapsedMs < 0 {
+				t.Fatalf("elapsed = %d ms, want a non-negative measurement", evidence.ElapsedMs)
+			}
+			if fixture.name == "multipage-text-font" && evidence.ElapsedMs <= 0 {
+				t.Fatalf("elapsed = %d ms for a five-page multi-script render: the clock was never read", evidence.ElapsedMs)
+			}
+			// AND BOTH SURVIVE THE WIRE ENCODING, INCLUDING A ZERO. `omitempty` on
+			// either field would drop a legitimate `0 ms` render and an empty
+			// version, and JSON is the only place that choice is observable.
+			encoded, err := json.Marshal(RenderResult{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{`"elapsedMs":0`, `"version":""`} {
+				if !strings.Contains(string(encoded), key) {
+					t.Fatalf("zero-valued render reply %s omits %s", encoded, key)
+				}
 			}
 			identity, identityRevision, err := engine.PreviewIdentity(data, params)
 			// This is deliberately not a same-helper comparison: the engine must

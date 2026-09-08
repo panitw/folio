@@ -7,12 +7,16 @@ const warning = { severity: 'warning' as const, code: 'CONTENT_CLIPPED', element
 describe('diagnostic presenter', () => {
   it('renders producer facts with shape, mono location, dismiss, and locate controls', () => {
     const dismiss = vi.fn(); const locate = vi.fn()
-    render(<PreviewDiagnostics diagnostics={[warning]} dismissed={new Set()} onDismiss={dismiss} onLocate={locate} />)
+    render(<PreviewDiagnostics diagnostics={[warning]} dismissed={new Set()} onDismiss={dismiss} onLocate={locate} components={[{ id: 'e7', type: 'table', band: 'content' }]} />)
     expect(screen.getByLabelText('Render diagnostics')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('1 render warning available: CONTENT_CLIPPED.')
     expect(screen.getByText('warning · CONTENT_CLIPPED')).toBeInTheDocument()
-    expect(screen.getByText('e7 · bands.content.e7')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Locate in Design' }))
+    // STORY 13.3 — THE THREE-PART LOCATION. The raw `e7` is gone from the line:
+    // an internal handle says nothing to an author, while kind and band are a
+    // place in the document. Both extra parts come from the CALLER's projection,
+    // so this fails if the join is dropped or invented.
+    expect(screen.getByText('bands.content.e7 · table · band content')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Locate on canvas' }))
     expect(locate).toHaveBeenCalledWith(warning)
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss CONTENT_CLIPPED diagnostic' }))
     expect(dismiss).toHaveBeenCalledOnce()
@@ -28,8 +32,24 @@ describe('diagnostic presenter', () => {
 
   it('does not invent a locate target when the engine supplied no element id', () => {
     render(<PreviewDiagnostics diagnostics={[{ ...warning, elementId: '', dataPath: 'page.margin.top' }]} dismissed={new Set()} onDismiss={vi.fn()} onLocate={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Locate in Design' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Locate on canvas' })).not.toBeInTheDocument()
     expect(screen.getByText('page.margin.top')).toHaveClass('diagnostic-location')
+  })
+
+  // STORY 13.3 — AN ELEMENT THAT IS NOT THERE IS NOT GUESSED AT.
+  //
+  // The join is honest only while the displayed preview is the admitted one, so
+  // App.tsx withholds the projection otherwise — and an id the projection does
+  // not carry (an element deleted since the render) leaves the path alone rather
+  // than inventing a kind. The Locate control still stands: the engine did name
+  // an element, and `locateDiagnostic` is what announces that it is gone.
+  it('omits the kind and band join when the element is absent, without dropping the path or the control', () => {
+    const { rerender } = render(<PreviewDiagnostics diagnostics={[warning]} dismissed={new Set()} onDismiss={vi.fn()} onLocate={vi.fn()} components={[{ id: 'e1', type: 'text', band: 'pageHeader' }]} />)
+    expect(screen.getByText('bands.content.e7')).toHaveClass('diagnostic-location')
+    expect(screen.getByRole('button', { name: 'Locate on canvas' })).toBeInTheDocument()
+    // And with no projection supplied at all — the un-admitted preview.
+    rerender(<PreviewDiagnostics diagnostics={[warning]} dismissed={new Set()} onDismiss={vi.fn()} onLocate={vi.fn()} />)
+    expect(screen.getByText('bands.content.e7')).toHaveClass('diagnostic-location')
   })
 
   it('announces opaque producer facts independently with an error shape and named keyboard controls', () => {

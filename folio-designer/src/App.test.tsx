@@ -16,6 +16,7 @@ import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { catalogueFaces } from './generated/font-catalogue'
+import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
 import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 
 // STORY 16.5 — SOME OF THESE TESTS NEED A MACHINE THAT CAN KEEP A FACE.
@@ -668,7 +669,7 @@ describe('application shell', () => {
     const request = vi.fn((operation: string) => {
       if (operation === 'identity') return Promise.resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } })
       if (operation === 'serialize') return new Promise<{ snapshot: ReturnType<typeof snapshot>; bytes: ArrayBuffer }>((resolve) => { releaseSerialize = resolve })
-      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } })
+      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } })
       return Promise.resolve({ snapshot: snapshot(1) })
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -694,7 +695,7 @@ describe('application shell', () => {
         return Promise.resolve({ snapshot: snapshot(1), preview: { revision: 1, identity: 'c'.repeat(64) } })
       }
       if (operation === 'serialize') return Promise.resolve({ snapshot: snapshot(1), bytes })
-      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'c'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } })
+      if (operation === 'render') return Promise.resolve({ snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'c'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } })
       return Promise.resolve({ snapshot: snapshot(1) })
     })
     vi.useFakeTimers()
@@ -703,7 +704,7 @@ describe('application shell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
       fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[1]}' } })
       fireEvent.change(screen.getByRole('textbox', { name: 'Raw parameter JSON' }), { target: { value: '{"transactions":[2]}' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
       await vi.runAllTimersAsync()
       expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(1)
       releaseIdentity()
@@ -720,7 +721,7 @@ describe('application shell', () => {
       if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: ['reportDate'] } }
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -764,7 +765,7 @@ describe('application shell', () => {
       if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: ['__proto__', 'constructor', 'reportDate'] } }
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -776,7 +777,7 @@ describe('application shell', () => {
     reportDate.focus()
     fireEvent.change(reportDate, { target: { value: '"2026-08-28T00:00:00Z"' } })
     expect(document.activeElement).toBe(reportDate)
-    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'identity').length).toBeGreaterThan(1))
     const accepted = request.mock.calls.filter(([operation]) => operation === 'identity').at(-1)! as unknown as [string, { params: ArrayBuffer }]
     const exact = '{"constructor":1.00e+2,"__proto__":-0,"other":123.4500,"reportDate":"2026-08-28T00:00:00Z"}'
@@ -798,7 +799,7 @@ describe('application shell', () => {
       if (operation === 'undo') return { snapshot: historySnapshot }
       if (operation === 'identity') return { snapshot: references > 1 ? historySnapshot : initial, preview: { revision: references > 1 ? 2 : 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: references > 1 ? historySnapshot : initial, bytes }
-      if (operation === 'render') return { snapshot: references > 1 ? historySnapshot : initial, bytes: new Uint8Array([9]).buffer, preview: { revision: references > 1 ? 2 : 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: references > 1 ? historySnapshot : initial, bytes: new Uint8Array([9]).buffer, preview: { revision: references > 1 ? 2 : 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: initial }
     })
     render(<App engine={engine(request)} initialSnapshot={initial} initialSampleData={sample} />)
@@ -814,7 +815,7 @@ describe('application shell', () => {
     const request = vi.fn(async (operation: string) => {
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -831,7 +832,7 @@ describe('application shell', () => {
     const request = vi.fn(async (operation: string) => {
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: 'bands.content.gone', message: 'Content was clipped' }] } }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: 'bands.content.gone', message: 'Content was clipped' }] } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -848,15 +849,15 @@ describe('application shell', () => {
     const request = vi.fn(async (operation: string) => {
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: '', message: 'Content was clipped' }] } }
+      if (operation === 'render') return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'gone', dataPath: '', message: 'Content was clipped' }] } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Locate in Design' })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: 'Locate in Design' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Locate on canvas' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Locate on canvas' }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.getByText('Locate unavailable: the authoritative element is no longer present.')).toHaveAttribute('role', 'status')
   })
@@ -901,7 +902,7 @@ describe('application shell', () => {
     const request = vi.fn(async (operation: string) => {
       if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-      if (operation === 'render') { renders++; if (renders === 1) throw failure; return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } } }
+      if (operation === 'render') { renders++; if (renders === 1) throw failure; return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } } }
       return { snapshot: snapshot(1) }
     })
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
@@ -924,7 +925,7 @@ describe('application shell', () => {
       if (operation === 'render') {
         renders++
         if (renders > 1) throw failure
-        return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+        return { snapshot: snapshot(1), bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       }
       return { snapshot: snapshot(1) }
     })
@@ -936,7 +937,7 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fail local PDF viewer' }))
     expect(screen.queryByLabelText('Local render failure')).not.toBeInTheDocument()
     expect(screen.getByText(/local PDF viewer could not display/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
     const card = await screen.findByLabelText('Local render failure')
     expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument()
     const retry = within(card).getByRole('button', { name: 'Retry preview' })
@@ -6343,7 +6344,7 @@ const previewRequest = () => vi.fn(async (operation: string) => {
   if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
   if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
   if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
-  if (operation === 'render') return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, diagnostics: [] } }
+  if (operation === 'render') return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
   return { snapshot: snapshot(1) }
 })
 
@@ -6658,7 +6659,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
       if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
       if (operation === 'render') {
         const first = ++renders === 1
-        return { snapshot: snapshot(1), bytes: (first ? exportedPdfBytes : replacementPdfBytes).slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: first ? exportedPdfDigest : replacementPdfDigest, diagnostics: [] } }
+        return { snapshot: snapshot(1), bytes: (first ? exportedPdfBytes : replacementPdfBytes).slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: first ? exportedPdfDigest : replacementPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       }
       return { snapshot: snapshot(1) }
     })
@@ -6668,12 +6669,12 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     const writeSave = vi.fn(async (_acquired: AcquiredSaveTarget, save: { bytes: ArrayBuffer }): Promise<SavedLocalFile> => { written.push([...new Uint8Array(save.bytes)]); return { name: 'statement.pdf' } })
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     await showRenderedPreview(request, files)
-    await waitFor(() => expect(screen.getByText(new RegExp(exportedPdfDigest))).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('Output hash')).toHaveTextContent(exportedPdfDigest))
     fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
     await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
     // A second render lands while the picker is still open.
-    fireEvent.click(screen.getByRole('button', { name: 'Render local PDF' }))
-    await waitFor(() => expect(screen.getByText(new RegExp(replacementPdfDigest))).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
+    await waitFor(() => expect(screen.getByLabelText('Output hash')).toHaveTextContent(replacementPdfDigest))
     releaseTarget()
     await waitFor(() => expect(written).toHaveLength(1))
     expect(written[0]).toEqual([...exportedPdfBytes])
@@ -6688,6 +6689,14 @@ describe('Story 13.1: the preview keeps the PDF', () => {
   // the DATA tab mid-save removed the `role="alert"` from the accessibility
   // tree entirely. jsdom reports `hidden` content as absent from `getByRole`,
   // so this test reds against that placement and passes against the main.
+  //
+  // STORY 13.3 — AND THE CONTROL ITSELF NOW SURVIVES IT TOO (DW-281, an OWNER
+  // REQUEST). This row used to assert that `Save PDF` was ABSENT with the DATA
+  // tab selected, which was a faithful record of the defect rather than of the
+  // behaviour anyone wanted: the button, its label and its reason line were all
+  // inside the same `hidden` tabpanel. The rail is a sibling of the tabpanels,
+  // so all three stay in the accessibility tree whichever tab is selected —
+  // re-parenting the action row back inside the tabpanel reds this.
   it('keeps the PDF save alert reachable when the inspector tab changes mid-save', async () => {
     let failWrite!: (error: Error) => void
     const writeSave = vi.fn(() => new Promise<SavedLocalFile>((_resolve, reject) => { failWrite = reject }))
@@ -6696,7 +6705,8 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
     await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
-    expect(screen.queryByRole('button', { name: 'Save PDF' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save PDF' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Re-render' })).toBeInTheDocument()
     failWrite(new Error('media removed'))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not save the preview PDF'))
   })
@@ -6725,7 +6735,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
 // STORY 13.4 — PREVIEW RUNS WITHOUT SAMPLE DATA.
 //
 // Three gates used to make Preview refuse a template with no sample loaded:
-// renderPreview's early return, `disabled` on Render local PDF, and a status
+// renderPreview's early return, `disabled` on Re-render, and a status
 // line whose highest-priority branch said the preview was unavailable. None of
 // them was guarded by a test, so nothing would have caught the refusal being
 // reintroduced either. These are those guards.
@@ -6754,7 +6764,7 @@ describe('preview with no sample data', () => {
       if (operation === 'stand-in-data') return { snapshot: loaded, bytes: new TextEncoder().encode(standIn).buffer }
       if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: loaded, bytes }
-      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: loaded }
     })
     return { request, loaded }
@@ -6781,7 +6791,7 @@ describe('preview with no sample data', () => {
     expect(dataChannel(request.mock.calls, 'identity')).toBe(STAND_IN)
     expect(dataChannel(request.mock.calls, 'render')).toBe(STAND_IN)
     expect(screen.queryByText('Preview unavailable: no sample data loaded')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Render local PDF' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Re-render' })).toBeEnabled()
 
     // Admit the PDF, which is what would otherwise promote the screen to the
     // exact-production claim.
@@ -6878,7 +6888,7 @@ describe('preview with no sample data', () => {
       if (operation === 'stand-in-data') throw new Error('Stand-in data is unavailable for this template')
       if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
       if (operation === 'serialize') return { snapshot: loaded, bytes }
-      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+      if (operation === 'render') return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       return { snapshot: loaded }
     })
     render(<App engine={engine(request)} initialSnapshot={loaded} />)
@@ -6910,7 +6920,7 @@ describe('preview with no sample data', () => {
       if (operation === 'render') {
         renders++
         if (renders === 2) await held
-        return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } }
+        return { snapshot: loaded, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
       }
       return { snapshot: loaded }
     })
@@ -7304,6 +7314,295 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     // the indicator says the preview is rendering rather than claiming a length
     // it cannot know.
     expect(within(cleared).getByLabelText('PDF page status')).toHaveTextContent('Rendering PDF')
+  })
+})
+
+// STORY 13.3: THE PREVIEW SCREEN IS THE EVIDENCE SCREEN.
+//
+// The rail's own presentation is covered against the component in
+// `preview/evidence-rail.test.tsx`. These rows are the ones that only exist
+// against the real `App`: the browser-side digest check that stands between a
+// reply and an installed preview, the values the rail reads off a record the
+// application actually built, and the placement DW-281 is about.
+describe('Story 13.3: the preview screen is the evidence screen', () => {
+  // A reply whose bytes and digest DISAGREE, in the shape a real corruption
+  // takes: a perfectly well-formed 64-character digest — it passes every
+  // protocol guard there is — that describes some other bytes. Before this
+  // story the browser had no way to tell the difference, and the screen
+  // printed it.
+  const mismatchedRequest = () => vi.fn(async (operation: string) => {
+    if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+    if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+    if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+    if (operation === 'render') return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: replacementPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+    return { snapshot: snapshot(1) }
+  })
+
+  it('refuses to install or display a preview whose digest does not describe its own bytes', async () => {
+    const request = mismatchedRequest()
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(document.getElementById('preview-freshness-status')).toHaveTextContent('does not match the digest the engine reported'))
+    // NOT INSTALLED AND NOT DISPLAYED. No viewer, no digest block, no export.
+    expect(screen.queryByRole('button', { name: /Stale historical PDF/ })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Output hash')).toHaveTextContent('Go production digest pending')
+    expect(screen.getByLabelText('Output hash')).not.toHaveTextContent(replacementPdfDigest)
+    expect(screen.getByLabelText('Render facts')).toHaveTextContent('No local render has produced a document yet.')
+    // The refusal names BOTH sides, so an author can see which one moved.
+    const status = document.getElementById('preview-freshness-status')!
+    expect(status).toHaveTextContent(replacementPdfDigest.slice(0, 16))
+    expect(status).toHaveTextContent(createHash('sha256').update(Uint8Array.from(exportedPdfBytes)).digest('hex').slice(0, 16))
+    // AND IT IS NOT WRITTEN IN THE FORBIDDEN SHAPE. `preview-authority-contract`
+    // pins the freshness line's own attributes; a digest mismatch routes
+    // through `previewIssue`/`previewStatus` rather than minting a second
+    // alert of its own.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('installs and displays a preview whose digest does describe its bytes, and shows the whole of it', async () => {
+    await showRenderedPreview(previewRequest())
+    // ⚠ THE TWO SIDES ARE DERIVED INDEPENDENTLY. The DOM's copy travelled
+    // engine reply → protocol → App → rail, and was admitted only because
+    // `crypto.subtle` agreed with it inside the browser code. This expectation
+    // is Node's own SHA-256 over the fixture bytes. Nothing here recomputes one
+    // side from the other.
+    const displayed = screen.getByLabelText('Output hash').querySelector('.rail-hash-value')!.textContent
+    expect(displayed).toBe(createHash('sha256').update(Uint8Array.from(exportedPdfBytes)).digest('hex'))
+    expect(displayed).toBe(exportedPdfDigest)
+    expect(displayed).toHaveLength(64)
+  })
+
+  it('reads the five render values off the record the application built, and prints the version verbatim', async () => {
+    const request = previewRequest()
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Admit long local PDF' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
+    const facts = screen.getByLabelText('Render facts')
+    expect(Array.from(facts.querySelectorAll('dt')).map((term) => term.textContent)).toEqual(['engine', 'target', 'pages', 'elapsed', 'size'])
+    // The engine's own constant, as it reads. `folio-go v0.1` is the mockup's
+    // invention: no git tag names a release, and printing one on the surface
+    // whose rule is never to print an affirmation it cannot earn would be the
+    // exact defect this screen exists to prevent.
+    expect(facts).toHaveTextContent(`engine${RENDER_ENGINE_VERSION}`)
+    expect(facts).toHaveTextContent(`elapsed${RENDER_ELAPSED_MS} ms`)
+    // The page count is the VIEWER's, and it is the number the viewer admitted.
+    expect(facts).toHaveTextContent('pages34')
+    // The size is the length of the buffer the digest covers, not of anything
+    // the browser re-encoded.
+    expect(facts).toHaveTextContent(`size${exportedPdfBytes.byteLength} B`)
+  })
+
+  it('withholds the byte-identity sentence from a no-data preview and keeps every 13.4 withholding', async () => {
+    const loaded = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'stand-in-data') return { snapshot: loaded, bytes: new TextEncoder().encode('{}').buffer }
+      if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: loaded, bytes }
+      if (operation === 'render') return { snapshot: loaded, bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+      return { snapshot: loaded }
+    })
+    render(<App engine={engine(request)} initialSnapshot={loaded} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    const block = screen.getByLabelText('Output hash')
+    expect(block).toHaveTextContent('Stand-in local digest')
+    expect(block).not.toHaveTextContent('Byte-identical across')
+    expect(block.querySelector('.rail-hash-value')!.textContent).toBe(exportedPdfDigest)
+    // 13.4's other withholdings are untouched.
+    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save no-data PDF' })).toBeInTheDocument()
+  })
+
+  it('marks the rail stale rather than letting an earlier render describe the current document', async () => {
+    await showRenderedPreview(previewRequest())
+    expect(screen.getByLabelText('Render facts')).not.toHaveTextContent('describe the earlier render')
+    fireEvent.click(screen.getByRole('button', { name: 'Fail local PDF viewer' }))
+    const facts = screen.getByLabelText('Render facts')
+    expect(facts).toHaveTextContent('These values describe the earlier render, not the current document.')
+    // And the one value whose authority is the viewer's goes with it: a page
+    // count admitted for other bytes is not a fact about these.
+    expect(Array.from(facts.querySelectorAll('dt')).map((term) => term.textContent)).not.toContain('pages')
+  })
+
+  it('sources the error count from the failed render, which is the only place an error can come from', async () => {
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e7', producerRenderFailure: true as const })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') throw failure
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await screen.findByLabelText('Local render failure')
+    const summary = screen.getByLabelText('Diagnostics summary')
+    // ONE ERROR, FROM `currentFailure`. `EngineDiagnostic.severity` is the
+    // literal 'warning' — the type has no error severity at all — so a count
+    // taken over the diagnostics array could only ever read zero and would look
+    // correct forever.
+    expect(summary).toHaveTextContent('errors 1')
+    expect(summary).toHaveTextContent('warnings 0')
+    // The legend's second row is the one that applies, and it is present.
+    expect(summary).toHaveTextContent('Square, solid — render failed')
+  })
+
+  it('counts the retained diagnostics and names each one\'s place in the document', async () => {
+    const projection = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true }] }
+    const loaded = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: projection }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: loaded, preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: loaded, bytes }
+      if (operation === 'render') return { snapshot: loaded, bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [{ severity: 'warning' as const, code: 'CONTENT_CLIPPED', elementId: 'e7', dataPath: 'transactions[11].description', message: 'Row 12 exceeds content height. Clipped.' }] } }
+      return { snapshot: loaded }
+    })
+    render(<App engine={engine(request)} initialSnapshot={loaded} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    expect(screen.getByLabelText('Diagnostics summary')).toHaveTextContent('warnings 1')
+    expect(screen.getByLabelText('Diagnostics summary')).toHaveTextContent('errors 0')
+    // The three-part location, joined locally against the projection App holds
+    // at the admitted revision.
+    expect(screen.getByText('transactions[11].description · table · band content')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Locate on canvas' })).toBeInTheDocument()
+  })
+
+  // REVIEW P1 — A REFUSAL MUST NOT LEAVE THE PREVIOUS RENDER'S AFFIRMATION
+  // STANDING.
+  //
+  // This is the sequence the unit fixtures could not reach: a clean preview is
+  // installed and admitted, so DIAGNOSTICS reads "The render completed and
+  // reported zero diagnostics."; then a re-render arrives corrupted. A digest
+  // mismatch sets `previewIssue`, NOT `previewError`, so `currentFailure` stays
+  // undefined and `errors` stays 0 — and the previous record's counts are still
+  // 0 — so a zero state gated on the counts alone would keep affirming a clean
+  // render across a render that was refused for corruption.
+  it('stops affirming a clean render the moment one is refused for corruption', async () => {
+    let renders = 0
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') {
+        renders++
+        // The FIRST render is honest and installs; the SECOND carries a
+        // well-formed digest of some other bytes.
+        return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: renders === 1 ? exportedPdfDigest : replacementPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+      }
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
+    // THE PRECONDITION, ASSERTED: the affirmation really is on screen first, so
+    // its later absence is a change rather than a fixture that never had it.
+    expect(screen.getByLabelText('Diagnostics summary')).toHaveTextContent('The render completed and reported zero diagnostics.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Re-render' }))
+    await waitFor(() => expect(document.getElementById('preview-freshness-status')).toHaveTextContent('does not match the digest the engine reported'))
+    const summary = screen.getByLabelText('Diagnostics summary')
+    expect(summary).not.toHaveTextContent('The render completed and reported zero diagnostics.')
+    expect(summary).toHaveTextContent('These counts describe the earlier render; its cards are not shown.')
+    // And the RENDER block says the same thing about its own values, so the two
+    // sections cannot disagree about which render is being described.
+    expect(screen.getByLabelText('Render facts')).toHaveTextContent('These values describe the earlier render, not the current document.')
+  })
+
+  // REVIEW P3 — THE RE-CHECK AFTER THE DIGEST AWAIT, PINNED.
+  //
+  // `crypto.subtle.digest` is a suspension point this story introduced between
+  // the render reply's validation and `installPreview`. Deleting the
+  // `current(identity)` guard that follows it left all 1071 tests green: the
+  // guard was correct and unwatched. Here the digest is HELD, the author leaves
+  // Preview while it is in flight, and the resolution must find that it no
+  // longer has the authority to install anything.
+  //
+  // ⚠ THE ABANDONED INSTALL IS OBSERVED BY GOING BACK, and the second render is
+  // held open so that nothing new can install and answer for it. `enterPreview`
+  // does not clear the record — so if the abandoned pass DID install, the
+  // returning author is shown a stale historical PDF built from bytes rendered
+  // for a document they had already left. In Design there is nothing on screen
+  // to read this off, which is why the assertion is made from Preview.
+  it('installs nothing when the author leaves Preview while the digest is still being computed', async () => {
+    const realDigest = crypto.subtle.digest.bind(crypto.subtle)
+    let releaseDigest!: () => void
+    const heldDigest = new Promise<void>((resolve) => { releaseDigest = resolve })
+    let digestCalls = 0
+    const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (algorithm: AlgorithmIdentifier, data: BufferSource) => {
+      digestCalls++
+      if (digestCalls === 1) await heldDigest
+      return realDigest(algorithm, data)
+    })
+    try {
+      let renders = 0
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'parameter-references') return { snapshot: snapshot(1), parameterReferences: { revision: 1, names: [] } }
+        if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+        if (operation === 'render') {
+          // The SECOND visit's render never answers, so the only thing that
+          // could put a PDF on screen there is the abandoned first pass.
+          if (++renders > 1) await new Promise(() => undefined)
+          return { snapshot: snapshot(1), bytes: exportedPdfBytes.slice().buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: exportedPdfDigest, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+        }
+        return { snapshot: snapshot(1) }
+      })
+      render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      // The render has landed and the digest is in flight; nothing is installed
+      // yet, so there is no viewer to admit.
+      await waitFor(() => expect(digestCalls).toBeGreaterThan(0))
+      expect(screen.queryByRole('button', { name: /historical PDF/i })).not.toBeInTheDocument()
+
+      // THE AUTHOR LEAVES, which is what `current()` reads: `cancelPreviewWork`
+      // advances the request token and aborts the controller, and the mode ref
+      // moves to design.
+      fireEvent.click(screen.getByRole('button', { name: /return to Design/i }))
+      await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+
+      // Now let the digest resolve, into a world its caller has already left.
+      await act(async () => { releaseDigest(); await Promise.resolve(); await Promise.resolve() })
+
+      // BACK IN PREVIEW, WITH THE NEW RENDER HELD OPEN: nothing is displayed,
+      // because nothing was installed.
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(2))
+      expect(screen.queryByRole('button', { name: /historical PDF/i })).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Output hash')).toHaveTextContent('Go production digest pending')
+      expect(screen.getByLabelText('Render facts')).toHaveTextContent('No local render has produced a document yet.')
+    } finally {
+      digestSpy.mockRestore()
+    }
+  })
+
+  it('keeps Re-render, Save PDF and the export reason reachable with the DATA tab selected', async () => {
+    // No file access at all, so the export is disabled and owes a reason — the
+    // three things DW-281 took out of the accessibility tree together.
+    await showRenderedPreview(previewRequest())
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    expect(screen.getByRole('tab', { name: 'DATA' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('Data panel')).toBeInTheDocument()
+    // ⚠ jsdom reports content inside a `hidden` element as absent from
+    // `getByRole`, which is what makes this row a real witness: re-parenting
+    // the action row back into the properties tabpanel reds all four lines.
+    const rerender = screen.getByRole('button', { name: 'Re-render' })
+    const save = screen.getByRole('button', { name: /^Save.*PDF$/ })
+    expect(rerender).toBeInTheDocument()
+    expect(save).toBeDisabled()
+    expect(save).toHaveAttribute('aria-describedby', 'preview-pdf-export-reason')
+    expect(screen.getByText(/is unavailable: this browser exposes no local file access\./)).toHaveAttribute('id', 'preview-pdf-export-reason')
+    // Reachable by keyboard alone, from the tab the author is on (UX-DR25).
+    rerender.focus()
+    expect(document.activeElement).toBe(rerender)
+    // And the INPUTS tab keeps the parameter editor it has always held.
+    fireEvent.click(screen.getByRole('tab', { name: 'INPUTS' }))
+    expect(screen.getByText('PREVIEW INPUTS')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Re-render' })).toBeInTheDocument()
   })
 })
 

@@ -18,6 +18,11 @@ import { fileURLToPath } from 'node:url'
 // the download tier, a picker pair for the activation-gated one — which is the
 // one thing jsdom cannot witness: that the bytes leaving the tab are the bytes
 // the displayed producer digest covers.
+//
+// STORY 13.3 — THAT DIGEST MOVED FROM A FOOTNOTE TO THE EVIDENCE RAIL. It is
+// now `.rail-hash-value`, a bordered mono block carrying all 64 characters in
+// two fixed 32-character lines; `toContainText` reads the block's text, which
+// is the two lines concatenated, so what these two tests compare is unchanged.
 const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio-go/testdata/example/first-pdf.folio'))
 const sampleData = Buffer.from('{"customer":{"name":"Ada"}}')
 
@@ -59,7 +64,7 @@ test('the fallback tier downloads the current preview as a .pdf without touching
   for await (const chunk of streamed) chunks.push(Buffer.from(chunk))
   const body = Buffer.concat(chunks)
   expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-')
-  await expect(page.locator('.preview-evidence')).toContainText(createHash('sha256').update(body).digest('hex'))
+  await expect(page.locator('.rail-hash-value')).toContainText(createHash('sha256').update(body).digest('hex'))
   // The document the author is editing is untouched by an output save.
   await expect(page.locator('.document-name')).toHaveText('statement.folio')
   await expect(page.getByRole('alert')).toHaveCount(0)
@@ -123,7 +128,7 @@ test('the activation-gated tier writes exactly the bytes the displayed producer 
     return { header: new TextDecoder().decode(bytes.slice(0, 5)), digest: [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('') }
   })
   expect(written.header).toBe('%PDF-')
-  await expect(page.locator('.preview-evidence')).toContainText(written.digest)
+  await expect(page.locator('.rail-hash-value')).toContainText(written.digest)
 
   // AND THE AUTHOR'S TEMPLATE WAS NEVER OPENED FOR WRITING.
   expect(await page.evaluate(() => (window as PdfSaveProbe).__folioTemplateWrites)).toBe(0)

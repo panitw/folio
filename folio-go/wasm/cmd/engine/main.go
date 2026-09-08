@@ -47,6 +47,13 @@ type response struct {
 	// or many. JavaScript treats [] as evidence, while a missing/null field is
 	// a protocol violation.
 	Diagnostics []diagnostic `json:"diagnostics"`
+	// STORY 13.3 — THESE TWO FOLLOW `Diagnostics`, NOT THEIR OTHER NEIGHBOURS.
+	// A render that took under a millisecond reports `0 ms`, and `omitempty`
+	// would erase exactly that answer: the browser would read "the engine said
+	// nothing" from a number the engine did say, and the evidence rail would
+	// silently withhold a true fact about a very fast render.
+	ElapsedMs int64  `json:"elapsedMs"`
+	Version   string `json:"version"`
 }
 
 type diagnostic struct {
@@ -208,7 +215,7 @@ func dispatch(engine *wasm.Engine, in request) response {
 		if len(pdf) > 32<<20 {
 			return failure("WASM_OUTPUT_INVALID", errors.New("rendered PDF exceeds 32 MiB"))
 		}
-		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(pdf), PDFSHA256: rendered.PDFSHA256, PreviewIdentity: rendered.Identity, RenderRevision: rendered.Revision, Diagnostics: boundedDiagnostics(rendered.Diagnostics)}
+		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(pdf), PDFSHA256: rendered.PDFSHA256, PreviewIdentity: rendered.Identity, RenderRevision: rendered.Revision, Diagnostics: boundedDiagnostics(rendered.Diagnostics), ElapsedMs: rendered.ElapsedMs, Version: rendered.Version}
 	case "identity":
 		if in.PayloadBase64 != "" || in.TemplateBase64 != "" || in.DataBase64 == "" || in.ParamsBase64 == "" {
 			return failure("WASM_INPUT_INVALID", errors.New("identity requires exactly two byte inputs"))

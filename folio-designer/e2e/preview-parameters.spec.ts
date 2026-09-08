@@ -29,8 +29,8 @@ test('discovers reportDate from Go, keeps an absent value as a located engine fa
   await expect(reportDate).toBeVisible()
   // Parameter discovery is asynchronous; explicitly render the currently
   // accepted empty parameter document to exercise the missing-param failure.
-	await expect(page.getByRole('button', { name: 'Render local PDF' })).toBeEnabled()
-	await page.getByRole('button', { name: 'Render local PDF' }).click()
+	await expect(page.getByRole('button', { name: 'Re-render' })).toBeEnabled()
+	await page.getByRole('button', { name: 'Re-render' }).click()
   const failure = page.getByLabel('Local render failure')
   await expect(failure).toContainText('Render failure')
 	await expect(failure).toContainText('BINDING_PATH_ABSENT')
@@ -46,6 +46,6 @@ test('discovers reportDate from Go, keeps an absent value as a located engine fa
 	// failure; accepted input therefore schedules a fresh local render rather
 	// than labelling a non-existent last-good PDF stale.
 	await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
-  await page.getByRole('button', { name: 'Render local PDF' }).click()
+  await page.getByRole('button', { name: 'Re-render' }).click()
   await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
 })

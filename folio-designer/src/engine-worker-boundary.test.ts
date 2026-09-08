@@ -21,7 +21,7 @@ import { ENGINE_PROTOCOL_VERSION } from './engine-protocol'
 // program had exited, and `JSON.parse(undefined)` is what the designer's user
 // saw as "the engine returned an invalid response".
 
-type Posted = { requestId?: string; ok?: boolean; error?: { code: string; message: string }; kind?: string }
+type Posted = { requestId?: string; ok?: boolean; error?: { code: string; message: string }; kind?: string; preview?: Record<string, unknown> }
 
 const hostStub: { handle: (request: string) => string } = { handle: () => '' }
 const posted: Posted[] = []
@@ -145,6 +145,47 @@ describe('the WASM boundary reports what threw', () => {
     const answer = await roundTrip('render', { template: new ArrayBuffer(1), data: new ArrayBuffer(1), params: new ArrayBuffer(1) } as unknown as ArrayBuffer)
     expect(answer.error?.code).toBe('WASM_RESPONSE_BYTES_REFUSED')
     expect(answer.error?.message).toBe("The engine's byte response was refused: Error: WASM byte response exceeds its transport limit")
+  })
+
+  // STORY 13.3 / REVIEW P5 — THE HAPPY PATH, WHICH THIS FILE HAD NONE OF.
+  //
+  // Everything above forces an error, and the two render facts the worker now
+  // carries were defended only by a source-text scan in
+  // `engine-protocol.test.ts`. That scan matches key NAMES, so it catches a
+  // MISSING field and never a WRONG one: writing
+  // `elapsedMs: result.renderRevision` at the hop leaves it, the client test
+  // and this file all green, and the browser then prints a revision number in
+  // milliseconds. This reads the values back off the message the real worker
+  // actually posts, so a cross-wire is a different number and reds.
+  //
+  // The scan STAYS. It catches what this cannot: which of the two hops dropped
+  // a field, by name, in a repository where one hop's output is the other's
+  // input.
+  it('carries the render facts through unchanged, by value and not merely by key', async () => {
+    // Values chosen so no other field on the response could stand in for
+    // either: none of the neighbouring numbers is 412, and the version is not
+    // a digest, an identity or a revision.
+    hostStub.handle = () => JSON.stringify({
+      ok: true,
+      snapshot: snapshotStub(),
+      bytesBase64: btoa('\x09'),
+      pdfSha256: 'a'.repeat(64),
+      previewIdentity: 'b'.repeat(64),
+      renderRevision: 7,
+      diagnostics: [],
+      elapsedMs: 412,
+      version: '0.0.0-dev',
+    })
+    const answer = await roundTrip('render', { template: new ArrayBuffer(1), data: new ArrayBuffer(1), params: new ArrayBuffer(1) } as unknown as ArrayBuffer)
+    expect(answer.ok).toBe(true)
+    expect(answer.preview, 'the worker built no preview for a render reply').toBeDefined()
+    expect(answer.preview!.elapsedMs, 'elapsedMs did not arrive with the value the engine reported').toBe(412)
+    expect(answer.preview!.version, 'version did not arrive with the value the engine reported').toBe('0.0.0-dev')
+    // The neighbours it could have been cross-wired to, pinned alongside, so a
+    // swap between any two of them is visible here rather than plausible.
+    expect(answer.preview!.revision).toBe(7)
+    expect(answer.preview!.identity).toBe('b'.repeat(64))
+    expect(answer.preview!.pdfSha256).toBe('a'.repeat(64))
   })
 
   // AN ENGINE REFUSAL IS NOT A BOUNDARY FAULT, and never was. It carries its

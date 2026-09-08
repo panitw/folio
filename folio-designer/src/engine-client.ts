@@ -7,7 +7,7 @@ export interface WorkerPort {
   onerror: ((event: ErrorEvent) => void) | null
 }
 
-export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }> }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }>; tableColumns?: TableColumns }>
+export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }>; elapsedMs?: number; version?: string }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }>; tableColumns?: TableColumns }>
 
 type Pending = { operation: EngineOperation; resolve: (result: EngineResult) => void; reject: (error: Error) => void }
 type ClientState = 'starting' | 'ready' | 'failed' | 'terminated'
@@ -108,7 +108,11 @@ export class EngineClient {
 		if (mismatch) { pending.reject(errorFor('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request')); this.#fail('PROTOCOL_OPERATION_MISMATCH', 'The engine response did not match its request'); return }
     const snapshot = deepFreeze({ ...message.snapshot }) as EngineSnapshot
     const bytes = message.bytes ? copyBytes(message.bytes) : undefined
-		const preview = message.preview ? deepFreeze({ revision: message.preview.revision, identity: message.preview.identity, ...(message.preview.pdfSha256 ? { pdfSha256: message.preview.pdfSha256, diagnostics: message.preview.diagnostics!.map((diagnostic) => ({ ...diagnostic })) } : {}) }) : undefined
+		// STORY 13.3 — THE SECOND HAND-ENUMERATED HOP, and the same trap as the
+		// worker's. The render arm is rebuilt member by member inside `deepFreeze`,
+		// so a field absent from this literal never reaches App.tsx however well it
+		// passed `isPreview`. All four render-only members are named together.
+		const preview = message.preview ? deepFreeze({ revision: message.preview.revision, identity: message.preview.identity, ...(message.preview.pdfSha256 ? { pdfSha256: message.preview.pdfSha256, diagnostics: message.preview.diagnostics!.map((diagnostic) => ({ ...diagnostic })), elapsedMs: message.preview.elapsedMs!, version: message.preview.version! } : {}) }) : undefined
 		const parameterReferences = message.parameterReferences ? deepFreeze({ revision: message.parameterReferences.revision, names: [...message.parameterReferences.names] }) : undefined
 		// THE TABLE OBJECT IS SPREAD, NOT RE-ENUMERATED, and that is a FIX
 		// rather than a tidy-up (Story 12.3).
@@ -152,8 +156,8 @@ export class EngineClient {
 function matchesOperationPayload(operation: EngineOperation, message: Extract<EngineInbound, { kind: 'response'; ok: true }>): boolean {
   const none = message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
   switch (operation) {
-    case 'render': return message.bytes !== undefined && message.preview?.pdfSha256 !== undefined && message.preview.diagnostics !== undefined && message.parameterReferences === undefined && message.tableColumns === undefined
-    case 'identity': return message.bytes === undefined && message.preview !== undefined && message.preview.pdfSha256 === undefined && message.preview.diagnostics === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'render': return message.bytes !== undefined && message.preview?.pdfSha256 !== undefined && message.preview.diagnostics !== undefined && message.preview.elapsedMs !== undefined && message.preview.version !== undefined && message.parameterReferences === undefined && message.tableColumns === undefined
+    case 'identity': return message.bytes === undefined && message.preview !== undefined && message.preview.pdfSha256 === undefined && message.preview.diagnostics === undefined && message.preview.elapsedMs === undefined && message.preview.version === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'serialize': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'asset': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     // The stand-in data document arrives as BYTES on the envelope that

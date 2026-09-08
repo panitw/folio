@@ -74,17 +74,31 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   await expect(canvas).toBeVisible()
   const heading = page.getByText('NO-DATA LAYOUT PREVIEW')
   const notice = page.getByRole('note', { name: 'No-data preview notice' })
-  const evidence = page.getByText(/Stand-in local digest [a-f0-9]{64}/)
+  // ⚠ STORY 13.3 — THE DIGEST IS NO LONGER ONE OF THE HELD-POSITION SUBJECTS,
+  // AND REMOVING IT FROM THAT LIST IS THE POINT (review P7).
+  //
+  // It used to be `.preview-evidence`, a line INSIDE the preview scroller, so
+  // "it did not move when the page scrolled" was a claim that could fail. The
+  // rail put it in the Inspector column, which is a different, non-scrolling
+  // container: `after.evidence.y === before.evidence.y` there is true of any
+  // element in any sibling of the scroller, guards nothing, and reads as a pin.
+  // `heading` and `notice` are still inside the preview region and still carry
+  // that claim. What survives for the digest is the claim that IS still real —
+  // it stays on screen and keeps saying the same thing across the scroll — and
+  // it is asserted below rather than measured here.
+  const evidence = page.getByLabel('Output hash').locator('.rail-hash-value')
+  const digestBefore = await evidence.textContent()
+  expect(digestBefore).toMatch(/^[a-f0-9]{64}$/)
 
   // Read once, at rest, and then compared after the scroll. `boundingBox()` is
   // viewport-relative, which is exactly the frame this claim is about.
   const boxes = async () => {
-    const measured = await Promise.all([canvas, pageArea, heading, notice, evidence, statusBar].map(async (locator) => {
+    const measured = await Promise.all([canvas, pageArea, heading, notice, statusBar].map(async (locator) => {
       const box = await locator.boundingBox()
       expect(box).not.toBeNull()
       return box!
     }))
-    return { canvas: measured[0]!, pageArea: measured[1]!, heading: measured[2]!, notice: measured[3]!, evidence: measured[4]!, statusBar: measured[5]! }
+    return { canvas: measured[0]!, pageArea: measured[1]!, heading: measured[2]!, notice: measured[3]!, statusBar: measured[4]! }
   }
   const before = await boxes()
 
@@ -145,7 +159,6 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   expect(after.pageArea.height).toBe(before.pageArea.height)
   expect(after.heading.y).toBe(before.heading.y)
   expect(after.notice.y).toBe(before.notice.y)
-  expect(after.evidence.y).toBe(before.evidence.y)
   expect(after.statusBar.y).toBe(before.statusBar.y)
 
   // AND STILL REACHABLE — the condition attached to this story at approval. A
@@ -163,9 +176,12 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   const sideways = await boxes()
   expect(sideways.heading.x).toBe(before.heading.x)
   expect(sideways.notice.x).toBe(before.notice.x)
-  expect(sideways.evidence.x).toBe(before.evidence.x)
   expect(sideways.pageArea.x).toBe(before.pageArea.x)
   for (const locator of [heading, notice, evidence]) await expect(locator).toBeInViewport()
+  // AND THE DIGEST STILL SAYS THE SAME THING. This is the digest claim that a
+  // scroll can actually break — a rail re-rendered or re-keyed mid-scroll would
+  // change or lose it — where its viewport position cannot.
+  await expect(evidence).toHaveText(digestBefore!)
 
   // FIT WIDTH, AGAINST A CONTAINER THAT WAS REALLY LAID OUT. This is the only
   // place in the repository where the story's container measurement runs against

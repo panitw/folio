@@ -9,6 +9,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	// STORY 13.3 — `time` IS LEGAL HERE AND NOWHERE NEAR HERE.
+	//
+	// AD-1's determinism boundary is a DIRECTORY boundary, and the forbidden-import
+	// rule (lint/internal/rules/forbiddenimports.go) is enforced over two
+	// populations: a recursive walk of `folio-go/internal/`, and a FLAT scan of
+	// `folio-go/`'s own package directory. `folio-go/wasm/` is in neither, and it
+	// is the imperative browser shell this file's own header calls it — the one
+	// place that may hold mutable session state and read a clock.
+	//
+	// Nothing measured here reaches a rendered byte: the elapsed number is
+	// projected to the browser's evidence rail and never to `folio.Render`.
+	"time"
 
 	folio "github.com/panitw/folio/folio-go"
 	"github.com/panitw/folio/folio-go/fonts"
@@ -37,12 +49,22 @@ type TableColumnsResult struct {
 // RenderResult is a deliberately opaque production-render projection. It is
 // never a browser document model: callers can only receive the PDF bytes,
 // their producer-computed digest, the revision that supplied template bytes,
-// and bounded diagnostics from the existing production renderer.
+// bounded diagnostics from the existing production renderer, and — since
+// Story 13.3 — two facts about the render that produced them.
+//
+// NEITHER NEW FIELD IS `omitempty`, and that is the same reason `Diagnostics`
+// is not. A render that took under a millisecond reports `0`, and `omitempty`
+// would drop it: the browser would then read "the engine did not say" from a
+// number the engine did say. `ElapsedMs` is milliseconds because
+// `Duration.Seconds()` is a `float64`, which `TestNoFloat64UnderModule` refuses
+// anywhere under this module.
 type RenderResult struct {
 	PDFSHA256   string             `json:"pdfSha256"`
 	Identity    string             `json:"identity"`
 	Revision    uint64             `json:"revision"`
 	Diagnostics []folio.Diagnostic `json:"diagnostics"`
+	ElapsedMs   int64              `json:"elapsedMs"`
+	Version     string             `json:"version"`
 }
 
 // ParameterReferences exposes only engine-derived display metadata for the
@@ -189,7 +211,14 @@ func (e *Engine) Render(template, data, params []byte) ([]byte, RenderResult, er
 	if err != nil {
 		return nil, RenderResult{}, err
 	}
+	// THE BRACKET IS THE RENDER AND NOTHING ELSE. It excludes ParseTemplate
+	// above, the digest below and PreviewIdentity after it, and it is nowhere
+	// near the worker round trip — a number that included postMessage and byte
+	// transfer would satisfy the word "elapsed" while describing the browser's
+	// transport rather than the engine's work.
+	started := time.Now()
 	result, err := folio.Render(tpl, folio.Data(data), folio.Params(params), fonts.Shipped())
+	elapsed := time.Since(started).Milliseconds()
 	if err != nil {
 		return nil, RenderResult{}, err
 	}
@@ -199,7 +228,7 @@ func (e *Engine) Render(template, data, params []byte) ([]byte, RenderResult, er
 	if err != nil {
 		return nil, RenderResult{}, err
 	}
-	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Identity: identity, Revision: revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...)}, nil
+	return pdf, RenderResult{PDFSHA256: fmt.Sprintf("%x", digest), Identity: identity, Revision: revision, Diagnostics: append([]folio.Diagnostic(nil), result.Diagnostics...), ElapsedMs: elapsed, Version: folio.Version}, nil
 }
 
 // AssetBytes is Story 5.13's per-key paintable-bytes query (D-5.13.2's

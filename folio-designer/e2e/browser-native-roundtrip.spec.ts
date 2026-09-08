@@ -310,7 +310,7 @@ async function savePreviewAndCapture(page: Page, fileName: string, output: strin
   // adapter to map it to its intentionally bounded response schema. The
   // input bytes here are exactly those downloaded from this browser session.
   assertNativePreflight(output, name, savedBytes, sample, params)
-  await page.getByRole('button', { name: 'Render local PDF' }).click()
+  await page.getByRole('button', { name: 'Re-render' }).click()
   try {
     // Identity deliberately hashes the complete shipped font set before the
     // one Go render and PDF.js admission. This is runtime work, not a locator
@@ -329,7 +329,7 @@ async function savePreviewAndCapture(page: Page, fileName: string, output: strin
   expect(Buffer.from(render.template)).toEqual(savedBytes)
   expect(Buffer.from(render.data)).toEqual(sample)
   expect(Buffer.from(render.params)).toEqual(params)
-  await page.getByRole('button', { name: 'Render local PDF' }).click()
+  await page.getByRole('button', { name: 'Re-render' }).click()
   await expect.poll(async () => (await captured(page)).renders.length).toBeGreaterThan(proof.renders.length)
   const repeated = (await captured(page)).renders.at(-1)
   if (!repeated) throw new Error('repeated browser render did not return PDF bytes')

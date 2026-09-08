@@ -6,6 +6,7 @@ import { acceptSampleData } from './sample-data'
 import type { EngineClient } from './engine-client'
 import { FileAccessCancelled } from './file/file-access'
 import type { SampleFileAccess } from './sample-file'
+import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
@@ -30,7 +31,7 @@ const openDataTab = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA'
 describe('docked sample data panel', () => {
   it('keeps authoring available when empty, loads a tree, keeps accepted bytes authoritative, and preserves a prior sample on cancel', async () => {
     const openSample = vi.fn<SampleFileAccess['openSample']>().mockResolvedValueOnce({ name: 'sample.json', bytes: sampleBytes }).mockRejectedValueOnce(new FileAccessCancelled()).mockResolvedValueOnce({ name: 'replacement.json', bytes: replacementBytes })
-    const request = vi.fn(async (...args: [string, unknown?, AbortSignal?]) => args[0] === 'identity' ? { snapshot, preview: { revision: 1, identity: 'b'.repeat(64) } } : args[0] === 'serialize' ? { snapshot, bytes: new Uint8Array([1]).buffer } : args[0] === 'render' ? { snapshot, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: 'a'.repeat(64), diagnostics: [] } } : { snapshot })
+    const request = vi.fn(async (...args: [string, unknown?, AbortSignal?]) => args[0] === 'identity' ? { snapshot, preview: { revision: 1, identity: 'b'.repeat(64) } } : args[0] === 'serialize' ? { snapshot, bytes: new Uint8Array([1]).buffer } : args[0] === 'render' ? { snapshot, bytes: new Uint8Array([9]).buffer, preview: { revision: 1, identity: 'b'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } } : { snapshot })
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} sampleFileAccess={{ openSample }} />)
     openDataTab()
     expect(screen.getByLabelText('Data panel')).toBeInTheDocument()
@@ -44,7 +45,13 @@ describe('docked sample data panel', () => {
     await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'identity')).toBe(true))
     const data = request.mock.calls.find(([operation]) => operation === 'identity')![1] as unknown as { data: ArrayBuffer }
     expect(new Uint8Array(data.data)).toEqual(new Uint8Array(sampleBytes))
-    fireEvent.click(screen.getByRole('button', { name: 'Return to Design' }))
+    // MATCHED BY PATTERN, BECAUSE THE ONE CONTROL CARRIES TWO NAMES. While
+    // Preview is still working the button reads `Cancel and return to Design`;
+    // once a PDF is installed it reads `Return to Design`. Story 13.3 added an
+    // await (the browser-side digest check) before the install, so which of the
+    // two is on screen at this line is a timing property of the render pipeline
+    // and never what this test is about.
+    fireEvent.click(screen.getByRole('button', { name: /return to Design/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Replace sample JSON' }))
     await waitFor(() => expect(screen.getByText('sample.json')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Replace sample JSON' }))
