@@ -5094,3 +5094,41 @@ decided**, and cost asymmetry is an argument to present, not to decide with.
 Amending it caught what the rename alone would have missed: the negative fixture had **zero components**
 and could not distinguish an `if()`-only template from a condition-free one. It was passing while asserting
 nothing.
+
+### D-000.32 — a guard that is never invoked is not a weaker guard, it is a different failure
+
+**Context.** This run's dominant defect has been "a guard that cannot distinguish a correct outcome from a
+plausible wrong one" — DW-275, Story 11.5's unenforced attestation, Story 13.1's invisible latch leak. On
+2026-09-08 CI produced a second shape, and it is worse.
+
+**What happened.** The Playwright and tagged-Go CI jobs were authored at `adf905a` and had **never run**.
+Nothing was wrong with writing them; what was wrong was that for the whole interval between authoring them
+and the owner ruling that main be pushed, I treated them as coverage. They were YAML. On the first four
+pushes `folio-designer-e2e` failed identically — `Timed out waiting 180000ms from config.webServer` — because
+`npm run build` runs `build:wasm` and compiles Go to wasm, measured at 141s warm locally and slower on a
+runner whose Go cache is disabled (DW-295, and no `setup-go` step in the workflow sets
+`cache-dependency-path`). Fixed at `cf1adc0` by raising the budget to 600_000, which is the fix the job's own
+comment permits, since `reuseExistingServer: false` means the config owns the build and the job must not
+pre-build.
+
+**The distinction, and why it matters more than the fix.** A guard that cannot separate right from wrong at
+least *runs*, and so at least reports something — it is a bad instrument giving a reading. A guard that is
+never invoked gives no reading at all, and is therefore indistinguishable from a passing one, from the
+outside, forever. Every review I did in that interval silently scored the e2e suite as green because nothing
+said otherwise. The absence of a red signal was read as the presence of a green one. That is D-11.2.4's error
+— an absence is a lead, not a result — arriving through the build system rather than through a grep.
+
+**The rule.** A CI job is not coverage until a run log shows it executing. Authoring it, reading its YAML,
+and reasoning correctly about what it *would* do are all worth nothing toward that. When a guard is added,
+the obligation is not discharged until its first observed execution, and until then it must be described as
+unverified in every place it is cited. This binds tightest on me: I authored these jobs and then cited them.
+
+**What it also settles.** DW-294 asked whether CI hits the unresolvable local Chromium 1208 pin "or not at
+all — worth confirming rather than assuming". The run answers it: the job failed at the webServer, downstream
+of a successful `npx playwright install --with-deps chromium`. The pin installs onto a clean runner; one
+local browser cache is what is broken. That is the same principle paying out in the other direction — the
+observation retired a standing question that no amount of reading the config could have.
+
+**Related:** [D-11.2.4], [D-000.9] (a guard that cannot fail is worse than none), [D-000.28] (a claim written
+before the event it asserts is false from birth), DW-294, DW-295.
+
