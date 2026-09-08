@@ -11339,3 +11339,37 @@ yields Go's zero value and `0` is a number. Non-zero is the only separator curre
 field's presence directly and this spec would no longer need to infer it from a duration. Alternatively,
 report elapsed in microseconds or as a float so a sub-millisecond render is still a non-zero reading.
 
+### DW-304 - Epic 13 promises a page-thumbnail rail that no story now delivers
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-3-the-preview-screen-is-the-evidence-screen.md` (its `## Spec Change Log`, which until now was the only place this existed)
+- **Found by:** Story 13.3's closer, during the record sweep; **registered and escalated by the orchestrator.**
+  **Owner:** THE OWNER - this is a scope question, not a defect. **Severity:** MEDIUM.
+  **Status:** OPEN, AWAITING AN OWNER DECISION AT THE EPIC 13 BOUNDARY GATE.
+
+Story 13.3 was dispatched with two goals and split at the plan gate. Goal B shipped as the evidence rail.
+**Goal A - the PAGES thumbnail rail - was deferred and then recorded nowhere that anyone would look:** no DW
+entry, no numbered decision, no story key. It survived only inside the `## Spec Change Log` of the story that
+dropped it, which is the one document a future builder has no reason to read.
+
+**What Goal A covers:** page thumbnails, page numbering, current-page marking, diagnostic marking on the
+thumbnails, click-to-navigate, `... 29 more` truncation, and not rendering the component palette while
+Preview is showing.
+
+**Why this is the owner's call and not mine.** `epic-13-context.md`'s Goal paragraph still promises "a
+page-thumbnail rail that doubles as a diagnostic map". That promise is a correct statement of the **epic's**
+intent and it now maps to no story: 13.5 (*the chrome tells the truth about the preview*) is a different
+thing, and 13.3 is closed. So Epic 13 cannot be closed as written without either delivering this or amending
+what the epic claims. Minting a new story key would widen the epic's story set, and dropping it silently
+would let an epic close against a goal it did not meet - both are decisions above the orchestrator's line.
+
+**Two decisions are already inherited by whoever eventually builds it**, and must travel with this entry
+rather than being re-derived:
+1. Whichever half ships first owns the diagnostic-to-page derivation. The evidence rail shipped first and did
+   not build it, so Goal A owns it.
+2. `App.css`'s shared `grid-template-columns` line takes two commits to change safely, because both rails
+   read from it.
+
+**What discharges it:** an owner ruling at the Epic 13 boundary gate - deliver it as a new story, move it to
+a later epic, or amend Epic 13's stated goal so the epic's claim matches what it shipped. Any of the three is
+a legitimate answer; leaving the promise and the delivery mismatched is not.
+

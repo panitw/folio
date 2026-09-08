@@ -5169,3 +5169,34 @@ it is mine to carry, not a reason to reopen it.
 **Related:** [D-13.1.4] (the previous cadence change, which went unnumbered until it was noticed),
 [D-000.32], [D-11.2.4] (an absence is a lead, not a result).
 
+### D-13.3.1 — BACKFILL: a plan-gate scope split was recorded only inside the story that dropped the scope
+
+**Backfilled 2026-09-08**, at Story 13.3's close, on the closer's escalation. The split itself happened at
+13.3's plan gate and was correct; what was wrong is where it was written down.
+
+**What happened.** 13.3 arrived carrying two independently shippable goals. Goal B — the evidence rail —
+was built. Goal A — the PAGES thumbnail rail — was deferred at the gate. The deferral was recorded in the
+story's `## Spec Change Log` and **in no other artifact**: not `deferred-work.md`, not this log, not
+`sprint-status.yaml`. I searched all three before writing this, and I state the population searched in the
+same sentence as the finding, per [D-13.1.3].
+
+**Why that placement is a defect in the record.** A `Spec Change Log` explains a story to someone reading
+*that story*. Deferred scope is read by someone planning the *next* one, who has no reason to open a closed
+story's spec at all. So the work was, in practice, invisible from every direction a planner approaches from.
+It survived only because a closer swept for exactly this and escalated instead of tidying past it.
+
+**The rule this makes explicit.** A multi-goal split creates two obligations, not one: build the goal that
+stays, and **register the goal that leaves in the tracker a planner reads** — a DW entry, a numbered
+decision, or a story key. Recording it only in the losing story's own change log is not registration; it is
+a note to nobody. This is the same failure mode as [D-000.32] in a different medium: something that exists
+but is never looked at is indistinguishable from something that does not exist.
+
+**What I did, and what I deliberately did not do.** Registered it as DW-304 and escalated it to the owner as
+a scope question, because `epic-13-context.md`'s Goal paragraph still promises "a page-thumbnail rail that
+doubles as a diagnostic map" and that promise now maps to no story. I did **not** mint a story key: adding
+one widens Epic 13's story set, which is the owner's call and not mine, and the scope fence holds in both
+directions — I may narrow or defer freely, but I may not enlarge. Nor did I let it drop, which would close
+an epic against a goal it did not meet.
+
+**Related:** [D-13.1.3], [D-000.32], [D-11.2.4], DW-304.
+
