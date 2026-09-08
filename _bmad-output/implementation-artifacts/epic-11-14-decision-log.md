@@ -5132,3 +5132,40 @@ observation retired a standing question that no amount of reading the config cou
 **Related:** [D-11.2.4], [D-000.9] (a guard that cannot fail is worse than none), [D-000.28] (a claim written
 before the event it asserts is false from birth), DW-294, DW-295.
 
+### D-000.33 — OWNER DECISION: the heavy suites and green CI are an epic-boundary gate, not a per-story one
+
+**Ruled by the owner, 2026-09-08**, verbatim: *"After this, run the full test and wait for the green CI at
+the end of epic only"*.
+
+**What changes.** The run has been on the every-story heavy-test cadence since setup. It moves to
+**end-of-epic**. From the next story onward:
+
+- A story's `## Verification` carries unit tests, lint and build — those remain non-negotiable and run every
+  story under every cadence — and **does not** carry the integration or browser end-to-end suites.
+- The **epic boundary gate** grows a second half. It already runs the full suite; it now also **waits for CI
+  to come back green on the pushed epic head** before the epic is called done. Waiting is part of the gate,
+  not an optional follow-up.
+- An epic is not closed on a red or an unfinished CI run. If CI is red at the boundary, that is the gate
+  doing its job and the epic stays open until it is green or the red is explicitly ruled on.
+
+**"After this" is Story 13.3.** 13.3's own Playwright run was already executing when the ruling arrived, and
+a run in flight is evidence already being produced — stopping it would discard work without gaining
+anything. So 13.3 completes on the old cadence and is the last story to do so. 13.5 is the first on the new
+one, and Epic 13's boundary gate is the first to carry the CI wait.
+
+**What the owner is buying and paying.** Buying wall-clock: the browser suite's server command is a cold
+`npm run build` including a Go-to-wasm compile — 141s warm locally, longer on a runner — and paying it once
+per epic instead of once per story is the single largest saving available in this run. Paying attributability:
+a break found at an epic boundary spans every story in that epic rather than pointing at one commit, so
+bisecting it costs more. That trade is the owner's to make and they have made it.
+
+**The obligation this creates on me.** D-000.32 was written one hour before this ruling: a guard that is never
+invoked is indistinguishable from a passing one. Deferring the heavy suites to the boundary lengthens exactly
+the window in which that mistake is available, because for a whole epic nothing browser-level will have run.
+So per-story reports must say the heavy suites were **not run**, in those words, rather than going quiet about
+them — silence in the report is what lets a deferred guard read as a green one. This is the ruling's cost and
+it is mine to carry, not a reason to reopen it.
+
+**Related:** [D-13.1.4] (the previous cadence change, which went unnumbered until it was noticed),
+[D-000.32], [D-11.2.4] (an absence is a lead, not a result).
+
