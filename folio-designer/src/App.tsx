@@ -7,6 +7,7 @@ import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
+import { BrandMark } from './BrandMark'
 import type { BindingErrorScope } from './DataPanel'
 import { folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
@@ -2367,7 +2368,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   </span>
   return <div className={`app-shell${mode === 'preview' ? ' app-shell-preview' : ''}`} aria-label="Folio designer application shell" aria-busy={fileBusy}>
     <header className="document-bar" aria-label="Document bar">
-      <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
+      {/* STORY 14.5 — THE PRODUCT WEARS ITS OWN MARK.
+          The mark is decorative (`aria-hidden`, no name of its own), so the
+          lockup's accessible text is the wordmark ALONE — the product announces
+          itself once, not twice. `.brand` stays byte-identical inside the
+          lockup; only the wrapper is new. 18px here, 22px on the load screen,
+          and nowhere else. */}
+      <span className="brand-lockup"><BrandMark size={18} /><span className="brand">FOLIO</span></span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
       {/* STORY 14.1 / AC2 — SIX WORDS IN ONE NAMED GROUP, AND A STATED DEPARTURE
           FROM THE DRAWING.
           `.document-actions` was a roleless `<div>`: the accessibility tree

@@ -27,6 +27,34 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    switches on — never a second, parallel answer to "are we in preview". */
 .app-shell-preview { grid-template-rows: var(--doc-bar-height) minmax(0, 1fr) var(--status-bar-height-preview); }
 .document-bar { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-5); background: var(--color-panel); border-bottom: var(--hairline) solid var(--color-line); }
+/* STORY 14.5 — THE MARK'S COLOUR HAS EXACTLY ONE SOURCE.
+   `.brand-mark` sets `color`, and the SVG inside reads it as `currentColor`.
+   The token is therefore the only place the cyan is written; no literal is
+   spelled in this file or in `BrandMark.tsx`.
+
+   SPECIFICITY CHECKED BEFORE WRITING THESE TWO RULES (the DW-226 class of
+   defect, and `.page-band > span` is the ancestor-plus-type precedent that has
+   burned two stories). Grepped this file for every selector that could reach a
+   `<span>` inside `.document-bar` or inside `.load-brand`, and any `<svg>`
+   anywhere. What matched: only the THREE bare universal rules, at :2
+   (`box-sizing`), :9 (`scrollbar-*`) and :11 (`scrollbar-*` again, inside the
+   reduced-motion query) — none of which touches colour, size, or layout here.
+   `.page-band > span` (:204) and `.load-progress span` (:628) both require an
+   ancestor neither lockup has; `.load-column h1` (:621) names a different
+   element; `.preview-region > *` (:660) is a different subtree. There is no
+   `.document-bar > *`, no `.document-bar span`, and no bare `svg` rule.
+   Nothing overrides these two.
+   ⚠ Those line numbers are AFTER this comment block, which is 26 lines tall and
+   shifts everything below it. Re-measure before trusting them, and re-measure
+   again after editing this block.
+
+   `flex: none` ON BOTH RULES, because the document bar is a flex row and the
+   lockup is itself one of its items. Without it on `.brand-mark` the square
+   shrinks; without it on `.brand-lockup` the square holds and the whole squeeze
+   from a long document name lands on the word FOLIO instead. Half the rule is
+   not the rule. */
+.brand-lockup { display: inline-flex; align-items: center; gap: var(--space-3); flex: none; }
+.brand-mark { color: var(--color-select); flex: none; }
 .brand { color: var(--color-ink-high); font: var(--type-brand); letter-spacing: var(--tracking-brand); }
 .document-name, .later-control { font: var(--type-mono); color: var(--color-ink); }
 .status-dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-dot); background: var(--color-bind); }

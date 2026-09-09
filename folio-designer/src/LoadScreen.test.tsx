@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { LoadScreen } from './LoadScreen'
 import { formatMiB, type S1Payload, type S1Row } from './release-payload'
@@ -85,6 +85,73 @@ describe('honest first-run load screen', () => {
     // screen ignoring them (D-11.1.15).
     expect(screen.getByLabelText('Offline payload manifest').querySelectorAll('li')).toHaveLength(rows.length)
     expect(screen.getByLabelText('Offline payload manifest')).toHaveTextContent('Noto Sans Bold Italic')
+  })
+
+  // STORY 14.5 / AC3 + AC4 — THE BRAND IS THERE BEFORE LOADING FINISHES, AND
+  // IT IS THE SAME DRAWING AT A SECOND SIZE.
+  //
+  // The `width` assertion is the executable half of "one component
+  // parameterised by `size`": the document-bar half of this pair asserts 18
+  // from the same component, so a second hand-written drawing here would have
+  // to reproduce this geometry to pass, and `BrandMark.test.tsx` separately
+  // asserts that only one production file draws it.
+  //
+  // The role sweep passes `hidden: true` for the same reason it does in
+  // `App.test.tsx`: the default spelling stays green against a `role="img"`
+  // added under a still-present `aria-hidden`, which is the mutation this
+  // fence exists to catch.
+  //
+  // ⚠ THE EXPECTED TEXT IS `FOLIO / OFFLINE`, NOT `FOLIO`. The mockup draws
+  // `FOLIO` alone here; shipped wording is a content decision no AC asks for,
+  // so it is left as shipped and AC4 is read as "the mark adds no SECOND
+  // announcement" rather than as a copy change.
+  it('wears the same mark at the load screen size, announcing nothing of its own', () => {
+    const { container } = render(<LoadScreen lifecycle={{ state: 'caching', cacheReady: false, verifiedAssetUrls: [] }} payload={payload} engineState="waiting" onRetry={vi.fn()} />)
+    const lockup = container.querySelector('.load-brand .brand-lockup')
+    expect(lockup, 'the load screen must carry the mark-and-word lockup').not.toBeNull()
+    const svg = lockup!.querySelector('svg')
+    expect(svg, 'the lockup must contain the inline mark').not.toBeNull()
+
+    // ⚠ THE ROOT IS SWEPT ALONGSIDE ITS DESCENDANTS — see the twin of this
+    // fence in `App.test.tsx`. A name on the LOCKUP escapes every
+    // descendant-scoped query, and here it is a real regression rather than a
+    // tidiness point: `role="img"` on the wrapper makes its children
+    // presentational, so AT would announce "Folio" instead of the shipped
+    // `FOLIO / OFFLINE`, silencing the very state this screen reports.
+    const namedNodesIn = (root: Element) => [root, ...Array.from(root.querySelectorAll('*'))]
+      .filter((node) => ['aria-label', 'aria-labelledby', 'role', 'title'].some((attribute) => node.hasAttribute(attribute)) || node.tagName.toLowerCase() === 'title')
+      .map((node) => `${node.tagName.toLowerCase()}${node.getAttribute('role') ? `[role=${node.getAttribute('role')}]` : ''}`)
+
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(svg!.getAttribute('class'), 'the .brand-mark rule reaches the SVG through this attribute alone').toBe('brand-mark')
+    expect(svg, 'the load screen draws the mark at 22, the document bar at 18 — one component, one parameter').toHaveAttribute('width', '22')
+    expect(svg).toHaveAttribute('height', '22')
+
+    // THE GEOMETRY AS RENDERED HERE, AS LITERALS. This is what a hand-written
+    // second drawing reds: transcribing the mockup's rounded 7×10 into a local
+    // `<svg>` would satisfy the size assertions above and fail here, because
+    // the shared rule gives 7.333×9.778 at this size.
+    const rects = lockup!.querySelectorAll('rect')
+    expect(rects).toHaveLength(2)
+    expect(rects[0]).toHaveAttribute('width', '20.5')
+    expect(rects[0]).toHaveAttribute('stroke-width', '1.5')
+    expect(rects[1], 'the shared rule gives 7.333 — the mockup\'s rounded 7 would be a second drawing').toHaveAttribute('width', '7.333')
+    expect(rects[1], 'the shared rule gives 9.778 — the mockup\'s rounded 10 would be a second drawing').toHaveAttribute('height', '9.778')
+    expect(rects[1]).toHaveAttribute('fill', 'currentColor')
+
+    expect(within(lockup as HTMLElement).queryAllByRole('img')).toEqual([])
+    expect(within(lockup as HTMLElement).queryAllByRole('img', { hidden: true }), 'the mark must carry no role at all, not merely a role hidden from the tree').toEqual([])
+
+    const announced = lockup!.cloneNode(true) as Element
+    for (const hidden of Array.from(announced.querySelectorAll('[aria-hidden="true"]'))) hidden.remove()
+    expect(announced.textContent?.replace(/\s+/g, ' ').trim(), 'the shipped wordmark, unchanged — the mark adds no second announcement').toBe('FOLIO / OFFLINE')
+    expect(namedNodesIn(lockup!), 'nothing in the lockup — the wrapper INCLUDED — may contribute a name of its own').toEqual([])
+
+    // (AC1) the mark is drawn BEFORE the word here too. The wordmark is a bare
+    // text node on this screen, so document order is checked against the
+    // lockup's first child rather than against a sibling element.
+    expect(lockup!.firstElementChild, 'the mark is the first thing in the lockup; the word follows it').toBe(svg)
+    expect(lockup!.textContent?.trim(), 'the word is the lockup\'s only text, and it comes after the mark').toBe('FOLIO / OFFLINE')
   })
 
   it('shows a keyboard retry only for a bounded failure', () => {

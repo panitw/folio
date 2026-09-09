@@ -1055,6 +1055,65 @@ describe('application shell', () => {
     expect(screen.getByRole('button', { name: 'Open local template' })).not.toHaveAttribute('title')
   })
 
+  // STORY 14.5 / AC1 + AC4 — THE MARK IS SEEN AND NEVER HEARD.
+  //
+  // This is an ABSENCE claim, and an absence cannot be falsified by reverting
+  // the implementation: deleting the mark makes "no second announcement" pass
+  // more easily, not less (D-14.4.3). So the fence is built to red on an
+  // ADDITION — give the `<svg>` `role="img" aria-label="Folio"` and both the
+  // role sweep and the contributed-name sweep go red.
+  //
+  // ⚠ THE ROLE SWEEP PASSES `hidden: true` DELIBERATELY. Testing Library's role
+  // queries exclude `aria-hidden` subtrees by default, so the default spelling
+  // would stay GREEN against exactly the mutation this test exists to catch —
+  // a `role="img"` added while `aria-hidden` is still in place. Both spellings
+  // are asserted: the default one says the mark is out of the tree, the
+  // `hidden: true` one says it carries no role to expose in the first place.
+  it('wears the brand mark before the word FOLIO, and the mark announces nothing', () => {
+    render(<App />)
+    const lockup = screen.getByLabelText('Document bar').querySelector('.brand-lockup')
+    expect(lockup, 'the document bar must carry the mark-and-word lockup').not.toBeNull()
+    const svg = lockup!.querySelector('svg')
+    expect(svg, 'the lockup must contain the inline mark').not.toBeNull()
+
+    // ⚠ THE ROOT IS SWEPT ALONGSIDE ITS DESCENDANTS. `querySelectorAll` and
+    // `within(...)` both EXCLUDE the element they are called on, so a
+    // `role="img" aria-label="Folio"` placed on the LOCKUP ITSELF escapes every
+    // descendant-scoped fence. That is not a hypothetical: `role="img"` makes
+    // the children presentational, so on the load screen the same mutation
+    // would have AT announce "Folio" in place of "FOLIO / OFFLINE" — silencing
+    // the offline state this screen exists to report.
+    const namedNodesIn = (root: Element) => [root, ...Array.from(root.querySelectorAll('*'))]
+      .filter((node) => ['aria-label', 'aria-labelledby', 'role', 'title'].some((attribute) => node.hasAttribute(attribute)) || node.tagName.toLowerCase() === 'title')
+      .map((node) => `${node.tagName.toLowerCase()}${node.getAttribute('role') ? `[role=${node.getAttribute('role')}]` : ''}`)
+
+    // (a) decorative, (d) the document bar's declared size
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(svg).toHaveAttribute('width', '18')
+    expect(svg).toHaveAttribute('height', '18')
+    // The class is the only join between `--color-select` and `currentColor`.
+    expect(svg!.getAttribute('class'), 'the .brand-mark rule reaches the SVG through this attribute alone').toBe('brand-mark')
+
+    // (b) no role of its own, in either spelling of the sweep
+    expect(within(lockup as HTMLElement).queryAllByRole('img')).toEqual([])
+    expect(within(lockup as HTMLElement).queryAllByRole('img', { hidden: true }), 'the mark must carry no role at all, not merely a role hidden from the tree').toEqual([])
+
+    // (c) the pair's accessible text is the wordmark ALONE. Hidden subtrees
+    // contribute no text, and nothing contributes a name of its own — the
+    // second half is what an added `aria-label` reds.
+    const announced = lockup!.cloneNode(true) as Element
+    for (const hidden of Array.from(announced.querySelectorAll('[aria-hidden="true"]'))) hidden.remove()
+    expect(announced.textContent?.replace(/\s+/g, ' ').trim(), 'the mark and the word announce the product name once').toBe('FOLIO')
+    expect(namedNodesIn(lockup!), 'nothing in the lockup — the wrapper INCLUDED — may contribute a name of its own').toEqual([])
+
+    // (AC1) the mark is drawn BEFORE the word, provable without a browser.
+    expect(lockup!.firstElementChild, 'the mark is the first child; the word follows it').toBe(svg)
+    expect(svg!.compareDocumentPosition(lockup!.querySelector('.brand')!) & Node.DOCUMENT_POSITION_FOLLOWING, 'the wordmark must follow the mark in document order').toBeTruthy()
+
+    // The word itself is untouched by this story.
+    expect(lockup!.querySelector('.brand')).toHaveTextContent('FOLIO')
+  })
+
   it('labels the development bypass instead of claiming a verified cache', () => {
     render(<App offlineState="dev-bypass" />)
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline layer bypassed (dev)')
