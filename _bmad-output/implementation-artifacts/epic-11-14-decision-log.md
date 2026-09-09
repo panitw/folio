@@ -6122,3 +6122,33 @@ cost an epic correction to establish - had no fence at all.** The constraint eve
 tested. Argument is not coverage.
 
 **Related:** [D-14.4.3], [D-000.32], [D-13.6.6], DW-360, DW-361.
+
+## D-14.6.1 - `find` is non-deterministic here, so a `find` miss is not evidence of absence
+
+**Recorded 2026-09-09**, reproduced by Story 14.6's builder after I corrected its claim that `DESIGN.md` did not
+exist. **Adopted run-wide, and it lands on my own tooling as much as anyone's.**
+
+**The measurement.** `find` in this environment is a **shell function wrapping `bfs`**, not BSD find. The command
+`find . -name "DESIGN.md" -not -path "*/node_modules/*"` returned **empty with exit 1**, and the **identical
+command re-run minutes later returned the file**. That is non-determinism, which is strictly worse than a wrong
+predicate: a predicate bug fails consistently and gets noticed, while this one supplies a confident negative
+some of the time.
+
+**The rule: use `git ls-files` for anything tracked. Never treat a `find` miss as absence.** `git ls-files |
+awk '/DESIGN\.md/'` returns it instantly and reads a deterministic index rather than walking a filesystem.
+
+**What made it survive undetected is the part worth keeping.** The same tool had already swallowed
+`deferred-work.md` for that builder earlier in the same run, **and it did not notice, because the path I had
+given it was also wrong** - my dispatch said `planning-artifacts/`, the file is in `implementation-artifacts/`.
+**Two independent errors agreed, and their agreement read as confirmation.** This is the exact shape of
+[D-14.2.1], where a false NUL-byte anchor came back to me from the agents I had told it to and looked
+corroborated because it was repeated. **Agreement between two sources is only evidence when the sources are
+independent**, and a wrong path plus a flaky search are not.
+
+**The cost, had it stood.** `DESIGN.md` is normative and `design-contract.test.ts:8` reads it to assert exact
+token-name set equality - so the file the builder reported missing is one its own contract tests already
+consume. Reasoning from `design-tokens.ts` alone would have missed the Tree-node clause at `:549-551`
+(*"Disabled nodes drop to 0.42 opacity and must carry a stated reason, never a bare grey-out"*), which is a
+requirement neither of us had and which the mockup violates.
+
+**Related:** [D-14.2.1], [D-14.4.3], [D-14.5.1], [D-14.4.2].
