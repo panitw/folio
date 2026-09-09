@@ -5999,3 +5999,42 @@ planning-artifacts-only (`git diff --name-only b32d832..82466e7` = `deferred-wor
 before concluding its Code Map anchors and the 73/1221/0 baseline still held.
 
 **Related:** [D-000.32], [D-14.3.1], DW-349, DW-350, DW-351.
+
+## D-14.4.2 - mtime can hold still while a file is being written, so quiescence needs a monotonic second sample
+
+**Recorded 2026-09-09**, measured by Story 14.4's builder while establishing whether its implementer was alive.
+**It invalidates an instrument I have been using myself all run.**
+
+**The measurement.** Two samples of the same agent transcript, 75 seconds apart, in one blocking command:
+
+| | size | `stat -f %m` |
+|---|---|---|
+| T1 | 315,979 | 1788962677 |
+| T2 | 370,646 | **1788962677** |
+
+**+54,667 bytes in 75 seconds, with an identical mtime at both samples** - implying 255 seconds of silence
+while the file demonstrably grew by 54KB. Size and mtime disagreed and **size was right**.
+
+**Two of the three instruments pointed at "dead".** `ps` for `vitest|tsc|oxlint|go` also returned zero hits,
+which likewise looked like death and only meant the agent was in model inference rather than running a shell
+command. Had the builder trusted either, it would have re-dispatched an implementer **onto a tree that was
+being actively written** - the two-writers failure that makes every subsequent number meaningless.
+
+**Why this lands on me.** I have twice built background quiescence watchers keyed on **mtime alone** (`find`
++ `stat -f %m`, "no write in 150s"). By this measurement that check can report quiescent while a file is being
+written. The first of those watchers was *already* wrong for a different reason - an invalid `find -newermt`
+expression whose error went to stderr, so an empty stdout read as silence - and I replaced it with one that
+fails loudly on a bad probe. **The replacement fixed the probe and kept the wrong quantity.**
+
+**The rule: never declare silence from a single sample, and prefer a monotonic quantity.** Take two samples of
+**size** (or a hash) separated by a real interval; equality across both is evidence, one reading is not. mtime
+may still be used as a hint, never as the decision. Note foreground `sleep` is blocked here - the builder used
+`perl select` inside one blocking command, which is the pattern to copy.
+
+**The general shape, which is this run's most-repeated defect wearing new clothes.** A negative reading from an
+instrument nobody had checked could see the thing it was measuring. Compare [D-000.32] (a guard never invoked),
+[D-13.6.6] (an instrument whose silence is its answer) and the three guards in 14.2 that were green over real
+defects. **A positive control is not optional when the answer you are acting on is an absence** - and here the
+absence was "no recent write", which is exactly the kind of answer an instrument can produce by failing.
+
+**Related:** [D-000.32], [D-13.6.6], [D-000.34], [D-14.4.1].
