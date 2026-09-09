@@ -6256,3 +6256,55 @@ committed, discardable".** AC7 was right that this is not a labelling choice; it
 model implies.
 
 **Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], DW-351.
+
+## D-14.7.2 - record a warning baseline as a per-file SET, never as an integer
+
+**Recorded 2026-09-10**, ruled by Story 14.7's builder **against my stated lean**, and adopted run-wide.
+
+Since Epic 13 every dispatch has said *"oxlint: expect **exactly 4** `only-export-components` warnings"*, and every
+story has re-measured it. 14.7 extracts a shared segmented control and the count became **7**. I leaned to
+restoring 4 by moving the constants into a sibling module - which is what the lint rule is literally asking for.
+
+**The builder had the file open and I did not, and three of its four reasons are facts I could not have known:**
+the naive split is a **cycle** (`alignSegments` holds `<AlignIcon/>`, `AlignIcon` reads `alignGlyphs`), so
+cycle-free costs **three** modules; it separates the never-`justify` warning comment from the constant it guards
+- the one piece of prose in that module doing safety work; and `alignGlyphs` is load-bearing in
+`TableEditor.test.tsx:361`, which is how *"one alignment control in the product"* is **proved** rather than
+asserted.
+
+**But the reason that changes practice is the fourth: the integer was a proxy; the set is the predicate.**
+"Exactly 4" only ever meant *no unexplained export shape has appeared*. An integer says that indirectly, cannot
+say **where**, and invites silent re-baselining - the decay I was trying to prevent by insisting on the number.
+A per-file set says it directly: `pdf-viewer.tsx x2, App.tsx x2, segmented-control.tsx x3`, with a standing
+instruction that a future story re-measures it and **explains any new key**.
+
+**Corollary, from the same story: the line numbers were never the pin either.** The two `App.tsx` warnings moved
+`4511,4518` -> `4548,4555` purely because `App.tsx` moved. Every dispatch has told builders to *re-measure, never
+quote* those anchors; the set form makes that structural rather than a warning I have to keep repeating.
+
+**Related:** [D-000.32], [D-14.4.3].
+
+## D-14.7.3 - a review layer asserted a false consequence chain that would have mis-specified the next story
+
+**Recorded 2026-09-10**, caught by Story 14.7's builder while triaging its own review.
+
+The verification-gap layer found a **real** defect: clicking the already-pressed ALIGN segment sends a command,
+where the old `<select>` could not. It then attached a consequence chain - *an undo entry, a cleared redo stack,
+a revision bump, a preview invalidation*. **All four are false.** `folio-go/wasm/engine.go:296` short-circuits on
+`bytes.Equal` and returns **before** `pushUndo`, before `e.redo = nil`, and before the revision moves. The real
+cost is a wasted round-trip and a `busy` flicker.
+
+**Why this is worth a decision entry rather than a triage note.** [D-14.7.1] rules that Story 14.7b's Cancel
+counter increments **only** on `revision !== priorRevision`, and its entire correctness rests on the fact this
+chain denies: **a no-op is not a history entry.** Had the chain been written into a code comment - which is what
+the reviewer proposed - the next builder would have read, in the file it was working in, an authoritative-looking
+statement that contradicts the ruling its guardrail depends on. **The false premise would have arrived in 14.7b
+wearing the credibility of a review finding.**
+
+**The general shape: a correct finding can carry an incorrect explanation, and the explanation is the part that
+propagates.** The defect gets fixed either way; the reasoning gets copied into comments, specs and later
+dispatches. This run has now seen the same structure three times - a false NUL-byte anchor echoed back as
+corroboration ([D-14.2.1]), an AC misquoting the architecture it invoked ([D-14.7.1]), and now a review layer
+mis-deriving an engine behaviour. **Fix the finding; verify the explanation separately.**
+
+**Related:** [D-14.7.1], [D-14.2.1], [D-14.6.2].
