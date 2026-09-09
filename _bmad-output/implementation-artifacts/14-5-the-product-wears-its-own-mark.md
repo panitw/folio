@@ -8,6 +8,27 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative, and rewritten after delivery to describe what actually shipped. The frozen Intent
+below is what governs the implementation.*
+
+The product now wears its own mark. A small square outline with a solid block inside it sits beside
+the word FOLIO in two places: the bar above an open document, and the screen shown while the
+application is still starting up. Both are the same drawing, produced by one component that is handed
+a size and derives every coordinate from it, so the two renderings cannot quietly drift apart. Its
+colour arrives from the design system's existing selection token through a single styling rule, which
+means no colour value is written into the drawing itself.
+
+The epic asked for three sizes and only two were built, deliberately. Measuring the third against the
+design showed it was not the logo at all but the status marker used on the starting-up screen's file
+rows, sitting in a row beside a tick and a dash and shaped differently from the mark. Building it as
+written would have placed the brand inside a vocabulary that means "in progress".
+
+The mark is decorative and deliberately silent, so the product name is announced once rather than
+twice. Two smaller mismatches against the mockups on these screens were measured, judged to belong to
+no requirement this story owns, and left visibly alone rather than quietly changed.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -444,3 +465,67 @@ boundary gate on push** — it is not run by this story and must not be reported
 
 - Box, order and colour in a real browser; compiled, unexecuted until the boundary push.
   [`brand-mark.spec.ts:22`](../../folio-designer/e2e/brand-mark.spec.ts#L22)
+
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `f3d6c36`. Shipped as one component drawn once and parameterised by `size`, placed at exactly
+two call sites — 18px in the document bar, 22px on the load screen — with every coordinate derived
+from the single geometry rule rather than transcribed from the mockups, so the two renderings cannot
+diverge. Colour reaches it as `currentColor` from one App.css rule over `var(--color-select)`; no
+colour literal was added. The epic's third size was **correctly excluded**: measurement identified the
+13px load-screen file-row shape as the in-progress status marker sitting between a tick and a dash,
+with a square inner block where the mark's is portrait, so building it as written would have enrolled
+the logo into a status vocabulary. That exclusion is a narrowing of AC3, not a gap — `epics.md` was
+corrected for it at `6fa386d` and `f3d6c36` before implementation began.
+
+**Triage:** 12 patched / 2 deferred / 6 rejected. Both deferrals were registered by the engineering
+lead as **DW-360** (a constant `viewBox` would make the mark literally one set of coordinates) and
+**DW-361** (the brand is painted with the selection token, so retheming selection would retint the
+logo). `intent_gap` 0, `bad_spec` 0, `review_loop_iteration` 0 — the spec survived implementation
+without renegotiation.
+
+**What the review caught — the story's real lesson.** The fence guarding AC4's absence claim was
+**inert twice**, and neither failure was visible by reading it. First, Testing Library's role queries
+skip `aria-hidden` subtrees, so the fence stayed green against the exact mutation it existed to
+catch — the mark could be given a name and the guard would not notice. Second, every sweep queried
+*descendants* of the lockup, so a name placed on the wrapper itself passed **373/373**. That second
+direction is the harmful one: `role="img"` on the wrapper makes its children presentational and would
+silence "OFFLINE" on the load screen, which is the one string that screen exists to say. Both defects
+appeared only on execution. This is recorded as **D-14.5.1** (a descendant sweep does not cover the
+element it descends from), itself a refinement of **D-14.4.3** (an absence claim cannot be red-proved
+by reverting the implementation — it needs a mutation that ADDS the forbidden thing).
+
+**Measured gates**, re-run at `b505260` from `folio-designer/` with captured exit codes: `npx vitest
+run` exit 0 — **75 files / 1263 tests / 0 failures** (baseline 74/1251/0 at `630ecc3`; the +1 file is
+`BrandMark.test.tsx` and the +12 tests decompose by name as 10 added there, 1 in `App.test.tsx`, 1 in
+`LoadScreen.test.tsx`, with 0 removed). `npx tsc -b --force` exit 0, zero bytes of output. `npx
+oxlint` exit 0, 0 errors and exactly 4 `only-export-components` warnings — re-anchored this run to
+`src/preview/pdf-viewer.tsx:17,18` and `src/App.tsx:4469,4476`; the App.tsx pair moved down 7 lines
+from the `4462,4469` measured at `630ecc3`, which is this story's own insertion and not a new warning.
+`npm run test:e2e:compile` exit 0.
+
+**What is not coverage.** `e2e/brand-mark.spec.ts` is compiled and has never executed against a
+browser — it is scheduled for the epic boundary gate on push and is not coverage until then. The
+App.css colour rule is pinned by **source text only, not behaviourally**: the review demonstrated that
+appending `.document-bar svg { color: … }` left the suite at 452/452 green, so the guard proves the
+declaration is written, never that the token is what actually paints. And **"it looks right" is not
+proven** — jsdom applies no stylesheet and computes no layout, so the crispness of a 1.5px stroke at
+18px, the optical centring of the inner block, and the fact that `--color-select` renders as the
+design's cyan are all beyond every gate that ran.
+
+**Suites that did not run, in these words:** the browser suite, the Go suites, the matrix legs, `npm
+run build` as a gate, the `verify:offline*` chain, and the font-host scans. `npm run build` matters
+here beyond routine: D-13.6.7's asset-slot check normally re-measures `s1.assetCount` through it, so
+this story's zero-slot claim rests on the structural argument in the Design Notes rather than a
+measured count, against a release already carrying 62 assets versus a warning threshold of 56.
+
+Deferred, with owners: **DW-360** and **DW-361** both stand open in `deferred-work.md`, owner
+unassigned and neither closed by this story. **DW-358** and **DW-359** continue to hold the remainder
+of AC2's colour-literal ban; this story closed neither and did not narrow either.
+
+Commit `b505260` — "Give the product its mark, at two sizes from one drawing". Tracker advanced
+`review` → `done`. `epic-14` deliberately stays `in-progress`: the boundary-gate suites above have not
+run.

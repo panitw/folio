@@ -12503,3 +12503,22 @@ value would decouple them at zero visual cost.
 
 Note this interacts with DW-359: a brand token is another case where "which token owns this colour" is a design
 question rather than a lint question.
+
+### DW-362 - the brand colour is pinned by reading App.css, so the pin cannot see a later rule overriding it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-5-the-product-wears-its-own-mark.md`
+- **Found by:** Story 14.5's step-04 review; registered at close. **Owner:** whichever story first runs the browser suite against the mark. **Severity:** MEDIUM. **Status:** OPEN.
+
+`BrandMark`'s colour is asserted by **matching the declaration in `App.css`** - never by observing what paints.
+The review demonstrated the cost by executing it: appending `.document-bar svg { color: var(--color-ink-low) }`
+left the suite at **452/452 green** while the mark rendered the wrong colour.
+
+**This is [D-14.5.1]'s failure class in a new position - a guard that reads the artifact instead of exercising
+it.** A source-text pin proves a line was written; it cannot prove the line wins. CSS is precisely the domain
+where "written" and "in effect" diverge, because a later selector of equal or greater specificity silently
+takes over.
+
+The fix exists and has never run: `e2e/brand-mark.spec.ts` carries a `toHaveCSS` colour witness, **compiled and
+never executed against a browser**. So the story shipped with the correct instrument built and switched off.
+**It closes the first time the browser suite runs against the mark at a boundary gate** - not before, and it
+should not be described as covered until a run log shows it.
