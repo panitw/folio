@@ -6038,3 +6038,50 @@ defects. **A positive control is not optional when the answer you are acting on 
 absence was "no recent write", which is exactly the kind of answer an instrument can produce by failing.
 
 **Related:** [D-000.32], [D-13.6.6], [D-000.34], [D-14.4.1].
+
+## D-14.4.3 - a claim that something is ABSENT cannot be red-proved by reverting the implementation
+
+**Recorded 2026-09-09**, found by Story 14.4's builder while triaging four demonstrated false greens. **Adopted
+run-wide. It is a defect in how I have been writing specs, not in how any story implemented one.**
+
+**The rule.** A spec that asks a story to **withhold** something or to **preserve** something must require
+mutations that **ADD the forbidden thing**. A mutation that merely reverts the implementation cannot falsify
+either claim - reverting *removes* the thing, and a test asserting the thing is absent then passes **more**
+easily. My red-proof lists have been revert-shaped all run.
+
+**Why it took four false greens to see.** Every red-proof list I have written asks: *revert the gate, does a
+test red?* That is the right question for a claim that something is **present** - a control renders, a value
+commits, a component is selected. It is the wrong question, and quietly a vacuous one, for every claim of the
+form *this is not offered*, *this is not dispatched*, *this value survives untouched*.
+
+**The four instances in Story 14.4, each proved by an executed mutation with the suite green at 1246/0:**
+
+1. **An inspector-side collection editor - the exact capability I refused as D-14.4.Q2 option (b) - ships
+   green.** The fence is `queryByRole('textbox', {name: 'Root collection'})`, and that accessible name exists
+   only in `TableEditor.tsx`, which the test never renders. **The query can only ever return null.** A guard
+   that cannot fail, guarding a ruling.
+2. **Deleting `isCanvas`'s binding guard leaves 1245/1246 green.** The sole failure is the mirror's `toMatch` -
+   a claim about the **file's wording**, not about `parseInbound`'s behaviour. Nothing feeds a non-text
+   component carrying a binding. So the mirror currently proves the rule is *written down*, not that it *runs*.
+3. **Dropping a table's stored border from the panel leaves AC4's own test green.** The tests at
+   `binding-vocabulary.test.tsx:166`/`:174` are named *"keeps every projected value"* and assert only **zero
+   dispatches**; the fixture sets `borderWidth`/`borderColor` and never reads them back.
+4. A reachable **fail-open** in the new gate, which was a genuine functional defect rather than a test weakness.
+
+**This explains three stories as one pattern rather than three coincidences.** 14.2's three disclosure guards
+green over real defects; 14.3's `placeInBand` selection revertible with the suite green at 1217/1217; and these
+four. **Every one was an absence-or-preservation claim.** The reviews caught them; the specs' own red proofs
+could not, by construction.
+
+**What goes in every future spec.** For each AC of the form *withheld*, *not offered*, *not dispatched*, or
+*preserved untouched*, name a mutation that **adds** it - render the forbidden control, dispatch the forbidden
+command, write the preserved field - and require that mutation to red a **named** assertion. And check the
+fence can see its own target: an accessible-name query is only a fence if the surface that carries that name is
+actually rendered by the test.
+
+**Two supporting notes from the same story.** A mutation that fails to compile or fails silently produces a
+green indistinguishable from a passing test - the implementer's first attempt at one red proof passed for
+exactly that reason and it caught itself. And a preservation test must **read the value back**, not merely
+count dispatches; counting zero commands proves nothing was sent, not that nothing was lost.
+
+**Related:** [D-000.32], [D-14.4.2], [D-13.6.6], DW-333, DW-352, DW-356, DW-357.
