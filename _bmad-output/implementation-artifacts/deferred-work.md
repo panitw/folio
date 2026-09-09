@@ -12646,3 +12646,27 @@ alone - the file produced was byte-identical to the one the fixed tree produced.
 So it reappears dirty for **anyone** who runs the browser suite, which trains a reader to ignore it. Either
 refresh it with each run that changes the request sequence, or stop tracking the regenerated form and keep only
 what is attested.
+
+### DW-368 - Cmd+Z undoes the document behind the open table-editor modal, today
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-7-the-table-editor-is-the-matrix-the-design-drew.md`
+- **Found by:** Story 14.7's builder, investigating D-14.7.1's guardrail 2. **Owner:** Story 14.7b. **Severity:** HIGH. **Status:** OPEN.
+
+`App.tsx:2156` attaches the undo/redo shortcut to **`window`**, and its escape hatch `isEditableTarget`
+(`:4823-4826`) returns true only for `INPUT`, `TEXTAREA`, `SELECT` and contenteditable. So with focus on **any
+button** in the open dialog - `Close Table Editor`, `Remove`, `Add after`, `↑`, `↓`, any `×`, and every segment
+of the alignment control 14.7 adds - **Cmd+Z mutates the document behind an `aria-modal="true"` dialog with a
+focus trap.**
+
+**This is a shipped defect independent of any pending work.** A modal that traps focus and then lets a global
+shortcut edit what it is covering is wrong on its own terms: the trap exists to say "nothing outside this is
+reachable", and the shortcut disproves it.
+
+**It becomes destructive under D-14.7.1.** Story 14.7b's Cancel issues exactly as many undos as it counted
+commands; a global undo the dialog never saw **desynchronises the count**, so Cancel then unwinds edits from
+before the dialog opened. Assigned to 14.7b rather than 14.7 because it belongs with the counter it would
+corrupt, and fixing it in the markup story would leave the reason unrecorded.
+
+**Note the escape hatch's shape is the root cause and it will recur.** `isEditableTarget` enumerates *editable*
+elements, but the question the listener actually needs answered is *"is a modal open?"* - a different question
+that happens to coincide while every modal's fields are inputs.

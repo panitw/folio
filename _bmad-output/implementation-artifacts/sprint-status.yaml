@@ -495,6 +495,7 @@ development_status:
   14-5-the-product-wears-its-own-mark: done
   14-6-the-data-tab-is-the-binding-panel-the-design-drew: done
   14-7-the-table-editor-is-the-matrix-the-design-drew: backlog
+  14-7b-the-table-editor-s-cancel-discards-what-it-counted: backlog
   14-8-the-table-editor-carries-the-header-cell-and-border-sections: backlog
   14-9-the-canvas-draws-the-table-it-will-print: backlog
   14-10-a-table-column-is-bound-from-the-main-window: backlog

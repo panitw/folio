@@ -5178,8 +5178,19 @@ than after
 **Given** the table's scope — its collection, its item count in the loaded sample, and its band
 **When** the editor is opened
 **Then** they are read-only context as the design draws them (`transactions[] · 34 items in sample ·
-band: content`), and the collection and row alias are edited where the design puts them rather than
-as two bare inputs at the top of the dialog
+band: content`), and the collection and row alias stay editable in a labelled, restyled group rather
+than as two bare inputs at the top of the dialog
+  <!-- CORRECTED 2026-09-10, before Story 14.7 was built. This read "edited where the design puts
+       them". Measured against the mockup: `TableEditor.dc.html` draws the collection as a plain
+       <span> with no input chrome, and draws NO row alias anywhere at all -- the only trace of row
+       scope in the file is a dimmed `· row scope` sub-label in the BOUND FIELD column header. So the
+       design puts them nowhere, and the AC had no referent.
+
+       The design is SILENT here, not contradictory. AC5's real complaint is presentational -- "two
+       bare inputs at the top of the dialog" -- and a labelled, restyled group answers it. The
+       editable site itself does not move: DW-351 records TableEditor.tsx as the ONLY editable site
+       for a table's collection in the product, and Story 14.6 has just begun routing authors to it.
+       Moving it in the same story that rebuilds everything around it was the larger risk. -->
 
 **Given** the dialog's footer
 **When** it is shown
@@ -5228,6 +5239,56 @@ is millipoints and stays millipoints
 **When** it is operated by keyboard
 **Then** the roving grid navigation it already has survives the rebuild — this story reduces the cell
 count, so it must not reduce what a keyboard can reach (UX-DR25)
+
+### Story 14.7b: The table editor's Cancel discards what it counted
+
+As a template author,
+I want the table editor's Cancel to undo the editing I did in it,
+So that opening the dialog to try something is not a commitment I have to unpick by hand.
+
+**Covers:** FR10 · AD-15 · UX-DR20, UX-DR24, UX-DR25
+**Split from Story 14.7 on 2026-09-10.** 14.7 rebuilds the matrix, which is presentation like every
+other story in this epic. This is not presentation: it is an interaction-and-history model carrying a
+named destructive failure mode, and bundled into a six-AC markup rebuild the review attention it needs
+would compete with grid tracks and CSS specificity — the mechanism behind this epic's false greens.
+**The transaction model is already ruled in full: see D-14.7.1, including its six guardrails.**
+
+**Acceptance Criteria:**
+
+**Given** the dialog, whose edits commit on blur through the engine
+**When** its footer is shown
+**Then** it carries **Cancel** and **Done** — not the design's Cancel/Apply, because nothing is applied
+at close and a label must follow its model (D-14.7.1)
+
+**Given** the author's edits in an open dialog
+**When** Cancel is pressed
+**Then** the dialog issues exactly as many `undo` operations as it counted commands that **changed the
+document**, and closes — a compensating sequence replaying the engine's own byte snapshots, not a
+transaction, and the spec must say so
+
+**Given** a blur that changes nothing
+**When** it commits
+**Then** the count does not move — a no-op is not a history entry in the engine, and counting one would
+make Cancel unwind edits from **before the dialog opened**, which is this design's only destructive
+failure mode
+
+**Given** the open modal
+**When** the author presses the global undo or redo shortcut
+**Then** the modal swallows it — today it does not, and the document mutates behind an `aria-modal`
+dialog (DW-368), which under this model also desynchronises the count
+
+**Given** an edit count that exceeds the engine's history limit
+**When** Cancel is offered
+**Then** it is disabled with a stated reason rather than silently under-unwinding
+
+**Given** an undo in the sequence that fails
+**When** it returns an error
+**Then** the dialog stops, states the actual position, and never claims a discard that did not complete
+
+**Given** a Cancel the author did not mean
+**When** it has closed the dialog
+**Then** the discarded edits remain **redoable** — the redo stack is not cleared, and this is stated
+rather than left to be discovered
 
 ### Story 14.8: The table editor carries the header, cell and border sections
 
