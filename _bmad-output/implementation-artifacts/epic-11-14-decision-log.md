@@ -6152,3 +6152,52 @@ consume. Reasoning from `design-tokens.ts` alone would have missed the Tree-node
 requirement neither of us had and which the mockup violates.
 
 **Related:** [D-14.2.1], [D-14.4.3], [D-14.5.1], [D-14.4.2].
+
+## D-14.6.2 - "fix the source, not each reader" requires knowing who the readers are
+
+**Recorded 2026-09-10.** Story 14.6's builder proposed a one-line parser fix in place of the panel-side clause I
+had authorised; **I endorsed it, and the endorsement was wrong.** Recording it against myself because the
+reasoning that persuaded me is a rule I would still give, and the precondition I skipped is the whole of it.
+
+**What was authorised.** DW-350: an empty collection presented itself as a bindable scalar. My ruling was a
+**panel-side** clause making the collection row unpickable. The builder found that `object()` withholds
+`segments` while `array()` attaches them, and argued that removing the asymmetry in `sample-data.ts` **"makes
+the tree honest for every consumer"** — fixing the source rather than each reader. I agreed, in writing, and
+called it *"better than what I authorised"*.
+
+**The data was not wrong.** A collection's `segments` are correct and load-bearing. `tableSampleCandidates`
+(`App.tsx:66`) gates on exactly `node.kind === 'collection' && node.segments?.length`, and feeds the
+`table-collection-candidates` and `table-field-candidates-N` datalists behind the Table Editor's **Root
+collection** and **Row field** inputs. Removing `segments` returns `[]` for **every template**. Verified at HEAD
+by me, not relayed: the gate, both `array()` returns, and the fence at `DataPanel.test.tsx:456-457` that had
+**pinned the regression in place** with the full suite green.
+
+**Only the DataPanel's *interpretation* was wrong** — reading "has segments" as "is a scalar candidate". Which
+is exactly what my original ruling addressed.
+
+**The rule and its precondition.** *Fix the source rather than each reader* is right, and it is only available
+**once you have enumerated the readers.** I approved a change to a shared data structure without asking what
+else consumed it. The tell was present and I did not use it: the argument's own phrase was "for every
+consumer", and neither of us listed them.
+
+**Two things make this worse than an ordinary miss, and both belong in the record.**
+1. **The story that starts pointing Table authors at that editor is the story that emptied its discovery
+   hints.** 14.6's new context bar discharges DW-353 by telling a Table author to bind the collection *in the
+   table editor* — while `TableEditor.tsx:194` still promises "Amber candidate values are local discovery hints
+   only". A defect is worse when the same change that causes it also increases traffic to it.
+2. **The implementation asserted the regression.** A fence pinned `segments` as absent, so the suite was green
+   *because* the feature was dead. Compare [D-14.4.3]: a test can hold a defect in place as firmly as it can
+   prevent one.
+
+**Ruled remedy: targeted amendment, not the workflow's `bad_spec` revert.** The frozen block was intact and
+correct; the wrong text was three lines in non-frozen sections; and the fix restores the ruling I gave before I
+was talked out of it. `bad_spec` exists to stop code being derived from wrong **intent** — reverting ~680 lines
+would have discarded nine proved-red fences to re-derive sound code. **I am the human the loopback escalates
+to, and amending is the decision that escalation exists to produce.** `review_loop_iteration` stays 0.
+
+**Also recorded: `test:e2e:compile` is structurally blind to a removed control.** Four e2e call sites still
+drove the deleted Connect button; the gate passes because they are plain strings that type-check regardless of
+the DOM. The per-story cadence has therefore never been able to catch this class, and only CI's real Playwright
+run at `ci.yml:423` would have — on my next push.
+
+**Related:** [D-14.4.3], [D-14.5.1], [D-000.32], DW-350, DW-353.
