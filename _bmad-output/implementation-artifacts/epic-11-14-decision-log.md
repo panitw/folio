@@ -522,6 +522,38 @@ not absorb it.
 
 ---
 
+### Re-grounding refresh — 2026-09-10 (fourth session, Story 14.7b's dispatch)
+
+*Fourth lead of this run. Re-grounded from this section and the numbered rulings below it — NOT re-derived from the spine, the ADRs or `epics.md`. Verified at HEAD **`68aa91f`**, working tree **clean** (`git status --porcelain` empty), re-measured with `git rev-parse` rather than inherited from the session's opening `gitStatus`.*
+
+**The opening `gitStatus` was stale for the third time this run, and this time by an entire epic.** It listed seven modified/untracked paths belonging to **Story 13.2** — `viewer-navigation.ts`, `pdf-viewer.tsx`, `epic-13-context.md` — and named a HEAD five commits back. All of that is committed and the tree is clean. The rule stated in the 2026-09-08 refresh now has three instances behind it and should be read as standing: **the session's opening `gitStatus` is a snapshot of some earlier moment, never of now.**
+
+**Sources read, CLOSED:** `## Lead Grounding` in full including all three prior refreshes; `D-14.7.1`–`D-14.7.4` in full; `epics.md` §14.7b, §14.8, §14.9, §14.10 and the Epic 15 story headings; `sprint-status.yaml` rows for Epics 14 and 15; `git log --oneline -8`. Code read directly and measured, not inherited: `folio-go/wasm/engine.go:29,285-371`; `folio-designer/src/TableEditor.tsx` (479 lines — the footer, `trapDialog`, and the two transaction-model comment blocks); `App.tsx:959-996` (`revokeTableEditor`, `commitTableColumn`), `:2070-2086` (`applyHistory`), `:2192-2193` (the shortcut); `engine-protocol.ts:270-273,718`; `deferred-work.md` §DW-368.
+
+**State.** Epic 14 is `in-progress` with **14.1–14.7 `done`** and 14.7b, 14.8, 14.9, 14.10 `backlog`. Epic 15 is `in-progress`: 15.1, 15.2a, 15.2b `done`; 15.0, 15.2, 15.3 `backlog`. Epics 12, 13 are behind us; the Epic 14 boundary gate under [D-000.33] has not been booked.
+
+**The record discrepancy first raised at grounding on 2026-09-05 is CLOSED.** `15-0-a-catalogue-face-arrives-when-it-is-picked` now has epic text (`epics.md:5505`, "Story 15.0: A catalogue face arrives when it is picked"). It was a lost story, not a phantom, and [D-15.0] resolved it. No new record discrepancy found in the Epic 14/15 rows.
+
+**Four mechanism facts measured for 14.7b, each of which its plan gate must settle rather than assume.**
+
+1. **The engine's history limit is `100` and it is a RING BUFFER, not a refusal.** `wasm/engine.go:29` — `const historyLimit = 100`; `appendBounded` (`:363-371`) silently discards the oldest entry when full. So AC5's failure mode is real and is exactly the silent under-unwinding the AC names. **But the limit is a Go constant that crosses no protocol boundary**: `EngineSnapshot` carries `canUndo`/`canRedo` as booleans only (`engine-protocol.ts:272-273`, validated at `:718`) and no depth. The dialog therefore cannot *read* the limit — it can only duplicate the number `100` in TypeScript or have the story project a depth. **That fork is a plan-gate question, not a builder's choice.**
+
+2. **AC7 (the redo stack survives Cancel) is structurally free, and its honest limit should be stated.** `Undo()` calls `pushRedo(e.bytes)` before restoring (`:329`), so N undos leave N redo entries — nothing needs building. The limits worth stating rather than discovering: the redo stack is bounded by the same 100, and the **next** committed command clears it outright (`e.redo = nil`, `:312`). "Redoable" means *until the author's next edit*, which is the ordinary meaning and should be written that way.
+
+3. **AC2 and AC6 constrain each other, and the constraint decides the implementation.** AC2 says Cancel "issues … and closes"; AC6 says a failed undo makes the dialog "stop, state the actual position, and never claim a discard that did not complete". A dialog that has closed cannot state anything. **So the unwind runs while the dialog is still open, and a failure keeps it open** — closing is the success path only. Note the collaborator: `commitTableColumn` re-projects after every command and `revokeTableEditor` fires on any revision mismatch (`App.tsx:992-993`), so N undos issued through the open dialog will each move the revision under an editor that is watching it.
+
+4. **`applyHistory` is the wrong loop body, and reusing it N times is the shape the story should be steered away from.** `App.tsx:2070-2086` guards on the React state `undoAvailable` — a closure value that cannot update inside a synchronous N-iteration loop, so the guard is stale-but-permissive — and it calls `invalidatePreview()` plus `setCurrentSnapshot()` on **every** iteration. Its error branch is however the right precedent for AC6: it maps `UNDO_UNAVAILABLE` (`ErrNoUndo`, `:323`) to state rather than to a thrown failure.
+
+**DW-368 (AC4) has a known hole that a dialog-side-only fix will not close.** The shortcut is a **native `window` listener** (`App.tsx:2192-2193`) and `trapDialog` is a **React synthetic** `onKeyDownCapture` bound to the dialog element (`TableEditor.tsx:355`). Whether a synthetic `stopPropagation` reaches the native `window` listener is a claim to **measure, not to reason about**. And `TableEditor.tsx:141-148` records a case — the last column leaving strands focus on `document.body` inside the open modal — where `trapDialog` sees no key at all; that comment exists because it once broke Escape. Any fix asserted only at the dialog is [D-000.32]'s *guard never invoked* waiting to happen.
+
+**What 14.7 left behind, deliberately, and it is a good handover.** `TableEditor.tsx:471-475` carries a signed disclosure — *"⚠ THIS BAR CARRIES NO Cancel / Done PAIR AND NO EDIT COUNTER"* — naming 14.7b, [D-14.7.1] and DW-368 as its owners. The footer today is one `Close Table Editor` button (`:476`), which 14.7b replaces with the pair. **That comment must go when the pair lands**, or it becomes the [D-000.28]-shaped stale assertion the run keeps finding.
+
+**Carried forward, unclosed:** the Epic 14 boundary gate is unbooked and Epic 14 has three stories left after this one; 14.8's acceptance criteria are still the pre-owner-decision text with a struck padding clause inline and carry an explicit instruction to *"rewrite the acceptance criteria against this before dispatch"* — **14.8 cannot be dispatched from `epics.md` as it stands.**
+
+**Orchestrator's note, appended when filing:** I re-measured this refresh's four load-bearing facts before accepting it — `historyLimit = 100` and `appendBounded`'s silent discard at `wasm/engine.go:29,363`; `canUndo`/`canRedo` as bare booleans at `engine-protocol.ts:272-273`; the footer disclosure at `TableEditor.tsx:471-475`; and the Epic 15 rows, where the lead's reading (15.1, 15.2a, 15.2b `done`) **corrected mine**. All four hold.
+
+---
+
 ### D-A — Epic 11 realizes bold and italic for the Latin and Thai families only
 **Owner decision**, taken at the terminal 2026-09-05, on the payload arithmetic.
 
