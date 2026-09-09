@@ -299,21 +299,46 @@ const tableComponent = { id: 'e7', type: 'table' as const, band: 'content' as co
 // sweeps the withholding rather than a Line that had nothing to withhold.
 const lineComponent = { id: 'e2', type: 'line' as const, band: 'content' as const, x: 0, y: 40_000, width: 72_000, height: 1_000, resizable: true, background: '#000000', borderWidth: 2_000, borderColor: '#c81e1e', borderEdges: ['bottom' as const] }
 const rectComponent = { id: 'e3', type: 'rect' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 24_000, resizable: true, background: '#1b2a4a', borderWidth: 1_000, borderColor: '#000000', borderEdges: ['bottom' as const] }
-const engine = () => ({ request: vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } })) }) as unknown as EngineClient
+// STORY 14.7 — THE MOCK LEARNED TO ANSWER `table-columns`, BECAUSE THE TABLE
+// EDITOR IS A DECLARED RENDER STATE NOW AND A MOCK THAT CANNOT ANSWER IT MOUNTS
+// NOTHING. `App.tsx:openTableEditor` admits a projection only when the
+// snapshot's revision, the reply's snapshot revision AND the reply's
+// `tableColumns.revision` all agree with the revision that was current when the
+// request went out — so the reply below carries revision 1, matching the
+// mounted snapshot. A mismatched revision is silently refused: the state would
+// have swept the design surface behind the dialog and reported a healthy count
+// while proving nothing about the dialog at all.
+//
+// The projection is the FULL twenty-member header block plus a `columns` array,
+// because `TableColumns` is exact on the wire and a partial one is not a
+// projection this panel can render.
+const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false }
+const tableColumnsReply = {
+  snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 },
+  tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72_000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum' as const, footerOf: 'items.amount', footerFormat: '#,##0.00' }] } },
+}
+const engine = () => ({ request: vi.fn(async (operation: string) => operation === 'table-columns' ? tableColumnsReply : { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }) }) as unknown as EngineClient
 
 const mount = (components: ReadonlyArray<typeof textComponent | typeof tableComponent | typeof lineComponent | typeof rectComponent>) =>
   render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [...components] } }} />)
 
 // Each state is a NAMED render, so a state that stops producing controls is
 // named in the failure rather than absorbed into a smaller total.
-const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
+// ⚠ `open` IS ASYNC AS OF STORY 14.7, AND EVERY CALLER AWAITS IT. It was
+// synchronous, which was enough while every state was one click away. Opening
+// the Table Editor is not: it dispatches a `table-columns` request and mounts
+// on the reply, so a synchronous `open` would have returned a container with no
+// dialog in it and swept the design surface behind it — a state that reports a
+// healthy control count and proves nothing about the surface it names.
+type RenderState = Readonly<{ name: string; open: () => Promise<Element> }>
+const states: ReadonlyArray<RenderState> = [
   {
     name: 'design · nothing selected',
-    open: () => mount([textComponent, tableComponent]).container,
+    open: async () => mount([textComponent, tableComponent]).container,
   },
   {
     name: 'design · a text element selected',
-    open: () => {
+    open: async () => {
       const view = mount([textComponent, tableComponent])
       fireEvent.click(within(view.container).getByLabelText('text component e1'))
       return view.container
@@ -321,7 +346,7 @@ const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
   },
   {
     name: 'design · a table element selected',
-    open: () => {
+    open: async () => {
       const view = mount([textComponent, tableComponent])
       fireEvent.click(within(view.container).getByLabelText('table component e7'))
       return view.container
@@ -329,7 +354,7 @@ const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
   },
   {
     name: 'design · a line element selected',
-    open: () => {
+    open: async () => {
       const view = mount([textComponent, tableComponent, lineComponent, rectComponent])
       fireEvent.click(within(view.container).getByLabelText('line component e2'))
       return view.container
@@ -337,15 +362,37 @@ const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
   },
   {
     name: 'design · a rect element selected',
-    open: () => {
+    open: async () => {
       const view = mount([textComponent, tableComponent, lineComponent, rectComponent])
       fireEvent.click(within(view.container).getByLabelText('rect component e3'))
       return view.container
     },
   },
   {
+    // STORY 14.7 — THE DENSEST SURFACE IN THE PRODUCT (UX-DR8) JOINS THE SWEEP,
+    // which is what 14.1's R-Q2 deferral promised for this story. It ships the
+    // shared alignment control into a second surface and three new row
+    // affordances, so shipping them under a guard that could not see them would
+    // have made the deferral retroactively hollow.
+    //
+    // ⚠ INSERTED BEFORE `preview`, NOT APPENDED. The R0 shrink proof below is
+    // `states.slice(0, -1)` — it drops the LAST state on purpose, which must
+    // stay `preview`, because that is the state whose `PDF navigation` and
+    // `Render actions` groups the proof names. Appending here would have made
+    // that red drop THIS state instead and prove something other than what it
+    // claims. The comment on that proof has been bitten once already, at 14.2.
+    name: 'design · the table editor open',
+    open: async () => {
+      const view = mount([textComponent, tableComponent])
+      fireEvent.click(within(view.container).getByLabelText('table component e7'))
+      fireEvent.click(within(view.container).getByRole('button', { name: 'Configure columns' }))
+      await within(view.container).findByRole('dialog', { name: 'Table Editor' })
+      return view.container
+    },
+  },
+  {
     name: 'preview',
-    open: () => {
+    open: async () => {
       const view = mount([textComponent, tableComponent])
       fireEvent.click(within(view.container).getByRole('button', { name: 'PREVIEW' }))
       return view.container
@@ -354,12 +401,15 @@ const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
 ]
 
 type Swept = Readonly<{ state: string; root: Element; controls: ReadonlyArray<Control> }>
-const sweepStates = (declared: ReadonlyArray<Readonly<{ name: string; open: () => Element }>>): ReadonlyArray<Swept> =>
-  declared.map((state) => {
-    const root = state.open()
-    return { state: state.name, root, controls: sweepControls(root, state.name) }
-  })
-const sweepEveryState = (): ReadonlyArray<Swept> => sweepStates(states)
+const sweepStates = async (declared: ReadonlyArray<RenderState>): Promise<ReadonlyArray<Swept>> => {
+  const swept: Swept[] = []
+  for (const state of declared) {
+    const root = await state.open()
+    swept.push({ state: state.name, root, controls: sweepControls(root, state.name) })
+  }
+  return swept
+}
+const sweepEveryState = (): Promise<ReadonlyArray<Swept>> => sweepStates(states)
 
 // THE V2 CENSUS AS IT STANDS at Story 14.1 — eleven distinct names over twenty
 // renderings, DERIVED from the sweep above and then written down here so that
@@ -433,6 +483,42 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · a rect element selected · Clear Fill',
   'design · a rect element selected · Set Fill null',
   'design · a rect element selected · Set Visible if null',
+  // STORY 14.7 — THE TABLE EDITOR STATE, DERIVED BY RUNNING THE SWEEP AND
+  // READING WHAT IT REPORTED, never hand-written from the story.
+  //
+  // The dialog is an OVERLAY, not a replacement, so this state re-reports the
+  // design surface behind it (`Zoom out` / `Zoom in`, and the table's own
+  // inspector clears) and then adds what the dialog itself draws. Two families
+  // are new:
+  //   • six `Clear …` glyphs — Epic 12's HEADER AND ROWS section, whose `×`
+  //     clears no declared state could see before this one existed; and
+  //   • `Move column 1 earlier` / `Move column 1 later` / `Remove column 1` —
+  //     the three ROW AFFORDANCES this story put in place of four columns that
+  //     wore column headers. They are glyphs OUTSIDE a segmented control, which
+  //     is exactly the set V2 says has to be recorded rather than assumed.
+  //
+  // ⚠ THE ALIGNMENT SEGMENTS ARE DELIBERATELY ABSENT FROM THIS LIST. All three
+  // carry `aria-pressed` inside one named group, so `isSegmentedControl`
+  // derives them as a segmented control and V2 permits a glyph there — the same
+  // reason `Align`, `Vertical align` and `Orientation` have never been census
+  // members. If they ever appeared here, the control would have stopped being a
+  // segmented control, which is the fact worth reddening on.
+  'design · the table editor open · Zoom out',
+  'design · the table editor open · Zoom in',
+  'design · the table editor open · Clear Font size (pt)',
+  'design · the table editor open · Clear Line spacing',
+  'design · the table editor open · Set Background null',
+  'design · the table editor open · Set Visible if null',
+  'design · the table editor open · Show fonts',
+  'design · the table editor open · Move column 1 earlier',
+  'design · the table editor open · Move column 1 later',
+  'design · the table editor open · Remove column 1',
+  'design · the table editor open · Clear Alternating row background',
+  'design · the table editor open · Clear Header font family',
+  'design · the table editor open · Clear Header font size (pt)',
+  'design · the table editor open · Clear Header line spacing',
+  'design · the table editor open · Clear Header background',
+  'design · the table editor open · Clear Header text colour',
   // The PDF navigation group — uniform within its group, so R2 is green.
   'preview · Previous PDF page',
   'preview · Next PDF page',
@@ -470,8 +556,20 @@ const CHECKED_GROUPS: ReadonlySet<string> = new Set([
   'Vertical align',
   'PDF navigation',
   'Render actions',
+  // STORY 14.7's two Table Editor groups that R2 actually gets to work with.
+  // `Cell alignment for column 1` is the shared segmented control in its second
+  // surface — three glyph segments, every one carrying `aria-pressed`, so it is
+  // a segmented control by derivation exactly as `Align` and `Orientation` are.
+  // `Table header and rows` is Epic 12's section, whose six `×` clears R2 has
+  // never been able to see until this state existed.
+  'Cell alignment for column N',
+  'Table header and rows',
 ])
-const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges'])
+// `Table row scope` joins `Border edges` in the second bucket, and for the same
+// honest reason: it is a labelled group of two TEXT INPUTS and holds no button
+// at all, so R2 returns early on it in every state. Recording it here makes the
+// hole VISIBLE rather than letting the group read as covered.
+const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges', 'Table row scope'])
 // RE-BASELINED AT STORY 14.2, and the re-baselining is the point rather than
 // bookkeeping. Floors, not equalities, so ordinary growth never churns the
 // guard while any shrink reddens — but a floor left at an old measurement is a
@@ -480,14 +578,31 @@ const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges'])
 // and the totals rose; leaving 14.1's numbers would have let the guard lose
 // most of a state without a word.
 //
-// MEASURED HERE, at Story 14.2, by executing the sweep and reading it:
-// 194 controls, 19 class tokens, 28 group instances, smallest state 17
-// (`preview`, unchanged — the two new states sweep 34 and 35).
-// PER_STATE_CONTROL_FLOOR therefore does NOT move: the smallest state did not.
+// RE-MEASURED AT STORY 14.7 by EXECUTING the sweep and reading what it
+// reported — not by adding this story's controls to 14.2's numbers on paper.
+// The Table Editor state is an overlay over the design surface, so it sweeps
+// far more than the dialog's own controls, and a hand-written total would have
+// been wrong in a direction nobody could check.
+//
+// MEASURED: 248 controls, 20 class tokens, 37 group instances, per state
+// [27, 41, 40, 34, 35, 54, 17] in declared order.
+// PER_STATE_CONTROL_FLOOR does NOT move: the smallest state is still `preview`
+// at 17, and the new state is the LARGEST at 54.
 const PER_STATE_CONTROL_FLOOR = 15
-const CONTROL_FLOOR = 170
-const CLASS_FAMILY_FLOOR = 17
-const GROUP_INSTANCE_FLOOR = 25
+const CONTROL_FLOOR = 220
+const CLASS_FAMILY_FLOOR = 18
+const GROUP_INSTANCE_FLOOR = 33
+
+// ⚠ THE COVERAGE RECORD IS KEYED BY A FIXTURE-INDEPENDENT NAME. A group whose
+// label carries a row number — `Cell alignment for column 1` — is a name bound
+// to the fixture that happened to render it: the moment the Table Editor state
+// declares two columns, `Cell alignment for column 2` is a group R2 sweeps and
+// the record cannot name, and R0 reds on a coverage record that grew a row
+// rather than on anything being uncovered. Per-row groups are one group in the
+// coverage sense, so the ordinal is normalised away HERE and nowhere else — R1,
+// R2, R3 and R4 keep reporting the real names, because a violation has to name
+// the control a reader can find.
+const coverageName = (name: string) => name.replace(/ for column \d+$/, ' for column N')
 
 // The most non-empty swept controls any single state puts inside a group of this
 // name — the arity R2 actually got to work with at its best.
@@ -495,8 +610,9 @@ function groupArity(swept: ReadonlyArray<Swept>): ReadonlyMap<string, number> {
   const best = new Map<string, number>()
   for (const entry of swept) {
     for (const group of groupsIn(entry.root)) {
+      const key = coverageName(groupName(group))
       const members = controlsIn(group).filter((element) => treatmentOf(element) !== 'empty').length
-      best.set(groupName(group), Math.max(best.get(groupName(group)) ?? 0, members))
+      best.set(key, Math.max(best.get(key) ?? 0, members))
     }
   }
   return best
@@ -547,8 +663,8 @@ function r0Violations(swept: ReadonlyArray<Swept>): ReadonlyArray<string> {
 }
 
 describe('control vocabulary contract', () => {
-  it('R0 — the sweep is non-vacuous, and every recorded group is still covered the way it was', () => {
-    const swept = sweepEveryState()
+  it('R0 — the sweep is non-vacuous, and every recorded group is still covered the way it was', async () => {
+    const swept = await sweepEveryState()
     expect(swept.map((entry) => entry.state)).toEqual(states.map((state) => state.name))
     expect(r0Violations(swept)).toEqual([])
     // The clause's own inputs are non-vacuous: a `VISUALLY_HIDDEN_CLASSES` that
@@ -557,8 +673,8 @@ describe('control vocabulary contract', () => {
     expect([...VISUALLY_HIDDEN_CLASSES]).toEqual(['diagnostic-announcement', 'sr-only'])
   })
 
-  it('agrees with the accessibility tree about every swept control\'s name', () => {
-    for (const entry of sweepEveryState()) {
+  it('agrees with the accessibility tree about every swept control\'s name', async () => {
+    for (const entry of await sweepEveryState()) {
       for (const control of entry.controls) {
         if (control.name === '') expect(control.element, control.where).not.toHaveAccessibleName()
         else expect(control.element, control.where).toHaveAccessibleName(control.name)
@@ -566,20 +682,20 @@ describe('control vocabulary contract', () => {
     }
   })
 
-  it('R1 — every control sharing a control class is spelled the same way', () => {
-    for (const entry of sweepEveryState()) expect(r1Violations(entry.controls), entry.state).toEqual([])
+  it('R1 — every control sharing a control class is spelled the same way', async () => {
+    for (const entry of await sweepEveryState()) expect(r1Violations(entry.controls), entry.state).toEqual([])
   })
 
-  it('R2 — every control inside one named control group is spelled the same way', () => {
-    for (const entry of sweepEveryState()) expect(r2Violations(entry.root, entry.state), entry.state).toEqual([])
+  it('R2 — every control inside one named control group is spelled the same way', async () => {
+    for (const entry of await sweepEveryState()) expect(r2Violations(entry.root, entry.state), entry.state).toEqual([])
   })
 
-  it('R3 — every glyph and every empty control carries an accessible name', () => {
-    for (const entry of sweepEveryState()) expect(r3Violations(entry.controls), entry.state).toEqual([])
+  it('R3 — every glyph and every empty control carries an accessible name', async () => {
+    for (const entry of await sweepEveryState()) expect(r3Violations(entry.controls), entry.state).toEqual([])
   })
 
-  it('R4 — the set of glyph controls outside every segmented control has not moved', () => {
-    expect(r4Violations(sweepEveryState().flatMap((entry) => entry.controls), V2_CENSUS)).toEqual([])
+  it('R4 — the set of glyph controls outside every segmented control has not moved', async () => {
+    expect(r4Violations((await sweepEveryState()).flatMap((entry) => entry.controls), V2_CENSUS)).toEqual([])
   })
 
   // -------------------------------------------------------------------------
@@ -745,7 +861,7 @@ describe('control vocabulary contract', () => {
     expect(rulesOver(container, [])).toEqual([])
   })
 
-  it('R0 reds when a render state is dropped, and NAMES the groups that stopped being checked', () => {
+  it('R0 reds when a render state is dropped, and NAMES the groups that stopped being checked', async () => {
     // THE FAILURE THE COVERAGE CLAUSE EXISTS FOR, EXECUTED rather than claimed.
     // Drop the preview state — the cheapest way for this guard to quietly get
     // smaller. The control and class-family totals STILL CLEAR their floors, so
@@ -758,11 +874,16 @@ describe('control vocabulary contract', () => {
     // longer three, and a fixed index would have quietly dropped the new Line
     // and Rectangle states too, taking `Orientation` with them and proving
     // something other than what this clause claims to prove.
-    const shrunk = sweepStates(states.slice(0, -1))
+    //
+    // STORY 14.7 KEPT `preview` LAST FOR EXACTLY THAT REASON: its Table Editor
+    // state is inserted BEFORE `preview`, not appended, so this mutation still
+    // drops the state whose two groups the expectation below names. The
+    // expected list was re-derived by running it, never edited by hand.
+    const shrunk = await sweepStates(states.slice(0, -1))
     expect(shrunk.flatMap((entry) => entry.controls).length).toBeGreaterThanOrEqual(CONTROL_FLOOR)
     expect(new Set(shrunk.flatMap((entry) => entry.controls).flatMap((control) => control.classes)).size).toBeGreaterThanOrEqual(CLASS_FAMILY_FLOOR)
     expect(r0Violations(shrunk)).toEqual([
-      'R0 the sweep visited 23 group instances, under the floor of 25',
+      'R0 the sweep visited 32 group instances, under the floor of 33',
       'R0 the group "PDF navigation" renders in no declared state, so nothing checked it',
       'R0 the group "Render actions" renders in no declared state, so nothing checked it',
     ])
@@ -788,8 +909,8 @@ describe('control vocabulary contract', () => {
   // says Open".
   // -------------------------------------------------------------------------
 
-  it('spells all six local-file controls as words inside one named group', () => {
-    const root = states[0]!.open()
+  it('spells all six local-file controls as words inside one named group', async () => {
+    const root = await states[0]!.open()
     const group = screen.getByRole('group', { name: 'Local file actions' })
     expect(root.contains(group)).toBe(true)
     const members = controlsIn(group).map((element) => ({ name: accessibleName(element), treatment: treatmentOf(element), text: visibleText(element) }))
@@ -803,8 +924,8 @@ describe('control vocabulary contract', () => {
     ])
   })
 
-  it('draws both TYPOGRAPHY segmented controls in one vocabulary, with every accessible name intact', () => {
-    states[1]!.open()
+  it('draws both TYPOGRAPHY segmented controls in one vocabulary, with every accessible name intact', async () => {
+    await states[1]!.open()
     const align = controlsIn(screen.getByRole('group', { name: 'Align' }))
     const valign = controlsIn(screen.getByRole('group', { name: 'Vertical align' }))
     expect(align.map(accessibleName)).toEqual(['Align left', 'Align center', 'Align right', 'Align justify'])
@@ -826,8 +947,8 @@ describe('control vocabulary contract', () => {
     expect(new Set(paths).size).toEqual(paths.length)
   })
 
-  it('offers Align three ways when a table is in the selection, still in one vocabulary', () => {
-    states[2]!.open()
+  it('offers Align three ways when a table is in the selection, still in one vocabulary', async () => {
+    await states[2]!.open()
     const align = controlsIn(screen.getByRole('group', { name: 'Align' }))
     expect(align.map(accessibleName)).toEqual(['Align left', 'Align center', 'Align right'])
     expect(align.map(treatmentOf)).toEqual(['glyph', 'glyph', 'glyph'])

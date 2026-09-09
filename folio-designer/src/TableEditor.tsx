@@ -1,14 +1,46 @@
-import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import type { TableColumns } from './engine-protocol'
+import { alignSegments, SegmentedControl } from './segmented-control'
 import { isHexColour, swatchColor } from './swatch-color'
 import type { TableHeaderStyleField } from './table-style-command'
 
 type Field = 'header' | 'width' | 'align'
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; onClose: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onBind: (id: string, field: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; onClose: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onBind: (id: string, field: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
 
-const cellCount = 11
+// STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
+// THEM, and the two numbers are different on purpose.
+//
+// `aria-colcount` counts what the DESIGN draws: `#`, HEADER LABEL, BOUND
+// FIELD · row scope, WIDTH, ALIGN, FOOTER AGGREGATE. `cellCount` counts what a
+// KEYBOARD must reach, which is every control inside those six cells — the
+// three reorder/remove affordances that used to wear column headers of their
+// own, the three segments of the alignment control, and the two footer fields
+// the aggregate reveals.
+//
+// THE LATTICE COVERS THE MAXIMAL ROW SHAPE and a smaller row simply has holes
+// in it. That is free rather than clever: `moveFocus`'s `enabled()` already
+// treats an ABSENT cell exactly like a disabled one (`undefined === false`),
+// so the scan walks past a hole with no per-row arithmetic anywhere.
+//
+// ⚠ THE FOOTER CELLS ARE DERIVED FROM `alignSegments.length`, NOT WRITTEN DOWN.
+// The alignment control owns `align`, `align + 1`, `align + 2`; a fourth
+// segment would have written into the aggregate's slot and given two elements
+// the SAME `data-matrix-cell`, which `querySelector` resolves by silently
+// picking one — a roving lattice with two cells at one address and no error
+// anywhere. Deriving the offset makes a widened control impossible to get wrong
+// here, and `TableEditor.test.tsx` asserts every address in the dialog is
+// unique so the property is checked rather than merely intended.
+const ALIGN_CELL = 6
+const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, width: 5, align: ALIGN_CELL, aggregate: ALIGN_CELL + alignSegments.length, footerOf: ALIGN_CELL + alignSegments.length + 1, footerFormat: ALIGN_CELL + alignSegments.length + 2 }
+const cellCount = CELL.footerFormat + 1
+const COLUMN_COUNT = 6
+
+// The display unit is POINTS, one decimal (D-14.2.Q3, settled product-wide).
+// The stored value is millipoints and is untouched by anything in this file.
+const pointsOf = (millipoints: number): string => (millipoints / 1000).toFixed(1)
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
 // A projected thousandths count as the author reads and types it. The engine
 // carries lengths in millipoints and the line-spacing ratio in thousandths, and
@@ -30,18 +62,66 @@ const authored = (thousandths: number): string => String(thousandths / 1000)
 // is a third thing again.
 const resolvedNote = (value: string, whenEmpty: string): string => value === '' ? whenEmpty : `Using: ${value}`
 
-export function TableEditor({ projection, busy, error, candidates, sampleAvailable, onClose, onAdd, onRemove, onMove, onUpdate, onConfigure, onBind, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
+export function TableEditor({ projection, busy, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, onClose, onAdd, onRemove, onMove, onUpdate, onConfigure, onBind, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
   const table = projection.table
   const columns = table.columns
-  const [active, setActive] = useState<ActiveCell>({ row: 0, column: 0 })
+  // THE MATRIX OPENS ON THE FIRST EDITABLE CELL, NOT ON CELL ZERO. Cell zero is
+  // now `Move column 1 earlier`, which is disabled on the first row — and the
+  // fallback beside it is `Remove column 1`. Opening a dialog with focus parked
+  // on a destructive affordance is not a thing to do by accident, and the
+  // header label is where an author's attention goes anyway.
+  const [active, setActive] = useState<ActiveCell>({ row: 0, column: CELL.header })
   const dialog = useRef<HTMLElement>(null)
 	const matrixFocused = useRef(false)
+  // Whether the MATRIX held focus at the moment this render began. Set on a
+  // cell's own focus and cleared by the dialog's capture handler for any other
+  // control, so a re-projection can tell "the author was in the matrix and the
+  // cell they were on has just been removed" from "the author is typing in the
+  // HEADER AND ROWS section and must be left alone".
+  const cellHeldFocus = useRef(false)
+  const emptyAdd = useRef<HTMLButtonElement>(null)
+  // ⚠ AND ONE LISTENER ON THE DOCUMENT, BECAUSE THE DIALOG'S OWN CAPTURE
+  // HANDLER CANNOT SEE FOCUS LEAVE IT. React's `onFocusCapture` on the dialog
+  // fires only for targets INSIDE the dialog, so focus moving to something
+  // behind the modal left `cellHeldFocus` still true — and a later
+  // re-projection would then reclaim focus from outside the dialog and drag the
+  // author back into the matrix. `focusin` on the document, in the capture
+  // phase, is the only place that transition is observable.
+  useEffect(() => {
+    // `Event`, not `FocusEvent`: this file imports React's `FocusEvent` type,
+    // which shadows the DOM one. Only `event.target` is read.
+    const record = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof Node) || dialog.current === null || !dialog.current.contains(target)) cellHeldFocus.current = false
+    }
+    document.addEventListener('focusin', record, true)
+    return () => document.removeEventListener('focusin', record, true)
+  }, [])
+  // ⚠ AN ABSENT CELL AND A DISABLED CELL ARE THE SAME THING TO THIS PANEL, AND
+  // UNTIL STORY 14.7 ONLY ONE OF THE TWO SCANS AGREED. `moveFocus`'s
+  // `enabled()` reads `…?.matches(':disabled') === false`, so an absent cell
+  // yields `undefined === false` → `false` and is skipped exactly like a
+  // disabled one. `focusCell` read `!preferred?.matches(':disabled')`, which is
+  // `true` when `preferred` is `undefined` — so it took the preferred branch,
+  // found nothing, and returned EARLY instead of falling back the way it does
+  // for a disabled cell. That single asymmetry stranded focus on
+  // `document.body` the moment a revealed cell disappeared while holding it,
+  // and it would have shipped green: nothing in the suite removed a cell that
+  // had focus.
+  //
+  // The fallback now prefers the NEAREST SURVIVING CELL IN THE SAME ROW. A row
+  // that loses its footer source keeps focus in its own row rather than being
+  // thrown to the top of the matrix.
   const focusCell = (next: ActiveCell) => {
     const row = Math.max(0, Math.min(next.row, Math.max(0, columns.length - 1)))
     const column = Math.max(0, Math.min(next.column, cellCount - 1))
 		const targets = Array.from(dialog.current?.querySelectorAll<HTMLElement>('[data-matrix-cell]') ?? [])
+		const usable = (candidate: HTMLElement) => !candidate.matches(':disabled')
+		const columnOf = (candidate: HTMLElement) => Number((candidate.dataset.matrixCell ?? '0:0').split(':')[1])
 		const preferred = targets.find((target) => target.dataset.matrixCell === `${row}:${column}`)
-		const target = !preferred?.matches(':disabled') ? preferred : targets.find((target) => !target.matches(':disabled'))
+		const nearestInRow = targets.filter((target) => target.dataset.matrixCell?.startsWith(`${row}:`) && usable(target))
+			.sort((a, b) => Math.abs(columnOf(a) - column) - Math.abs(columnOf(b) - column))[0]
+		const target = preferred !== undefined && usable(preferred) ? preferred : nearestInRow ?? targets.find(usable)
     if (!target) return
 		const [targetRow, targetColumn] = (target.dataset.matrixCell ?? '0:0').split(':').map(Number)
     setActive({ row: targetRow!, column: targetColumn! })
@@ -50,8 +130,26 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
   // A worker re-projection replaces structural controls. Restore the logical
   // cell (or its nearest surviving neighbor) after both accepted and rejected
   // commits rather than leaving focus on a removed/disabled DOM node.
+  //
+  // THE THIRD BRANCH IS STORY 14.7'S: a cell that held focus and no longer
+  // exists leaves `document.activeElement` on `document.body`, which the
+  // `hasAttribute('data-matrix-cell')` test cannot see. Focus is then on
+  // NOBODY, so reclaiming it into the row is safe — and it is the only branch
+  // that reaches the "aggregate set to none while the source held focus" case.
   useLayoutEffect(() => {
-    if (columns.length && (!matrixFocused.current || (document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute('data-matrix-cell')))) { focusCell(active); matrixFocused.current = true }
+    const focused = document.activeElement
+    const stranded = cellHeldFocus.current && (focused === null || focused === document.body)
+    // ⚠ THE LAST COLUMN LEAVING IS NOT "NOTHING TO DO". `focusCell` has no cell
+    // to land on, so this used to return and leave focus on `document.body`
+    // INSIDE AN OPEN MODAL — and `trapDialog` is bound as `onKeyDownCapture` on
+    // the dialog element, so a key pressed on `body` never reaches it and
+    // ESCAPE STOPPED CLOSING THE DIALOG. The empty state's own `Add column` is
+    // the one control left and is where the author's next action is anyway.
+    if (!columns.length) {
+      if (matrixFocused.current && stranded) emptyAdd.current?.focus()
+      return
+    }
+    if (!matrixFocused.current || stranded || (focused instanceof HTMLElement && focused.hasAttribute('data-matrix-cell'))) { focusCell(active); matrixFocused.current = true }
   }, [projection]) // eslint-disable-line react-hooks/exhaustive-deps
   const moveFocus = (event: KeyboardEvent<HTMLElement>, row: number, column: number) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -187,34 +285,140 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
       </span>
       <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, 'Using: nothing')}</output>
     </label>
-  const matrixCell = (row: number, column: number) => ({ 'data-matrix-cell': `${row}:${column}`, tabIndex: active.row === row && active.column === column ? 0 : -1, onFocus: () => setActive({ row, column }), onKeyDown: (event: KeyboardEvent<HTMLElement>) => moveFocus(event, row, column) })
-  return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog}>
+  const matrixCell = (row: number, column: number) => ({ 'data-matrix-cell': `${row}:${column}`, tabIndex: active.row === row && active.column === column ? 0 : -1, onFocus: () => { cellHeldFocus.current = true; setActive({ row, column }) }, onKeyDown: (event: KeyboardEvent<HTMLElement>) => moveFocus(event, row, column) })
+  // ONE ALIGNMENT CONTROL IN THE PRODUCT — this is the inspector's own module,
+  // imported, not a copy. Only the labels are per-row, because three buttons
+  // named "Align left" in one dialog name nothing in particular.
+  //
+  // THREE SEGMENTS, NEVER FOUR. `justifySegment` is not imported here at all:
+  // `ColumnAlignTokens` has three members and a table cell would draw a
+  // justified value at its start edge regardless.
+  const columnAlignSegments = (index: number) => alignSegments.map((segment) => ({ ...segment, label: `${segment.label} for column ${index + 1}` }))
+  // THE WIDTH BUDGET, AND ITS AUTHORITY IS THE ENGINE'S OWN RULE RATHER THAN A
+  // second opinion invented here. `containComponent` refuses a component whose
+  // `width > band.Width - x`, and a table's projected width is Σ its column
+  // widths — so the space the columns have is the band's width less the table's
+  // own x, which is what `availableWidth` carries. Nothing is computed about
+  // the document; this states, before the render fails, the arithmetic the
+  // author would otherwise meet as a refusal afterwards.
+  const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
+  const exactFit = availableWidth !== undefined && availableWidth >= 0 && totalWidth === availableWidth
+  // A DELTA THIS READ-OUT CANNOT PRINT IS SAID IN WORDS, NEVER ROUNDED TO
+  // `0.0`. Widths are millipoints and this line shows one decimal, so a
+  // difference under 100 millipoints rounds away — and `Σ 500.0 of 500.0
+  // available · 0.0 pt over` with no `exact` badge is the read-out contradicting
+  // itself: the numbers say exact, the badge says not. The badge stays on TRUE
+  // equality (the engine's `containComponent` compares the stored values, not
+  // the printed ones) and the sentence stops claiming a figure it does not have.
+  const deltaOf = (millipoints: number): string => millipoints < 100 ? 'under 0.1' : pointsOf(millipoints)
+  // ⚠ AND THE UNIT IS NOT SPELLED ON ONE FIGURE OUT OF THREE. It was `pt` on
+  // the delta alone, which reads as if the other two were something else. The
+  // figures are all points, they are all unit-less here, and the unit is
+  // carried where an author types one: the `pt` beside every WIDTH box.
+  const budgetLine = availableWidth === undefined
+    ? `Σ ${pointsOf(totalWidth)} · the band's remaining width is unknown here`
+    // NEGATIVE AVAILABLE WIDTH IS A REAL STATE, NOT A GUARD AGAINST NOTHING.
+    // `band.width − table.x` goes negative whenever the table's x sits past its
+    // band's right edge — reachable by loading a hand-edited file, and reachable
+    // by a margin change that shrinks the band under an x the document already
+    // holds. Printing `of -50.0 available` would state a negative quantity of
+    // space; this states the fact that produced it.
+    : availableWidth < 0 ? `Σ ${pointsOf(totalWidth)} · this table starts ${pointsOf(-availableWidth)} outside its band, so no column width fits`
+    : exactFit ? `Σ ${pointsOf(totalWidth)} of ${pointsOf(availableWidth)} available`
+    : totalWidth < availableWidth ? `Σ ${pointsOf(totalWidth)} of ${pointsOf(availableWidth)} available · ${deltaOf(availableWidth - totalWidth)} to spare`
+    : `Σ ${pointsOf(totalWidth)} of ${pointsOf(availableWidth)} available · ${deltaOf(totalWidth - availableWidth)} over — this table will not fit its band`
+  // THE ITEM COUNT IS UNKNOWN OR IT IS A NUMBER, and it is never 0 standing in
+  // for either. `sampleItemCount` is `SampleNode.count`, which is the TRUE
+  // count of a sampled collection rather than the handful of items the parser
+  // kept; it is absent when no sample is loaded and absent again when the node
+  // itself was truncated away. An empty collection really does report 0.
+  const sampleLine = !sampleAvailable ? 'item count unknown · no sample loaded'
+    : sampleItemCount === undefined ? 'item count unknown'
+    : `${plural(sampleItemCount, 'item')} in sample`
+  // NO `collection === ''` ARM. `isTableColumns` (`engine-protocol.ts`) admits a
+  // projection only when `table.collection.length > 0`, so an empty collection
+  // is a shape the validator refuses before this panel ever sees it. A branch
+  // for it would read as a state the product can reach.
+  const scopeLine = `${table.collection} · ${sampleLine} · band: ${band ?? 'unknown'}`
+  // `footer` IS A NON-OPTIONAL `'' | 'sum' | 'avg' | 'count'` on the wire
+  // (`engine-protocol.ts:TableColumn`), so `!== undefined` here — and the
+  // `?? ''` this file used to spell on `footer`, `footerOf` and `footerFormat` —
+  // described a partial projection that cannot arrive. Empty is `''`.
+  const aggregateCount = columns.filter((column) => column.footer !== '').length
+  // The reveal predicate IS the predicate that used to disable these two boxes,
+  // unchanged: a source is live once an aggregate is chosen and that aggregate
+  // is not `count` (count takes none); a format is live once an aggregate is
+  // chosen. Story 14.7 changes only whether the box is PRESENT — the engine's
+  // rules do not move.
+  const showsFooterOf = (footer: string) => footer !== '' && footer !== 'count'
+  const showsFooterFormat = (footer: string) => footer !== ''
+  return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
-      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Collection and row alias are engine-owned. Sample data only suggests fields; it does not validate saved bindings.</p></div><button type="button" className="file-button" onClick={onClose}>Close Table Editor</button></div>
-      <div className="table-editor-config" aria-label="Table row scope"><label>Root collection<input aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'Amber candidate values are local discovery hints only; the engine validates saved bindings.' : 'No sample data is loaded. Enter a root collection and row field; the engine validates saved bindings.'}</p></div>
-      {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button type="button" className="file-button" disabled={busy} onClick={() => onAdd(0)}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={cellCount} className="table-matrix">
-        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">Header</span><span role="columnheader">Width (pt)</span><span role="columnheader">Cell alignment</span><span role="columnheader">Row field</span><span role="columnheader">Footer</span><span role="columnheader">Footer source</span><span role="columnheader">Footer format</span><span role="columnheader">Move earlier</span><span role="columnheader">Move later</span><span role="columnheader">Remove</span><span role="columnheader">Add after</span></div>
+      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Sample data suggests field names; the engine validates every saved binding.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
+      {/* THE COLLECTION AND THE ROW ALIAS STAY EDITABLE HERE. `DW-351` records
+          this as the ONLY site in the product where a table's collection can be
+          changed, and Story 14.6's context bar now routes authors to it, so the
+          restyle is a labelled group and nothing more — they are not moved and
+          they do not become read-only. The mockup draws the collection as plain
+          text and draws no alias at all; that is the mockup being silent about a
+          capability, not the product losing one.
+
+          role="group" IS LOAD-BEARING: an aria-label on a plain div with NO role
+          is dropped by the accessibility tree, so this section named nothing to
+          a screen reader while carrying an aria-label that read as if it did. */}
+      <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'This is the only place a table’s collection and row alias can be changed. Candidate values come from the loaded sample; the engine validates every saved binding.' : 'This is the only place a table’s collection and row alias can be changed. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
+      {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button ref={emptyAdd} type="button" className="file-button" disabled={busy} onClick={() => dispatchOnce(() => onAdd(0))}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={COLUMN_COUNT} className="table-matrix">
+        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BOUND FIELD · row scope</span><span role="columnheader">WIDTH</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
         {columns.map((column, index) => <div role="row" aria-rowindex={index + 2} aria-selected={active.row === index} className="matrix-row" key={column.id}>
-          <label role="gridcell" aria-colindex={1}>Header<input {...matrixCell(index, 0)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></label>
-          <label role="gridcell" aria-colindex={2}>Width<input {...matrixCell(index, 1)} aria-label={`Width for column ${index + 1} in points`} disabled={busy} type="number" min="1" step="1" defaultValue={column.width / 1000} onBlur={(event) => { const value = Number(event.currentTarget.value); if (!busy && Number.isFinite(value) && value > 0 && value * 1000 !== column.width) onUpdate(column.id, 'width', value) }} /></label>
-          <label role="gridcell" aria-colindex={3}>Alignment<select {...matrixCell(index, 2)} aria-label={`Cell alignment for column ${index + 1}`} disabled={busy} value={column.align} onChange={(event) => { if (!busy) onUpdate(column.id, 'align', event.target.value) }}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
-          <label role="gridcell" aria-colindex={4}>Row field<input {...matrixCell(index, 3)} aria-label={`Row field for column ${index + 1}`} list={`table-field-candidates-${index}`} disabled={busy || !column.rowFieldEditable} aria-describedby={!column.rowFieldEditable ? `binding-display-${index}` : undefined} defaultValue={column.rowField} onBlur={(event) => { const field = event.currentTarget.value; if (!busy && column.rowFieldEditable && field && field !== column.rowField) onBind(column.id, field) }} /><output id={`binding-display-${index}`} aria-label={`Binding for column ${index + 1}`}>{column.binding}</output><datalist id={`table-field-candidates-${index}`}>{candidates.filter((candidate) => candidate.collection === projection.table.collection).map((candidate) => <option key={candidate.field} value={candidate.field} />)}</datalist></label>
-          <label role="gridcell" aria-colindex={5}>Footer<select {...matrixCell(index, 4)} aria-label={`Footer aggregate for column ${index + 1}`} disabled={busy} value={column.footer ?? ''} onChange={(event) => { if (!busy) { const footer = event.target.value; onFooter(column.id, footer, footer === '' || footer === 'count' ? '' : column.footerOf, footer === '' ? '' : column.footerFormat) } }}><option value="">None</option><option value="sum">Sum</option><option value="avg">Average</option><option value="count">Count</option></select></label>
-          <label role="gridcell" aria-colindex={6}>Footer source<input {...matrixCell(index, 5)} aria-label={`Footer source for column ${index + 1}`} defaultValue={column.footerOf ?? ''} disabled={busy || column.footer === 'count' || !column.footer} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.footerOf) onFooter(column.id, column.footer ?? '', event.currentTarget.value, column.footerFormat ?? '') }} /></label>
-          <label role="gridcell" aria-colindex={7}>Footer format<input {...matrixCell(index, 6)} aria-label={`Footer format for column ${index + 1}`} defaultValue={column.footerFormat ?? ''} disabled={busy || !column.footer} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.footerFormat) onFooter(column.id, column.footer ?? '', column.footerOf ?? '', event.currentTarget.value) }} /></label>
-          <span role="gridcell" aria-colindex={8} className="matrix-actions"><button {...matrixCell(index, 7)} type="button" aria-label={`Move column ${index + 1} earlier`} disabled={busy || index === 0} onClick={() => onMove(column.id, index - 1)}>↑</button></span>
-          <span role="gridcell" aria-colindex={9} className="matrix-actions"><button {...matrixCell(index, 8)} type="button" aria-label={`Move column ${index + 1} later`} disabled={busy || index === columns.length - 1} onClick={() => onMove(column.id, index + 1)}>↓</button></span>
-          <span role="gridcell" aria-colindex={10}><button {...matrixCell(index, 9)} type="button" aria-label={`Remove column ${index + 1}`} disabled={busy} onClick={() => onRemove(column.id)}>Remove</button></span>
-          <span role="gridcell" aria-colindex={11}><button {...matrixCell(index, 10)} type="button" aria-label={`Add column after column ${index + 1}`} disabled={busy} onClick={() => onAdd(index + 1)}>Add after</button></span>
+          {/* THE ROW'S OWN AFFORDANCES, NOT FOUR MORE COLUMNS. Reorder and
+              remove act on THIS ROW, so they live in the row's identity cell
+              beside its number rather than wearing column headers that describe
+              no column. Each keeps an accessible name and a lattice position,
+              so nothing the eleven-column matrix could reach by keyboard has
+              become unreachable. A disabled end states WHICH end it is. */}
+          <span role="gridcell" aria-colindex={1} className="matrix-rail"><span className="matrix-ordinal">{index + 1}</span><span className="matrix-actions"><button {...matrixCell(index, CELL.moveEarlier)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} earlier`} title={index === 0 ? `Column ${index + 1} is already first` : `Move column ${index + 1} earlier`} disabled={busy || index === 0} onClick={() => dispatchOnce(() => onMove(column.id, index - 1))}>↑</button><button {...matrixCell(index, CELL.moveLater)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} later`} title={index === columns.length - 1 ? `Column ${index + 1} is already last` : `Move column ${index + 1} later`} disabled={busy || index === columns.length - 1} onClick={() => dispatchOnce(() => onMove(column.id, index + 1))}>↓</button><button {...matrixCell(index, CELL.remove)} type="button" className="matrix-affordance" aria-label={`Remove column ${index + 1}`} title={`Remove column ${index + 1}`} disabled={busy} onClick={() => dispatchOnce(() => onRemove(column.id))}>×</button></span></span>
+          <span role="gridcell" aria-colindex={2}><input {...matrixCell(index, CELL.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
+          <span role="gridcell" aria-colindex={3} className="matrix-bound"><input {...matrixCell(index, CELL.bound)} aria-label={`Row field for column ${index + 1}`} list={`table-field-candidates-${index}`} disabled={busy || !column.rowFieldEditable} aria-describedby={!column.rowFieldEditable ? `binding-display-${index}` : undefined} defaultValue={column.rowField} onBlur={(event) => { const field = event.currentTarget.value; if (!busy && column.rowFieldEditable && field && field !== column.rowField) onBind(column.id, field) }} /><output id={`binding-display-${index}`} aria-label={`Binding for column ${index + 1}`}>{column.binding}</output><datalist id={`table-field-candidates-${index}`}>{candidates.filter((candidate) => candidate.collection === projection.table.collection).map((candidate) => <option key={candidate.field} value={candidate.field} />)}</datalist></span>
+          {/* THE UNIT IS SHOWN BESIDE THE NUMBER because the columnheader is
+              `WIDTH`, as the design spells it, and a bare number in a design
+              tool is ambiguous. It is `pt` and not `mm`: D-14.2.Q3 settled the
+              display unit product-wide, and the mockup's millimetres are
+              mockup fidelity against zero millimetres in the product. */}
+          <span role="gridcell" aria-colindex={4} className="matrix-width"><input {...matrixCell(index, CELL.width)} aria-label={`Width for column ${index + 1} in points`} disabled={busy} type="number" min="1" step="1" defaultValue={column.width / 1000} onBlur={(event) => { const value = Number(event.currentTarget.value); if (!busy && Number.isFinite(value) && value > 0 && value * 1000 !== column.width) onUpdate(column.id, 'width', value) }} /><span className="matrix-unit">pt</span></span>
+          <span role="gridcell" aria-colindex={5}><SegmentedControl label={`Cell alignment for column ${index + 1}`} segments={columnAlignSegments(index)} current={column.align} disabled={busy} onPick={(value) => { if (value !== column.align) dispatchOnce(() => onUpdate(column.id, 'align', value)) }} segmentProps={(segment) => matrixCell(index, CELL.align + segment)} /></span>
+          {/* ONE CONTROL WHERE THERE WERE THREE. The source and the format are
+              REVEALED by the aggregate that needs them rather than sitting
+              there greyed out: a control that can never hold a value for this
+              aggregate is absent, not disabled-and-mysterious. */}
+          <span role="gridcell" aria-colindex={6} className="matrix-footer-cell"><select {...matrixCell(index, CELL.aggregate)} aria-label={`Footer aggregate for column ${index + 1}`} disabled={busy} value={column.footer} onChange={(event) => { if (!busy) { const footer = event.target.value; onFooter(column.id, footer, showsFooterOf(footer) ? column.footerOf : '', showsFooterFormat(footer) ? column.footerFormat : '') } }}><option value="">none</option><option value="sum">sum</option><option value="avg">avg</option><option value="count">count</option></select>{showsFooterOf(column.footer) && <label className="matrix-reveal">source<input {...matrixCell(index, CELL.footerOf)} aria-label={`Footer source for column ${index + 1}`} defaultValue={column.footerOf} disabled={busy} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.footerOf) onFooter(column.id, column.footer, event.currentTarget.value, column.footerFormat) }} /></label>}{showsFooterFormat(column.footer) && <label className="matrix-reveal">format<input {...matrixCell(index, CELL.footerFormat)} aria-label={`Footer format for column ${index + 1}`} defaultValue={column.footerFormat} disabled={busy} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.footerFormat) onFooter(column.id, column.footer, column.footerOf, event.currentTarget.value) }} /></label>}</span>
         </div>)}
       </div>}
+      {/* ADD-AFTER LEFT THE ROW AND BECAME ONE CONTROL BELOW THE GRID. A
+          position is reached by reorder — a step longer, never a capability
+          lost — and the four row-action columns stop wearing column headers
+          that describe no column. */}
+      {/* ⚠ THE BUDGET RENDERS IN THE EMPTY STATE TOO, WHICH IS THE ONE MOMENT
+          IT IS MOST WORTH READING: an author with no columns yet is deciding
+          how many will fit, and the foot used to be gated on
+          `columns.length > 0` so the answer was withheld exactly then. Only the
+          BUTTON is gated — the empty state carries its own, and two controls
+          with one name in one dialog name nothing.
+
+          `aria-live="off"` ON ALL THREE READ-OUTS, DELIBERATELY. `<output>`
+          carries an implicit `role="status"`, which is an assertive-by-default
+          polite live region: a screen-reader user editing widths would hear the
+          whole budget re-read after every committed keystroke, and the scope
+          line and the column summary the same. They are read on demand, where
+          the author goes looking for them; the refusals in this dialog are
+          `role="alert"` and still announce. */}
+      <div className="table-matrix-foot">{columns.length > 0 && <button type="button" className="file-button" disabled={busy} onClick={() => dispatchOnce(() => onAdd(columns.length))}>Add column</button>}<output className={`table-budget${exactFit ? ' table-budget-exact' : ''}`} aria-label="Width budget" aria-live="off">{budgetLine}{exactFit && <span className="table-budget-badge">exact</span>}</output></div>
       {/* THE HEADER SECTION SITS AFTER THE MATRIX, WHERE THE DESIGN PLACES IT,
           AND THAT DELIBERATELY CHANGES THE TAB ORDER — ruled and recorded as
-          D-12.3.2. The new order is [Close Table Editor, Root collection, Row
-          alias, the one active matrix cell, these controls in document order],
-          so the active cell is no longer last in trapDialog's list and the wrap
-          happens at "Header alignment" instead. App.test.tsx asserts both ends
-          of that list.
+          D-12.3.2. Story 14.7 moved `Close Table Editor` out of the heading and
+          into the footer bar below, so the order is now [Root collection, Row
+          alias, the one active matrix cell, Add column, these controls in
+          document order, Close Table Editor]. App.test.tsx asserts both ends of
+          that list.
 
           role="group" IS LOAD-BEARING, not decoration: an aria-label on a plain
           div with NO role is dropped by the accessibility tree, so the section
@@ -254,6 +458,22 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
         <p className="honest-note">A field left blank falls back to the table's own style and then to the format's default. The engine resolves it; the note under each control is the engine's answer, not this panel's.</p>
       </div>
       {error && <p role="alert" className="file-message">{error}</p>}
+      {/* THE FOOTER BAR, AND WHY `Close Table Editor` MOVED INTO IT.
+          The design puts the dialog's summary and its exit at the bottom, so
+          the button left the heading and came down here. That DELIBERATELY
+          re-orders `trapDialog`'s focusable list a second time, exactly as
+          D-12.3.2 re-ordered it once before: `Close` is no longer FIRST, it is
+          LAST, so the forward wrap now runs from `Close` to `Root collection`
+          and the backward wrap is its inverse. `App.test.tsx` asserts both ends
+          and says the new order is intended, because an unexplained
+          re-ordering reads as a regression to the next author.
+
+          ⚠ THIS BAR CARRIES NO Cancel / Done PAIR AND NO EDIT COUNTER. That is
+          Story 14.7b under D-14.7.1, which replaces this one button with the
+          pair; the counter it needs is what `DW-368` (global Cmd+Z reaching the
+          document behind the modal) would desynchronise, so both stay there.
+          Nothing here touches `applyHistory`. */}
+      <div className="table-editor-footer"><output aria-label="Column summary" aria-live="off">{`${plural(columns.length, 'column')} · ${plural(aggregateCount, 'aggregate')}`}</output><button type="button" className="file-button" onClick={onClose}>Close Table Editor</button></div>
     </div>
   </section>
 }

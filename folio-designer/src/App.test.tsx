@@ -291,10 +291,17 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
     const grid = await screen.findByRole('grid', { name: 'Table columns' })
-    expect(grid).toHaveAttribute('aria-colcount', '11')
+    // STORY 14.7 — SIX COLUMNS, WHICH IS WHAT THE DESIGN DRAWS. The eleven
+    // included four row ACTIONS wearing column headers (`Move earlier`, `Move
+    // later`, `Remove`, `Add after`) and three fields for the one footer
+    // concept. `aria-colcount` counts the columns; the keyboard lattice behind
+    // them is wider than six and is `TableEditor.test.tsx`'s subject.
+    expect(grid).toHaveAttribute('aria-colcount', '6')
 		expect(grid).toHaveAttribute('aria-rowcount', '2')
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByLabelText('Row field for column 1'))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
     expect(screen.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
 		expect(screen.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
@@ -333,12 +340,23 @@ describe('application shell', () => {
     expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(header)
     const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
     const tabbable = Array.from(dialogElement.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
-    expect(tabbable[tabbable.indexOf(header) + 1]).toBe(screen.getByRole('spinbutton', { name: 'Header height in points' }))
+    // STORY 14.7 RE-ORDERED THIS LIST A SECOND TIME, AND THE RE-ORDERING IS
+    // INTENDED — say so, because an unexplained one reads as a regression to
+    // the next author. `Add column` left the row and became one control BELOW
+    // the grid, so it is what now follows the active matrix cell; and `Close
+    // Table Editor` left the heading for the footer bar, so it stops being
+    // FIRST in the trap's list and becomes LAST. The wrap therefore runs from
+    // `Close Table Editor` to `Root collection` — the dialog's new first
+    // control — and backwards from `Root collection` to `Close Table Editor`.
+    // Both ends are re-derived from the DOM above rather than named.
+    expect(tabbable[tabbable.indexOf(header) + 1]).toBe(screen.getByRole('button', { name: 'Add column' }))
+    expect(tabbable[0]).toBe(screen.getByLabelText('Root collection'))
 
-    const lastControl = screen.getByRole('combobox', { name: 'Header alignment' })
+    const lastControl = screen.getByRole('button', { name: 'Close Table Editor' })
+    expect(tabbable[tabbable.length - 1]).toBe(lastControl)
     lastControl.focus()
     fireEvent.keyDown(lastControl, { key: 'Tab' })
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close Table Editor' }))
+    expect(document.activeElement).toBe(screen.getByLabelText('Root collection'))
     fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(lastControl)
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
@@ -361,8 +379,8 @@ describe('application shell', () => {
     render(<App engine={engine(request)} initialSnapshot={first} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
-    await screen.findByRole('button', { name: 'Add column after column 1' })
-    fireEvent.click(screen.getByRole('button', { name: 'Add column after column 1' }))
+    await screen.findByRole('button', { name: 'Add column' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add column' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close Table Editor' }))
     releaseProjection()
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
@@ -698,16 +716,21 @@ describe('application shell', () => {
     expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"fontSize","op":"clear"}')
   })
 
-  it('leaves the matrix untouched: eleven columns and its arrow navigation still work with the new section present', async () => {
+  it('leaves the matrix untouched: six columns and its arrow navigation still work with the new section present', async () => {
     const { request, tableSnapshot } = headerStyledTable()
     await openHeaderSection(request, tableSnapshot)
     const grid = screen.getByRole('grid', { name: 'Table columns' })
-    expect(grid).toHaveAttribute('aria-colcount', '11')
+    expect(grid).toHaveAttribute('aria-colcount', '6')
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
-    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
-    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(screen.getByLabelText('Row field for column 1'))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' })
     expect(document.activeElement).toBe(header)
+    // Home reaches the row's FIRST ENABLED control, which on a one-column table
+    // is `Remove column 1`: both reorder affordances are disabled at both ends
+    // of a single row, and Home declines to land on either.
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove column 1' }))
     // And nothing was committed by merely opening the panel: an author who
     // changes nothing must leave the document alone.
     expect(commandsSent(request)).toEqual([])

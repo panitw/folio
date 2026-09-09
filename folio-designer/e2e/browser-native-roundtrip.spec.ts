@@ -233,10 +233,16 @@ async function authorTableWithFooter(page: Page, content: ReturnType<Page['getBy
   await field1.fill('date', { timeout: 12_000 })
   await field1.blur()
   await waitForRevisionAdvance(page, beforeFirstField)
+  // STORY 14.7 RESEQUENCED THIS LOOP AND WEAKENED NOTHING. `Add after` left the
+  // row: there is now ONE `Add column` control below the grid and it APPENDS,
+  // which is the same column in the same position for a loop that was already
+  // adding them left to right. Every field, every header and the footer below
+  // are authored exactly as before, and each still waits on the engine's own
+  // revision rather than on a timeout.
   for (const [column, rowField] of ['description', 'debitDisplay', 'creditDisplay', 'balanceDisplay'].entries()) {
     const index = column + 1
     const beforeColumn = await revision(page)
-    await dialog.getByRole('button', { name: `Add column after column ${index}` }).click()
+    await dialog.getByRole('button', { name: 'Add column' }).click()
     await waitForRevisionAdvance(page, beforeColumn)
     const field = dialog.getByRole('combobox', { name: `Row field for column ${index + 1}` })
     const beforeField = await revision(page)
@@ -252,10 +258,16 @@ async function authorTableWithFooter(page: Page, content: ReturnType<Page['getBy
     await input.blur()
     await waitForRevisionAdvance(page, beforeHeader)
   }
+  // THE FOOTER SOURCE IS REVEALED BY THE AGGREGATE THAT NEEDS IT, so the order
+  // here is now load-bearing rather than incidental: the box does not exist
+  // until `sum` is committed and the panel re-projects. Asserted before it is
+  // filled, so a reveal that stopped happening fails HERE rather than as a
+  // confusing fill timeout further down.
   const beforeFooter = await revision(page)
   await dialog.getByRole('combobox', { name: 'Footer aggregate for column 5' }).selectOption('sum')
   await waitForRevisionAdvance(page, beforeFooter)
   const footerSource = dialog.getByRole('textbox', { name: 'Footer source for column 5' })
+  await expect(footerSource).toBeVisible({ timeout: 12_000 })
   const beforeFooterSource = await revision(page)
   await footerSource.fill('transactions.amount', { timeout: 12_000 })
   await footerSource.blur()

@@ -31,6 +31,7 @@ import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from '
 import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
 import { TableEditor } from './TableEditor'
+import { alignSegments, justifySegment, SegmentedControl, type SegmentSpec } from './segmented-control'
 import { isHexColour, swatchColor } from './swatch-color'
 import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand } from './table-style-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
@@ -59,16 +60,21 @@ const MAX_PARAMETER_DOCUMENT_BYTES = 8 * 1024 * 1024
 
 // Sample inspection is strictly a local affordance. These values are never
 // sent with a command; Go still owns all collection and field admission.
+// The one spelling of "this JSON key is addressable as a Folio path segment".
+// It was written out twice — once here and once in the item-count walk below —
+// over the SAME `segments.join('.')` collection spelling, so the two could
+// disagree about which nodes are addressable while appearing to agree.
+const SAMPLE_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Readonly<{ collection: string; field: string }>> {
   if (!root) return []
   const candidates = new Map<string, Readonly<{ collection: string; field: string }>>()
   const visit = (node: SampleNode) => {
-    if (node.kind === 'collection' && node.segments?.length && node.segments.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
+    if (node.kind === 'collection' && node.segments?.length && node.segments.every((part) => SAMPLE_PATH_SEGMENT.test(part))) {
       const collection = `${node.segments.join('.')}[]`
       const fields = (value: SampleNode, prefix: ReadonlyArray<string>): void => {
         if (value.kind === 'collection' || value.kind === 'truncated') return
         if (value.kind === 'object') { value.children.forEach((child) => fields(child, [...prefix, child.label])); return }
-        if (prefix.length && prefix.every((part) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(part))) {
+        if (prefix.length && prefix.every((part) => SAMPLE_PATH_SEGMENT.test(part))) {
           const field = prefix.join('.')
           candidates.set(`${collection}\u0000${field}`, { collection, field })
         }
@@ -79,6 +85,48 @@ function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Read
   }
   visit(root)
   return [...candidates.values()].sort((a, b) => a.collection.localeCompare(b.collection) || a.field.localeCompare(b.field)).slice(0, 50)
+}
+
+// STORY 14.7 — HOW MANY ITEMS THE LOADED SAMPLE HOLDS FOR THE TABLE'S OWN
+// COLLECTION, spelled the way the Table Editor's collection field spells it
+// (`transactions[]`).
+//
+// ⚠ `node.count` IS THE TRUE COUNT AND `node.children.length` IS NOT. The
+// parser keeps only `SAMPLE_LIMITS.items` children while `count++` runs on
+// every item, so a 34-item collection arrives with 5 children and a count of
+// 34. Reading the children would understate every sample the parser truncated,
+// which is most of them.
+//
+// ⚠ AND `undefined` MEANS UNKNOWN, NEVER ZERO. A collection the parser
+// truncated away is a `kind: 'truncated'` node with no `count` at all; an empty
+// collection is a `kind: 'collection'` node whose count is 0. The scope header
+// tells those two apart because this function does.
+//
+// This reads what the browser already holds. Nothing is added to the wire
+// projection and no Go file is touched: the item count is sample-inspection
+// data, which has never been the engine's to answer for.
+// ⚠ FIRST MATCH WINS, AND "MATCHED" IS TRACKED SEPARATELY FROM "COUNTED".
+// Keying the stop condition on the count itself meant a matching node that
+// carried NO count did not stop the walk — so the search carried on into its
+// siblings and could answer with a DIFFERENT node that happens to join to the
+// same path. The two facts are different: whether the collection was found, and
+// what it counted. Only the first ends the walk.
+//
+// The identifier test is the same one `tableSampleCandidates` applies, from the
+// same constant, so the two readers agree about which nodes are addressable.
+// There is no `collection === ''` guard: `isTableColumns` admits a projection
+// only when `table.collection.length > 0`.
+function tableSampleItemCount(root: SampleNode | undefined, collection: string): number | undefined {
+  if (!root) return undefined
+  let matched = false
+  let count: number | undefined
+  const visit = (node: SampleNode) => {
+    if (matched) return
+    if (node.kind === 'collection' && node.segments?.length && node.segments.every((part) => SAMPLE_PATH_SEGMENT.test(part)) && `${node.segments.join('.')}[]` === collection) { matched = true; count = node.count; return }
+    node.children.forEach(visit)
+  }
+  visit(root)
+  return count
 }
 
 type ParameterReferenceState = Readonly<{ status: 'pending' | 'ready' | 'failed'; names: ReadonlyArray<string> }>
@@ -2237,6 +2285,18 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // and fabricates nothing. The `{{ }}` scan is the same quote-blind one
   // internal/expr/scan.go documents; for a disclosure predicate that bound is
   // acceptable and stated rather than hidden.
+  // THE SPACE A TABLE'S COLUMNS HAVE, IN THE ENGINE'S OWN TERMS.
+  // `folio-go/component_commands.go`'s `containComponent` refuses a component
+  // whose `width > band.Width - x`, and `projectedSize` makes a table's width Σ
+  // its column widths. So the budget's denominator is the band's width LESS the
+  // table's own x — not the band's width, which would tell an author a table
+  // indented into the band has more room than it has. `undefined` when the
+  // canvas or either party is not projected: unknown, never a number.
+  const tableEditorAvailableWidth = ((): number | undefined => {
+    const component = canvas?.components.find((candidate) => candidate.id === tableEditor?.table.tableId)
+    const bandBox = canvas?.bands.find((candidate) => candidate.name === component?.band)
+    return component === undefined || bandBox === undefined ? undefined : bandBox.width - component.x
+  })()
   const conditionalContent = Boolean(canvas?.components.some((component) => {
     if (typeof component.visibleIf === 'string' && component.visibleIf.length > 0) return true
     const value = typeof component.value === 'string' ? component.value : ''
@@ -2548,7 +2608,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         />}
       </aside>
     </div>
-    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} />}
+    {/* STORY 14.7 — THE THREE READ-OUTS THE DIALOG GAINED ARE DERIVED HERE,
+        FROM DATA THE BROWSER ALREADY HOLDS, and no projection field was added
+        for any of them. The band is the table component's own `band`; the width
+        the columns have is `band.width − table.x`, which is the engine's rule in
+        `containComponent` read off the canvas projection rather than
+        re-implemented; the item count is `SampleNode.count`. `undefined` on any
+        of the three means UNKNOWN, and the dialog says so rather than drawing a
+        zero. */}
+    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
@@ -2915,24 +2983,10 @@ function borderProjected(component: PanelComponent): boolean {
   return component.borderWidth !== undefined || component.borderColor !== undefined || component.borderEdges !== undefined
 }
 const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visibility', empty: 'always', fx: 'condition' }
-type SegmentSpec = Readonly<{ value: string; label: string; content: ReactNode }>
-// The justify glyph is FOUR FLUSH RULES, drawn as an SVG path like its three
-// siblings. It is never the CSS justify declaration: the browser must not be
-// asked to justify anything, in production, unit or e2e sources, and
-// canvas-authority-contract.test.ts bans the property/value pair outright —
-// in comments too, which is why this sentence spells neither.
-type AlignVariant = 'left' | 'center' | 'right' | 'justify'
-const alignGlyphs: Readonly<Record<AlignVariant, string>> = { left: 'M2 4h12M2 8h8M2 12h11', center: 'M2 4h12M4 8h8M3 12h10', right: 'M2 4h12M6 8h8M3 12h11', justify: 'M2 3h12M2 7h12M2 11h12M2 15h12' }
-function AlignIcon({ variant }: { variant: AlignVariant }) {
-  return <svg aria-hidden="true" className="segment-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><path d={alignGlyphs[variant]} /></svg>
-}
-const alignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'left', label: 'Align left', content: <AlignIcon variant="left" /> }, { value: 'center', label: 'Align center', content: <AlignIcon variant="center" /> }, { value: 'right', label: 'Align right', content: <AlignIcon variant="right" /> }]
-// Offered only when every selected component is text. A table element's
-// style.align cascades to its cells, which draw a justified value at their
-// start edge — so justify means nothing there, and a control must not offer a
-// value that is meaningless for the element type. A MIXED text+table
-// selection gets the triple too: one command goes to every id in it.
-const justifySegment: SegmentSpec = { value: 'justify', label: 'Align justify', content: <AlignIcon variant="justify" /> }
+// STORY 14.7 — THE ALIGNMENT SEGMENTS, THE GLYPHS AND THE CONTROL ITSELF NOW
+// LIVE IN `segmented-control.tsx`, so the table editor renders literally this
+// control rather than a second spelling of it. The widening below is unchanged
+// and still happens HERE, where the selection's types are known.
 // STORY 14.1 / AC3 — VERTICAL ALIGN IS SPELLED THE WAY HORIZONTAL ALIGN IS.
 // These two segmented controls sit side by side in ONE `.property-grid` at
 // `1fr 1fr` (App.css:281), rendered by ONE `SegmentedProperty` through ONE
@@ -4353,7 +4407,7 @@ function SegmentedProperty({ label, field, segments, components, ids, onCommit, 
     pendingRef.current = false
     setPending(false)
   }
-  return <div className="property-editor"><div className="property-segmented" role="group" aria-label={uniform ? label : `${label}, mixed`}>{segments.map((segment) => <button key={segment.value} type="button" className="property-segment" disabled={pending} aria-pressed={current === segment.value} aria-label={segment.label} title={current === segment.value ? `${segment.label}, press again to clear` : segment.label} onClick={() => void commit(segment.value)}>{segment.content}</button>)}{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  return <div className="property-editor"><SegmentedControl label={uniform ? label : `${label}, mixed`} segments={segments} current={current} disabled={pending} titleFor={(segment) => current === segment.value ? `${segment.label}, press again to clear` : segment.label} onPick={(value) => void commit(value)} trailing={!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>} />{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
 // STORY 14.2 — THE ORIENTATION CONTROL, AND WHY IT IS A SIBLING OF
 // `SegmentedProperty` RATHER THAN A WIDENING OF IT.
