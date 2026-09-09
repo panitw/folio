@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 09-08-2026
+last_updated: 09-09-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -480,7 +480,7 @@ development_status:
   13-3-the-preview-screen-is-the-evidence-screen: done
   13-4-preview-runs-without-sample-data-and-an-absent-value-is-empt: done
   13-5-the-chrome-tells-the-truth-about-the-preview: done
-  13-6-the-preview-navigates-by-page-thumbnails: backlog
+  13-6-the-preview-navigates-by-page-thumbnails: review
   epic-13-retrospective: optional
 
   # 14.1 writes the button rule FIRST; the sweep is its consequence, not its substance.

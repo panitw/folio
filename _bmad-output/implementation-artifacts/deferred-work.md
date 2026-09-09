@@ -11672,3 +11672,102 @@ the release when it merely arrived last.
 raise it with the reasoning recorded, or introduce chunk consolidation so a feature costs a row only when it
 ships a genuinely separate asset. Do it before Epic 14 rather than during it.
 
+### DW-314 - previewPages is never reset on install, so the rail can enumerate the previous document's page count
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`setPreviewPages(undefined)` exists only on the clear path (`App.tsx:603`); the install path (`:813`) only
+sets it. So a new render that installs before its page count arrives leaves the previous document's count
+standing, and the rail draws that many entries against the new bytes.
+
+**Latent before this story, newly visible because of it.** Nothing previously consumed `previewPages` in a way
+that made a wrong value observable; a rail that draws one entry per count makes it a visible defect. That is
+worth stating plainly rather than filing as 13.6's bug - the story exposed it, it did not introduce it.
+
+### DW-315 - the thumbnail well is a fixed 44x62, so a landscape page letterboxes and the current-page border stops tracing the page
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The well's dimensions are a literal in `App.css`. `App.tsx:223` carries an orientation the rail never
+consults, so a landscape or custom page size is letterboxed inside a portrait well - and the current-page
+border then traces the well rather than the page it marks, which is a small lie about what is selected.
+
+No AC covers orientation, so this is unbuilt scope rather than a regression.
+
+### DW-316 - nothing scrolls the current entry into view, so the marked page can sit below the fold
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Twelve entries at 70px each is roughly 840px by the truncation bound's own rationale. On a short viewport
+the marked entry can therefore sit below the fold, and the rail appears to mark nothing at all - the failure
+presents as "the feature is broken" rather than "scroll down".
+
+`scrollIntoView` is **not** on the AD-17 prohibition list, verified, so no guard blocks the fix; it simply was
+not built.
+
+### DW-317 - the rail draws crisp identical thumbnails for a stale or stand-in render
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+**The most Epic-13-shaped of this story's deferrals.** The viewer's label, `pdfExportQualifier` and the
+evidence rail all distinguish stale and stand-in state - that distinction is the epic's whole subject. The
+page rail receives `previewPages` unguarded and draws the same crisp thumbnails either way.
+
+So the one new surface Epic 13 added last is the one surface that does not tell the truth about freshness,
+in the epic named for exactly that.
+
+### DW-318 - the rail opens a second pdf.js document over the same bytes, so every preview parses twice
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`pdf-viewer.tsx:106` and `page-rail.tsx:62` each call `getDocument` on their own `bytes.slice(0)`. Every
+preview therefore parses the PDF twice and runs two workers.
+
+**Not fixable inside this story's file set:** borrowing the one document needs an `onDocument` seam on
+`PDFPreviewViewer`, a file 13.6 does not name, and reaching into it would have been scope the story's
+boundaries forbid.
+
+### DW-319 - pdf.js's div-based thumbnail DOM sits inside a <button>, whose content model is phrasing content only
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`App.css` forces `display: block` on two pdf.js classes to compensate, which is the tell. No validator in
+CI sees it, and the well is `aria-hidden`, so there is **no accessibility consequence today** - stated so the
+next reader does not over-rate it. It is a standards-conformance defect that could become a real one if the
+well ever stops being hidden.
+
+### DW-320 - a pdfPage.render that never settles stalls every later thumbnail, with no timeout and no indication
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The rasterisation pass is a sequential `await` loop in `page-rail.tsx`, so one hung page blocks every
+thumbnail after it and the rail simply stops filling, silently.
+
+**Blast radius is not rail-specific**, which is why this is LOW rather than MEDIUM: a hung worker also hangs
+the main viewer, so the rail is not the thing that would need fixing first.
+
+### DW-321 - one object URL can leak when unmount races a thumbnail's toBlob
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Cleanup does `destroy()` every created view, and that revokes - so the general case is handled. The
+residual is the single in-flight conversion: unmounting between a thumbnail reaching `FINISHED` and its
+`toBlob` resolving leaves one object URL assigned to a detached image and never revoked. Narrow, bounded at
+one URL per unmount, and real.
+
+### DW-322 - twelve rail entries are twelve sequential tab stops, and the rail has no empty state
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+No roving `tabindex`, so a keyboard user traverses up to twelve stops before reaching the page area. And
+with no page count the rail renders its heading and nothing else - where the palette it replaced ended in an
+`.honest-note`, so the surface got quieter rather than louder about having nothing to show.
