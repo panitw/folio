@@ -11771,3 +11771,66 @@ one URL per unmount, and real.
 No roving `tabindex`, so a keyboard user traverses up to twelve stops before reaching the page area. And
 with no page count the rail renders its heading and nothing else - where the palette it replaced ended in an
 `.honest-note`, so the surface got quieter rather than louder about having nothing to show.
+
+### DW-323 - six fixtures are valid engine inputs that the designer cannot open, all with identical geometry
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's builder at the Epic 13 boundary gate, from a browser suite failure; **scope
+  measured by the orchestrator.** **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`e2e/preview-page-rail.spec.ts` failed on its first-ever execution because the template it loads never opens
+in the designer. The template is not malformed and the **engine accepts it** - `wasm.Engine.Load` and
+`.Serialize` both succeed, and `folio validate` exits 0. What refuses it is browser-side, at
+`engine-protocol.ts:552`: components in `pageHeader`/`pageFooter` must satisfy `y + height <= band.height`.
+
+**Scanned all 26 `fixtures/*/input.folio`. Six violate it, with byte-identical geometry:**
+
+| fixture | element | measurement |
+|---|---|---|
+| `multi-page` | `e3@pageHeader` | `y4 + h16 = 20 > band 18` |
+| `page-count-1` | `e3@pageHeader` | `y4 + h16 = 20 > band 18` |
+| `page-count-5` | `e7@pageHeader` | `y4 + h16 = 20 > band 18` |
+| `page-count-20` | `e22@pageHeader` | `y4 + h16 = 20 > band 18` |
+| `page-count-50` | `e52@pageHeader` | `y4 + h16 = 20 > band 18` |
+| `three-band-page` | `e4@pageHeader` | `y4 + h16 = 20 > band 18` |
+
+**The same three numbers in all six** - one ancestor copied five times, not six independent mistakes. The
+builder predicted `page-count-50` "almost certainly" shared the shape; measuring turned that into six.
+
+**Why it was not fixed at the gate.** The correction is two points on one element and does not touch band
+height, so page counts are unaffected - but `multi-page` and `three-band-page` may carry pinned golden
+digests, and moving an element changes rendered bytes and therefore those hashes. A fixture-family fix needs
+the goldens re-recorded and attested, which is deliberate work and not something to do in the last hours of
+an epic. Story 13.6's spec was given its own inline template instead.
+
+**What discharges it:** correct all six to `y: 2`, re-record and re-attest any golden that moves, and then
+**add a guard** - nothing today prevents a seventh. A test that walks `fixtures/*/input.folio` and applies
+`engine-protocol.ts:552`'s own rule would have caught all six the day they were written, and is roughly the
+scan that found them.
+
+### DW-324 - the engine renders templates the designer cannot open, and says only "Could not open local file"
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's builder, diagnosing DW-323. **Owner: THE OWNER — this is a product decision,
+  not a defect with an obvious fix.** **Severity:** MEDIUM. **Status:** OPEN.
+
+Go enforces component containment on **all ten** `containComponent` call sites in
+`folio-go/component_commands.go` - place, move, resize, drag. **None of them is a load path.** So the engine
+enforces containment when *authoring* and never when *loading*, while the browser enforces the mirrored rule
+at `engine-protocol.ts:552` on load.
+
+The consequence is a class, not an instance: **a template the engine will happily render is one the designer
+refuses to open**, and the author is told only `Could not open local file` (`App.tsx:1797`'s catch). Nothing
+names the element, the band, or the two points. DW-323 is six instances of that class sitting in this
+repository already.
+
+**Why this is the owner's and not the lead's.** There are at least three defensible answers and they are
+product positions rather than engineering details: Go could validate containment at load, which makes the
+engine stricter and could reject documents it currently renders; the browser could clamp or drop the
+offending component rather than refusing the whole response, which admits documents it currently refuses;
+or the refusal could stay and simply **say what it found**, which fixes the reporting without moving either
+boundary. The third is the smallest and is not obviously the right one.
+
+**What is not in dispute:** the current behaviour reports a rejection without its reason, and that is the
+part every option above improves.
+

@@ -640,6 +640,12 @@ translates later-sheet placement onto the band-aware `createComponent` that alre
 | `statement-50` | 1 | **true** | `[0]` | **50** |
 | `page-count-1` | 1 | false | `[0]` | 1 |
 | `page-count-5` | 5 | false | `[0 728000 1456000 2184000 2912000]` | 5 |
+
+> **⚠ ORCHESTRATOR ANNOTATION 2026-09-09 — STALE.** This row records `page-count-5` with
+> `contentWindowCountIsExact = false`. Measured today during Epic 13's boundary gate it is **true**. Flagged by
+> Story 13.6's builder. The story is closed and its record is left otherwise intact; this note exists because a
+> later story quoting this table as fact would be quoting something no longer so. Re-measure before relying on
+> any other row here.
 | `page-count-20` | 20 | false | `[0 … 13832000]`, a round 728000 apart | 20 |
 | `page-count-50` | 50 | false | `[0 … 35672000]`, a round 728000 apart | 50 |
 
