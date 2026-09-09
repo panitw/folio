@@ -10,17 +10,25 @@ context: []
 
 ## In plain terms (read this first if you just want the gist)
 
-A Line in this designer is drawn as a very short, very wide filled box. That is a fine way to
-implement a rule, but it leaks: to make a hairline thinner you edit a field called **H**, and to
-change its colour you edit a field called **Background**. The author has to know the implementation
-to use the tool.
+*Non-normative, and rewritten at close to describe what actually shipped. The frozen Intent below is
+what governed the implementation.*
 
-This story fixes the *words*, not the drawing. When a Line is selected the panel will say
-**Thickness**, **Colour**, **Length** and an orientation; when a Rectangle is selected it will say
-**Fill**. Underneath, every one of those still writes the exact same `height`, `width` and
-`background` the panel has always written, through the exact same command. Nothing about the file
-format moves. A document you save today and a document you save after this ships are byte-identical
-given the same edits — and this story proves that rather than claiming it.
+A Line here is drawn as a very short, very wide filled box, and the panel used to say so out loud: you thinned a hairline by editing a field called H and coloured it by editing one called
+Background. That is fixed. A selected Line now offers Thickness, Colour, Length and an orientation;
+a selected Rectangle says Fill. Each still writes exactly the value it always wrote, so the same
+edits produce the same saved document as before — and this ships with a proof of that.
+
+Three things may look wrong later and are deliberate. The orientation control swaps the two
+dimensions in one edit, so it is a single undo step; the panel's side of the command was widened to
+carry more than one change at once to allow that, which the engine always permitted. On a square
+rule that control is switched off on purpose, with a stated reason: swapping equal sides changes
+nothing. And when an edit that moved both dimensions is refused, the panel
+withholds only the part of the message that could name the wrong field, and still prints the rest.
+
+Nothing about the file format moved and no engine code changed. Six follow-ups were registered
+rather than fixed here, including the engine's own mislabel. The story's own lesson
+is that three of its guards passed while the thing they guarded was genuinely broken, because each
+checked a name the screen never shows; all three now fail when it is broken.
 
 ---
 
@@ -795,3 +803,76 @@ tree, not from a clean build.** Per D-000.33 no build is run to confirm a zero.
 
 - Key order is meaningless on the wire, proved from the engine's own source.
   [`component-property-command.test.ts:98`](../../folio-designer/src/component-property-command.test.ts#L98)
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `9e50b51`. Shipped in **one commit, `8187a25`**, on `main`, unpushed. Seven files: the
+inspector remap and the encoder widening in `folio-designer/src/`, this spec, and the tracker hop.
+Nothing under `folio-go/`, `fixtures/`, `planning-artifacts/`, `DESIGN.md` or `EXPERIENCE.md` moved —
+the presentation-only fence held, and the manual check in Verification is satisfied by
+`git show --stat 8187a25`.
+
+**What actually shipped.** The vocabulary remap is one function: new words over the existing
+`PropertyField` values, orientation derived from the committed box and never stored, ties reading
+horizontal. Three things beyond the relabel. (1) The encoder was widened **additively** so one
+`updateComponentProperties` carries several changes — route (c) of [D-14.2.Q2] / program-log
+[D-14.2.2] — which is what makes the orientation toggle one undo step; the singular form still emits
+byte-identical commands at all 13 call sites. (2) The `printsDataPath` **two-part rule** from
+[D-14.2.Q2b] as it was amended at triage: suppress the path only when the intent carried more than
+one field **and** the path's last segment is a `PropertyField` member. `component.geometry` and
+`component.changes` print; single-field intents are untouched. (3) [D-14.2.Q7]'s square rule — the
+non-current orientation segment is **disabled from mount** with an accessible reason, rather than
+enabled and inert. Also applied: [D-14.2.Q1] (border and edge controls withheld, false reason
+dropped, an honest note when a Line does carry a border), [D-14.2.Q3] (display unit is points,
+product-wide — this discharges one of the three rulings `epic-14-context.md` records as owed),
+[D-14.2.Q4] (Line and Rectangle joined the vocabulary sweep, honouring 14.1's V2 deferral),
+[D-14.2.Q6] (byte identity proved at the wire, the only layer jsdom can observe). [D-14.2.1] stands
+as a correction to this run, not to the code: the NUL-byte trap in `App.tsx` does not reproduce as
+it had been cited for six dispatches — the bytes are at 3700–3701 and this host's `grep` reads
+through them. **DW-331 was deliberately left open**; [D-14.2.Q5] was accepted as a finding and
+registered, not fixed.
+
+**Triage.** 14 patches applied, 6 deferred, **0 rejected**, **0 loopbacks**, `review_loop_iteration`
+**0**. The one call that mattered was a label, not a fix: the builder offered the
+`component.geometry` suppression as an `intent_gap`; it was ruled a **patch**, because frozen matrix
+row 10 said exactly what should happen and the implementation drifted from it through a shorthand in
+a non-frozen section. A loopback would have reverted a sound, mutation-verified diff to re-derive it
+nearly identically.
+
+**What the review caught, and the lesson this story is worth keeping for.** **Three guards were green
+over real defects** — the visible words, the `pt` unit, and the border-disclosure predicate. Every
+one of those assertions resolved by `FieldSpec.label`, an accessible name that **is never rendered**,
+while the word actually on screen is `affix`. The verification-gap reviewer mutated the Line's words
+back to `W`/`H` and both kinds back to `Background` and the whole suite stayed green: the story's
+entire visible deliverable was unfalsifiable, inside the guard built to prevent exactly that, in the
+epic whose subject is the panel telling the truth. All three were repatched to assert **rendered
+text**, and **all three now red when reverted**. A fourth mutation did not land — a regex missed —
+and the builder discarded its own green rather than reporting it, which is the failure mode 14.1
+shipped past.
+
+**Gates, re-measured at `8187a25` on a clean tree, exit codes captured without a pipe** (D-000.33):
+`npx vitest run` **exit 0 — 73 files, 1208 tests, 0 failures**; `npx tsc -b --force` **exit 0**, no
+diagnostics; `npx oxlint` **exit 0**, exactly **4** `react(only-export-components)` warnings
+(anchors re-measured, not quoted: `pdf-viewer.tsx:17,18`, `App.tsx:4307,4314`);
+`npm run test:e2e:compile` **exit 0**. Test **name** sets diffed against the dispatch baseline
+`303b807` rather than totals: **zero GONE**, 36 new names plus one new file
+(`line-rect-vocabulary.test.tsx`); the runtime delta is +39 because the vocabulary sweep is
+table-driven and gained cases without gaining names. The 73 files are 69 under `src/` plus 4
+`scripts/*.test.mjs`.
+
+**Suites that did NOT run, in those words:** the browser suite, the Go suites, the matrix legs,
+`npm run build` as a gate, the `verify:offline*` chain, and the font-host scans. These are the Epic
+14 boundary gate's, and the epic cannot close until they are run. Standing Go reds that are **not**
+regressions: `TestCorpusMeetsP6ExerciseFloors` and `P6g_(opaque_names)`.
+
+**Deferred — all six registered by the owner, all `Status: OPEN`, and all carrying
+`Owner: unassigned`, which is a gap the register cannot close on its own.** **DW-336** (`borderProjected`
+re-derives a Go invariant in TypeScript with no mirror test), **DW-337** (derived orientation ignores
+live drag geometry, so mid-resize the labels contradict the drawn box), **DW-338** (the single-flight
+pending block is now copied verbatim four times), **DW-339** (`OrientationProperty` renders
+full-bleed outside `.property-grid`, unverified by any run), **DW-340** (independent `pendingRef`s
+let a Thickness blur-commit and an orientation click be in flight together), **DW-341** (nothing
+asserts the Line panel omits TYPOGRAPHY and `Text colour`). Registered earlier at the plan gate and
+still open: **DW-333** (the Go `propertyPath` fix this story muted panel-side), **DW-334**, **DW-335**.

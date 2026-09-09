@@ -12109,7 +12109,7 @@ paints and no note discloses it, which is precisely the harm D-14.2.Q1's note wa
 ### DW-337 - the derived orientation ignores live drag geometry, so mid-resize the labels contradict the drawn box
 
 - **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
-- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+- **Found by:** Story 14.2's step-04 review. **Owner:** Story 14.3, the next story to touch this panel's commit path. **Severity:** LOW. **Status:** OPEN.
 
 Orientation is derived from the **committed** box. During a canvas resize that crosses the square tie, the
 drawn rule is already taller than it is wide while the panel still says horizontal and `aria-pressed` still
@@ -12149,7 +12149,7 @@ cannot check until the gate.
 ### DW-340 - independent `pendingRef`s let a Thickness blur-commit and an orientation click be in flight together
 
 - **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
-- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+- **Found by:** Story 14.2's step-04 review. **Owner:** Story 14.3, the next story to touch this panel's commit path. **Severity:** LOW. **Status:** OPEN.
 
 Each control guards **itself** against re-entry; nothing guards the panel. Clicking the orientation toggle
 blurs a Thickness field being edited, so the blur-commit and the toggle can overlap - two commands against the
@@ -12170,3 +12170,37 @@ there passes unnoticed because no test looks for its absence.
 
 Cheap to close and deliberately not folded in - the story's withholding assertions were already re-proved by
 mutation this round, and adding an unproved one beside them would dilute that.
+
+### DW-342 - a live edit to Epic 8's prose is parked in a YAML comment where nothing will action it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/sprint-status.yaml` (the Epics 11-15 sprint-sequence block)
+- **Found by:** Story 14.2's closer, auditing tracker hygiene. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Readiness-gate finding #3, buried in a 91-line comment block: Epic 8's prose still reads *"Bold and italic are
+NOT in this epic ... a face-inventory decision SPEC-fonts leaves open"*. **Epic 11 now owns that decision**, so
+the sentence dangles - it describes an open question that has since been answered elsewhere.
+
+**The reason this is registered rather than simply fixed: it is an unactioned edit to `epics.md`/SPEC-fonts
+living in a comment inside a status file.** Nothing reads `sprint-status.yaml` looking for work, so the note
+could survive indefinitely while reading, to anyone who found it, as though it were tracked. It surfaced only
+because a closer audited the tracker for hygiene rather than for content.
+
+**Register it before the sprint-sequence block is condensed** (the closer's proposal to move that block into
+the decision log is sound, and would have silently discarded this).
+
+### DW-343 - the Verification template's own manual check contradicts what every story's commit must do
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's closer, executing the check. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The manual check asks the closer to confirm the working tree carries *"no change under ... `sprint-status.yaml`
+or `deferred-work.md`"*. But **every** story's commit necessarily changes `sprint-status.yaml` - that is the
+status hop - and the close changes it again.
+
+So the check as written can never pass honestly, which means it is either failed and ignored or read loosely
+every time. A check that cannot be satisfied is not a weaker check than one that can; it is one that trains its
+reader to skip it.
+
+**Suggested wording, to be applied to future specs rather than retrofitted:** *"...no change under `folio-go/`,
+`fixtures/`, `_bmad-output/planning-artifacts/`, `DESIGN.md`, `EXPERIENCE.md`, or `deferred-work.md`.
+`sprint-status.yaml` changes only by its own status key."*
