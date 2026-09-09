@@ -11902,3 +11902,32 @@ adding a second thing to watch.**
 introduced and propagated it; there is no byte ceiling anywhere; the release is 77% fonts by row count; and
 the one warning that exists has been firing, correctly, into nobody's attention.
 
+### DW-326 - the document bar discloses keyboard shortcuts three different ways, and the design doc contradicts the code
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's builder at its plan gate, and **deliberately not absorbed into that story**
+  (orchestrator ruling at its CHECKPOINT 1). **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN - and it needs a **design ruling**, not a sweep.
+
+The four controls Story 14.1's AC2 points at are not uniformly spelled *among themselves*, in a dimension AC2
+does not reach:
+
+| control | shortcut disclosure |
+|---|---|
+| Undo, Redo | word plus a **visible** `<kbd>` |
+| Save | ⌘S discoverable **only by hovering** (`title`) |
+| Save As, Start blank | bare words, no shortcut shown |
+| Open | **no shortcut at all** |
+
+**And the design record contradicts the shipped product.** `EXPERIENCE.md:238-239` says shortcut hints belong
+"in menus and tooltips" - which the inline `<kbd>` already on Undo, Redo and PREVIEW directly contradicts.
+
+**Why this is a ruling and not a fix.** There are two coherent answers and they point opposite ways: make
+Save's ⌘S visible like Undo's, which contradicts `EXPERIENCE.md`; or remove the inline `<kbd>`s to match
+`EXPERIENCE.md`, which removes discoverability the product currently has. **A story whose subject is
+consistency must not pick one silently**, which is exactly why 14.1 was told to leave it: absorbing it would
+have made a design decision under cover of a sweep.
+
+**What discharges it:** decide which way `EXPERIENCE.md` and the product should agree, amend whichever is
+wrong, and then make the four controls consistent in that one dimension.
+

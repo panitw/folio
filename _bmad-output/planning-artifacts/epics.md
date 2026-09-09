@@ -4824,7 +4824,7 @@ The inspector and the document bar were built story by story, and it shows. Ther
 treatments in play: icon-only, text-only, text-with-shortcut, icon-with-text-and-shortcut, and
 symbol-only — and they are mixed inside single rows. Open and Save are icons; **Save As**, the same
 family of action, is text, and the design's own document bar draws all of them as text, so the icons
-are drift rather than intent. In one row of the TYPOGRAPHY section, Align is three SVG icons and
+are drift rather than intent. In one row of the TYPOGRAPHY section, Align is **four** SVG icons (**corrected 2026-09-09**: this said three; justify landed since, and D-000.9 item 9 pre-registered the correction — measured at `App.tsx:2658`, an all-text selection offers four) and
 Vertical align, beside it, is the words TOP / MID / BOT.
 
 The per-kind defects are sharper than the cosmetics. A Line's thickness is its **H** field under
