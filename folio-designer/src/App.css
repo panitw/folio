@@ -19,8 +19,8 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .app-shell { min-width: 1024px; height: 100%; overflow: hidden; display: grid; grid-template-rows: var(--doc-bar-height) minmax(0, 1fr) var(--status-bar-height); background: var(--color-base); color: var(--color-ink); font: var(--type-body); }
 /* STORY 13.2 — THE PREVIEW STATUS BAR IS THE TALLER OF THE TWO DECLARED SIZES.
    `--status-bar-height` cannot simply be raised: the same token is the size of
-   `.icon-button`, `.file-button` and `.mode-switch button` below, so raising it
-   would resize the document bar's controls to make room for a page stepper.
+   `.file-button` and `.mode-switch button` below, so raising it would resize
+   the document bar's controls to make room for a page stepper.
    `DESIGN.md` declares `status-bar.heightPreview: '32px'` already, so the
    second token implements a declared value rather than inventing one, and the
    class that selects it is derived from the same `mode` the rest of the shell
@@ -33,11 +33,8 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .status-dot.status-clean { background: var(--color-select); }
 .status-copy { color: var(--color-ink); font: var(--type-body); }
 .document-actions { display: flex; gap: var(--space-1); }
-.icon-button { width: var(--status-bar-height); height: var(--status-bar-height); display: grid; place-items: center; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); }
-.icon-button:disabled { opacity: 1; color: var(--color-ink); cursor: not-allowed; }
 .file-button { min-height: var(--status-bar-height); padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
 .file-button:disabled { color: var(--color-ink); cursor: not-allowed; }
-.icon { width: var(--icon-size); height: var(--icon-size); }
 .later-control { margin-left: auto; color: var(--color-ink); }
 .mode-switch { display: flex; border: var(--hairline) solid var(--color-edge); }
 .mode-switch button { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); border: 0; background: transparent; color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }

@@ -1017,6 +1017,44 @@ describe('application shell', () => {
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline cache unavailable')
   })
 
+  // STORY 14.1 / AC2 + AC4 — THE DOCUMENT BAR SPEAKS ONE VOCABULARY.
+  //
+  // Open and Save were the only two icon-only controls in a family of six, and
+  // `.document-actions` was a roleless `<div>` whose `aria-label` the
+  // accessibility tree dropped, so the family had no name to be a family under.
+  // Both are fixed. `control-vocabulary-contract.test.tsx` enforces the RULE
+  // over the whole rendered population — no control named — which is exactly why
+  // it cannot make the claims below: "no member disagrees with another" is not
+  // "this one says Open, under the name it already had".
+  //
+  // ⚠ THE TWO `aria-label`s ARE UNCHANGED, and they are asserted here beside the
+  // new visible text for that reason: the name a screen reader announces is
+  // byte-identical to the one it announced before, and the visible word is
+  // contained in it, so WCAG label-in-name holds. Measured: `Open local template`
+  // / `Save local template` appeared on 10 lines of this file at the story's
+  // baseline `dbe058bf` and on 15 lines across ten `e2e/*.spec.ts` files. Not one
+  // of them had to move. (This file now holds 17 such lines — the seven this
+  // comment and the test below add. The e2e count is untouched by this story.)
+  it('spells all six local-file controls as words in one named group, keeping every accessible name', () => {
+    render(<App />)
+    const group = screen.getByRole('group', { name: 'Local file actions' })
+    const buttons = within(group).getAllByRole('button')
+    expect(buttons).toHaveLength(6)
+    for (const [index, name] of ['Open local template', 'Save local template', 'Save As', 'Start blank', 'Undo', 'Redo'].entries()) {
+      expect(buttons[index]).toHaveAccessibleName(name)
+    }
+    // Open and Save now SAY what they do, in the same words as every sibling.
+    expect(screen.getByRole('button', { name: 'Open local template' })).toHaveTextContent('Open')
+    expect(screen.getByRole('button', { name: 'Save local template' })).toHaveTextContent('Save')
+    // And no member of the family is drawn as a picture any more.
+    expect(buttons.filter((button) => button.querySelector('svg') !== null)).toEqual([])
+    // Save keeps its shortcut in the tooltip, and neither control grows a
+    // visible `<kbd>`: the document bar's three-way shortcut disclosure is a
+    // registered finding (DW-326), not this story's work to settle.
+    expect(screen.getByRole('button', { name: 'Save local template' })).toHaveAttribute('title', `Save (${shortcutHintsFor().save})`)
+    expect(screen.getByRole('button', { name: 'Open local template' })).not.toHaveAttribute('title')
+  })
+
   it('labels the development bypass instead of claiming a verified cache', () => {
     render(<App offlineState="dev-bypass" />)
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline layer bypassed (dev)')
@@ -3134,6 +3172,26 @@ describe('typography controls over the engine-projected closed sets', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Align center' }))
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
+  })
+
+  // STORY 14.1 / AC3 + AC4 — VERTICAL ALIGN IS DRAWN, NOT SPELLED.
+  //
+  // Align and Vertical align sit side by side in ONE `.property-grid` at
+  // `1fr 1fr`, rendered by ONE `SegmentedProperty` through ONE
+  // `.property-segment` class, and until now one drew icons while the other drew
+  // the words TOP / MID / BOT at the same size in the same row. The seven
+  // `label` values are untouched, so every accessible name here is the one
+  // `App.test.tsx` above already asserts as a set.
+  it('draws both alignment controls in one vocabulary, each segment keeping the name it answered to', () => {
+    select()
+    for (const name of ['Align left', 'Align center', 'Align right', 'Align justify', 'Vertical align top', 'Vertical align middle', 'Vertical align bottom']) {
+      const segment = screen.getByRole('button', { name })
+      expect(segment.querySelector('svg.segment-icon'), name).not.toBeNull()
+      // NOT merely "it has an icon": an icon with a caption beside it would
+      // still be words beside icons at the same size, which is the defect.
+      expect(segment.textContent, name).toEqual('')
+    }
+    for (const word of ['TOP', 'MID', 'BOT']) expect(screen.queryByText(word), word).toBeNull()
   })
 
   // Story 7.4 / AC3. `style.align` admits `justify` for a text element, and

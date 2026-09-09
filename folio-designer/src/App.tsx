@@ -82,10 +82,6 @@ function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Read
 
 type ParameterReferenceState = Readonly<{ status: 'pending' | 'ready' | 'failed'; names: ReadonlyArray<string> }>
 
-function Icon({ name }: { name: 'open' | 'save' }) {
-  return <svg aria-hidden="true" className="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d={name === 'open' ? 'M2 5.5h4l1.2-2h6.8v9H2z M2 5.5h12' : 'M3 2h8l2 2v10H3z M5 2v4h6V2 M5 12h6'} /></svg>
-}
-
 const paletteGlyphs: Readonly<Record<PaletteKind, ReactNode>> = {
   text: <><path d="M3.5 4.5V3h9v1.5" /><path d="M8 3v10" /><path d="M5.75 13h4.5" /></>,
   image: <><path d="M2.5 3.5h11v9h-11z" /><path d="M2.5 10.25 5.75 7l2.25 2.25 2-2 3.5 3.5" /><circle cx="10.5" cy="6.25" r="1" /></>,
@@ -2241,7 +2237,29 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   return <div className={`app-shell${mode === 'preview' ? ' app-shell-preview' : ''}`} aria-label="Folio designer application shell" aria-busy={fileBusy}>
     <header className="document-bar" aria-label="Document bar">
       <span className="brand">FOLIO</span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
-      <div className="document-actions" aria-label="Local file actions"><button className="icon-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template"><Icon name="open" /></button><button className="icon-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}><Icon name="save" /></button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
+      {/* STORY 14.1 / AC2 — SIX WORDS IN ONE NAMED GROUP, AND A STATED DEPARTURE
+          FROM THE DRAWING.
+          `.document-actions` was a roleless `<div>`: the accessibility tree
+          takes no name from one, so this `aria-label` was dropped and the six
+          controls were six loose buttons rather than a family. `role="group"`
+          is the whole fix. Open and Save were also the only two icon-only
+          controls in that family, which is rule V3 in the story spec —
+          every control inside one named control group is spelled the same way.
+          Their `aria-label`s are UNCHANGED, so every accessible name is
+          byte-identical and the visible word is contained in the name (WCAG
+          label-in-name). Save keeps its `title`; neither grows a `<kbd>` — the
+          bar's three-way shortcut disclosure is DW-326's, not this story's.
+
+          ⚠ THE DEPARTURE, STATED RATHER THAN TAKEN QUIETLY. `Main.dc.html:38-41`
+          draws Open and Save as BARE WORDS — `padding: 4px 8px`, no border, no
+          background — and draws no other member of this family at all. Spelled
+          that way here they would be two plain words beside four bordered
+          chips, which is the same V3 violation in a different currency. AC2's
+          words are "no member of the family is spelled differently from
+          another", and the four siblings the mockup does not draw already carry
+          `.file-button`, so the family's existing spelling is what the two new
+          words join. The drawing loses on the one point where it is silent. */}
+      <div className="document-actions" role="group" aria-label="Local file actions"><button className="file-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template">Open</button><button className="file-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}>Save</button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
       {/* STORY 13.5 — THE SLOT SAYS SOMETHING ABOUT WHAT IS ON SCREEN.
           In Design that is the page setup; in Preview the page setup is a fact
           about a template nobody is looking at, and the render's own freshness
@@ -2256,7 +2274,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       {mode === 'preview'
         ? <span className="later-control" aria-label="Render freshness">{renderFreshness}</span>
         : <span className="later-control" aria-label="Current page setup">{canvas ? `${canvas.preset} · ${canvas.orientation}` : 'Page setup unavailable'}</span>}
-      <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
+      <div className="mode-switch" role="group" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
     </header>
     <div className="workbench" id="future-features">
       {/* STORY 13.6 — THE PALETTE GIVES WAY TO THE PAGES RAIL.
@@ -2638,7 +2656,28 @@ const alignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'left', label: 'Alig
 // value that is meaningless for the element type. A MIXED text+table
 // selection gets the triple too: one command goes to every id in it.
 const justifySegment: SegmentSpec = { value: 'justify', label: 'Align justify', content: <AlignIcon variant="justify" /> }
-const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vertical align top', content: 'TOP' }, { value: 'middle', label: 'Vertical align middle', content: 'MID' }, { value: 'bottom', label: 'Vertical align bottom', content: 'BOT' }]
+// STORY 14.1 / AC3 — VERTICAL ALIGN IS SPELLED THE WAY HORIZONTAL ALIGN IS.
+// These two segmented controls sit side by side in ONE `.property-grid` at
+// `1fr 1fr` (App.css:281), rendered by ONE `SegmentedProperty` through ONE
+// `.property-segment` class, and until now one of them drew icons while the
+// other drew the words TOP / MID / BOT. That is rule V3 in this story's spec —
+// (a) two controls of one class disagreeing, and (b) a row mixing glyphs and
+// words at the same size — and it is exactly the seam a glyph-versus-word rule
+// exists to close.
+//
+// The glyphs are written in `AlignIcon`'s idiom on purpose: the same
+// `.segment-icon` class, the same 16px `viewBox`, the same `strokeWidth`, the
+// same `aria-hidden`, and INLINE — never a `.svg` on disk, because the offline
+// release's cache manifest counts emitted files and `vite.config.ts` sets
+// `assetsInlineLimit: 0` (D-14.0.1). The long stroke is the edge the content
+// aligns to and the two short strokes are the content; `label` is untouched, so
+// each segment's accessible name is byte-identical to the one it had (AC4).
+type ValignVariant = 'top' | 'middle' | 'bottom'
+const valignGlyphs: Readonly<Record<ValignVariant, string>> = { top: 'M2 3h12M4 7h8M4 10h8', middle: 'M4 4h8M2 8h12M4 12h8', bottom: 'M4 6h8M4 9h8M2 13h12' }
+function ValignIcon({ variant }: { variant: ValignVariant }) {
+  return <svg aria-hidden="true" className="segment-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><path d={valignGlyphs[variant]} /></svg>
+}
+const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vertical align top', content: <ValignIcon variant="top" /> }, { value: 'middle', label: 'Vertical align middle', content: <ValignIcon variant="middle" /> }, { value: 'bottom', label: 'Vertical align bottom', content: <ValignIcon variant="bottom" /> }]
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
