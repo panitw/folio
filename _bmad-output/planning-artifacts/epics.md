@@ -4831,8 +4831,13 @@ The per-kind defects are sharper than the cosmetics. A Line's thickness is its *
 POSITION and its colour is **Background** under BOX, because Story 9.2 makes a line a filled bar — so
 the two properties a line actually has are the two an author would never look for, while Border,
 Border colour and four Edge checkboxes sit above them meaning nothing. A placed component is not
-selected, so an author places a Line and must then find and click a 1pt target — 1.33 CSS pixels at
-100% — before they can edit it. And every non-text component shows a BINDING section inviting the
+selected, so an author places a Line and must then find and click a 1pt target — **2 CSS pixels**,
+because `.canvas-component` floors both axes at `max(2px, …)`; without that floor it would be 1px at
+100%, folio doing its own millipoint arithmetic rather than the 96/72 CSS conversion — before they
+can edit it. (Corrected 2026-09-09: this line read "1.33 CSS pixels at 100%", which is the CSS
+pt-to-px ratio and not what this canvas does. The defect is real — 2px is far under the 24px
+`.resize-handle` and 12px `.selection-handle` precedents — but smaller than first stated, and a story
+should not inherit a justification whose arithmetic is wrong.) And every non-text component shows a BINDING section inviting the
 author to "Pick a root scalar in the Data tab", when `bindComponentScalar` refuses everything that is
 not a text element.
 

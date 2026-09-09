@@ -12204,3 +12204,21 @@ reader to skip it.
 **Suggested wording, to be applied to future specs rather than retrofitted:** *"...no change under `folio-go/`,
 `fixtures/`, `_bmad-output/planning-artifacts/`, `DESIGN.md`, `EXPERIENCE.md`, or `deferred-work.md`.
 `sprint-status.yaml` changes only by its own status key."*
+
+### DW-344 - every placed component is 72x24 regardless of kind, so a Line on sheet 2 is a slab rather than a rule
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-3-a-placed-component-is-the-selected-component.md`
+- **Found by:** Story 14.3's builder, at the Open-Questions gate. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`createComponentCommand` (`folio-designer/src/component-command.ts:33`) hardcodes `width: 72, height: 24` for
+**every** `PaletteKind`. On sheet 1 the designer's own placement path adjusts what is placed; on **sheet 2 or
+later** `placeInBand` goes through this command, so a placed Line arrives as a **72 x 24 slab** rather than a
+1pt rule.
+
+**The sharp part is what this does to Story 14.3's population, not to the geometry.** 14.3's AC2 covers *thin*
+components - "a 1pt Line, or any element under the comfortable hit size". A 72 x 24 slab is not thin, so
+**AC2 does not apply on later sheets at all**: the story about selecting thin targets excludes the case where
+the target is wrong in the first place. The defect hides from the story that would otherwise have found it.
+
+Registered rather than fixed: no 14.3 AC names later-sheet placement geometry, and per-kind default sizes are
+a product decision about what placing a Line should mean, not a selection concern.

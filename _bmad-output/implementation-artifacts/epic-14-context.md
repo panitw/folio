@@ -5,14 +5,14 @@
 ## Goal
 
 The inspector, document bar, data panel and table editor were each built story by story, and the
-seams show: five competing button treatments mixed inside single rows, a Line whose thickness is
-called "H" and whose colour is called "Background", a binding section offered on components the
-engine will always refuse, a placed component that isn't selected, a data tree showing type strings
-instead of the author's own values, a table drawn on the canvas as a box containing the word "Table",
-and a table editor that is an eleven-column form where the design specifies a six-column matrix. This
-epic makes those surfaces read as one designed product. It changes nothing about the document model,
-the command surface, the file format, or a single rendered byte — only what the panels offer and how
-they are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR10 are completed.
+seams show: competing button treatments mixed inside single rows, a Line whose thickness is called
+"H" and whose colour is called "Background", a binding section offered on components the engine will
+always refuse, a placed component that isn't selected, a data tree showing type strings instead of
+the author's own values, a table drawn on the canvas as a box containing the word "Table", and a
+table editor that is an eleven-column form where the design specifies a six-column matrix. This epic
+makes those surfaces read as one designed product. It changes nothing about the document model, the
+command surface, the file format, or a single rendered byte — only what the panels offer and how they
+are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR10 are completed.
 
 ## Stories
 
@@ -38,13 +38,14 @@ they are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR
   were created.
 - **Never normalise a document on selection.** A panel that stops offering a field must still
   preserve that field's stored value untouched on save, including for documents hand-edited into
-  shapes the panel's vocabulary does not describe.
+  shapes the panel's vocabulary does not describe. Hiding a control that still paints costs
+  discoverability, so the hidden-but-present value is disclosed with a note rather than vanished.
 - **The panel must not offer what the engine will refuse.** Scalar binding is text-only; `params` is
   never a bindable root; a collection is not bindable by a text element. State the reason before the
   attempt, not after the engine rejects it.
-- **The padding control is dead everywhere.** An Epic 12 ruling forbids the panel authoring padding on
-  any element kind, including a table, even though the engine still accepts the command — no gate in
-  the project would catch a violation, so it must not be built.
+- **The padding control is dead everywhere.** An owner ruling forbids the panel authoring padding on
+  any element kind, including a table — no gate in the project would catch a violation, because the
+  command it sends is legal, so it must not be built.
 - **14.8 is a restyle only.** An owner decision reduced it to grouping the controls Epic 12 already
   ships into the drawn HEADER / CELLS / BORDERS sections. "Show header row" and the three-way borders
   preset have no format field and are not coming; the mockup is to be corrected, not implemented.
@@ -66,14 +67,31 @@ they are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR
 - **Table geometry is derived, not stored twice.** Column widths are absolute and authoritative; a
   table's width *is* their sum and is never stored separately. The editor's width budget reads out
   that rule.
-- **Millipoints are the stored unit and stay millipoints** regardless of the unit the UI displays.
+- **Millipoints are the stored unit and stay millipoints.** The **displayed** unit is **points,
+  product-wide** — settled during 14.2. The mockups' millimetres are mockup fidelity only; a future
+  story wanting millimetres is proposing a product-wide change, not a label.
+- **The control vocabulary is written down and guarded** (delivered by 14.1): a control is a word; a
+  glyph only as one member of a segmented control, drawn as a stroked SVG on the 16px grid; every
+  control in one class or one named group is spelled the same way; a glyph always carries an
+  accessible name that a respelling never narrows. Uniformity and accessible-name clauses are
+  enforced by a contract test over the whole swept population, so a control added later is checked;
+  the word-versus-glyph judgement on the remaining icon-only controls is deliberately deferred to
+  the story that owns each surface.
 - **Design tokens are the single source of styling** — no hard-coded hex anywhere; the brand mark's
-  colour comes from the existing select token, whose value is already the design's cyan.
+  colour comes from the existing select token, whose value is already the design's cyan. Source-text
+  contract tests pin the token file and several exact CSS declarations, so a restyle will red them
+  until they are updated deliberately.
 - Every mutation stays a single undo step, including a column binding made from the main window,
-  which commits through the existing column-binding command unchanged.
+  which commits through the existing column-binding command unchanged. A multi-key panel edit (for
+  example an orientation toggle) goes as one command carrying several changes, never as a sequence.
 
 ## UX & Interaction Patterns
 
+- **The mockups are a reference, not a transcript.** Each has been measured to draw less than its
+  citation implies — the main mockup draws a **Text** inspector only, with no Line inspector at all,
+  and the table-editor mockup draws controls the format cannot carry. Build from the acceptance
+  criteria and the vocabulary rule; verify a mockup actually contains a control before treating it as
+  a specification for one.
 - **Two-accent grammar, without exception.** Cyan means structure, focus and authority; amber means
   data and only data. Selection handles stay cyan even on a bound element; canvas binding
   placeholders are amber.
@@ -100,16 +118,21 @@ they are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR
 
 - **14.9 → 14.10.** Binding a column from the main window requires the canvas to draw the columns
   first; 14.10's selection target is the column 14.9 paints, on the projection field 14.9 adds.
+  14.10 also carries an unnamed prerequisite: today's selection holds **element** ids only, so
+  holding a column is a selection-model change.
 - **14.6 → 14.10.** 14.6 dims row-scope fields as unpickable for a text element; 14.10 makes exactly
   those fields pickable when a column is selected, in the same tree and context bar.
-- **14.1 → 14.2, 14.4, 14.7.** The button-vocabulary rule is written down first in the design token
-  file's terms; the per-panel sweeps are its consequence, and 14.7's alignment control must be the
-  one 14.1 settles.
+- **14.1 → 14.2, 14.3, 14.4, 14.7.** The vocabulary rule is written down first; the per-panel sweeps
+  are its consequence, each owning one of the surfaces 14.1 deliberately deferred, and 14.7's
+  alignment control must be the one 14.1 settles.
 - **14.4 ↔ 14.10.** 14.4 requires a table's binding to be stated once where it is editable; 14.10
   rules that "where" is the main window, leaving the editor's bound-field column as display.
 - **14.8 depends on Epic 12's table styling capability** (header height, header style, alternating row
   colour) and adds no second way to store it.
-- **Three rulings must be recorded before their story is built:** whether a picked path commits
-  immediately or keeps an explicit commit control; the table editor's transaction model (Close-plus-
-  undo versus a deliberately ruled-in buffer); and the display unit — points or millimetres — decided
-  product-wide rather than per dialog.
+- **14.7 needs a projection field it does not name** — the sample's item count for a table's
+  read-only scope line is carried by nothing today — and its rebuild from eleven columns to six
+  rewrites the grid's focus, move, and Home/End keyboard handling, which must survive intact.
+- **Two rulings must still be recorded before their story is built:** whether a picked path in the
+  DATA tab commits immediately or keeps an explicit commit control (14.6), and the table editor's
+  transaction model — Close-plus-undo versus a deliberately ruled-in buffer (14.7). The third ruling
+  this epic once owed, the display unit, is settled: points, product-wide.
