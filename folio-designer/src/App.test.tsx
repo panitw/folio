@@ -1167,16 +1167,479 @@ describe('application shell', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('offers only the five fixed palette components and sends an opaque Go placement command', async () => {
-    const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
-    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
-    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+  // STORY 14.3: A PLACED COMPONENT IS THE SELECTED COMPONENT.
+  //
+  // The placed component. `snapshot(2)` carries the module-level canvas, whose
+  // `components` is EMPTY — which is why the test below could not observe any
+  // of Story 14.3's claims before it was given a snapshot that actually adds a
+  // component. The new id is not on the wire in either direction: it is derived
+  // by diffing the component ids across the commit, so a mock that adds nothing
+  // is a mock in which there is nothing to select.
+  const placedText = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 36_000, y: 56_000, width: 72_000, height: 24_000, resizable: true }
+  const placedTextSnapshot = { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [placedText] } }
+  const armAndPlace = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
     fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+  }
+  // THE FOCUS MOVE IS DEFERRED BY ONE MACROTASK, so a NEGATIVE assertion about
+  // focus made in the same tick passes whether or not focus was wrongly moved —
+  // it beats the timer it means to disprove. Every "nothing is focused" row
+  // waits a real macrotask turn first, so the absence is a measurement.
+  const settleDeferredFocus = async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) }) }
+  // App.css is scanned with COMMENTS BLANKED. The pad rows gather by the VALUE a
+  // rule mentions (`--hit-pad`, `z-index`), not by its selector, so prose in a
+  // comment is a false positive — and the rules below carry long comments that
+  // discuss exactly those names. Blanking preserves line positions, so the
+  // line-oriented gathering is unchanged. This is deliberately NOT the raw
+  // policy the band-boundary rows use: those gather by SELECTOR, where a
+  // commented-out rule counting as live is the property they want.
+  const sheetWithoutComments = () => fs.readFileSync('src/App.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+  const ruleLines = (predicate: (selector: string) => boolean) => sheetWithoutComments().split('\n')
+    .filter((line) => line.includes('{') && predicate(line.slice(0, line.indexOf('{'))))
+
+  it('offers only the five fixed palette components and sends an opaque Go placement command', async () => {
+    const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+    // THE POSITIVE CONTROL for the absence asserted further down: this is what
+    // an empty selection puts in the inspector, and it is what placing used to
+    // leave standing.
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    armAndPlace()
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
     const [operation, payload] = request.mock.calls[0] as unknown as [string, ArrayBuffer]
     expect(operation).toBe('command')
     expect(new TextDecoder().decode(payload)).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+    // AND THE THING IT MADE IS THE THING THAT IS SELECTED, AND FOCUSED.
+    await waitFor(() => expect(screen.getByLabelText('text component e9')).toHaveFocus())
+    expect(screen.getByText('e9 · band: content')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resize e9')).toBeInTheDocument()
+    expect(screen.queryByText('Component properties require a selection.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Apply page setup' })).not.toBeInTheDocument()
+    // Neither the selection nor the focus sent anything: the create is still the
+    // only command in the log.
+    expect(request).toHaveBeenCalledOnce()
+  })
+
+  // ⚠ THE FOCUS IS DRIVEN BY A RENDER, NOT BY A TIMER, AND THIS ROW IS THE
+  // DISCRIMINATOR BETWEEN THE TWO. It flushes MICROTASKS ONLY and never a timer
+  // turn: a focus armed with `setTimeout(…, 0)` cannot have happened yet at this
+  // point, while a focus taken in the effect that follows the render mounting
+  // the element already has.
+  //
+  // The timer version was a real defect, not a style question. It attempted
+  // focus exactly once, and on any sheet after the first the extra render pass
+  // meant the element was not mounted when it fired — the lookup found nothing,
+  // `?.focus()` swallowed the miss, and focus was lost for good. Review measured
+  // that as a hard failure on the later-sheet row; on this machine the single
+  // tick happened to win the race, which is exactly why the guard has to be
+  // about the MECHANISM rather than about the outcome on one machine.
+  it('takes focus on the render that mounts the placed component, not on a later macrotask', async () => {
+    const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    armAndPlace()
+    await act(async () => { for (let turn = 0; turn < 8; turn++) await Promise.resolve() })
+    expect(screen.getByLabelText('text component e9')).toHaveFocus()
+  })
+
+  // AND IT DOES NOT STEAL FOCUS THE AUTHOR HAS ALREADY MOVED. A placement whose
+  // command is still in flight must not yank the caret out of a field the author
+  // has since clicked into — the failure mode a bare deferred focus has by
+  // construction, because it cannot know anything has changed.
+  it('gives up its focus claim when the author has moved focus somewhere else meanwhile', async () => {
+    let answer: (() => void) | undefined
+    const request = vi.fn(async () => { await new Promise<void>((resolve) => { answer = resolve }); return { snapshot: placedTextSnapshot } })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    armAndPlace()
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // The author has moved on to a control that OUTLIVES the selection. It has
+    // to outlive it, or there would be nothing left to steal: any Page Setup
+    // field is unmounted by the very selection under test, and focus falling
+    // back to `body` because a field was replaced is not the author moving it.
+    const elsewhere = screen.getByRole('button', { name: 'Zoom in' })
+    elsewhere.focus()
+    expect(elsewhere).toHaveFocus()
+    answer!()
+    await waitFor(() => expect(screen.getByLabelText('text component e9')).toBeInTheDocument())
+    await settleDeferredFocus()
+    // The placement still selects — that is AC1 and it is not in question — but
+    // the caret stays where the author put it.
+    expect(screen.getByText('e9 \u00b7 band: content')).toBeInTheDocument()
+    expect(screen.getByLabelText('text component e9')).not.toHaveFocus()
+    expect(elsewhere).toHaveFocus()
+  })
+
+  // THE REFUSAL ROW. A rejected create must leave the selection exactly where
+  // it was and move focus nowhere — the derived id never exists, so there is
+  // nothing to select, and the existing `componentDiagnostic` alert path is the
+  // only thing that changes.
+  it('leaves selection and focus alone when the engine refuses the placement', async () => {
+    const request = vi.fn(async () => ({ snapshot: placedTextSnapshot })).mockRejectedValue(Object.assign(new Error('the content band cannot hold it'), { code: 'COMPONENT_INVALID' }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    armAndPlace()
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('the content band cannot hold it'))
+    await settleDeferredFocus()
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/component e/)).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  // THE NO-NEW-ID ROW, AND IT DEGRADES SILENTLY. An accepted command whose
+  // snapshot adds no id must select nothing rather than reach for a stale one —
+  // the existing component here is the id a "select whatever is there" shortcut
+  // would wrongly land on.
+  it('selects nothing when an accepted command adds no component id', async () => {
+    const standing = { id: 'e1', type: 'rect' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true }
+    const standingSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: { ...canvas, components: [standing] } }
+    const request = vi.fn(async () => ({ snapshot: { ...standingSnapshot, revision: 2 } }))
+    render(<App engine={engine(request)} initialSnapshot={standingSnapshot} />)
+    armAndPlace()
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    await settleDeferredFocus()
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  // D-12.A FORK 3. SELECTION AND FOCUS ARE TWO FACTS AND THE WINDOW-LEVEL ARROW
+  // HANDLER IS A THIRD, so a test that only checked the happy state could not
+  // tell one firing from all three. The arrow handler is NOT gated on the canvas
+  // region, and a placed component is now selected — so the keystroke that
+  // places must not also nudge, and the arrow that follows must send exactly one
+  // move rather than one per handler that happens to agree.
+  it('places with selection and focus as separate facts, and nudges neither during nor twice after', async () => {
+    const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    armAndPlace()
+    await waitFor(() => expect(screen.getByLabelText('text component e9')).toHaveFocus())
+    // FACT ONE: the selection. FACT TWO: the focus, asserted above. Losing
+    // either one alone reds this row.
+    expect(screen.getByLabelText('Resize e9')).toBeInTheDocument()
+    // The placing keystroke sent the create and nothing else — no nudge rode
+    // along on the Enter that placed it.
+    expect(request).toHaveBeenCalledOnce()
+    // And the arrow that follows is ONE move, raised on the focused element so
+    // it travels the real route: the component's own onKeyDown, then the window
+    // listener. Only the second of those may act on it.
+    fireEvent.keyDown(screen.getByLabelText('text component e9'), { key: 'ArrowRight' })
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(new TextDecoder().decode((request.mock.calls[1] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":37,"y":56,"snap":true}')
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  // AC2's ARITHMETIC, WHICH IS THE HALF JSDOM CAN HONESTLY SEE. It applies no
+  // stylesheet and every rect is zeros, so the pointer geometry itself is proved
+  // in `e2e/placed-component-selection.spec.ts` and nowhere here. What is
+  // observable here is the inline custom property the pad is computed into, read
+  // the way `--component-x` is read elsewhere in this file.
+  const padCanvas = {
+    ...canvas,
+    components: [
+      { id: 'e1', type: 'line' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 1_000, resizable: true, background: '#000000' },
+      { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 20_000, width: 4_000, height: 4_000, resizable: true, background: '#000000' },
+      { id: 'e3', type: 'text' as const, band: 'content' as const, x: 0, y: 40_000, width: 72_000, height: 24_000, resizable: true, background: '#000000' },
+    ],
+  }
+  const padSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: padCanvas }
+
+  it('pads only the axis a component leaves short of the comfortable hit size, whatever its kind', () => {
+    render(<App engine={engine()} initialSnapshot={padSnapshot} />)
+    // THE RULE IS PER-ELEMENT-SIZE, NEVER PER-KIND: the 4pt image is padded on
+    // both axes on exactly the terms the 1pt line is padded on one, and the 24pt
+    // text box is padded on neither.
+    // 5px, not 5.5px: the 1pt rule DRAWS at 2px because of the paint floor, so
+    // 2 + 2 x 5 is exactly the 12px the owner ruled. Taking the shortfall from
+    // the 1px projection instead reached 13px — DW-345's floor arriving through
+    // the arithmetic rather than through the paint.
+    expect(screen.getByLabelText('line component e1').style.getPropertyValue('--hit-pad-x')).toBe('0px')
+    expect(screen.getByLabelText('line component e1').style.getPropertyValue('--hit-pad-y')).toBe('5px')
+    expect(screen.getByLabelText('image component e2').style.getPropertyValue('--hit-pad-x')).toBe('4px')
+    expect(screen.getByLabelText('image component e2').style.getPropertyValue('--hit-pad-y')).toBe('4px')
+    expect(screen.getByLabelText('text component e3').style.getPropertyValue('--hit-pad-x')).toBe('0px')
+    expect(screen.getByLabelText('text component e3').style.getPropertyValue('--hit-pad-y')).toBe('0px')
+  })
+
+  it('recomputes the pad from the drawn size at each zoom rather than pinning a fixed number', () => {
+    render(<App engine={engine()} initialSnapshot={padSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('90%')
+    // THE 4pt IMAGE IS THE ZOOM WITNESS, because it draws ABOVE the 2px floor at
+    // both zooms and so its pad tracks the zoom alone: 4px drawn -> 4px pad at
+    // 100%, 3.6px drawn -> 4.2px pad at 90%. Both reach exactly 12px. A pad
+    // pinned to a fixed number reds here.
+    const image = screen.getByLabelText('image component e2')
+    expect(image.style.getPropertyValue('--component-height')).toBe('3.6px')
+    expect(image.style.getPropertyValue('--hit-pad-y')).toBe('4.2px')
+    // AND THE 1pt RULE IS THE FLOOR WITNESS, in the same row so the two cannot
+    // be confused. It draws at 2px at BOTH zooms — `max(2px, …)` — so its pad
+    // does not move, and the reachable extent stays 12px rather than drifting to
+    // 13.1px. That is DW-345's floor being read, not changed.
+    const line = screen.getByLabelText('line component e1')
+    expect(line.style.getPropertyValue('--component-height')).toBe('0.9px')
+    expect(line.style.getPropertyValue('--hit-pad-y')).toBe('5px')
+    // 24pt at 0.9 is 21.6px, still over the comfortable size, so still no pad.
+    expect(screen.getByLabelText('text component e3').style.getPropertyValue('--hit-pad-y')).toBe('0px')
+  })
+
+  // ⚠ THE GUARD THAT SEPARATES THIS STORY'S MECHANISM FROM THE DEFECT DW-345
+  // RECORDS, AND IT IS WRITTEN TO RED IF THE PADDING IS EVER RE-IMPLEMENTED AS
+  // BOX INFLATION.
+  //
+  // A test asserting only "a click near a line selects it" passes on BOTH
+  // implementations — including the wrong one, which widens the element and lets
+  // `.canvas-box { inset: 0 }` follow it. That is exactly how the `max(2px, …)`
+  // floor above came to exist, and that floor is left alone here on the grounds
+  // DW-345 records rather than folded into a selection story.
+  //
+  // The paint of a component is three things and no more: the element's own
+  // width/height declarations, the `--component-*` values App.tsx puts on it,
+  // and `.canvas-box`'s `inset: 0`. None of them may mention the pad, and the
+  // pad may exist ONLY as a pseudo-element hung outside the box on negative
+  // insets. jsdom applies no stylesheet, so the declarations are read from the
+  // source the way canvas-authority-contract.test.ts reads it, and the values
+  // from the DOM.
+  it('pads the hit region without inflating the box, so the paint is byte-identical either way', () => {
+    const css = sheetWithoutComments()
+    const cssRule = (selector: string) => {
+      const found = css.match(new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`, 'm'))
+      expect(found, `App.css must declare a \`${selector}\` rule for this row to be about anything`).not.toBeNull()
+      return found![1]!.trim()
+    }
+    // HALF ONE — THE DECLARATIONS. The painted boxes are recorded literally, so
+    // any of them learning about the pad by any spelling reds this row.
+    expect(cssRule('.canvas-component')).toContain('width: max(2px, var(--component-width))')
+    expect(cssRule('.canvas-component')).toContain('height: max(2px, var(--component-height))')
+    expect(cssRule('.canvas-component-line')).toBe('height: max(2px, var(--component-height));')
+    expect(cssRule('.canvas-box')).toBe('position: absolute; inset: 0; box-sizing: border-box; pointer-events: none;')
+    for (const selector of ['.canvas-component', '.canvas-component-line', '.canvas-box']) {
+      expect(cssRule(selector), `${selector} is the PAINT and may not know about the hit pad`).not.toContain('--hit-pad')
+    }
+    // Every rule that mentions the pad is a pseudo-element rule, GATHERED from
+    // the sheet rather than listed here, so a second pad rule added later is
+    // covered without anyone remembering to come back.
+    const padRules = css.split('\n').filter((line) => line.includes('--hit-pad'))
+    expect(padRules, 'App.css must declare the pad somewhere for this row to be about anything').not.toHaveLength(0)
+    for (const rule of padRules) expect(rule).toMatch(/^\.[^{]*::before \{/)
+    // And it reaches OUTSIDE the box by a negative inset — never by a width, a
+    // height, a padding or a margin, every one of which would move the box
+    // instead. The declaration list is an ALLOWLIST, which is the only way "it
+    // paints nothing" is real.
+    const pad = cssRule('.canvas-component::before')
+    expect(pad).toContain('inset: calc(-1 * var(--hit-pad-y, 0px)) calc(-1 * var(--hit-pad-x, 0px))')
+    expect(pad).not.toMatch(/\b(?:width|height|padding|margin)\s*:/)
+    // THE ALLOWLIST GREW BY ONE, BY AUTHORIZATION, AND THE REASON IS RECORDED
+    // HERE SO A LATER READER SEES A DELIBERATE WIDENING RATHER THAN DRIFT.
+    // `z-index` was added by the frozen block's amendment of 2026-09-09: without
+    // it a later sibling's pad hit-tests over an earlier sibling's painted box,
+    // so this story would have made every component adjacent to a thin one
+    // HARDER to grab. The allowlist did its job by reddening on the unauthorized
+    // property; it is widened, never bypassed, and it still bars a background, a
+    // border, an outline, a width or a height.
+    expect(pad.split(';').map((one) => one.trim()).filter(Boolean).map((one) => one.slice(0, one.indexOf(':')).trim()).sort()).toEqual(['background', 'content', 'inset', 'position', 'z-index'])
+    expect(pad).toMatch(/background:\s*transparent/)
+
+    // HALF TWO — THE VALUES, and the reachable area really does grow. Both
+    // halves are load-bearing: removing the pad entirely reds the pad column,
+    // and inflating the box instead reds the geometry columns and the
+    // declarations above.
+    render(<App engine={engine()} initialSnapshot={padSnapshot} />)
+    for (const [label, width, height, padX, padY] of [
+      ['line component e1', '72px', '1px', '0px', '5px'],
+      ['image component e2', '4px', '4px', '4px', '4px'],
+      ['text component e3', '72px', '24px', '0px', '0px'],
+    ] as const) {
+      const element = screen.getByLabelText(label)
+      // The box is EXACTLY the projection at this zoom. The pad reaches it
+      // nowhere.
+      expect(element.style.getPropertyValue('--component-width')).toBe(width)
+      expect(element.style.getPropertyValue('--component-height')).toBe(height)
+      expect(element.style.getPropertyValue('--hit-pad-x')).toBe(padX)
+      expect(element.style.getPropertyValue('--hit-pad-y')).toBe(padY)
+      // The painted fill carries no geometry of its own, so it cannot be where
+      // an inflation hides.
+      const box = element.querySelector('.canvas-box') as HTMLElement | null
+      expect(box, `${label} must paint a .canvas-box for this row to be about anything`).not.toBeNull()
+      for (const property of ['width', 'height', 'top', 'right', 'bottom', 'left', 'inset', 'padding', 'margin']) expect(box!.style.getPropertyValue(property)).toBe('')
+    }
+  })
+
+  // THE "PLACEMENT BEATS PADDING" AND "PADDING RESTORED" ROWS, MECHANISM HALF.
+  //
+  // ⚠ WHAT THIS DOES NOT PROVE: that a click 4px from a rule with a palette
+  // kind armed actually PLACES rather than selecting the rule. That is pointer
+  // geometry, it needs a real hit test at real coordinates, and it lives in
+  // `e2e/placed-component-selection.spec.ts` — which per D-000.33 is COMPILED
+  // in this story and does not execute until the Epic 14 boundary gate. Read
+  // this row as the hook the stylesheet keys on, and nothing more.
+  //
+  // BOTH ARMS ARE ASSERTED. A hook that is always on is as useless as one that
+  // is never on — it would make the pad permanently inert while still answering
+  // "is the hook there".
+  //
+  // ⚠ THE HOOK IS `.canvas-region-placing`, THE CLASS THAT ALREADY EXISTED for
+  // App.css:113's `cursor: copy`. It is not a second encoding of the same state:
+  // review found `data-placing` duplicating this class off the same `placing`
+  // value on the same element, and the duplicate was removed rather than pinned
+  // together by a test.
+  it('marks the canvas region while a palette kind is armed and unmarks it on every route that disarms', async () => {
+    const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
+    const region = screen.getByLabelText('Canvas region')
+    expect(region.matches('.canvas-region-placing')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Line' }))
+    expect(region.matches('.canvas-region-placing')).toBe(true)
+    // ROUTE ONE: Escape, which is `clearInteraction` reached without a pointer.
+    fireEvent.keyDown(region, { key: 'Escape' })
+    expect(region.matches('.canvas-region-placing')).toBe(false)
+    // ROUTE TWO — AND THIS IS THE "PADDING RESTORED" ROW: the placement itself
+    // disarms, so the pad takes pointer events back the moment the component
+    // lands rather than staying inert for the rest of the session.
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    expect(region.matches('.canvas-region-placing')).toBe(true)
+    armAndPlace()
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    expect(region.matches('.canvas-region-placing')).toBe(false)
+    await waitFor(() => expect(screen.getByLabelText('text component e9')).toHaveFocus())
+    expect(region.matches('.canvas-region-placing')).toBe(false)
+  })
+
+  // AND THE RULE THAT HOOK EXISTS FOR. Without it the padded region swallows the
+  // placement pointerup the band beneath it was meant to receive — the same
+  // defect `.canvas-component-echo` was made inert for, in the same file.
+  //
+  // ⚠ WHAT THIS DOES NOT PROVE: that the suppression works. jsdom applies no
+  // stylesheet, so this is the declaration and not its effect; the effect is in
+  // the e2e spec named above and is unexecuted until the boundary gate.
+  //
+  // The rules are GATHERED FROM THE SHEET rather than named here, exactly as the
+  // `--hit-pad` rules are in the byte-identity row above, so a second pad rule
+  // added later cannot slip past this one either.
+  it('renders the pad inert while a placement is armed, and only while one is', () => {
+    const selectorOf = (rule: string) => rule.slice(0, rule.indexOf('{'))
+    const padSurface = ruleLines((selector) => /\.canvas-component::before/.test(selector))
+    expect(padSurface, 'App.css must style the hit-pad pseudo-element for this row to be about anything').not.toHaveLength(0)
+    const inert = padSurface.filter((rule) => /pointer-events:\s*none/.test(rule))
+    expect(inert, 'App.css must make the hit pad inert while a placement is armed').not.toHaveLength(0)
+    // Every inert rule is GATED by something ahead of the pad in its selector,
+    // and they all key on the same gate. An ungated `pointer-events: none` would
+    // retire the whole padded region while still answering "is there a
+    // suppression rule".
+    const gates = new Set(inert.map((rule) => selectorOf(rule).replace(/\s*\.canvas-component::before\s*$/, '').trim() || undefined))
+    expect(gates.has(undefined), 'a rule making the pad inert must be gated, never unconditional').toBe(false)
+    expect([...gates], 'every inert rule must key on the one armed-placement gate').toHaveLength(1)
+    const gate = [...gates][0] as string
+    // And the BASE rule is not inert — gathered the same way, so one rule cannot
+    // satisfy both halves.
+    for (const rule of padSurface.filter((one) => !selectorOf(one).includes(gate))) {
+      expect(rule, 'the unarmed pad must take pointer events').not.toMatch(/pointer-events\s*:/)
+    }
+    // THE JOIN: the gate the sheet keys on is a selector the canvas region
+    // really matches when a kind is armed and really fails to match when none
+    // is — read off the gathered selector rather than written out twice, so a
+    // rename or a deletion on either side reds this row.
+    render(<App engine={engine()} initialSnapshot={padSnapshot} />)
+    const region = screen.getByLabelText('Canvas region')
+    expect(region.matches(gate)).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Line' }))
+    expect(region.matches(gate)).toBe(true)
+  })
+
+  // A COMPONENT'S OWN PAINT OUTRANKS A NEIGHBOUR'S INVISIBLE PAD — the two
+  // matrix rows added by the frozen block's amendment of 2026-09-09.
+  //
+  // ⚠ WHAT THIS DOES NOT PROVE: which element a press actually resolves to.
+  // jsdom applies no stylesheet and computes no stacking, so this row is the
+  // DECLARED mechanism; the resolution itself is measured in
+  // `e2e/placed-component-selection.spec.ts`, which is compiled here and
+  // executes at the Epic 14 boundary gate.
+  it('drops the hit pad below every component box, and keeps the ancestor stacking context that makes that possible', () => {
+    const padRules = ruleLines((selector) => /\.canvas-component::before/.test(selector))
+    expect(padRules, 'App.css must style the hit pad for this row to be about anything').not.toHaveLength(0)
+    const declared = /z-index:\s*(-?\d+)/.exec(padRules.join('\n'))
+    expect(declared, 'the pad must declare a z-index, or a later sibling pad covers an earlier sibling box').not.toBeNull()
+    // NEGATIVE, not merely present: the pad must sit BELOW every component box,
+    // and a positive or zero z-index would raise it further instead.
+    expect(Number(declared![1])).toBeLessThan(0)
+    // ⚠ THE OTHER HALF, AND IT IS NOT OPTIONAL. A negative z-index resolves in
+    // the nearest ANCESTOR STACKING CONTEXT. Until this story there was none
+    // between the pad and the root — no z-index, transform, opacity or filter on
+    // .canvas-component, .band-window, .page-band or .page-surface — so the pad
+    // sank below `.page-surface`'s opaque background and stopped being reachable
+    // at all. Measured in Chromium, not reasoned: with the z-index alone, a
+    // press 4px from a rule landed on the band and selected nothing. Delete the
+    // isolation and the story silently loses its whole feature, which is why the
+    // guard pins both halves rather than the one that looks like the fix.
+    expect(ruleLines((selector) => /^\.(?:page-band|page-surface|band-window|canvas-region)\b/.test(selector.trim()))
+      .filter((rule) => /isolation:\s*isolate/.test(rule)),
+    'an ancestor of the hit pad must establish a stacking context, or the negative z-index escapes to the root').not.toHaveLength(0)
+    // AND THE COMPONENT BOXES THEMSELVES STAY UNRANKED, which is what keeps
+    // AC3's thin-vs-thin determinism free rather than invented. Gathered as
+    // every rule reaching a component that is NOT a pseudo-element rule.
+    const boxRules = ruleLines((selector) => /\.canvas-component/.test(selector) && !/::(?:before|after)/.test(selector))
+    expect(boxRules, 'App.css must declare component box rules for this row to be about anything').not.toHaveLength(0)
+    for (const rule of boxRules) expect(rule, 'a z-index on a component BOX would replace AC3 tree order with an invented one').not.toMatch(/z-index\s*:/)
+  })
+
+  // AC3 IS PRESERVATION, AND THIS ROW SAYS WHICH MECHANISM IT PROTECTS rather
+  // than discovering a behaviour. Alternation is already structurally
+  // impossible, on two named grounds, and both are measured here. Reverting the
+  // padded region leaves this row green — which is the point: it measures
+  // determinism, not padding. The real-coordinate half, clicking one spot over
+  // two overlapping thin components, is in e2e/placed-component-selection.spec.ts.
+  it('resolves two overlapping thin components deterministically, by the mechanism it names', () => {
+    const overlapping = { ...canvas, components: [
+      { id: 'e1', type: 'line' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 1_000, resizable: true, background: '#000000' },
+      { id: 'e2', type: 'line' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 1_000, resizable: true, background: '#000000' },
+    ] }
+    const overlapSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: overlapping }
+    const request = vi.fn(async () => ({ snapshot: overlapSnapshot }))
+    // MECHANISM ONE: nothing overrides the natural stacking order, so the LAST
+    // sibling in document order paints on top and takes the pointer. Six
+    // z-index declarations in this sheet; none of them on a canvas component.
+    // ⚠ SCOPED TO THE BOXES, NOT TO EVERY `.canvas-component` SELECTOR, and the
+    // narrowing is deliberate rather than a weakening: the pad pseudo-element
+    // now carries a z-index BY AUTHORIZATION (see the arbitration row above),
+    // while the things that hit-test as components must stay unranked so tree
+    // order alone decides. The row above owns the pad's half.
+    const css = sheetWithoutComments()
+    for (const rule of ruleLines((selector) => /\.canvas-component/.test(selector) && !/::(?:before|after)/.test(selector))) {
+      expect(rule).not.toMatch(/z-index\s*:/)
+    }
+    // POSITIVE CONTROL: the same gathering finds a z-index where one really is
+    // declared, so the absence above is a measurement.
+    expect(ruleLines((selector) => /\.canvas-text-truncated/.test(selector)).filter((rule) => /z-index\s*:/.test(rule))).not.toHaveLength(0)
+    expect(css).toContain('.canvas-text-truncated')
+    render(<App engine={engine(request)} initialSnapshot={overlapSnapshot} />)
+    expect(Array.from(document.querySelectorAll<HTMLElement>('[data-component-id]')).map((element) => element.dataset.componentId)).toEqual(['e1', 'e2'])
+    // MECHANISM TWO: `begin()` stops the pointerdown, so exactly ONE component
+    // handles a given press and nothing above it gets a second say.
+    //
+    // ⚠ THE LISTENER IS ON `document`, AND THAT PLACEMENT IS THE WHOLE
+    // MEASUREMENT. React 18 delegates from the render CONTAINER, so a native
+    // listener on any element between the component and that container — the
+    // band, the page surface — runs BEFORE React has dispatched anything and
+    // sees every press whatever the handler goes on to do. `document` is above
+    // the container, so it is reached only if the synthetic handler let the
+    // native event carry on past it.
+    const above = vi.fn()
+    document.addEventListener('pointerdown', above)
+    try {
+      for (let press = 1; press <= 3; press++) {
+        const target = screen.getByLabelText('line component e2')
+        fireEvent.pointerDown(target, { pointerId: press, clientX: 1, clientY: 1 })
+        fireEvent.pointerUp(target, { pointerId: press, clientX: 1, clientY: 1 })
+        // The same component every time. Never alternating.
+        expect(screen.getByText('e2 \u00b7 band: content')).toBeInTheDocument()
+      }
+      expect(above).not.toHaveBeenCalled()
+      // POSITIVE CONTROL, on the same listener: a press on the band — which
+      // stops nothing — does reach it, so the absence above is a measurement of
+      // `stopPropagation` and not of a listener that never fires.
+      fireEvent.pointerDown(screen.getByLabelText('Content'), { pointerId: 4, clientX: 1, clientY: 1 })
+      expect(above).toHaveBeenCalledOnce()
+    }
+    finally { document.removeEventListener('pointerdown', above) }
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('converts a local band pointer position through the shared display mapping before proposing placement', () => {
@@ -4690,6 +5153,32 @@ describe('canvas sheet stack', () => {
     // never a pin to sheet three. Go's hitTestBand rectangle is one page tall
     // and is not moved: this routes around it rather than through it.
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":0,"y":1400,"width":72,"height":24,"snap":true}')
+  })
+
+  // ⚠ THE SECOND PLACEMENT SPELLING SELECTS TOO, AND NOTHING ELSE PROVED IT.
+  // Review deleted `.then(selectPlaced)` from `placeInBand` ALONE, left `place`
+  // intact, and the whole suite stayed green at 1217/1217: every other unit and
+  // e2e row places on sheet one, which goes through `place`. This row is the
+  // only thing standing between `placeInBand` and a silent regression.
+  //
+  // ⚠ WHAT THIS DOES NOT COVER: thin-target selection. Per DW-344
+  // `createComponentCommand` hardcodes `width: 72, height: 24`, so anything
+  // placed on a later sheet arrives as a slab whether the palette said Line or
+  // not. This row exercises the LATER-SHEET ROUTE and says nothing about the hit
+  // pad; do not read it as covering both.
+  it('selects and focuses a component placed on a LATER sheet, not only on sheet one', async () => {
+    const placed = at('e9', 1_400_000)
+    const request = vi.fn(async () => ({ snapshot: { ...snapshotOf({ ...threeWindows, components: [placed] }), revision: 2 } }))
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
+    expect(screen.getByText('Component properties require a selection.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content on page 3 of 3'), { key: 'Enter' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.getByLabelText(/^text component e9/)).toHaveFocus())
+    expect(screen.getByText('e9 \u00b7 band: content')).toBeInTheDocument()
+    expect(screen.queryByText('Component properties require a selection.')).not.toBeInTheDocument()
+    // Neither the selection nor the focus sent anything of their own.
+    expect(request).toHaveBeenCalledOnce()
   })
 
   it('sends a later-sheet POINTER placement through the same column translation as the keyboard one', async () => {

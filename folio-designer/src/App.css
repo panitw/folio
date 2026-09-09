@@ -149,7 +149,24 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .page-surface { width: var(--page-display-width); height: var(--page-display-height); min-width: 1px; position: relative; flex: none; background-color: var(--color-page); box-shadow: var(--shadow-page); color: var(--color-page-ink); }
 .page-surface::before { content: ''; position: absolute; left: var(--page-margin-left); right: var(--page-margin-right); top: 0; bottom: 0; border-left: var(--hairline) solid var(--color-page-guide); border-right: var(--hairline) solid var(--color-page-guide); pointer-events: none; }
 .page-grid { background-image: radial-gradient(var(--color-page-dot) 1px, transparent 1px); background-size: var(--grid-display-pitch) var(--grid-display-pitch); background-position: 0 0; }
-.page-band { width: var(--band-width); height: var(--band-height); min-width: 1px; min-height: 1px; position: absolute; left: var(--band-x); top: var(--band-y); }
+/* STORY 14.3 — `isolation: isolate` IS THE ENABLING HALF OF THE HIT PAD'S
+   ARBITRATION, AND IT IS LOAD BEARING. The pad below carries `z-index: -1` so
+   that every component's own painted box outranks every neighbour's invisible
+   pad. A negative z-index is resolved in the nearest ANCESTOR STACKING CONTEXT,
+   and until this line there was none between the pad and the root: nothing on
+   `.canvas-component`, `.band-window`, `.page-band` or `.page-surface` creates
+   one (no z-index, no transform, no opacity, no filter). The pad therefore sank
+   below `.page-surface`'s own opaque background and stopped being reachable at
+   all — measured, not reasoned: with the z-index alone, a press 4px from a rule
+   landed on the band and selected nothing.
+   Isolating the band puts the pad one layer above the band's own background and
+   one layer below every component in it, which is exactly the contract.
+   IT CHANGES NO PIXEL. The pad paints nothing, and everything that now paints
+   above it inside the band — the `::before` tint, the `::after` boundary rule,
+   the band tab — is `pointer-events: none` or outside the components' area
+   entirely. Bands do not overlap each other, so confining each band's own
+   stacking to itself reorders nothing that was ever drawn on top of anything. */
+.page-band { width: var(--band-width); height: var(--band-height); min-width: 1px; min-height: 1px; position: absolute; left: var(--band-x); top: var(--band-y); isolation: isolate; }
 .page-band::before { content: ''; position: absolute; left: calc(-1 * var(--band-x)); width: var(--page-display-width); background: var(--tint-band); pointer-events: none; }
 .page-band-content::before { content: none; }
 .page-band-pageHeader::before { top: calc(-1 * var(--band-y)); height: calc(var(--band-y) + var(--band-height)); }
@@ -197,6 +214,68 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-component { position: absolute; left: var(--component-x); top: var(--component-y); width: max(2px, var(--component-width)); height: max(2px, var(--component-height)); overflow: visible; background: transparent; color: var(--color-page-ink); font: var(--type-page-mono); cursor: move; user-select: none; }
 .canvas-component::after { content: ''; position: absolute; inset: 0; border: var(--hairline) dotted var(--color-page-outline-dot); pointer-events: none; }
 .canvas-component:not(.canvas-component-selected):has(.canvas-image-placeholder)::after { border-style: dashed; border-color: var(--color-page-outline-dash); }
+/* STORY 14.3 — THE COMFORTABLE HIT REGION, WHICH PAINTS NOTHING.
+
+   A 1pt rule is one CSS pixel tall at 100%, and the author has to hit it before
+   they can edit it. This is the file's own established idiom for "a hit target
+   larger than its visual footprint", which App.css calls the shared idiom
+   already: `.resize-handle` below is a 24px transparent box carrying a 6px
+   painted mark, and `.selection-handle` a 12px box carrying a 6px one. 12px on
+   the thin axis is the number this borrows — the OWNER'S RULING — because an
+   edge-to-edge pad of the corner grip's 24px would make overlap the common case
+   on every thin component rather than the edge case, and overlap is exactly
+   what has to stay deterministic.
+
+   ⚠ IT IS A ::before AND NOT A ::after, AND THAT IS LOAD BEARING. `::after` on
+   `.canvas-component` is already the dotted placement outline, is restyled for
+   the selected state, and is freed (`content: none`) FOR LINES ONLY. Padding
+   hung there would work for a Line and SILENTLY FAIL for every other thin
+   element — a hairline rectangle, a 1pt-tall image — while passing any test
+   written only against lines. `::before` is unused here and is free for every
+   kind. A pseudo-element also adds no node, no role and no accessible name, and
+   hit-tests as its originating element, so `.canvas-component` stays the single
+   `role="button"` the control vocabulary already sweeps.
+
+   ⚠ AND IT PADS WITHOUT INFLATING, WHICH IS THE WHOLE POINT. The element's own
+   box — and therefore the painted `.canvas-box` that fills it at `inset: 0` —
+   is untouched: the pad is a transparent pseudo-element hung OUTSIDE the box on
+   negative insets, which is why the paint is byte-identical with the padding
+   present and absent. The `max(2px, …)` floor above is the OTHER mechanism: it
+   pads by inflating, so it collapses distinct document states into one
+   appearance (at zoom 1 a 1pt and a 2pt rule both draw 2px). That floor is left
+   exactly as it is and is recorded as DW-345; this rule deliberately does not
+   repeat its shape, and App.test.tsx asserts the difference rather than
+   describing it.
+
+   The pad is zero on any axis already at or over 12px, so a normal component's
+   hit region is exactly its box, as today. The `0px` fallbacks keep the rule
+   inert on any `.canvas-component` whose style has not set the properties, and
+   nothing here paints, tints or outlines: no background, no border, no outline,
+   no content.
+
+   ⚠ `z-index: -1` IS WHAT KEEPS THIS PAD FROM MAKING ITS NEIGHBOURS HARDER TO
+   GRAB, and it is authorized by the frozen block's amendment of 2026-09-09: a
+   component's own paint outranks a neighbour's invisible pad, and arbitrating
+   that is required, not forbidden. Without it a LATER sibling's pad hit-tests
+   over an EARLIER sibling's whole painted box and its resize handles — a 1pt
+   rule under a heading steals the heading's bottom edge — because
+   `.canvas-component` is `position: absolute; z-index: auto` and so creates no
+   stacking context of its own. Dropping every pad one layer below every
+   component box resolves it without inventing an order between the components
+   themselves: AC3's thin-vs-thin determinism is untouched, because two pads
+   still resolve by tree order exactly as they did.
+   This depends on `.page-band { isolation: isolate }` above; neither half works
+   alone, and the byte-identity guard pins both. */
+.canvas-component::before { content: ''; position: absolute; z-index: -1; inset: calc(-1 * var(--hit-pad-y, 0px)) calc(-1 * var(--hit-pad-x, 0px)); background: transparent; }
+/* PLACEMENT BEATS PADDING, and this is `.canvas-component-echo`'s fix applied
+   to the same defect class. An echo was hit-testable and "swallowed the
+   placement pointerup the band beneath it was meant to receive"; a padded
+   region reaching 5.5px past a 1pt rule would swallow it the same way, turning
+   a deliberate placement 4px away into a selection of the neighbour. While a
+   palette kind is armed the PAD goes inert — the drawn box does not, so a click
+   ON an existing component behaves exactly as it always has, and the pad takes
+   pointer events again the moment the placement is disarmed. */
+.canvas-region-placing .canvas-component::before { pointer-events: none; }
 .canvas-text-paint, .canvas-text-line, .canvas-text-fragment { position: absolute; display: block; white-space: pre; }
 /* Story 7.4: the engine says this element's paint is only a prefix. It reads
    as a bordered strip of WORDS pinned to the bottom of the component — shape

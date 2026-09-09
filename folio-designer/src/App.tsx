@@ -205,6 +205,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // off a document that is gone.
   const abortBoundaryDrag = () => { boundaryDragRef.current = undefined; setBoundaryDrag(undefined) }
   const [placing, setPlacing] = useState<PaletteKind>()
+  // STORY 14.3. The component a placement is still trying to focus, and where
+  // focus was when it made the claim. Transient chrome: it names no document
+  // state, sends nothing, and is dropped the moment the claim is honoured,
+  // withdrawn, or outlived by its component. See the effect beside
+  // `selectPlaced` for why this is state and not a timer.
+  const [pendingFocus, setPendingFocus] = useState<Readonly<{ id: string; from: Element | null }>>()
   // Where the armed palette kind is following the pointer. One transient
   // client coordinate for chrome that never touches document geometry: it
   // places no component and proposes nothing to Go.
@@ -810,15 +816,34 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }, [])
   const changePreviewViewState = useCallback((next: PDFPreviewViewState) => setPreviewViewState((current) => samePDFPreviewViewState(current, next) ? current : next), [])
   const clearInteraction = () => { setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined); abortBoundaryDrag() }
+  // STORY 14.3 — THE COMMIT REPORTS WHICH COMPONENT IT MADE, AND IT REPORTS IT
+  // BY DIFF.
+  //
+  // The protocol carries no created-id: an `EngineResult` for a `command`
+  // holds a snapshot and nothing else (engine-client.ts). So the id has to be
+  // DERIVED, and the derivation is a SET DIFFERENCE across the await — never
+  // "the last component in the band". Where Go appends is a Go implementation
+  // detail that this side has no standing to depend on; that exactly one
+  // component id appears which was not there before is a property of the
+  // create commands themselves.
+  //
+  // It answers `undefined` for every other commit — a move, a resize, a
+  // delete, a refusal, or an accepted command whose snapshot added no id —
+  // because a caller that selects "whatever came back" must have NOTHING to
+  // select in those cases. Selecting a stale id is the failure this shape
+  // forecloses, and the I/O matrix names it as its own row.
   const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
     if (!engine || fileBusy) return
     setCommitError(undefined)
     try {
       const priorRevision = snapshotRef.current?.revision
+      const priorIds = new Set((snapshotRef.current?.canvas?.components ?? []).map((component) => component.id))
       const result = await engine.request('command', payload)
       if (result.snapshot.revision !== priorRevision) invalidatePreview()
       setCurrentSnapshot(result.snapshot)
       after?.()
+      const added = (result.snapshot.canvas?.components ?? []).filter((component) => !priorIds.has(component.id))
+      return added.length === 1 ? added[0]!.id : undefined
     }
     catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
   }
@@ -901,8 +926,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const place = (x: number, y: number) => {
     if (!placing) return
     const kind = placing
+    // WHERE FOCUS WAS WHEN THE AUTHOR ASKED, read here and not when the engine
+    // answers. The whole window a placement has to lose its claim in is the one
+    // between the gesture and the response — reading it at the response would
+    // capture wherever the author had already gone and then call that "no
+    // change", which is the opposite of the guard.
+    const from = document.activeElement
     clearInteraction()
-    void commitComponent(dropComponentCommand(kind, x, y, snapEnabled))
+    void commitComponent(dropComponentCommand(kind, x, y, snapEnabled)).then((placed) => selectPlaced(placed, from))
   }
   // THE SECOND PLACEMENT SPELLING, for the sheets that did not exist before
   // (Ruling H). `dropComponent` carries a PAGE point and Go hit-tests it, and
@@ -916,10 +947,88 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const placeInBand = (band: CanvasProjection['bands'][number]['name'], x: number, y: number) => {
     if (!placing) return
     const kind = placing
+    const from = document.activeElement
     clearInteraction()
-    void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled))
+    void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled)).then((placed) => selectPlaced(placed, from))
   }
   const select = (id: string, extend: boolean) => { setBindingError(undefined); revokeTableEditor(); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
+  // STORY 14.3 — PLACING IS SELECTING, AND SELECTING IS STILL ONE FUNCTION.
+  //
+  // Placing a component used to leave nothing selected, so the inspector stayed
+  // on PAGE SETUP and the author had to go and find the thing they had just
+  // made — which for a 1pt Line is a two-pixel target. This routes through
+  // `select` above rather than reaching for `setSelected`, so a placed
+  // component is selected by EXACTLY the mechanism a clicked one is: same
+  // table-editor revocation, same binding-error clear, one path to audit.
+  //
+  // THE FOCUS MOVE IS DEFERRED, in the shape `returnWithOptionalSelection`
+  // already uses: the element being focused does not exist until React has
+  // rendered the snapshot this id came out of.
+  //
+  // It is found by scanning `data-component-id` rather than by building a
+  // selector string, so an id needs no escaping to be findable. Exactly ONE
+  // occurrence of a component is interactive (`occurrence.home` — the others
+  // are aria-hidden echoes and carry no id attribute), so the scan cannot be
+  // ambiguous.
+  //
+  // ⚠ NOTHING HERE SENDS A COMMAND. Selection and focus are local, and the
+  // absence of engine traffic is asserted rather than assumed.
+  const selectPlaced = (id?: string, from: Element | null = document.activeElement) => {
+    if (!id) return
+    select(id, false)
+    setPendingFocus({ id, from })
+  }
+  // STORY 14.3 — THE FOCUS LANDS WHEN THE ELEMENT APPEARS, NOT ON ONE GUESSED
+  // TICK, and the difference was a real defect rather than a tidiness point.
+  //
+  // This was `setTimeout(() => …placed?.focus(), 0)`, and it failed on every
+  // sheet AFTER THE FIRST: a later-sheet placement costs an extra render pass,
+  // the timeout fired before the component was mounted, the lookup found
+  // nothing, and `?.focus()` dropped the miss SILENTLY AND FOREVER — one
+  // attempt, no retry, no diagnostic. It was invisible to the tests because
+  // `waitFor` retries the ASSERTION, never the attempt, and every row placed on
+  // sheet one where the single tick happened to be enough.
+  //
+  // The pending id is STATE and this effect is KEYED ON THE SNAPSHOT, so the
+  // attempt is driven by the arrival of the projection that mounts the element
+  // rather than by a guessed tick. `canvas` and the sheet stack are both derived
+  // during render (`snapshot?.canvas`, `sheetStack(canvas)`) — no intermediate
+  // effect-driven state stands between the snapshot and the mounted component —
+  // so the render this effect follows is the render that mounts it, and a
+  // snapshot that has not mounted it yet leaves the claim standing for the next.
+  //
+  // ⚠ IT REFUSES TO STEAL FOCUS THE AUTHOR HAS ALREADY MOVED. A deferred focus
+  // that fires late can yank the caret out of a property field the author
+  // clicked into while the command was in flight. `from` is where focus was
+  // WHEN THE AUTHOR MADE THE GESTURE; if it has moved somewhere else since, and
+  // that somewhere is still on the page, the placement gives up its claim. Focus
+  // falling back to `body` — which is what happens when PAGE SETUP is replaced
+  // by the component panel under it — is not the author moving it.
+  //
+  // ⚠ AND IT CANNOT OUTLIVE ITS COMPONENT OR ITS DOCUMENT. There is no timer
+  // left to cancel on unmount, and a pending id that is no longer in the
+  // snapshot — deleted, undone, or a document replaced underneath it — is
+  // dropped rather than left waiting for an element that will never arrive.
+  // Without that clear, a claim outliving its component could land on a LATER
+  // component that reuses the id after an undo.
+  //
+  // ⚠ THAT LAST CLEAR IS DEFENCE IN DEPTH THAT NO TEST REACHES, AND IT IS SAID
+  // HERE RATHER THAN LEFT TO LOOK COVERED. Deleting it leaves the suite green
+  // (measured). It is only reachable when the claim survives a render without
+  // landing — the design canvas not mounted at that moment — and then the
+  // document moves on without the component; nothing in the unit suite can
+  // sequence that. Read the two guards above as covered and this one as not.
+  useEffect(() => {
+    if (!pendingFocus) return
+    const { id, from } = pendingFocus
+    if (!snapshotRef.current?.canvas?.components.some((component) => component.id === id)) { setPendingFocus(undefined); return }
+    if (document.activeElement !== from && document.activeElement !== document.body && from?.isConnected === true) { setPendingFocus(undefined); return }
+    const placed = Array.from(canvasRegionRef.current?.querySelectorAll<HTMLElement>('[data-component-id]') ?? []).find((element) => element.dataset.componentId === id)
+    // Not mounted yet. Keep the claim; the next render runs this again.
+    if (!placed) return
+    setPendingFocus(undefined)
+    placed.focus()
+  }, [pendingFocus, snapshot])
   const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]) }) }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
@@ -2312,6 +2421,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           App.css:304, so in a real browser a click cannot reach this element
           while the editor is open — that is a reading of the stylesheet, which
           jsdom does not apply and no test measures.) */}
+      {/* STORY 14.3 — `.canvas-region-placing` IS ALSO THE HIT PAD'S HOOK.
+          The class below already carried the armed state for the `cursor: copy`
+          rule (App.css:113); the pad's suppression rule keys on THE SAME class
+          rather than a second attribute saying the same thing. One encoding, so
+          the two cannot drift apart and no test is needed to pin them together.
+          The suppression itself is `.canvas-component-echo`'s fix for the same
+          defect class: an inert-until-needed pointer surface, so a click 4px
+          from an existing rule is a PLACEMENT and not a selection of the
+          neighbour. */}
       {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
@@ -4346,7 +4464,7 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -4548,7 +4666,56 @@ function ComponentBox({ component, zoom }: { component: CanvasProjection['compon
   if (bordered) for (const edge of boxEdges) style[`border${edge[0]!.toUpperCase()}${edge.slice(1)}`] = edges.includes(edge) ? stroke : '0'
   return <span className="canvas-box" aria-hidden="true" style={style as CSSProperties} />
 }
-function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': canvasDisplay.css(component.x, zoom), '--component-y': canvasDisplay.css(component.y, zoom), '--component-width': canvasDisplay.css(component.width, zoom), '--component-height': canvasDisplay.css(component.height, zoom) } as CSSProperties }
+// STORY 14.3 — THE COMFORTABLE HIT SIZE, AND WHY THE ARITHMETIC IS HERE.
+//
+// 12px on the thin axis: the same reachable box `.selection-handle` already
+// gives a 6x6 painted mark, and the OWNER'S RULING over the file's other
+// precedent. `.resize-handle` is 24px, but that is a CORNER grab of which there
+// is one per component; an edge-to-edge pad of ~11px per side on every thin
+// component would make overlap the common case rather than the edge case.
+//
+// A component already at or over 12px on an axis is padded by ZERO on it, so a
+// normal text box's hit region is exactly its box, as today. A thinner one gets
+// HALF the shortfall on each side, so the pointer-reachable extent reaches 12px
+// while the drawn box keeps every pixel it had and not one more.
+//
+// ⚠ THE SHORTFALL IS MEASURED AGAINST WHAT IS DRAWN, NOT AGAINST THE
+// PROJECTION, AND THE DIFFERENCE IS DW-345 REACHING IN THROUGH A SIDE DOOR.
+// The box does not draw at `component.height`; it draws at
+// `max(2px, component.height x zoom)` — the paint floor this story was told to
+// leave alone (App.css:197 and :242). Taking the shortfall from the projection
+// added the pad to an ALREADY-FLOORED box, so a 1pt rule reached 1 + 2 x 5.5 =
+// 13px, not the 12px the owner ruled: 13.1px at zoom 0.9, 13.5px at zoom 0.5.
+// The tell is that 2pt, 4pt and 12pt all landed on exactly 12px — the sizes
+// where the floor is inactive. Flooring here too makes the reachable extent
+// exactly 12px at every zoom, and it does so WITHOUT touching the floor: this
+// reads the floor's value, it does not change it.
+//
+// ⚠ IT IS KEYED TO ELEMENT SIZE, NEVER TO COMPONENT KIND. A 1pt-tall image or
+// rectangle is as unreachable as a 1pt line and is padded on the same terms.
+//
+// ⚠ IT IS COMPUTED HERE, FROM THE PROJECTION, AND NOT IN CSS OR FROM THE DOM.
+// CSS cannot branch on whether a custom property is under a threshold, and the
+// pad must be zero above it. Asking the element how big it is would be
+// `getBoundingClientRect`/`offsetHeight` — measurements
+// canvas-authority-contract.test.ts bans outright, and which this story was
+// told to open no carve-out for. `component.width`/`height` are Go's own
+// millipoints and `zoom` is local state, so this is ordinary arithmetic on
+// document values through exactly the rounding `canvasDisplay.css` uses.
+//
+// ⚠ AND THE PAD IS CHROME. No command carries it, no FieldSpec authors it, and
+// no document byte moves because of it. It is a hit region in the EDITOR, which
+// is a different thing from `style.padding` (D-12.4.1) that happens to share a
+// word.
+const COMFORTABLE_HIT_PX = 12
+// The floor `.canvas-component` declares, read rather than re-decided. If that
+// rule's 2px ever moves, this constant is the one line that has to move with it.
+const PAINT_FLOOR_PX = 2
+function hitPad(millipoints: number, zoom: number): string {
+  const drawn = Math.max(PAINT_FLOOR_PX, Math.round(millipoints * zoom * 1000) / 1_000_000)
+  return `${Math.max(0, Math.round((COMFORTABLE_HIT_PX - drawn) * 500_000) / 1_000_000)}px`
+}
+function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': canvasDisplay.css(component.x, zoom), '--component-y': canvasDisplay.css(component.y, zoom), '--component-width': canvasDisplay.css(component.width, zoom), '--component-height': canvasDisplay.css(component.height, zoom), '--hit-pad-x': hitPad(component.width, zoom), '--hit-pad-y': hitPad(component.height, zoom) } as CSSProperties }
 
 function equalBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
   const a = new Uint8Array(left)
