@@ -85,18 +85,27 @@ carries a knowingly-taken owner exception to that promise, recorded below.
   still untouched — it is invoked with genuinely supplied data — so the promise's *intent*, that every
   displayed PDF is one the engine really produced, holds; its literal wording does not. Do not treat
   this as licence to widen engine changes elsewhere in the epic.
-- **Story 13.6's owner decision (D-13.6.1, 2026-09-08).** The thumbnail rail is built on `pdfjs-dist`'s
-  **viewer components** — `pdfjs-dist/web/pdf_viewer.mjs`, using `PDFViewer` and `PDFThumbnailViewer` —
-  not on a bespoke rail over the core API. Same package, already a dependency, no new licence. The
+- **Story 13.6's owner decision — SUPERSEDED TWICE; read D-13.6.2 and D-13.6.4, not this.** D-13.6.1
+  (2026-09-08) said the rail is built on `pdfjs-dist`'s viewer components using `PDFViewer` and
+  `PDFThumbnailViewer`. **`PDFThumbnailViewer` is not in the published package** — 0 occurrences against a
+  positive control of 4 for `PDFViewer`, and the bundle exports 22 names without it. The orchestrator
+  supplied that false premise. As shipped: **two files, 629 lines, VENDORED** from mozilla/pdf.js
+  `v6.2.108` into `src/vendor/pdfjs/` (D-13.6.2, owner; narrowed by D-13.6.4). `PDFViewer` was never
+  adopted and `pdf_thumbnail_viewer.js` was never vendored — at that version it is Firefox's
+  page-organiser, not a rail. The
   orchestrator recommended the core-API route and was overruled; the consequences below are constraints,
   not preferences, precisely because they are the costs that choice carries.
 - **One page-state authority.** `PDFViewer` owns page state itself, so the preview must have exactly one
   page-state authority: Story 13.2's `viewer-navigation.ts` is retired or subordinated to it, never run
   in parallel. Two authorities for the same fact is the defect shape this run has found most often, and
   adopting the viewer bundle is what makes it a live risk rather than a hypothetical one.
-- **The diagnostic-to-page derivation is our own work.** `pdfjs-dist` supplies thumbnails and page state;
-  it does not supply the mapping from a diagnostic to the page it falls on. That derivation — the
-  "diagnostic map" half of the rail — is Story 13.6's own code.
+- **The diagnostic-to-page derivation was NOT built, and no story owns it. See DW-311.** It is true that
+  `pdfjs-dist` cannot supply it. What this line got wrong is that 13.6 would therefore write it: measured
+  at 13.6's plan gate, **there is no data to write it from.** `EngineDiagnostic` carries no page,
+  `isDiagnostic`'s `hasExactKeys` REJECTS one, and five of seven `Diagnostic{` sites in `folio-go/render.go`
+  run *before pagination*, so no page exists yet to record. There is no join anywhere in the wasm reply
+  between a page index and an `elementId`. **Owner ruling D-13.6.3 deferred it out of the story entirely**,
+  rejecting a partial map that would mark two of seven sites and let an unmarked page read as clean.
 - **The viewer bundle's payload is measured, not assumed.** Measured before dispatch at `pdf_viewer.mjs`
   307 KB + `pdf_viewer.css` 160 KB + 328 KB of images, against the 853 KB core `pdf.mjs` already shipped
   — roughly a 90% increase in the PDF.js payload before minification and gzip. The actual release-size
@@ -116,7 +125,10 @@ carries a knowingly-taken owner exception to that promise, recorded below.
   while keeping a reachable way to abandon a render in progress.
 - **Three columns.** Left: PAGES thumbnail rail, one numbered thumbnail per page, current page marked in
   the select accent, a page carrying a diagnostic marked in the bind accent, clicking navigates, and a
-  long document truncates (`… 29 more`) rather than rendering every thumbnail. Middle: the page on the
+  long document truncates rather than rendering every thumbnail. **(The mockup's `… 29 more` is an
+  illustration constrained by its own fixed 764px canvas, not a specified bound. As shipped the bound is
+  **12**, chosen as both a layout and a rasterisation budget, and it is one constant in
+  `page-rail-facts.ts`.)** Middle: the page on the
   dark ground, carrying the PRODUCTION OUTPUT badge and nothing competing with it. Right: the evidence
   rail.
 - **Evidence rail** carries RENDER (engine version, target, pages, rows, elapsed, byte size), OUTPUT
@@ -147,13 +159,20 @@ carries a knowingly-taken owner exception to that promise, recorded below.
 
 - 13.1–13.5 are delivered; 13.6 is the remaining story and lands on top of all of them.
 - 13.6 completes the PAGES rail that 13.3 scoped but did not build — 13.3 owns the evidence rail and the
-  screen frame, 13.6 owns the thumbnail rail itself and the diagnostic-to-page marking.
-- 13.6 must reconcile with 13.2: `PDFViewer` owns page state, so `viewer-navigation.ts` is retired or
-  subordinated. The status-bar page/zoom controls 13.2 placed must read from the same single authority,
+  screen frame, 13.6 owns the thumbnail rail itself. **It does NOT own the diagnostic-to-page marking**,
+  which D-13.6.3 deferred to DW-311 because no data source for it exists.
+- 13.6 must reconcile with 13.2 — **but not as written here.** `PDFViewer` was never adopted, and
+  `viewer-navigation.ts` was never a page-state authority in the first place: measured, it is 108 lines of
+  pure arithmetic with no imports, no React, no DOM and no state at all. It **shipped untouched.** The sole
+  page-state authority is `App.tsx`'s `previewViewState`, written through one funnel, and the rail reads
+  from it. The status-bar page/zoom controls 13.2 placed must read from the same single authority,
   and the `src/preview/` exception list in the canvas-authority contract test — a shared guard other
   epics also assert against — must still be extended by name rather than by wildcard.
-- 13.6's diagnostic marking depends on 13.3's diagnostic model and on the page/path/element/band location
-  the diagnostic cards already carry.
+- ~~13.6's diagnostic marking depends on 13.3's diagnostic model and on the page/path/element/band location
+  the diagnostic cards already carry.~~ **FALSE ON BOTH HALVES.** There is no diagnostic marking in 13.6
+  (DW-311), and the diagnostic cards carry a **three-part** location — `dataPath · kind · band`. There is no
+  page in it, deliberately; `diagnostic-presenter.tsx` says so in a comment. The four-part claim came from
+  the UX mockup and was never true of the code.
 - 13.3 re-dresses the diagnostic card and its Locate-on-canvas / Dismiss behaviour already built earlier
   in the designer; it changes presentation, not that behaviour.
 - 13.1's Save PDF and 13.3's evidence rail land the same paired action row — 13.3 owns its placement,
