@@ -484,8 +484,8 @@ development_status:
   epic-13-retrospective: optional
 
   # 14.1 writes the button rule FIRST; the sweep is its consequence, not its substance.
-  epic-14: backlog
-  14-1-one-button-vocabulary: backlog
+  epic-14: in-progress
+  14-1-one-button-vocabulary: in-progress
   14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and: backlog
   14-3-a-placed-component-is-the-selected-component: backlog
   14-4-the-panel-offers-no-control-the-engine-will-refuse: backlog
