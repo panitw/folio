@@ -284,9 +284,24 @@ function r4Violations(controls: ReadonlyArray<Control>, census: ReadonlyArray<st
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [{ face: 'Noto Sans', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true, value: 'Hello' }
 const tableComponent = { id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: false }
+// STORY 14.2 / D-14.2.Q4 — THE LINE AND THE RECTANGLE JOIN THE SWEEP.
+//
+// 14.1 deferred V2 (R-Q2) on the explicit promise that 14.2, 14.3, 14.4 and
+// 14.7 would each own one of the remaining surfaces and rule on it with the
+// surface in front of them. This is the first of the four, and it ships new
+// controls: an orientation segmented control, and a `background` row spelled
+// `Colour` on a Line and `Fill` on a Rectangle, which renames up to four
+// accessible names apiece. Shipping those under a guard that cannot see them
+// would have made the deferral retroactively hollow.
+//
+// The Line CARRIES A BORDER on purpose: the panel withholds the border
+// controls for a Line and discloses the stored one in prose, so this state
+// sweeps the withholding rather than a Line that had nothing to withhold.
+const lineComponent = { id: 'e2', type: 'line' as const, band: 'content' as const, x: 0, y: 40_000, width: 72_000, height: 1_000, resizable: true, background: '#000000', borderWidth: 2_000, borderColor: '#c81e1e', borderEdges: ['bottom' as const] }
+const rectComponent = { id: 'e3', type: 'rect' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 24_000, resizable: true, background: '#1b2a4a', borderWidth: 1_000, borderColor: '#000000', borderEdges: ['bottom' as const] }
 const engine = () => ({ request: vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } })) }) as unknown as EngineClient
 
-const mount = (components: ReadonlyArray<typeof textComponent | typeof tableComponent>) =>
+const mount = (components: ReadonlyArray<typeof textComponent | typeof tableComponent | typeof lineComponent | typeof rectComponent>) =>
   render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [...components] } }} />)
 
 // Each state is a NAMED render, so a state that stops producing controls is
@@ -309,6 +324,22 @@ const states: ReadonlyArray<Readonly<{ name: string; open: () => Element }>> = [
     open: () => {
       const view = mount([textComponent, tableComponent])
       fireEvent.click(within(view.container).getByLabelText('table component e7'))
+      return view.container
+    },
+  },
+  {
+    name: 'design · a line element selected',
+    open: () => {
+      const view = mount([textComponent, tableComponent, lineComponent, rectComponent])
+      fireEvent.click(within(view.container).getByLabelText('line component e2'))
+      return view.container
+    },
+  },
+  {
+    name: 'design · a rect element selected',
+    open: () => {
+      const view = mount([textComponent, tableComponent, lineComponent, rectComponent])
+      fireEvent.click(within(view.container).getByLabelText('rect component e3'))
       return view.container
     },
   },
@@ -358,6 +389,10 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · a text element selected · Zoom in',
   'design · a table element selected · Zoom out',
   'design · a table element selected · Zoom in',
+  'design · a line element selected · Zoom out',
+  'design · a line element selected · Zoom in',
+  'design · a rect element selected · Zoom out',
+  'design · a rect element selected · Zoom in',
   // `.property-inline-action` — the inspector's `×` clear, `∅` null and the
   // font-family disclosure chevron. Uniform within their class, so R1 is green.
   // They render only while something is selected.
@@ -371,6 +406,33 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · a table element selected · Set Background null',
   'design · a table element selected · Set Visible if null',
   'design · a table element selected · Show fonts',
+  // STORY 14.2 — THE LINE AND THE RECTANGLE, DERIVED BY RUNNING THE SWEEP AND
+  // READING WHAT IT REPORTED, never hand-written from the spec.
+  //
+  // Read the two blocks against each other and the story is legible in them.
+  // The LINE carries no `Clear Border …` row at all: this panel withholds the
+  // border stack for a Line, and this census is where that withholding is
+  // visible to a guard rather than only to a reader. It also renders no
+  // TYPOGRAPHY section, so `Clear Font size (pt)`, `Clear Line spacing` and
+  // `Show fonts` are absent for both kinds — neither is `typographic`.
+  //
+  // And the renamed row appears under its NEW name in both: `Set Colour null`
+  // for the Line, `Set Fill null` for the Rectangle. `Set Background null`
+  // survives untouched in the text and table states above, which is exactly
+  // what gating the spelling on a SINGLE selection buys.
+  //
+  // The line's `Clear Colour` and the rect's `Clear Fill` render because each
+  // fixture carries a committed colour; `canClear` is field-keyed and offers
+  // the reset beside the value it resets.
+  'design · a line element selected · Clear Colour',
+  'design · a line element selected · Set Colour null',
+  'design · a line element selected · Set Visible if null',
+  'design · a rect element selected · Clear Border width (pt)',
+  'design · a rect element selected · Clear Border colour',
+  'design · a rect element selected · Clear Border edges',
+  'design · a rect element selected · Clear Fill',
+  'design · a rect element selected · Set Fill null',
+  'design · a rect element selected · Set Visible if null',
   // The PDF navigation group — uniform within its group, so R2 is green.
   'preview · Previous PDF page',
   'preview · Next PDF page',
@@ -398,6 +460,10 @@ const V2_CENSUS: ReadonlyArray<string> = [
 const GROUP_ARITY_FLOOR = 2
 const CHECKED_GROUPS: ReadonlySet<string> = new Set([
   'Local file actions',
+  // Story 14.2's orientation control. Two glyph segments, both carrying
+  // `aria-pressed`, so it is a segmented control by derivation — its members
+  // are outside R4's census by construction and inside R2's arity.
+  'Orientation',
   'Designer mode',
   'Inspector tabs',
   'Align',
@@ -406,13 +472,22 @@ const CHECKED_GROUPS: ReadonlySet<string> = new Set([
   'Render actions',
 ])
 const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges'])
-// Counts enumerated at the Story 14.1 baseline (125 controls, 17 class tokens,
-// 20 group instances, smallest state 17). Floors, not equalities, so ordinary
-// growth never churns the guard while any shrink reddens.
+// RE-BASELINED AT STORY 14.2, and the re-baselining is the point rather than
+// bookkeeping. Floors, not equalities, so ordinary growth never churns the
+// guard while any shrink reddens — but a floor left at an old measurement is a
+// SLACK ratchet, and a comment naming the wrong baseline is worse than no
+// ratchet at all, because it reads as maintained. 14.2 added two render states
+// and the totals rose; leaving 14.1's numbers would have let the guard lose
+// most of a state without a word.
+//
+// MEASURED HERE, at Story 14.2, by executing the sweep and reading it:
+// 194 controls, 19 class tokens, 28 group instances, smallest state 17
+// (`preview`, unchanged — the two new states sweep 34 and 35).
+// PER_STATE_CONTROL_FLOOR therefore does NOT move: the smallest state did not.
 const PER_STATE_CONTROL_FLOOR = 15
-const CONTROL_FLOOR = 100
-const CLASS_FAMILY_FLOOR = 15
-const GROUP_INSTANCE_FLOOR = 18
+const CONTROL_FLOOR = 170
+const CLASS_FAMILY_FLOOR = 17
+const GROUP_INSTANCE_FLOOR = 25
 
 // The most non-empty swept controls any single state puts inside a group of this
 // name — the arity R2 actually got to work with at its best.
@@ -673,16 +748,21 @@ describe('control vocabulary contract', () => {
   it('R0 reds when a render state is dropped, and NAMES the groups that stopped being checked', () => {
     // THE FAILURE THE COVERAGE CLAUSE EXISTS FOR, EXECUTED rather than claimed.
     // Drop the preview state — the cheapest way for this guard to quietly get
-    // smaller. The control and class-family totals STILL CLEAR their floors: the
-    // remaining three states sweep 108 controls between them, over the floor of
-    // 100. The group-instance floor does red, but only as a smaller number; it
-    // cannot say what left. The by-name half names both groups that stopped
-    // being checked, which is the whole point of recording them by name.
-    const shrunk = sweepStates(states.slice(0, 3))
+    // smaller. The control and class-family totals STILL CLEAR their floors, so
+    // neither notices. The group-instance floor does red, but only as a smaller
+    // number; it cannot say WHAT left. The by-name half names both groups that
+    // stopped being checked, which is the whole point of recording them by name.
+    //
+    // STORY 14.2 moved this from `slice(0, 3)` to `slice(0, -1)`. It is the
+    // SAME mutation — drop the preview state — but the declared states are no
+    // longer three, and a fixed index would have quietly dropped the new Line
+    // and Rectangle states too, taking `Orientation` with them and proving
+    // something other than what this clause claims to prove.
+    const shrunk = sweepStates(states.slice(0, -1))
     expect(shrunk.flatMap((entry) => entry.controls).length).toBeGreaterThanOrEqual(CONTROL_FLOOR)
     expect(new Set(shrunk.flatMap((entry) => entry.controls).flatMap((control) => control.classes)).size).toBeGreaterThanOrEqual(CLASS_FAMILY_FLOOR)
     expect(r0Violations(shrunk)).toEqual([
-      'R0 the sweep visited 15 group instances, under the floor of 18',
+      'R0 the sweep visited 23 group instances, under the floor of 25',
       'R0 the group "PDF navigation" renders in no declared state, so nothing checked it',
       'R0 the group "Render actions" renders in no declared state, so nothing checked it',
     ])

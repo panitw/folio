@@ -14,9 +14,36 @@
 // silently turning a typed `1e3` into a 1000pt width.
 import { commandBytes, jsonArray, jsonBoolean, jsonNumber, jsonObject, jsonString } from './command-json'
 
-export type PropertyField = 'x' | 'y' | 'width' | 'height' | 'value' | 'expression' | 'visibleIf' | 'fontFamily' | 'fontSize' | 'lineSpacing' | 'bold' | 'italic' | 'align' | 'valign' | 'color' | 'background' | 'borderWidth' | 'borderColor' | 'borderEdges' | 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
+// STORY 14.2 TURNED THIS UNION INTO A LIST AND DERIVED THE UNION FROM IT.
+//
+// The panel now has to ask a RUNTIME question of it — `printsDataPath` in
+// App.tsx asks whether the last segment of a diagnostic path is the name of a
+// property field, because Go answers a multi-key refusal with the first key in
+// canonical order rather than the key that failed, and `component.width` on a
+// `{width, height}` intent is a mislabel while `component.geometry` is not.
+// A type alone cannot answer that; a second, hand-written array beside the type
+// could, and would drift from it silently.
+//
+// So there is ONE list, and the type is its members. Drift is unrepresentable
+// rather than merely unlikely. The order is Go's `propertyOrder`
+// (`component_commands.go`), member for member, which is where it always came
+// from.
+export const PROPERTY_FIELDS = ['x', 'y', 'width', 'height', 'value', 'expression', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const
+export type PropertyField = typeof PROPERTY_FIELDS[number]
+export const isPropertyField = (value: string): value is PropertyField => (PROPERTY_FIELDS as ReadonlyArray<string>).includes(value)
 
 export type PropertyIntent = Readonly<{ field: PropertyField; operation: 'set' | 'clear' | 'null'; value?: string | boolean | ReadonlyArray<string> }>
+// STORY 14.2 / PATCH 7 — THE EMPTY BATCH IS UNREPRESENTABLE, NOT MERELY
+// UNTESTED.
+//
+// `updateComponentPropertiesCommand(ids, [])` would emit `"changes":{}`, which
+// Go refuses (`len(changes) == 0`) — and the refusal would be SILENTLY
+// SWALLOWED, because the panel anchors an error by the fields the intent
+// carried and an empty intent carries none, so `errorFor` matches no control
+// and the author is shown nothing at all. A non-empty tuple makes the call fail
+// to compile instead. A guard asserted in a test is a guard that can be
+// deleted; a guard in the type cannot be reached.
+export type PropertyIntents = readonly [PropertyIntent, ...PropertyIntent[]]
 
 const pointFields = new Set<PropertyField>(['x', 'y', 'width', 'height', 'fontSize', 'borderWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'])
 // lineSpacing travels unquoted like a point field but is NOT one, and the
@@ -60,13 +87,44 @@ export const POSITIVE_LENGTH_FIELDS: ReadonlyArray<PropertyField> = ['width', 'h
 // Log, which records that as an open question rather than a settled omission.
 export const ORIGIN_FLOOR_FIELDS: ReadonlyArray<PropertyField> = ['x', 'y']
 
-export function updateComponentPropertiesCommand(ids: ReadonlyArray<string>, intent: PropertyIntent): ArrayBuffer {
-  const change = intent.operation === 'clear' || intent.operation === 'null'
+// STORY 14.2 WIDENS THIS ADDITIVELY: one command may now carry SEVERAL changes.
+//
+// WHY, and it is one gesture rather than a general capability: a Line's
+// orientation control swaps `width` and `height`, and those two numbers must
+// move as ONE undo entry. Two sequential commands are two revisions, two undo
+// entries, and — worse — a transient shape between them that
+// `containComponent` gets to refuse, because the engine contains each id ONCE
+// AFTER ALL CHANGES ARE APPLIED (`component_commands.go`: applyPropertyChanges
+// then containComponent, per id). One command has no transient shape to refuse.
+//
+// NOTHING NEW REACHES GO. Its only cardinality rule on `changes` is a FLOOR —
+// `len(changes) == 0` is refused, `> 1` is not — and every key this form can
+// emit is already in `propertyOrder`. The engine was written for a multi-key
+// `changes` object; this is the first caller to send one.
+//
+// THE SINGULAR FORM IS UNTOUCHED, BY CONSTRUCTION. `PropertyIntent` did not
+// move, the parameter merely ACCEPTS an array as well, and a single intent
+// still encodes byte-for-byte the bytes it encoded before — asserted in
+// `component-property-command.test.ts`, not assumed. Thirteen call sites pass
+// the singular form and none of them changed.
+//
+// KEY ORDER ON THE WIRE IS THE CALLER'S AND CARRIES NO MEANING. Go decodes
+// `changes` into a `map[string]json.RawMessage` and walks its own
+// `propertyOrder`, so `{width, height}` and `{height, width}` reach the same
+// document. That is asserted against Go's own source in the test file rather
+// than believed here. `jsonObject` throws on a duplicate key, so the same field
+// cannot be named twice in one command whatever the caller intends.
+export function updateComponentPropertiesCommand(ids: ReadonlyArray<string>, intent: PropertyIntent | PropertyIntents): ArrayBuffer {
+  const intents = 'field' in intent ? [intent] : intent
+  return commandBytes('updateComponentProperties', [['ids', jsonArray(ids.map(jsonString))], ['changes', jsonObject(intents.map((one) => [one.field, changeFor(one)] as const))]])
+}
+
+function changeFor(intent: PropertyIntent): string {
+  return intent.operation === 'clear' || intent.operation === 'null'
     ? jsonObject([['op', jsonString(intent.operation)]])
     : pointFields.has(intent.field) || ratioFields.has(intent.field)
       ? jsonObject([['op', jsonString('set')], ['value', numberLiteral(intent.value)]])
       : jsonObject([['op', jsonString('set')], ['value', propertyValue(intent.value)]])
-  return commandBytes('updateComponentProperties', [['ids', jsonArray(ids.map(jsonString))], ['changes', jsonObject([[intent.field, change]])]])
 }
 
 function numberLiteral(value: PropertyIntent['value']): string {

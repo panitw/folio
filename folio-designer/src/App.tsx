@@ -14,7 +14,7 @@ import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
 import { documentLocaleCommand, documentUTCOffsetCommand } from './document-settings-command'
 import { bindComponentScalarCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
-import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent } from './component-property-command'
+import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, isPropertyField, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent, type PropertyIntents } from './component-property-command'
 import { FontBrowser } from './FontBrowser'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
 import { addFontChainCommand, embedFontFamilyCommand, type FontChainEntryAsk } from './font-chain-command'
@@ -1175,7 +1175,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       pageSetupInFlight.current = false
     }
   }
-  const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
+  const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent | PropertyIntents, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
     if (!engine || fileBusy) return undefined
     setCommitError(undefined)
     setPropertyError(undefined)
@@ -1196,7 +1196,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     } catch (error) {
       if (documentGeneration.current === responseGeneration && selectedRef.current.join(',') === selectionKey) {
         const diagnostic = componentDiagnosticDetail(error)
-        setPropertyError({ field: intent.field, selectionKey, ...diagnostic })
+        // EVERY field the failing intent carried, not one. A refusal is
+        // anchored by what the PANEL sent, never by what the engine returned —
+        // and since Story 14.2 one intent may carry two fields, so the anchor
+        // is a set and `errorFor` asks whether it contains the field it is
+        // rendering beside. A single-field intent produces a one-member set and
+        // behaves exactly as it did.
+        setPropertyError({ fields: intentFields(intent), selectionKey, ...diagnostic })
       }
       return undefined
     }
@@ -2534,8 +2540,18 @@ function PageSetup({ preset, orientation, draft, onPreset, onOrientation, onDraf
 }
 
 type PanelComponent = CanvasProjection['components'][number]
-type PropertyCommitError = Readonly<{ field: PropertyField; selectionKey: string; elementId?: string; dataPath?: string; message: string }>
-type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent, generation: number, key: string) => Promise<CanvasProjection | undefined>
+// STORY 14.2. `fields` IS A SET BECAUSE AN INTENT MAY NOW CARRY TWO.
+//
+// It records what the PANEL sent, which is what anchors the refusal beside the
+// control that sent it. It is deliberately not the engine's returned path:
+// `propertyPath` (`component_commands.go`) answers with the FIRST key in
+// canonical order rather than the key that actually failed, so on a
+// `{width, height}` intent refused by `height` it says `component.width`.
+// That is why `dataPath` is suppressed for a multi-field intent at the render
+// site below, and why the anchor is this set instead.
+type PropertyCommitError = Readonly<{ fields: ReadonlyArray<PropertyField>; selectionKey: string; elementId?: string; dataPath?: string; message: string }>
+const intentFields = (intent: PropertyIntent | PropertyIntents): ReadonlyArray<PropertyField> => 'field' in intent ? [intent.field] : intent.map((one) => one.field)
+type CommitProperties = (ids: ReadonlyArray<string>, intent: PropertyIntent | PropertyIntents, generation: number, key: string) => Promise<CanvasProjection | undefined>
 // Panel sections mirror the UX design's inspector: an identity row, then
 // POSITION / CONTENT / TYPOGRAPHY / BOX / BINDING. Each field keeps its exact
 // engine field name and accessible label; only the presentation is grouped.
@@ -2562,6 +2578,48 @@ const fxHint: Readonly<Record<FieldExpression, string>> = { placeholder: 'Accept
 function holdsExpression(fx: FieldExpression, text: string): boolean { return fx === 'placeholder' ? containsPlaceholder(text) : text !== '' }
 const positionFields: ReadonlyArray<FieldSpec> = [{ field: 'x', label: 'X (pt)', affix: 'X', unit: 'pt' }, { field: 'y', label: 'Y (pt)', affix: 'Y', unit: 'pt' }]
 const sizeFields: ReadonlyArray<FieldSpec> = [{ field: 'width', label: 'Width (pt)', affix: 'W', unit: 'pt' }, { field: 'height', label: 'Height (pt)', affix: 'H', unit: 'pt' }]
+// STORY 14.2 — A LINE IS A THICKNESS AND A COLOUR, AND THE PANEL NOW SAYS SO.
+//
+// A Line is drawn as a very short, very wide filled box, which is how the
+// engine models it — `internal/template/parse_bands.go` handles `ElementLine`
+// and `ElementRect` with "no extra fields", the format spec says both are
+// drawn from `style.border` and `style.background`, and
+// `element_box_test.go` states outright that "a rule's declared height is its
+// thickness". Height IS thickness, width IS length, background IS colour,
+// already, in the engine. Until this story the panel spelled all three in the
+// engine's implementation terms — `H`, `W`, `Background` — so drawing a
+// hairline required knowing it is a filled box.
+//
+// ⚠ THIS IS A RELABEL AND NOTHING ELSE. `field` is untouched in every spec
+// below, so every one of these controls writes exactly the key it wrote
+// before, through the same `updateComponentProperties`. `affix` is the visible
+// word; `label` is the accessible name and is never rendered. No new
+// `PropertyField`, no new command kind, no new serialized key — and the wire
+// bytes for every pre-existing gesture are byte-identical, which
+// `line-rect-vocabulary.test.tsx` asserts against literal JSON rather than
+// claiming here.
+type LineOrientation = 'horizontal' | 'vertical'
+// DERIVED FROM THE COMMITTED BOX, READ-ONLY, AND NEVER LATCHED. There is no
+// orientation in the document and this story may not add one: a stored
+// orientation would be a new serialized key. So the panel reads the shape it
+// was given. TIES READ HORIZONTAL — a square "line" is degenerate and one of
+// the two answers has to be chosen; horizontal is the one a rule is drawn as
+// by default (`lineDropHeight = 1000` against a much wider drop).
+//
+// ⚠ AND BECAUSE IT IS DERIVED, IT MOVES WHEN THE BOX MOVES. Setting Thickness
+// above Length re-reads the shape as vertical and the two labels swap over the
+// two values. That is accepted and stated rather than prevented — see the test
+// that pins it — because preventing it needs stored state.
+function lineOrientation(component: PanelComponent): LineOrientation { return component.height <= component.width ? 'horizontal' : 'vertical' }
+// Length is the long axis, Thickness the short one. `draftFor` keys the
+// rendered draft on `spec.field`, so a flip REORDERS these two rows and
+// relabels them; it never remounts either, and neither loses its committed
+// value.
+function lineSizeFields(orientation: LineOrientation): ReadonlyArray<FieldSpec> {
+  const along: PropertyField = orientation === 'horizontal' ? 'width' : 'height'
+  const across: PropertyField = orientation === 'horizontal' ? 'height' : 'width'
+  return [{ field: along, label: 'Length (pt)', affix: 'Length', unit: 'pt' }, { field: across, label: 'Thickness (pt)', affix: 'Thickness', unit: 'pt' }]
+}
 // One CONTENT field, not two. Go keeps two commands behind the same
 // element.Value — `value` rejects a placeholder, `expression` requires one —
 // and splitting the panel along that seam made the author pick the command
@@ -2637,6 +2695,42 @@ const colorField: FieldSpec = { field: 'color', label: 'Text colour', affix: 'Co
 // keeps and renders, and Go's command layer now refuses it off a table.
 const borderFields: ReadonlyArray<FieldSpec> = [{ field: 'borderWidth', label: 'Border width (pt)', affix: 'Border', unit: 'pt', empty: 'none' }, { field: 'borderColor', label: 'Border colour', affix: 'Border colour', swatch: true, empty: 'none' }]
 const backgroundField: FieldSpec = { field: 'background', label: 'Background', affix: 'Background', swatch: true, empty: 'none' }
+// STORY 14.2. THE SAME FIELD, SPELLED FOR THE KIND IN FRONT OF THE AUTHOR.
+//
+// `field` stays `background` in all three spellings, so the wire bytes are
+// identical whichever word is on screen. Relabelling `label` renames up to
+// four accessible names at once — the box, `Pick ${label}`, `Clear ${label}`
+// and `Set ${label} null` — which is why the control-vocabulary census had to
+// grow a Line and a Rectangle state before this landed.
+//
+// ⚠ GATED ON A SINGLE SELECTION. A mixed selection keeps `Background`: one
+// command goes to every id in it, and no one word is true of two kinds.
+// `empty` WITHOUT `shown`. `shown` puts the string in the BOX, where blur
+// commits it (`fontSize` and `lineSpacing` do this deliberately, with the
+// engine's own projected default). An invented default here would let
+// selecting a Line and tabbing through it write the document.
+function boxFillFieldFor(type: PanelComponent['type'] | undefined): FieldSpec {
+  if (type === 'line') return { ...backgroundField, label: 'Colour', affix: 'Colour' }
+  if (type === 'rect') return { ...backgroundField, label: 'Fill', affix: 'Fill' }
+  return backgroundField
+}
+// D-14.2.Q1. WHAT THE WITHHELD BORDER CONTROLS LEAVE BEHIND, AND ITS LIMITS.
+//
+// A border on a Line PAINTS — `elementBoxDeclaration` is kind-agnostic and
+// `borderPaints` returns true for a present, non-null, non-empty edge set. So
+// hiding the controls hides a property that draws ink, and the honest answer
+// is to disclose it rather than let it vanish. Hiding costs discoverability,
+// not preservation: `PropertyDraft` writes nothing on mount, so a control this
+// panel withholds never removes the value the document carries.
+//
+// ⚠ IT REPORTS THE PROJECTION, NOT THE PDF, and two known cases sit outside
+// what it can see: a border that paints no ink projects nothing, and an
+// all-edges border declared as `{}` (DW-145) prints while the canvas shows
+// nothing. Both are out of this story's scope. The note therefore says what
+// the panel knows and claims no more.
+function borderProjected(component: PanelComponent): boolean {
+  return component.borderWidth !== undefined || component.borderColor !== undefined || component.borderEdges !== undefined
+}
 const visibilityField: FieldSpec = { field: 'visibleIf', label: 'Visible if', affix: 'Visibility', empty: 'always', fx: 'condition' }
 type SegmentSpec = Readonly<{ value: string; label: string; content: ReactNode }>
 // The justify glyph is FOUR FLUSH RULES, drawn as an SVG path like its three
@@ -2689,6 +2783,11 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   const scopedError = propertyError?.selectionKey === ids.join(',') ? propertyError : undefined
   const scopedChainError = fontChainError?.selectionKey === ids.join(',') ? fontChainError : undefined
   const table = single?.type === 'table' ? single : undefined
+  // STORY 14.2. The per-kind vocabulary is gated on a SINGLE selection, in the
+  // idiom `table` and `image` already use, and for the same reason: a mixed
+  // selection has no one kind to speak for, and `App.test.tsx`'s text+rect case
+  // asserts it still reads `Width (pt)`.
+  const line = single?.type === 'line' ? single : undefined
   const image = single?.type === 'image' ? single : undefined
   const typographic = all((type) => type === 'text' || type === 'table')
   // FOUR segments for an all-text selection, THREE for anything carrying a
@@ -2703,7 +2802,12 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   const live = (field: PropertyField): string | undefined => dragging && (field === 'x' || field === 'y' || field === 'width' || field === 'height') ? points(dragging[field]) : undefined
   // The CONTENT field sends `value` or `expression` depending on the typed
   // text, so it owns the rejection of either command.
-  const errorFor = (field: PropertyField) => scopedError && (scopedError.field === field || (field === 'value' && scopedError.field === 'expression')) ? scopedError : undefined
+  // STORY 14.2 turned the equality into a MEMBERSHIP, and nothing else moved.
+  // A single-field intent still records one field and still matches exactly the
+  // control that sent it; an orientation intent records `width` and `height`,
+  // so `errorFor('width')` and `errorFor('height')` both resolve for the one
+  // refusal and it is anchored on both rows it moved.
+  const errorFor = (field: PropertyField) => scopedError && (scopedError.fields.includes(field) || (field === 'value' && scopedError.fields.includes('expression'))) ? scopedError : undefined
   const draftFor = (spec: FieldSpec) => <PropertyDraft key={spec.field} spec={spec} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} live={live(spec.field)} error={errorFor(spec.field)} />
   // STORY 11.3 / F1 — THE CUT EACH TOGGLE WOULD REQUIRE, AND WHETHER THE CHAIN
   // DECLARES IT. Deduplicated, so the combined cut — which implicates BOTH
@@ -2715,11 +2819,11 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   const absentCuts = [...new Set([missingBoldCut, missingItalicCut].filter((cut): cut is StyleCut => cut !== undefined))]
   return <>
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
-    <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && sizeFields.map(draftFor)}</div></PropertySection>
+    <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && (line ? lineSizeFields(lineOrientation(line)) : sizeFields).map(draftFor)}</div>{line && <OrientationProperty component={line} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('width') && errorFor('height') ? scopedError : undefined} />}</PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onDeclareFamily={onDeclareFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={scopedError?.field === 'fontFamily' ? scopedError : undefined} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'bold' ? scopedError : undefined} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'italic' ? scopedError : undefined} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'align' ? scopedError : undefined} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'valign' ? scopedError : undefined} /></div></PropertySection>}
+    {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onDeclareFamily={onDeclareFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={errorFor('fontFamily')} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('bold')} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('italic')} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('align')} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('valign')} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
-    <PropertySection title="BOX">{borderFields.map(draftFor)}<BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={scopedError?.field === 'borderEdges' ? scopedError : undefined} />{draftFor(backgroundField)}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
+    <PropertySection title="BOX">{!line && borderFields.map(draftFor)}{!line && <BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('borderEdges')} />}{line && borderProjected(line) && <p className="honest-note">This line carries a border in the document — the panel does not offer one, because a line is authored as a thickness and a colour. The stored border is unchanged and still paints. This note reports what the engine projects, not what the PDF draws.</p>}{draftFor(boxFillFieldFor(single?.type))}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
     <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>
     <p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Arbitrary CSS is not editable here.'}</p>
@@ -3338,7 +3442,38 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: blur, onKeyDown: keyDown }
   return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
     ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} style={proseHeight === undefined ? undefined : { height: `${proseHeight}px` }} {...shared} onChange={(event) => { holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
-    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{error.dataPath ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+}
+// D-14.2.Q2b, AS AMENDED. THE RULE IS *NEVER PRINT A FIELD NAME THAT MAY BE
+// WRONG* — NOT *NEVER PRINT ANYTHING*.
+//
+// Go's `propertyPath` returns THE FIRST KEY IN CANONICAL ORDER, not the key
+// that failed — correct while `changes` always held one member, a mislabel the
+// moment it holds two. On a `{width, height}` intent refused by `height` it
+// answers `component.width`, and that reaches the screen.
+//
+// ⚠ AN EARLIER VERSION OF THIS FUNCTION SUPPRESSED EVERY PATH ON A MULTI-FIELD
+// INTENT, on the stated premise that "the panel cannot tell the two apart".
+// THAT PREMISE WAS FALSE, and it was throwing away the one diagnostic an author
+// will actually hit: `containComponent` refuses a rotated rule with
+// `component.geometry` (`component_commands.go`), which is ACCURATE for a
+// width/height pair — and it is the refusal the orientation control produces.
+// The panel CAN separate them exactly, because `propertyPath` returns one of
+// `PropertyField`'s 23 members or the literal `changes`, and `geometry` is
+// neither. So the test is a membership test against the union itself.
+//
+// Suppress only when BOTH hold: the intent carried more than one field, AND
+// the path's last segment names a property field. Everything else prints —
+// `component.geometry` because it is true, `component.changes` because it names
+// no specific field and therefore cannot mislabel one (uninformative is not the
+// same as wrong), and every single-field intent exactly as before this story.
+//
+// Fixing `propertyPath` in Go is the other, better repair and it is an engine
+// change this story does not carry — registered as DW-333.
+function printsDataPath(error: PropertyCommitError): boolean {
+  if (error.dataPath === undefined) return false
+  if (error.fields.length === 1) return true
+  return !isPropertyField(error.dataPath.split('.').pop() ?? '')
 }
 function canonicalValue(canvas: CanvasProjection, ids: ReadonlyArray<string>, field: PropertyField): string | undefined { const values = canvas.components.filter((component) => ids.includes(component.id)).map((component) => committedValue(component, field)); return values.length === ids.length && values.every((value) => value === values[0]) ? values[0] ?? '' : undefined }
 /**
@@ -4015,6 +4150,94 @@ function SegmentedProperty({ label, field, segments, components, ids, onCommit, 
     setPending(false)
   }
   return <div className="property-editor"><div className="property-segmented" role="group" aria-label={uniform ? label : `${label}, mixed`}>{segments.map((segment) => <button key={segment.value} type="button" className="property-segment" disabled={pending} aria-pressed={current === segment.value} aria-label={segment.label} title={current === segment.value ? `${segment.label}, press again to clear` : segment.label} onClick={() => void commit(segment.value)}>{segment.content}</button>)}{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+}
+// STORY 14.2 — THE ORIENTATION CONTROL, AND WHY IT IS A SIBLING OF
+// `SegmentedProperty` RATHER THAN A WIDENING OF IT.
+//
+// `SegmentedProperty` writes ONE closed-set engine field and its `field` prop
+// is typed `'align' | 'valign'`. This control writes no field of its own: it
+// SWAPS two, and it must do so as ONE command. Widening the older control to
+// carry a multi-intent would have put a second commit shape into a control that
+// serves Align and Vertical align, for the benefit of one caller. (MEASURED, so
+// the next reader does not re-derive it: `<SegmentedProperty` occurs twice in
+// this file, both on the TYPOGRAPHY line. An earlier draft of this comment
+// claimed eight sites and was wrong; the architectural argument never depended
+// on the number.)
+//
+// IT IS ONE COMMAND, AND THAT IS THE POINT RATHER THAN A DETAIL. One
+// `updateComponentProperties` carrying both `width` and `height` is one
+// revision and ONE UNDO ENTRY, so a single undo returns both dimensions
+// together. Two sequential single-field commands would be two of each — and
+// would additionally pass through a transient shape (long AND thick, or short
+// AND thin) that `containComponent` gets to refuse, because the engine
+// contains each id once AFTER applying every change. There is no transient
+// shape here to refuse.
+//
+// AND IT NEVER SNAPS. `updateComponentProperties` has no `snap` parameter to
+// get wrong. `setComponentBounds` and `resizeComponent` both take one, and
+// this would have been the codebase's only caller passing `snap: false` — a
+// deviation whose failure mode is the next person tidying the inconsistency
+// and silently destroying every thin rule in every document. Correct by
+// construction beats correct by remembering.
+//
+// THE STATE IS DERIVED, NOT STORED. `lineOrientation` reads the committed box;
+// pressing the segment that is already current sends nothing, because there is
+// nothing to change and no property to clear — which is where this control
+// deliberately differs from `SegmentedProperty`'s press-again-to-clear.
+const orientationGlyphs: Readonly<Record<LineOrientation, string>> = { horizontal: 'M2 8h12', vertical: 'M8 2v12' }
+function OrientationIcon({ variant }: { variant: LineOrientation }) {
+  return <svg aria-hidden="true" className="segment-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><path d={orientationGlyphs[variant]} /></svg>
+}
+const orientationSegments: ReadonlyArray<Readonly<{ value: LineOrientation; label: string }>> = [{ value: 'horizontal', label: 'Horizontal orientation' }, { value: 'vertical', label: 'Vertical orientation' }]
+// D-14.2.Q7. A SQUARE RULE HAS NO ORIENTATION TO CHANGE, AND THE PANEL SAYS SO
+// INSTEAD OF OFFERING A CONTROL THAT DOES NOTHING.
+//
+// Swapping the dimensions of a square is the identity, so no implementation
+// could make the press meaningful: the command would carry the numbers the
+// document already holds, `wasm/engine.go` would find the produced bytes equal
+// to the current bytes and not commit at all — no revision, no undo entry, no
+// dirty flag — and the author would be left pressing a live control whose
+// silence is its whole answer. In the epic whose subject is the panel telling
+// the truth, the honest spelling is a disabled segment WITH ITS REASON BESIDE
+// IT (DESIGN.md: "State the reason next to anything disabled").
+//
+// It is disabled FROM MOUNT rather than transiently, so the focused-control
+// hazard the in-flight path avoids below does not arise here.
+const squareRuleReason = 'A square rule has no orientation to change.'
+function OrientationProperty({ component, ids, onCommit, documentGeneration, error }: { component: PanelComponent; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const current = lineOrientation(component)
+  const square = component.width === component.height
+  const pendingRef = useRef(false)
+  const swap = async (next: LineOrientation) => {
+    if (next === current || square || pendingRef.current) return
+    pendingRef.current = true
+    try {
+      // The two numbers exchanged, each spelled by `points` from the committed
+      // box — never re-derived, never rounded, and never taken from a draft the
+      // author may still be typing into.
+      await onCommit(ids, [{ field: 'width', operation: 'set', value: points(component.height) }, { field: 'height', operation: 'set', value: points(component.width) }], documentGeneration, ids.join(','))
+    } finally {
+      // WITHOUT THE `finally` A THROWN COMMIT WEDGES THE CONTROL FOR THE LIFE OF
+      // THE SELECTION: the flag would stay raised and every later press would
+      // return at the guard above, silently. `applyProperties` catches its own
+      // refusals today, so this is a guard against a future caller rather than a
+      // reachable defect — which is exactly when a single-flight flag is easiest
+      // to get wrong.
+      pendingRef.current = false
+    }
+  }
+  // ⚠ NO `disabled` WHILE A COMMAND IS IN FLIGHT, and that is the repository's
+  // own measured rule rather than an omission. Disabling a FOCUSED control moves
+  // focus to `<body>` and does not give it back when the control is re-enabled
+  // (measured in Chromium 1217; see `PropertyDraft`'s arrow-step path, which
+  // passes `disable = false` for the same reason). A toggle is pressed BY the
+  // focused element, so raising a disabled flag here would throw the author's
+  // focus away on every single orientation change. jsdom does not implement
+  // blur-on-disable, so a green suite is not evidence here — the browser is.
+  // The single-flight guard is `pendingRef` alone, which needs no re-render.
+  const errorId = error ? 'property-error-orientation' : undefined
+  const reasonId = square ? 'property-orientation-square' : undefined
+  return <div className="property-editor"><div className="property-segmented" role="group" aria-label="Orientation">{orientationSegments.map((segment) => <button key={segment.value} type="button" className="property-segment" disabled={square && segment.value !== current} aria-pressed={current === segment.value} aria-label={segment.label} aria-describedby={segment.value === current ? undefined : reasonId} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} title={segment.label} onClick={() => void swap(segment.value)}><OrientationIcon variant={segment.value} /></button>)}</div>{square && <p id={reasonId} className="property-unavailable">{squareRuleReason}</p>}{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}{(edges.length > 0 || !same) && <button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" onClick={() => void update([])}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div> }
 
