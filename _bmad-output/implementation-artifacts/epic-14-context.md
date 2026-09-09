@@ -37,8 +37,13 @@ inherited constraints rather than open questions.
 - **No format change, no version increment, no new engine surface.** Every story is presentation.
   Where a panel needs data it lacks, the value already exists in an engine projection or the
   sample-data model. The exceptions are named ones: 14.9 adds a **canvas projection** field (column
-  label, width, alignment, binding), and 14.7 needs a projection field for a table's sample item
-  count. Projection fields, never format fields.
+  label, width, alignment, binding), and 14.7 does **NOT** need one (corrected
+  2026-09-10; this previously read "14.7 needs a projection field for a table's sample item count").
+  Measured: `SampleNode.count` and `components[].band` are already in `App.tsx` scope at the
+  `<TableEditor>` call site, and the width budget is `available = band.width - table.x` with a table's
+  `component.width` already the sum of its column widths. Going through Go for data already in hand
+  would cost a six-file `hasExactKeys` wire dance whose failure mode is a silently terminated worker.
+  Projection fields, never format fields.
 - **Never invent a control the format cannot carry.** Any control not traceable to a field the engine
   consumes is absent rather than disabled-and-mysterious. This is named as how the epic's own defects
   were created.
