@@ -12307,3 +12307,45 @@ the same sentence in prose, because it is found by exactly the search that shoul
 
 Note the remaining nuance, which the comment could carry instead of being deleted: CI runs on **push**, so an
 unpushed commit is genuinely unverified. That was the live condition for 14 commits until 2026-09-09.
+
+### DW-349 - the picker offers `params.*` paths the engine refuses, with no dimming
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's builder, at the Open-Questions gate. **Owner:** Story 14.6. **Severity:** MEDIUM. **Status:** OPEN.
+
+The data picker offers `params.*` candidates undimmed. Go refuses them at `component_commands.go:749-751`.
+
+**This falsifies Story 14.4's own title** - *"The panel offers no control the engine will refuse"* - in a way
+none of its four ACs cover. Registered rather than absorbed because Story 14.6's RUNTIME badge AC owns the
+picker's per-candidate presentation; 14.4 owns the *rule*, not the tree. Confirmed by running the real parser
+over a synthetic sample rather than by reading the picker's code.
+
+### DW-350 - the picker offers empty collections, which the engine accepts and the render then fails
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's builder. **Owner:** Story 14.6. **Severity:** MEDIUM. **Status:** OPEN.
+
+An empty collection is offered labelled *"root scalar candidate"*. Go **accepts** `segments:["items"]` and
+canonicalises it to `"value": "{{items}}"` (`component_commands_test.go:283-287`) - **deliberately**, per
+D-6.2.1.
+
+**This is the nastier of the pair and no AC in Epic 14 names it in these terms.** Every other finding in this
+epic is "the panel offers something the engine refuses", which a pre-flight check can close by mirroring the
+engine's rule. **This is the one place the panel offers something the engine *accepts* and the *render* then
+fails** - so no amount of agreement between the panel and the command layer can catch it. The check it needs
+lives at a third place entirely, and the epic's framing ("offers no control the engine will refuse") does not
+reach it.
+
+### DW-351 - the only editable table-binding site in the product has no test file
+
+- **source_spec:** `folio-designer/src/TableEditor.tsx`
+- **Found by:** Story 14.4's builder, establishing where a table's binding is edited. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`TableEditor.tsx` has **no test file at all**. Its binding control at `:194` is the single editable site for a
+table's collection in the whole product, and it is covered by nothing but an encoder unit test one layer below
+it.
+
+**The severity is in the coincidence: this is simultaneously the only place the value can be edited and the
+only surface with no test of its own.** Story 14.4 routes users here by amending the inspector to name the
+editor as where the binding is edited - so the story increases traffic to an untested surface without adding
+coverage to it, which is worth stating plainly rather than leaving implicit.

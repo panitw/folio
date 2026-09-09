@@ -125,8 +125,14 @@ are spelled. No new functional requirements land; FR1, FR4, FR5, FR7 and FR10 ar
 - **14.1 → 14.2, 14.3, 14.4, 14.7.** The vocabulary rule is written down first; the per-panel sweeps
   are its consequence, each owning one of the surfaces 14.1 deliberately deferred, and 14.7's
   alignment control must be the one 14.1 settles.
-- **14.4 ↔ 14.10.** 14.4 requires a table's binding to be stated once where it is editable; 14.10
-  rules that "where" is the main window, leaving the editor's bound-field column as display.
+- **14.4 ↔ 14.10 — CORRECTED 2026-09-09; the previous wording conflated two different values.**
+  It read: *"14.4 requires a table's binding to be stated once where it is editable; 14.10 rules that
+  'where' is the main window."* **These are not the same binding.** 14.10 is "A table column is bound
+  from the main window" — the **per-column** bound field (`updateTableColumnBinding`). 14.4's AC3 is
+  the **table's own collection** (`configureTableBinding`). Different values, different commands, and
+  Story 14.7 explicitly **keeps** the collection and row alias editable inside the table editor. So
+  14.10 does not settle where 14.4's collection is edited, and 14.4 must not be built as though it
+  does. A cache that conflates two commands is worse than a stale one: it reads as settled guidance.
 - **14.8 depends on Epic 12's table styling capability** (header height, header style, alternating row
   colour) and adds no second way to store it.
 - **14.7 needs a projection field it does not name** — the sample's item count for a table's
