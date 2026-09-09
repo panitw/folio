@@ -1,10 +1,22 @@
 pdfjs-dist 6.2.108
 Copyright 2012 Mozilla Foundation
 
-Folio redistributes only the local PDF.js worker, four Adobe binary CMaps, and
-four Liberation Sans standard-font files from pdfjs-dist to rasterize PDF bytes
+Folio redistributes the local PDF.js worker, four Adobe binary CMaps, and four
+Liberation Sans standard-font files from pdfjs-dist to rasterize PDF bytes
 produced by Folio's local Go renderer. No PDF.js viewer asset is served from a
 network origin.
+
+Folio also redistributes two PDF.js SOURCE files, copied from the mozilla/pdf.js
+repository at tag v6.2.108 (the same version as the pdfjs-dist package above) and
+carried in folio-designer/src/vendor/pdfjs/:
+
+- web/pdf_thumbnail_view.js — modified in three recorded places so it resolves
+  its two imports from pdfjs-dist/build/pdf.mjs and needs no viewer AppOptions.
+- web/renderable_view.js — unmodified, byte for byte.
+
+Both keep their Apache-2.0 headers intact. Every change, with its reason and the
+SHA-256 of each file before and after, is recorded in
+folio-designer/src/vendor/pdfjs/PROVENANCE.md.
 
 The complete attribution and license materials shipped with these copied bytes
 are retained beside this NOTICE:

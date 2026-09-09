@@ -49,6 +49,30 @@ vendor/
 go.work
 go.work.sum
 
+# ── Story 13.6's vendored PDF.js source ───────────────────────────
+#
+# `vendor/` above is the Go convention and is spelled WITHOUT a leading slash,
+# so it matches a directory named `vendor` at ANY depth — including
+# folio-designer/src/vendor/, where Story 13.6 vendors two PDF.js source files
+# that MUST be committed (the designer imports them, so an ignored tree is a
+# build that only works on the machine that fetched them). Measured while
+# staging this story: `git check-ignore -v folio-designer/src/vendor/pdfjs/
+# pdf_thumbnail_view.js` named `.gitignore:48 vendor/`.
+#
+# ⚠ THE DIRECTORY ALONE IS NEGATED, AND THERE IS DELIBERATELY NO `/**` LINE.
+# Re-including a DIRECTORY only lets git descend into it; every file inside is
+# then still tested against every pattern above, so `.env`, `*.key`, `*.pem`,
+# `node_modules/`, `dist/`, `coverage/` and `*.tsbuildinfo` all keep applying in
+# there. A `!folio-designer/src/vendor/**` line would re-include the files
+# themselves and defeat all of them at once — measured: with that line present,
+# `git check-ignore` reported planted `.env`, `id_rsa.key`, `x.pem` and
+# `sub/.env` under folio-designer/src/vendor/pdfjs/ as NOT ignored, i.e.
+# committable. With the directory line alone, all four are ignored and all six
+# real vendored files are not. Story 1.3's `example.test/` carve-out above needs
+# its second line because `*.test` matches FILES; `vendor/` matches only a
+# directory, so this one does not.
+!folio-designer/src/vendor/
+
 # ── Cross-target matrix harness build output (Story 1.2, AC12/F-7) ─
 folio-go/.matrix-build/
 

@@ -37,6 +37,7 @@ import { clampPreviewScale, PREVIEW_ZOOM_CHOICES, steppedPreviewScale, typedPrev
 import { canInstallPreview, formatRenderAge, freshnessChrome, PREVIEW_DEBOUNCE_MS, PreviewWorkScheduler, renderAgeTickMs } from './preview/freshness'
 import { PreviewDiagnostics, PreviewFailure, type DiagnosticLocation } from './preview/diagnostic-presenter'
 import { PreviewEvidenceRail } from './preview/evidence-rail'
+import { PageRail } from './preview/page-rail'
 import { diagnosticDismissalKey, RENDER_TARGET } from './preview/evidence-rail-facts'
 import { pdfDigest } from './preview/pdf-digest'
 import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
@@ -2258,7 +2259,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       <div className="mode-switch" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
     </header>
     <div className="workbench" id="future-features">
-      <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><PaletteIcon kind={kind} />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
+      {/* STORY 13.6 — THE PALETTE GIVES WAY TO THE PAGES RAIL.
+          This column was an UNCONDITIONAL child until now: in Preview it was
+          180px of placement controls that could not place anything, because
+          the canvas they place onto is what Preview replaces. The mode
+          ternary that already switches the middle column now switches this
+          one too, off the SAME `mode` — never a second answer to "are we in
+          preview".
+
+          THE RAIL NEEDS A DOCUMENT TO ENUMERATE, so it renders only when
+          there are bytes. A failed render has none, and the failure card in
+          the main region is what the author reads instead; a rail of empty
+          wells beside it would suggest pages that were never produced. */}
+      {mode === 'design'
+        ? <nav className="palette-rail" aria-label="Component palette"><p className="section-label">PALETTE</p>{paletteItems.map(([label, kind]) => <button className="palette-item" type="button" key={kind} onPointerDown={() => { setPlacing(kind); setHoverBand(undefined) }} onClick={() => { setPlacing(kind); setHoverBand(undefined) }} aria-pressed={placing === kind} aria-label={`Place ${label}`}><PaletteIcon kind={kind} />{label}<kbd>place</kbd></button>)}<p className="honest-note">Choose or drag a component, then choose a page band.</p></nav>
+        : preview && <PageRail bytes={preview.bytes} pages={previewPages} currentPage={previewViewState.page} onGoToPage={goToPreviewPage} />}
       {/* NO onClick HERE, DELIBERATELY (Story 17.2). The backdrop — the grey
           space around the page — used to clear the selection when the click
           landed on the <main> itself. That guard (target === currentTarget)

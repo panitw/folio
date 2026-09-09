@@ -45,6 +45,58 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .mode-switch button:focus-visible, .pdf-preview-scroll:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .workbench { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: var(--palette-width) minmax(0, 1fr) var(--panel-width); }
 .palette-rail { overflow: auto; padding: var(--space-5) var(--space-panel-x); background: var(--color-panel); border-right: var(--hairline) solid var(--color-line); }
+/* STORY 13.6 — PREVIEW'S FIRST COLUMN IS THE PAGES RAIL, AND IT IS NARROWER.
+   This is the declaration Story 13.3 deliberately left free (see its note
+   further down this file): the rail lands on `.workbench`'s ONLY
+   `grid-template-columns`, modified by the same `.app-shell-preview` class the
+   row heights already switch on, so there is one answer to the shell's geometry
+   per mode rather than two that can disagree.
+
+   ⚠ `132px` IS A LITERAL, AND NOT AN OVERSIGHT. `design-contract.test.ts`
+   asserts the implemented token names equal DESIGN.md's by exact equality per
+   group, so minting a `--page-rail-width` would mean editing a planning
+   artifact from inside an implementation story. And it CANNOT be responsive:
+   `canvas-authority-contract.test.ts` asserts this file's `@media` list equals
+   exactly `['prefers-reduced-motion: reduce']`, so a second media rule reds a
+   guard about browser measurement authority. The width comes from
+   `mockups/Preview.dc.html:50`. */
+.app-shell-preview .workbench { grid-template-columns: 132px minmax(0, 1fr) var(--panel-width); }
+/* ⚠ THE THREE COLUMNS ARE ASSIGNED BY NAME, NOT LEFT TO AUTO-PLACEMENT, because
+   in Preview the FIRST child is conditional. The rail needs a document to
+   enumerate, so a failed render — and the moment before the first bytes arrive —
+   puts only TWO elements in a three-column grid, and auto-placement then drops
+   `main.preview-region` into the 132px track and the inspector into the `1fr`.
+   That is a visibly broken screen on this story's own final matrix row, and no
+   unit test can see it: jsdom applies no stylesheet at all, so
+   `e2e/preview-page-rail.spec.ts` carries the geometry proof.
+   Explicit tracks rather than a filler element, because the matrix requires that
+   NO rail be in the document when there is nothing to enumerate, and a filler is
+   one more node that a later reader has to be told is not a rail. */
+.app-shell-preview .page-rail { grid-column: 1; }
+.app-shell-preview .preview-region { grid-column: 2; }
+.app-shell-preview .inspector-panel { grid-column: 3; }
+.page-rail { min-height: 0; overflow: auto; background: var(--color-panel); border-right: var(--hairline) solid var(--color-line); }
+.page-rail .section-label { margin: 0; padding: var(--space-4) var(--space-panel-x) var(--space-3); color: var(--color-ink-low); }
+.page-rail-list { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0 var(--space-panel-x); list-style: none; }
+.page-rail-entry { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: 0; border: 0; background: transparent; color: var(--color-ink-faint); font: var(--type-mono); }
+.page-rail-entry:focus-visible { outline: 2px solid var(--color-select); outline-offset: 2px; }
+.page-rail-entry-current { color: var(--color-ink-high); }
+/* The well is folio's own box, so the placeholder is the right size and colour
+   before a single page has rasterised — and the current-page border grows from
+   1px to 2px inside a `border-box` 44x62, so marking a page moves nothing. */
+.page-rail-well { flex: none; width: 44px; height: 62px; overflow: hidden; border: var(--hairline) solid var(--color-line-strong); background: var(--color-page-shell); }
+.page-rail-entry-current .page-rail-well { border: 2px solid var(--color-select); background: var(--color-page); }
+/* The two class names below are pdf.js's, not folio's: `PDFThumbnailView`
+   builds `div.thumbnail > div.thumbnailImageContainer > img` into the well. The
+   image is contained rather than stretched, so a page whose aspect ratio is not
+   the design's 44:62 is letterboxed on the page-shell ground instead of being
+   distorted. */
+.page-rail-well .thumbnail, .page-rail-well .thumbnailImageContainer { display: block; width: 100%; height: 100%; }
+.page-rail-well img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* The page number beside each thumbnail. The colour is the ENTRY's, so it moves
+   with `.page-rail-entry-current`; only the numeric treatment is set here. */
+.page-rail-number { font: var(--type-mono); font-variant-numeric: tabular-nums; }
+.page-rail-more { margin: 0; padding: var(--space-4) var(--space-panel-x); color: var(--color-ink-ghost); font: var(--type-mono); }
 .inspector-panel { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: var(--color-panel); border-left: var(--hairline) solid var(--color-line); }
 .panel-tabs { display: flex; border-bottom: var(--hairline) solid var(--color-line); }
 .panel-tab { min-height: 30px; padding: var(--space-3) var(--space-panel-x); border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--color-ink-low); font: var(--type-body); letter-spacing: var(--tracking-brand); }

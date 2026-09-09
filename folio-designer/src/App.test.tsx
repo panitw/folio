@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { shortcutHintsFor } from './shortcuts'
 import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
+import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
 import { shippedFamilyEntry } from './shipped-face-cuts'
@@ -126,6 +127,29 @@ const shippedFaceEchoCanvas = (name: string) => {
 // re-spells single quotes as double ones when a declaration is read back, and
 // the claim is about WHICH families are asked for and in what ORDER.
 const familiesAskedFor = (node: HTMLElement) => node.style.fontFamily === '' ? [] : node.style.fontFamily.split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
+
+// STORY 13.6 — THE PAGES RAIL IS STOOD IN FOR, FOR THE SAME REASON THE VIEWER
+// IS. The real rail opens a `PDFDocumentProxy` and drives vendored pdf.js
+// thumbnail code; in jsdom `canvas.getContext('2d')` is null and
+// `OffscreenCanvas` does not exist, so rasterisation is proven against the
+// component in `preview/page-rail.test.tsx` and in a real browser in
+// `e2e/preview-page-rail.spec.ts`. What only `App` can answer is asserted here:
+// that the palette gives way to the rail and back, what the rail is HANDED, and
+// that a rail click reaches the same page-state funnel the status bar writes
+// through.
+//
+// ⚠ THE STAND-IN IMPORTS THE REAL BOUND AND SPELLS THE REAL LABELS. Both were
+// divergences worth naming: a hard-coded `12` here meant setting
+// `PAGE_RAIL_BOUND` to 10 left `toHaveLength(12)` passing against a rail showing
+// ten, and a `Page N thumbnail` label meant every App-level query in this file
+// named a string the shipped rail never produces. A stand-in that answers to
+// names production does not use is a test of the stand-in.
+vi.mock('./preview/page-rail', async () => {
+  const { PAGE_RAIL_BOUND } = await import('./preview/page-rail-facts')
+  return {
+    PageRail: ({ pages, currentPage, onGoToPage }: { pages?: number; currentPage: number; onGoToPage: (page: number) => void }) => <nav aria-label="Page thumbnails"><p>PAGES</p><code data-testid="page-rail-props">{JSON.stringify({ pages, currentPage })}</code>{Array.from({ length: Math.min(pages ?? 0, PAGE_RAIL_BOUND) }).map((_, index) => index + 1).map((page) => <button key={page} type="button" aria-label={`Page ${page}`} aria-current={page === currentPage ? 'page' : undefined} onClick={() => onGoToPage(page)}>{page}</button>)}</nav>,
+  }
+})
 
 vi.mock('./preview/pdf-viewer', () => ({
   initialPDFPreviewViewState: { page: 1, scale: 1, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 },
@@ -7373,6 +7397,95 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     // the indicator says the preview is rendering rather than claiming a length
     // it cannot know.
     expect(within(cleared).getByLabelText('PDF page status')).toHaveTextContent('Rendering PDF')
+  })
+})
+
+// STORY 13.6: THE PALETTE COLUMN BECOMES THE PAGES RAIL.
+//
+// The rail's own enumeration, bound and marking are covered against the
+// component in `preview/page-rail.test.tsx`. These rows are the ones that only
+// exist against the real `App`.
+describe('Story 13.6: the preview navigates by page thumbnails', () => {
+  // THE MODE PARTITION, BOTH WAYS. The Design half is what stops the removal
+  // leaking out of Preview: the palette was an unconditional child of
+  // `.workbench` until this story, so a gate written on the wrong side of the
+  // ternary would take it away everywhere and every `Place …` test would say so
+  // — which is why the reverse claim is asserted here rather than assumed.
+  it('replaces the component palette with the PAGES rail in Preview, and puts both back where they were in Design', async () => {
+    await showNavigablePreview()
+    expect(screen.getByLabelText('Page thumbnails')).toBeInTheDocument()
+    expect(screen.getByText('PAGES')).toBeInTheDocument()
+    // ABSENT FROM THE DOCUMENT, not merely hidden: the palette's landmark, its
+    // label and all five of its controls are gone.
+    expect(screen.queryByLabelText('Component palette')).toBeNull()
+    expect(screen.queryByText('PALETTE')).toBeNull()
+    expect(screen.queryAllByRole('button', { name: /^Place / })).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
+    expect(screen.getByLabelText('Component palette')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+    expect(screen.queryByLabelText('Page thumbnails')).toBeNull()
+    expect(screen.queryByText('PAGES')).toBeNull()
+  })
+
+  it('hands the rail the page count and the current page from the one page-state authority', async () => {
+    await showNavigablePreview()
+    expect(JSON.parse(screen.getByTestId('page-rail-props').textContent ?? '{}')).toEqual({ pages: 34, currentPage: 1 })
+    commitTyped(within(screen.getByLabelText('Status bar')).getByRole('textbox', { name: 'PDF page number' }), '7')
+    // The rail reads the SAME value the viewer does, because there is only one.
+    expect(JSON.parse(screen.getByTestId('page-rail-props').textContent ?? '{}')).toEqual({ pages: 34, currentPage: 7 })
+    expect(previewViewerState().page).toBe(7)
+  })
+
+  // THE FUNNEL, THROUGH THE REAL `App`, COMPARED AS A WHOLE OBJECT. A rail that
+  // navigated by building a fresh view state would silently reset the zoom, and
+  // an assertion on `page` alone would pass straight over that.
+  it('moves the page through the same funnel the status bar writes through, disturbing nothing else', async () => {
+    await showNavigablePreview()
+    const bar = screen.getByLabelText('Status bar')
+    commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
+    const settled = previewViewerState()
+    expect(settled.scale).toBe(1.5)
+    fireEvent.click(screen.getByRole('button', { name: 'Page 3' }))
+    expect(previewViewerState()).toEqual({ ...settled, page: 3 })
+    expect(within(bar).getByLabelText('PDF page status')).toHaveTextContent('Page 3 of 34')
+    expect(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })).toHaveValue('150')
+  })
+
+  it('leaves a page the rail truncated away reachable from the status bar, and marks none as current', async () => {
+    await showNavigablePreview()
+    commitTyped(within(screen.getByLabelText('Status bar')).getByRole('textbox', { name: 'PDF page number' }), '30')
+    expect(previewViewerState().page).toBe(30)
+    // Twelve entries, page 30 among none of them, and the rail marks nothing
+    // rather than marking page 12 — the rail is never the only route to a page.
+    // THE RAIL REALLY DID TRUNCATE, AND PAGE 30 IS REALLY NOT IN IT. Asserting
+    // the entry count against `PAGE_RAIL_BOUND` alone would be self-consistent by
+    // construction — the stand-in bounds itself by the same constant — so the
+    // claims here are the ones that can actually fail: fewer entries than the
+    // document has pages, no entry for the page the author is on, and NO marking
+    // rather than a marking that has drifted onto page 12.
+    const listed = screen.getAllByRole('button', { name: /^Page \d+$/ })
+    expect(listed).toHaveLength(PAGE_RAIL_BOUND)
+    expect(listed.length).toBeLessThan(34)
+    expect(screen.queryByRole('button', { name: 'Page 30' })).toBeNull()
+    expect(screen.queryAllByRole('button', { current: 'page' })).toEqual([])
+  })
+
+  it('renders no rail at all for a render that produced no document to enumerate', async () => {
+    const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', dataPath: 'items[0]', producerRenderFailure: true as const })
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'identity') return { snapshot: snapshot(1), preview: { revision: 1, identity: 'b'.repeat(64) } }
+      if (operation === 'serialize') return { snapshot: snapshot(1), bytes }
+      if (operation === 'render') throw failure
+      return { snapshot: snapshot(1) }
+    })
+    render(<App engine={engine(request)} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+    await waitFor(() => expect(screen.getByLabelText('Local render failure')).toBeInTheDocument())
+    // Zero bytes, so nothing to enumerate — and the palette does NOT come back
+    // to fill the column either. The failure card is what the author reads.
+    expect(screen.queryByLabelText('Page thumbnails')).toBeNull()
+    expect(screen.queryByLabelText('Component palette')).toBeNull()
   })
 })
 
