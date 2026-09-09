@@ -183,8 +183,34 @@ test('at a narrow window the matrix scrolls and the sheet does not', async ({ pa
   // nearest scroll container is `.table-editor` itself, so the same gesture
   // drags the dialog's heading and its footer bar off to the left.
   const headingBefore = await box(heading, 'the dialog heading')
+  // HOW FAR THE GESTURE SHOULD ACTUALLY MOVE IT, derived from boxes this test
+  // has already taken. The overflow is `headerRow.width - gridBox.width` -- the
+  // same quantity `scrollWidth - clientWidth` would report, obtained without
+  // asking the browser to measure itself. AD-17's corpus scan
+  // (`src/canvas-authority-contract.test.ts`) covers `e2e/` too, and waives
+  // exactly one file that is not this one; `boundingBox()` and `mouse.wheel()`
+  // are deliberately outside what it names.
+  const overflow = headerRow.width - gridBox.width
+  const expectedScroll = Math.min(220, overflow)
   await grid.hover()
   await page.mouse.wheel(220, 0)
+  // `mouse.wheel` DISPATCHES the event and returns -- it does not wait for the
+  // scroll to be applied. Measuring straight afterwards caught the matrix
+  // mid-move at exactly 1px of a 220px gesture, and the claim read as "the
+  // matrix did not scroll" when the matrix was scrolling correctly. The
+  // product was right and the measurement was early. Both other wheel
+  // assertions in this suite poll for exactly this reason
+  // (`preview-navigation.spec.ts:146,174`); this one did not, and it was the
+  // only claim in this file resting on a synthesised input device rather than
+  // on layout alone.
+  //
+  // Polling also fixes the QUANTITY. The old threshold (`x < headerRow.x - 1`)
+  // was satisfied by a SINGLE PIXEL, so a matrix that scrolled 1px out of 220
+  // and stopped would have passed. The gesture asks for 220px and the matrix
+  // can give `overflow`, so the settled position is the smaller of the two --
+  // less 1px for fractional device pixel ratios.
+  await expect.poll(async () => (await grid.getByRole('row').first().boundingBox())!.x, { timeout: 10_000 })
+    .toBeLessThanOrEqual(headerRow.x - (expectedScroll - 1))
   const headerRowAfter = await box(grid.getByRole('row').first(), 'the header row after scrolling')
   const headingAfter = await box(heading, 'the dialog heading after scrolling')
   expect(headerRowAfter.x, 'the matrix must be the thing that scrolled').toBeLessThan(headerRow.x - 1)

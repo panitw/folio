@@ -6308,3 +6308,60 @@ corroboration ([D-14.2.1]), an AC misquoting the architecture it invoked ([D-14.
 mis-deriving an engine behaviour. **Fix the finding; verify the explanation separately.**
 
 **Related:** [D-14.7.1], [D-14.2.1], [D-14.6.2].
+
+## D-14.7.4 - a browser-only claim measured a settling quantity before it settled, and its threshold was too weak to say so
+
+**Recorded 2026-09-10**, found by CI on `0bcfcaa` — the first push after I adopted the rule that main is pushed
+and **read**, not just pushed.
+
+Story 14.7 shipped six layout claims in `e2e/table-matrix-layout.spec.ts`, compiled by `test:e2e:compile` and
+executed by nothing local. On CI, **51 passed and 1 failed** — and the one that failed was the exact one
+14.7's builder had named in advance as the likeliest to be spec rather than product: *"the only one in the set
+that depends on a synthesised input device rather than on layout alone."* That prediction was correct, and it
+is the reason this entry is short.
+
+**The defect.** `page.mouse.wheel(220, 0)` **dispatches** the wheel event and returns; it does not wait for the
+scroll to be applied. The test measured `boundingBox()` on the next line and caught the matrix **1px** into a
+220px gesture. `.table-matrix` has `overflow-x: auto` and was scrolling correctly — the product was right and
+the measurement was early.
+
+**The second defect is the one worth recording, because the first is a known Playwright footgun.** The
+assertion was `headerRowAfter.x < headerRow.x - 1`. That threshold is satisfied by **a single pixel of a 220px
+gesture**. Had the race settled even fractionally faster, this test would have **passed while proving nothing** —
+it would have certified a matrix that scrolls 1px and stops. The race did not create the weakness; it exposed
+it. A guard whose passing condition is that far below the behaviour it names is a guard that was going to go
+green for the wrong reason eventually.
+
+**The fix follows a precedent that was already in this repo and was not consulted.** Both existing horizontal
+wheel assertions (`e2e/preview-navigation.spec.ts:146,174`) wrap the post-wheel measurement in `expect.poll`,
+for exactly this reason, and one of them carries a comment saying so. The repaired claim polls the header
+row's `boundingBox().x` until it has moved by `min(220, overflow)` — the position the gesture actually asks
+for — less 1px for fractional device pixel ratios, where `overflow` is `headerRow.width - gridBox.width` from
+boxes the test already takes.
+
+**My first repair was wrong, and AD-17's own corpus scan is what said so.** I initially polled the scroll
+container's `scrollLeft` and derived the distance from `scrollWidth - clientWidth` inside `page.evaluate` —
+reasoning that the container's own scroll position is the quantity itself rather than a proxy for it. That
+reasoning is fine and the code was still a violation: `src/canvas-authority-contract.test.ts` scans
+**production, unit tests and `e2e/` alike** for browser measurement authority, and waives exactly one file,
+which is not this one. `npx vitest run` went from 1320 passing to two failures the moment I saved it.
+`boundingBox()` and `mouse.wheel()` sit deliberately outside what the scan names, which is why the existing
+precedent is shaped the way it is — **the precedent already encoded the constraint, and consulting it first
+would have produced the right fix directly.**
+
+**Worth noting what caught it.** Not review, not CI — the per-story cadence, on the very next run. A guardrail
+that scans the e2e corpus from inside the unit suite is the reason a browser-only edit was answerable by a
+41-second local gate instead of an 11-minute CI cycle.
+
+**The general shape, and it is a new one for this catalogue: a threshold set to "changed at all" cannot
+distinguish the behaviour from its first instant.** The catalogue already holds *a guard that cannot fail* and
+*a guard never invoked*. This is a third: **a guard that can only just pass.** When the property is a
+quantity that settles — a scroll, an animation, a debounce, a retry backoff — asserting the direction of
+travel is not asserting the destination, and the two differ by exactly the window in which a race lives.
+
+**What this says about the cadence, which is nothing.** The owner's per-story gates ([D-000.33]) do not run the
+browser suite, and `test:e2e:compile` is structurally blind to this: the file compiled cleanly at every gate.
+That is the cadence working as designed — the claim was **always** going to be settled by CI. What changed is
+that I read the answer this time instead of pushing past it ([DW-366]).
+
+**Related:** [D-000.32], [D-000.33], [D-14.7.3], [DW-366].

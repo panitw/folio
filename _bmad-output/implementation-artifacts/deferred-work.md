@@ -12339,7 +12339,7 @@ reach it.
 ### DW-351 - the only editable table-binding site in the product has no test file
 
 - **source_spec:** `folio-designer/src/TableEditor.tsx`
-- **Found by:** Story 14.4's builder, establishing where a table's binding is edited. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+- **Found by:** Story 14.4's builder, establishing where a table's binding is edited. **Owner:** Story 14.7. **Severity:** MEDIUM. **Status: RESOLVED 2026-09-10 by Story 14.7 at `0bcfcaa`** - see below.
 
 `TableEditor.tsx` has **no test file at all**. Its binding control at `:194` is the single editable site for a
 table's collection in the whole product, and it is covered by nothing but an encoder unit test one layer below
@@ -12349,6 +12349,28 @@ it.
 only surface with no test of its own.** Story 14.4 routes users here by amending the inspector to name the
 editor as where the binding is edited - so the story increases traffic to an untested surface without adding
 coverage to it, which is worth stating plainly rather than leaving implicit.
+
+**RESOLVED 2026-09-10 at `0bcfcaa`, by the story that rebuilt the surface.**
+`folio-designer/src/TableEditor.test.tsx` is new and carries **35 tests, all 35 executing, 0
+skipped** - re-measured at the closing commit (`npx vitest run src/TableEditor.test.tsx`, exit 0),
+not quoted from the build report.
+
+**The fixture is the part that discharges this, not the file count.** Story 14.7's spec required the
+new tests be built **before** the rebuild and run against the *eleven-column* matrix first, over a
+table with at least three columns and differing footers - because **every table fixture in the
+repository carried exactly one column**, so the vertical arrow loop could never step and the
+disabled-cell skip branch was never exercised. The shipped fixture is three columns
+(`sum` / none / `count`; right / left / centre align), and the coverage now includes ArrowUp and
+ArrowDown between rows, Home/End, the absent-and-disabled skip, and the focus-restoration hazard
+where a revealed cell is removed while it holds focus.
+
+**The specific coincidence this entry named is closed at both ends.** The collection and row alias
+are still the only editable site for a table's binding in the product - restyled into a `ROW SCOPE`
+group (`TableEditor.tsx:369` at `0bcfcaa`, moved from the `:194` cited above) and *not* made
+read-only - and two tests now commit each of them and **read the value back through the
+projection**, never off the uncontrolled input, with a comment in the file explaining why asserting
+the box's own value would prove nothing. Story 14.4's concern was that it had increased traffic to
+an untested surface; 14.6 increased it again, and the surface now has its own suite.
 
 ### DW-352 - the Data panel still invites the pick it is about to refuse
 
@@ -12652,11 +12674,18 @@ what is attested.
 - **source_spec:** `_bmad-output/implementation-artifacts/14-7-the-table-editor-is-the-matrix-the-design-drew.md`
 - **Found by:** Story 14.7's builder, investigating D-14.7.1's guardrail 2. **Owner:** Story 14.7b. **Severity:** HIGH. **Status:** OPEN.
 
-`App.tsx:2156` attaches the undo/redo shortcut to **`window`**, and its escape hatch `isEditableTarget`
-(`:4823-4826`) returns true only for `INPUT`, `TEXTAREA`, `SELECT` and contenteditable. So with focus on **any
-button** in the open dialog - `Close Table Editor`, `Remove`, `Add after`, `↑`, `↓`, any `×`, and every segment
-of the alignment control 14.7 adds - **Cmd+Z mutates the document behind an `aria-modal="true"` dialog with a
-focus trap.**
+`App.tsx:2203` attaches the undo/redo shortcut to **`window`** (`window.addEventListener('keydown', shortcut)`),
+and its escape hatch `isEditableTarget` (`:4877-4880`) returns true only for `INPUT`, `TEXTAREA`, `SELECT` and
+contenteditable. So with focus on **any button** in the open dialog - `Close Table Editor`, `Add column`,
+`Move column N earlier` (↑), `Move column N later` (↓), `Remove column N` (×), and every segment of the
+alignment control 14.7 added - **Cmd+Z mutates the document behind an `aria-modal="true"` dialog with a focus
+trap.**
+
+*(Anchors and control names re-measured at `0bcfcaa` and pinned to that revision. As filed at `599ae62` this
+entry cited `:2156` and `:4823-4826`, correct then; `0bcfcaa` moved `App.tsx` by a net +54 lines. It also
+listed `Add after`, which 14.7 **deleted** - it is no longer a per-row control, and `TableEditor.test.tsx`
+now guards its absence via `RETIRED_COLUMN_HEADERS`. The defect itself is unchanged: the entry stays OPEN,
+owned by Story 14.7b.)*
 
 **This is a shipped defect independent of any pending work.** A modal that traps focus and then lets a global
 shortcut edit what it is covering is wrong on its own terms: the trap exists to say "nothing outside this is

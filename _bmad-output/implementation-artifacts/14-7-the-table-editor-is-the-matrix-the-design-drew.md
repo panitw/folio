@@ -10,15 +10,27 @@ context: []
 
 ## In plain terms (read this first if you just want the gist)
 
-Configuring a table's columns today means filling in eleven fields per column, in a grid so wide it
-scrolls sideways. This rebuilds it into the six-column matrix the design draws — number, header,
-bound field, width, alignment, footer aggregate — with reorder and remove as small affordances on
-each row instead of four more columns. The alignment picker becomes the same three-segment control
-the inspector already uses, so there is one alignment control in the product. The three separate
-footer fields become one, with source and format appearing only when the aggregate needs them. And
-the dialog gains two read-outs it should always have had: a width budget that says whether the
-columns fit, and a header saying which collection, how many sample rows and which band you are
-editing. Nothing about the document, the file format or a rendered byte changes.
+*Non-normative, and rewritten after delivery to describe what actually shipped. The frozen Intent
+below is what governs the implementation.*
+
+Configuring a table's columns used to mean eleven fields per row, in a grid so wide it scrolled
+sideways. It is now the six-column matrix the design draws — number, header, bound field, width,
+alignment, footer aggregate — with reorder and remove as small affordances on each row instead of
+four more columns. Alignment is now literally the inspector's own three-segment control, so there is
+one alignment control in the product. The three footer fields collapsed
+into one, with source and format appearing only when the chosen aggregate needs them. The dialog also gained
+read-outs it should always have had: a header naming the collection, the sample size and
+the band; a width budget saying whether the columns fit; and a summary counting columns and
+aggregates. Nothing about the document, the file format or a rendered byte changed.
+
+Two things it deliberately did not do: the dialog still closes with a single Close button rather than
+the Cancel-and-Done pair the design draws, and undo from the keyboard still reaches the document
+behind the open dialog. Both belong to the follow-up story that gives this dialog a real discard.
+It also gained its first tests of its own, over a table with several columns; it had none before,
+and no fixture here had more than one column, so stepping between rows was never exercised.
+
+A few claims about how the grid actually looks on screen need a real browser: they are type-checked
+here, and checked for real by continuous integration on the push that closes this story.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -474,3 +486,88 @@ already carries and the Cancel/Apply one D-14.7.1 records as the fourth: it labe
 
 - Narrow viewport, the only place the overflow containment is reachable.
   [`table-matrix-layout.spec.ts:164`](../../folio-designer/e2e/table-matrix-layout.spec.ts#L164)
+
+## Delivery Log
+
+### 2026-09-10 — done
+
+Baseline `c747023`, shipped at `0bcfcaa` on `main` and **pushed to `origin/main`** (`git log
+origin/main..HEAD` is empty at close). The eleven-column form is the design's six-column matrix:
+`#`, HEADER LABEL, BOUND FIELD · row scope, WIDTH, ALIGN, FOOTER AGGREGATE, with reorder and remove
+as unlabelled row affordances, one `Add column` below the grid, a read-only scope line, a width
+budget and a `{n} columns · {m} aggregates` footer bar carrying `Close Table Editor`. The inspector's
+segmented control was extracted to `segmented-control.tsx` — a new module rather than an import back
+into `App.tsx`, which already imports `TableEditor` — and the table's ALIGN cell renders that same
+module, relabelled per column and structurally unable to reach `justify`. **`DW-351` discharges
+here**: `TableEditor.test.tsx` is new, **35 tests, 35 executing, 0 skipped** (re-measured at
+`0bcfcaa`, not quoted), over a genuinely three-column fixture whose footers differ (`sum` / none /
+`count`) — the shape every previous table fixture in the repository lacked, which is why the vertical
+arrow loop and the disabled-skip branch had never been exercised at all.
+
+**Decisions applied.** [D-14.7.1] — build the footer bar with today's single `Close Table Editor`
+button and **not** the Cancel/Done pair; the discard, its command counter and `DW-368` all belong to
+Story 14.7b. [D-14.7.2] — the `oxlint` baseline is recorded below as a **per-file set**, never as the
+integer it used to be; the count rose 4 → 7 and was accepted rather than restored, because the
+cycle-free split costs three modules and would separate the ⚠ never-`justify` comment from the
+constant it guards. [D-14.7.3] — a review layer's finding was real (an already-pressed ALIGN segment
+re-sends a command) but its four-step consequence chain was false, and the correction was verified at
+`wasm/engine.go` rather than accepted; the finding was patched and the explanation was **not** written
+into a code comment, which is what would have carried the false premise into 14.7b. [D-14.2.Q3] —
+widths display in points. [D-12.3.2] — moving `Close Table Editor` out of the heading re-orders the
+focus trap deliberately, and the test says so. [D-14.5.1] — the four absence fences are proved by
+adding each removed columnheader back at container, row and cell position in turn.
+
+**Triage: 22 patched / 1 rejected / 0 deferred / 0 intent_gap / 0 bad_spec**, `review_loop_iteration`
+**0**. Those five routes are the orchestrator's figures, relayed; **this file carries no findings
+section**, so the population cannot be reconciled from the story record and **the single rejection is
+counted, not enumerated anywhere** — it cannot be spot-checked by a later reader.
+
+**What the review actually caught — four of the twenty-two mattered, and three were invisible to
+jsdom or to any test that did not remove a thing while it was in use.** (1) The ALIGN cell
+re-committed an alignment already committed, which the old `<select>` could not do. (2) Removing the
+**last** column stranded focus on `document.body`, which also **disabled Escape**, because the focus
+trap is a capture handler on the dialog element and a body-focused document never reaches it — the
+same asymmetry between `focusCell` and `moveFocus` the Code Map predicted, arriving through a
+different door. (3) The header and the data rows were **separate grid containers** with content-sized
+tracks, so the labels would have slid off their columns at any real content width. (4) The matrix had
+lost `overflow-x` along with its `min-width`, so a narrow viewport scrolled the **sheet** instead of
+the matrix — the story's headline win partly achieved by deleting the scroller rather than by fitting
+the content.
+
+**Gates, re-run by me at `0bcfcaa` on a clean tree, each with its own captured exit code** (never
+`$?` after a pipe — the shell is zsh and `${PIPESTATUS[0]}` is empty here):
+
+| Gate | Exit | Measured |
+|---|---|---|
+| `npx vitest run` | 0 | **76 files, 1320 tests, 0 failures** |
+| `npx tsc -b --force` | 0 | **zero bytes** of output; `--force` so nothing is skipped incrementally |
+| `npx oxlint` | 0 | **0 errors.** Warning **set**, per [D-14.7.2]: `src/segmented-control.tsx` ×3, `src/preview/pdf-viewer.tsx` ×2, `src/App.tsx` ×2 — all `react(only-export-components)` |
+| `npm run test:e2e:compile` | 0 | `tsc -p tsconfig.e2e.json --noEmit`. **Type-checking only. This is not a browser run.** |
+
+Every figure matches what the build loop reported at this commit; nothing differed. **The `App.tsx`
+line numbers in the warning set are `4565:14` and `4572:17` here, not the `4548,4555` recorded in
+[D-14.7.2]'s corollary** — which is the corollary's own point restated: the line numbers were never
+the pin, and only the per-file set is.
+
+**The test-name multiset diff against the `c747023` baseline was the build loop's and was NOT re-run
+here.** I measured only the HEAD totals and the new file's own count; the +1 file / +35 test delta is
+consistent with `TableEditor.test.tsx`'s 35, but consistency is not the multiset diff and I am not
+reporting it as one.
+
+All **17** `## Suggested Review Order` anchors were re-resolved at `0bcfcaa` and every one still lands
+on the line it describes; none had rotted. The vocabulary sweep's new state, `design · the table
+editor open`, sits at `:384` **before** `preview` at `:394`, so `sweepStates(states.slice(0, -1))` at
+`:882` still drops `preview` — verified, because appending it would have made that red proof prove
+something other than what it claims.
+
+**Not proven here.** `e2e/table-matrix-layout.spec.ts` is **compiled and unexecuted**: that the
+six-track grid fits without horizontal scrolling, that the budget meter renders, and that the ALIGN
+control is not wearing `.matrix-row button`'s border, radius and mono font. `0bcfcaa` is pushed, so
+CI's `folio-designer-e2e` job has a run to report — **but I did not read it, and no claim here rests
+on it.** `DW-366` is the standing record of what happens when a push is treated as a result.
+
+**Suites that DID NOT RUN:** the browser suite, the Go suites, the matrix legs, `npm run build` as a
+gate, the `verify:offline*` chain, and the font-host scans **did not run** (D-000.32, D-000.33 —
+these are the epic-boundary gate, not the per-story one). This story touches no Go file, no bundled
+asset and no font surface. `epic-14` therefore stays `in-progress`: those suites are still owed
+before the epic can close, and `14-7b` and `14-8` are still `backlog`.
