@@ -12472,3 +12472,34 @@ genuinely different kinds of colour literal:
 **The distinction that needs deciding is chrome versus document model**, and it is a design question rather than
 a lint question - which is why 14.5 correctly refused to take it. Note the second category also means the ban can
 never be absolute, so whatever ships must be an allowlist with stated reasons rather than a bare prohibition.
+
+### DW-360 - a constant `viewBox` would make the mark literally one set of coordinates
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-5-the-product-wears-its-own-mark.md`
+- **Found by:** Story 14.5's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The mark is drawn by a formula evaluated per size, so the 18px and 22px renders carry **different numbers**
+(6x8 against 7.333x9.778). A **constant `viewBox`** with only the `width`/`height` attributes varying would make
+both sizes literally **one set of coordinates**, scaled by the browser - dissolving the 0.34px/0.22px
+mockup-delta argument entirely rather than documenting it in a comment.
+
+**It is genuinely better than what shipped, and it could not be adopted.** The frozen I/O matrix names the
+per-size rendered geometry as expected output, so switching to a constant `viewBox` would contradict frozen
+rows. Registered rather than absorbed - **a better design discovered after the freeze is a follow-on, not a
+licence to amend the matrix mid-story.**
+
+### DW-361 - the brand is painted with the selection token, so retheming selection would retint the logo
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-5-the-product-wears-its-own-mark.md`
+- **Found by:** Story 14.5's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`.brand-mark` uses `--color-select`, which is the **selection** token. AC2 mandates it by name, and its value is
+already the design's `#58A6C4`, so 14.5 is correct to use it and this is not a defect in the story.
+
+**The coupling is the finding.** Selection chrome and brand identity have no reason to change together, so a
+future retheme of selection - a plausible, self-contained change - would **silently retint the product's logo**.
+Nothing would fail; the mark would simply come out the wrong colour. A `--color-brand` token aliased to the same
+value would decouple them at zero visual cost.
+
+Note this interacts with DW-359: a brand token is another case where "which token owns this colour" is a design
+question rather than a lint question.

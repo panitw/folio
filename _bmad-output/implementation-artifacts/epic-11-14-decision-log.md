@@ -6085,3 +6085,40 @@ exactly that reason and it caught itself. And a preservation test must **read th
 count dispatches; counting zero commands proves nothing was sent, not that nothing was lost.
 
 **Related:** [D-000.32], [D-14.4.2], [D-13.6.6], DW-333, DW-352, DW-356, DW-357.
+
+## D-14.5.1 - a descendant sweep does not cover the element it descends from
+
+**Recorded 2026-09-09**, from Story 14.5's step-04 review. **A refinement of [D-14.4.3], and the fourth false
+green found in a single fence.**
+
+**The rule.** An absence claim fenced by querying **within** a container cannot see a violation **on** that
+container. `within(lockup).queryAllByRole(...)` and every `queryAllByLabelText` sweep beneath it examine
+*descendants*; a `role`/`aria-label` placed on `<span className="brand-lockup">` itself escapes all of them.
+Executed: `role="img" aria-label="Folio"` on the lockup passes **373/373**.
+
+**And the escaping case is the harmful one.** `role="img"` makes an element's children **presentational**, so on
+the load screen assistive technology would announce *"Folio"* in place of *"FOLIO / OFFLINE"* - the story's AC4
+violated in the one place its own fence cannot look. The fence was not merely incomplete; it was blind in the
+direction where the defect does damage.
+
+**Three fences failed in this one story, and the sequence is the lesson:**
+1. **I wrote a fence that could not see its target.** `queryAllByRole('img')` excludes `aria-hidden` subtrees by
+   default, so the mutation adding `role="img" aria-label="Folio"` **while `aria-hidden` remained** left it
+   green. Caught by the implementer, which observed the default spelling passing on the line above the one that
+   failed.
+2. **My red proof #4 was under-specified.** It named two assertions as the ones that must red; the review
+   executed it and found `BrandMark.test.tsx`'s 22px geometry test stays green because the component is
+   untouched, so without literals the implementer added, only the file-count assertion would have fired.
+3. **The rewritten fence still swept only descendants** - this entry's finding.
+
+**The generalisation.** [D-14.4.3] says an absence claim needs a mutation that ADDS the forbidden thing. This
+adds: **the ADD mutation must be applied at every position the forbidden thing could occupy** - on the container,
+on the subject, and on any wrapper between them - and the fence must be shown to red at each. One ADD mutation at
+one position proves one position.
+
+**Also uncovered, and worth noting for what it says about attention:** nothing asserted the `brand-mark` class
+that carries the colour, and **"two sizes, nowhere else" - the most-argued constraint in the entire spec, which
+cost an epic correction to establish - had no fence at all.** The constraint everyone debated is the one nobody
+tested. Argument is not coverage.
+
+**Related:** [D-14.4.3], [D-000.32], [D-13.6.6], DW-360, DW-361.
