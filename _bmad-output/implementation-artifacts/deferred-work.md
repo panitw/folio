@@ -12349,3 +12349,83 @@ it.
 only surface with no test of its own.** Story 14.4 routes users here by amending the inspector to name the
 editor as where the binding is edited - so the story increases traffic to an untested surface without adding
 coverage to it, which is worth stating plainly rather than leaving implicit.
+
+### DW-352 - the Data panel still invites the pick it is about to refuse
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's step-04 review. **Owner:** Story 14.6. **Severity:** MEDIUM. **Status:** OPEN.
+
+The panel's unconditional note still reads *"Choose an offered root scalar path, then connect it..."* for **every**
+selection, and 14.4's new refusal arm sits **after** the `!picked` arm. So a Line author is still told to pick,
+and told it was pointless only **after** picking.
+
+**Half of the invitation survives the story whose title is that no control is offered which the engine will
+refuse.** 14.4 closed the *command* path - Connect is disabled and the refusal is stated before the attempt -
+but the *prose* still solicits the gesture. Natural owner is 14.6, which redesigns the tab around a context bar
+stating what a pick would bind before the author picks.
+
+### DW-353 - the refusal message is generic for the one kind that legally does take a binding
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+For a **Table**, the Data panel says only *"Only text components can receive a scalar binding"* - true, and
+unhelpful, because a Table **does** legally take a binding through `configureTableBinding`. One tab away, the
+inspector now names the table editor as where that is done (D-14.4.Q2).
+
+**AC3's principle - state the value once, where it is editable - should reach AC2's message for this one kind.**
+The two surfaces now disagree about how much they are willing to tell the same author about the same component.
+
+### DW-354 - a multi-selection branch is now reachable only for a mixed selection and is asserted by nothing
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`App.tsx:2968`'s *"Table size and binding are not editable here"* branch survives 14.4, but after the kind gate
+it is reachable **only** for a mixed selection, and no test asserts it. A branch whose population shrank without
+its coverage being revisited is the shape that becomes dead code nobody dares delete.
+
+### DW-355 - an unvalidated field is narrowed by a cast inside the very guard that validates it
+
+- **source_spec:** `folio-designer/src/engine-protocol.ts:620`
+- **Found by:** Story 14.4's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`as CanvasComponentType` narrows a field that `isCanvas` has not yet validated, **inside `isCanvas` itself** - the
+function whose entire job is to refuse malformed input. Typing the new constant as `ReadonlyArray<string>` would
+remove the cast.
+
+Deliberately not taken mid-story: the change churns the site regex that 14.4's Go/TS mirror asserts against, and
+the mirror is that story's hard gate. Fixing a cast by weakening the thing guarding the rule is the wrong trade
+inside the story that built it.
+
+### DW-356 - the disabled Connect button's stated reason is not programmatically tied to it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+No `aria-describedby` connects the disabled Connect button to the sentence explaining why it is disabled,
+although the rest of the panel wires errors to their controls.
+
+**Raised from LOW to MEDIUM, and flagged for the Epic 14 boundary gate.** Epic 14 carries a hard accessibility
+floor (UX-DR25), and this is the **second** instance of the same defect in three stories - Story 14.3 registered
+the same gap against its orientation control. A story that states a reason a sighted user can see and a screen
+reader cannot has met the letter of "state the reason before the attempt" and missed its point.
+
+### DW-357 - a mutating review layer runs in parallel with read-only ones and with the coordinator's own verification
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`
+- **Found by:** Story 14.4's builder, when its own gate numbers were contaminated. **Owner:** orchestrator. **Severity:** MEDIUM. **Status:** OPEN.
+
+`bmad-build`'s step-04 launches its review layers in parallel. The **verification-gap** layer proves findings by
+**executing mutations** - it ran 812 seconds, applied at least four mutations plus full suite runs, and restored
+each. The other two layers and the coordinator's own verification run were in flight throughout.
+
+**The parallel-launch rule assumes read-only reviewers, and one of them is not.** The coordinator handled it
+correctly - discarded its own numbers rather than explaining them, and verified the restores against a
+**pre-review SHA-256 snapshot of all 8 dirty paths** rather than trusting the mutating layer's own `cmp` claim
+(they were clean) - but that is a recovery, not a fix, and it depends on a coordinator thinking to snapshot
+first.
+
+**This is the orchestrator's to resolve, not a story's.** Either the mutating layer runs alone, or every other
+consumer of the tree must snapshot and re-verify. Until then, any gate number taken during step-04 is suspect
+by default.
