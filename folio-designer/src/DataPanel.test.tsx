@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App, { PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { DataPanel } from './DataPanel'
@@ -35,6 +35,7 @@ const rectCanvas = { ...canvas, components: [{ id: 'e1', type: 'rect' as const, 
 const imageCanvas = { ...canvas, components: [{ id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 24_000, resizable: true }] }
 
 const openDataTab = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+const settleFrames = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
 
 describe('docked sample data panel', () => {
   it('keeps authoring available when empty, loads a tree, keeps accepted bytes authoritative, and preserves a prior sample on cancel', async () => {
@@ -43,11 +44,12 @@ describe('docked sample data panel', () => {
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} sampleFileAccess={{ openSample }} />)
     openDataTab()
     expect(screen.getByLabelText('Data panel')).toBeInTheDocument()
-    expect(screen.getByText('Binding unavailable: no sample data loaded.')).toBeInTheDocument()
+    expect(screen.getByText('No sample data loaded.')).toBeInTheDocument()
+    expect(screen.getByText('Sample data is never written into the template.')).toBeInTheDocument()
     expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
     const load = screen.getByRole('button', { name: 'Load sample JSON' }); load.focus(); expect(load).toHaveFocus()
     fireEvent.click(load)
-    await waitFor(() => expect(screen.getByText('Local sample:')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('sample.json')).toBeInTheDocument())
     expect(screen.getByRole('tree', { name: 'Sample data paths' })).toHaveTextContent('items[]')
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'identity')).toBe(true))
@@ -107,7 +109,11 @@ describe('docked sample data panel', () => {
   it('shows a binding rejection only for its original sample, component, and picked path', () => {
     const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada","email":"a@example.test"}}').buffer)
     const error = { sample, componentID: 'e1', segments: ['customer', 'name'], message: 'e1: binding rejected' }
-    render(<DataPanel sample={sample} busy={false} available selectedComponentId="e1" bindingError={error} onLoad={() => undefined} />)
+    // A REFUSAL PRESUPPOSES A DISPATCH. The picked row is now set only when the
+    // command actually goes out, so this fixture supplies the text kind and an
+    // `onConnect` — without them the panel withholds the pick and there is no
+    // path for the engine to have refused in the first place.
+    render(<DataPanel sample={sample} busy={false} available selectedComponentId="e1" selectedComponentType="text" bindingError={error} onLoad={() => undefined} onConnect={() => undefined} />)
     const customer = screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!
     fireEvent.click(customer)
     const name = screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!
@@ -133,7 +139,7 @@ describe('docked sample data panel', () => {
     const name = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith('name'))!
     name.focus()
     fireEvent.keyDown(name, { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    // STORY 14.6 — the pick above IS the bind; there is no intermediate control.
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).not.toHaveLength(0))
     const commands = request.mock.calls.filter(([operation]) => operation === 'command') as unknown as Array<[string, ArrayBuffer]>
     expect(commands).toHaveLength(1)
@@ -160,7 +166,7 @@ describe('docked sample data panel', () => {
     const customer = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '2' && item.textContent?.startsWith('customer'))!
     fireEvent.click(customer)
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith('name'))!)
-    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    // STORY 14.6 — the pick above IS the bind; there is no intermediate control.
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(1))
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
     await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())
@@ -181,7 +187,7 @@ describe('docked sample data panel', () => {
     fireEvent.click(screen.getByLabelText('text component e1'))
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
-    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    // STORY 14.6 — the pick above IS the bind; there is no intermediate control.
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(1))
     fireEvent.click(screen.getByLabelText('text component e2'))
     resolveBinding({ snapshot: { documentState: 'loaded', revision: 2, byteLength: 4, canvas: boundCanvas } })
@@ -201,36 +207,35 @@ describe('docked sample data panel', () => {
     release({ name: 'late.json', bytes: sampleBytes })
     await Promise.resolve(); await Promise.resolve()
     expect(screen.queryByText('late.json')).not.toBeInTheDocument()
-    expect(screen.getByText('Binding unavailable: no sample data loaded.')).toBeInTheDocument()
+    expect(screen.getByText('No sample data loaded.')).toBeInTheDocument()
     expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(0)
   })
 })
 
-// STORY 14.4 / AC2 — THE FIFTH ARM OF THE PRE-FLIGHT LADDER.
+
+// STORY 14.6 — THE SELECTION CONTEXT BAR, WHICH REPLACES THE PRE-FLIGHT LADDER.
 //
-// WHAT WAS WRONG. The ladder above had four arms and none of them inspected the
-// selected component's KIND, so with a Line selected and a root scalar picked,
-// Connect was ENABLED, the command went to Go, and the author read
-// *"e1: only text components can receive a scalar binding"* — a refusal the
-// panel could have stated before the attempt, and had in fact invited by
-// telling them to pick a path in the first place.
+// WHAT STORY 14.4 BUILT AND WHY IT IS RE-WORDED HERE. 14.4 added a fifth arm to
+// an `unavailable` ladder so a Line's refusal — *"only text components can
+// receive a scalar binding"* — was stated before the command round-tripped
+// rather than after. Its own comment addressed this story by name: the arm's
+// WORDING is presentation and 14.6 replaces it; what 14.6 inherits and must not
+// re-derive is THE RULE, `SCALAR_BINDING_COMPONENT_TYPES` and its mirror in
+// `engine-bounds-mirror.test.ts`.
 //
-// WHAT THIS IS NOT. It is not a judgement about the PATH. D-6.2.1 keeps sample
-// runtime kind out of command legality: `params.*` and an empty collection are
-// both still offered by the tree and still refused (or accepted, then failed at
-// render) by the engine. Those are Story 14.6's badges, deliberately untouched
-// here.
-describe('the data panel states a component-kind refusal before the attempt', () => {
+// WHAT IS NEW. The reason now appears in a context bar ABOVE the tree, so it is
+// read BEFORE any pick rather than after one (DW-352 — 14.4 still told every
+// author to "choose an offered root scalar path" first). And a Table is no
+// longer told the binding is unavailable: a table legally binds a collection,
+// just not here, so the bar names the table editor (DW-353).
+describe('the data panel states what a pick would bind before the pick', () => {
   const pickCustomerName = () => {
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
   }
   const sample = () => acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer)
   // ⚠ A SINGLE MICROTASK IS NOT A FLUSH — the same standard `binding-
-  // vocabulary.test.tsx` argues for and, until P8, the one this file did not
-  // meet: it waited a bare 20ms before a zero-dispatch assertion, which is
-  // shorter than the panel's own prose debounce and would have gone green on a
-  // dispatch merely armed on a timer. Read from the constant so it cannot drift
+  // vocabulary.test.tsx` argues for. Read from the constant so it cannot drift
   // under the debounce it exists to outlast.
   const settle = async () => {
     await new Promise((resolve) => setTimeout(resolve, PROSE_COMMIT_DEBOUNCE_MS + 20))
@@ -246,124 +251,532 @@ describe('the data panel states a component-kind refusal before the attempt', ()
   }
   const commandsFrom = (request: ReturnType<typeof openApp>) => request.mock.calls.filter(([operation]) => operation === 'command')
 
-  // ALL FOUR REFUSED KINDS, not the two that happened to read well. P5 found
-  // the article bug — "The selected component is a image." — surviving because
-  // `image` was the one arm no case exercised. The kind whose wording is
-  // awkward is exactly the kind most likely to go untested.
+  // ALL FOUR REFUSED KINDS, not the two that happened to read well. P5 of 14.4
+  // found an article bug surviving because `image` was the one arm no case
+  // exercised. The kind whose wording is awkward is the kind most likely to go
+  // untested, so every kind keeps a row here.
   it.each([
-    ['line', lineCanvas, 'The selected component is a line.'],
-    ['table', tableCanvas, 'The selected component is a table.'],
-    ['rect', rectCanvas, 'The selected component is a rectangle.'],
-    ['image', imageCanvas, 'The selected component is an image.'],
-  ])('disables Connect for a selected %s and states the engine\'s own reason first', async (kind, fixture, tail) => {
+    ['line', lineCanvas, 'Line selected · only text components can receive a scalar binding.'],
+    ['rect', rectCanvas, 'Rectangle selected · only text components can receive a scalar binding.'],
+    ['image', imageCanvas, 'Image selected · only text components can receive a scalar binding.'],
+    // DW-353. A table is NOT told "binding unavailable": it legally takes a
+    // collection through the table editor, and the bar says where.
+    ['table', tableCanvas, 'Table selected · a table binds its collection in the table editor, under Configure columns.'],
+  ])('states a selected %s\'s refusal before any pick, and dispatches nothing for the gesture', async (kind, fixture, message) => {
     const request = openApp(fixture)
     fireEvent.click(screen.getByLabelText(new RegExp(`^${kind} component e1`)))
+    // ⚠ DW-352, AND THE ORDER IS THE POINT. This assertion runs BEFORE any tree
+    // row is touched. Under 14.4 the panel said "Choose an offered root scalar
+    // path." here and only spoke about the kind after the author had picked.
+    const bar = screen.getByText(message)
+    expect(bar).toHaveAttribute('role', 'status')
+    expect(commandsFrom(request)).toHaveLength(0)
+    // AND THE GESTURE ITSELF DISPATCHES NOTHING. With the connect control gone,
+    // this is no longer a consequence of a disabled button: the click reaches a
+    // live treeitem and the panel withholds the command on its own.
     pickCustomerName()
-    const status = screen.getByText(`Only text components can receive a scalar binding. ${tail}`)
-    expect(status).toHaveAttribute('role', 'status')
-    const connect = screen.getByRole('button', { name: 'Connect selected path' })
-    expect(connect).toBeDisabled()
-    // AND THE GESTURE DISPATCHES NOTHING. ⚠ P11 — WHAT THIS DOES AND DOES NOT
-    // ADD. React does not fire `onClick` on a disabled button, so given the
-    // assertion above this count could not have been anything but zero: it is
-    // a consequence of the mechanism, not independent evidence of it. It is
-    // asserted anyway because "zero bindComponentScalar commands dispatched" is
-    // the acceptance criterion's own wording and should be readable as such —
-    // and because it would catch a future arm that announced a reason without
-    // disabling the control. It is not a second, independent witness, and an
-    // earlier comment here claiming it was overstated the case.
-    fireEvent.click(connect)
     await settle()
     expect(commandsFrom(request)).toHaveLength(0)
-    // NO ERROR SURFACE IS RENDERED. ⚠ This does NOT prove the post-hoc refusal
-    // channel is unreachable: `openApp`'s fake answers every command
-    // successfully and can never produce a refusal, so this assertion would
-    // pass with or without the gate. What it witnesses is only that the panel
-    // states its reason through `role="status"` rather than raising an alert
-    // for a state that is not an error. The refusal path itself still exists
-    // and is still needed by `params`; its coverage is the pre-existing test
-    // above, which supplies a `bindingError` directly.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  // THE NON-VACUOUS HALF. This fixture differs from the two above ONLY in the
-  // selected component's kind, and the arm must NOT fire: an over-broad gate
-  // that disabled Connect for everything would pass every assertion above.
-  it('leaves Connect enabled for a text component and sends the same bytes it always sent', async () => {
+  // THE NON-VACUOUS HALF. This fixture differs from those above ONLY in the
+  // selected component's kind, and the bar must invite the pick rather than
+  // refuse it — an over-broad gate refusing everything would pass every
+  // assertion above.
+  it('invites the pick for a text component and sends the same bytes it always sent', async () => {
     const request = openApp(textCanvas)
     fireEvent.click(screen.getByLabelText(/^text component e1/))
+    expect(screen.getByText('Text selected · binding to string')).toBeInTheDocument()
+    expect(screen.queryByText(/only text components can receive a scalar binding/)).not.toBeInTheDocument()
     pickCustomerName()
-    expect(screen.queryByText(/Only text components can receive a scalar binding/)).not.toBeInTheDocument()
-    const connect = screen.getByRole('button', { name: 'Connect selected path' })
-    expect(connect).toBeEnabled()
-    fireEvent.click(connect)
     await waitFor(() => expect(commandsFrom(request)).toHaveLength(1))
     const [, payload] = commandsFrom(request)[0] as unknown as [string, ArrayBuffer]
     expect(new TextDecoder().decode(payload)).toBe('{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["customer","name"]}')
   })
 
   // A MULTI-SELECTION HAS NO ONE KIND TO SPEAK FOR. `selectedComponentId` is
-  // undefined for it, so the arm above it wins and the panel says the true
-  // thing rather than picking one of the two kinds to complain about.
-  it('keeps "select one component first" for a multi-selection carrying a non-text kind', () => {
+  // undefined for it, so the bar says the true thing rather than picking one of
+  // the two kinds to complain about.
+  it('keeps "select one component" for a multi-selection carrying a non-text kind', () => {
     openApp(mixedCanvas)
     fireEvent.click(screen.getByLabelText(/^text component e1/))
     fireEvent.click(screen.getByLabelText(/^rect component e2/), { shiftKey: true })
-    pickCustomerName()
-    expect(screen.getByText('Binding unavailable: select one component first.')).toBeInTheDocument()
-    expect(screen.queryByText(/Only text components can receive a scalar binding/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Connect selected path' })).toBeDisabled()
+    expect(screen.getByText('No single component selected · select one component, then pick a path.')).toBeInTheDocument()
+    expect(screen.queryByText(/only text components can receive a scalar binding/)).not.toBeInTheDocument()
   })
 
   // ARM ORDER, PROVED AT THE COMPONENT RATHER THAN INFERRED FROM THE APP. With
-  // NOTHING selected the kind is unknown, and "select one component first" is
-  // still the true first thing to say — so the fifth arm is placed after it.
-  // Passing both props here is the only way to witness the ordering, because
-  // App never supplies a type without an id.
+  // NOTHING selected the kind is unknown, and "select one component" is still
+  // the true first thing to say. Passing both props here is the only way to
+  // witness the ordering, because App never supplies a type without an id.
   it('lets the no-selection arm win even when a kind is supplied', () => {
     render(<DataPanel sample={sample()} busy={false} available selectedComponentType="line" onLoad={() => undefined} />)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
-    expect(screen.getByText('Binding unavailable: select one component first.')).toBeInTheDocument()
-    expect(screen.queryByText(/Only text components can receive a scalar binding/)).not.toBeInTheDocument()
+    expect(screen.getByText('No single component selected · select one component, then pick a path.')).toBeInTheDocument()
+    expect(screen.queryByText(/only text components can receive a scalar binding/)).not.toBeInTheDocument()
   })
 
-  // P1 — THE FAIL-OPEN, AND THE STATE THAT REACHES IT.
-  //
-  // The first spelling of the fifth arm was `selectedComponentType !== undefined
-  // && !…includes(…)`, so an UNDEFINED type skipped the arm entirely and handed
-  // Connect back — restoring exactly the round-trip refusal this story exists to
-  // remove. The state is reachable in `App.tsx`: the id is passed from the
-  // selection unconditionally, while the kind is looked up in the projection, so
-  // an absent canvas or an id no longer in the projection yields id-present /
-  // kind-absent. A panel that does not know the kind cannot know the engine will
-  // accept it.
-  it('refuses to invite a pick when the selected component has no known kind', () => {
-    render(<DataPanel sample={sample()} busy={false} available selectedComponentId="e1" onLoad={() => undefined} onConnect={() => undefined} />)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
-    expect(screen.getByText('Only text components can receive a scalar binding. The selected component is not in the current projection.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Connect selected path' })).toBeDisabled()
-    // NON-VACUITY: the identical render differing ONLY in a known text kind
-    // leaves Connect enabled, so the refusal above is the unknown kind's doing
-    // and not a fixture that disabled the button some other way.
-    expect(screen.queryByText(/Ready to ask the engine to bind/)).not.toBeInTheDocument()
+  // P1 OF 14.4 — THE FAIL-OPEN, AND THE STATE THAT REACHES IT. `bindableKind`
+  // is inherited verbatim: it fails CLOSED on an unknown kind. The id comes
+  // from the selection unconditionally while the kind comes from the
+  // projection, so an absent canvas or an id no longer in the projection yields
+  // id-present / kind-absent, and a panel that does not know the kind cannot
+  // know the engine will accept it.
+  it('refuses to invite a pick when the selected component has no known kind, and dispatches nothing', () => {
+    const onConnect = vi.fn()
+    render(<DataPanel sample={sample()} busy={false} available selectedComponentId="e1" onLoad={() => undefined} onConnect={onConnect} />)
+    expect(screen.getByText('The selected component is not in the current projection · no path can be bound to it.')).toBeInTheDocument()
+    pickCustomerName()
+    expect(onConnect).not.toHaveBeenCalled()
   })
 
-  it('leaves Connect enabled for the same render once the kind is known to be text', () => {
-    render(<DataPanel sample={sample()} busy={false} available selectedComponentId="e1" selectedComponentType="text" onLoad={() => undefined} onConnect={() => undefined} />)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
-    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
-    expect(screen.getByRole('button', { name: 'Connect selected path' })).toBeEnabled()
-    expect(screen.queryByText(/Only text components can receive a scalar binding/)).not.toBeInTheDocument()
+  // NON-VACUITY for the row above: the identical render differing ONLY in a
+  // known text kind binds on the same gesture.
+  it('binds on the same gesture once the kind is known to be text', () => {
+    const onConnect = vi.fn()
+    render(<DataPanel sample={sample()} busy={false} available selectedComponentId="e1" selectedComponentType="text" onLoad={() => undefined} onConnect={onConnect} />)
+    pickCustomerName()
+    expect(onConnect).toHaveBeenCalledExactlyOnceWith(['customer', 'name'])
+    expect(screen.queryByText(/only text components can receive a scalar binding/)).not.toBeInTheDocument()
+  })
+})
+
+// STORY 14.6 — THE ROW SHOWS THE VALUE, AND THE PANEL STOPS OFFERING WHAT THE
+// ENGINE REFUSES.
+const encode = (value: string) => new TextEncoder().encode(value).buffer
+const THAI_NAME = 'สมชาย วงศ์ประเสริฐ'
+const rowFor = (label: string) => screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith(label))!
+const panelRoot = () => screen.getByLabelText('Data panel')
+
+describe('the data tab is the binding panel the design drew', () => {
+  const scalarSample = () => acceptSampleData('sample-statement.json', encode(`{"customer":{"name":"${THAI_NAME}","active":true}}`))
+  const collectionSample = () => acceptSampleData('c.json', encode('{"transactions":[{"date":"01 Jul"},{"date":"02 Jul"}]}'))
+  const emptyCollectionSample = () => acceptSampleData('e.json', encode('{"items":[]}'))
+  const paramsSample = () => acceptSampleData('p.json', encode('{"params":{"reportDate":"2026-08-23"}}'))
+  const showTree = (sample: ReturnType<typeof scalarSample>, onConnect = vi.fn()) => {
+    render(<DataPanel sample={sample} busy={false} available selectedComponentId="e1" selectedComponentType="text" onLoad={() => undefined} onConnect={onConnect} />)
+    return onConnect
+  }
+
+  // AC1. The row that used to read `string · "สมชาย วงศ์ประเสริฐ" · root scalar
+  // candidate` now reads the author's own value.
+  it('shows a scalar leaf its value instead of a type name, a count and a preview run together', () => {
+    showTree(scalarSample())
+    fireEvent.click(rowFor('customer'))
+    const name = rowFor('name')
+    expect(name).toHaveTextContent(THAI_NAME)
+    // The concatenation is gone, not merely reordered — including the quoting
+    // the projection applies to a string leaf, which is right for a machine and
+    // wrong for a row that exists to show an author their own data.
+    expect(name.textContent).not.toContain('root scalar candidate')
+    expect(name.textContent).not.toContain('string')
+    expect(name.textContent).not.toContain('"')
+    expect(within(name).getByText(THAI_NAME)).toHaveClass('tree-value')
+    // A boolean keeps its literal, which IS its value.
+    expect(rowFor('active')).toHaveTextContent('true')
   })
 
-  // AND THE ARMS ABOVE IT ARE UNCHANGED: with a component selected but no path
-  // picked, the ladder still asks for the path rather than pre-emptively
-  // complaining about the kind.
-  it('asks for a path before it speaks about the kind', () => {
-    render(<DataPanel sample={sample()} busy={false} available selectedComponentId="e1" selectedComponentType="rect" onLoad={() => undefined} />)
-    expect(screen.getByText('Choose an offered root scalar path.')).toBeInTheDocument()
-    expect(screen.queryByText(/Only text components can receive a scalar binding/)).not.toBeInTheDocument()
+  // AC2. `{ }` is new; `[]` already rode on the collection's own label.
+  it('marks an object with braces and a collection with brackets', () => {
+    showTree(scalarSample())
+    expect(rowFor('customer')).toHaveTextContent('{ }')
+    render(<DataPanel sample={collectionSample()} busy={false} available onLoad={() => undefined} />)
+    expect(screen.getAllByRole('treeitem').some((item) => item.textContent?.startsWith('transactions[]'))).toBe(true)
+  })
+
+  // AC3. DESIGN.md:331-334 names a byte count among the values set in mono, so
+  // the size is a `code`, not the mockup's sans span. The mockup loses.
+  // AC3 NAMES THE RENDERING ITSELF — `sample-statement.json \u00b7 18 KB` — so the
+  // format is the AC's, not this test's invention. DESIGN.md:331-334 supplies
+  // only the FACE (a byte count "is set in mono"), which the <code> element
+  // carries; it says nothing about rounding. An earlier spelling printed
+  // `18,432 bytes` and cited DESIGN.md to overrule both the AC and the mockup,
+  // which agreed with each other.
+  it('names the loaded file and its size in the AC\'s own units, in mono', () => {
+    const bytes = encode(`{"a":"${'x'.repeat(18424)}"}`)
+    expect(bytes.byteLength).toBe(18432)
+    render(<DataPanel sample={acceptSampleData('sample-statement.json', bytes)} busy={false} available onLoad={() => undefined} />)
+    expect(screen.getByText('sample-statement.json')).toBeInTheDocument()
+    expect(screen.getByText('18 KB').tagName).toBe('CODE')
+    // AND THE ROUNDING IS REAL, not a coincidence of one input: the exact byte
+    // count must not be what reaches the row.
+    expect(screen.queryByText(/18,?432/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/bytes/)).not.toBeInTheDocument()
+  })
+
+  // The unit is chosen AFTER rounding, which is why a file just under a
+  // mebibyte cannot print `1024 KB`. Reused from the evidence rail rather than
+  // re-derived here, so this row also pins that the reuse is live.
+  it('rounds up a unit rather than printing 1024 KB', () => {
+    const bytes = encode(`{"a":"${'x'.repeat(1048570 - 8)}"}`)
+    expect(bytes.byteLength).toBe(1048570)
+    render(<DataPanel sample={acceptSampleData('big.json', bytes)} busy={false} available onLoad={() => undefined} />)
+    expect(screen.getByText('1 MB')).toBeInTheDocument()
+    expect(screen.queryByText(/1024 KB/)).not.toBeInTheDocument()
+  })
+
+  // AC5. The badge, the reason, and the two refusals underneath it.
+  it('badges a populated collection TABLE ONLY, refuses its own row, and dims its children with a reason', () => {
+    const onConnect = showTree(collectionSample())
+    const transactions = rowFor('transactions[]')
+    expect(transactions).toHaveTextContent('TABLE ONLY')
+    expect(transactions).toHaveTextContent('Collection · 2 items. Text cannot bind a collection.')
+    // ⚠ NOT `aria-disabled`: this row EXPANDS, and expanding is the only route
+    // to its children. Announcing an operable expander as disabled is a lie to
+    // assistive technology and hides the subtree behind it. "Cannot be picked"
+    // is carried by the absent dot, the badge and the stated reason; only a row
+    // that can be neither picked nor expanded is disabled.
+    expect(transactions).not.toHaveAttribute('aria-disabled')
+    expect(transactions).toHaveAttribute('aria-expanded')
+    // NOT PICKABLE — the click expands it, and no bind is sent. The dot that
+    // DESIGN.md:549 reserves for a bindable leaf is absent.
+    expect(transactions.querySelector('.binding-dot')).toBeNull()
+    fireEvent.click(transactions)
+    expect(onConnect).not.toHaveBeenCalled()
+    const item = rowFor('item 1')
+    expect(item.closest('li')).toHaveClass('data-tree-dim')
+    expect(item).toHaveTextContent('Inside a collection · a table row binds these, not a text component.')
+    fireEvent.click(item)
+    expect(onConnect).not.toHaveBeenCalled()
+    const date = rowFor('date')
+    expect(date.closest('li')).toHaveClass('data-tree-dim')
+    expect(date).toHaveTextContent('Inside a collection · a table row binds these, not a text component.')
+    expect(date.querySelector('.binding-dot')).toBeNull()
+    fireEvent.click(date)
+    fireEvent.keyDown(date, { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  // ⚠ DW-350 — THE ONE CASE GO ACCEPTS AND THE RENDER THEN FAILS. An empty
+  // collection has no children, so nothing about "it expands instead" saved it:
+  // the panel offered it as a scalar candidate, Go canonicalised the command,
+  // and `internal/bind/text.go` failed at render.
+  it('sends no bind command for an empty collection, by click or by Enter', () => {
+    const onConnect = showTree(emptyCollectionSample())
+    const items = rowFor('items[]')
+    expect(items).toHaveTextContent('Collection · 0 items. Text cannot bind a collection.')
+    expect(items).toHaveTextContent('TABLE ONLY')
+    fireEvent.click(items)
+    fireEvent.keyDown(items, { key: 'Enter' })
+    fireEvent.keyDown(items, { key: ' ' })
+    expect(onConnect).not.toHaveBeenCalled()
+    // ⚠ AND THE REFUSAL IS THE PANEL'S ALONE, WHICH IS THE POINT. A collection
+    // still CARRIES its `segments` marker — `tableSampleCandidates` needs it for
+    // the Table Editor's datalists — so this row proves the panel refuses by
+    // KIND. An earlier spelling stripped the marker in `sample-data.ts` and
+    // emptied those datalists for every template while every test stayed green.
+    expect(emptyCollectionSample().tree.children[0]!.segments).toEqual(['items'])
+    expect(collectionSample().tree.children[0]!.segments).toEqual(['transactions'])
+  })
+
+  // FENCE — "the collection row is not pickable", with the marker ADDED BACK at
+  // the source the story fixed. Reverting `sample-data.ts` alone must not
+  // restore the offer, which is why `rowFor`'s rule names `collection`
+  // explicitly rather than trusting the absence of `segments`.
+  it('still refuses a collection row that carries a segments marker', () => {
+    const parsed = emptyCollectionSample()
+    const withSegments = { ...parsed, tree: { ...parsed.tree, children: parsed.tree.children.map((child) => ({ ...child, segments: ['items'] })) } }
+    const onConnect = showTree(withSegments)
+    const items = rowFor('items[]')
+    // NON-VACUITY: the mutation really did land — an ordinary scalar carrying
+    // the same marker in the same render IS pickable, so the refusal below is
+    // the collection rule's doing and not a fixture that broke every click.
+    expect(withSegments.tree.children[0]!.segments).toEqual(['items'])
+    fireEvent.click(items)
+    fireEvent.keyDown(items, { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+    expect(items.querySelector('.binding-dot')).toBeNull()
+    // THE CONTROL THIS COMMENT PROMISES, ACTUALLY PERFORMED. A scalar carrying
+    // the same marker in its own render IS pickable, so the refusal above is
+    // the collection rule and not a fixture that broke every click.
+    cleanup()
+    const scalarConnect = showTree(scalarSample())
+    fireEvent.click(rowFor('customer'))
+    fireEvent.click(rowFor('name'))
+    expect(scalarConnect).toHaveBeenCalledOnce()
+  })
+
+  // AC6, FIRST SOURCE (DW-349) — a `params` key in the AUTHOR'S OWN sample JSON.
+  // Go refuses it at `component_commands.go:749-751`: *"params is not a root
+  // data binding"*.
+  it('dims every node in a sample-JSON params namespace, states why, and never binds one', () => {
+    const onConnect = showTree(paramsSample())
+    const params = rowFor('params')
+    expect(params.closest('li')).toHaveClass('data-tree-dim')
+    expect(params).toHaveTextContent('Runtime parameter · the engine refuses a params path as a data binding.')
+    fireEvent.click(params)
+    const reportDate = rowFor('reportDate')
+    expect(reportDate.closest('li')).toHaveClass('data-tree-dim')
+    expect(reportDate).toHaveTextContent('Runtime parameter · the engine refuses a params path as a data binding.')
+    expect(reportDate).toHaveAttribute('aria-disabled', 'true')
+    expect(reportDate.querySelector('.binding-dot')).toBeNull()
+    fireEvent.click(reportDate)
+    fireEvent.keyDown(reportDate, { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  // NON-VACUITY for the row above, in its own render so no stale tree can
+  // answer for it: the SAME shape outside the `params` namespace IS offered, so
+  // the refusal is the namespace's doing and not a fixture that broke clicking.
+  it('offers the identical leaf shape under any other root namespace', () => {
+    const offered = showTree(acceptSampleData('o.json', encode('{"settings":{"reportDate":"2026-08-23"}}')))
+    fireEvent.click(rowFor('settings'))
+    fireEvent.click(rowFor('reportDate'))
+    expect(offered).toHaveBeenCalledExactlyOnceWith(['settings', 'reportDate'])
+  })
+
+  // FENCE — "never pickable", with `segments` ADDED to the params leaf.
+  it('still refuses a params leaf that carries a segments marker', () => {
+    const parsed = paramsSample()
+    const params = parsed.tree.children[0]!
+    const mutated = { ...parsed, tree: { ...parsed.tree, children: [{ ...params, segments: ['params'], children: params.children.map((child) => ({ ...child, segments: ['params', 'reportDate'] })) }] } }
+    const onConnect = showTree(mutated)
+    fireEvent.click(rowFor('params'))
+    const reportDate = rowFor('reportDate')
+    expect(mutated.tree.children[0]!.children[0]!.segments).toEqual(['params', 'reportDate'])
+    fireEvent.click(reportDate)
+    fireEvent.keyDown(reportDate, { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  // AC6, SECOND SOURCE — the ENGINE's discovered parameters. These live in the
+  // TEMPLATE, not in any sample file, so they are visible with no sample loaded
+  // at all. Neither source may be satisfied by the other.
+  it('shows the engine-discovered params namespace with a RUNTIME badge, values, and no control of any kind', () => {
+    render(<DataPanel busy={false} available onLoad={() => undefined} runtimeParameters={{ status: 'ready', names: ['reportDate', 'branchName'], values: { reportDate: '"2026-08-23"' } }} />)
+    const section = screen.getByLabelText('Runtime parameters from the template')
+    expect(within(section).getByText('params')).toBeInTheDocument()
+    expect(within(section).getByText('RUNTIME')).toBeInTheDocument()
+    expect(within(section).getByText('2026-08-23')).toBeInTheDocument()
+    expect(within(section).getByText('not set')).toBeInTheDocument()
+    // NEVER PICKABLE. ⚠ The sweep includes the SECTION ITSELF — a `within(x)`
+    // role query cannot see a violation ON `x` — and asks in both spellings,
+    // because Testing Library excludes `aria-hidden` subtrees by default.
+    expect(within(section).queryAllByRole('button')).toHaveLength(0)
+    expect(within(section).queryAllByRole('button', { hidden: true })).toHaveLength(0)
+    expect(within(section).queryAllByRole('treeitem', { hidden: true })).toHaveLength(0)
+    for (const node of [section, ...Array.from(section.querySelectorAll('*'))]) {
+      expect(node.tagName, 'a runtime parameter is display, never a control').not.toBe('BUTTON')
+      if (node !== section) expect(node.getAttribute('role')).toBeNull()
+    }
+  })
+
+  it('says the engine could not provide references rather than guessing an empty list', () => {
+    render(<DataPanel busy={false} available onLoad={() => undefined} runtimeParameters={{ status: 'failed', names: [], values: {} }} />)
+    expect(screen.getByText('The local engine could not provide the runtime parameters for this template.')).toBeInTheDocument()
+    expect(screen.queryByText('The local engine found no runtime parameters in this template.')).not.toBeInTheDocument()
+    // AND THE TWO FACTS STAY DIFFERENT: a genuinely empty ready list reads as
+    // the template's own answer, not as the engine's silence.
+    render(<DataPanel busy={false} available onLoad={() => undefined} runtimeParameters={{ status: 'ready', names: [], values: {} }} />)
+    expect(screen.getByText('The local engine found no runtime parameters in this template.')).toBeInTheDocument()
+  })
+
+  // AC7. A pick binds immediately, and the picked row takes the bind accent.
+  it('binds on the pick itself and marks the picked row with the bind accent', () => {
+    const onConnect = showTree(scalarSample())
+    fireEvent.click(rowFor('customer'))
+    fireEvent.click(rowFor('name'))
+    expect(onConnect).toHaveBeenCalledExactlyOnceWith(['customer', 'name'])
+    expect(rowFor('name').closest('li')).toHaveClass('data-tree-picked')
+  })
+
+  // FENCE — "no connect control". Swept three ways, because the fence must red
+  // wherever a button is ADDED: on the panel, inside the tree, and on a row.
+  it('offers exactly one control in the whole panel, and it is the sample loader', () => {
+    showTree(scalarSample())
+    const panel = panelRoot()
+    const buttons = Array.from(panel.querySelectorAll('button')).filter((element) => element.getAttribute('role') !== 'treeitem')
+    expect(buttons.map((element) => element.textContent)).toEqual(['Replace sample JSON'])
+    expect(within(panel).queryAllByRole('button', { hidden: true }).map((element) => element.textContent)).toEqual(['Replace sample JSON'])
+    for (const node of [panel, ...Array.from(panel.querySelectorAll('*'))]) {
+      if (node.getAttribute('role') === 'treeitem') continue
+      expect(node.getAttribute('role'), 'nothing in this panel is a second control').not.toBe('button')
+    }
+    expect(screen.queryByRole('button', { name: 'Connect selected path' })).not.toBeInTheDocument()
+  })
+
+  // AC10, PRESERVATION. A badge is part of its row, never a control of its own,
+  // and an unpickable row says so.
+  it('announces a badge as part of its row and reports an unpickable row as disabled', () => {
+    showTree(collectionSample())
+    const transactions = rowFor('transactions[]')
+    expect(within(transactions).getByText('TABLE ONLY').tagName).toBe('SPAN')
+    // ⚠ THE SWEEP INCLUDES EVERY WRAPPER BETWEEN the badge and the row, so
+    // adding a role or a name to `.tree-row` reds this as surely as adding one
+    // to `.tree-badge`.
+    for (const node of Array.from(transactions.querySelectorAll('*'))) {
+      expect(node.getAttribute('role'), `${node.className} must not be announced as its own control`).toBeNull()
+      expect(node.getAttribute('aria-label'), `${node.className} must not carry a name of its own`).toBeNull()
+    }
+    expect(within(transactions).queryAllByRole('button', { hidden: true })).toHaveLength(0)
+    // DISABLED MEANS INOPERABLE, NOT MERELY UNPICKABLE. A populated collection
+    // expands, so it is not disabled; an EMPTY one can be neither picked nor
+    // expanded, so it is.
+    expect(transactions).not.toHaveAttribute('aria-disabled')
+    cleanup()
+    showTree(emptyCollectionSample())
+    const items = rowFor('items[]')
+    expect(items).toHaveAttribute('aria-disabled', 'true')
+    expect(items).toHaveTextContent('TABLE ONLY')
+    // NON-VACUITY: an ordinary branch in its own render is NOT reported as
+    // disabled, so the attribute above means what it says.
+    cleanup()
+    showTree(scalarSample())
+    expect(rowFor('customer')).not.toHaveAttribute('aria-disabled')
+  })
+
+  // AC10, PRESERVATION — the roving tab stop survives every treatment this
+  // story adds. Exactly one treeitem is reachable by Tab, before and after
+  // arrow navigation.
+  it('keeps exactly one roving tab stop through the restyled rows', async () => {
+    showTree(collectionSample())
+    const stops = () => screen.getAllByRole('treeitem').filter((item) => item.tabIndex === 0)
+    expect(stops()).toHaveLength(1)
+    const root = screen.getAllByRole('treeitem')[0]!
+    root.focus()
+    fireEvent.keyDown(root, { key: 'ArrowDown' })
+    await waitFor(() => expect(rowFor('transactions[]')).toHaveFocus())
+    expect(stops()).toHaveLength(1)
+    expect(stops()[0]).toBe(rowFor('transactions[]'))
+    fireEvent.keyDown(rowFor('transactions[]'), { key: 'Home' })
+    await waitFor(() => expect(screen.getAllByRole('treeitem')[0]!).toHaveFocus())
+    expect(stops()).toHaveLength(1)
+  })
+
+  // AC9. And the sentence the panel never said anywhere before.
+  it('says there is no sample and that sample data is never written into the template', () => {
+    render(<DataPanel busy={false} available onLoad={() => undefined} />)
+    expect(screen.getByText('No sample data loaded.')).toBeInTheDocument()
+    expect(screen.getByText('Sample data is never written into the template.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load sample JSON' })).toBeInTheDocument()
+  })
+})
+
+// STORY 14.6 / AC8 — THE STATUS BAR STATES HOW MUCH OF THE DOCUMENT IS BOUND.
+//
+// "Bound" is `binding` OR `tableBind` (owner ruling). The exclusions read as
+// surprising and are correct: `directCanvasBinding` populates `binding` only for
+// a whole-value, single, non-reserved path placeholder.
+const bandSpreadCanvas = { ...canvas, components: [
+  { id: 'h1', type: 'text' as const, band: 'pageHeader' as const, x: 0, y: 0, width: 10, height: 10, resizable: true, value: '{{customer.name}}', binding: 'customer.name' },
+  { id: 'c1', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 10, height: 10, resizable: false, tableBind: 'transactions[]' },
+  // DELIBERATELY UNBOUND, and this is the surprising half: a placeholder inside
+  // a longer literal never populates `binding`.
+  { id: 'c2', type: 'text' as const, band: 'content' as const, x: 0, y: 20, width: 10, height: 10, resizable: true, value: 'Total: {{amount}}' },
+  { id: 'f1', type: 'line' as const, band: 'pageFooter' as const, x: 0, y: 0, width: 10, height: 1, resizable: true, background: '#000000' },
+] }
+
+describe('the status bar counts bound elements', () => {
+  const boundCount = () => screen.queryByTestId('bound-element-count')
+  const show = (canvasFixture: typeof canvas | typeof textCanvas | typeof bandSpreadCanvas) => {
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: canvasFixture } }))
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: canvasFixture }} />)
+  }
+
+  it('counts a scalar binding and a table binding alike, across all three bands', () => {
+    show(bandSpreadCanvas)
+    expect(boundCount()).toHaveTextContent('2 of 4 elements bound')
+  })
+
+  it('renders nothing at all when the document has no elements', () => {
+    show(canvas)
+    expect(boundCount()).not.toBeInTheDocument()
+    // NON-VACUITY: the same query finds the span for a document that has one.
+    show(textCanvas)
+    expect(boundCount()).toHaveTextContent('0 of 1 element bound')
+  })
+})
+
+// STORY 14.6 — FENCE: SAMPLE DATA IS NEVER WRITTEN INTO THE TEMPLATE.
+//
+// The panel now says this in words, so the words need a guard. Preview input is
+// a different channel: `identity` and `render` legitimately carry the accepted
+// bytes as RUNTIME data. What must never happen is a sample value reaching the
+// document — through a command, or through the bytes a save serialises.
+describe('a loaded sample never reaches the template', () => {
+  it('keeps every command and every serialised byte free of the sample s values', async () => {
+    const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"UNIQUE-SAMPLE-VALUE"}}').buffer)
+    const serialized = new TextEncoder().encode('folio template bytes').buffer
+    const request = vi.fn(async (operation: string) => operation === 'serialize'
+      ? { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 4, canvas: textCanvas }, bytes: serialized }
+      : { snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3, canvas: textCanvas } })
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} initialSampleData={sample} />)
+    openDataTab()
+    fireEvent.click(screen.getByLabelText(/^text component e1/))
+    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
+    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('name'))!)
+    const commands = await waitFor(() => {
+      const sent = request.mock.calls.filter(([operation]) => operation === 'command')
+      expect(sent).toHaveLength(1)
+      return sent as unknown as Array<[string, ArrayBuffer]>
+    })
+    // NON-VACUITY: the command really was sent and really does carry the PATH.
+    // ⚠ ASSERTED AS A PREFIX, NOT AS THE WHOLE ARRAY. A mutation that APPENDS
+    // sample data to the segments must red the SCAN below, not this line — a
+    // fence that reds on its own non-vacuity witness has proved nothing.
+    expect(new TextDecoder().decode(commands[0]![1])).toContain('"id":"e1","segments":["customer","name"')
+    for (const [operation, payload] of request.mock.calls as unknown as Array<[string, ArrayBuffer | undefined]>) {
+      if (operation !== 'command' && operation !== 'serialize') continue
+      expect(payload === undefined ? '' : new TextDecoder().decode(payload), `${operation} must not carry sample data`).not.toContain('UNIQUE-SAMPLE-VALUE')
+    }
+  })
+})
+
+// STORY 14.6 / AC6 — THE ONE DESIGN-MODE ENGINE ROUND-TRIP THIS STORY ADDS.
+//
+// Opening the DATA tab now issues a `parameter-references` request, which every
+// other call site gates on preview mode. That was authorised on one condition:
+// the fetch is LAZY (nothing before the tab is opened) and IDEMPOTENT (at most
+// once per document generation, never per re-render, selection change or
+// keystroke). An unbounded round-trip on the design path ships fine and
+// degrades on a large template, so the trigger is counted here rather than
+// described in a comment.
+describe('the design-mode parameter fetch is lazy and idempotent', () => {
+  const referenceCalls = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter(([operation]) => operation === 'parameter-references')
+
+  it('asks once when the DATA tab opens, never before it, and not again for the same document', async () => {
+    const request = vi.fn(async (operation: string) => operation === 'parameter-references'
+      ? { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: textCanvas }, parameterReferences: { revision: 1, names: ['reportDate'] } }
+      : { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: textCanvas } })
+    const sample = acceptSampleData('keys.json', new TextEncoder().encode('{"customer":{"name":"Ada"}}').buffer)
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} initialSampleData={sample} blankBytes={new Uint8Array([7]).buffer} />)
+
+    // LAZY: the panel is mounted behind `hidden`, and mounting must not ask.
+    expect(referenceCalls(request)).toHaveLength(0)
+
+    openDataTab()
+    await waitFor(() => expect(referenceCalls(request)).toHaveLength(1))
+
+    // ⚠ AND THE NAMES MUST REACH THE DOM, NOT MERELY THE ENGINE. Counting
+    // requests is not observing the result: with only a call count asserted,
+    // dropping the `runtimeParameters` prop at the DataPanel call site leaves
+    // `tsc` and the whole suite green while AC6's namespace vanishes from the
+    // real app — `RuntimeParameterSection` simply returns null. This is the
+    // only assertion in the suite that renders the real <App> and looks for an
+    // engine-discovered parameter name on screen.
+    await waitFor(() => expect(within(screen.getByLabelText('Runtime parameters from the template')).getByText('reportDate')).toBeInTheDocument())
+
+    // IDEMPOTENT ACROSS EVERY RE-RENDER TRIGGER THE PANEL HAS. Each of these
+    // re-renders the DATA tab; none is a new document.
+    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
+    fireEvent.click(screen.getByRole('tab', { name: 'PROPERTIES' }))
+    openDataTab()
+    fireEvent.click(screen.getByRole('tab', { name: 'PROPERTIES' }))
+    openDataTab()
+    await settleFrames()
+    expect(referenceCalls(request), 'the design-mode fetch must not repeat within one document generation').toHaveLength(1)
+  })
+
+  it('asks again for a new document rather than showing the previous template s parameters', async () => {
+    const request = vi.fn(async (operation: string) => operation === 'parameter-references'
+      ? { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: textCanvas }, parameterReferences: { revision: 1, names: ['reportDate'] } }
+      : { snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: textCanvas } })
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} blankBytes={new Uint8Array([7]).buffer} />)
+    openDataTab()
+    await waitFor(() => expect(referenceCalls(request)).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())
+    await waitFor(() => expect(referenceCalls(request), 'a new document generation must re-arm the fetch').toHaveLength(2))
   })
 })

@@ -25,7 +25,8 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
   // on an old tree focus order and could leave the connect control disabled.
   await tree.getByRole('treeitem').filter({ hasText: /^customer/ }).click()
   await tree.getByRole('treeitem').filter({ hasText: /^name/ }).click()
-  await page.getByRole('button', { name: 'Connect selected path' }).click()
+  // STORY 14.6 — THE PICK IS THE BIND. The leaf click above dispatches
+  // `bindComponentScalar` directly; the intermediate control is gone.
 
   await page.getByRole('tab', { name: 'PROPERTIES' }).click()
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
@@ -53,7 +54,8 @@ test('offers another golden-report scalar through the tree and has no binding pa
   const tree = page.getByRole('tree', { name: 'Sample data paths' })
   await tree.getByRole('treeitem').filter({ hasText: /^account/ }).click()
   await tree.getByRole('treeitem').filter({ hasText: /^number/ }).click()
-  await page.getByRole('button', { name: 'Connect selected path' }).click()
+  // STORY 14.6 — THE PICK IS THE BIND. The leaf click above dispatches
+  // `bindComponentScalar` directly; the intermediate control is gone.
 
   await page.getByRole('tab', { name: 'PROPERTIES' }).click()
   await expect(page.getByText('Bound to').locator('..')).toContainText('account.number')

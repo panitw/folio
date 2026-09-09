@@ -12544,3 +12544,34 @@ Registered separately from DW-350 because they need different fixes at different
 withholding the path (Story 14.6's business), this is the engine describing the failure accurately when a path
 gets through anyway - **and the second is still worth doing even after the first, because the picker is not the
 only way a binding can be authored.** A hand-edited `.folio` reaches the same render.
+
+### DW-364 - the params guard is keyed on a display label, so a root array named `params` escapes it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-6-the-data-tab-is-the-binding-panel-the-design-drew.md`
+- **Found by:** Story 14.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`rowFor` tests `entry.rootKey === 'params'`, and `flatten` threads `rootKey` from `child.label`. But
+`sample-data.ts`'s `array()` builds a collection's label as `` `${label}[]` `` - so `{"params":[...]}` yields
+**`rootKey === 'params[]'`** and the RUNTIME rule never fires.
+
+**It is harmless today purely by coincidence:** the node is a collection, and the collection rule refuses it for
+an unrelated reason. Go refuses `params` on a different ground again (`component_commands.go:749-751`, *"params
+is not a root data binding"*).
+
+**A legality guard keyed on a rendered label rather than a path segment is correct by accident**, and this is
+the shape that decays silently - it breaks when either side is restyled, and it breaks without any test
+noticing, because the behaviour it guards is currently produced by a different rule.
+
+### DW-365 - the runtime-parameters section wears `.tree-*` classes while deliberately not being a tree
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-6-the-data-tab-is-the-binding-panel-the-design-drew.md`
+- **Found by:** Story 14.6's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`RuntimeParameterSection` is a `<section>` with no treeitems and **no controls at all, by design** - AC6 requires
+the namespace be visible and never pickable. Yet its rows use `.tree-label`, `.tree-value`, `.tree-badge` and
+`.tree-reason`.
+
+**Any future tree-only rule leaks into a list that is not a tree and must never be operable** - a hover state, a
+focus ring, an override on the 5px bind dot. The coupling is invisible from either side: someone editing tree
+styling has no reason to look here, and someone reading this section sees class names implying a tree role it
+deliberately does not have.

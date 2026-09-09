@@ -361,21 +361,59 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .selection-handle-sw { left: -6px; bottom: -6px; cursor: nesw-resize; } .selection-handle-s { left: calc(50% - 6px); bottom: -6px; cursor: ns-resize; }
 .canvas-awaiting { color: var(--color-ink); font: var(--type-mono); }
 .file-message { max-width: 240px; color: var(--color-page-ink-body); font: var(--type-page-body); }
-.data-empty, .data-file, .data-message { margin: var(--space-5) 0; color: var(--color-ink-high); font: var(--type-body); }
+/* STORY 14.6 — THE DATA TAB IS THE BINDING PANEL DESIGN.md DRAWS.
+   ⚠ `.data-tree-picked` USED `--color-select` — CYAN — FOR THE PICKED ROW IN A
+   *DATA* TREE. DESIGN.md:596 is explicit: "Don't use amber for selection or
+   cyan for data — it breaks the one rule users learn." A picked path is data,
+   so the shipped treatment was a live DESIGN.md violation and the bind accent
+   below corrects it. This is a defect fix, not a preference. The 2px left
+   marker plus `{colors.bind-tint}` is DESIGN.md:551's active tree node.
+   The per-node `{tints.bind-row}` wash is gone with it: that tint belongs to a
+   diagnostic's affected page row, and painting every row with it left nothing
+   for the picked row to say. */
+.data-empty, .data-message { margin: var(--space-5) 0; color: var(--color-ink-high); font: var(--type-body); }
 .data-message { padding: var(--space-2); border-left: 3px solid var(--color-bind); background: var(--color-bind-tint-warm); }
-.data-file code, .data-tree code { color: var(--color-bind-text); font: var(--type-mono); overflow: hidden; text-overflow: ellipsis; }
-.data-tree { display: grid; gap: var(--space-2); margin: var(--space-5) 0; padding: 0; list-style: none; }
-.data-tree-node { display: grid; gap: var(--space-1); min-width: 0; margin-left: calc((var(--tree-level) - 1) * var(--space-5)); border-left: 2px solid var(--color-bind-edge); background: var(--tint-bind-row); }
-.tree-item { display: grid; gap: var(--space-1); width: 100%; min-width: 0; padding: var(--space-2); border: 0; color: inherit; text-align: left; background: transparent; cursor: pointer; }
+.data-file { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; margin: var(--space-5) 0; padding-bottom: var(--space-3); border-bottom: var(--hairline) solid var(--color-line); }
+.data-file-name { flex: 1; min-width: 0; overflow: hidden; color: var(--color-ink-high); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
+/* DESIGN.md:331-334 sets a byte count in mono, so the size is not sans here. */
+.data-file-size { flex: none; color: var(--color-ink-ghost); font: var(--type-mono); }
+.data-tree { display: grid; gap: var(--space-1); margin: var(--space-2) 0 var(--space-5); padding: 0; list-style: none; }
+.data-tree-node { display: grid; min-width: 0; margin-left: calc((var(--tree-level) - 1) * var(--space-5)); border-left: 2px solid transparent; }
+/* DESIGN.md:550 — a disabled node drops to 0.42 AND states its reason. The
+   reason is a span inside the treeitem, so opacity never stands alone. */
+.data-tree-dim { opacity: 0.42; }
+.tree-item { display: grid; gap: var(--space-1); width: 100%; min-width: 0; padding: var(--space-1) var(--space-2); border: 0; color: inherit; text-align: left; background: transparent; cursor: pointer; }
 .tree-item:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
-.data-tree-picked { border-left-color: var(--color-select); background: var(--color-select-fill); }
+.tree-item[aria-disabled='true'] { cursor: default; }
+.data-tree-picked { border-left-color: var(--color-bind); background: var(--color-bind-tint); }
+.tree-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* DESIGN.md:549 — the tree's bind dot is 5px; the chip's stays as it was. */
+.tree-item .binding-dot { width: 5px; height: 5px; }
 .binding-status { margin: var(--space-3) 0; color: var(--color-ink-high); font: var(--type-body); }
 .binding-chip { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-bind-edge); background: var(--color-bind-tint); color: var(--color-bind-muted); font: var(--type-body); }
+/* ⚠ THESE MUST STAY BELOW `.binding-chip`, WHICH THE SAME ELEMENT ALSO CARRIES.
+   Both are single-class selectors, so specificity ties and source order decides.
+   Declared above it they lost every property they set, and a REFUSED context bar
+   kept the chip's bind ground and bind ink — a refusal painted in the data accent,
+   which is the DESIGN.md cyan/amber confusion this story exists to remove. */
+.data-context { margin-bottom: var(--space-5); color: var(--color-bind-text); }
+.data-context-refused { border-color: var(--color-line-strong); background: var(--color-base); color: var(--color-ink-low); }
 .binding-dot { width: var(--space-1); height: var(--space-1); flex: none; border-radius: var(--radius-dot); background: var(--color-bind); }
 .binding-status code, .binding-chip code { color: var(--color-bind-text); font: var(--type-mono); }
-.binding-connect { width: 100%; margin-bottom: var(--space-3); }
-.tree-label { color: var(--color-ink-high); font: var(--type-mono-em); }
-.tree-detail { color: var(--color-ink); font: var(--type-body); overflow: hidden; text-overflow: ellipsis; }
+.tree-label { min-width: 0; color: var(--color-ink); font: var(--type-mono); }
+.data-tree-picked .tree-label { color: var(--color-bind-text); }
+.tree-marker { flex: none; color: var(--color-ink-ghost); font: var(--type-mono); }
+.tree-value { min-width: 0; margin-left: auto; overflow: hidden; color: var(--color-ink-faint); font: var(--type-mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.data-tree-picked .tree-value { color: var(--color-bind-muted); }
+.tree-value-unset { color: var(--color-ink-ghost); font: var(--type-body); }
+/* {colors.dim} is DESIGN.md:376's "faintest usable outline (a badge)". */
+.tree-badge { flex: none; padding: 1px var(--space-2); border: var(--hairline) solid var(--color-dim); color: var(--color-ink-low); font: var(--type-label); letter-spacing: var(--tracking-label); }
+.tree-reason { color: var(--color-ink-faint); font: var(--type-body); }
+.data-params { margin: var(--space-5) 0; padding-top: var(--space-3); border-top: var(--hairline) solid var(--color-line); }
+.data-params-head { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); }
+.data-params-head .tree-badge { margin-left: auto; }
+.data-params-list { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); padding: 0 0 0 var(--space-5); list-style: none; }
+.data-param-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .panel-heading { margin: 0 0 var(--space-5); color: var(--color-ink-high); font: var(--type-body-em); }
 .component-identity { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); padding-bottom: var(--space-3); border-bottom: var(--hairline) solid var(--color-line); }
 .component-identity .palette-icon { color: var(--color-select); }

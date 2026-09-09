@@ -255,6 +255,31 @@ describe('application shell', () => {
     expect(screen.getByTestId('template-font-count')).toHaveTextContent('1 font in template')
   })
 
+  // ⚠ STORY 14.6 REGRESSION FENCE — THE TABLE EDITOR'S SAMPLE-DRIVEN DATALISTS.
+  // `tableSampleCandidates` is gated on `kind === 'collection' && segments?.length`,
+  // and 14.6 briefly stripped `segments` from every collection node in
+  // `sample-data.ts` to stop an empty collection being offered as a scalar
+  // candidate. That emptied BOTH datalists for every template — in the same
+  // story whose new context bar started sending table authors here — and the
+  // whole suite stayed green, because nothing anywhere read a <datalist>
+  // option. This row is that missing reader.
+  it('offers the loaded sample s collections and row fields as table editor candidates', async () => {
+    const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+    const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right' as const, binding: '', rowField: '', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+      return { snapshot: tableSnapshot }
+    })
+    const sample = acceptSampleData('c.json', new TextEncoder().encode('{"transactions":[{"date":"01 Jul","debit":12}]}').buffer)
+    const { container } = render(<App engine={engine(request)} initialSnapshot={tableSnapshot} initialSampleData={sample} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('grid', { name: 'Table columns' })
+    const optionValues = (id: string) => Array.from(container.querySelectorAll(`#${id} option`)).map((option) => option.getAttribute('value'))
+    expect(optionValues('table-collection-candidates')).toEqual(['transactions[]'])
+    expect(optionValues('table-field-candidates-0')).toEqual(['date', 'debit'])
+  })
+
   it('opens an engine-projected, keyboard-operable table matrix with named controls', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
@@ -5952,7 +5977,8 @@ describe('a non-BMP key from a data file reaches the engine as the author\'s own
     expect(leaf).toBeDefined()
     leaf!.focus()
     fireEvent.keyDown(leaf!, { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    // STORY 14.6 — A PICK BINDS IMMEDIATELY (owner ruling). The Enter above IS
+    // the bind; the intermediate "Connect selected path" control is gone.
     await waitFor(() => expect(sent).toHaveLength(1))
 
     const wire = sent[0] as string
@@ -9024,7 +9050,8 @@ describe('Story 17.1: the canvas follows the content field', () => {
     const name = screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith('name'))!
     name.focus()
     fireEvent.keyDown(name, { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect selected path' }))
+    // STORY 14.6 — A PICK BINDS IMMEDIATELY (owner ruling). The Enter above IS
+    // the bind; the intermediate "Connect selected path" control is gone.
   }
 
   beforeEach(() => { vi.useFakeTimers() })

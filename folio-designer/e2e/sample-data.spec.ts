@@ -8,7 +8,7 @@ test('loads local sample JSON into the docked navigable discovery panel without 
   await page.goto('/')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await expect(page.getByLabel('Data panel')).toBeVisible()
-  await expect(page.getByText('Binding unavailable: no sample data loaded.')).toBeVisible()
+  await expect(page.getByText('No sample data loaded.')).toBeVisible()
   await expect(page.getByLabel('Canvas region')).toBeVisible()
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Load sample JSON' }).click()

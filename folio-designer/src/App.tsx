@@ -787,26 +787,57 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setPreviewParamsError(undefined)
     if (clearReferences) { parameterReferenceRequest.current++; setParameterReferenceState({ status: 'pending', names: [] }) }
   }
-  const loadParameterReferences = async () => {
+  // Returns whether a READY list was installed, so the design-mode caller can
+  // re-arm itself instead of latching a transient failure for the document's life.
+  const loadParameterReferences = async (): Promise<boolean> => {
     const currentSnapshot = snapshotRef.current
     const generation = documentGeneration.current
     const request = ++parameterReferenceRequest.current
     if (!engine || !currentSnapshot) {
       setParameterReferenceState({ status: 'failed', names: [] })
-      return
+      return false
     }
     setParameterReferenceState({ status: 'pending', names: [] })
     try {
       const result = await engine.request('parameter-references')
       if (parameterReferenceRequest.current === request && documentGeneration.current === generation) {
-        if (snapshotRef.current?.revision === currentSnapshot.revision && result.snapshot.revision === currentSnapshot.revision && result.parameterReferences?.revision === currentSnapshot.revision) setParameterReferenceState({ status: 'ready', names: result.parameterReferences.names })
-        else setParameterReferenceState({ status: 'failed', names: [] })
+        if (snapshotRef.current?.revision === currentSnapshot.revision && result.snapshot.revision === currentSnapshot.revision && result.parameterReferences?.revision === currentSnapshot.revision) { setParameterReferenceState({ status: 'ready', names: result.parameterReferences.names }); return true }
+        setParameterReferenceState({ status: 'failed', names: [] })
       }
+      return false
     } catch {
       // Never turn an unavailable projection into a guessed empty one.
       if (parameterReferenceRequest.current === request && documentGeneration.current === generation) setParameterReferenceState({ status: 'failed', names: [] })
+      return false
     }
   }
+  // STORY 14.6 / AC6 — THE ENGINE'S `params` NAMESPACE IS VISIBLE IN DESIGN.
+  //
+  // Every other `parameter-references` fetch on this component is gated on
+  // `modeRef.current === 'preview'`, so before this the namespace could not
+  // appear in the DATA tab at all: an author had to enter Preview to learn it
+  // existed, which is precisely what AC6 exists to prevent. This is the one
+  // design-mode fetch the story authorises, and it is LAZY and IDEMPOTENT —
+  // armed by opening the DATA tab, fired at most once per document generation,
+  // never per keystroke, per selection change or per re-render. A new document
+  // bumps the generation, so the next DATA-tab render asks again rather than
+  // showing the previous template's parameters.
+  const designReferenceGeneration = useRef(-1)
+  useEffect(() => {
+    if (inspectorTab !== 'data' || modeRef.current !== 'design') return
+    if (designReferenceGeneration.current === documentGeneration.current) return
+    designReferenceGeneration.current = documentGeneration.current
+    // ⚠ RE-ARM ON FAILURE, OR A TRANSIENT ONE STICKS FOR THE DOCUMENT'S LIFE.
+    // The guard is claimed BEFORE the await so two renders cannot race a second
+    // request; releasing it when no ready list arrived leaves the next DATA-tab
+    // or mode change free to try again. It does not retry on its own, so this
+    // stays one request per arming rather than a loop.
+    void loadParameterReferences().then((ready) => { if (!ready) designReferenceGeneration.current = -1 })
+    // `loadParameterReferences` is re-created every render by design; keying the
+    // effect on it would defeat the idempotence the guard above provides.
+    // `mode` IS a dependency: the body reads `modeRef.current`, so returning
+    // from Preview with the DATA tab already open must re-evaluate this.
+  }, [inspectorTab, documentGenerationValue, mode]) // eslint-disable-line react-hooks/exhaustive-deps
   const enterPreview = () => {
     modeRef.current = 'preview'
     setMode('preview')
@@ -2484,7 +2515,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       <aside className={`inspector-panel${mode === 'preview' ? ' inspector-panel-preview' : ''}`} aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
             ⚠ THIS IS THE WHOLE OF DW-281's DISCHARGE — an OWNER REQUEST, not a
@@ -2566,7 +2597,18 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         overflow assertion in `e2e/preview-navigation.spec.ts` mean something:
         if the bar ever stops fitting, this is the element pushed past the
         bar's right edge. */}
-    <footer className="status-bar" aria-label="Status bar">{mode === 'design' && <span>LOCAL SHELL</span>}<code data-testid="engine-snapshot">{engineLabel}</code>{mode === 'preview' && previewNavigation}<span className="status-spacer" />{mode === 'design' && canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status" className={mode === 'preview' ? 'sr-only' : undefined}>{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code>{mode === 'preview' && <span data-testid="local-only-assurance">no network · nothing left this machine</span>}</footer>
+    <footer className="status-bar" aria-label="Status bar">{mode === 'design' && <span>LOCAL SHELL</span>}<code data-testid="engine-snapshot">{engineLabel}</code>{mode === 'preview' && previewNavigation}<span className="status-spacer" />{mode === 'design' && canvas && <span data-testid="template-font-count">{`${canvas.fontFamilies.length} font${canvas.fontFamilies.length === 1 ? '' : 's'} in template`}</span>}{/* STORY 14.6 / AC8 — HOW MUCH OF THE DOCUMENT IS BOUND, stated nowhere before
+        this. "Bound" is `binding` OR `tableBind` (owner ruling, 2026-09-09): a
+        table bound to a collection IS bound, and `tableBind` is a different
+        field from `binding` in `page_setup.go`. The denominator is
+        `canvas.components`, which `canvasComponents` builds from pageHeader +
+        content + pageFooter, flat and once each regardless of page count.
+        ⚠ THE EXCLUSIONS READ AS SURPRISING AND ARE CORRECT: `directCanvasBinding`
+        populates `binding` only for a whole-value, single, non-reserved path
+        placeholder, so "Total: {{amount}}", "{{amount}} THB",
+        "{{upper(customer.name)}}" and "{{page}}" all count as UNBOUND.
+        At zero elements the span is not rendered at all — "0 of 0 elements
+        bound" is noise on an empty template, not information. */}{mode === 'design' && canvas && canvas.components.length > 0 && <span data-testid="bound-element-count">{`${canvas.components.filter((component) => component.binding !== undefined || component.tableBind !== undefined).length} of ${canvas.components.length} element${canvas.components.length === 1 ? '' : 's'} bound`}</span>}<span role="status" aria-live="polite" aria-label="Offline availability" data-testid="offline-status" className={mode === 'preview' ? 'sr-only' : undefined}>{offlineLabel}</span><code>{mode.toUpperCase()} MODE</code>{mode === 'preview' && <span data-testid="local-only-assurance">no network · nothing left this machine</span>}</footer>
   </div>
 }
 

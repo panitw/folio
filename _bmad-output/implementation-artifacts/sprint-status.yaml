@@ -33,7 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 08-23-2026 09:38
-last_updated: 09-09-2026
+last_updated: 09-10-2026
 project: folio
 project_key: NOKEY
 tracking_system: file-system
@@ -493,7 +493,7 @@ development_status:
   14-3-a-placed-component-is-the-selected-component: done
   14-4-the-panel-offers-no-control-the-engine-will-refuse: done
   14-5-the-product-wears-its-own-mark: done
-  14-6-the-data-tab-is-the-binding-panel-the-design-drew: in-progress
+  14-6-the-data-tab-is-the-binding-panel-the-design-drew: review
   14-7-the-table-editor-is-the-matrix-the-design-drew: backlog
   14-8-the-table-editor-carries-the-header-cell-and-border-sections: backlog
   14-9-the-canvas-draws-the-table-it-will-print: backlog

@@ -14,6 +14,25 @@ export type SampleNode = Readonly<{
   truncated?: boolean
   // JSON key segments are discovery data, not Folio expression text. They are
   // supplied verbatim to the opaque engine command only for root scalar leaves.
+  //
+  // ⚠ A COLLECTION CARRIES `segments` AND MUST KEEP THEM. Story 14.6 briefly
+  // removed them here, reasoning that an EMPTY collection was reaching the data
+  // panel as an offered scalar candidate (DW-350) and that withholding the
+  // marker at the parser was the honest root fix. It is not: `segments` on a
+  // collection is CORRECT data with a second reader. `tableSampleCandidates`
+  // (`App.tsx`) is gated on `kind === 'collection' && segments?.length` and
+  // feeds the Table Editor's "Root collection" and "Row field" datalists, so
+  // removing them emptied that editor's discovery hints for every template —
+  // in the same story that started directing table authors into it. The rule
+  // "fix the source rather than each reader" holds only once you know who the
+  // readers are.
+  // DW-350 is closed one layer up instead, in `DataPanel.tsx`'s `rowFor`, which
+  // refuses any `kind === 'collection'` row INDEPENDENTLY of this marker. That
+  // is a presentation judgement about what to offer, not a claim about command
+  // legality: Go still ACCEPTS `segments:["items"]` by D-6.2.1, and
+  // `component_commands_test.go` anticipates exactly this panel when it calls
+  // the grammar legal "even though a picker would withhold an observed
+  // collection".
   segments?: ReadonlyArray<string>
 }>
 export type SampleData = Readonly<{ bytes: ArrayBuffer; name: string; tree: SampleNode; truncated: boolean }>

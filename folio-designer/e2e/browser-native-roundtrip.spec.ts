@@ -138,7 +138,8 @@ async function bindTextToCustomer(page: Page, content: ReturnType<Page['getByRol
   const name = tree.getByRole('treeitem').filter({ hasText: /^name/ })
   await expect(name).toBeVisible()
   await name.click()
-  await page.getByRole('button', { name: 'Connect selected path' }).click()
+  // STORY 14.6 — THE PICK IS THE BIND. The leaf click above dispatches
+  // `bindComponentScalar` directly; the intermediate control is gone.
   await openTab(page, 'PROPERTIES')
   await expect(page.getByText('Bound to').locator('..')).toContainText('customer.name')
 }
