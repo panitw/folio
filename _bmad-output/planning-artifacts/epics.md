@@ -4661,7 +4661,13 @@ Story 13.3 that was split off at its plan gate (DW-304, D-13.3.1)
 **Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Preview.dc.html`
 
 **OWNER DECISION 2026-09-09 (D-13.6.2), AMENDING D-13.6.1: the rail is built from pdf.js's thumbnail
-modules, VENDORED into this repository.**
+modules, VENDORED into this repository.** Scope narrowed by the orchestrator to **two files, 629 lines**
+(D-13.6.4): `pdf_thumbnail_view.js` (557) + `renderable_view.js` (72), from tag `v6.2.108`, build SHA
+`0365cbde0`, with `app_options.js`'s import dropped as a recorded modification because it supplies exactly
+two numeric defaults that are already constructor options. **`pdf_thumbnail_viewer.js` is NOT vendored** -
+measured, at this version it is Firefox's page-organiser (1,964 lines; keyword counts drag 190, undo 45,
+merge 31, paste 22; private methods `#deletePages`, `#cutPages`, `#pastePages`, `#undo`, `#reportTelemetry`),
+and folio needs about 5% of it. Folio writes its own ~200-line rail container instead.
 
 D-13.6.1 said "built on `pdfjs-dist`'s viewer components - `PDFViewer` and `PDFThumbnailViewer`". **That
 decision rested on a false premise supplied by the orchestrator: `PDFThumbnailViewer` is not in the published
@@ -4715,8 +4721,22 @@ Whatever CSS the rail needs is written or vendored selectively against that boun
 
 **Given** a render that produced diagnostics
 **When** the rail is shown
-**Then** the pages those diagnostics fall on are marked - this is the "diagnostic map" half, and it is the
-part `pdfjs-dist` does not supply: the derivation from diagnostic to page number is this story's own work
+**Then** **nothing is marked, and that is deliberate. OWNER DECISION 2026-09-09 (D-13.6.3): the diagnostic
+map is DEFERRED out of this story to DW-311.** It has no data source. Measured: `EngineDiagnostic`
+(`engine-protocol.ts:172`) carries no page; `isDiagnostic` (`:413`) uses `hasExactKeys` over a closed
+five-key set, so a `page` field on the wire is rejected outright; and of the seven `Diagnostic{` construction
+sites in `folio-go/render.go`, only two know a page - the other five run **before pagination**, so no page
+yet exists to record. There is no join anywhere in the wasm reply between a thumbnail's page index and a
+diagnostic's `elementId`.
+
+The owner already ruled against the obvious fix, for Story 13.3 on 2026-09-08: *"no page on the diagnostic …
+a page number is the only one of the design's four components that is a property of layout rather than of the
+element, and computing layout in the browser is forbidden outright"*, fenced as *"never add a page number on
+a diagnostic"*. 13.3 handed this story the instruction to source page marking from its own thumbnail
+enumeration; measured, that is not achievable. **A partial map was explicitly rejected** - marking the two
+table sites and silently marking nothing for the other five would let an author read an unmarked page as
+clean, which is the guard-that-cannot-fail shape this run has found more often than any other, inside the
+story whose subject is a diagnostic map
 
 **Given** a document longer than the rail's bound
 **When** the rail is shown

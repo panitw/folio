@@ -5431,3 +5431,72 @@ error. Doing it first was the whole job.
 
 **Related:** [D-13.6.1], [D-13.1.3], [D-11.2.4], [D-000.32], DW-304.
 
+### D-13.6.3 — OWNER DECISION: 13.6 ships the rail and defers the diagnostic map
+
+**Ruled by the owner, 2026-09-09.** Story 13.6 delivers thumbnails, numbering, current-page marking,
+click-to-navigate, truncation and the palette removal. **It marks no diagnostics.** Deferred as DW-311.
+
+**Why the question arose at all** is the interesting part: the half of the story the epic's goal actually
+names turned out to have no data source, and the obvious fix would have reversed the owner's own earlier
+ruling. Measured by the builder at the plan gate, before a spec existed: `EngineDiagnostic` carries no page;
+`isDiagnostic` uses `hasExactKeys` over a closed five-key set, so a page field is rejected rather than
+ignored; and of seven `Diagnostic{` sites in `folio-go/render.go`, **five run before pagination**, so no page
+exists yet to record. There is no join anywhere in the wasm reply between a page index and an `elementId` —
+which means 13.3's instruction to "source page marking from its own thumbnail enumeration" was not
+achievable, and nobody had checked.
+
+**The partial option was rejected on principle by the builder, by me, and by the owner.** Marking the two
+table sites and silently marking nothing for the other five would let an author read an unmarked page as
+clean. That is [D-000.32]'s shape, and placing it inside the one feature whose purpose is to say where
+problems are would be the worst available home for it.
+
+**What the owner accepted knowingly:** Epic 13 closes having delivered a rail and not a map, while its goal
+paragraph names both. The option they chose said exactly that in its own text. DW-311 is the record that
+makes this a deliberate deferral rather than a second [DW-304] — where a split goal survived only inside the
+spec that dropped it. It gets raised at the boundary gate.
+
+**Related:** [D-13.6.2], [D-13.3.1], [D-000.32], DW-311, DW-304.
+
+### D-13.6.4 — the vendored surface is narrowed to the class that is actually a thumbnail
+
+**Ruled by me, 2026-09-09.** Vendor **two files, 629 lines** — `pdf_thumbnail_view.js` (557) and
+`renderable_view.js` (72) — from tag `v6.2.108`, build SHA `0365cbde0`, with `app_options.js`'s import
+dropped as a recorded modification. **`pdf_thumbnail_viewer.js` is not vendored.** Folio writes its own
+~200-line rail container.
+
+**This is a narrowing, which is why it is mine.** The owner authorised vendoring "the thumbnail modules and
+their dependencies"; I am taking fewer files, not more. Enlarging past what an owner approved goes back to
+them ([D-13.3.1]'s fence); narrowing does not.
+
+**What the builder found by fetching the real closure rather than inferring it from `.d.ts` files.** The
+literal static-import closure is 7 files / 4,869 lines, realistically 9 files / ~5,300 lines once a rendering
+queue and event bus are supplied. And `pdf_thumbnail_viewer.js` — 1,964 of those lines — **is not a thumbnail
+rail at this version.** It is Firefox's page-organiser: measured keyword counts of drag 190, undo 45, merge
+31, paste 22, checkbox 25; private methods `#deletePages`, `#cutPages`, `#copyPages`, `#pastePages`,
+`#saveExtractedPages`, `#undo`, `#togglePasteMode`, `#reportTelemetry`, `#moveDraggedContainer`. Folio needs
+roughly 5% of it.
+
+**The builder checked before raising the alarm, and I am recording that it did**, because the discipline is
+the point: it verified there are **zero** network primitives in the whole closure (the `http` hits are the
+Apache header and Mozilla bug URLs in comments) and that `#reportTelemetry` only dispatches an event bus
+message nothing subscribes to. So the organiser is dead weight, not a live hazard — an alarm correctly
+downgraded from "exfiltration risk" to "4,900 lines of page-editing code in a repository that today contains
+no vendored third-party source at all".
+
+**Three things the narrowing buys beyond size.** It dissolves the page-state AC at no cost — measured,
+`pdf_thumbnail_view.js` contains **zero** occurrences of `currentPageNumber`, because the competing authority
+lives in the organiser we decline, so `previewViewState` stays sole authority without forking upstream. It
+avoids `menu.js` and pdf.js's global options system entirely. And it keeps the provenance audit over 2 files
+rather than 9.
+
+**The CSS finding that made the asset bound a non-issue:** the upstream thumbnail rules are 316 lines nested
+inside a 930-line `#viewsManager` block consuming 29 custom properties, so dropping upstream markup in
+standalone would inherit **no** styling anyway — but they reference **no** `images/` files, so the rail costs
+**0 of the 3 remaining asset slots**. The blocker that forced this re-ruling does not bite the narrowed route.
+
+**Provenance shape, following `2-3a-audit-the-vendor-boundary.md`:** a manifest naming the tag, the build SHA,
+a SHA-256 per file, the recorded modification and a re-vendoring procedure — plus a test that re-hashes and
+fails on drift. That test also discharges the version-pin AC, since pdf.js hard-throws on core/viewer drift.
+
+**Related:** [D-13.6.2], [D-13.6.3], [D-13.3.1].
+

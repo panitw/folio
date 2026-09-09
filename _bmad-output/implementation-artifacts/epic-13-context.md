@@ -125,8 +125,12 @@ carries a knowingly-taken owner exception to that promise, recorded below.
   Save PDF action row at its foot. Re-render moves here from the INPUTS tab.
 - **Diagnostics** use the shape-before-colour legend — triangle/dashed for a render that proceeded,
   square/solid for one that failed — and a zero state that states zero explicitly so a clean render
-  reads as *checked*, not as *nothing here*. A card names its location as page · bound path · element
-  kind · band, and carries Locate on canvas and Dismiss.
+  reads as *checked*, not as *nothing here*. A card names its location as bound path ·
+  element kind · band - THREE parts, not four - and carries Locate on canvas and Dismiss. **Corrected
+  2026-09-09:** this line said "page · bound path · element kind · band". The page part came from the UX
+  mockup and has never been true of the code: `evidence-rail-facts.ts:113-117` renders three parts, and
+  `diagnostic-presenter.tsx:11-21` states in a comment that the page is deliberately absent. The owner ruled
+  it out for Story 13.3 and again for 13.6 (D-13.6.3); the deferred work is DW-311.
 - **Navigation controls live in the bottom status bar** — page stepper, page indicator, zoom — not on a
   toolbar above the page, so the page area carries the page alone. A fit choice persists across page
   changes until the author zooms manually; beyond viewport size the viewer's own height-constrained

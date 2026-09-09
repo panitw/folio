@@ -11581,3 +11581,50 @@ the label could simultaneously read that the cache is unavailable, 12px away.
 **What discharges it:** a Preview-appropriate offline affordance that is not a full sentence competing for
 the same row - an icon, a badge on the DESIGN switch, or promotion into the evidence rail.
 
+### DW-311 - the diagnostic map has no data source, and the engine is the only honest place to get one
+
+- **source_spec:** `_bmad-output/planning-artifacts/epics.md`, Story 13.6
+- **Found by:** Story 13.6's builder at its plan gate, before a spec was drafted. **Deferred by owner ruling
+  D-13.6.3.** **Owner:** unassigned - **needs an epic home.** **Severity:** MEDIUM. **Status:** OPEN.
+
+Epic 13's goal promises "a page-thumbnail rail that doubles as a **diagnostic map**". Story 13.6 ships the
+rail. **It ships no map, by owner decision, because there is nothing to build one from.**
+
+**Measured, not argued:**
+- `engine-protocol.ts:172` - `EngineDiagnostic` is `{ severity; code; elementId; dataPath; message }`. No page.
+- `engine-protocol.ts:413` - `isDiagnostic` uses `hasExactKeys` over that closed five-key set, so a `page`
+  field on the wire is **rejected**, not ignored.
+- `folio-go/render.go` - **seven** `Diagnostic{` construction sites; **two** know a page (`:3120`, `:3296`,
+  the table codes) and both format it into the message string and discard it. The other **five run before
+  pagination**, so no page exists yet to record.
+- Recovering it by parsing the message string is forbidden by D-000.21.
+- The canvas sheet-stack is the wrong page model: its projection is computed without data, and
+  `contentWindowCountIsExact` is false precisely for bound tables - the documents that generate table
+  diagnostics in the first place.
+- `canvas-authority-contract.test.ts` bans deriving page position in the browser.
+- **There is no join anywhere in the wasm reply** between a thumbnail's page index and a diagnostic's
+  `elementId`. Story 13.3 instructed goal A to "source page marking from its own thumbnail enumeration";
+  measured, that is not possible.
+
+**A partial map was considered and rejected on principle.** Marking only the two table sites would leave five
+silently unmarked, so an author would read an unmarked page as clean. That is D-000.32's shape - a guard whose
+silence means "not checked" while reading as "checked and fine" - and putting it inside the feature whose
+whole purpose is to say where problems are would be the worst placement available for it.
+
+**What discharges it, and it is engine work.** Return a real element-to-page map from the render. The shape
+already exists in Go: `pageOfGroup` at `folio-go/table_footer.go:151-154` builds `rectPage`/`runPage` from
+`plan.Pages`. Doing it properly means widening `EngineDiagnostic`, widening the `hasExactKeys` guard, and a
+third extension of the engine's exported contract - which **reverses the owner's 13.3 ruling** (*"no page on
+the diagnostic"*, fenced as *"never add a page number on a diagnostic"*) and breaks Epic 13's standing
+no-engine-byte promise a second time. The owner declined to do that inside 13.6 and was right that it is not
+a small addition; it is its own story.
+
+**The divergence this leaves, stated rather than hidden.** Epic 13 will close having delivered a thumbnail
+rail and not a diagnostic map, while its goal paragraph names both. The owner accepted that knowingly - the
+option they chose said so in its own text. **This entry is the record that makes it a deliberate deferral
+rather than a second DW-304**, where a split goal survived only inside the spec that dropped it (D-13.3.1).
+Raise it at the Epic 13 boundary gate.
+
+**Also note:** a failed render returns zero diagnostics *and* zero PDF bytes, so there is no rail at all in
+the failure case. Diagnostic marking would only ever apply to a successful render's warnings.
+
