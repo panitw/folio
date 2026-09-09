@@ -5726,3 +5726,44 @@ back toward the orphan.
 
 **Related:** [D-14.0.1], [D-13.3.1], [D-000.32], [D-11.3.7].
 
+### D-14.2.1 — I propagated a false trap through six dispatches, and being echoed back is not confirmation
+
+**Recorded 2026-09-09**, on Story 14.2's builder re-measuring a fact I had put in its dispatch.
+
+**The claim I carried:** *"`App.tsx` contains two literal NUL bytes near lines 3201-3202, making the whole
+file invisible to `grep -I` — exit 1, no output, no warning."* I put it in roughly six story dispatches as a
+standing trap, and it came back to me inside specs, delivery logs and review reports, which made it look
+corroborated.
+
+**Measured, by the builder and then independently by me:**
+- The NUL bytes are at lines **3700 and 3701** (byte offsets 273764, 273867), in `FontFamilyProperty` — not
+  3201-3202. Two of them, as recorded.
+- **The trap does not reproduce.** This host runs **ugrep 7.8.4**, which does not classify the file as
+  binary. `grep -Ic "return"` returns **306, exit 0** — identical to plain `grep -c` — and `grep -In`
+  returns matches after the NULs. There is no exit 1 and no silent empty result.
+
+**What is still true and why the advice survives its own justification:** the file does contain two NUL
+bytes, and a grep that *does* skip binary files would be blind to it. Agents run on different hosts with
+different greps. So `grep -a` stays as cheap insurance — but as insurance against a hazard, not as a
+workaround for an observed symptom, and dispatches must stop asserting the symptom.
+
+**The error, and it is a new shape for this run.** Every other propagated-falsehood in this log was a single
+statement nobody re-checked. This one was **echoed back by the agents I had told it to**, in their own
+words, in artifacts I then read — so it accumulated the *appearance* of independent corroboration while
+remaining exactly one unverified measurement. **A fact restated by the agents you told it to is not
+confirmed; it is duplicated.** The tell was available and I ignored it: not one of those restatements ever
+carried a measurement, only a citation.
+
+**The rule.** A standing trap repeated in dispatches is a claim with an unusually long blast radius, because
+it is read by every agent and questioned by none — they are being *told*, not asked. So it earns
+re-measurement on a schedule, not on suspicion. When an agent does re-measure one and finds it false, that
+is the system working, and it goes in the log at full volume rather than being quietly corrected in the next
+dispatch.
+
+**Credit where it is due:** the builder re-measured a line it was handed as settled, reported that the trap
+did not reproduce, and **kept using `grep -a` anyway** — on the correct reasoning that a subagent elsewhere
+might run a different grep. Disproving the premise and keeping the practice is the right pair of conclusions
+and it did not need either one pointed out.
+
+**Related:** [D-13.6.1], [D-11.2.4], [D-13.1.3], DW-256.
+

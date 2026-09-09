@@ -10258,6 +10258,29 @@ not-having-looked. This is D-11.2.4's rule (an absence is a lead, not a result) 
 layer, where no amount of agent discipline could have caught it: the search reported clean because it never
 looked. It surfaced only because a claimed symbol was checkable against `sed`, which does not filter.
 
+> **⚠ ORCHESTRATOR RE-MEASUREMENT, 2026-09-09 — TWO CLAIMS IN THIS ENTRY ARE NOW FALSE, AND I PROPAGATED
+> THEM.** Story 14.2's builder re-measured the trap and could not reproduce it. I verified independently
+> rather than take either side on trust:
+>
+> - **The line numbers are wrong.** The NUL bytes are at **lines 3700 and 3701** (byte offsets 273764 and
+>   273867), inside `FontFamilyProperty` — not `3201-3202`. There are exactly two, as recorded.
+> - **The file is NOT invisible to `grep -I` on this machine.** This host runs **ugrep 7.8.4**, which does
+>   not classify the file as binary: `grep -Ic "return" src/App.tsx` returns **306, exit 0**, identical to
+>   plain `grep -c`, and `grep -In` returns matches **after** the NULs. The "exit 1, no output, no warning"
+>   symptom does not occur.
+>
+> **What is still true:** the file does contain two literal NUL bytes, and a grep that *does* skip binary
+> files would still be blind to it. Different agents and different hosts run different greps, so `grep -a`
+> remains cheap correct insurance and the fix in "what discharges it" is still worth doing.
+>
+> **Why this correction is filed loudly rather than quietly.** I carried "the whole file is invisible to
+> `grep -I` — exit 1, no output, no warning" into roughly six story dispatches as a stated fact, and it was
+> repeated back to me in specs and delivery logs, which made it look corroborated. It was one measurement
+> propagating, not several agreeing. **A fact restated by the agents you told it to is not independently
+> confirmed** — that is [D-11.2.4]'s error running in the opposite direction, a presence assumed rather
+> than an absence, and it is the same failure as [D-13.6.1]'s missing class: I stated a capability of the
+> world without running the instrument that would have shown it otherwise.
+
 **What discharges it:** replace the two literal NUL bytes with '\u0000' - identical semantics, and the file
 becomes text to ugrep again. Then add a repository guard that fails when a tracked source file under
 `folio-designer/src/`, `folio-go/` or `lint/` contains a NUL byte, with the allowlist naming
