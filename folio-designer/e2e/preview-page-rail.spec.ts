@@ -1,7 +1,4 @@
 import { expect, test } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 // STORY 13.6 — THE BROWSER WITNESS THAT THE VENDORED PDF.JS CODE ACTUALLY WORKS.
 //
@@ -26,10 +23,51 @@ import { fileURLToPath } from 'node:url'
 // `boundingBox()` and nothing else.
 
 // FIVE PAGES, FROM STATIC TEXT AND NO DATA BINDING AT ALL. The rail's whole
-// point is a document longer than one page, and page-count-5's five markers are
+// point is a document longer than one page, and these five markers are
 // positioned by y-offset rather than produced by a repeat over data — so this
 // spec witnesses the rail without also depending on sample data being loaded.
-const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/page-count-5/input.folio'))
+//
+// ⚠ THIS IS INLINED RATHER THAN READ FROM `fixtures/page-count-5/`, AND THE
+// REASON MATTERS TO ANYONE REACHING FOR THAT FAMILY IN A BROWSER SPEC.
+// Those fixtures are valid Go RENDER inputs but are NOT designer-loadable
+// documents. `engine-protocol.ts:552` refuses a canvas whose component leaves a
+// vertically capping band (`BANDS_CAPPING_VERTICALLY`, `:92` — `pageHeader` and
+// `pageFooter`, never `content`, which is a window onto an unbounded column).
+// Every one of `multi-page`, `page-count-1`, `page-count-5`, `page-count-20`,
+// `page-count-50` and `three-band-page` carries the same page-header geometry:
+// an element at `y: 4` with `height: 16` inside a band of `height: 18`, so
+// `4 + 16 = 20 > 18`. `parseInbound` drops the whole load response, the open
+// path's `catch` reports only "Could not open local file", and the title stays
+// `Untitled template` — which is exactly how this spec first failed.
+//
+// Go does not catch it on the way in: all ten `containComponent` call sites
+// (`folio-go/component_commands.go:2115`) are COMMAND paths, none is a load
+// path, so the engine renders a document the designer cannot open. That
+// asymmetry and the fixture family are both registered; this spec simply owns a
+// template that is a legal designer document. The ONLY difference from
+// `page-count-5` is the header element's `y: 4 → 2`; measured, `Load`,
+// `Serialize` and `parseInbound` all accept it and the five content windows are
+// unchanged at `[0, 728000, 1456000, 2184000, 2912000]`.
+const fivePages = JSON.stringify({
+  version: '1.0', locale: 'en', utcOffset: '+00:00', nextId: 8, assets: {},
+  fonts: { body: ['Noto Sans'] },
+  page: { size: 'A4', orientation: 'portrait', margin: { top: 30, right: 54, bottom: 42, left: 36 } },
+  bands: {
+    pageHeader: { height: 18, elements: [
+      { id: 'e7', type: 'text', x: 0, y: 2, width: 480, height: 16, value: 'PAGE COUNT MATRIX FIXTURE', style: { fontFamily: 'body', fontSize: 9 } }
+    ]},
+    content: { elements: [
+      { id: 'e1', type: 'text', x: 0, y: 0, width: 200, height: 20, value: 'Marker 1', style: { fontFamily: 'body', fontSize: 12 } },
+      { id: 'e2', type: 'text', x: 0, y: 728, width: 200, height: 20, value: 'Marker 2', style: { fontFamily: 'body', fontSize: 12 } },
+      { id: 'e3', type: 'text', x: 0, y: 1456, width: 200, height: 20, value: 'Marker 3', style: { fontFamily: 'body', fontSize: 12 } },
+      { id: 'e4', type: 'text', x: 0, y: 2184, width: 200, height: 20, value: 'Marker 4', style: { fontFamily: 'body', fontSize: 12 } },
+      { id: 'e5', type: 'text', x: 0, y: 2912, width: 200, height: 20, value: 'Marker 5', style: { fontFamily: 'body', fontSize: 12 } }
+    ]},
+    pageFooter: { height: 24, elements: [
+      { id: 'e6', type: 'text', x: 0, y: 6, width: 480, height: 16, value: 'Page {{page}} of {{pages}}', style: { fontFamily: 'body', fontSize: 8 } }
+    ]}
+  }
+})
 
 test('enumerates the render as rasterised page thumbnails, and navigates by them', async ({ page }) => {
   // THE FALLBACK FILE TIER, FORCED — without which this spec cannot pass at all.
@@ -42,7 +80,7 @@ test('enumerates the render as rasterised page thumbnails, and navigates by them
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'five-pages.folio', mimeType: 'application/json', buffer: template })
+  await (await chooser).setFiles({ name: 'five-pages.folio', mimeType: 'application/json', buffer: Buffer.from(fivePages, 'utf8') })
   await expect(page.locator('.document-name')).toHaveText('five-pages.folio')
 
   // IN DESIGN, THE PALETTE IS THE FIRST COLUMN. Asserting it here is what makes
