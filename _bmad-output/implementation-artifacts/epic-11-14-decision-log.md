@@ -5698,3 +5698,31 @@ story. That medium is exactly why the ruling is a per-story statement rather tha
 
 **Related:** [D-13.6.7], [D-000.32], DW-313, DW-325, DW-162.
 
+### D-000.34 — an index that nothing checks decays exactly like a guard that nothing runs
+
+**Recorded 2026-09-09**, from the engineering lead's memory compaction, as [D-14.0.1]'s aftermath.
+
+Compacting its recall index from 191 lines to 98, the lead ran a link-and-orphan check and found
+`inert-names-and-the-companion-catalog.md` — *a name added to a closed enum must reach a dispatch that reads
+it, or it is inert* — **linked from nothing.** It had been orphaned before that compaction, not by it. So it
+was a memory reachable only by a filesystem listing, which is not a route anyone takes. **Two of Epic 14's
+ten stories touch the inspector's control registry**, so it is a rule that would plausibly have been needed
+and silently not had.
+
+**The generalisation is the point.** D-14.0.1 found a build warning that fired correctly on every run and was
+absorbed. This is the same shape in a different medium: something that existed, was correct, and was
+invisible from every direction anyone approaches from. **The failure mode is not specific to build output.**
+Any store of knowledge with no reachability check — a memory index, a register, a decision log, a spec's
+change log ([D-13.3.1]) — decays the same way, and its decay is silent by construction, because the thing
+that would tell you is the thing that has gone missing.
+
+**What makes it a decision rather than an anecdote:** the lead now has a link-and-orphan check it can re-run
+in one command. That is the difference between having noticed once and being able to notice again, and it is
+the standard this run has applied to every other guard — [D-11.3.7], run the check, do not read it.
+
+It also verified its own hub counts against the filesystem and **corrected two of them** (27→26, 43→42)
+rather than shipping a number it would later cite. An index that misstates its own contents is the first step
+back toward the orphan.
+
+**Related:** [D-14.0.1], [D-13.3.1], [D-000.32], [D-11.3.7].
+
