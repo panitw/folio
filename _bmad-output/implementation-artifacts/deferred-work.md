@@ -12779,3 +12779,40 @@ the story does not own. Needs an owner decision on which of the two dialogs is w
 **How we'd know it was forgotten.** An author presses `Cancel` in the font browser expecting the table editor's
 behaviour and loses nothing, or presses it in the table editor expecting the font browser's and loses their
 column edits. The second is the one that costs work, and nothing warns them.
+
+---
+
+### DW-371 - the font browser keeps the shortcut leak that Story 14.7b closes on the table editor
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.7b's plan gate; **the owner ruled on 2026-09-10** that 14.7b closes the table editor's hole only and this one is registered rather than fixed unexamined. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Story 14.7b changes `App.tsx:2191` from `if (editing) return` to `if (editing || Boolean(tableEditor)) return`,
+which stops six global shortcuts firing from inside the open table editor. The product's **other**
+`role="dialog"` surface, the font browser (`FontBrowser.tsx:276`), keeps the identical hole: with it open and
+focus on any of its buttons, the arrow keys still nudge the selected component, `Cmd+D` still duplicates it,
+`Alt+S` still toggles snap, `Alt+P` still fires, and `Cmd+Z` still destroys the dialog. **The fix is the same
+line and one more token: `tableEditor || fontBrowserOpen`.**
+
+**Why it was deferred, and the reasoning is the part worth keeping.** The wider condition is not more expensive —
+`Boolean(tableEditor)` and `tableEditor || fontBrowserOpen` are both one condition on one line, so there was no
+mechanism argument that widening was cheaper, simpler or forced. That is exactly what made it a **widening**
+rather than a consequence: it changes a surface **no acceptance criterion in 14.7b names**, so no test and no
+review layer in that story would have been pointed at the font browser. The change would have been correct and
+entirely unexamined. The engineering lead declined to authorize it and escalated; the owner chose to register it.
+
+**The deciding argument was the direction of reversibility.** The only case for widening was *"it is more
+principled"* — the same argument this run has been burned by repeatedly, most recently at [D-14.6.2] where
+"fix the source, not each reader" was right in principle and broke every template's datalists. Widening the
+condition later costs one token; an unreviewed behaviour change on a shipped modal costs whatever it costs.
+
+**Why the asymmetry is real and not a judgement about severity.** After 14.7b the font browser will be the only
+focus-trapped modal in the product from inside which a global shortcut can mutate the document. There is no
+principled reason for that; there is only the story fence. **The asymmetry is the defect, and it is now visible
+and scheduled rather than silent.**
+
+**How we'd know it was forgotten.** Someone reads `App.tsx:2191`, sees a condition naming one specific modal by
+its state variable, and either adds a third modal without extending it — the enumeration having become the
+pattern — or "tidies" it into a generic check with no test asserting the font browser case, which is the
+unexamined change this entry exists to have declined. Note also [DW-370]: the font browser's own `Cancel`
+already means something different from the table editor's, so these two surfaces are accumulating divergence.
