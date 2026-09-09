@@ -12376,6 +12376,11 @@ inspector now names the table editor as where that is done (D-14.4.Q2).
 **AC3's principle - state the value once, where it is editable - should reach AC2's message for this one kind.**
 The two surfaces now disagree about how much they are willing to tell the same author about the same component.
 
+**Paired with DW-352 - discharge both in Story 14.6, not before.** These are the two halves of one surface, and
+14.6 replaces the `unavailable` ladder's presentation **entirely**. Patching either one first writes wording
+14.6 will immediately delete, and leaves the register looking addressed while the surface it describes no
+longer exists. Fix them in 14.6's acceptance or not at all.
+
 ### DW-354 - a multi-selection branch is now reachable only for a mixed selection and is asserted by nothing
 
 - **source_spec:** `_bmad-output/implementation-artifacts/14-4-the-panel-offers-no-control-the-engine-will-refuse.md`

@@ -10,15 +10,26 @@ context: []
 
 ## In plain terms (read this first if you just want the gist)
 
-Select a Line, a Rectangle, an Image or a Table today and the inspector's BINDING section tells you:
-*"No engine binding on this component. Pick a root scalar in the Data tab."* Go up to the Data tab, pick a
-path, press **Connect selected path**, and Go answers *"e2: only text components can receive a scalar
-binding."* The panel sent you to a dead end and let you walk into it. This story stops the invitation and
-states the reason before the attempt instead of after.
+*Non-normative — a summary for a reader who is not implementing this. The frozen Intent below governs
+implementation. Rewritten at close to describe what shipped.*
 
-While we are in the same panel: a Table's binding is currently stated **three** times in the inspector and is
-editable in **none** of them — the only place it can actually be changed is inside the table editor modal.
-This story reduces that to one honest statement that names where the value is edited.
+Selecting a Line, a Rectangle, an Image or a Table used to show a BINDING section that held no control and
+invited the author to connect a data path — which the engine then refused. That section is now absent for
+those kinds, and the Data tab states the reason before the pick instead of after it: the connect control is
+disabled, naming the kind that cannot take a binding. A table's binding, stated three times and
+editable in none of them, is now stated once, naming the table editor as where it is edited. No document
+bytes, no command, and nothing in the engine changed.
+
+The rule about which kinds may take a binding is written down once, read by both designer surfaces that
+need it, and tied to the engine's own rule by a check that fails if either side moves alone. That tie was a
+condition of the pre-flight shipping at all.
+
+Three things are intended, not oversights. The story asks that selecting a component preserves
+everything the document stores; that is proven at the panel and against an engine verified unchanged, but
+**not** at the save path, because these tests cannot observe a saved file's bytes. The refusal wording is
+temporary — a later story replaces the presentation while inheriting the rule. And the panel still tells
+every author to pick a path before telling some it was pointless; that is registered and owned by
+the same later story.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -532,3 +543,110 @@ boundary gate, which is the owner's.
 
 - Pins the fail-open's reachability: id present, kind unknown.
   [`DataPanel.test.tsx:341`](../../folio-designer/src/DataPanel.test.tsx#L341)
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `82466e7`. Shipped in `e70d3a3` on `main`, one commit, ten files (eight of them under
+`folio-designer/src`, plus this spec and the tracker). `git diff -- folio-go/` is empty at close: no Go
+changed, which is what makes the mirror below a tie rather than a co-edit.
+
+**What shipped.** One exported constant now names the component kinds that may take a scalar binding, and
+it is read at both TypeScript sites: the pre-existing `isCanvas` projection guard, which previously carried
+an inline re-spelling of Go's rule, and the new Data-panel pre-flight. The inspector's BINDING section is
+kind-gated using the neighbours' existing gate form, so it does not render for a Line, Rectangle, Image or
+Table. The Data panel gained a fifth arm on its existing four-arm `unavailable` ladder, placed after the
+`!selectedComponentId` arm so "select one component first" still wins; the arm disables Connect for free and
+announces the reason through the existing `role="status"` line. The Table section keeps `Configure columns`
+and loses its display-only binding text; the single surviving statement names the table editor as where the
+collection and row alias are edited. `DataPanel.tsx`'s file header comment was amended in the same commit,
+because AC2 makes its old claim about never judging legality false — and it now records that the comment was
+*already* partly false before this story. A new `describe` in `engine-bounds-mirror.test.ts` ties the
+constant to Go, and D-14.4.Q4's adjacent pair (`maxCanvasBindingString` ↔ `MAX_ENGINE_BINDING_LENGTH`) was
+added to the existing pair table in the same file.
+
+**Decisions applied, by ID.** D-14.4.Q1 (HIDE the section rather than disable it — a section that exists only
+to explain why it is empty is the disabled-and-mysterious case wearing a paragraph). D-14.4.Q2(a) (the table
+editor stays the single editable statement; option (b), a main-window editor, was explicitly refused as new
+capability contradicting 14.7's premise and outside the fence). D-14.4.Q3(a) (14.4 owns the RULE, 14.6 owns
+the PRESENTATION — carried into the source as a comment addressed to 14.6's builder, so the fifth arm is not
+misread as territory to preserve). D-14.4.Q4 (the adjacent pair is the same subject in the same file, so
+inside the fence — the discriminator is subject, not cost, which is why 14.3's comparable deferral was not).
+D-6.2.1 (the panel judges component KIND and never a path's runtime kind; widening it would cross the
+authority boundary and build a second, drifting copy of the binder). D-14.2.Q1 and I-5 (hiding is not
+deleting; the cost of hiding is discoverability, not preservation, which is why disclosure is part of the
+remedy). UX-DR24 (the four-clause voice and the bare `.honest-note` class reused; a second disclosure idiom
+in this inspector would have been a vocabulary regression). D-1.4.9 (opaque passthrough is why AC4 holds by
+construction). D-000.27 (the mirror is wrap-fragile and loud about it). D-14.2.1 (`diff -a` and `cmp` for
+every mutation proof touching `App.tsx`, whose two NUL bytes make plain `diff` report "Binary files differ"
+with zero changed lines — a landed and a missing edit look identical). D-000.32 and D-000.33 (unrun suites
+named in their own words; heavy suites are the epic-boundary gate).
+
+**Triage.** **11 patched, 5 deferred, 2 rejected. Zero `intent_gap`, zero `bad_spec`, and
+`review_loop_iteration` stays 0** — patch round only, no loopback and no re-derivation. The five deferrals
+were registered by the orchestrator as **DW-352** (the panel's unconditional note still tells every author to
+pick, and the new refusal arm sits after the `!picked` arm, so a Line author is told it was pointless only
+after picking), **DW-353** (the refusal message is generic for the one kind that legally does take a binding
+— a table, through a different command), **DW-354** (a multi-selection branch is now reachable only for a
+mixed selection and is asserted by nothing), **DW-355** (an unvalidated field is narrowed by a cast inside
+the very guard that validates it) and **DW-356** (the disabled Connect button's stated reason is not
+programmatically tied to it). DW-352 and DW-353 are owned by Story 14.6, which already owns this surface's
+presentation. Three further findings were registered by the orchestrator *before* implementation and are not
+this story's to fix: **DW-349**, **DW-350** and **DW-351**. The triage tallies above are the orchestrator's,
+recorded as handed down; this close did not re-derive them and is not a second review.
+
+**A spec correction, not a deviation (red proof 5).** The spec predicted that emptying the Go source the
+extractor reads would red the non-vacuity `it` and *not* the agreement one. Both red, and that is correct:
+with the Go extraction returning `[]`, the agreement assertion cannot pass either, and making it survive a
+broken extractor would build exactly the "reads zero rules, asserts all zero agree" hole this test file
+exists to forbid. The spec's phrasing was wrong and the implementation was right; the test was not distorted
+to match the spec.
+
+**What the review caught, and it is the story's real lesson.** The verification-gap layer **demonstrated four
+false greens by executing mutations against a green suite** — not by inspection, and not by prediction. The
+sharpest one fenced a ruling of mine: AC3's claim that no inspector-side collection editor exists was
+asserted by querying an accessible name that exists **only inside a dialog the test never renders**, so
+adding the editor D-14.4.Q2 had explicitly refused shipped **green at 1246 passed / 0 failed**. The others:
+deleting the `isCanvas` binding guard left 1245 of 1246 green, with only a source-text match reding; dropping
+a table's stored border from the panel left AC4's own "keeps every projected value" test green; and a
+reachable fail-open where the selection id is present while the kind is absent handed Connect back and
+re-enabled the round-trip refusal this story exists to remove. That last one is now the arm's default: an
+unknown kind is not bindable. All four now red when the forbidden thing is added.
+
+**The generalisable half, and it belongs to specs rather than to this story.** Every one of the four was an
+**absence or preservation** claim, and those are invisible to a revert — the only mutation this spec's
+red-proof list required. An absence claim is falsified by **ADDING the forbidden thing**, not by removing the
+implementation. A spec that asks a story to withhold or preserve something must require mutations that ADD.
+
+**AC4 is NOT proven at the save path, and must not be described as if it were.** jsdom cannot observe
+serialized `.folio` bytes; the only real serialize path in the product is exercised by
+`e2e/browser-native-roundtrip.spec.ts`, which this cadence **compiles and does not run**. What *is* proven is
+narrower and worth stating exactly: **zero commands dispatched on selection** (flushed past the prose commit
+debounce, so the assertion is not vacuous), and a **projection still carrying the values the panel withholds**,
+measured **against an engine verified unchanged** by an empty `git diff -- folio-go/`. That is the honest
+limit. It is the same gap 14.2 named in its own test source, and naming it is the part to copy.
+
+**Gates, re-measured at close at `e70d3a3` with captured exit codes (`cmd > log 2>&1; echo $?`; the shell is
+zsh, where `${PIPESTATUS[0]}` is empty and silently wrong, so no `$?` was taken after a pipe).**
+`cd folio-designer && npx vitest run` → **0**, **74 files / 1251 tests / 0 failures**.
+`npx tsc -b --force` → **0**, zero bytes of output (`--force` is mandatory; `tsc -b` is incremental and can
+exit 0 having checked nothing). `npx oxlint` → **0**, **0 errors and exactly 4 `only-export-components`
+warnings**, anchored at close to `preview/pdf-viewer.tsx:17,18` and `App.tsx:4462,4469` (the Verification
+section's `App.tsx:4425,4432` is its `b32d832` baseline record; the anchors moved, as it said they would).
+`npm run test:e2e:compile` → **0**. `git diff -- folio-go/` → empty.
+
+**The baseline test-name MULTISET diff the Verification section asks for was NOT re-derived at close.** It
+needs the suite run at `82466e7`, which needs a checkout or a worktree, and this close is under a standing
+prohibition on all git state changes. What was checked instead, without changing git state: the tracked test
+file population at `82466e7` versus `e70d3a3` is a strict superset — **zero GONE, one NEW**
+(`src/binding-vocabulary.test.tsx`) — which bounds any loss to *within* a surviving file and cannot rule one
+out. Totals moved 73 → 74 files and 1221 → 1251 tests; at close the five touched files hold 467 tests
+(`binding-vocabulary` 15, `DataPanel` 18, `engine-bounds-mirror` 33, `engine-protocol` 42, `App` 359). A
+total is weaker than a name multiset, and the spec's own warning stands: 1221 assertions resolved to 1213
+unique names, so a SET diff can silently absorb a lost test.
+
+**Suites that DID NOT RUN in this story, named per D-000.32:** the browser suite, the Go suites, the matrix
+legs, `npm run build` as a gate, the `verify:offline*` chain, and the font-host scans. These come due at the
+Epic 14 boundary gate, which is the owner's — and it is the reason `epic-14` stays `in-progress` at this
+close rather than moving to `done`.
