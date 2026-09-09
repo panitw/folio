@@ -5319,29 +5319,45 @@ So that a table is configured in one place rather than in a dialog plus a hand-e
 
 **Acceptance Criteria:**
 
-**Given** the design's HEADER, CELLS and BORDERS sections, which the editor does not have at all
-**When** they are built
-**Then** they sit beside the matrix as the design places them, and each control is backed by a value
-the engine actually consumes — this story presents Story 12.3's capability and adds no second way to
-store it
+> **REWRITTEN 2026-09-10**, as the owner-decision block above instructs in its own last line. The
+> criteria that stood here until now still specified `Show header row` and the BORDERS presets that the
+> block had already ruled out, so the story contradicted its own decision and could not be dispatched.
+> **The owner also amended the block itself on 2026-09-10**: BORDERS authors `headerStyle.border` —
+> see the final criterion, which is capability rather than presentation and is admitted knowingly.
+
+**Given** the editor's single `HEADER AND ROWS` group (`TableEditor.tsx:427`), which today holds everything Story 12.3 made authorable in one undifferentiated block
+**When** it is restyled
+**Then** it becomes the design's **HEADER** and **CELLS** sections — HEADER carrying the header height and the header text fields (font family, size, line spacing, background, colour, vertical align, align), CELLS carrying the alternating row background, which is the one field in the set scoped to data rows rather than to the header. No control is added, removed or rewired: this is a regrouping, and the story is done when the editor reads as one designed thing rather than when it can do something new
+
+**Given** every control in those two sections
+**When** each is placed
+**Then** it is the control already shipped, sending the command already registered — `table.headerHeight`, `table.altRowBackground`, and `table.headerStyle.<field>` over the closed set at `component_commands.go:2511` — so this story adds no format field, no command, no projection field and no version increment, and offers no second way to store a value the product can already store (D-12.4.1, D-14.4.Q2(a))
 
 **Given** *Repeat on continuation pages*, which the design draws with a **REQUIRED** badge
 **When** it is shown
-**Then** it is a locked statement of an existing guarantee rather than a setting: FR26 and Story 4.4
-make the header repeat unconditional, and the badge says so. A control that looks switchable and is
-not would be the same defect Story 14.2 fixes for the Line
+**Then** it is a locked statement of what the engine does rather than a setting the author can change — the header is redrawn on continuation pages and no format field switches that off. **It must not be worded as an absolute.** `DiagCodeTableHeaderRepeatSuppressed` (`diagnostic.go:317-325`) is the engine's own record of the one case where the repeat is suppressed on a single page, because reserving the header would leave no room for a row to sit under it. A badge promising a guarantee the engine can suspend is the same defect as a control the engine will refuse, arriving from the other direction
 
 **Given** *Row height*, which the design shows as `auto`
 **When** it is shown
-**Then** it likewise states a derived fact — row height comes from content and cell padding, and no
-format field sets it — rather than offering a number the engine would ignore
+**Then** it likewise states a derived fact — a row's height comes from its content and its cell padding, and no format field sets it — rather than offering a number the engine would ignore
 
-**Given** *Show header row* and the BORDERS presets None / Horizontal / All
-**When** this story is planned
-**Then** each is traced to a format field before it is drawn, and any that has none is either ruled
-into the format as its own story or dropped from the panel. `headerHeight`, `headerStyle` and
-`style.border.edges` exist; "show header row" and a three-way border preset do **not**, and inventing
-a control the format cannot carry is how this epic's defects were made in the first place
+**Given** `headerStyle.border`, a block the header cascade already resolves ahead of the table's own border (`table_render.go:358-361`) and which the closed command set deliberately withholds pending this very section — `component_commands.go:2511-2518` says in the engine's own source that `border` *"waits on Story 14.8's BORDERS section"*
+**When** BORDERS is built
+**Then** it authors that one field and nothing else — width, colour and edges for the header row only, falling back to the table's `style.border` when absent, exactly as the renderer already cascades it — extending the closed field set to ten and the `TableHeaderStyle` projection by one block. The three-way None / Horizontal / All preset is still **not** built, because it still has no field. **This criterion is capability rather than presentation**, and the owner's 2026-09-05 decision is amended by their 2026-09-10 decision that admits it. A table's *body* border stays where it already is — the inspector's **BOX** section (`App.tsx:3074`), which offers width, colour and per-edge checkboxes for every non-line component including a table — so this section adds the header-row override and does **not** restate what BOX already authors (D-14.4.Q2(a))
+
+**Given** `TableEditor.dc.html`, which draws `Show header row`, a three-way BORDERS preset (None / Horizontal / All), `Padding` and `Row height` as settings the product does not have
+**When** this story is done
+**Then** the mockup itself is edited so it stops promising them. The drawing is part of this story's deliverable and not context for it: a mockup that draws capabilities the product cannot carry is how this epic's defects were made, and leaving it uncorrected leaves the next author a specification to implement
+
+**Given** any section this story cannot back with a field the engine actually consumes
+**When** the editor is shown
+**Then** it is absent rather than disabled-and-mysterious, and this epic records why
+
+> **THE STRUCK PADDING CRITERION IS RETAINED BELOW DELIBERATELY.** It is not live scope. It is kept
+> because it is the record of *why* padding is not in this panel, and because it is the clearest
+> worked example this epic has of a criterion every clause of which is true about the engine and which
+> is still an instruction to build a defect. Deleting it would remove the warning and leave only the
+> absence, which is how it survived four stories the first time.
 
 > ~~**Given** cell padding in this panel · **When** it is edited · **Then** it writes the table's
 > `style.padding`, which the cell chrome already consumes — the one element kind for which padding is
@@ -5358,9 +5374,6 @@ a control the format cannot carry is how this epic's defects were made in the fi
 > the project would catch it, because the command it sends is legal. The only thing standing between
 > that defect and the tree was this paragraph, and it was still telling someone to build it.
 
-**Given** any section this story cannot back with a format field
-**When** the editor is shown
-**Then** it is absent rather than disabled-and-mysterious, and the epic records why
 
 ### Story 14.9: The canvas draws the table it will print
 

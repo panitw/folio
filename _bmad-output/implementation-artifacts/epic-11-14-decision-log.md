@@ -6296,7 +6296,7 @@ not here. **It is not lost: it is Story 14.7b's acceptance criteria**, which car
 | Guardrail | Where it now lives |
 |---|---|
 | 1. count only real mutations (`revision !== priorRevision`) | 14.7b AC3, and in full above |
-| 2. the modal swallows the global undo/redo shortcut | 14.7b AC4, and [DW-368] |
+| 2. the modal swallows the global undo/redo shortcut | 14.7b AC4, and [DW-368] — **its rationale below is false; see the correction note** |
 | 3. a count over the engine's history limit disables Cancel **with a stated reason** | 14.7b AC5 |
 | 4. a failed undo stops, states the real position, claims nothing | 14.7b AC6 |
 | 5. the redo stack is **not** cleared — a mistaken Cancel is recoverable | 14.7b AC7 |
@@ -6306,7 +6306,25 @@ not here. **It is not lost: it is Story 14.7b's acceptance criteria**, which car
 recorded a count, not a decision.** The same shape as [D-14.7.2] — the integer was a proxy; the set is the
 predicate. Dispatch 14.7b against the ACs, which are enumerated, not against this entry's word "six".
 
-**Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], [D-14.7.2], DW-351, [DW-368].
+**⚠ GUARDRAIL 2'S RATIONALE IS FALSE, corrected 2026-09-10 at the 14.7b plan gate and verified by the
+orchestrator.** This entry says *"a global undo the dialog never saw desynchronises the count."* It does not:
+`Cmd+Z` with the editor open runs `applyHistory`, whose `setCurrentSnapshot(…, true)` calls
+`setTableEditor(undefined)` at `App.tsx:1968` — **the undo destroys the dialog**, so the count dies with it and
+there is no Cancel left to press. The count is desynchronised instead by **Cmd+D and the arrow-nudge**, which sit
+below the same `if (editing) return` at `App.tsx:2191` and **leave the dialog open** (measured:
+`moveComponent x:22.276`, `duplicateComponent`). The failure is an **under**-unwind, not the over-unwind this
+rationale describes. **Guardrail 2 itself stands and widens; only its stated reason was wrong.** Guardrail 1's
+destructive over-unwind is a separate case, still needs the no-op rule, and is untouched. See [DW-368]'s
+correction note for the measurements.
+
+**This is [D-14.7.3] again, one entry later and in my own ruling.** A correct finding carried an incorrect
+explanation, and the explanation propagated — from DW-368 into this guardrail, and it was on its way into
+14.7b's spec and tests, where a guard built against the undo vector would have left the arrow vector open **and
+passed**. Third instance in this run. The lesson is now operational, not observational: **when a decision rests
+on a mechanism, the mechanism is the thing to measure, and the builder that measured it rather than echoing it
+is the reason this cost nothing.**
+
+**Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], [D-14.7.2], [D-14.7.3], DW-351, [DW-368].
 
 ## D-14.7.2 - record a warning baseline as a per-file SET, never as an integer
 

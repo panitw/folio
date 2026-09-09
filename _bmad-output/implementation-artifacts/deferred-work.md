@@ -12687,15 +12687,95 @@ listed `Add after`, which 14.7 **deleted** - it is no longer a per-row control, 
 now guards its absence via `RETIRED_COLUMN_HEADERS`. The defect itself is unchanged: the entry stays OPEN,
 owned by Story 14.7b.)*
 
-**This is a shipped defect independent of any pending work.** A modal that traps focus and then lets a global
-shortcut edit what it is covering is wrong on its own terms: the trap exists to say "nothing outside this is
-reachable", and the shortcut disproves it.
+**This is a shipped defect independent of any pending work, and it is wider than undo/redo.** A modal that traps
+focus and then lets a global shortcut edit what it is covering is wrong on its own terms: the trap exists to say
+"nothing outside this is reachable", and the shortcut disproves it.
 
-**It becomes destructive under D-14.7.1.** Story 14.7b's Cancel issues exactly as many undos as it counted
-commands; a global undo the dialog never saw **desynchronises the count**, so Cancel then unwinds edits from
-before the dialog opened. Assigned to 14.7b rather than 14.7 because it belongs with the counter it would
-corrupt, and fixing it in the markup story would leave the reason unrecorded.
+**⚠ THE MECHANISM THIS ENTRY ORIGINALLY ASSERTED IS FALSE. Corrected 2026-09-10** at `68aa91f` by Story 14.7b's
+plan gate, which **measured** it with a throwaway probe driving the real App rather than reasoning from the
+listener's position, and re-verified by the orchestrator before filing. With focus on a button inside the open
+dialog, `Cmd+Z` sends an `undo` **and tears the dialog down** — `applyHistory` passes `clearDocumentInteraction`
+to `setCurrentSnapshot`, which at `App.tsx:1968` runs `documentGeneration.current++`, `tableEditorSession.current++`,
+`setTableEditor(undefined)` **and** `setFontBrowserOpen(false)`. So the document does **not** mutate *behind* the
+modal; the modal is destroyed by the same keypress.
+
+**The real vector was filed nowhere, and it is the one that matters.** The same hole is open below
+`App.tsx:2191` for **Cmd+D and the arrow-nudge**, and those **do** leave the dialog open: `ArrowLeft` sent
+`moveComponent x:22.276` and `Cmd+D` sent `duplicateComponent`, both measured, both invisible to the author,
+both mutating the very table the open editor is configuring.
+
+**It becomes destructive under D-14.7.1 by the arrow/Cmd+D vector, not the undo one.** A global undo **cannot**
+desynchronise 14.7b's count, because it closes the dialog that holds it. A nudge or a duplicate can: it adds a
+history entry the dialog never counted, so Cancel's N undos consume it and leave one of the dialog's own edits
+standing — an **under**-unwind. (Guardrail 1's *destructive* over-unwind still needs the no-op case, so that
+ruling is untouched and correct.) Assigned to 14.7b rather than 14.7 because it belongs with the counter it
+would corrupt, and fixing it in the markup story would leave the reason unrecorded.
+
+**Why this correction is worth its length: it is [D-14.7.3]'s shape recurring inside this very register.** The
+original entry's *finding* was right — a global shortcut fires from inside a focus-trapped modal — and its
+*explanation* was wrong. The explanation is the part that propagates: it had already been copied into
+[D-14.7.1]'s guardrail-2 rationale, and it would have gone into 14.7b's spec and its tests, where a guard built
+against the undo vector would have left the arrow vector wide open and passed. The builder measured instead of
+echoing, which is the only reason this was caught before it was implemented.
 
 **Note the escape hatch's shape is the root cause and it will recur.** `isEditableTarget` enumerates *editable*
 elements, but the question the listener actually needs answered is *"is a modal open?"* - a different question
 that happens to coincide while every modal's fields are inputs.
+
+---
+
+### DW-369 - the engine accepts a bold and an italic header, and the editor offers neither
+
+- **source_spec:** `folio-designer/src/table-style-command.ts`
+- **Found by:** the engineering lead, ruling Story 14.8's acceptance-criteria rewrite. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Go's closed `headerStyle` command set is **nine** fields (`folio-go/component_commands.go:2511`); the designer's
+`TableHeaderStyleField` union is **seven** (`folio-designer/src/table-style-command.ts:55`) — no `bold`, no
+`italic`. Story 11.2 added those two arms to the engine and nothing in the designer ever reached for them.
+
+**This is not a bug, and that is the point of filing it.** The designer cannot send a field it has no arm for, so
+there is no broken command and no wrong document — the capability is simply unreachable. `table-style-command.ts`
+says so itself, in a comment right above the union: *"There is also no control to send one … Adding either here
+means adding a boolean arm and the control that uses it, together."* The gap is honest and documented; it is the
+**asymmetry** that will be forgotten.
+
+**Why it is not absorbed into Story 14.8.** 14.8 is a restyle plus the one border field the owner admitted on
+2026-09-10. Offering bold and italic is new capability, outside that fence, and the lead declined to write it
+into the criteria rather than let a restyle quietly grow two controls. Epic 14 has already produced one story
+(14.7b) that exists because an interaction model was bundled into a markup rebuild.
+
+**How we'd know it was forgotten.** Someone measures Go's nine against the designer's seven, finds them unequal,
+and "fixes" the engine by removing two working arms — the wrong side. Or a future header-style story adds a
+control per field by iterating the designer's union and silently ships seven of nine.
+
+---
+
+### DW-370 - two modal Cancel buttons will mean two different things, and no test can see it
+
+- **source_spec:** `folio-designer/src/TableEditor.tsx`
+- **Found by:** Story 14.7b's builder at its plan gate, raised without re-opening the labels. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Once Story 14.7b lands, the product ships **two `role="dialog"` surfaces** — `FontBrowser.tsx:276` and
+`TableEditor.tsx:355` — each with a `Cancel` button, meaning **different things**. FontBrowser's `Cancel` closes
+without undoing anything, because the font browser commits immediately and its actions are meaningful alone. The
+table editor's `Cancel` issues N `undo` operations to discard what the dialog counted, per [D-14.7.1].
+
+**The reason this is deferred work and not a defect is that both labels are individually correct.** D-14.7.1
+ruled the table editor's pair `Cancel` / `Done` precisely because the model is "already committed, discardable",
+and the label must follow the model. FontBrowser's `Cancel` is equally right for a dialog that has committed
+nothing pending. The vocabulary is consistent **within** each dialog and inconsistent **across** them.
+
+**No gate in this project can catch it, which is the part worth writing down.**
+`control-vocabulary-contract.test.tsx` checks the **spelling** of a control's label within a class — that a
+button says `Cancel` and not `Discard` or `Back`. It has no notion of what a label *means*, so two identically
+spelled buttons with opposite consequences are, to every test in the repository, in perfect agreement. This is
+the *instrument whose silence is its answer* shape: the contract will stay green through exactly the defect a
+label contract exists to prevent.
+
+**Why not fixed in 14.7b.** The fix is either a third label the design does not have, or a change to
+FontBrowser's semantics — both outside 14.7b's fence, and the second is a behaviour change to a shipped surface
+the story does not own. Needs an owner decision on which of the two dialogs is wrong, if either.
+
+**How we'd know it was forgotten.** An author presses `Cancel` in the font browser expecting the table editor's
+behaviour and loses nothing, or presses it in the table editor expecting the font browser's and loses their
+column edits. The second is the one that costs work, and nothing warns them.
