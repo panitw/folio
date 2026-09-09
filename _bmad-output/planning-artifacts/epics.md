@@ -5050,9 +5050,13 @@ the document bar
        outer runs 0.333 / 0.318 / 0.385, and the 13px inner block is square where the mark's is
        portrait. The epic had read a status glyph as a third size of the logo. -->
 **When** it is built
-**Then** it is one component parameterised by size rather than three drawings, and it is used on the
-load screen as well as the document bar, because a brand that appears only after loading is not the
-thing the author first sees
+**Then** it is one component parameterised by size rather than a separate drawing per site, and it is
+used on the load screen as well as the document bar, because a brand that appears only after loading
+is not the thing the author first sees
+  <!-- "three drawings" corrected to "a separate drawing per site" 2026-09-09, with the Given above.
+       The first pass corrected the count in the Given and left it standing in the Then, which is the
+       failure mode recorded at D-14.4.1: a correction is not finished until everything citing the
+       corrected text has been swept with it. Found by 14.5's builder, not by me. -->
 
 **Given** the mark
 **When** it is read by assistive technology
