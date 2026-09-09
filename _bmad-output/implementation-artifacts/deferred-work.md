@@ -11931,3 +11931,85 @@ have made a design decision under cover of a sweep.
 **What discharges it:** decide which way `EXPERIENCE.md` and the product should agree, amend whichever is
 wrong, and then make the four controls consistent in that one dimension.
 
+### DW-327 - `.canvas-tools` mixes glyph and word controls, and both new clauses are blind to it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`.canvas-tools` is a roleless `aria-label`led container holding `-` and `+` beside `Grid on`, `Snap on`,
+`Duplicate` and `Delete`. **It is the same defect Story 14.1 just fixed on `.document-actions`**, one
+container over.
+
+**And the new contract cannot see it, for two independent reasons** - which is what makes this worth an entry
+rather than a note: its buttons carry **no `class` attribute at all**, so R1's family map never groups them;
+and the container has no `role`, so R2 never sees it either. A guard blind in two ways at once is blind on
+purpose-looking evidence.
+
+**All three review layers raised it independently.** No AC named it, so 14.1 correctly did not take it.
+
+**This is the largest single finding from Story 14.1 and the obvious first candidate for Story 14.3**, which
+owns that surface.
+
+### DW-328 - R1 evaluates per render state and R4 evaluates across them, and nothing reconciles the two
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+A class family spelled as words in Design mode and as a glyph in Preview **would not red**, because R1
+never compares across states while R4 does. `.file-button` is used by both the document bar and
+`evidence-rail.tsx`, so the case is reachable rather than theoretical.
+
+**Either scope is defensible; the inconsistency between the two clauses is not.** Whichever is chosen, both
+clauses should agree, and the choice should be stated rather than inherited from how each clause happened to
+be written.
+
+### DW-329 - `isSegmentedControl` infers exclusivity from `aria-pressed`, which proves a toggle and not exclusivity
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The whole V2 rule is "a control is a glyph only as a member of a segmented control", so the predicate that
+decides what *is* a segmented control is load-bearing for every glyph exemption the contract grants.
+
+`aria-pressed` proves a control is a toggle. It does not prove the group is exclusive. **A future
+`role="group"` holding independent toggles would silently exempt its glyphs from the R4 census** - which is
+the one thing R4 exists to protect. The exemption would be granted by the guard, quietly, on a true premise
+that does not entail the conclusion.
+
+### DW-330 - the vertical-align glyphs sit on a different vertical rhythm from the align glyphs beside them
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Measured from the shipped paths: the align glyphs run on 4/8/12, `valign` `middle` matches at 4/8/12, but
+`top` runs 3/7/10 and `bottom` runs 6/9/13. At a rendered 12px, in one row, beside each other.
+
+**No test can see this and no browser run has checked it.** It is a visual-consistency question in the story
+whose subject is visual consistency, which is why it is registered rather than shrugged off - but it is
+genuinely a judgement about drawing, not a defect with a right answer.
+
+### DW-331 - `Border edges` is recorded as under-arity and unchecked, which is disclosed but still unchecked
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Non-button controls are outside the swept population by the spec's own boundary, so `Border edges` falls
+into the checked/under-arity partition the review added. **That partition is an improvement** - it previously
+passed silently while reading as covered - but disclosure is not coverage. The control is still unchecked.
+
+### DW-332 - nothing measures document-bar fit at the shell's 1024px minimum, though the preview status bar is measured that way
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-1-one-button-vocabulary.md`
+- **Found by:** Story 14.1's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`e2e/preview-navigation.spec.ts:307` measures the *preview status bar* at the shell's declared minimum
+width. **Nothing does the same for the document bar** - which this story just widened.
+
+**The arithmetic was done rather than left open, and it fits.** Open and Save moved from a fixed 24px
+`.icon-button` square to `.file-button`: four characters of 10px sans + 16px padding + 2px border ~= 39px, so
+**~ +15px each, ~ +30px total**, against the 179px of slack measured in Chromium at 1024px during Story 13.5
+- leaving ~149px.
+
+**But that is arithmetic over a measurement taken in another story, not a browser run.** Story 13.5's own fit
+guard was structurally incapable of failing until it was executed, so this project has direct experience of
+what arithmetic-instead-of-execution is worth here. Confirm it at the Epic 14 boundary gate.
