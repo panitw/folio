@@ -772,7 +772,24 @@ const reopen = async () => {
   return screen.findByRole('dialog', { name: 'Table Editor' })
 }
 
-describe('the table editor\'s Cancel discards what it counted', () => {
+// ⚠ THIS WHOLE BLOCK CARRIES A RAISED TIMEOUT, AND THE REASON IS A MEASUREMENT,
+// NOT A HUNCH. Every claim here drives the real dialog through several committed
+// edits — each one a type, a blur and an engine round trip — so the tests are
+// legitimately slow rather than accidentally slow. Locally the heaviest are
+// ~1.4s, ~1.3s, ~1.2s, ~1.2s and ~1.0s against a 5s default, which reads as
+// comfortable and is not: CI's runner is 3-5x slower on jsdom with `userEvent`
+// (measured — simple tests that cost ~100ms here cost 300-900ms there), which
+// puts five of them between 4s and 6s. Two of them TIMED OUT on CI at `482ea5d`
+// while passing locally, and the rest were one scheduling hiccup behind.
+//
+// The block timeout is deliberately per-BLOCK rather than sprinkled over the two
+// that happened to fail first. Fixing only those would have left four tests
+// sitting just inside the limit — a suite-level instance of the same shape
+// D-14.7.4 names, a guard that can only just pass, where the next slightly
+// slower runner reds a claim that is true. The margin is wide for the reason the
+// 101-edit test below states in its own comment: **a slow machine should red the
+// claim, not the clock.**
+describe('the table editor\'s Cancel discards what it counted', { timeout: 30_000 }, () => {
   it('counts only the edits the engine agreed changed the document, and unwinds exactly those', async () => {
     const harness = tableEngine()
     await openEditor(harness)
