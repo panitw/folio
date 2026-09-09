@@ -6201,3 +6201,58 @@ the DOM. The per-story cadence has therefore never been able to catch this class
 run at `ci.yml:423` would have — on my next push.
 
 **Related:** [D-14.4.3], [D-14.5.1], [D-000.32], DW-350, DW-353.
+
+## D-14.7.1 - the table editor's Cancel issues the undos it counted, and AC7's architecture claim was false
+
+**Recorded 2026-09-10**, ruled by the engineering lead on Story 14.7's transaction model, which the AC required
+be settled before the story was built. **The verdict is neither option the AC offered.**
+
+**Verdict: the dialog's buttons are `Cancel` / `Done`.** Commit-on-blur is unchanged. The dialog keeps an
+**integer count** of the commands that actually changed the document; `Cancel` issues exactly that many `undo`
+operations and closes; `Done` closes. No engine change, no new command, no AD-15 change.
+
+**AC7's architectural premise was false, and I verified the correction at source rather than accepting it.**
+The AC said a modal Cancel *"would need a local uncommitted buffer - a second model of the document, which
+AD-15 exists to forbid"*. AD-15's rule, read verbatim at
+`planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:338-343`:
+
+> *"there is no TypeScript model of a `.folio` document ... **Transient interaction state - a drag in flight, a
+> resize preview, an uncommitted property keystroke - lives in the UI and never enters the document.**"*
+
+**A pending edit not yet sent is the named permitted case.** What AD-15 forbids is a TypeScript reimplementation
+of the **schema**. And the product **already ships** a buffer behind an Apply button - `PageSetup` takes a
+`draft` and commits on `onApply`, diffing per row. So a buffer was never forbidden, only expensive. **Had the
+claim stood, the next person wanting a buffer anywhere would have been refused on a rule that does not say
+that** - which is a more durable harm than one wrong story.
+
+**The second false premise is the subtler one and it is the transferable lesson.** The AC presented a
+**two-option fork** - Close-plus-undo, or the buffer - and *"both arms leave the same possibility uncovered,
+which is the tell that the fork itself was incomplete rather than that one arm was wrong"*. The fact that opens
+the third arm is stated nowhere in the AC: **the engine's undo is a byte-snapshot restore, not an inverse
+command** (`wasm/engine.go`, `pushUndo(e.bytes)`; its comment: *"They never serialize history into .folio bytes
+or ask TypeScript to retain a mirror/inverse command"*), and a **no-op command is not a history entry**
+(`bytes.Equal` short-circuit at `:297`). The discard already lives in Go.
+
+**I had asked the lead to attack my provisional (a) rather than confirm it, precisely because the AC had done
+most of the arguing and my agreement felt too easy.** That instinct was right and did not go far enough: I
+questioned the answer and not the question. **When a requirement offers exactly two options, the fork is itself
+a claim, and it is the one worth measuring.**
+
+**Answers to the three things I was unsure of, all measured:**
+- **Undo does not deliver what Cancel promises.** N presses for N *changed* cells, N unknown to the author, no
+  marker - revisions stay **monotonic across undo** (`:319`), so the UI cannot detect "back where I started" by
+  comparing them. The story would have implied a parity that does not exist.
+- **Precedent exists twice and contradicts itself:** the font browser commits immediately and only closes;
+  PageSetup drafts and applies. The principled difference: PageSetup's fields are scalars that only make sense
+  **applied together**, while the font browser's actions are **independent and meaningful alone**. Table cells
+  are independent and each is already validated alone, which places the table editor with the font browser.
+- **Six guardrails make (c) safe rather than clever**, and the first is the one that matters: **count only real
+  mutations** (`revision !== priorRevision`), or a no-op blur consumes a Cancel step and Cancel unwinds edits
+  from *before the dialog opened* - the single destructive failure mode of this design.
+
+**Also ruled: the buttons are `Cancel` / `Done`, not the design's `Cancel` / `Apply`.** Nothing is applied at
+close - the edits are already in the document. **The label must follow the model, and the model is "already
+committed, discardable".** AC7 was right that this is not a labelling choice; it was wrong about which label the
+model implies.
+
+**Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], DW-351.

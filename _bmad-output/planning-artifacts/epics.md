@@ -5188,11 +5188,33 @@ as two bare inputs at the top of the dialog
 **Given** the design's **Cancel / Apply** buttons, against an editor that today commits every cell on
 blur through the engine
 **When** this story is planned
-**Then** the transaction model is ruled and recorded first: commit-on-blur is what AD-15 and the undo
-model already give (the engine owns the document, every mutation is a command, and UX-DR20 makes each
-undoable), so a modal Cancel would need a local uncommitted buffer — a second model of the document,
-which AD-15 exists to forbid. Either the buttons become Close plus undo, or the buffer is ruled in
-deliberately. This is not a labelling choice
+**Then** the transaction model is ruled and recorded first. **This is not a labelling choice.**
+  <!-- CORRECTED 2026-09-10, before Story 14.7 was built. This AC previously asserted that a modal
+       Cancel "would need a local uncommitted buffer — a second model of the document, which AD-15
+       exists to forbid", and offered a two-option fork: Close-plus-undo, or the buffer.
+
+       BOTH PREMISES ARE FALSE, measured at HEAD.
+
+       (1) AD-15 does not forbid a buffer. Its rule reads: "Transient interaction state — a drag in
+       flight, a resize preview, AN UNCOMMITTED PROPERTY KEYSTROKE — lives in the UI and never enters
+       the document." A pending edit not yet sent is the named permitted case, not the forbidden one.
+       What AD-15 forbids is a TypeScript reimplementation of the .folio SCHEMA. The product already
+       ships a buffer behind an Apply button: PageSetup takes a `draft` and commits on `onApply`.
+       Leaving the claim standing would have refused the next author of a buffer on a rule that does
+       not say that.
+
+       (2) The fork was incomplete, which is why neither arm was right. The engine's undo is a
+       BYTE-SNAPSHOT RESTORE, not an inverse command (`wasm/engine.go` pushUndo(e.bytes); its own
+       comment: "They never serialize history into .folio bytes or ask TypeScript to retain a
+       mirror/inverse command"), and a no-op command is not a history entry (bytes.Equal short-
+       circuit). That fact — stated nowhere in the AC — opens a third option.
+
+       RULED (D-14.7.1): the buttons are Cancel / Done. Commit-on-blur is unchanged, so every refusal
+       stays live and located, which is Epic 14's whole subject. The dialog counts only the commands
+       that actually changed the document, and Cancel issues exactly that many undos. The UI holds an
+       INTEGER, not document content — transient state by AD-15's own definition, and a smaller
+       footprint than the draft object PageSetup already ships. Name it honestly in the spec: it is a
+       compensating sequence, not a transaction. -->
 
 **Given** the design's widths in **millimetres**, against an engine and an inspector that speak
 points
