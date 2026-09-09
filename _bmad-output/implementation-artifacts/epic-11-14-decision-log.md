@@ -5958,3 +5958,44 @@ for `position: fixed`, and `.page-band` carries no `transform`/`filter`/`contain
 trapped. (The `transform` that appears near that selector is on `.page-band > span`, the band label.)
 
 **Related:** [D-14.2.2], [D-13.4.1], [D-13.3.1], [D-000.9], DW-344, DW-345, DW-346, DW-347, DW-348.
+
+## D-14.4.1 - where a standing constraint goes when the workflow forbids adding it to the dispatch
+
+**Recorded 2026-09-09**, solved by Story 14.4's builder without escalating, and recorded because it is
+reusable and because the next builder will hit the same wall.
+
+**The conflict.** `bmad-build`'s step-03 mandates a **verbatim** implementation dispatch and forbids adding
+constraints to it. My standing rule is absolute: **subagents never commit, `git add`, stash, checkout, reset,
+revert, restore or clean.** So the workflow forbids the channel through which the prohibition would normally
+travel - and this is not hypothetical: **subagents in this repo have committed unasked before**, which is why
+the rule exists in that form.
+
+**The three bad answers.** Pad the dispatch and breach step-03. Leave the gap and rely on an implementer
+inferring a rule nobody told it. Or put the constraint in the frozen block, which would mean amending
+`<frozen-after-approval>` for an operational rule that is not part of the story's intent.
+
+**What it did instead: put the full prohibition in `## Tasks & Acceptance`**, which sits **outside** the frozen
+block, so the frozen block was untouched (still lines 22-117) while the constraint reaches the implementer
+through a channel the workflow itself sanctions - the implementer reads the spec. The dispatch stayed the
+workflow's own two lines, unmodified.
+
+**Why this is the right shape and not a loophole.** The prohibition is not story intent; it is a condition of
+how work is executed here, and it binds every story equally. Freezing it would misfile it as intent and make it
+un-amendable by anything but a human renegotiation. Tasks & Acceptance is where execution conditions belong,
+and it is re-read on every dispatch. **Adopt this for any future collision between a workflow's verbatim-channel
+rule and a standing operational constraint.**
+
+**A second finding from the same builder, and the more general lesson.** My commit `82466e7` moved HEAD
+mid-dispatch and **rotted one of its own anchors**: its spec told the implementer *"do not act on
+`epic-14-context.md:128-129`"*, and my correction to that very line made the instruction wrong - the line no
+longer said what the spec described, and the numbering shifted. It rewrote the instruction to point at the
+corrected bullet instead. **An instruction to ignore a line that has since been fixed is a worse trap than the
+original error**, because it survives the fix and quietly reverses its meaning: the reader is told to disregard
+the correct text. Registering a correction is not free; anything that *cites the thing corrected* has to be
+swept too.
+
+It caught this at step-03's baseline capture rather than assuming, and verified the delta was
+planning-artifacts-only (`git diff --name-only b32d832..82466e7` = `deferred-work.md`, `epic-14-context.md`)
+before concluding its Code Map anchors and the 73/1221/0 baseline still held.
+
+**Related:** [D-000.32], [D-14.3.1], DW-349, DW-350, DW-351.
