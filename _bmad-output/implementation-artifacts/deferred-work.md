@@ -12261,3 +12261,49 @@ defect - the shape where fixing something kills its own detector.
 
 Story 14.3 deliberately does not touch this (its Q1 ruling took route (b)); it re-owns the finding rather than
 absorbing it, and discharges the reconciliation with an **executable** assertion rather than prose.
+
+### DW-346 - `duplicateSelection` now has the new component's id in hand and discards it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-3-a-placed-component-is-the-selected-component.md`
+- **Found by:** Story 14.3's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`duplicateSelection` creates exactly one component, and after 14.3 the machinery to identify it exists and is
+used by `place`/`placeInBand`. The duplicate still arrives **unselected**.
+
+**This is Story 14.3's own Intent surviving intact in a neighbouring gesture.** The story exists because "what I
+just made is not selected, so I have to go and find it" is a bad way to work; duplicate is the same act with
+the same complaint, one function away from the fix, and no 14.3 AC names it. Registered rather than absorbed
+because a story's ACs are its fence even when the adjacent case is obviously similar - but this is the strongest
+candidate in this file for a follow-on, and it should be cheap.
+
+### DW-347 - the id diff degrades silently when more than one component appears
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-3-a-placed-component-is-the-selected-component.md`
+- **Found by:** Story 14.3's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The id diff returns `undefined` when `added.length > 1`, which is **indistinguishable from the zero case** - no
+diagnostic, no distinction between "nothing was added" and "more was added than I can attribute".
+
+Both paths mean "do not select anything", so nothing misbehaves today. The cost is diagnostic: when a future
+command does add two components, the symptom will be a placement that silently fails to select, and the code
+will offer nothing to tell that apart from a placement that failed outright. **A silence that answers two
+different questions the same way is the shape this run has caught repeatedly** - compare DW-333, where one
+helper's answer was correct only while its population had a single member.
+
+### DW-348 - a test file asserts in a comment that the e2e suite runs in no workflow, which is no longer true
+
+- **source_spec:** `folio-designer/e2e/component-properties.spec.ts:3-5`
+- **Found by:** Story 14.3's builder, cross-checking its own coverage claim. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The comment states `npm run test:e2e` appears in no workflow. It was true when written; `.github/workflows/ci.yml`
+now defines `folio-designer-e2e` (ubuntu-24.04, pinned Chromium, no `continue-on-error`), and the job has
+executed - four red runs, then fixed.
+
+**The severity is in where it sits, not in what it says.** This is a comment in a test file, and it tells a
+reader deciding whether e2e coverage counts that e2e coverage does not run. Story 14.3's own builder began from
+that belief - its memory of "the e2e suite has never executed" was stale - and corrected it only by reading the
+workflow. **A stale claim inside the artifact a future agent would consult to check the claim** is worse than
+the same sentence in prose, because it is found by exactly the search that should have corrected it.
+
+Note the remaining nuance, which the comment could carry instead of being deleted: CI runs on **push**, so an
+unpushed commit is genuinely unverified. That was the live condition for 14 commits until 2026-09-09.
