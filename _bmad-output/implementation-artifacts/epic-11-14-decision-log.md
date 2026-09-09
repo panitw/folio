@@ -5765,7 +5765,23 @@ did not reproduce, and **kept using `grep -a` anyway** — on the correct reason
 might run a different grep. Disproving the premise and keeping the practice is the right pair of conclusions
 and it did not need either one pointed out.
 
-**Related:** [D-13.6.1], [D-11.2.4], [D-13.1.3], DW-256.
+**NARROWED 2026-09-09, same day, by the same builder that disproved it.** The correction above was itself
+over-broad. `diff` **does** hit the trap: plain `diff` on `App.tsx` prints *"Binary files differ"* and **zero
+changed lines**; `diff -a` shows the edit. Re-measured here independently (Apple diff, FreeBSD-based). So the
+accurate statement is **tool-by-tool, not file-wide**: this host's `grep` (ugrep 7.8.4) is immune, `diff` is
+not, and neither result generalises to another host.
+
+**The danger is sharper for `diff` than it ever was for `grep`, and it is the reason this narrowing matters.**
+A blind `grep` returns nothing and its silence is at least ambiguous. Plain `diff` returns the word
+**"differ"** - so an agent proving a mutation landed skims for confirmation, sees difference asserted, and
+concludes the edit is present. **A landed edit and a missing edit produce indistinguishable output.** Story
+14.1 accepted a green from a mutation that never landed; this is the mechanism that makes that mistake easy.
+
+**Standing rule: `diff -a` and `cmp` for every mutation proof on `App.tsx`.** And the general form - *a
+correction can overshoot in the same direction as the error it fixes*. I replaced "the trap is everywhere"
+with "the trap is dead", when the measured truth was "the trap is per-tool" both times.
+
+**Related:** [D-13.6.1], [D-11.2.4], [D-13.1.3], [D-14.2.3], DW-256.
 
 
 ## D-14.2.2 - an orientation toggle commits width and height as one change object, because the engine has always allowed it
@@ -5835,3 +5851,57 @@ finding that is real should stay visible as a finding; consuming it inside an un
 tidier and the record worse.
 
 **Related:** [D-14.0.1], [D-13.6.7], DW-333, DW-334, DW-335.
+
+
+## D-14.2.3 - an accurate diagnostic is printed; only a field name that may be wrong is withheld
+
+**Recorded 2026-09-09**, ruled by the orchestrator at Story 14.2's step-04 review.
+
+**What happened.** [D-14.2.2]'s remedy was written in shorthand - *"do not print `dataPath`"* - in a
+non-frozen section. The implementer read it literally and suppressed **every** path on a multi-field intent,
+including `component.geometry`. That contradicted the spec's own frozen matrix row 10 (*"reported beside the
+control as `component.geometry`"*) and the lead's explicit note that the containment case was unaffected. It
+shipped with a justifying comment saying *"the panel cannot tell the two apart"*.
+
+**That premise is false, and verifying it is what settled the triage.** `PropertyField`
+(`component-property-command.ts:17`) has 23 members and **`geometry` is not one of them**; `propertyPath`
+returns one of those same 23 keys or the literal `changes` (`component_commands.go:1079-1087`);
+`containComponent` returns `component.geometry` (`:1073`). A membership test against a union that already
+exists separates them exactly. **The suppression was not a limitation, it was an assumption.**
+
+**Ruling: patch, not a `bad_spec` loopback - and the triage label was the substantive part.** The builder
+offered this as an `intent_gap`. It is not: an intent gap is *the frozen block does not say*, and here the
+frozen block **said**, precisely, and the code did something else. That is a defect **against** intent, whose
+remedy is a patch. A loopback would have reverted a sound, mutation-verified diff to re-derive it nearly
+identically - the workflow's letter defeating its purpose.
+
+**The predicate, stated so it cannot be re-shortened into the same defect.** Suppress the path only when the
+intent carried **more than one field** *and* the path's last segment is a **member of `PropertyField`**.
+`component.geometry` prints. `component.changes` prints - it is `propertyPath`'s no-match fallback and names
+no specific field, so it cannot mislabel one. Single-field intents are untouched. **The rule is *never print a
+field name that may be wrong*, not *never print anything*** - and the second is what the shorthand decayed
+into.
+
+**D-14.2.Q7, ruled in the same pass - the square rule's dead segment.** Ties read horizontal, so on a square
+box pressing *Vertical* swaps two equal numbers: identical bytes, the engine's byte-equality short-circuit
+returns the same snapshot, no revision, no undo entry, and the button visibly does nothing. There is no
+implementation that makes the press meaningful - swapping the dimensions of a square is the identity - so the
+only choice is **whether the panel admits it**. Ruled: **disable the non-current segment when
+`width == height`, with an accessible reason**, and pin both. An enabled control that does nothing is *an
+instrument whose silence is its answer*, in the epic whose subject is the panel telling the truth. It is
+disabled from mount rather than transiently, so it does not inherit the focus-loss hazard that made
+`disabled` dangerous elsewhere in this panel.
+
+**The finding that mattered most this round was not this one.** The verification-gap reviewer mutated the
+Line's visible words back to `W`/`H` and both kinds back to `Background`, and **all 1195 tests stayed green**:
+every assertion resolved by accessible name (`FieldSpec.label`), while the word on screen is `affix`. **The
+story's entire visible deliverable was unfalsifiable** - a guard that cannot fail, this run's most-repeated
+defect shape, occurring inside the guard built to prevent it, in the story about vocabulary. Patched by
+asserting rendered text and **re-proving the mutation reds**, which is the only evidence that counts here.
+
+**Credit, and it is the durable part.** A fourth mutation did not land - a regex missed - and the builder
+**discarded its green rather than reporting it**. 14.1 shipped a mutation whose green was accepted with the
+edit absent. Detecting that failure mode from the inside, and paying a finding for it, is worth more to this
+run than the finding cost.
+
+**Related:** [D-14.2.2], [D-14.2.1], [D-000.32], [D-000.34], DW-333, DW-336, DW-339.

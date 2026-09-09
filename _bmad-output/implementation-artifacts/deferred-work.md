@@ -12092,3 +12092,81 @@ dimension measured in tens of points. **Thickness is measured in ones**: a hairl
 Thickness alone means a per-field step - a small generalisation of the numeric field, but a real one, affecting
 a control every inspector uses. Doing that inside a story whose subject is which inspector renders for which
 element kind would be scope drift of exactly the kind this run keeps catching.
+
+### DW-336 - `borderProjected` re-derives a Go invariant in TypeScript with no mirror test
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The disclosure note fires when the panel believes a Line's border paints. That belief is a TypeScript
+re-derivation of `borderPaints` (`folio-go/element_box.go:151-157`). Two implementations of one rule, in two
+languages, with nothing asserting they agree - **the D-7.4.5 shape**, which `engine-bounds-mirror.test.ts`
+exists to prevent for geometry and has no counterpart here.
+
+The failure is quiet in the direction that matters: if Go's rule grows a case the panel's copy lacks, a border
+paints and no note discloses it, which is precisely the harm D-14.2.Q1's note was ruled in to prevent.
+
+### DW-337 - the derived orientation ignores live drag geometry, so mid-resize the labels contradict the drawn box
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Orientation is derived from the **committed** box. During a canvas resize that crosses the square tie, the
+drawn rule is already taller than it is wide while the panel still says horizontal and `aria-pressed` still
+marks the horizontal segment. It resolves itself on commit.
+
+Related to the tie boundary the spec now covers in two rows (Thickness-exceeds-Length, and D-14.2.Q7's
+disabled segment on a square). This is the same boundary observed **mid-gesture** rather than at rest, and it
+is the one place the three do not agree.
+
+### DW-338 - the single-flight pending block is now copied verbatim four times, and the SVG icon shell three
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`OrientationProperty` is the **fourth** verbatim copy of the `pendingRef` single-flight block and
+`OrientationIcon` the **third** byte-identical SVG shell. Each copy was locally correct and cheap; the fourth
+is where a fix applied to one and not the others starts being likely.
+
+Registered rather than refactored inside 14.2: extracting a shared hook touches three controls the story does
+not otherwise open, and Story 14.2 already carries an encoder widening. **Note the specific risk this creates
+for the next reviewer** - finding 4 in 14.2's review was a missing `finally` in *one* copy, which is exactly
+the divergence a fourth copy invites.
+
+### DW-339 - `OrientationProperty` renders full-bleed outside `.property-grid`'s `1fr 1fr`, unverified by any run
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The control landed with no CSS accompanying it, and the inspector's grid is `1fr 1fr`. Whether it sits
+correctly is a **layout** question, and **the browser suite does not run per-story** under D-000.33 - so this
+rests on a read of the stylesheet, not on a rendered pixel.
+
+**Confirm at the Epic 14 boundary gate**, alongside DW-332's document-bar fit at 1024px, which rests on
+arithmetic for the same reason. Both are in the same category: a visual claim this cadence structurally
+cannot check until the gate.
+
+### DW-340 - independent `pendingRef`s let a Thickness blur-commit and an orientation click be in flight together
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Each control guards **itself** against re-entry; nothing guards the panel. Clicking the orientation toggle
+blurs a Thickness field being edited, so the blur-commit and the toggle can overlap - two commands against the
+same element, ordered by whichever resolves first.
+
+The engine serializes commands and each is individually valid, so this is a **last-writer-wins** ordering
+question rather than corruption. Registered because the two commands touch the same two keys, which is the
+case where order is observable.
+
+### DW-341 - nothing asserts the Line panel omits TYPOGRAPHY and `Text colour`
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's step-04 review. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+14.2 pins what the Line panel *offers* and what it *withholds from BOX*, but nothing asserts the TYPOGRAPHY
+section and `Text colour` are absent for a Line. **This is the DW-146 trap**: a section that should not be
+there passes unnoticed because no test looks for its absence.
+
+Cheap to close and deliberately not folded in - the story's withholding assertions were already re-proved by
+mutation this round, and adding an unproved one beside them would dilute that.
