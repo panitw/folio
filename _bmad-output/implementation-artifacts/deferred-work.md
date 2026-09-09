@@ -12159,6 +12159,12 @@ The engine serializes commands and each is individually valid, so this is a **la
 question rather than corruption. Registered because the two commands touch the same two keys, which is the
 case where order is observable.
 
+**ESCALATED 2026-09-09 by Story 14.3's builder, which reproduced it at HEAD.** Worse than first recorded:
+`swap` spells its payload from `points(component.height)`/`points(component.width)` off the **committed** box
+(`App.tsx:4218`), so when the blur-commit lands first the orientation swap overwrites it with pre-blur values -
+**the author's typed Thickness is silently discarded**, not merely reordered. That moves this from an ordering
+question to data loss on a gesture an author can perform by accident (type a Thickness, click the toggle).
+
 ### DW-341 - nothing asserts the Line panel omits TYPOGRAPHY and `Text colour`
 
 - **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
@@ -12222,3 +12228,36 @@ the target is wrong in the first place. The defect hides from the story that wou
 
 Registered rather than fixed: no 14.3 AC names later-sheet placement geometry, and per-kind default sizes are
 a product decision about what placing a Line should mean, not a selection concern.
+
+### DW-345 - the canvas paint floor collapses distinct document states into one appearance
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-3-a-placed-component-is-the-selected-component.md`
+- **Found by:** D-000.9 item 2 (registered, unruled); characterised by the engineering lead ruling 14.3's Q1.
+- **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+**This entry replaces the adjective with the arithmetic, because the adjective was not schedulable.** The prior
+registration said the floor "changes what is drawn". True, and it undersells the defect by a wide margin.
+
+`canvasDisplay.css` (`App.tsx:4308`) is `Math.round(millipoints * zoom * 1000) / 1_000_000`, so **1pt = 1px at
+zoom 1** - there is no 96/72 conversion anywhere in the mapping. Against the `max(2px, ...)` floor:
+
+| zoom | 1pt | 2pt | 3pt | drawn after the floor |
+|---|---|---|---|---|
+| 1.0 | 1px | 2px | 3px | **1pt and 2pt draw identically** |
+| 0.5 | 0.5px | 1px | 1.5px | **1pt, 2pt and 3pt all draw identically** |
+
+**So the floor does not merely inflate - it collapses distinct document states into one appearance.** At the
+default zoom an author cannot see the difference between a 1pt rule and a 2pt rule, though the two produce
+different PDFs. That is the fact that makes this worth scheduling.
+
+**Declared twice**, and both must move together: `.canvas-component` (`App.css:197`) floors **both axes for
+every component type**, and `.canvas-component-line` (`:242`) re-declares the height floor. The reason is
+stated at `:238-241`, so this is a considered decision and overturning it is a **visual-fidelity product call
+affecting every component type at every zoom below 2** - not a bug fix.
+
+**Why a 1px floor is not the cheap middle:** it fixes zoom 1 and leaves zoom 0.5 still collapsed, while
+changing what every user sees. A partial fix here would retire the defect's *visibility* without retiring the
+defect - the shape where fixing something kills its own detector.
+
+Story 14.3 deliberately does not touch this (its Q1 ruling took route (b)); it re-owns the finding rather than
+absorbing it, and discharges the reconciliation with an **executable** assertion rather than prose.
