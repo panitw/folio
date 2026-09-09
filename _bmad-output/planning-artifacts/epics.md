@@ -4913,6 +4913,13 @@ So that drawing a rule does not require knowing it is implemented as a filled bo
 **Design:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/Main.dc.html`
   — the inspector's POSITION and BOX sections
 
+  **What the mockup actually contains, verified 2026-09-09:** `Main.dc.html` draws a **Text** inspector
+  only. There is no Line inspector in it — no Thickness, Fill, Length or orientation control, and no
+  edge checkboxes. Its POSITION and BOX sections are therefore the *reference for section framing and
+  field layout*, not a picture of the controls this story adds. The controls above are specified by these
+  acceptance criteria and by the vocabulary contract from Story 14.1; they are not transcribed from a
+  drawing, and no agent should look for one.
+
 **Acceptance Criteria:**
 
 **Given** a selected Line

@@ -12036,3 +12036,59 @@ width. **Nothing does the same for the document bar** - which this story just wi
 **But that is arithmetic over a measurement taken in another story, not a browser run.** Story 13.5's own fit
 guard was structurally incapable of failing until it was executed, so this project has direct experience of
 what arithmetic-instead-of-execution is worth here. Confirm it at the Epic 14 boundary gate.
+
+### DW-333 - `propertyPath` returns the first canonical key, not the failing one, so a multi-key refusal names the wrong field
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Engineering lead, ruling Story 14.2's Q2. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`propertyPath(changes)` at `folio-go/component_commands.go:1078-1087` walks `propertyOrder` and returns
+`component.<first key present>`. Its own comment explains why, and the reasoning was sound **when `changes`
+always carried exactly one key** - first and only coincided, so the first key was necessarily the failing one.
+
+Story 14.2 widens `changes` to `{width, height}`. From that point a refusal raised by `height` reports
+`component.width`, and it reaches a person: `App.tsx:3341` renders `` `${error.dataPath}: ${error.message}` ``.
+The panel would print **"component.width: ..."** for a height-caused refusal - a false statement about which
+field was refused, inside the epic whose subject is the panel telling the truth.
+
+**The correct fix is in Go: return the path of the key that actually failed.** It is not made here because
+Story 14.2's AC1 names no engine change, and widening a story to absorb the defect it exposes is how scope
+fences fail. 14.2 instead takes a narrow panel-side remedy - **when an intent carries more than one field,
+suppress `dataPath` and render `message` alone** - which is strictly more truthful than printing a path known
+to be possibly wrong, but is a mute rather than a fix. **The wrong path is still returned; nothing yet shows
+it.** That silence is what makes this defer-able and also what makes it easy to forget.
+
+Note the containment case is unaffected: `containComponent` refusals report `component.geometry` (`:1074`),
+which is accurate for a width/height pair. So the defect's live population is *non-containment* refusals on
+multi-key changes.
+
+**This is the run's recurring shape again** - a mechanism that is correct while its population has one member,
+and becomes a mislabel the moment the population widens. Compare DW-256 and [D-14.0.1].
+
+### DW-334 - `resizeComponentCommand` is exported and tested but has no production call site
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's builder, investigating Q2's routes. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+A definition, one test import, zero production callers. The test therefore proves the encoder still encodes it
+and nothing else - it cannot fail in a way any user would experience.
+
+**Deliberately not retired by Story 14.2.** Retiring it was route (b)'s argument, (b) was rejected, and
+deleting an export is a change AC1 does not name. Registering it keeps a real finding visible as one, rather
+than letting it be quietly consumed to make a story's diff look tidier. Retirement needs its own decision:
+whether the canvas is expected to grow a caller, or whether the bounds vocabulary is genuinely down to
+`moveComponentCommand`.
+
+### DW-335 - a Thickness field takes 1pt arrow steps, which is coarse for the property it is the whole control for
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
+- **Found by:** Story 14.2's builder (its Q5). **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+The numeric property fields step by 1pt on arrow keys. That is a sensible default for a coordinate or a
+dimension measured in tens of points. **Thickness is measured in ones**: a hairline rule and a heavy rule are
+0.5pt and 2pt apart, so a 1pt step skips most of the usable range in two presses.
+
+**Registered rather than fixed, because the step is shared and the story is not about steps.** Changing it for
+Thickness alone means a per-field step - a small generalisation of the numeric field, but a real one, affecting
+a control every inspector uses. Doing that inside a story whose subject is which inspector renders for which
+element kind would be scope drift of exactly the kind this run keeps catching.

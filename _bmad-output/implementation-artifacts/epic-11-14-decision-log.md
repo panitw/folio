@@ -5767,3 +5767,71 @@ and it did not need either one pointed out.
 
 **Related:** [D-13.6.1], [D-11.2.4], [D-13.1.3], DW-256.
 
+
+## D-14.2.2 - an orientation toggle commits width and height as one change object, because the engine has always allowed it
+
+**Recorded 2026-09-09**, ruled by the engineering lead on Story 14.2's Q2.
+
+**The question.** A Line's orientation control flips horizontal to vertical, which is one user act but two
+numbers. Four routes were on the table: (a) call the existing bounds command twice, (b) call it once with both
+dimensions and retire the single-dimension form, (c) widen `updateComponentPropertiesCommand` so one `changes`
+object carries several keys, (d) mint a new orientation command. I routed it to the lead with the fence
+*"deciding the route only"* and one framing question: **is (c) a new command, or an existing command carrying
+what its own wire format already permits?**
+
+**Ruling: (c).** The orientation control commits `width` and `height` together as a single intent. (a), (b) and
+(d) rejected.
+
+**What settled the framing question was a fact, not a reading.** `component_commands.go:1055` shows the
+engine's only cardinality rule on `changes` is a **floor** - `len(changes) == 0` is the refusal. Not "exactly
+one". It then iterates the whole of `propertyOrder` (`:1173`/`:1181`) and runs `containComponent` **once per id
+after all changes are applied** (`:1069-1075`). So the engine was written for multi-key changes and had been
+waiting for one. The `kind` does not move, no field is minted, and the serialized `.folio` is identical under
+every route. **Command bytes are not serialization** - that distinction is what makes (c) additive rather than
+new.
+
+**AC1's own wording points at (c) rather than merely tolerating it:** the orientation is mapped onto height and
+width *"by the panel"*. The panel's vocabulary is `PropertyIntent` over `PropertyField`; the bounds commands are
+the **canvas's** vocabulary, reached from drag. Under (a) or (b) the phrase "by the panel" would do no work at
+all.
+
+**Two independent arguments carried it, and the second is the stronger one.** Mine was the error surface: the
+bounds commands report failure to the canvas, so a refusal would surface away from the control the user just
+touched. The lead's was structural - **every production caller of the bounds commands passes `snapEnabled`, and
+the 6pt grid is real.** (a)/(b) would make the orientation toggle the sole exception in the codebase to a
+convention every other caller follows: a latent defect with a predictable trigger, where the next person tidying
+an apparent inconsistency re-enables snap and silently destroys every thin rule in every document. **(c) cannot
+snap structurally, because `updateComponentProperties` has no snap parameter to get wrong.** Correct-by-
+construction over correct-by-remembering.
+
+**The lead corrected my picture twice, and both corrections stand in the record.**
+
+1. **(c) costs more than "one signature".** The inline error is routed by the *intent's own* field, not by the
+   engine's returned path - `App.tsx:1201` sets `field: intent.field`, `:2537` declares `PropertyCommitError.
+   field` **singular**, `:2706`'s `errorFor` matches on equality, and `component-property-command.ts:20`'s
+   `PropertyIntent.field` is singular. Four declarations plus a predicate. Still small; but I had priced it at
+   one, and approving a route on a wrong price is approving something other than what ships.
+2. **A defect neither the builder nor I had priced** - `propertyPath` returning the first canonical key rather
+   than the failing one, which becomes a visible false statement the moment `changes` carries two keys.
+   Registered as DW-333.
+
+**Ruled remedy for that defect, panel-side and narrow: when an intent carries more than one field, suppress
+`dataPath` and render `message` alone.** Declining to print a path you know may be wrong is strictly more
+truthful than printing it. **The Go fix is explicitly forbidden to this story** - it is the correct fix and it
+is an engine change AC1 does not name; deferring it costs a mute, and absorbing it would cost the fence.
+
+**Six guardrails bound the blast radius.** The one that matters most: **the widening must be additive.** There
+are 31 `field:` intent constructions and 5 `onCommit(` sites in `App.tsx`; if the new type forces those to move,
+the story is roughly three times its stated size and **the builder stops at that boundary rather than growing
+through it**. The others: `PropertyCommitError` must match any field the failing intent carried; the encoder is
+red-proved on key ordering, since Go walks `propertyOrder` rather than insertion order; `command-json-soleness.
+test.ts` moves with the signature and **must be re-proved red, not merely re-greened**; the single-undo-step
+claim is asserted as a revision delta rather than as a shape swap, because asserting only that the shape swapped
+would pass on a two-command implementation; and `resizeComponentCommand` stays inert and is not retired here
+(DW-334).
+
+**Why the inert command is not swept up while we are here.** Retiring it was (b)'s argument and (b) lost. A
+finding that is real should stay visible as a finding; consuming it inside an unrelated story makes the diff
+tidier and the record worse.
+
+**Related:** [D-14.0.1], [D-13.6.7], DW-333, DW-334, DW-335.
