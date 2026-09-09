@@ -5579,3 +5579,50 @@ would not improve it.
 
 **Related:** [D-11.2.4], [D-000.32], [D-000.9], [D-11.3.7] (run a pattern-guard, do not read it).
 
+### D-13.6.7 — OWNER DECISIONS at the Epic 13 boundary gate: three rulings, one of which corrected my framing
+
+**Ruled by the owner, 2026-09-09**, on the three items the gate handed forward.
+
+**1. The diagnostic map is DROPPED, not deferred.** Epic 13's acceptance criterion promising "a page carrying
+a diagnostic is marked in the bind accent — so the rail is also the diagnostic map" is **amended out of
+`epics.md`**, and DW-311 is **closed as declined**. The owner chose not to extend the engine for it. This is
+the third of the three options I put — build it, move it, or drop it — and it is the only one that leaves no
+document claiming something the product does not do. Epic 13 closed against an accurate goal rather than an
+aspirational one, which [D-13.3.1] is the reason to care about.
+
+**2. A well-formed document opens — and the owner's question exposed a false premise in my own framing.**
+I asked how to close "the engine renders templates the designer cannot open", offering three options. The
+owner did not pick one; they asked what actually gets refused, and then ruled: *"But if the .folio even hand
+written but the format is correct, the engine should not refuse to open"*.
+
+**The engine never refuses.** `wasm.Engine.Load` and `.Serialize` both accept these documents; `folio
+validate` exits 0. What refuses is the **designer's own inbound validator** — `isCanvas` at
+`engine-protocol.ts:552`, which validates *the snapshot our own engine just returned*. A **layout**
+constraint enforced inside a **shape** validator, against our own output. I had written "the engine renders
+templates the designer cannot open" and then, one sentence later, offered "validate containment in Go on
+load" as a remedy — treating the engine as the lax side when it was never the deciding side at all.
+
+**What the elaboration established, and it narrowed the problem a great deal.** The designer *cannot* create
+such a document: place, move and resize all call `containComponent`, and the band-height command has its own
+strand check. So the exposure is hand-authored, script-generated, or foreign `.folio` files — of which this
+repository contains six, our own engine fixtures. Real users are not hitting this today. What makes it worth
+fixing is the second half: the authoring refusal names the height and the element (*"a pageHeader height of
+79 … strands e1"*), while the load refusal says only *"Could not open local file"*.
+
+**The ruling's shape:** the containment clause stops gating load; authoring constraints stay exactly where
+they are. DW-324 carries the implementation notes, including that `isCanvas` must keep guarding malformed
+replies and that the fix wants a test asserting such a document **opens** — an assertion nothing makes today.
+
+**3. The asset bound is decided before Epic 14 starts, not during it.** Two slots remain of 64. Agreed and
+scheduled; DW-313.
+
+**The lesson, and it is mine again.** I put a three-option question to the owner built on a premise I had not
+tested — that the engine was the permissive side. The owner asked for elaboration instead of choosing, and
+the elaboration is what falsified it. **An owner asking "explain more" is not a delay; it is a review of the
+question.** Twice now on this story a premise of mine has survived only until someone measured it — the
+`PDFThumbnailViewer` that was not in the package, and this. Both times the question I asked was more confident
+than the facts behind it.
+
+**Related:** [D-13.6.1] (the other false premise I gave this owner), [D-13.6.3], [D-13.1.3], [D-11.2.4],
+DW-311, DW-313, DW-323, DW-324.
+

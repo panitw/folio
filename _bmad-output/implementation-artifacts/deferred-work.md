@@ -11585,7 +11585,12 @@ the same row - an icon, a badge on the DESIGN switch, or promotion into the evid
 
 - **source_spec:** `_bmad-output/planning-artifacts/epics.md`, Story 13.6
 - **Found by:** Story 13.6's builder at its plan gate, before a spec was drafted. **Deferred by owner ruling
-  D-13.6.3.** **Owner:** unassigned - **needs an epic home.** **Severity:** MEDIUM. **Status:** OPEN.
+  D-13.6.3.** **Owner:** the owner. **Severity:** MEDIUM.
+  **Status: CLOSED 2026-09-09 AS DECLINED (owner decision D-13.6.7).** Not deferred, not unscheduled -
+  declined. The owner chose not to extend the engine for it, and Epic 13's acceptance criterion claiming the
+  diagnostic map has been amended in `epics.md` so that no document goes on promising it. This entry stays in
+  the register as the reasoning, so a future reader who wonders why the rail marks nothing finds the answer
+  rather than filing it again.
 
 Epic 13's goal promises "a page-thumbnail rail that doubles as a **diagnostic map**". Story 13.6 ships the
 rail. **It ships no map, by owner decision, because there is nothing to build one from.**
@@ -11811,8 +11816,11 @@ scan that found them.
 ### DW-324 - the engine renders templates the designer cannot open, and says only "Could not open local file"
 
 - **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
-- **Found by:** Story 13.6's builder, diagnosing DW-323. **Owner: THE OWNER — this is a product decision,
-  not a defect with an obvious fix.** **Severity:** MEDIUM. **Status:** OPEN.
+- **Found by:** Story 13.6's builder, diagnosing DW-323. **Severity:** MEDIUM.
+  **Status: OPEN — OWNER RULING RECEIVED 2026-09-09 (D-13.6.7), IMPLEMENTATION OUTSTANDING.**
+  **The ruling, verbatim:** *"But if the .folio even hand written but the format is correct, the engine
+  should not refuse to open"*. So the containment rule stops blocking the load path: a well-formed document
+  opens, whatever its component geometry. See the ruling paragraph at the end of this entry.
 
 Go enforces component containment on **all ten** `containComponent` call sites in
 `folio-go/component_commands.go` - place, move, resize, drag. **None of them is a load path.** So the engine
@@ -11834,3 +11842,26 @@ boundary. The third is the smallest and is not obviously the right one.
 **What is not in dispute:** the current behaviour reports a rejection without its reason, and that is the
 part every option above improves.
 
+**OWNER RULING D-13.6.7, 2026-09-09 — a well-formed document opens.**
+
+The framing put to the owner said "the engine refuses". **That was wrong and the owner's answer exposes it:
+the engine never refuses.** `wasm.Engine.Load` and `.Serialize` both accept these documents and `folio
+validate` exits 0. What refuses is the **designer's own inbound validator**, `isCanvas` at
+`engine-protocol.ts:552` — which validates *the snapshot our own engine just returned*. So a **layout**
+constraint is being enforced inside a **shape** validator, against our own engine's output.
+
+**What discharges it:** the containment clause stops gating the load path. A document whose format is
+correct opens, and an out-of-band component is drawn where the document puts it — which is what the engine
+already renders. Authoring constraints stay exactly where they are: place, move and resize keep calling
+`containComponent`, and the band-height command keeps its strand check, which already refuses well (it names
+the height and the element, e.g. *"a pageHeader height of 79 … strands e1"*).
+
+**Scope this carefully when it is built.** `isCanvas` is a real guard against malformed engine replies and
+must keep doing that job; only the vertical containment clause for `pageHeader`/`pageFooter` is in question,
+not the shape validation around it. And the fix wants a test that a document with an out-of-band component
+**opens**, which is the assertion nothing in the suite makes today.
+
+**Consequence for DW-323:** the six fixtures stop being unopenable the moment this lands, so correcting them
+becomes hygiene rather than a blocker. The guard proposed there — a walk over `fixtures/*/input.folio`
+applying the rule — should be reconsidered rather than built as specified, since the rule will no longer
+decide whether a file is loadable.

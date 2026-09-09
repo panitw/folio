@@ -7,7 +7,8 @@
 Preview is the screen where Folio's central claim lands: the document on screen is the production
 document, produced in this tab, and the evidence for that is visible rather than asserted. When the epic
 opened, only the middle column existed — the page itself. This epic builds the rest of the screen: a
-page-thumbnail rail that doubles as a diagnostic map, an evidence rail carrying render facts and the
+page-thumbnail rail (**no longer** "that doubles as a diagnostic map" — dropped by owner decision
+D-13.6.7, 2026-09-09; DW-311 closed as declined), an evidence rail carrying render facts and the
 output hash as a first-class block, real PDF-viewer navigation (fit, typed zoom, typed page, persistent
 scroll), an export path so the exact bytes can leave the tab, chrome that states freshness honestly, and
 a preview that runs with no sample data at all. Stories 13.1–13.5 are delivered; the remaining work is

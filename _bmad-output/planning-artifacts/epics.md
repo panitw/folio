@@ -4527,9 +4527,22 @@ re-dresses
 
 **Given** the PAGES rail on a document longer than the rail
 **When** it is shown
-**Then** it truncates as the design does (`… 29 more`) rather than rendering thirty-four thumbnails,
-the current page is marked in the select accent, and a page carrying a diagnostic is marked in the
-bind accent — so the rail is also the diagnostic map (UX-DR2, UX-DR22)
+**Then** it truncates rather than rendering thirty-four thumbnails, and the current page is marked in the
+select accent (UX-DR2, UX-DR22).
+
+**AMENDED 2026-09-09 BY OWNER DECISION D-13.6.7 — THE DIAGNOSTIC MAP IS DROPPED.** This AC previously
+required "a page carrying a diagnostic is marked in the bind accent — so the rail is also the diagnostic
+map". It is removed rather than deferred: the owner declined to extend the engine for it, so no document
+should go on claiming it. **Why it was not deliverable:** `EngineDiagnostic` (`engine-protocol.ts:172`)
+carries no page; `isDiagnostic` (`:413`) uses `hasExactKeys` over a closed five-key set, so a `page` field
+on the wire is rejected rather than ignored; and of the seven `Diagnostic{` construction sites in
+`folio-go/render.go`, five run **before pagination**, so no page yet exists to record. There is no join
+anywhere in the wasm reply between a page index and a diagnostic's `elementId`. Supplying one meant widening
+the exported engine contract a third time, which the owner had already ruled against for Story 13.3
+(*"never add a page number on a diagnostic"*). DW-311 is closed as declined, not left open.
+
+The `… 29 more` example is also removed: it is an illustration constrained by the mockup's own fixed 764px
+canvas, not a specified bound. The shipped bound is **12**, one constant in `page-rail-facts.ts`.
 
 **Given** the page area
 **When** it is shown
