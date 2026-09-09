@@ -8,6 +8,29 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative, and written after delivery to describe what actually shipped. The frozen Intent block
+below is what governed the implementation.*
+
+Preview used to show the design-mode component palette down its left edge — a column of controls that
+could not place anything, because in Preview there is no canvas to place onto. The only way to reach a
+distant page was to type its number into the status bar.
+
+That column is now a PAGES rail: a numbered thumbnail for every page of the render, the current one
+marked, and clicking any of them jumps there. Long documents stop after twelve thumbnails and say how
+many more remain, so the rail never becomes a rasterising treadmill — and the status-bar field still
+reaches every page, so the rail is never the only route to one. In Design mode the palette is untouched.
+
+The half of this story that deliberately did not ship is the diagnostic map. The epic's goal describes a
+rail that also marks which pages carry problems. The owner ruled that out of scope here, because folio
+can presently locate only two of its seven diagnostic sites to a page, and a rail marking two of seven
+would let an author read an unmarked page as clean. It is registered as follow-up work, not half-built.
+
+The thumbnails are rasterised by two source files copied from Mozilla's pdf.js at a pinned version, with
+every edit recorded and a test that fails if they drift from that version, or if a third file quietly
+joins them.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -367,6 +390,38 @@ implies a bound of 5 at its own fixed height; that is an illustration, not a spe
 - **Review triage (14 patches), after implementation.** Non-frozen sections only; the
   `<frozen-after-approval>` block is byte-identical to its approved state (sha256
   `14f9a42f5c071dc1b6a16b2f9880a7a2c134ce0930e65bc3ce3c0dcce49ad613`, 6,779 bytes).
+
+    > **⚠ ORCHESTRATOR ANNOTATION, 2026-09-09 — THIS ATTESTATION DOES NOT REPRODUCE, AND IT IS LEFT IN
+    > PLACE RATHER THAN CORRECTED.** Story 13.6's closer could not reproduce `14f9a42f…` / 6,779 bytes, and
+    > I verified that independently rather than taking the report on trust: sweeping every contiguous line
+    > range of this file, **no range yields 6,779 bytes at all** — not in the working copy, and not in the
+    > spec as committed at `9b83972` before the opener was inserted. That makes it a content difference
+    > rather than a scoping difference.
+    >
+    > **Measured, authoritative, and reproducible by line-bounded extraction** (never an `awk`/`sed` range —
+    > the marker string appears four times in this file and a range swallows ~19.5 KB):
+    > - markers inclusive, lines 34–118: **6,809 bytes**, sha256 `db3a9ea7ef4dd281fcff9011ac5c241121d536b78f89e4302ffe40f0adb96aaa`
+    > - content only, lines 35–117: **6,688 bytes**, sha256 `84aa8864413da2897327cb02e50aef0b7f615d7b9986dc082ef2571ce00d0a35`
+    >
+    > **What is NOT established, and I will not assert it either way.** Git cannot adjudicate: the spec was
+    > untracked until `9b83972` swept it up, so `git log --follow` returns exactly one revision and there is
+    > no earlier state to diff. I therefore cannot tell whether the block changed after the hash was taken
+    > or the hash was mis-scoped when taken. The closer declined to overwrite the line with its own measured
+    > value for exactly this reason — doing so would assert the block never changed, which is the one thing
+    > neither of us could establish. That restraint was right and I am preserving it.
+    >
+    > **The mitigating fact, stated so this is not read as worse than it is.** The builder re-took this
+    > measurement after every edit and reported it unchanged throughout. A *consistently* mis-scoped
+    > measurement still detects change — so the comparative claim ("the block did not move during
+    > implementation") survives even if the absolute value is wrong. What is lost is the ability of anyone
+    > else to check it, which is the whole purpose of publishing a hash.
+    >
+    > **The lesson, and it belongs to the whole run rather than to this story.** A self-attestation nobody
+    > can reproduce is not evidence; it is a claim wearing evidence's clothes. Any hash written into a
+    > durable record must name the exact extraction that produces it — file, line bounds, and whether the
+    > markers are included — or the next reader gets a number that cannot be checked and must either trust
+    > it or discard it. Both of those are failures. Future frozen-block attestations in this project state
+    > their extraction alongside their value, as the two measurements above do.
   - **Design Notes / Verification — the payload prediction was corrected from "zero new assets,
     `assetCount` 61, three free slots" to the MEASURED "one new asset row, `assetCount` 62, two free
     slots".** The original reasoning assumed a static import; the implementation must use a dynamic one.
@@ -549,3 +604,104 @@ is **written-and-compiled-only** and does not execute until that gate.
 
 - The licence material now names what is actually redistributed.
   [`NOTICE:13`](../../folio-designer/third-party-notices/pdfjs-dist/NOTICE#L13)
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `62fd937`. Implementation committed at `9b83972` (17 files); deferrals and the tracker hop to
+`review` at `a4c6bef`. This closing entry, the plain-terms opener and the tracker hop to `done` land in
+the follow-on commit the orchestrator makes.
+
+**What shipped.** The Preview palette column is replaced by the PAGES rail: one numbered thumbnail per
+page, the current page marked (and `aria-current="page"`), click-to-navigate through the existing
+`changePreviewViewState` funnel, truncation at twelve entries with a literal `… N more`, and the palette
+gated to Design mode. The rail is a pure reader of `previewViewState` — it holds no page number of its
+own, which the narrowed vendored surface gives us by construction rather than by discipline. The
+status-bar page field still reaches every page, so the rail is never the sole route to one.
+
+**What deliberately did not ship: diagnostic-to-page marking.** None of it — no partial map, no marking
+from the two locatable table-code sites, no disabled hook, no `page` field on the diagnostic type. Owner
+ruling **D-13.6.3**; deferred as **DW-311**. The reason is that folio can locate only two of seven
+diagnostic sites to a page, and a rail marking two of seven lets an author read an unmarked page as
+clean. Epic 13's goal sentence promises the map, so a reader comparing goal to outcome should read
+D-13.6.3, not a shortfall.
+
+**The vendored surface.** `pdf_thumbnail_view.js` and `renderable_view.js` from `mozilla/pdf.js` tag
+`v6.2.108`, build SHA `0365cbde0`, with three recorded modifications, a `PROVENANCE.md` manifest and an
+executable `vendor-pin.test.ts` that re-hashes both files and asserts the directory holds exactly six
+entries by name. This is **12% of the closure originally authorised** — D-13.6.4 measured the realistic
+static-import closure at 9 files / ~5,300 lines and took 2 files / 629. The narrowing is not a size
+argument: `pdf_thumbnail_viewer.js` **is not a thumbnail rail at this version**, it is Firefox's
+page-organiser (1,964 lines of drag/undo/merge/paste/delete UI, 36 prohibited-identifier hits, and an
+internal `_currentPageNumber` that would have been a second page-state authority). Folio writes its own
+rail container instead. This is the repository's first vendored third-party source; it follows the shape
+`2-3a-audit-the-vendor-boundary.md` established.
+
+**No AD-17 carve-out was written, and that is the stronger outcome.** The orchestrator mandated one; the
+premise was then measured false and the mandate withdrawn (**D-13.6.5**, commit `62fd937` — which is why
+the withdrawal is the story's own baseline). All 17 prohibition regexes and all 19 refusal regexes, run
+through the contract's own comment-stripping scanner over both vendored files, return **zero hits each**;
+the 36 hits that motivated the AC all live in the file D-13.6.4 had already removed from scope. An
+exclusion would have exempted files from a rule they do not break — a guard that cannot fail, and a
+carve-out a future re-vendor could inherit. `vendor-pin.test.ts` asserts the files are *clean* rather
+than *exempt*, importing the identifier list from the contract rather than restating it, so a later
+re-vendor that drags in a measuring file reds immediately.
+
+**The `.gitignore` fix — the one file outside the Execution list.** Authorised by the orchestrator. The
+directory negation added for the vendored tree had also re-included `.env`, `*.key` and `*.pem` inside
+it. The orchestrator re-verified the corrected form itself with planted files before the commit. The
+negation is now directory-only; every file inside still faces the secret patterns.
+
+**Review and triage.** `review_loop_iteration` **0**; **14 patched / 9 deferred / 4 rejected**. Nine
+deferrals are registered as **DW-314 through DW-322**, written by the orchestrator. The most Epic-13-shaped
+of them is **DW-317**: the rail draws crisp thumbnails for a stale or stand-in render, which sits directly
+against 13.5's chrome-tells-the-truth work. **DW-313** carries the corrected asset prediction.
+
+**A frozen matrix row was resolved without amending the frozen block.** The "rasterisation fails" row
+requires a failed entry to keep its placeholder. Upstream `draw()` clears `missingThumbnailImage` before
+rethrowing, so a failed page would have shown blank white and read as a page that rendered *empty* — a
+worse failure than a visible placeholder, because it is indistinguishable from success. One `reset()` in
+folio's wrapper makes the row true. The contract was satisfied, not renegotiated.
+
+**Two builder self-corrections worth preserving**, because the discipline is the point: it reported 13
+matrix rows at CHECKPOINT 1 and there are 12; and two of its own patch instructions were wrong in detail,
+which the implementer corrected rather than complying with.
+
+**Mutation evidence.** Seven mutations were re-executed on an exclusive tree, one per invocation, every
+restore `cmp`-verified; all seven red. `vendor-pin.test.ts` was separately red-proved by planting
+`getBoundingClientRect` in a vendored file.
+
+**Measurement-discipline incident — recorded as D-13.6.6, and recorded here rather than buried.** The
+builder's tree-quiescence check used GNU `find -newermt`, which `bfs` rejects on stderr while printing
+nothing to stdout. An error therefore read as "nothing was touched". Four sets of gate numbers had been
+taken from a moving tree and were discarded; a `cp` restore reverted a fix the implementer had already
+written, on files git could not then recover. It came out clean only because both agents verified their
+restores independently. **The builder caught and reported this itself** — the failure mode is a command
+whose silence was mistaken for an observation, not a concealment.
+
+**The corrected asset prediction.** The story predicted `s1.assetCount` = 61 with zero new assets and
+three free slots. Measured during triage: **62**, with the vendored module emitted as its own 7.56 kB
+chunk, and **two** free slots against `maximumCacheAssets = 64`. Registered as **DW-313**. The prediction
+was falsifiable, and it was falsified at implementation rather than at the boundary gate — which is what
+stating a number instead of an expectation buys.
+
+**Measured gates at `a4c6bef`, tree clean** (fast gates only, per owner ruling **D-000.33**, which puts
+the heavy suites at the Epic 13 boundary gate):
+
+- `npx vitest run` — **71 files / 1144 tests / 0 failures**, exit 0. Baseline `62fd937` was 68/1102; the
+  three added vitest files are `preview/page-rail-facts.test.ts`, `preview/page-rail.test.tsx` and
+  `vendor/pdfjs/vendor-pin.test.ts`, reconciling 68 + 3 = 71 exactly.
+- `npx oxlint` — exit 0, **exactly 4** warnings, all `react(only-export-components)`, zero of any other
+  rule. Re-measured anchors: `preview/pdf-viewer.tsx:17:14`, `:18:14`, `App.tsx:4045:14`, `:4052:17`. The
+  count of 4 is a convention: there is no `--max-warnings`, no CI assertion and no test behind it.
+- `npx tsc -b --force` — exit 0. Forced rather than incremental, so this is proof the hand-written `.d.ts`
+  sidecars actually satisfy their imports rather than being served from a stale build cache.
+- `npx tsc -p tsconfig.e2e.json --noEmit` — exit 0. This is a **compile check only**; it is not a browser
+  run and must never be described as one.
+
+**Suites that DID NOT RUN, in those words:** `npm run test:e2e`, the Go suites, the `-tags=matrix` legs,
+the `lint` module, `npm run build` as a gate, the `verify:offline*` chain and the font-host scans. They
+come due at the Epic 13 boundary gate. In particular **`e2e/preview-page-rail.spec.ts` is written and
+compile-checked and has never been executed by anything**, so the two payload ACs are not discharged by
+this story; the figure for the gate to confirm is `s1.assetCount` = 62.
