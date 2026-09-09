@@ -13,30 +13,22 @@ context: []
 *Non-normative, and rewritten after delivery to describe what actually shipped. The frozen Intent
 below is what governs the implementation.*
 
-The DATA tab is where an author connects a piece of their document to a piece of their data. Today it
-shows them the wrong thing: instead of the value, each row reads out a type name, a count and a
-truncated preview run together into one string, so a customer's name appears as `string · "สมชาย
-วงศ์ประเสริฐ"` rather than simply as their name. This story makes each row show the value, marks
-objects and lists with `{ }` and `[]`, and puts the loaded file's name and size at the top.
+The DATA tab is where an author connects part of their document to part of their data. It used to run
+a type name, a count and a truncated preview together into one string, so a customer's name arrived
+as a description of itself. Each row now shows the value beside the path, objects and lists carry
+`{ }` and `[]` markers, and the loaded file's name and size sit in a header above the tree.
 
-It also stops the panel inviting choices it is going to reject. A bar above the tree now says what is
-selected and what choosing a path would do — before the choice, rather than after the engine refuses
-it. Lists carry a TABLE ONLY badge and say why a piece of text cannot hold one. Runtime parameters,
-which the engine finds in the template itself, appear under `params` marked RUNTIME so the author can
-see the namespace exists, while remaining unselectable because the engine will not bind them.
+The panel also stops inviting choices it means to reject. A context bar states what is selected and
+what a pick would bind *before* the pick. Runtime parameters appear under a `params` section badged
+RUNTIME, visible but never offered, and every dimmed row states a reason. Picking a path now binds
+it immediately — the separate connect button is gone — and the picked row, drawn until now in the
+selection cyan, takes the bind accent. The status bar counts how much of the document is bound, and
+the empty state says for the first time that sample data is never written into the template.
 
-Two paths were being offered that should never have been. One the engine refuses outright. The other
-is worse and is the interesting one: an **empty** list was being offered as if it were a single value,
-the engine **accepted** it, and the failure only appeared later when the document was actually
-rendered. The cause turned out to be an inconsistency in the code that reads the author's sample file
-— it withholds the "selectable" marker from objects but not from lists — so the fix is at that source
-rather than in the panel that displays it.
-
-Choosing a path now binds it immediately; the separate "connect" button is gone, and the choice is
-undoable like any other edit. Anything shown but unselectable is dimmed **and says why**, because the
-design document forbids a plain grey-out without a reason. The status bar gains a count of how many
-elements carry a binding, and the panel now states in the empty case what it never said anywhere
-before: sample data is never written into the template.
+Two things will look wrong later and are deliberate. The empty-list defect is fixed in the panel, not
+in the code that reads the author's sample file; fixing it at that source was tried first and
+silently emptied the table editor's suggestion lists. And the browser tests that drive this panel did
+not run here — they were corrected by reading, so the shared build is their first real exercise.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -495,3 +487,69 @@ not run** — this story changes no Go, no bundled asset and no font surface.
 
 - Sample data never reaches the template; reds on the scan, not on its own witness.
   [`DataPanel.test.tsx:697`](../../folio-designer/src/DataPanel.test.tsx#L697)
+
+## Delivery Log
+
+### 2026-09-10 — done
+
+Baseline `3a85a02`, shipped at `bd634bd` on `main`. The DATA tab is now the binding panel DESIGN.md
+draws: values beside paths, `{ }` / `[]` markers, a file header with its size, a context bar that says
+what a pick would bind *before* the pick, a pick that binds with no intermediate control, `params`
+shown with a RUNTIME badge and never offered, a stated reason on every dimmed row, and the picked row
+corrected from selection-cyan to the bind accent. DW-349, DW-350, DW-352 and DW-353 all discharge here.
+
+**Triage.** 1 `bad_spec` **amended in place by the coordinator — not a loopback**; `review_loop_iteration`
+stays **0**. 12 findings patched, 2 deferred (**DW-364**, **DW-365**), remainder rejected. No rejection
+tally was recorded anywhere in the story record, so the triage population cannot be reconciled from this
+file; the three routed counts above are the coordinator's, not a derived total.
+
+**The lesson, and it is the story's centre — see [D-14.6.2].** The coordinator ruled a **parser** fix over
+the panel-side clause originally authorised, on the argument that *fixing the source beats fixing each
+reader*. **The source was not wrong.** `tableSampleCandidates` (declared `App.tsx:62`, gate at
+`App.tsx:66`) keys on `node.kind === 'collection' && node.segments?.length` — plus an identifier check per
+segment — and feeds the Table Editor's collection and row-field datalists, which went empty for **every
+template**. The rule is a good rule; **it holds only once you have enumerated the readers**, and neither
+party did. Two aggravations belong in the record: the *same story* starts directing Table authors into
+that editor (DW-353's discharge), so the change increased traffic to the surface it broke; and the
+implementation **pinned the regression with a fence** asserting `segments` absent — the suite was green
+*because* the feature was dead. The refusal now lives in the panel and keys on **kind**, and that fence is
+inverted into an assertion that collections keep their marker.
+
+**`test:e2e:compile` is structurally blind to a removed control.** It type-checks strings, so three browser
+specs kept driving a deleted button while the gate stayed green all epic. Measured here: **4 call sites
+across 3 specs** — one `Connect selected path` click in `browser-native-roundtrip.spec.ts`, two in
+`component-binding.spec.ts`, and one stale empty-state string in `sample-data.spec.ts`. All four were fixed
+**by inspection, not by execution**. CI's real Playwright run at `ci.yml:423` is the first actual check, on
+the push of `bd634bd`. Until that run reports, the browser-side claims in this story are unexercised.
+
+**Gates, re-measured at `bd634bd` by the closer with captured exit codes** (never `$?` after a pipe):
+
+| Gate | Exit | Measured |
+|---|---|---|
+| `npx vitest run` | 0 | **75 files, 1285 tests, 0 failures** |
+| `npx tsc -b --force` | 0 | zero bytes of output |
+| `npx oxlint` | 0 | **exactly 4** warnings, all `react(only-export-components)`, **0 errors** — `pdf-viewer.tsx:17:14`, `:18:14`, `App.tsx:4511:14`, `:4518:17`; re-derived here, not quoted |
+| `npm run test:e2e:compile` | 0 | — |
+
+The 4 oxlint warnings were re-derived a second time through `--format=json` (4 diagnostics, severity
+`warning`), because the terminal summary line is eaten by this environment's output proxy.
+
+Manual checks in `## Verification` all pass: no hex/`rgb()`/`hsl()` literal added to `App.css`; its
+`@media` **rule** condition list is still exactly `['prefers-reduced-motion: reduce']` (3 raw mentions, 2
+in comments); `design-tokens.ts` is byte-identical to `2d9a97a` (blob `44419c5`); `DataPanel.tsx` carries
+the two lines pinned by `engine-bounds-mirror.test.ts:768-769` and contains **no** `=== 'text'` /
+`!== 'text'`. That last absence was re-checked NUL-safe in Python against a positive control, because
+`DataPanel.tsx` sits beside an `App.tsx` that holds 2 NUL bytes and a bare `grep` reports a skipped binary
+file as a silent rc=1.
+
+**The multiset test-name diff against the `3a85a02` baseline was the build loop's and was NOT re-run
+here**; I re-measured only the HEAD total. The spec's baseline figure of 1263 at `2d9a97a` is quoted
+from the spec, not measured by me, so the +22 delta inherits that provenance.
+
+**Suites that DID NOT RUN:** the browser suite, the Go suites, the matrix legs, `npm run build` as a gate,
+the `verify:offline*` chain, and the font-host scans **did not run**. This story changes no Go, no bundled
+asset and no font surface. `epic-14` therefore stays `in-progress`: the boundary-gate suites are still
+owed before the epic can close.
+
+All 15 `## Suggested Review Order` anchors were re-resolved at `bd634bd` and every one still lands on the
+line it describes; none had rotted.
