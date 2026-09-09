@@ -4677,8 +4677,9 @@ no thumbnail class. Mozilla ships those modules in its repository and excludes t
 bundle.
 
 Re-put to the owner with that correction and with both alternatives, the owner chose to **vendor
-`pdf_thumbnail_viewer.js` and its dependencies from mozilla/pdf.js at a tag matching the installed
-`pdfjs-dist` version**. The orchestrator and the story's builder both recommended against it and both were
+pdf.js's thumbnail modules from mozilla/pdf.js at a tag matching the installed `pdfjs-dist` version** (as
+first put to them, `pdf_thumbnail_viewer.js` and its dependencies; narrowed to the two files named above by
+D-13.6.4, which supersedes that phrasing). The orchestrator and the story's builder both recommended against it and both were
 overruled. As with D-13.6.1, the objections raised become acceptance criteria rather than caveats.
 
 **Acceptance Criteria:**
@@ -4696,18 +4697,41 @@ future `pdfjs-dist` bump cannot silently desynchronise the fork
 
 **Given** `canvas-authority-contract.test.ts:8` walks **all** of `src` recursively, and AD-17 forbids the
 browser measuring text
-**When** vendored pdf.js code - which measures its own rendered output - is added
-**Then** the vendored tree is placed and excluded **deliberately and narrowly**, with the exclusion justified
-in the test itself: pdf.js measures a PDF it rasterised, which is not folio text layout, and that is the
-whole reason the exclusion is legitimate. A blanket exemption for a directory is not acceptable; the scan
-must still see every file this project authors
+**When** vendored pdf.js code is added
+**Then** **no exclusion is written, because none is needed. AMENDED 2026-09-09 (D-13.6.5): this AC's premise
+was measured false.** It assumed the vendored files measure their own rendered output. Ran by the builder
+through the contract's own comment-stripping scanner: all 17 `prohibited` regexes and all 19
+`refusalVocabulary` regexes against both files return **zero hits each**. The 36 hits that motivated this AC
+are all inside `pdf_thumbnail_viewer.js` - the file D-13.6.4 removed from the vendored set. Separately,
+`canvas-authority-contract.test.ts:8-16` builds its corpora with `/\.(?:ts|tsx|css)$/`, `/\.(?:ts|tsx)$/`
+and `/\.test\.(?:ts|tsx)$/`, so a `.js` file enters none of them regardless.
+
+The worry is honoured **positively instead of by carve-out**: `vendor-pin.test.ts` asserts each vendored file
+contains **none** of the prohibited identifiers, importing that list from the contract rather than restating
+it, and fails if a third file ever appears in the directory. A future re-vendor that drags in a measuring file
+reds immediately. **The files are clean rather than exempt, and there is no exemption for a later file to
+inherit** - which is the precise hazard the original wording named. Writing a carve-out for identifiers that
+are not present would be a guard that cannot fail, the defect this run has found more often than any other.
+
+**The vendored tree lives at `src/vendor/pdfjs/`, deliberately OUTSIDE `src/preview/`**, because
+`withoutApprovedLocalPointerInput` (`canvas-authority-contract.test.ts:866-911`) waives
+`scroll(?:Width|Height|Left|Top)` for every file matching `preview` as a path segment. A `.d.ts` sidecar
+placed inside `src/preview/` would inherit that directory-wide waiver by accident; outside it, it inherits
+nothing. The `.d.ts` sidecars **are** in the AD-17 production corpus, so prohibited spellings must stay out
+of them
 
 **Given** `maximumCacheAssets = 64` at `src/release-payload.ts:42` and a current built count of **61**
 **When** this story adds anything to the release
-**Then** the offline release still builds and still passes, with the measured `assetCount` reported. There
-are **three** free slots. `vite.config.ts:16` sets `assetsInlineLimit: 0`, so nothing is inlined, and
-`web/pdf_viewer.css` alone references 36 unique images - importing it wholesale fails the release outright.
-Whatever CSS the rail needs is written or vendored selectively against that bound
+**Then** the offline release still builds and still passes, with the measured `assetCount` reported **at the
+Epic 13 boundary gate, which is the only place that can measure it.** AMENDED 2026-09-09: this AC originally
+required the story to report a built `assetCount`, which D-000.33 forbids it from producing - `npm run build`
+and the `verify:offline*` chain are the boundary gate's. The story states a **prediction for the gate to
+confirm or refute: zero new asset rows, `s1.assetCount` unchanged at 61**, because two `.js` modules imported
+from TypeScript are bundled into an existing chunk rather than emitted as their own rows, and no image, font
+or CSS file is added. **If the gate measures anything but 61, that is a finding, not a rounding difference.**
+There are three free slots against `maximumCacheAssets = 64`; `vite.config.ts:16` sets `assetsInlineLimit: 0`,
+so nothing is inlined, and `web/pdf_viewer.css` alone references 36 unique images - which is why it is not
+imported at all
 
 **Acceptance Criteria:**
 
@@ -4765,9 +4789,12 @@ pdf.js viewer component that tracks `currentPageNumber` internally WOULD be a ge
 
 **Given** the product promises "no network - nothing left this machine" and ships an offline release
 **When** the viewer bundle is added
-**Then** the release's size change is measured and recorded, not assumed. Measured before dispatch at
-`pdf_viewer.mjs` 307 KB + `pdf_viewer.css` 160 KB + 328 KB of images, against the 853 KB core `pdf.mjs`
-already shipped - roughly a 90% increase in PDF.js payload before minification and gzip.
+**Then** the release's size change is measured and recorded, not assumed - **at the boundary gate.**
+**AMENDED 2026-09-09: this AC's figures priced a route that was ruled out.** It quoted `pdf_viewer.mjs`
+307 KB + `pdf_viewer.css` 160 KB + 328 KB of images at roughly 90% PDF.js growth. Under D-13.6.4's narrowed
+vendor **none of that is added**: the 629 vendored lines share the `build/pdf.mjs` already shipped, and the
+upstream thumbnail rules reference no `images/` files at all. The expected change is therefore small and
+additive, and the gate reports what it actually measures rather than checking against a superseded number.
 
 ## Epic 14: The designer's controls read as one product
 

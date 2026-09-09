@@ -11628,3 +11628,22 @@ Raise it at the Epic 13 boundary gate.
 **Also note:** a failed render returns zero diagnostics *and* zero PDF bytes, so there is no rail at all in
 the failure case. Diagnostic marking would only ever apply to a successful render's warnings.
 
+### DW-312 - `Promise.withResolvers` is ES2024, the build targets Safari 16, and pdfjs-dist already ships 27 of them
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** Story 13.6's builder at its plan gate. **PRE-EXISTING - not introduced by 13.6**, which is
+  why it was ruled out of that story. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`pdf_thumbnail_view.js:341` calls `Promise.withResolvers`, which is ES2024 and absent in Safari 16. Vite's
+default target includes `safari16` and esbuild passes the call through verbatim rather than transpiling it.
+
+**It is registered rather than fixed because vendoring introduces no new browser-support class.**
+`node_modules/pdfjs-dist/build/pdf.mjs` - already a dependency, already shipped in every release - contains
+**27** occurrences of the same call. Any Safari 16 user is already affected by the PDF viewer itself, and a
+polyfill or target change would have to be made for `pdfjs-dist`, not for 629 vendored lines. Fixing it
+inside 13.6 would have addressed 1 of 28 call sites and left the impression the class was closed.
+
+**What discharges it:** decide the supported browser floor deliberately - either raise Vite's target past
+`safari16`, or add a polyfill early enough to cover `pdfjs-dist` as well as the vendored files. Then assert
+the decision, because a target that drifts silently is how this arrived unnoticed.
+

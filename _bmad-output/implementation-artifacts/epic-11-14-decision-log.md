@@ -5500,3 +5500,43 @@ fails on drift. That test also discharges the version-pin AC, since pdf.js hard-
 
 **Related:** [D-13.6.2], [D-13.6.3], [D-13.3.1].
 
+### D-13.6.5 — you do not write a carve-out for a violation that is not there
+
+**Ruled by me, 2026-09-09**, at Story 13.6's CHECKPOINT 1, amending an AC I wrote myself two commits earlier.
+
+**What I had mandated.** AC3 required a "narrow, justified" exclusion of the vendored tree from the AD-17
+authority scan, on the stated grounds that "vendored pdf.js measures its own rendered output". I verified the
+scan's reach before writing it — `canvas-authority-contract.test.ts:8` does `readdirSync(sourceDir, {
+recursive: true })`, so it genuinely walks all of `src` — and I was pleased with myself for catching it.
+
+**What the builder measured.** It ran all 17 `prohibited` regexes and all 19 `refusalVocabulary` regexes
+through the contract's own comment-stripping scanner against both vendored files: **zero hits in each.** The
+36 hits that motivated the AC are all in `pdf_thumbnail_viewer.js` — the file [D-13.6.4] had already removed
+from the vendored set. And the corpora are built with `/\.(?:ts|tsx|css)$/`, `/\.(?:ts|tsx)$/` and
+`/\.test\.(?:ts|tsx)$/`, so a `.js` file enters none of them anyway.
+
+**So the exclusion would have exempted a file from a rule it does not break.** That is a guard that cannot
+fail — this run's most-found defect — and I would have mandated one into a frozen block while believing I was
+being careful. My reach check was right; my premise about what the files contain was never checked, and it
+had already been invalidated by my own narrowing one decision earlier.
+
+**What ships instead, and it is strictly stronger.** `vendor-pin.test.ts` asserts each vendored file contains
+**none** of the prohibited identifiers, **importing that list from the contract rather than restating it**,
+and fails if a third file ever appears in the directory. A future re-vendor that drags in a measuring file
+reds immediately. The files are *clean* rather than *exempt*, and there is no exemption sitting in the tree
+for a later file to inherit — which was the actual hazard my AC named while proposing the mechanism that
+creates it.
+
+**The placement decision is the same instinct applied again**, and it is the builder's, not mine:
+`src/vendor/pdfjs/` sits deliberately **outside** `src/preview/`, because
+`withoutApprovedLocalPointerInput` (`:866-911`) waives `scroll(?:Width|Height|Left|Top)` for every file with
+`preview` as a path segment. A `.d.ts` sidecar inside `src/preview/` would have inherited that waiver by
+accident. Outside, it inherits nothing.
+
+**The rule.** Before exempting anything from a guard, run the guard against it. An exclusion is only honest
+when the thing excluded would otherwise fail — otherwise it is a permanent, invisible hole justified by a
+premise nobody ever tested. And note the direction of the error: mine was *conservative*, mandating a
+needless exemption rather than missing a real violation. It would still have shipped a hole.
+
+**Related:** [D-13.6.4], [D-000.32], [D-000.9] (a guard that cannot fail is worse than none), [D-11.2.4].
+
