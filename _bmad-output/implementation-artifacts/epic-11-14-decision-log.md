@@ -5540,3 +5540,42 @@ needless exemption rather than missing a real violation. It would still have shi
 
 **Related:** [D-13.6.4], [D-000.32], [D-000.9] (a guard that cannot fail is worse than none), [D-11.2.4].
 
+### D-13.6.6 — a command that errors to stderr and prints nothing reports a negative result
+
+**Recorded 2026-09-09**, from Story 13.6's builder catching its own instrument mid-story and discarding four
+sets of numbers it had already reported to me.
+
+**What happened.** To decide when the implementer had stopped writing, it polled
+`find … -newermt '-6 minutes'` and counted stdout lines. That syntax is GNU; this machine runs `bfs`, which
+rejects it with `Invalid timestamp` on **stderr** and prints nothing to **stdout**. The loop counted zero
+lines and concluded "no source file touched in six minutes". **The quiescence report I was given was an error
+message being read as an observation.**
+
+**The damage, which is the reason this is a decision and not a note.** Every gate number in that window —
+1138, then 432, 437, 1144 — described a tree still being written, which is why they disagreed with each other;
+nothing was flaky. Worse, the mutation harness `cp`-snapshotted `page-rail.tsx`, mutated it, and restored it,
+**while another writer was live**. The file's hash afterwards was not the one the script restored, so writes
+continued past the restore and the restore plausibly reverted work. The five bound-related failures that
+appeared may be a half-reverted file meeting newer tests rather than a defect at all.
+
+**This is [D-11.2.4] and [D-000.32] arriving in a shell command**, and it is the most dangerous shape those
+rules take, because a test that cannot fail at least *runs*. Here the instrument did not run at all, and its
+silence was the answer it gave. The builder named it against itself in exactly those terms: it had verified
+the **conclusion** and not the **instrument**.
+
+**The rule.** Any check whose *negative* result is "no output" must be paired with a positive control in the
+same invocation, or replaced by one that returns a value rather than an absence. The replacement here is
+right: an epoch-based age check that returns a real number — validated at 96 seconds — so a broken instrument
+produces a wrong number or an error rather than a convincing silence. **Prefer instruments that must say
+something over instruments that may say nothing.**
+
+**A second rule, operational.** Never restore a snapshot over a file another agent may be writing. A mutation
+harness needs the tree quiescent *and* exclusive, and "I believe the other writer has stopped" is not
+exclusivity when the belief comes from the instrument under suspicion. Untracked files have no git safety net,
+so a bad `cp` restore is unrecoverable — the loss here was bounded only by luck.
+
+**What I am NOT doing, deliberately:** touching the tree to help. Two writers is what caused this, and a third
+would not improve it.
+
+**Related:** [D-11.2.4], [D-000.32], [D-000.9], [D-11.3.7] (run a pattern-guard, do not read it).
+
