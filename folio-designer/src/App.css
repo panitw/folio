@@ -136,7 +136,23 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .palette-icon { width: var(--icon-size); height: var(--icon-size); flex: none; }
 .palette-item kbd { color: var(--color-ink); font: var(--type-mono); }
 .honest-note { margin: var(--space-5) 0; color: var(--color-ink); font: var(--type-body); }
-.canvas-region { display: grid; align-content: start; justify-items: center; gap: var(--space-5); overflow: auto; scroll-padding-top: 40px; padding: var(--space-10) 116px; background: var(--color-ground); }
+/* THE SCROLL PADDING HAS TO CLEAR `.canvas-tools`, AND AT 40px IT DID NOT.
+   `.canvas-tools` below is `position: sticky; top: 0` inside THIS scroller, and
+   a sticky box parks against the scrollport inset by this element's own
+   padding — measured in Chromium: with the region's border box at viewport
+   y=40 and `padding: var(--space-10) …` above it, the stuck bar occupies
+   y=74..105, i.e. 34..65 measured from the top of the scrollport.
+   `scroll-padding-top` is measured from that same scrollport top, so 40px put
+   whatever the browser scrolled into view at 40 — INSIDE the 34..65 the bar
+   covers. Anything focused and scrolled to the top of the canvas therefore
+   landed UNDERNEATH the toolbar, where it painted nothing and, worse, took no
+   pointer: pressing a component the author had just placed hit the toolbar's
+   zoom readout instead, and selected nothing. The 40px was the bar's own
+   height allowance and forgot the region's top padding sitting above it.
+   `calc(var(--space-10) + 40px)` = 74px keeps that allowance and adds the
+   padding it was missing, leaving 9px of clearance below the bar's 65px foot —
+   enough that a thin component's hit pad clears it too. */
+.canvas-region { display: grid; align-content: start; justify-items: center; gap: var(--space-5); overflow: auto; scroll-padding-top: calc(var(--space-10) + 40px); padding: var(--space-10) 116px; background: var(--color-ground); }
 .canvas-region:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .canvas-region-placing, .canvas-region-placing * { cursor: copy; }
 .placement-ghost { position: fixed; left: var(--ghost-x); top: var(--ghost-y); z-index: 30; display: flex; align-items: center; gap: var(--space-2); padding: 3px 7px; transform: translate(14px, 14px); border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); white-space: nowrap; pointer-events: none; }
@@ -304,6 +320,21 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    ON an existing component behaves exactly as it always has, and the pad takes
    pointer events again the moment the placement is disarmed. */
 .canvas-region-placing .canvas-component::before { pointer-events: none; }
+/* AND THE SELECTION CHROME GOES INERT WITH IT, FOR THE SAME REASON AND BY THE
+   SAME RULE. Since 14.3 a placed component is the SELECTED component, so the
+   moment one is placed its handles are drawn around it — `.selection-handle`
+   is a 12px box hung on `-6px` insets and `.resize-handle` a 24px one on
+   `-9px`, so they reach 6px and 9px OUTSIDE the drawn box, further than the
+   hit pad does. Measured in Chromium: with a rule selected, a press 4px below
+   it while a palette kind was armed landed on `.selection-handle-s` and
+   placed nothing at all — the very "steals no pointerup" failure
+   `.canvas-component-echo` and the pad rule above were each written against,
+   arriving through a third piece of chrome nobody had suppressed.
+   A resize gesture is not available while a placement is armed anyway: the
+   next press is a placement, which is what the author asked for by arming it.
+   The handles keep PAINTING — this changes no pixel — and take pointer events
+   back the instant the placement is disarmed. */
+.canvas-region-placing .selection-handle, .canvas-region-placing .resize-handle { pointer-events: none; }
 .canvas-text-paint, .canvas-text-line, .canvas-text-fragment { position: absolute; display: block; white-space: pre; }
 /* Story 7.4: the engine says this element's paint is only a prefix. It reads
    as a bordered strip of WORDS pinned to the bottom of the component — shape
