@@ -4729,6 +4729,15 @@ and the `verify:offline*` chain are the boundary gate's. The story states a **pr
 confirm or refute: zero new asset rows, `s1.assetCount` unchanged at 61**, because two `.js` modules imported
 from TypeScript are bundled into an existing chunk rather than emitted as their own rows, and no image, font
 or CSS file is added. **If the gate measures anything but 61, that is a finding, not a rounding difference.**
+
+**CORRECTED 2026-09-09 - THE PREDICTION WAS WRONG, AND THIS AC IS WHY WE KNOW.** Measured during
+implementation: `s1.assetCount = 62`, not 61. The vendored module is **not** folded into an existing chunk; it
+is emitted as its own 7.56 kB chunk. **Two** free slots remain against `maximumCacheAssets = 64`, not three.
+
+The story's builder supplied the prediction, I hardened it into a falsifiable claim, and the claim was
+falsified **at implementation rather than at the boundary gate** - which is the entire value of stating a
+number instead of an expectation. The gate now confirms **62**, and a 61 would itself be the finding. Nothing
+about this weakens the AC; a prediction that could not have been wrong would have told us nothing.
 There are three free slots against `maximumCacheAssets = 64`; `vite.config.ts:16` sets `assetsInlineLimit: 0`,
 so nothing is inlined, and `web/pdf_viewer.css` alone references 36 unique images - which is why it is not
 imported at all

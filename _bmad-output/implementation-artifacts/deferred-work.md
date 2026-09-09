@@ -11647,3 +11647,28 @@ inside 13.6 would have addressed 1 of 28 call sites and left the impression the 
 `safari16`, or add a polyfill early enough to cover `pdfjs-dist` as well as the vendored files. Then assert
 the decision, because a target that drifts silently is how this arrived unnoticed.
 
+### DW-313 - the offline release has two asset slots left, and every remaining epic adds UI
+
+- **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
+- **Found by:** the orchestrator, from Story 13.6's measured asset count. **Owner:** unassigned.
+  **Severity:** MEDIUM - it is a hard rejection when it trips, not a degradation. **Status:** OPEN.
+
+`src/release-payload.ts:42` sets `maximumCacheAssets = 64` and rejects a release over it
+(`asset-count-over-maximum`, `:85`). Measured with Story 13.6's vendored module in the tree:
+**`s1.assetCount = 62`. Two slots.** The file's own approach-warning threshold is 56 and the release passed it
+some time ago.
+
+Epic 14 is ten stories of designer UI and Epic 15 includes a release cut. Any one of them that emits an image,
+a font, a stylesheet or a lazily-imported chunk consumes a slot, and `vite.config.ts:16` sets
+`assetsInlineLimit: 0`, so **nothing is inlined** - every asset is its own row. Story 13.6 consumed one slot by
+adding two `.js` files, which is a useful calibration: the cost is per emitted chunk, not per feature.
+
+**Why this is registered rather than raised as a defect:** nothing is broken. The bound is doing its job and
+was deliberately chosen. But it is now two commits from refusing a release, and the failure mode is the whole
+release being rejected rather than one feature degrading - so the story that trips it will look like it broke
+the release when it merely arrived last.
+
+**What discharges it:** decide the bound deliberately against what Epics 14 and 15 will actually emit - either
+raise it with the reasoning recorded, or introduce chunk consolidation so a feature costs a row only when it
+ships a genuinely separate asset. Do it before Epic 14 rather than during it.
+
