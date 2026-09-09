@@ -5626,3 +5626,75 @@ than the facts behind it.
 **Related:** [D-13.6.1] (the other false premise I gave this owner), [D-13.6.3], [D-13.1.3], [D-11.2.4],
 DW-311, DW-313, DW-323, DW-324.
 
+### D-14.0.1 — RULING: the cache-asset bound does not move, and the warning that has been firing is the actual finding
+
+**Ruled by the engineering lead, 2026-09-09**, as Epic 14 groundwork, on the owner's instruction (D-13.6.7)
+to decide the asset budget before Epic 14 rather than during it. Verdict: **`maximumCacheAssets` stays 64,
+`warnCacheAssets` stays 56, and no chunks are consolidated.** Epic 14 budgets **per story** instead.
+
+**Where 64 came from, traced rather than inferred.** `fd47e6d` (Story 5.4) checked
+`candidate.assetCount !== 10` — an **exact pin** on the then-current count. `49df7d3` replaced that pin with
+the `[10, 64]` envelope in a two-line diff whose commit message never mentions it. `7a18079` inherited it and
+made a crossing loud. `548aa29` used it as settled fact. **So 64 is a loosened exact pin, never a capacity
+measurement**, and my failure to find a derivation was not a gap in my search.
+
+**It protects nothing in the service worker:** the template installs assets sequentially with `cache.put`,
+one at a time, with no `addAll` and no platform entry limit; Cache Storage is quota-limited in **bytes**.
+
+**And here is the inference of mine that was wrong, which is the load-bearing part.** I wrote: *"If the real
+protection is total bytes rather than row count, say so, because then the row bound is a proxy and raising it
+is cheap."* There **is no byte ceiling anywhere** — the lead searched `scripts/` and `src/` and found none.
+The verifier checks that Brotli arithmetic is self-consistent; nothing fails on a total. So the row count is
+not a proxy standing in front of the real guard. **It is the only numeric growth tripwire the offline release
+has.** Both halves hold at once, and together they settle it: as a capacity limit 64 is fiction, so nothing
+is gained by respecting it; as the sole tripwire it is load-bearing, so something real is lost by moving it.
+**Arbitrary and load-bearing are not opposites when it is the only guard.**
+
+**THE FINDING THAT MATTERS MOST, AND IT IS ABOUT US.** `reportCacheAssetApproach` is genuinely wired and
+fires at `assetCount >= 56`. The release carries **62**. So **every `npm run build` has been printing
+`the margin is 2` — and it has been walked past.** It appeared three times in my own Epic 13 boundary-gate
+output; I quoted it in the gate record as context and did not treat it as a signal. The tripwire did not fail
+to fire. It fired and was absorbed.
+
+That is [DW-162]'s own recorded failure mode — *"the number nobody printed was the number nobody watched"* —
+recurring one level up now that it **is** printed. **A standing warning is not an annoyance; it is a signal
+that has stopped being one.** This run has spent weeks on guards that could not fail; here is a guard that
+did fail correctly, in the open, and was ignored by the orchestrator who wrote the rules about it.
+
+**Why not consolidate chunks.** Right instinct, wrong dimension: **62 assets = 48 `.ttf` (77%), 5 `.js`,
+4 `.bcmap`, 5 singletons** — verified independently against the manifest. Folding `pdf_thumbnail_view`
+returns **one** slot by optimising the 8% dimension, while changing the emitted asset set and therefore
+`releaseIdentity` and every hash, dragging the offline e2e specs into a pre-epic change. And
+`vite.config.ts:20-24` already special-cases two pdf.js directories because PDF.js appends known filenames to
+its configured bases, so whether that module can be folded needs verification, not assumption. The lead
+confirmed the integrity model does **not** depend on chunk identity — consolidation would not break it. It is
+simply not worth the blast radius for one slot.
+
+**What Epic 14 does instead — a precondition, not a budget.** Story 13.6's calibration (*the cost is per
+emitted chunk, not per feature*) makes each story's cost knowable **before** it is built. So every Epic 14
+story states its slot cost in its spec and **re-measures `s1.assetCount` after a clean build**, reporting
+before and after. Stories that touch only `.tsx`/`.css` state zero, and that statement is a claim to be
+checked rather than a formality. **14.5's logo is the only known spender: one slot as a file, zero as inline
+SVG** — `assetsInlineLimit: 0` means a file will not be inlined away, so it is a real design choice with a
+measurable cost, and 14.5's spec makes it deliberately rather than discovering it at build time. If a story
+genuinely cannot fit, that is the moment to decide — with a real instance, a real cost and a real
+alternative — and it is the owner's call, because by then the question is what to drop from the product.
+
+**The conditional rule, recorded because the property outlives today's arithmetic:**
+**`warnCacheAssets = maximumCacheAssets − 8`, always.** The 8 is the meaning; 56 is only today's value.
+Anyone moving the maximum moves the warning in the same commit. Note the contract reader refuses an
+out-of-envelope threshold, but a warning left at 56 under a maximum of 80 is *inside* the envelope, silent
+and useless — the envelope check does not cover this property.
+
+**Guardrails on any future edit:** each constant keeps the exact `^const <name> = <digits>$` shape on its own
+line (the reader requires exactly one live match and fails on zero, two, or a commented-out copy);
+`cacheAssetApproachWarning` stays a **reference**, never a second literal, because that tie is what makes the
+cross-language derivation a measurement; and the approach warning is never made conditional, quieter or
+suppressible to stop it firing at 62 — **it is currently correct.**
+
+**Confidence, as the lead stated it:** high on the history and the conditional rule; **medium** on "two slots
+is enough", resting on Epic 14's icons being inline SVG components and 14.5 being the only asset-adding
+story. That medium is exactly why the ruling is a per-story statement rather than an epic-level budget.
+
+**Related:** [D-13.6.7], [D-000.32], DW-313, DW-325, DW-162.
+

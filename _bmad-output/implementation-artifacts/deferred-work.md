@@ -11655,8 +11655,11 @@ the decision, because a target that drifts silently is how this arrived unnotice
 ### DW-313 - the offline release has two asset slots left, and every remaining epic adds UI
 
 - **source_spec:** `_bmad-output/implementation-artifacts/13-6-the-preview-navigates-by-page-thumbnails.md`
-- **Found by:** the orchestrator, from Story 13.6's measured asset count. **Owner:** unassigned.
-  **Severity:** MEDIUM - it is a hard rejection when it trips, not a degradation. **Status:** OPEN.
+- **Found by:** the orchestrator, from Story 13.6's measured asset count. **Owner:** the engineering lead.
+  **Severity:** MEDIUM - it is a hard rejection when it trips, not a degradation.
+  **Status: CLOSED 2026-09-09 by ruling D-14.0.1** - decided, which was the deliverable. Neither number
+  moves, no chunks are consolidated, and Epic 14 states each story's slot cost in its spec and re-measures
+  after a clean build. See D-14.0.1; the finding underneath it is DW-325.
 
 `src/release-payload.ts:42` sets `maximumCacheAssets = 64` and rejects a release over it
 (`asset-count-over-maximum`, `:85`). Measured with Story 13.6's vendored module in the tree:
@@ -11865,3 +11868,37 @@ not the shape validation around it. And the fix wants a test that a document wit
 becomes hygiene rather than a blocker. The guard proposed there — a walk over `fixtures/*/input.folio`
 applying the rule — should be reconsidered rather than built as specified, since the rule will no longer
 decide whether a file is loadable.
+
+### DW-325 - the offline release's only growth guard counts rows, and 77% of the rows are fonts
+
+- **source_spec:** Epic 14 groundwork (ruling D-14.0.1)
+- **Found by:** the engineering lead, ruling on DW-313. **Owner:** unassigned. **Severity:** MEDIUM.
+  **Status:** OPEN. **Sized: small - roughly half a day.**
+
+`maximumCacheAssets = 64` is the **only numeric growth tripwire the offline release has.** There is no byte
+ceiling anywhere in `scripts/` or `src/` - searched, absent. And the guard is keyed on the wrong axis: a row
+count cannot see a release that **doubles in weight while adding two rows**, and the composition makes that
+concrete - measured, **62 assets = 48 `.ttf` (77%), 5 `.js`, 4 `.bcmap`, and one each of html/wasm/css/mjs/
+folio**, where font sizes differ by an order of magnitude (a catalogue face is ~480 KB; the CJK face is
+~10.6 MB).
+
+**The missing piece is a comparison, not an instrument.** `release.brotli.totalBytes` is already computed,
+already recorded per asset, and already arithmetic-checked by `brotli-record-drift`. Nothing anywhere fails
+on a total.
+
+**Sized deliberately, because "add a byte ceiling" sounds bigger than it is:** one constant in
+`release-payload.ts` on the existing `^const <name> = <digits>$` line shape; one derived read
+(`readDeclaredConstant` is already parameterised by name); one `fail()` in `verify-offline-release.mjs`
+beside the count check at `:89`; one entry in `runRedProofs` held to its own message; and one tie test in the
+pattern `cacheAssetApproachWarning` already establishes.
+
+**Why it is NOT pre-Epic-14 groundwork, though it was found there.** It returns no slot and unblocks nothing
+- and it would add a **second** tripwire to a build whose **first** one is already firing and being ignored
+(D-14.0.1: the approach warning has printed `the margin is 2` on every build, including three times in the
+Epic 13 boundary gate's own output, without changing anyone's behaviour). **Fix the watching problem before
+adding a second thing to watch.**
+
+**The evidence that makes it undeniable, kept together:** 64 has no derivation across the four commits that
+introduced and propagated it; there is no byte ceiling anywhere; the release is 77% fonts by row count; and
+the one warning that exists has been firing, correctly, into nobody's attention.
+
