@@ -12434,3 +12434,41 @@ first.
 **This is the orchestrator's to resolve, not a story's.** Either the mutating layer runs alone, or every other
 consumer of the tree must snapshot and re-verify. Until then, any gate number taken during step-04 is suspect
 by default.
+
+### DW-358 - the colour-literal ban cannot match `rgba(` or `hsla(`, and reads one file
+
+- **source_spec:** `folio-designer/src/design-contract.test.ts:84-91`
+- **Found by:** Story 14.5's builder, checking whether UX-DR1 was already enforced. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The guard is `expect(shellCss).not.toMatch(/#[0-9a-f]{3,8}|\b(?:rgb|hsl)\(/i)`. Three gaps, measured:
+
+1. **`rgba(` and `hsla(` cannot match.** The pattern requires `(` **immediately** after `rgb`/`hsl`; in `rgba(`
+   the next character is `a`. So the two most common translucent-colour syntaxes are unguarded **inside the one
+   file the guard does read**.
+2. **It reads `src/App.css` only** - no `.ts`, no `.tsx`, no other stylesheet. Any colour literal in a component
+   file is unguarded entirely.
+3. **It strips no comments**, so a hex in a comment reds it while a hex in `rgba()` does not - it is
+   simultaneously too strict and too loose.
+
+**This is a guard that reads as enforcement of UX-DR1 and is not.** Story 14.5's dispatch assumed the rule was
+already enforced and had to be corrected; that assumption is exactly what a partial guard invites. Compare
+[D-14.4.3]: the failing direction here is an **absence** claim ("no hex is written anywhere") whose fence cannot
+see most of the places the hex could be.
+
+### DW-359 - closing UX-DR1 repo-wide needs a policy on which colours are chrome and which are document model
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-5-the-product-wears-its-own-mark.md`
+- **Found by:** Story 14.5's builder, scoping AC2. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+A repo-wide literal ban is not a regex change; it needs an **exemption policy**, because the tree contains four
+genuinely different kinds of colour literal:
+
+- `tokens.css` - 52 hex values that are **required** to be there (`design-contract.test.ts:29-31`, `:156`).
+- **Document-model defaults** - `App.tsx:4700` and `swatch-color.ts:20`, both `'#000000'`, mirroring the Go
+  engine's default. These are not chrome; they are the document's own value, and tokenising them would be wrong.
+- ~62 **test fixtures**.
+- At least one false positive: `#abandoned`, a private field name in `engine-client.ts`.
+
+**The distinction that needs deciding is chrome versus document model**, and it is a design question rather than
+a lint question - which is why 14.5 correctly refused to take it. Note the second category also means the ban can
+never be absolute, so whatever ships must be an allowlist with stated reasons rather than a bare prohibition.

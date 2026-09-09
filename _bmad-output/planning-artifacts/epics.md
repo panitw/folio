@@ -5040,8 +5040,15 @@ the mark `Main.dc.html` draws at 18px with a 1.5px stroke
 **Then** it comes from `--color-select`, the token whose value is already the design's `#58a6c4`, and
 no hex is written anywhere in the app (UX-DR1)
 
-**Given** the same mark drawn at three sizes across the mockups — 22px on the load screen, 18px in the
-document bar, 13px as a manifest row bullet
+**Given** the same mark drawn at **two** sizes across the mockups — 22px on the load screen and 18px in
+the document bar
+  <!-- CORRECTED 2026-09-09. This Given previously read "three sizes ... 13px as a manifest row bullet".
+       DESIGN.md:436-438, the normative Rules section, states the mark has two sizes and adds
+       "Nowhere else." The 13px shape in Load.dc.html:78-80 is the CJK row's IN-PROGRESS MARKER, one
+       value of a three-value status vocabulary beside a green tick (:41) and a grey dash (:96) -- not
+       a brand instance. Measured, the three drawings are not geometrically similar: inner-width over
+       outer runs 0.333 / 0.318 / 0.385, and the 13px inner block is square where the mark's is
+       portrait. The epic had read a status glyph as a third size of the logo. -->
 **When** it is built
 **Then** it is one component parameterised by size rather than three drawings, and it is used on the
 load screen as well as the document bar, because a brand that appears only after loading is not the
