@@ -6255,7 +6255,26 @@ close - the edits are already in the document. **The label must follow the model
 committed, discardable".** AC7 was right that this is not a labelling choice; it was wrong about which label the
 model implies.
 
-**Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], DW-351.
+**Where the six guardrails are actually enumerated, added 2026-09-10 while preparing 14.7b's dispatch.** This
+entry names *"six guardrails"* and writes out **only the first**; `DW-368` cites *"guardrail 2"* without
+restating it. The full list was in the lead's ruling message, which does not survive the session — so as
+written, the epic's instruction to see *"D-14.7.1, including its six guardrails"* pointed at a list that is
+not here. **It is not lost: it is Story 14.7b's acceptance criteria**, which carry all six —
+
+| Guardrail | Where it now lives |
+|---|---|
+| 1. count only real mutations (`revision !== priorRevision`) | 14.7b AC3, and in full above |
+| 2. the modal swallows the global undo/redo shortcut | 14.7b AC4, and [DW-368] |
+| 3. a count over the engine's history limit disables Cancel **with a stated reason** | 14.7b AC5 |
+| 4. a failed undo stops, states the real position, claims nothing | 14.7b AC6 |
+| 5. the redo stack is **not** cleared — a mistaken Cancel is recoverable | 14.7b AC7 |
+| 6. the buttons are `Cancel` / `Done`, the label following the model | 14.7b AC1, and in full above |
+
+**The general point, which this run keeps re-learning: a decision that says "N things" and writes out one has
+recorded a count, not a decision.** The same shape as [D-14.7.2] — the integer was a proxy; the set is the
+predicate. Dispatch 14.7b against the ACs, which are enumerated, not against this entry's word "six".
+
+**Related:** [D-14.2.Q3], [D-14.4.3], [D-14.6.2], [D-14.7.2], DW-351, [DW-368].
 
 ## D-14.7.2 - record a warning baseline as a per-file SET, never as an integer
 
