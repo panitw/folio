@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
-import type { TableColumns } from './engine-protocol'
+import { MAX_ENGINE_HISTORY_ENTRIES, type TableColumns } from './engine-protocol'
 import { alignSegments, SegmentedControl } from './segmented-control'
 import { isHexColour, swatchColor } from './swatch-color'
 import type { TableHeaderStyleField } from './table-style-command'
@@ -7,7 +7,7 @@ import type { TableHeaderStyleField } from './table-style-command'
 type Field = 'header' | 'width' | 'align'
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; onClose: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onBind: (id: string, field: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onBind: (id: string, field: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
 
 // STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
@@ -62,7 +62,7 @@ const authored = (thousandths: number): string => String(thousandths / 1000)
 // is a third thing again.
 const resolvedNote = (value: string, whenEmpty: string): string => value === '' ? whenEmpty : `Using: ${value}`
 
-export function TableEditor({ projection, busy, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, onClose, onAdd, onRemove, onMove, onUpdate, onConfigure, onBind, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
+export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onConfigure, onBind, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
   const table = projection.table
   const columns = table.columns
   // THE MATRIX OPENS ON THE FIRST EDITABLE CELL, NOT ON CELL ZERO. Cell zero is
@@ -167,8 +167,28 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
 			if (enabled(next.row, next.column)) { focusCell(next); return }
 		}
   }
+  // ⚠ A VISIBLE REASON, NOT A BARE GREY-OUT AND NOT A `title`. Above the
+  // engine's history bound a discard cannot land where it claims to: the ring
+  // buffer has already evicted the oldest entry, so the sequence would stop one
+  // edit short and the last undo would fail. The author is told that, on screen,
+  // beside the button it disables — a `title` is not readable by keyboard and a
+  // grey button with no sentence is a refusal with no reason.
+  const overHistoryBound = editCount > MAX_ENGINE_HISTORY_ENTRIES
   const trapDialog = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
+    // ⚠ ESCAPE IS SWALLOWED WHILE THE DISCARD IS UNWINDING, AND ONLY THEN.
+    // Escape is `Done`, and `Done` tears the session down: mid-sequence that
+    // advances `tableEditorSession`, so App's Cancel loop hits its own
+    // session-teardown guard and returns BEFORE it installs the snapshot it
+    // reached — the engine k undos back while the canvas and the preview still
+    // show the pre-Cancel document, with nothing on screen saying so.
+    //
+    // GATED ON `discarding` AND NEVER ON `busy`. `busy` is not cleared by
+    // `setCurrentSnapshot`'s `clearDocumentInteraction` branch, so a latched
+    // `busy` plus a gated Escape would make this modal impossible to close at
+    // all — a worse defect than the one being fixed. `discarding` is the
+    // compensating sequence's own in-flight flag and nothing else's; an
+    // ordinary blur commit leaves Escape working exactly as it did.
+    if (event.key === 'Escape') { event.preventDefault(); if (discarding) return; onClose(); return }
     if (event.key !== 'Tab') return
     const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? []).filter((element) => element.tabIndex >= 0)
     if (!focusable.length) return
@@ -415,10 +435,12 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
       {/* THE HEADER SECTION SITS AFTER THE MATRIX, WHERE THE DESIGN PLACES IT,
           AND THAT DELIBERATELY CHANGES THE TAB ORDER — ruled and recorded as
           D-12.3.2. Story 14.7 moved `Close Table Editor` out of the heading and
-          into the footer bar below, so the order is now [Root collection, Row
+          into the footer bar below, and Story 14.7b turned that one button into
+          the `Cancel` / `Done` pair — so the order is now [Root collection, Row
           alias, the one active matrix cell, Add column, these controls in
-          document order, Close Table Editor]. App.test.tsx asserts both ends of
-          that list.
+          document order, Cancel, Done]. `Cancel` DROPS OUT of it whenever it is
+          disabled, because the trap's query is `button:not([disabled])`.
+          App.test.tsx asserts both ends of that list, re-derived from the DOM.
 
           role="group" IS LOAD-BEARING, not decoration: an aria-label on a plain
           div with NO role is dropped by the accessibility tree, so the section
@@ -458,22 +480,57 @@ export function TableEditor({ projection, busy, error, candidates, sampleAvailab
         <p className="honest-note">A field left blank falls back to the table's own style and then to the format's default. The engine resolves it; the note under each control is the engine's answer, not this panel's.</p>
       </div>
       {error && <p role="alert" className="file-message">{error}</p>}
-      {/* THE FOOTER BAR, AND WHY `Close Table Editor` MOVED INTO IT.
-          The design puts the dialog's summary and its exit at the bottom, so
-          the button left the heading and came down here. That DELIBERATELY
-          re-orders `trapDialog`'s focusable list a second time, exactly as
-          D-12.3.2 re-ordered it once before: `Close` is no longer FIRST, it is
-          LAST, so the forward wrap now runs from `Close` to `Root collection`
-          and the backward wrap is its inverse. `App.test.tsx` asserts both ends
-          and says the new order is intended, because an unexplained
-          re-ordering reads as a regression to the next author.
+      {/* THE FOOTER BAR: THE SUMMARY, AND THE TWO WAYS OUT (Story 14.7b).
+          `Close Table Editor` moved down out of the heading at Story 14.7 and
+          has now become a PAIR, which is D-14.7.1's ruling.
 
-          ⚠ THIS BAR CARRIES NO Cancel / Done PAIR AND NO EDIT COUNTER. That is
-          Story 14.7b under D-14.7.1, which replaces this one button with the
-          pair; the counter it needs is what `DW-368` (global Cmd+Z reaching the
-          document behind the modal) would desynchronise, so both stay there.
-          Nothing here touches `applyHistory`. */}
-      <div className="table-editor-footer"><output aria-label="Column summary" aria-live="off">{`${plural(columns.length, 'column')} · ${plural(aggregateCount, 'aggregate')}`}</output><button type="button" className="file-button" onClick={onClose}>Close Table Editor</button></div>
+          WHAT THE TWO WORDS MEAN, because they are not symmetric and a reader
+          should not have to find that out by pressing one:
+            • `Done` closes and KEEPS every edit. So does ESCAPE — Escape and
+              Done are THE SAME ACT here, deliberately. A modal whose Escape is
+              not its Cancel is unusual, and it is forced: Cancel is disabled
+              above the engine's history bound, and if Escape meant Cancel the
+              dialog would stop being keyboard-dismissible in exactly that state.
+            • `Cancel` is THE ONLY DISCARD. It undoes precisely the commits this
+              session made that the ENGINE agreed changed the document, then
+              closes. Nothing here counts anything: `editCount` is the
+              application's integer (App.tsx), and this dialog neither reads nor
+              could read a revision.
+
+          ⚠ AND `Done` IS DISABLED WHILE THE DISCARD IS UNWINDING — `discarding`,
+          which is the compensating sequence's own in-flight flag and NOT the
+          general `busy`. Closing mid-sequence advances `tableEditorSession`, so
+          App's loop returns at its teardown guard before installing the snapshot
+          it reached, leaving the engine k undos behind a canvas and a preview
+          that still show the pre-Cancel document. Escape is gated on the same
+          flag, for the same reason, in `trapDialog` above. `busy` deliberately
+          does NOT gate either one: it is not cleared by
+          `setCurrentSnapshot`'s `clearDocumentInteraction` branch, and a latched
+          `busy` would make this modal undismissable.
+
+          ⚠ `Cancel` ALSO DISABLES ON `fileBusy`, mirroring the refusal
+          `cancelTableEditor` already makes: a save or an export in flight makes
+          the handler return, so without this the button looked available during
+          one and swallowed the click. The toolbar's Undo/Redo pair
+          (`disabled={!undoAvailable || fileBusy}`) is the precedent, and it is
+          mirrored in BOTH directions exactly as the history bound is.
+
+          ⚠ THE ACTIONS WRAPPER IS A PLAIN `<div>` AND MUST STAY ONE. The bar is
+          `justify-content: space-between`, so the summary and the actions have
+          to be its two children or four items would scatter across it. It is
+          NOT `role="group"`: `control-vocabulary-contract.test.tsx:885-889`
+          pins the exact string 'R0 the sweep visited 32 group instances, under
+          the floor of 33', and one more group instance takes that shrunk count
+          to 33, clears the floor and reds the `toEqual`. The fix is a plain
+          div, never an edit to that pinned string.
+
+          ⚠ AND THIS RE-ORDERS `trapDialog`'S FOCUSABLE LIST A THIRD TIME —
+          D-12.3.2 did it once, Story 14.7 again, this is the third — INTENDED
+          each time. `Done` is now the list's last member, and because the query
+          is `button:not([disabled])`, A DISABLED `Cancel` DROPS OUT OF THE LIST
+          ALTOGETHER and the wrap ends move again. `App.test.tsx` re-derives both
+          ends from the DOM rather than naming them. */}
+      <div className="table-editor-footer"><output aria-label="Column summary" aria-live="off">{`${plural(columns.length, 'column')} · ${plural(aggregateCount, 'aggregate')}`}</output><div className="table-editor-actions">{overHistoryBound && <p className="table-editor-cancel-note" id="table-editor-cancel-note">{`Cancel is unavailable: ${editCount} edits exceed the engine's ${MAX_ENGINE_HISTORY_ENTRIES}-step history, so a discard would land part-way. Use Done and undo what you want by hand.`}</p>}<button type="button" className="file-button" disabled={busy || fileBusy || overHistoryBound} aria-describedby={overHistoryBound ? 'table-editor-cancel-note' : undefined} onClick={onCancel}>Cancel</button><button type="button" className="file-button" disabled={discarding} onClick={onClose}>Done</button></div></div>
     </div>
   </section>
 }

@@ -272,7 +272,11 @@ async function authorTableWithFooter(page: Page, content: ReturnType<Page['getBy
   await footerSource.fill('transactions.amount', { timeout: 12_000 })
   await footerSource.blur()
   await waitForRevisionAdvance(page, beforeFooterSource)
-  await dialog.getByRole('button', { name: 'Close Table Editor' }).click()
+  // `Done`, NEVER `Cancel` (Story 14.7b). This helper has just authored five
+  // columns and a footer aggregate, and `Cancel` would undo every one of them —
+  // and still pass as a rename while destroying the only end-to-end proof that
+  // authoring reaches the engine.
+  await dialog.getByRole('button', { name: 'Done' }).click()
 }
 
 async function authorAlternateReport(page: Page): Promise<void> {

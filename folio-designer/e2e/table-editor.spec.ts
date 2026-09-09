@@ -68,8 +68,23 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(page.getByRole('button', { name: 'Remove column 1' })).toBeFocused()
 	await expect(page.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
 	await expect(page.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
-	// `Close Table Editor` moved out of the heading and into the footer bar.
-	await expect(page.getByRole('button', { name: 'Close Table Editor' })).toBeVisible()
+	// THE FOOTER BAR CARRIES THE PAIR (Story 14.7b). The single `Close Table
+	// Editor` moved out of the heading at Story 14.7 and has become `Cancel` /
+	// `Done`: `Done` closes and keeps, `Cancel` discards this session's edits by
+	// undoing exactly as many of them as the engine agreed changed the document.
+	//
+	// ⚠ SCOPED TO THE DIALOG AND MATCHED EXACTLY. `FontBrowser.tsx` ships a
+	// `Cancel` of its own, and an unscoped, non-exact `getByRole` would resolve
+	// against whichever `Cancel` the page happened to hold — passing on the wrong
+	// one, or striking two and failing for a reason that has nothing to do with
+	// this footer.
+	const dialog = page.getByRole('dialog', { name: 'Table Editor' })
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
+	await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible()
+	// ⚠ AND ESCAPE IS `Done`, NOT `Cancel`. It closes and KEEPS — deliberately, and
+	// stated here so the assertion below is not read as proving a discard. Cancel is
+	// disabled above the engine's history bound, and an Escape that meant Cancel
+	// would leave the dialog undismissable by keyboard in exactly that state.
 	await page.keyboard.press('Escape')
-	await expect(page.getByRole('dialog', { name: 'Table Editor' })).toHaveCount(0)
+	await expect(dialog).toHaveCount(0)
 })

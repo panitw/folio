@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import { CAPPING_BANDS, LOCALE_TAGS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
+import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -391,6 +391,51 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const bindingInFlight = useRef(false)
 	const tableEditorSession = useRef(0)
 	const tableEditorInvoker = useRef<HTMLElement | undefined>(undefined)
+  // STORY 14.7b — THE DIALOG'S EDIT COUNT, HELD AS A REF AND A STATE MIRROR
+  // WRITTEN TOGETHER, exactly as `documentGeneration` /
+  // `setDocumentGenerationValue` already are (setCurrentSnapshot, below).
+  //
+  // The REF is what the Cancel loop reads: it runs N synchronous-ish iterations
+  // inside one handler, and a React state read there is the value that handler
+  // closed over. The STATE is what the footer renders, because a ref cannot
+  // re-render the disabled reason into view.
+  //
+  // IT COUNTS ONLY COMMITS THAT ACTUALLY MOVED THE DOCUMENT — the engine's own
+  // `revision !== priorRevision` answer, never a dispatch. A no-op that consumed
+  // a Cancel step would make Cancel reach back PAST the moment the dialog
+  // opened and unwind work the author did before it, which is the one
+  // destructive failure this whole mechanism has.
+  //
+  // IT IS AN INTEGER AND NOTHING MORE. No buffered edits, no second document
+  // model: every edit is already committed when the author sees it, and Cancel
+  // is a compensating sequence over the engine's own byte snapshots.
+  const tableEditorEdits = useRef(0)
+  const [tableEditorEditCount, setTableEditorEditCount] = useState(0)
+  // Written together, always, so the loop and the footer cannot disagree.
+  const setTableEditorEdits = (next: number) => { tableEditorEdits.current = next; setTableEditorEditCount(next) }
+  // What a completed Cancel discarded, stated in the design-mode announcement
+  // region. Its own state rather than `fileStatus`: a discard is not a local
+  // file outcome and overloading that line would make either message erase the
+  // other.
+  const [tableEditorDiscarded, setTableEditorDiscarded] = useState<string>()
+  // WHETHER THE COMPENSATING SEQUENCE IS IN FLIGHT — its own indicator, and
+  // deliberately NOT `tableEditorBusy`.
+  //
+  // The dialog's two ways out tear the session down (`revokeTableEditor`
+  // advances `tableEditorSession`), so a click on `Done` or a press of Escape
+  // mid-unwind makes the loop below return at its session guard BEFORE it
+  // installs the snapshot it reached: the engine ends k undos back while
+  // `snapshotRef`, the canvas and the preview still show the pre-Cancel
+  // document, with nothing on screen saying so. Both are gated on THIS flag.
+  //
+  // ⚠ IT IS NOT `tableEditorBusy` BECAUSE `tableEditorBusy` CAN LATCH.
+  // `setCurrentSnapshot`'s `clearDocumentInteraction` branch clears the dialog
+  // without clearing that flag, so gating Escape on it could leave a modal that
+  // cannot be closed at all — a worse defect than the one this guards. This flag
+  // is cleared unconditionally in the loop's `finally` (which runs on the
+  // teardown return too) and again in `openTableEditor` and
+  // `revokeTableEditor`, so the dialog can never become inescapable.
+  const [tableEditorDiscarding, setTableEditorDiscarding] = useState(false)
   // Local picker results are authority-scoped independently of React renders.
   // A document replacement revokes a picker started for the old document.
   const sampleLoadGeneration = useRef(0)
@@ -659,6 +704,19 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     retryingFailure.current = undefined
   }
   const invalidatePreview = (clear = false) => {
+    // STORY 14.7b — AND THE DISCARD SENTENCE IS WITHDRAWN HERE, because this is
+    // the one site every committed change already passes through.
+    //
+    // The sentence promises "Redo restores them until your next committed edit",
+    // and Go's next `install` sets `e.redo = nil` — so the moment the document
+    // moves again the promise is FALSE, and a live region still asserting it is
+    // worse than silence. Clearing it only where the edit COUNT is cleared is not
+    // enough: a nudge on the still-selected table commits without touching the
+    // count at all. Every revision-moving commit, every document replacement and
+    // every undo/redo calls this function; a completed Cancel calls it too, and
+    // then states its sentence AFTER — which is why the set has to follow the
+    // close rather than precede it.
+    setTableEditorDiscarded(undefined)
     // A request already admitted to the FIFO worker must drain; invalidation
     // revokes its authority synchronously and lets the scheduler coalesce a
     // single newest replacement behind it instead of posting duplicates.
@@ -948,6 +1006,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const generation = documentGeneration.current
     const revision = snapshotRef.current?.revision
 		const session = ++tableEditorSession.current
+		// ZEROED AT EVERY SITE THAT ADVANCES THE SESSION (there are exactly three:
+		// here, revokeTableEditor, and setCurrentSnapshot's clearDocumentInteraction
+		// branch). A count that outlived its session would let Cancel unwind edits
+		// made before this dialog was ever opened.
+		setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false)
 		tableEditorInvoker.current = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     setTableEditorError(undefined); setTableEditorBusy(true)
     try {
@@ -958,6 +1021,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 	const revokeTableEditor = () => {
 		tableEditorSession.current++
+		// THE DISCARD SENTENCE IS WITHDRAWN WHEREVER THE COUNT IS, and for the same
+		// reason: it describes a session, and this is a site that ends one. A
+		// sentence promising "Redo restores them" that outlives what it describes
+		// is a claim the product can no longer keep.
+		//
+		// ⚠ SO `cancelTableEditor` SETS THAT SENTENCE **AFTER** `closeTableEditor`,
+		// not before — this line would otherwise wipe it on the way out.
+		setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false)
 		setTableEditor(undefined); setTableEditorError(undefined); setTableEditorBusy(false)
 	}
 	const closeTableEditor = () => {
@@ -984,7 +1055,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
 			// editor visibility. Admit it whenever it follows the expected document
 			// generation/revision; only the editor's re-projection remains scoped.
 			if (documentGeneration.current === generation && snapshotRef.current?.revision === revision) {
-				if (committed.snapshot.revision !== revision) invalidatePreview()
+				// STORY 14.7b — GUARDRAIL 1 SITS ON THIS EXISTING COMPARISON, and it is
+				// the same question `invalidatePreview` already asks: did the engine's
+				// revision actually move? A `clear` on an already-unset colour is a
+				// LEGAL command that leaves canonical bytes unchanged, so Go returns
+				// before pushUndo and the revision stands still — no history entry, so
+				// no Cancel step. Counting it would make Cancel overshoot by one and
+				// undo an edit from before the dialog opened.
+				//
+				// SCOPED TO THE SESSION CAPTURED AT ENTRY, so a commit whose dialog was
+				// revoked mid-flight cannot add to whatever session came after it.
+				if (committed.snapshot.revision !== revision) { invalidatePreview(); if (tableEditorSession.current === session) setTableEditorEdits(tableEditorEdits.current + 1) }
 				setCurrentSnapshot(committed.snapshot)
 			}
       const projected = await engine.request('table-columns', new TextEncoder().encode(JSON.stringify({ id })).buffer)
@@ -992,6 +1073,128 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
 			else if (tableEditorSession.current === session) revokeTableEditor()
     } catch (error) { if (accepted) { if (tableEditorSession.current === session) revokeTableEditor() } else if (tableEditorSession.current === session && documentGeneration.current === generation && selectedRef.current.length === 1 && selectedRef.current[0] === id && snapshotRef.current?.revision === revision) setTableEditorError(componentDiagnostic(error))
     } finally { if (tableEditorSession.current === session && documentGeneration.current === generation) setTableEditorBusy(false) }
+  }
+  // STORY 14.7b — CANCEL: A COMPENSATING SEQUENCE, NOT A TRANSACTION.
+  //
+  // Nothing was ever buffered, so there is nothing to roll back. What this does
+  // is ask the engine to replay ITS OWN byte snapshots — `pushUndo(e.bytes)` —
+  // exactly as many times as this session committed a change the engine agreed
+  // was a change. The application holds an integer; the document is the
+  // engine's throughout.
+  //
+  // ⚠ IT DOES NOT REUSE `applyHistory`, and both reasons are structural rather
+  // than stylistic. (1) `applyHistory` gates on `undoAvailable`, which is React
+  // STATE: across an N-iteration loop inside one handler it is stale, and stale
+  // in the permissive direction, so it would guard nothing. (2) It calls
+  // `setCurrentSnapshot(…, true)` on EVERY iteration, and that third argument
+  // runs `clearDocumentInteraction` — which closes this dialog. The dialog
+  // would be gone after undo #1, and a closed dialog can state nothing, which
+  // is precisely what a failed undo needs it to do.
+  //
+  // ⚠ THE LOOP RUNS WITH THE DIALOG STILL OPEN. Closing is the SUCCESS PATH
+  // ONLY.
+  //
+  // ⚠ THE BOUND AND ITS PRECONDITION ARE ONE FACT. `N <= MAX_ENGINE_HISTORY_ENTRIES`
+  // is sound only because no other path can commit while this modal is open —
+  // see the modal-open guard on the window shortcut handler below. 100 is not a
+  // large number that makes overshoot unlikely; it is the engine's ring-buffer
+  // size, and at 101 the oldest entry has already been evicted, so the sequence
+  // would land one edit short and the last undo would fail. That is why the
+  // footer DISABLES Cancel above the bound rather than attempting it.
+  const cancelTableEditor = async () => {
+    const current = tableEditor
+    if (!engine || fileBusy || !current || tableEditorBusy) return
+    const count = tableEditorEdits.current
+    // The same refusal the footer draws, restated where it is load-bearing: a
+    // disabled button is a UI fact, and this loop must not depend on one.
+    if (count > MAX_ENGINE_HISTORY_ENTRIES) return
+    const id = current.table.tableId
+    const session = tableEditorSession.current
+    const generation = documentGeneration.current
+    // Nothing changed the document, so there is nothing to compensate for and
+    // nothing to announce. Cancel is then exactly Done.
+    if (count === 0) { closeTableEditor(); return }
+    // `tableEditorDiscarding` IS WHAT SHUTS THE TWO WAYS OUT WHILE THIS RUNS.
+    // The dialog stays on screen — closing is the success path only — so `Done`
+    // and Escape are live gestures over a sequence they would tear down; both
+    // are gated on this flag, and on this flag alone. It is cleared in the
+    // `finally` below, which runs on the teardown return inside the loop as
+    // well, and again by `openTableEditor` / `revokeTableEditor`.
+    setTableEditorError(undefined); setTableEditorDiscarded(undefined); setTableEditorDiscarding(true); setTableEditorBusy(true)
+    let discarded = 0
+    let reached: EngineSnapshot | undefined
+    let stopped: string | undefined
+    try {
+      while (discarded < count) {
+        try { const result = await engine.request('undo'); reached = result.snapshot; discarded++ }
+        catch (error) {
+          // `applyHistory`'s catch is the precedent: UNDO_UNAVAILABLE is mapped
+          // to STATE, never thrown away and never rethrown as a failure. The
+          // engine's failure envelope carries no snapshot, so the position we
+          // reached is the last successful `reached`, not anything in here.
+          const received = error as { code?: string }
+          stopped = received.code === 'UNDO_UNAVAILABLE' ? 'the engine had nothing left to undo' : componentDiagnostic(error)
+          break
+        }
+        // Something tore the session down mid-sequence. Whatever did it owns the
+        // dialog now; installing over it would be this loop talking about a
+        // document it no longer edits.
+        //
+        // ⚠ THIS IS NOW REACHABLE ONLY BY A NON-UI TEARDOWN — a document
+        // replacement, or a commit whose re-projection revoked the session — and
+        // that is the point of the `discarding` gate. The two gestures that used
+        // to reach it, `Done` and Escape, could return here with the engine k
+        // undos back and the canvas, `snapshotRef` and the preview still showing
+        // the pre-Cancel document: the install below is skipped, and nothing on
+        // screen said the two had parted company. The flag makes the UI unable to
+        // get here; the guard stays because the other paths still can.
+        if (tableEditorSession.current !== session || documentGeneration.current !== generation) { setTableEditorDiscarding(false); return }
+      }
+      // ONCE, at the end — not once per iteration.
+      if (reached) { invalidatePreview(); setCurrentSnapshot(reached) }
+      // NO `modeRef.current === 'preview'` ARM HERE, and its absence is measured
+      // rather than assumed. It would have been copied from `applyHistory`, where
+      // undo/redo really can be pressed in preview mode. This dialog cannot be:
+      // `Configure columns` renders only in the design inspector, so the session
+      // can only be opened in design mode; while it is open Alt+P is suppressed
+      // by this story's own modal guard; and the PREVIEW control cannot be
+      // clicked, because `.table-editor-backdrop` is `position: fixed; inset: 0;
+      // z-index: 20` over the whole viewport and `trapDialog` wraps Tab at both
+      // ends. So `modeRef.current` is 'design' at every reachable arrival here —
+      // and the discard sentence below renders only inside the design `<main>`
+      // anyway, so a preview-mode arrival would have announced nowhere.
+      if (stopped === undefined) {
+        setTableEditorEdits(0)
+        // THE HONEST LIMIT IS PART OF THE SENTENCE. `Undo()` calls
+        // `pushRedo(e.bytes)` before restoring, so the discarded edits are
+        // redoable — but only until the next committed command, which sets
+        // `e.redo = nil`. A discard stated as permanent would be a lie in one
+        // direction and a discard stated as reversible forever a lie in the other.
+        //
+        // ⚠ STATED **AFTER** THE CLOSE, and the order is load-bearing:
+        // `closeTableEditor` → `revokeTableEditor` withdraws this sentence along
+        // with the count, so setting it first would have it wiped on the way out.
+        // Both are state writes in one handler, so React commits the pair in a
+        // single render and the sentence survives.
+        closeTableEditor()
+        setTableEditorDiscarded(`Discarded ${discarded} table editor ${discarded === 1 ? 'edit' : 'edits'}. Redo restores ${discarded === 1 ? 'it' : 'them'} until your next committed edit, which clears the engine's redo history.`)
+        return
+      }
+      // AC6. The dialog STAYS OPEN, re-projects the document it actually
+      // reached, and states the real position — both numbers, so a message
+      // claiming a completed discard cannot pass for this one.
+      setTableEditorEdits(count - discarded)
+      const projected = await engine.request('table-columns', new TextEncoder().encode(JSON.stringify({ id })).buffer)
+      if (tableEditorSession.current === session && documentGeneration.current === generation && snapshotRef.current?.revision === projected.snapshot.revision && projected.tableColumns?.revision === projected.snapshot.revision && projected.tableColumns.table.tableId === id) setTableEditor(projected.tableColumns)
+      if (tableEditorSession.current === session) setTableEditorError(`Discarded ${discarded} of ${count} edits, then stopped: ${stopped}. The other ${count - discarded} still stand, and this dialog is showing the document as it is now.`)
+    } catch (error) { if (tableEditorSession.current === session) setTableEditorError(componentDiagnostic(error))
+    // THE FLAG IS CLEARED UNCONDITIONALLY AND THE BUSY FLAG IS NOT, and the
+    // asymmetry is deliberate. `tableEditorBusy` is scoped to the session it was
+    // raised for; `discarding` exists only to shut `Done` and Escape while THIS
+    // sequence runs, so it must come down on every exit — the success path, the
+    // failure path, the throw and the teardown return — or the dialog it is still
+    // rendering would have no way out at all.
+    } finally { setTableEditorDiscarding(false); if (tableEditorSession.current === session) setTableEditorBusy(false) }
   }
   const bindPickedPath = async (segments: ReadonlyArray<string>) => {
     const id = selectedRef.current.length === 1 ? selectedRef.current[0] : undefined
@@ -1965,7 +2168,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
@@ -2188,7 +2391,36 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         void save(false)
         return
       }
-      if (editing) return
+      // STORY 14.7b / DW-368 — THE GUARD LINE, AND IT NOW ASKS A SECOND
+      // QUESTION. `isEditableTarget` answers "is the TARGET editable?"; that is
+      // the wrong question when a modal is on screen, because the author can be
+      // focused on a BUTTON inside it and every shortcut below then fires
+      // against the document behind the dialog. Measured: the arrow keys sent
+      // `moveComponent` and Cmd+D sent `duplicateComponent` against THE VERY
+      // TABLE the dialog had open — both gate on a single selection, and
+      // openTableEditor requires that single selection to BE the table — so the
+      // dialog projected one table while the document held two, with nothing on
+      // screen to show it. Cmd+Z was different and no better: it tore the
+      // dialog down out from under the author.
+      //
+      // SO THE SECOND QUESTION IS "IS A MODAL OPEN?", KEYED ON THE OPEN-MODAL
+      // STATE AND NEVER ON A LIST OF KEYS. A key-list guard is the shape that
+      // produced this defect; it goes stale the moment a shortcut is added.
+      //
+      // ⚠ AND IT IS WHAT MAKES THE TABLE EDITOR'S EDIT COUNT TRUSTWORTHY. The
+      // Cancel sequence's `N <= MAX_ENGINE_HISTORY_ENTRIES` bound assumes the
+      // dialog's own commands are the ONLY source of undo entries while it is
+      // open. Before this line that was false — a nudge or a duplicate pushed an
+      // entry the dialog never counted, so N undos would consume it and leave
+      // one of the dialog's own edits standing. The guard and the bound are the
+      // same claim.
+      //
+      // `fontBrowserOpen` IS DELIBERATELY NOT HERE (Q1 = B'): the font browser
+      // has the same leak and keeps it for now, as DW-371.
+      //
+      // Cmd+S sits ABOVE this line and is untouched: saving is not a mutation of
+      // what the modal edits.
+      if (editing || tableEditor !== undefined) return
       if (modifier && event.key.toLowerCase() === 'z' && !event.shiftKey && undoAvailable) { event.preventDefault(); void applyHistory('undo'); return }
       if ((modifier && event.shiftKey && event.key.toLowerCase() === 'z' || !mac && modifier && event.key.toLowerCase() === 'y') && redoAvailable) { event.preventDefault(); void applyHistory('redo'); return }
       if (modifier && event.key.toLowerCase() === 'd' && modeRef.current === 'design' && selectedRef.current.length === 1) { event.preventDefault(); duplicateSelection(); return }
@@ -2549,7 +2781,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
         {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
-        {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}
+        {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}{/* STORY 14.7b — WHAT A COMPLETED CANCEL DISCARDED, in this region and in
+            its OWN state. Not folded into `fileStatus`: that line is for local
+            file outcomes, and two writers on one line means either can erase the
+            other's sentence. */}{tableEditorDiscarded && <p role="status" aria-live="polite" className="file-message">{tableEditorDiscarded}</p>}
       </main> : <main className="preview-region" aria-label="Preview region"><div className="preview-heading"><p>{noDataPreview ? 'NO-DATA LAYOUT PREVIEW' : previewStatus === 'current' ? 'EXACT LOCAL PRODUCTION PDF' : 'LOCAL PDF PREVIEW'}</p>{/* STORY 13.5 — THE SECOND WAY BACK TO DESIGN IS GONE. The document
         bar's DESIGN button calls `returnToDesign`, the SAME reference this
         button called, so the ability to abandon a render in flight — token
@@ -2616,7 +2851,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         re-implemented; the item count is `SampleNode.count`. `undefined` on any
         of the three means UNKNOWN, and the dialog says so rather than drawing a
         zero. */}
-    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} />}
+    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} fileBusy={fileBusy} discarding={tableEditorDiscarding} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} editCount={tableEditorEditCount} onCancel={() => void cancelTableEditor()} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so

@@ -12816,3 +12816,98 @@ its state variable, and either adds a third modal without extending it — the e
 pattern — or "tidies" it into a generic check with no test asserting the font browser case, which is the
 unexamined change this entry exists to have declined. Note also [DW-370]: the font browser's own `Cancel`
 already means something different from the table editor's, so these two surfaces are accumulating divergence.
+
+---
+
+### DW-372 - the ring-buffer eviction that Cancel's bound rests on is asserted only as source text, and no test executes it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-7b-the-table-editor-s-cancel-discards-what-it-counted.md`
+- **Found by:** Story 14.7b's review. **Owner:** unassigned — needs a **Go** test, which 14.7b was forbidden to write. **Severity:** HIGH. **Status:** OPEN.
+
+Story 14.7b's `Cancel` issues N `undo` operations and is disabled at N ≥ 101 because the engine's history
+holds exactly 100 entries. **The correctness of that bound depends on `appendBounded` evicting the oldest
+entry and writing the newest into the freed slot** (`folio-go/wasm/engine.go`), and **nothing executes that
+behaviour.**
+
+`engine-bounds-mirror.test.ts` pins `if len(history) == historyLimit` and `copy(history, history[1:])` as
+**source text**. Delete `history[len(history)-1] = copyValue` from `appendBounded` and **both regexes still
+match** — verified. `historyLimit` appears in **no** `*_test.go` file in the repository (measured with
+`git ls-files '*_test.go' | xargs grep -ln`), and no Go test drives 100 commands.
+
+**What the mutation would do, which is the reason this is HIGH and not MEDIUM.** With that line gone, the
+freed newest slot keeps a duplicate of the previous entry. A 100-step `Cancel` then consumes 100 undos,
+lands on **the wrong document**, and **reports a completed discard** — the author is told their edits were
+discarded, and one of them is still there, one step out of alignment. That is precisely the silent failure
+the bound exists to prevent, and every gate in the project stays green through it: the mirror matches, the
+TypeScript suite passes, `tsc` and `oxlint` are unaffected.
+
+**Why 14.7b could not close it.** Its spec forbids editing `folio-go/**` (no engine change, per D-14.7.1),
+and the owner's per-story cadence (D-000.33) runs **no Go suite** — so a Go test written here would not have
+executed at any gate this story passes through. Writing it anyway would have produced the shape this run
+catalogues as *a guard never invoked*.
+
+**The fix.** A Go test beside `TestEngineNoOpDoesNotChangeHistoryRevisionOrRedo` that drives `historyLimit + 1`
+commands and asserts the oldest entry is gone **and the newest is the newest** — not merely that the length
+is capped. A length assertion alone passes against the mutation.
+
+**How we'd know it was forgotten.** The mirror is treated as coverage because it names the right lines. A
+source-text assertion proves a line is *present*, never that it is *right* — this is the same distinction
+[D-14.7.4] drew between asserting the direction of travel and asserting the destination.
+
+---
+
+### DW-373 - Cancel's discard is proved only against a mock that restates the engine's own rules
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-7b-the-table-editor-s-cancel-discards-what-it-counted.md`
+- **Found by:** Story 14.7b's review. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Every proof of the counted discard runs against `tableEngine`, a hand-written TypeScript mock whose
+`bytes.Equal`-equivalent short-circuit and whose undo/redo stacks are a **restatement of
+`folio-go/wasm/engine.go`**. Nothing ties the mock's history semantics to the engine's. `e2e/table-editor.spec.ts`
+asserts only that `Cancel` and `Done` are visible and that Escape closes — **`Cancel` is never pressed above
+the mock**, so the discard has never run against the real wasm engine, in a browser, or anywhere the two
+implementations could disagree.
+
+**The specific risk is not "the mock might be wrong" but "the mock is right by construction."** It was written
+against the same reading of the engine that the story's tasks were written against, so if that reading is
+wrong, the mock and the implementation are wrong **together** and agree perfectly. The no-op rule
+(guardrail 1) is the one that matters: it is the only guard against the destructive over-unwind, and it is
+verified against a TypeScript reimplementation of the very `bytes.Equal` short-circuit it depends on.
+
+**Deliberately not closed inside 14.7b, and the reason is a ruling.** Authoring a browser claim without a
+browser run is exactly what produced [D-14.7.4] — six compiled, unexecuted claims of which one was wrong,
+and its threshold too weak to notice. The per-story cadence excludes the browser suite, so a spec written
+blind here would have handed CI a coin flip rather than a proof. **The honest move was to declare the gap,
+not to fill it with an assertion nobody had run.**
+
+**How we'd know it was forgotten.** Someone reads the 48 new tests, sees the discard covered from every
+angle, and never notices that all of them stop at the mock's edge. See also [DW-372] — that entry is the
+same gap on the Go side, and the two together mean the bound and the rule it rests on are both unexecuted.
+
+---
+
+### DW-374 - the application-side history-limit guard cannot be reached, so its off-by-one is pinned only by source text
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.7b's builder, raised as below-threshold; **the orchestrator filed it anyway.** **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 14.7b guards the discard in two places: the dialog disables `Cancel` at a count ≥ 101, and
+`cancelTableEditor` in `App.tsx` returns early on `count > MAX_ENGINE_HISTORY_ENTRIES`. **The dialog-side
+boundary has executing coverage on both sides** (100 enabled, 101 disabled). The application-side one has
+**none**, because at 101 the button is disabled and there is no other route into `cancelTableEditor` — so
+the branch is unreachable from any test and from the product.
+
+**Why it is filed despite being defence-in-depth that currently cannot fire.** Its `>` versus `>=` is pinned
+by nothing executing. It is correct today, and the next person to add a second caller — a keyboard path, a
+programmatic discard, a future "discard all" — inherits a boundary check that has never once been evaluated,
+in a function whose failure mode is landing the document one edit away from where it claims to be. This run
+has caught *a guard that cannot fail*, *a guard never invoked*, and *a guard that can only just pass*
+([D-14.7.4]); an unreachable duplicate of a covered boundary is the second of those, and the reason to write
+it down is that it will look like coverage to whoever arrives next.
+
+**Not a request to remove it.** The redundancy is right — a UI-disabled button is not an invariant. The ask
+is either a direct unit test of `cancelTableEditor` at 100/101 that bypasses the button, or a comment at the
+site saying the branch is deliberately unreachable and why.
+
+**How we'd know it was forgotten.** A second caller appears and the boundary is trusted because it is
+written down twice, which reads as belt-and-braces rather than as one tested check and one untested copy.

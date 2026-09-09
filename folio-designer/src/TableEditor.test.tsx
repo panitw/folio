@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { TableEditor } from './TableEditor'
+import { MAX_ENGINE_HISTORY_ENTRIES } from './engine-protocol'
 import type { EngineClient } from './engine-client'
+import type { FileAccess } from './file/file-access'
 import { acceptSampleData } from './sample-data'
 import { alignGlyphs, alignSegments } from './segmented-control'
 
@@ -69,9 +72,65 @@ const snapshotOf = (over: Partial<typeof canvas> = {}) => ({ documentState: 'loa
 // The engine mock answers every `table-columns` call from a MUTABLE fixture, so
 // a test can move a column's footer the way a command would and watch the panel
 // re-project. `commands` records what actually went to the engine.
-function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, over: Partial<typeof canvas> = {}) {
-  const state = { columns: [...initial], collection: 'transactions[]', alias: 'row', revision: 1 }
+//
+// STORY 14.7b TAUGHT IT TWO THINGS IT COULD NOT SAY BEFORE, and both were
+// blocking rather than cosmetic.
+//
+// (1) A NO-OP. It used to answer `revision: ++state.revision` for EVERY
+// command, so it could not express a legal command that changes nothing — and
+// the edit count Cancel depends on is defined by exactly that distinction. THE
+// ENGINE DECIDES WHAT IS A MUTATION, NOT THE UI (App.test.tsx:3955-3957), so
+// this mock decides the same way Go does: it serializes its own state before
+// and after `apply` and holds the revision STILL when they agree, which is
+// `bytes.Equal(canonical, e.bytes)` returning before `pushUndo`.
+//
+// (2) A HISTORY. Cancel is a compensating sequence of `undo` operations, and a
+// mock with no undo stack can only prove how many were SENT — never that the
+// document came back to where it started. So it keeps the same two stacks Go
+// keeps, restores canonical serialized state from them, leaves the revision
+// MONOTONIC across an undo exactly as `install` does, pushes onto redo before
+// restoring, and clears redo on the next committed change.
+//
+// The HEADER arms are applied for the same reason: `Clear Header text colour`
+// on an unset field is the reachable no-op AC3 is driven through, and a mock
+// that ignored header commands would have made every header edit a no-op and
+// the proof vacuous.
+const HEADER_STYLE_KEYS = { fontFamily: 'headerFontFamily', fontSize: 'headerFontSize', lineSpacing: 'headerLineSpacing', background: 'headerBackground', color: 'headerColor', valign: 'headerValign', align: 'headerAlign' } as const
+const NUMERIC_HEADER_KEYS: ReadonlyArray<string> = ['headerFontSize', 'headerLineSpacing']
+
+// (3) A REFUSAL. `refuseCommand` lets a test send a command that REACHES the
+// engine and comes back an error — which is the only honest way to drive the
+// matrix's "a rejected command is not counted" row. A dialog that declined to
+// dispatch would prove nothing: a count keyed on dispatches and a count keyed on
+// an observed revision change agree when nothing is sent at all. The thrown
+// shape is the one `componentDiagnostic` renders — an `elementId` and a message
+// — so the refusal arrives at the dialog's error surface located, exactly as
+// `App.test.tsx`'s canvas-refusal test drives it.
+const REFUSED_COMMAND = 'the engine refused this command'
+
+// (4) A HELD UNDO. Story 14.7b's `Done` and Escape are live gestures WHILE the
+// compensating sequence runs — the dialog is still on screen, because closing is
+// the success path only — so proving they cannot tear it down needs the sequence
+// to actually be in flight when they are pressed. `pauseUndoAt` parks one `undo`
+// on a promise the test resolves by hand; nothing else about the mock changes.
+//
+// (5) A COMPONENT MOVE. It is the one committed edit reachable AFTER the dialog
+// has closed and with no selection change — an arrow nudge on the still-selected
+// table — which is what the discard sentence's own promise ("until your next
+// committed edit") has to be measured against. Its x rides in canonical form so
+// the mock treats it as a real change, exactly as Go would.
+function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, over: Partial<typeof canvas> = {}, options: Readonly<{ failUndoAt?: number; pauseUndoAt?: number; refuseCommand?: (command: Readonly<Record<string, unknown>>) => boolean }> = {}) {
+  const state = { columns: [...initial], collection: 'transactions[]', alias: 'row', header: { ...tableHeaderProjection }, componentX: 23276, revision: 1 }
+  const history = { undo: [] as string[], redo: [] as string[] }
   const commands: string[] = []
+  let undos = 0
+  let releaseUndo!: () => void
+  const heldUndo = new Promise<void>((resolve) => { releaseUndo = resolve })
+  // THE CANONICAL FORM, and the revision is deliberately NOT in it: Go compares
+  // document BYTES, and a comparison that included the revision would call every
+  // command a change.
+  const canonical = () => JSON.stringify({ columns: state.columns, collection: state.collection, alias: state.alias, header: state.header, componentX: state.componentX })
+  const restore = (serialized: string) => { const parsed = JSON.parse(serialized) as { columns: ColumnFixture[]; collection: string; alias: string; header: typeof tableHeaderProjection; componentX: number }; state.columns = parsed.columns; state.collection = parsed.collection; state.alias = parsed.alias; state.header = parsed.header; state.componentX = parsed.componentX }
   // THE MOCK APPLIES WHAT IT IS SENT. A frozen projection cannot prove a
   // READ-BACK — the uncontrolled boxes in this panel keep whatever was typed
   // into them whether or not the document took it — so every assertion about a
@@ -80,6 +139,10 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
   const apply = (command: Readonly<Record<string, unknown>>) => {
     const columnId = String(command.columnId ?? '')
     const edit = (change: (column: ColumnFixture) => ColumnFixture) => { state.columns = state.columns.map((column) => column.id === columnId ? change(column) : column) }
+    // The nudge's command, in the mock's own canonical form. `x` arrives in
+    // POINTS (the command layer divides millipoints by 1000), and it is a change
+    // like any other: history entry, revision, the lot.
+    if (command.kind === 'moveComponent') state.componentX = Number(command.x) * 1000
     if (command.kind === 'configureTableBinding') { state.collection = String(command.collection); state.alias = String(command.alias) === '' ? 'row' : String(command.alias) }
     if (command.kind === 'updateTableColumnFooter') edit((column) => ({ ...column, footer: command.footer as Footer, footerOf: String(command.footerOf), footerFormat: String(command.footerFormat) }))
     if (command.kind === 'updateTableColumnBinding') edit((column) => ({ ...column, rowField: String(command.field) }))
@@ -89,13 +152,55 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
     if (command.kind === 'removeTableColumn') state.columns = state.columns.filter((column) => column.id !== columnId)
     if (command.kind === 'addTableColumn') state.columns = [...state.columns.slice(0, Number(command.index)), { id: `n${state.columns.length + 1}`, header: '', width: 72000, align: 'left', rowField: '', footer: '', footerOf: '', footerFormat: '' }, ...state.columns.slice(Number(command.index))]
     if (command.kind === 'moveTableColumn') { const moving = state.columns.find((column) => column.id === columnId); if (moving) { const rest = state.columns.filter((column) => column.id !== columnId); state.columns = [...rest.slice(0, Number(command.toIndex)), moving, ...rest.slice(Number(command.toIndex))] } }
+    if (command.kind === 'setTableHeaderHeight') state.header = { ...state.header, headerHeight: Number(command.height) * 1000 }
+    if (command.kind === 'setTableAltRowBackground') state.header = { ...state.header, altRowBackground: command.op === 'clear' ? '' : String(command.value) }
+    if (command.kind === 'updateTableHeaderStyle') {
+      const key = HEADER_STYLE_KEYS[String(command.field) as keyof typeof HEADER_STYLE_KEYS]
+      // A clear REMOVES the key, which the projection reports as the field's
+      // empty value — '' for a string, 0 for a length. Clearing what is already
+      // empty therefore leaves canonical form untouched, which is the whole of
+      // the no-op arm.
+      if (key !== undefined) state.header = { ...state.header, [key]: command.op === 'clear' ? (NUMERIC_HEADER_KEYS.includes(key) ? 0 : '') : (NUMERIC_HEADER_KEYS.includes(key) ? Number(command.value) * 1000 : String(command.value)) }
+    }
   }
+  const snap = () => ({ ...snapshotOf(over), revision: state.revision, canUndo: history.undo.length > 0, canRedo: history.redo.length > 0 })
   const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
-    if (operation === 'command') { const text = new TextDecoder().decode(payload); commands.push(text); apply(JSON.parse(text) as Readonly<Record<string, unknown>>); return { snapshot: { ...snapshotOf(over), revision: ++state.revision } } }
-    if (operation === 'table-columns') return { snapshot: { ...snapshotOf(over), revision: state.revision }, tableColumns: { revision: state.revision, table: { tableId: 'e7', collection: state.collection, alias: state.alias, ...tableHeaderProjection, columns: projected(state.columns, state.alias) } } }
-    return { snapshot: { ...snapshotOf(over), revision: state.revision } }
+    if (operation === 'command') {
+      const text = new TextDecoder().decode(payload); commands.push(text)
+      const parsed = JSON.parse(text) as Readonly<Record<string, unknown>>
+      // A REFUSED COMMAND IS RECORDED IN `commands` — it did reach the engine —
+      // and then rejects before `apply`. So no state moves, no history entry is
+      // pushed and the revision stands still: `install` is never reached, and
+      // there is nothing for Cancel to unwind.
+      if (options.refuseCommand?.(parsed) === true) throw Object.assign(new Error(REFUSED_COMMAND), { elementId: 'e7' })
+      const before = canonical()
+      apply(parsed)
+      // NO CHANGE, NO REVISION AND NO HISTORY ENTRY — Go returns
+      // `e.Snapshot(), nil` before pushUndo, before `e.redo = nil` and before
+      // `install`, which is the sole site of `e.revision++`.
+      if (canonical() !== before) { history.undo.push(before); history.redo = []; state.revision++ }
+      return { snapshot: snap() }
+    }
+    if (operation === 'undo') {
+      undos++
+      if (options.pauseUndoAt === undos) await heldUndo
+      if (options.failUndoAt === undos || history.undo.length === 0) throw Object.assign(new Error('Nothing to undo'), { code: 'UNDO_UNAVAILABLE' })
+      history.redo.push(canonical())
+      restore(history.undo.pop() as string)
+      state.revision++
+      return { snapshot: snap() }
+    }
+    if (operation === 'redo') {
+      if (history.redo.length === 0) throw Object.assign(new Error('Nothing to redo'), { code: 'REDO_UNAVAILABLE' })
+      history.undo.push(canonical())
+      restore(history.redo.pop() as string)
+      state.revision++
+      return { snapshot: snap() }
+    }
+    if (operation === 'table-columns') return { snapshot: snap(), tableColumns: { revision: state.revision, table: { tableId: 'e7', collection: state.collection, alias: state.alias, ...state.header, columns: projected(state.columns, state.alias) } } }
+    return { snapshot: snap() }
   })
-  return { state, commands, request, engine: { request } as unknown as EngineClient, snapshot: snapshotOf(over) }
+  return { state, commands, request, canonical, releaseUndo, engine: { request } as unknown as EngineClient, snapshot: snapshotOf(over) }
 }
 
 const openEditor = async (harness: ReturnType<typeof tableEngine>, sampleJson?: string) => {
@@ -257,7 +362,12 @@ describe('the table editor scope, budget and summary', () => {
   it('summarises the columns and the aggregates in the footer bar', async () => {
     await openEditor(tableEngine())
     expect(screen.getByRole('status', { name: 'Column summary' })).toHaveTextContent('3 columns · 2 aggregates')
-    expect(within(screen.getByRole('dialog', { name: 'Table Editor' })).getByRole('button', { name: 'Close Table Editor' })).toBeInTheDocument()
+    // STORY 14.7b — THE ONE `Close Table Editor` IS NOW THE `Cancel` / `Done`
+    // PAIR, and the summary is unchanged beside it.
+    const footer = within(screen.getByRole('dialog', { name: 'Table Editor' }))
+    expect(footer.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(footer.getByRole('button', { name: 'Done' })).toBeInTheDocument()
+    expect(footer.queryByRole('button', { name: 'Close Table Editor' })).toBeNull()
   })
 })
 
@@ -622,5 +732,592 @@ describe('the roving lattice addresses every control exactly once', () => {
     expect(segmentCells).toEqual(Array.from({ length: alignSegments.length }, (_, offset) => segmentCells[0]! + offset))
     const aggregate = screen.getByRole('combobox', { name: 'Footer aggregate for column 1' })
     expect(columnOf(aggregate)).toBe(segmentCells[0]! + alignSegments.length)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// STORY 14.7b — THE FOOTER'S `Cancel` / `Done` PAIR, AND THE COUNT BEHIND IT.
+//
+// Every arm here is driven through the SHIPPED GESTURE rather than through a
+// prop: a changing edit is a real blur on a real matrix cell, and the no-op is a
+// real click on the `×` beside `Header text colour`, which is `disabled={busy}`
+// only and is never disabled on "already unset". The two boundary cases are the
+// exception and say why in place.
+// ---------------------------------------------------------------------------
+
+// `Cancel` is `disabled={busy || overHistoryBound}`, so with the count under the
+// bound its enabled state IS the dialog's idle state. Awaiting it is awaiting
+// both the command and the re-projection behind it.
+const idle = async () => { await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()) }
+
+// A CHANGING EDIT, through the matrix cell an author types in.
+const retitle = async (column: number, value: string) => {
+  const box = screen.getByRole('textbox', { name: `Header for column ${column}` })
+  fireEvent.change(box, { target: { value } })
+  fireEvent.blur(box)
+  await idle()
+}
+
+// THE REACHABLE NO-OP. `Clear Header text colour` on a field the projection
+// reports as '' sends a LEGAL `clear` that removes a key which is not there, so
+// canonical bytes do not move and the engine's revision stands still.
+const clearHeaderColour = async () => {
+  fireEvent.click(screen.getByRole('button', { name: 'Clear Header text colour' }))
+  await idle()
+}
+
+const operations = (harness: ReturnType<typeof tableEngine>, operation: string) => harness.request.mock.calls.filter(([sent]) => sent === operation)
+const reopen = async () => {
+  fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+  return screen.findByRole('dialog', { name: 'Table Editor' })
+}
+
+describe('the table editor\'s Cancel discards what it counted', () => {
+  it('counts only the edits the engine agreed changed the document, and unwinds exactly those', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    // ONE EDIT IN AN EARLIER SESSION, KEPT WITH `Done`. It is what makes the
+    // control at the foot of this test mean anything: without history from
+    // BEFORE the dialog, an over-count would merely run out of undo rather than
+    // reach back into the author's own work.
+    await retitle(1, 'Committed earlier')
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    const earlier = harness.canonical()
+
+    await reopen()
+    const atOpen = harness.canonical()
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    // TWO NO-OPS, and they are dispatched commands the engine accepted — the
+    // count must not move for either.
+    await clearHeaderColour()
+    await clearHeaderColour()
+    expect(harness.commands).toHaveLength(5)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    // EXACTLY TWO, not four.
+    expect(operations(harness, 'undo')).toHaveLength(2)
+    expect(harness.canonical()).toBe(atOpen)
+    expect(harness.canonical()).toBe(earlier)
+
+    // THE CONTROL. Had the count come from DISPATCHES (5) or from accepted
+    // commands (4) rather than from an observed revision change (2), the extra
+    // steps would have run — and this is where they land: past the dialog-open
+    // state, with the header an EARLIER session committed thrown away. That is
+    // the single destructive failure guardrail 1 exists to prevent.
+    await harness.request('undo')
+    expect(harness.canonical()).not.toBe(atOpen)
+    expect(harness.canonical()).not.toContain('Committed earlier')
+  })
+
+  it('does not count a command the engine refused, and leaves the existing error surface standing', async () => {
+    // MATRIX ROW: "a rejected command is not counted". THE REFUSAL COMES FROM
+    // THE ENGINE, not from the dialog declining to dispatch — that is what makes
+    // the input SEPARATING. Three commands reach the engine and two of them move
+    // the document, so a count keyed on dispatches (3) and a count keyed on an
+    // observed revision change (2) give different answers here; a refusal the
+    // dialog swallowed before sending would have them agree, and the test would
+    // measure nothing. Proved the way the counted-discard test above proves it:
+    // two genuinely changing edits, the refused one, then `Cancel`.
+    const harness = tableEngine(defaultColumns, {}, { refuseCommand: (command) => command.value === 'Refused' })
+    await openEditor(harness)
+    const atOpen = harness.canonical()
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Refused')
+    // ALL THREE REACHED THE ENGINE. The refused one is not a command that was
+    // never sent.
+    expect(harness.commands).toHaveLength(3)
+
+    // THE EXISTING ERROR SURFACE IS UNCHANGED — the other half of this row. The
+    // dialog's own `role="alert"` carries the engine's LOCATED sentence, and the
+    // dialog stays open on it rather than tearing itself down.
+    const failure = await screen.findByRole('alert')
+    expect(failure).toHaveTextContent(`e7: ${REFUSED_COMMAND}`)
+    expect(failure.className).toContain('file-message')
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    // TWO, NOT THREE. The refusal never reached `install`, so it left no history
+    // entry, and a third `undo` would have reached past the dialog-open state.
+    expect(operations(harness, 'undo')).toHaveLength(2)
+    expect(harness.canonical()).toBe(atOpen)
+    // AND THE UNDO STACK IS EMPTY AT DIALOG-OPEN STATE, which is the same claim
+    // read from the other side: had the count been 3, the third step would have
+    // had nothing to consume and Cancel would have reported a failure instead of
+    // a discard.
+    await expect(harness.request('undo')).rejects.toThrow('Nothing to undo')
+  })
+
+  it('keeps every edit when the author presses Done, and sends no undo at all', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    const kept = harness.canonical()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(harness.canonical()).toBe(kept)
+    expect(harness.canonical()).toContain('Total')
+  })
+
+  it('treats Escape as Done rather than as Cancel, so it closes and keeps', async () => {
+    const harness = tableEngine()
+    const dialog = await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    const kept = harness.canonical()
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(harness.canonical()).toBe(kept)
+  })
+
+  it('starts a reopened dialog at zero, because the count is a function of the session', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    const kept = harness.canonical()
+
+    await reopen()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(harness.canonical()).toBe(kept)
+  })
+
+  it('says nothing and sends nothing when there is nothing to discard', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(screen.queryByText(/Discarded/)).toBeNull()
+  })
+
+  it('states the discard and the honest limit on it, and the discarded edits are still redoable', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    const beforeCancel = harness.canonical()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(3)
+    expect(harness.canonical()).not.toBe(beforeCancel)
+
+    // THE NUMBER, AND THE LIMIT ON THE PROMISE. `Undo()` pushes onto redo before
+    // restoring, so the discarded edits survive — but only until the next
+    // committed command clears the engine's redo stack.
+    const stated = screen.getByText(/Discarded 3 table editor edits/)
+    expect(stated).toHaveAttribute('role', 'status')
+    expect(stated).toHaveAttribute('aria-live', 'polite')
+    expect(stated.textContent).toContain('Redo restores them until your next committed edit')
+
+    // AC7, AND IT IS N PRESSES AND AN EXACT DOCUMENT, NOT ONE PRESS AND AN
+    // INEQUALITY. "Redo restores them" is a claim about ALL THREE: a single redo
+    // followed by `not.toEqual` is satisfied by an engine that restored one edit,
+    // or a different edit, or half of one. Three presses and byte-equality
+    // against the canonical form the document held immediately before `Cancel`
+    // is the sentence's actual promise.
+    for (const press of [1, 2, 3]) {
+      const redo = screen.getByRole('button', { name: 'Redo' })
+      await waitFor(() => expect(redo).toBeEnabled())
+      fireEvent.click(redo)
+      await waitFor(() => expect(operations(harness, 'redo')).toHaveLength(press))
+    }
+    expect(harness.canonical()).toBe(beforeCancel)
+  })
+
+  it('says it in the singular when exactly one edit is discarded', async () => {
+    // THE SINGULAR ARM OF `discarded === 1 ? 'edit' : 'edits'` AND OF `'it' :
+    // 'them'`. Every other discard here is 3, so both words rendered only in
+    // their plural form and the ternaries were untested in one direction.
+    const harness = tableEngine()
+    await openEditor(harness)
+    const atOpen = harness.canonical()
+    await retitle(1, 'Total')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(operations(harness, 'undo')).toHaveLength(1)
+    expect(harness.canonical()).toBe(atOpen)
+    const stated = screen.getByText(/Discarded 1 table editor edit\./)
+    expect(stated.textContent).toContain('Redo restores it until your next committed edit')
+    // AND NOT THE PLURAL, in either place: a sentence that read "1 edits" or
+    // "restores them" would satisfy a looser matcher.
+    expect(stated.textContent).not.toContain('edits')
+    expect(stated.textContent).not.toContain('them')
+  })
+
+  it('stops where it actually got to when an undo in the sequence fails, and stays open to say so', async () => {
+    // The 3rd `undo` returns UNDO_UNAVAILABLE against a count of 4.
+    const harness = tableEngine(defaultColumns, {}, { failUndoAt: 3 })
+    await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    fireEvent.click(screen.getByRole('button', { name: 'Add column' }))
+    await idle()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    const failure = await screen.findByRole('alert')
+    // THE DIALOG IS STILL OPEN. A closed dialog can state nothing, so closing is
+    // the success path only.
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+    // BOTH NUMBERS, so a message claiming a completed discard cannot pass for
+    // this one.
+    expect(failure.textContent).toContain('Discarded 2 of 4 edits')
+    expect(failure.textContent).toContain('The other 2 still stand')
+    expect(failure.textContent).toContain('nothing left to undo')
+    expect(operations(harness, 'undo')).toHaveLength(3)
+    // AND ITS PROJECTION IS THE DOCUMENT IT REACHED, not the one it set out
+    // from: two of the four edits were undone, so the fourth column is gone
+    // again and the third column's header is back to 'Note'.
+    //
+    // ⚠ THE DOCUMENT IS READ FROM THE ENGINE AND THE COLUMN COUNT FROM THE DOM,
+    // and the split is not a preference. The matrix's header box is UNCONTROLLED
+    // and carries no `key`, so it keeps whatever was typed into it across a
+    // re-projection — asserting its `value` would measure the author's typing,
+    // not the document. The row COUNT is structural and the DOM does show it.
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Header for column 4' })).toBeNull())
+    expect(screen.getAllByRole('textbox', { name: /^Header for column/ })).toHaveLength(3)
+    expect((JSON.parse(harness.canonical()) as { columns: ColumnFixture[] }).columns.map((column) => column.header)).toEqual(['Total', 'When', 'Note'])
+  })
+
+  // -------------------------------------------------------------------------
+  // THE UNWIND IS NOT A MOMENT THE DIALOG CAN BE CLOSED IN.
+  //
+  // The sequence runs with the dialog STILL OPEN — closing is the success path
+  // only — so `Done` and Escape are live gestures over a loop that is mid-flight.
+  // Both tear the session down (`revokeTableEditor` advances
+  // `tableEditorSession`), and the loop's own session guard then returns BEFORE
+  // it installs the snapshot it reached: the engine ends k undos back while the
+  // canvas, `snapshotRef` and the preview still show the pre-Cancel document,
+  // with nothing on screen saying the two have parted company. That is what
+  // `discarding` shuts, and it is `discarding` and never `busy` — `busy` is not
+  // cleared by `setCurrentSnapshot`'s `clearDocumentInteraction` branch, so
+  // gating a way out on it could leave a modal that cannot be closed at all.
+  // -------------------------------------------------------------------------
+  it.each([
+    ['Done', (dialog: HTMLElement) => { const done = screen.getByRole('button', { name: 'Done' }); expect(done, 'Done must be disabled while the discard is unwinding').toBeDisabled(); fireEvent.click(done); expect(dialog).toBeInTheDocument() }],
+    ['Escape', (dialog: HTMLElement) => { fireEvent.keyDown(dialog, { key: 'Escape' }) }],
+  ])('does not let %s tear the discard down mid-unwind, and the engine never gets ahead of the screen', async (_name, dismiss) => {
+    // THE SECOND UNDO OF THREE IS PARKED, so the loop is genuinely in flight when
+    // the gesture lands: one undo has been applied to the document, two have not,
+    // and the reached snapshot has not been installed anywhere yet.
+    const harness = tableEngine(defaultColumns, {}, { pauseUndoAt: 2 })
+    const dialog = await openEditor(harness)
+    const atOpen = harness.canonical()
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    await retitle(1, 'And one more')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(operations(harness, 'undo')).toHaveLength(2))
+    dismiss(dialog)
+    await act(async () => { await Promise.resolve() })
+    // THE DIALOG IS STILL HERE. Whether the gesture was refused at the control or
+    // swallowed at the trap, what it must not do is end the session.
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+
+    harness.releaseUndo()
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    // ALL FOUR RAN AND THE DOCUMENT IS BACK AT DIALOG-OPEN STATE.
+    expect(operations(harness, 'undo')).toHaveLength(4)
+    expect(harness.canonical()).toBe(atOpen)
+    // ⚠ AND THE SCREEN AGREES WITH THE ENGINE, which is the defect stated as an
+    // assertion rather than as a count. A teardown mid-sequence makes the loop
+    // return before `setCurrentSnapshot`, so the engine sits four undos back
+    // while this read-out still shows the revision the last commit installed.
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent(`REVISION ${harness.state.revision}`)
+    expect(screen.getByText(/Discarded 4 table editor edits/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Done', () => { expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled(); fireEvent.click(screen.getByRole('button', { name: 'Done' })) }],
+    ['Escape', (dialog: HTMLElement) => { fireEvent.keyDown(dialog, { key: 'Escape' }) }],
+  ])('leaves %s working while an ordinary blur commit is in flight, and when nothing is', async (_name, dismiss) => {
+    // THE CONTROL FOR THE PAIR ABOVE, and the reason the gate is `discarding` and
+    // not `busy`. An ordinary commit raises `busy` too — `Cancel` is disabled
+    // right here, which is how this test knows it is in flight — and the two ways
+    // out must be untouched by it. A `busy`-gated Escape would also be a modal
+    // with no exit the moment `busy` latched, which
+    // `setCurrentSnapshot`'s `clearDocumentInteraction` branch can do.
+    const harness = tableEngine()
+    const dialog = await openEditor(harness)
+    // IDLE FIRST, so "still works" has a baseline in this same test.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+
+    const box = screen.getByRole('textbox', { name: 'Header for column 1' })
+    fireEvent.change(box, { target: { value: 'Total' } })
+    fireEvent.blur(box)
+    expect(screen.getByRole('button', { name: 'Cancel' }), 'the commit must actually be in flight for this test to mean anything').toBeDisabled()
+    dismiss(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    // BOTH ARE `Done`: they close and KEEP, so no undo is sent by either.
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(screen.queryByText(/Discarded/)).toBeNull()
+  })
+
+  it('withdraws the discard sentence once it stops being true', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    await retitle(1, 'Total')
+    await retitle(2, 'When')
+    await retitle(3, 'Remark')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(screen.getByText(/Discarded 3 table editor edits/)).toBeInTheDocument()
+
+    // ⚠ THE SENTENCE PROMISES SOMETHING WITH AN EXPIRY: "Redo restores them until
+    // your next committed edit". Go's next `install` sets `e.redo = nil`, so the
+    // moment the document moves again the promise is FALSE — and a live region
+    // still asserting it is worse than silence. An arrow nudge on the
+    // still-selected table is the committed edit that ends it: it changes no
+    // selection and never touches the edit count, which is why clearing the
+    // sentence only where the COUNT is cleared would leave this case standing.
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'ArrowRight' })
+    await waitFor(() => expect(harness.commands.filter((text) => text.includes('"kind":"moveComponent"'))).toHaveLength(1))
+    await waitFor(() => expect(screen.queryByText(/Discarded 3 table editor edits/)).toBeNull())
+  })
+
+  it('carries the count the application accumulated into the footer, over the engine\'s bound', async () => {
+    // ⚠ THIS IS THE ONLY EXECUTING PROOF THAT `tableEditorEditCount` — the STATE
+    // MIRROR beside the ref — reaches the dialog at all. Every other arm here
+    // measures undo operations, which come from the REF; the two boundary tests
+    // below render the dialog with a literal. So the mirror could be dropped
+    // (`setTableEditorEdits` writing only `tableEditorEdits.current`) and nothing
+    // would red, while a real author at 101 edits would see an enabled `Cancel`
+    // that silently does nothing, because the loop refuses above the bound.
+    //
+    // ONE COLUMN, and the count is driven through the same shipped blur every
+    // other arm uses — 101 of them, which is what the claim needs: the footer's
+    // reason cannot be reached with fewer.
+    const harness = tableEngine([defaultColumns[0]!])
+    await openEditor(harness)
+    const box = () => screen.getByRole('textbox', { name: 'Header for column 1' })
+    // NOT `idle()`, AND NOT `waitFor`. That helper waits on `Cancel` becoming
+    // enabled, which is the very thing this test drives to FALSE; and a hundred
+    // `waitFor` polls cost more than the hundred commits do. `commitTableColumn`
+    // awaits exactly two engine round trips against a synchronous mock, so
+    // draining the microtask queue inside `act` settles each edit — and if it ever
+    // stopped settling, the command count asserted immediately after the loop
+    // would say so rather than the assertions quietly measuring a smaller count.
+    const settle = async () => { await act(async () => { for (let turn = 0; turn < 6; turn++) await Promise.resolve() }) }
+    for (let edit = 1; edit <= MAX_ENGINE_HISTORY_ENTRIES + 1; edit++) {
+      const target = box()
+      fireEvent.change(target, { target: { value: `Header ${edit}` } })
+      fireEvent.blur(target)
+      await settle()
+      expect(box(), `edit ${edit} never settled`).toBeEnabled()
+    }
+    expect(harness.commands).toHaveLength(MAX_ENGINE_HISTORY_ENTRIES + 1)
+
+    const note = screen.getByText(/Cancel is unavailable/)
+    expect(note.textContent).toContain(`${MAX_ENGINE_HISTORY_ENTRIES + 1} edits`)
+    expect(note.textContent).toContain(`${MAX_ENGINE_HISTORY_ENTRIES}-step history`)
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    expect(cancel).toHaveAttribute('aria-describedby', note.id)
+    // AND THE WAY OUT THAT KEEPS THE WORK IS STILL THERE, which is the whole
+    // reason a disabled Cancel is safe.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    // ⚠ ITS OWN TIMEOUT, BECAUSE A HUNDRED AND ONE REAL COMMITS COST REAL TIME —
+    // measured at ~6s here, against the 5s default. The alternative was to fake
+    // the count, and a faked count cannot prove that the APPLICATION's mirror is
+    // what the footer reads. The margin is deliberately wide so a slower machine
+    // reds the claim rather than the clock.
+  }, 30_000)
+
+  it('refuses Cancel in the footer while a local file operation is in flight, not only in the handler', async () => {
+    // `cancelTableEditor` returns early on `fileBusy`, so without the same flag on
+    // the button the author met an available-looking `Cancel` during a save that
+    // swallowed the click and discarded nothing. Mirrored in both directions, as
+    // the history bound already is.
+    const harness = tableEngine()
+    // A save target that never arrives holds `fileBusy` up for the whole test.
+    const fileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(() => new Promise<never>(() => {})), writeSave: vi.fn() } as unknown as FileAccess
+    render(<App engine={harness.engine} initialSnapshot={harness.snapshot} fileAccess={fileAccess} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('dialog', { name: 'Table Editor' })
+    await retitle(1, 'Total')
+
+    // Cmd/Ctrl+S sits ABOVE the modal guard and still saves from inside the
+    // dialog, which is what puts this dialog in the state being tested.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Done' }), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(fileAccess.acquireSaveTarget).toHaveBeenCalledOnce())
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    fireEvent.click(cancel)
+    await act(async () => { await Promise.resolve() })
+    expect(operations(harness, 'undo')).toHaveLength(0)
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+    // `Done` is not a document mutation, so a save in flight does not take it
+    // away: the dialog still has a way out.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+  })
+
+  // THE TWO SIDES OF THE HISTORY BOUND, AND THIS PAIR RENDERS THE DIALOG
+  // DIRECTLY RATHER THAN DRIVING App — deliberately. The claim is about what the
+  // FOOTER DOES WITH A COUNT, and reaching 101 committed edits through the real
+  // gestures would spend a hundred round trips to set up a prop this dialog
+  // simply receives. Everything else in this describe goes through App.
+  const directProjection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
+  // `busy`, `fileBusy` AND `discarding` ALL DEFAULT TO FALSE, so every call site
+  // keeps exactly the meaning it had and each arm below passes only the one flag
+  // it is about. `unmount` is returned so an arm can hold its own control — the
+  // SAME count with the flag down — in one test without two dialogs sharing
+  // `screen`.
+  const renderFooter = (editCount: number, busy = false, fileBusy = false, discarding = false) => {
+    const onCancel = vi.fn()
+    const onClose = vi.fn()
+    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onBind={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
+    return { onCancel, onClose, unmount }
+  }
+
+  it('keeps Cancel available at exactly the engine\'s history limit', () => {
+    const { onCancel, onClose } = renderFooter(MAX_ENGINE_HISTORY_ENTRIES)
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+    expect(screen.queryByText(/Cancel is unavailable/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalledOnce()
+    // Done and Escape are available here too, and they are the same act.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('disables Cancel one above the limit and states the reason in visible text', () => {
+    const { onCancel, onClose } = renderFooter(MAX_ENGINE_HISTORY_ENTRIES + 1)
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    // A VISIBLE SENTENCE, not a bare grey-out and not a `title`. It names the
+    // author's number and the engine's, and says what would go wrong.
+    const note = screen.getByText(/Cancel is unavailable/)
+    expect(note.textContent).toContain(`${MAX_ENGINE_HISTORY_ENTRIES + 1} edits`)
+    expect(note.textContent).toContain(`${MAX_ENGINE_HISTORY_ENTRIES}-step history`)
+    expect(note.textContent).toContain('land part-way')
+    expect(cancel).toHaveAttribute('aria-describedby', note.id)
+    // DONE AND ESCAPE STAY AVAILABLE. This is the state that forces Escape to
+    // mean Done: if it meant Cancel the dialog would not be keyboard-dismissible
+    // here at all.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(onCancel).not.toHaveBeenCalled()
+
+    // AND THE TRAP STILL WRAPS AT BOTH ENDS WITH `Cancel` GONE FROM ITS LIST.
+    // `trapDialog` selects `button:not([disabled])`, so a disabled Cancel is not
+    // in it and the wrap ends move — the third intended re-ordering of this
+    // list. Both ends are re-derived from the DOM.
+    const dialog = screen.getByRole('dialog', { name: 'Table Editor' })
+    const tabbable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
+    expect(tabbable).not.toContain(cancel)
+    const last = tabbable[tabbable.length - 1] as HTMLElement
+    expect(last).toBe(screen.getByRole('button', { name: 'Done' }))
+    last.focus()
+    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(document.activeElement).toBe(tabbable[0])
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
+  })
+
+  it('disables Cancel while a command is in flight, at a count nowhere near the history bound', () => {
+    // MATRIX ROW: "Cancel while a command is in flight". `Cancel` is
+    // `disabled={busy || overHistoryBound}`, so THE COUNT IS THE SEPARATING
+    // INPUT, not the flag: a test that set `busy` alongside a count of 101 could
+    // not say which of the two conditions disabled the button, and would still
+    // pass against a `Cancel` that ignored `busy` entirely. TWO is far under
+    // MAX_ENGINE_HISTORY_ENTRIES, so only `busy` can be doing it here — and the
+    // control at the foot of this test renders the SAME count with `busy` false
+    // and finds Cancel enabled.
+    const inFlight = renderFooter(2, true)
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    // AND IT IS NOT THE BOUND SAYING SO. The over-bound note is the only thing
+    // that ever explains a disabled Cancel by the bound, and it is absent, as is
+    // the `aria-describedby` that points at it.
+    expect(screen.queryByText(/Cancel is unavailable/)).toBeNull()
+    expect(cancel).not.toHaveAttribute('aria-describedby')
+    // THE COUNT CANNOT MOVE UNDER THE LOOP, because the loop cannot be started:
+    // a disabled button dispatches nothing.
+    fireEvent.click(cancel)
+    expect(inFlight.onCancel).not.toHaveBeenCalled()
+    // `Done` stays available, so an in-flight command does not make the dialog a
+    // trap — the same reason `Done` survives the over-bound state.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+    // THE CONTROL. Same count, nothing in flight: enabled, and it dispatches.
+    // Without this arm the assertions above are satisfied by a `Cancel` that is
+    // disabled for some other reason, or always.
+    inFlight.unmount()
+    const idleFooter = renderFooter(2)
+    const enabled = screen.getByRole('button', { name: 'Cancel' })
+    expect(enabled).toBeEnabled()
+    fireEvent.click(enabled)
+    expect(idleFooter.onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('disables Cancel while a local file operation is in flight, and not by the bound', () => {
+    // The third condition on this button, and the same separating shape the arm
+    // above uses: TWO is far under MAX_ENGINE_HISTORY_ENTRIES and `busy` is false,
+    // so only `fileBusy` can be disabling it here.
+    const saving = renderFooter(2, false, true)
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeDisabled()
+    expect(screen.queryByText(/Cancel is unavailable/)).toBeNull()
+    expect(cancel).not.toHaveAttribute('aria-describedby')
+    fireEvent.click(cancel)
+    expect(saving.onCancel).not.toHaveBeenCalled()
+    // `Done` and Escape are unaffected: a save is not a reason to trap the author
+    // in the dialog.
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
+    expect(saving.onClose).toHaveBeenCalledOnce()
+
+    // THE CONTROL. Same count, no file operation: enabled, and it dispatches.
+    saving.unmount()
+    const idleFooter = renderFooter(2)
+    const enabled = screen.getByRole('button', { name: 'Cancel' })
+    expect(enabled).toBeEnabled()
+    fireEvent.click(enabled)
+    expect(idleFooter.onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('shuts both ways out while the discard is unwinding, and only then', () => {
+    // THE DIALOG-LEVEL HALF of the mid-unwind proof above: `discarding` is the
+    // ONLY flag that takes `Done` and Escape away. The count is 2 and `busy` is
+    // false in the first render, so nothing else could be doing it — and the
+    // control that follows sets `busy` INSTEAD, at the same count, and finds both
+    // ways out live. That pairing is the whole claim: a `busy`-gated Escape plus a
+    // `busy` that can latch is a modal with no exit at all.
+    const unwinding = renderFooter(2, false, false, true)
+    const dialog = screen.getByRole('dialog', { name: 'Table Editor' })
+    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(unwinding.onClose).not.toHaveBeenCalled()
+
+    unwinding.unmount()
+    const committing = renderFooter(2, true)
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(committing.onClose).toHaveBeenCalledOnce()
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
+    expect(committing.onClose).toHaveBeenCalledTimes(2)
   })
 })

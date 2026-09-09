@@ -17,6 +17,27 @@ export const MAX_ENGINE_FONT_FAMILIES = 256
 // entries themselves on the wire, so the per-chain array needs the same
 // treatment the chain list already had.
 export const MAX_ENGINE_FONT_CHAIN_ENTRIES = 64
+// STORY 14.7b — HOW MANY UNDO ENTRIES THE ENGINE KEEPS, AND IT IS A MIRROR OF A
+// GO CONSTANT: the `historyLimit` declared in `wasm/engine.go`. It is tied to
+// that declaration in `engine-bounds-mirror.test.ts`, because it is spelled on
+// both sides of the channel with nothing but that test between them.
+//
+// THE CITATION IS A FILE AND A NAME, NEVER A LINE. A line number here is
+// unverified by anything and rots on the first insertion above it, and the tie
+// asserts the SPELLING of the declaration rather than its position — so the
+// name is what a reader can actually follow.
+//
+// ⚠ THE ENGINE ENFORCES IT AS A RING BUFFER THAT SILENTLY EVICTS THE OLDEST
+// ENTRY, NOT AS A REFUSAL. `appendBounded` shifts the history down and drops
+// entry zero when the stack is full; no error is returned and nothing on the
+// wire says it happened. So an over-run is invisible, and a compensating
+// sequence longer than this number would land part-way and claim success —
+// which is why the table editor's Cancel DISABLES itself above this count
+// rather than trying.
+//
+// NO TYPE, GUARD OR VALIDATOR CHANGE COMES WITH IT: the edit count this bounds
+// is the application's own integer and never crosses the worker boundary.
+export const MAX_ENGINE_HISTORY_ENTRIES = 100
 // A CHANNEL BACKSTOP, NOT A MIRROR. Go declares no maximum number of content
 // windows — internal/layout bounds the count only by the column-item count —
 // so this number is deliberately NOT in the pair list below: there is nothing

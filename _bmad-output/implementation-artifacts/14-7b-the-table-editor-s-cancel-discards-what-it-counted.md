@@ -2,7 +2,8 @@
 title: "Story 14.7b: The table editor's Cancel discards what it counted"
 type: 'feature'
 created: '2026-09-10'
-status: 'draft'
+status: 'done'
+baseline_commit: '6c643ac18aeb616d2d099538d89eac804eb55e11'
 review_loop_iteration: 0
 context: []
 ---
@@ -313,18 +314,18 @@ Nothing here was carried from the epic or from a register without checking.
 
 **Execution:**
 
-- [ ] `folio-designer/src/engine-protocol.ts` -- add `MAX_ENGINE_HISTORY_ENTRIES = 100` beside the
+- [x] `folio-designer/src/engine-protocol.ts` -- add `MAX_ENGINE_HISTORY_ENTRIES = 100` beside the
       existing `MAX_ENGINE_*` constants, with a comment stating it is a **mirror of a Go constant**
       (`wasm/engine.go:29`), that the engine enforces it as a **ring buffer that silently evicts the
       oldest entry** rather than as a refusal, and that it is tied in `engine-bounds-mirror.test.ts`.
       No type, guard or validator changes — the count never crosses the worker boundary.
-- [ ] `folio-designer/src/App.tsx` -- hold the edit count: a ref the Cancel loop can trust plus a
+- [x] `folio-designer/src/App.tsx` -- hold the edit count: a ref the Cancel loop can trust plus a
       state mirror the footer renders, written together, following `documentGeneration` /
       `setDocumentGenerationValue` at `:1968`. **Increment only where `commitTableColumn` already
       compares `committed.snapshot.revision !== revision` (`:987`)**, scoped to the `session` captured
       at `:977`. **Zero it at all three sites that advance `tableEditorSession.current`** — `:950`,
       `:960`, `:1968`.
-- [ ] `folio-designer/src/App.tsx` -- add the Cancel routine. It must **not** reuse `applyHistory`
+- [x] `folio-designer/src/App.tsx` -- add the Cancel routine. It must **not** reuse `applyHistory`
       (stale `undoAvailable` across iterations; `setCurrentSnapshot(…, true)` per iteration would
       unmount the dialog after undo #1). It awaits `engine.request('undo')` N times with the dialog
       still open, installs the reached snapshot **once** on success and then closes with the same
@@ -332,16 +333,16 @@ Nothing here was carried from the epic or from a register without checking.
       a count above `MAX_ENGINE_HISTORY_ENTRIES`. On a failed undo it **stops**, re-projects
       `table-columns`, and states the real position through the dialog's own error surface — mapping
       `UNDO_UNAVAILABLE` to state as `applyHistory:2081-2085` already does.
-- [ ] `folio-designer/src/App.tsx` -- state the discard after a successful Cancel, in a new state
+- [x] `folio-designer/src/App.tsx` -- state the discard after a successful Cancel, in a new state
       rendered by the existing `role="status" aria-live="polite"` region at `:2552`. It must name the
       number discarded **and** that Redo restores them **until the author's next edit** — the honest
       limit, because the next committed command clears the engine's redo stack.
-- [ ] `folio-designer/src/App.tsx:2191` -- the AC4 guard: `if (editing || <the table editor is open>)
+- [x] `folio-designer/src/App.tsx:2191` -- the AC4 guard: `if (editing || <the table editor is open>)
       return`, keyed on the **open-modal state**, never on a list of keys. Do **not** reference
       `fontBrowserOpen`. `Cmd+S` stays above the line, untouched. Say in a comment that this answers
       *"is a modal open?"* where `isEditableTarget` answers *"is the target editable?"*, and that the
       count's `N ≤ 100` bound depends on this guard.
-- [ ] `folio-designer/src/TableEditor.tsx` -- replace the single `Close Table Editor` with the
+- [x] `folio-designer/src/TableEditor.tsx` -- replace the single `Close Table Editor` with the
       **`Cancel` / `Done`** pair inside a plain `<div>` actions wrapper (**no `role="group"`** — say
       why, naming `control-vocabulary-contract.test.tsx:885-889`). Both are words in the existing
       `.file-button` family. `Cancel` is disabled while `busy` and while `editCount` exceeds
@@ -349,10 +350,10 @@ Nothing here was carried from the epic or from a register without checking.
       grey-out and not a `title`. Keep the `Column summary` `<output>` and keep Escape bound to
       `onClose`. **Delete the `:461-475` disclosure** and replace it with what the bar now does,
       including that Escape and `Done` are the same act and `Cancel` is the only discard.
-- [ ] `folio-designer/src/App.css` -- the actions wrapper and the disabled-reason note, in tokens
+- [x] `folio-designer/src/App.css` -- the actions wrapper and the disabled-reason note, in tokens
       only: no raw hex, no literal `border-radius`. Update the `:735-737` comment, which currently
       says this story is still pending.
-- [ ] `folio-designer/src/TableEditor.test.tsx` -- teach `tableEngine` (`:70-101`) to express a
+- [x] `folio-designer/src/TableEditor.test.tsx` -- teach `tableEngine` (`:70-101`) to express a
       **no-op**: it must decide "changed" by comparing its own serialized state before and after
       `apply`, returning the **unchanged** revision when they agree, rather than incrementing on every
       command. Cite the rule at `App.test.tsx:3955-3957` — *the engine decides what is a mutation, not
@@ -360,21 +361,21 @@ Nothing here was carried from the epic or from a register without checking.
       no-op via `Clear Header text colour` on an unset field, count-resets-per-session, the
       disabled-Cancel reason, the failed-undo position, and the redo survival. Update `:260` for the
       new footer.
-- [ ] `folio-designer/src/App.test.tsx` -- update the trap test (`:311-360`): re-derive **both** wrap
+- [x] `folio-designer/src/App.test.tsx` -- update the trap test (`:311-360`): re-derive **both** wrap
       ends from the DOM as `:335` already does, and say in the test that the re-ordering is intended.
       Make `:384` click **`Done`**. Add the AC4 guard's proofs next to `:1267-1276` — one per
       suppressed shortcut (undo, redo, `Cmd+D`, each arrow, `Alt+S`, `Alt+P`), each asserting **no
       command reached the engine**, plus `Cmd+S` still saving. **Do not weaken `:6279-6287`.**
-- [ ] `folio-designer/src/engine-bounds-mirror.test.ts` -- a new describe tying
+- [x] `folio-designer/src/engine-bounds-mirror.test.ts` -- a new describe tying
       `MAX_ENGINE_HISTORY_ENTRIES` to `wasm/engine.go`'s `historyLimit`, adding that file as a
       **sixth** `goSources` entry. All four assertion kinds: a **non-vacuity `it` first that fails if
       `wasm/engine.go` stops containing `historyLimit` at all** (a rename must red, not silently
       compare nothing); agreement; a **`sites` regex** pointing at the disable site that consumes the
       constant; and a red-proof that reds **by deleting the consumption**, not only by changing the
       number.
-- [ ] `folio-designer/e2e/table-editor.spec.ts` -- assert both `Cancel` and `Done` in the footer;
+- [x] `folio-designer/e2e/table-editor.spec.ts` -- assert both `Cancel` and `Done` in the footer;
       fix the `:71` comment. Keep the Escape assertion and state that Escape is `Done`, not `Cancel`.
-- [ ] `folio-designer/e2e/browser-native-roundtrip.spec.ts:275` -- change to **`Done`**. Do not
+- [x] `folio-designer/e2e/browser-native-roundtrip.spec.ts:275` -- change to **`Done`**. Do not
       weaken the helper; a `Cancel` here would undo everything it just authored.
 
 **Acceptance Criteria:**
@@ -507,3 +508,77 @@ moved, so the baselines stand. Re-measure anyway before trusting them.
   synthetic ordering are jsdom's, not Chromium's. Say so; do not call it covered.
 - **Did not run, in these words:** the browser suite, the Go suites, the matrix legs, `npm run build`
   as a gate, the `verify:offline*` chain, and the font-host scans.
+
+## Suggested Review Order
+
+**The count, and why its bound is only sound with the guard**
+
+- Start here: the increment rides an existing revision comparison, so a no-op cannot count.
+  [`App.tsx:1068`](../../folio-designer/src/App.tsx#L1068)
+
+- A ref for the loop, a state mirror for the footer, written together.
+  [`App.tsx:415`](../../folio-designer/src/App.tsx#L415)
+
+- The bound the dialog refuses at; consumed here, not inlined.
+  [`TableEditor.tsx:176`](../../folio-designer/src/TableEditor.tsx#L176)
+
+**The compensating sequence — not a transaction**
+
+- The loop: N undos with the dialog open, installed once at the end.
+  [`App.tsx:1104`](../../folio-designer/src/App.tsx#L1104)
+
+- `discarding` shuts Done and Escape only while unwinding, and always comes down.
+  [`TableEditor.tsx:191`](../../folio-designer/src/TableEditor.tsx#L191)
+
+- The discard sentence is withdrawn wherever the document moves again.
+  [`App.tsx:707`](../../folio-designer/src/App.tsx#L707)
+
+**The shortcut hole (AC4, DW-368)**
+
+- One condition, keyed on the open modal, not on a list of keys.
+  [`App.tsx:2423`](../../folio-designer/src/App.tsx#L2423)
+
+- Where the dialog receives the count and the file-busy latch.
+  [`App.tsx:2854`](../../folio-designer/src/App.tsx#L2854)
+
+**The footer**
+
+- Cancel, Done, and the visible reason a disabled Cancel owes the author.
+  [`TableEditor.tsx:533`](../../folio-designer/src/TableEditor.tsx#L533)
+
+- A plain `div`, wrappable; no `role="group"`, deliberately.
+  [`App.css:758`](../../folio-designer/src/App.css#L758)
+
+**The mirrored bound (Go to TypeScript)**
+
+- The mirror, cited by file and constant rather than by a line that rots.
+  [`engine-protocol.ts:40`](../../folio-designer/src/engine-protocol.ts#L40)
+
+- The tie: non-vacuity first, agreement, consumption sites, then the red-proofs.
+  [`engine-bounds-mirror.test.ts:852`](../../folio-designer/src/engine-bounds-mirror.test.ts#L852)
+
+- `wasm/engine.go` joins as the sixth Go source.
+  [`engine-bounds-mirror.test.ts:74`](../../folio-designer/src/engine-bounds-mirror.test.ts#L74)
+
+**Proofs (read last)**
+
+- The destructive failure mode, with pre-dialog history as its positive control.
+  [`TableEditor.test.tsx:776`](../../folio-designer/src/TableEditor.test.tsx#L776)
+
+- A refused command reaches the engine and still does not count.
+  [`TableEditor.test.tsx:815`](../../folio-designer/src/TableEditor.test.tsx#L815)
+
+- Done and Escape cannot leave the engine ahead of the screen.
+  [`TableEditor.test.tsx:1015`](../../folio-designer/src/TableEditor.test.tsx#L1015)
+
+- 101 real edits prove the App's count reaches the footer.
+  [`TableEditor.test.tsx:1097`](../../folio-designer/src/TableEditor.test.tsx#L1097)
+
+- Ten shortcuts suppressed while the modal is open.
+  [`App.test.tsx:1349`](../../folio-designer/src/App.test.tsx#L1349)
+
+- Their positive controls — without these, the suppression asserts nothing.
+  [`App.test.tsx:1419`](../../folio-designer/src/App.test.tsx#L1419)
+
+- Compiled, not executed here: the footer's two buttons in a browser.
+  [`table-editor.spec.ts:82`](../../folio-designer/e2e/table-editor.spec.ts#L82)

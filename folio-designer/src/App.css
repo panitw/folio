@@ -733,10 +733,35 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .table-editor-config label { display: grid; gap: var(--space-2); margin: 0; color: var(--color-ink); font: var(--type-body); }
 .table-editor-config :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 /* THE FOOTER BAR. `Close Table Editor` moved down out of the heading, which
-   re-orders the focus trap deliberately (see TableEditor.tsx). Story 14.7b
-   replaces the single button with a Cancel / Done pair; the summary stays. */
-.table-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); margin-top: var(--space-6); padding-top: var(--space-5); border-top: var(--hairline) solid var(--color-line); }
+   re-orders the focus trap deliberately (see TableEditor.tsx). STORY 14.7b HAS
+   NOW REPLACED THAT SINGLE BUTTON WITH THE `Cancel` / `Done` PAIR; the summary
+   stays where it was.
+
+   AND THE PAIR NEEDS THE WRAPPER BELOW RATHER THAN LIVING IN THIS ROW. This bar
+   is `space-between` across its children, which reads correctly for TWO — a
+   summary at one end, the ways out at the other — and scatters four evenly
+   across the sheet. The actions wrapper keeps the count at two, and the
+   disabled-reason note rides inside it beside the button it explains rather than
+   opening a third column. */
+/* AND THE BAR WRAPS RATHER THAN OVERFLOWING. Four things share this row at the
+   widest — the summary, the disabled-reason sentence, `Cancel` and `Done` — and
+   the sentence is a paragraph, not a word. Without `flex-wrap` the row can only
+   absorb them by running off the sheet horizontally, which puts a control the
+   author has to reach past the edge; with it the bar grows taller instead, which
+   this dialog can afford (it is a centred sheet in a scrollable backdrop, not
+   the Preview bar's fixed 32px grid track — the `white-space: nowrap` rule
+   below, which is load-bearing for exactly that reason, is a different rule and
+   is left alone). `min-width: 0` on the note lets it shrink and re-wrap instead
+   of holding the row open at its own longest line. */
+.table-editor-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-5); margin-top: var(--space-6); padding-top: var(--space-5); border-top: var(--hairline) solid var(--color-line); }
 .table-editor-footer output { color: var(--color-ink); font: var(--type-mono); }
+.table-editor-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-4); min-width: 0; }
+/* THE REASON CANCEL IS UNAVAILABLE, ON SCREEN. `--color-ink` over the dialog's
+   `--color-panel` is the pairing `design-contract.test.ts` already holds above
+   the contrast floor — a dimmer token would put a sentence the author NEEDS to
+   read under it. It wraps rather than clipping: an unreadable explanation is the
+   same as no explanation, and the sheet is 1440px at most. */
+.table-editor-cancel-note { min-width: 0; max-width: 46ch; margin: 0; color: var(--color-ink); font: var(--type-body); }
 /* STORY 13.5 — `white-space: nowrap` HERE IS LOAD-BEARING RATHER THAN
    COSMETIC. A flex row that is allowed to wrap absorbs an overfull bar by
    growing TALLER, which the fixed 32px Preview grid track then clips — the bar

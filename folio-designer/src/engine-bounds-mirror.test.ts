@@ -62,6 +62,16 @@ const goSources = {
   // own declaration is what makes the comparison a claim about the RULE rather
   // than about a spelling.
   templateModel: path.resolve(sourceDir, '../../folio-go/internal/template/model.go'),
+  // Story 14.7b's mirror needs a SIXTH source, and it is the first one that is
+  // not a FORMAT package: `historyLimit` is declared in the WASM SHELL — still
+  // inside `folio-go`, and still the same module as every source above it —
+  // because the undo/redo stacks are a property of a live wasm session rather
+  // than of the document format. The table editor's Cancel is a compensating sequence of N
+  // `undo` operations, so the depth of that history is a bound the browser side
+  // now has to know — and `historyLimit` appears in Go at exactly two places
+  // (its declaration and `appendBounded`) and nowhere in TypeScript until this
+  // story mirrored it.
+  history: path.resolve(sourceDir, '../../folio-go/wasm/engine.go'),
 } as const
 const tsPath = path.join(sourceDir, 'engine-protocol.ts')
 // Story 7.6's THIRD consumer of the band-containment tie. The drag clamp used
@@ -122,7 +132,7 @@ function tsConstant(source: string, name: string): string | undefined {
 }
 
 describe('canvas projection bounds mirror', () => {
-  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8'), locale: fs.readFileSync(goSources.locale, 'utf8'), templateModel: fs.readFileSync(goSources.templateModel, 'utf8') }
+  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8'), locale: fs.readFileSync(goSources.locale, 'utf8'), templateModel: fs.readFileSync(goSources.templateModel, 'utf8'), history: fs.readFileSync(goSources.history, 'utf8') }
   const goValue = (pair: Pair) => goConstant(sources[pair.source], pair.go)
   const ts = fs.readFileSync(tsPath, 'utf8')
 
@@ -135,16 +145,22 @@ describe('canvas projection bounds mirror', () => {
     // The count, and the fact that EVERY Go source a NUMERAL pair names is
     // actually read: a pair list that quietly lost its only linespacing.go
     // member would otherwise leave this file reading one source and still
-    // calling itself the tie. (`goSources` itself now has FIVE entries — the
+    // calling itself the tie. (`goSources` itself now has SIX entries — the
     // locale and template-model files are read by the predicate describes at
-    // the foot of this file, not by any numeral pair.)
+    // the foot of this file, and `wasm/engine.go` by Story 14.7b's history-limit
+    // describe, none of them by a numeral pair in THIS list.)
     expect(pairs).toHaveLength(9)
-    // The NUMERAL pairs read three of the five sources: componentCommands
+    // The NUMERAL pairs read three of the SIX sources: componentCommands
     // carries the band-containment predicate tie below AND, since Story 8.1,
     // the per-chain entry bound the font-chain commands and the projection
     // share. `locale` and `templateModel` carry no numeral and appear only in
-    // the predicate describes.
+    // the predicate describes, and `history` by the history-limit describe at the
+    // foot of this file.
     expect(new Set(pairs.map((pair) => pair.source))).toEqual(new Set(['pageSetup', 'lineSpacing', 'componentCommands']))
+    // AND THE NUMBER OF SOURCES IS ASSERTED RATHER THAN NARRATED, because the
+    // sentence above had already gone stale once: it said FIVE while `goSources`
+    // held six. A seventh entry now has to face this line.
+    expect(Object.keys(goSources)).toHaveLength(6)
   })
 
   it('holds every Go bound and its TypeScript mirror at the same number', () => {
@@ -810,5 +826,97 @@ describe('scalar binding legality mirror', () => {
     expect(driftedPanel).not.toBe(panel)
     expect(driftedPanel).not.toMatch(/const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(selectedComponentType\)/)
     expect(driftedPanel).toMatch(/[=!]==\s*'text'/)
+  })
+})
+
+// STORY 14.7b's MIRROR: HOW DEEP THE ENGINE'S UNDO HISTORY IS.
+//
+// The invariant: `historyLimit`. It is the FOURTH kind of thing this file ties —
+// not a numeral both sides validate against, not a list, not a term lifted out
+// of an expression, but a CAPACITY the browser has to reason about because the
+// table editor's Cancel is a compensating sequence of N `undo` operations rather
+// than a transaction.
+//
+// ⚠ AND THE ASYMMETRY IS WHAT MAKES A ONE-SIDED EDIT DANGEROUS HERE. Go does
+// not REFUSE at the limit — `appendBounded` shifts the stack down and drops the
+// oldest entry, returning no error and putting nothing on the wire — so an
+// over-run is SILENT. If Go's limit were lowered without lowering this mirror,
+// the footer would keep offering Cancel for a count the engine can no longer
+// reach, the sequence would land part-way, and the dialog would have closed
+// claiming a discard it did not complete. Nothing in the running app would say
+// so; only this test stands between the two numbers.
+//
+// The bound is consumed at the two sites that REFUSE, which is DW-36's standing
+// condition restated: a browser-side bound must consume the engine's
+// declaration and be caught doing so.
+describe('engine history limit mirror', () => {
+  const go = fs.readFileSync(goSources.history, 'utf8')
+  const ts = fs.readFileSync(tsPath, 'utf8')
+  const dialog = fs.readFileSync(path.join(sourceDir, 'TableEditor.tsx'), 'utf8')
+  const app = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+
+  it('reads a declared historyLimit from wasm/engine.go at all', () => {
+    // NON-VACUITY, AND IT IS DELIBERATELY BLIND TO THE NUMBER. A RENAME of the
+    // Go constant would make `goConstant` return `undefined`, and an equality
+    // between two `undefined`s is a tie that compares nothing while passing. So
+    // the DECLARATION is asserted to exist, by its own spelling, before any
+    // number is read off it.
+    expect(go).toMatch(/^const historyLimit = \d+$/m)
+    expect(goConstant(go, 'historyLimit')).toMatch(/^\d+$/)
+    expect(tsConstant(ts, 'MAX_ENGINE_HISTORY_ENTRIES')).toMatch(/^\d+$/)
+    // AND THE ENFORCEMENT IS STILL THE RING BUFFER, which is the half of this
+    // invariant that is not a number: a refusal instead of an eviction would
+    // make the mirror unnecessary, and an eviction that stopped reading
+    // `historyLimit` would make it a dead declaration.
+    expect(go).toMatch(/^\tif len\(history\) == historyLimit \{$/m)
+    expect(go).toMatch(/^\t\tcopy\(history, history\[1:\]\)$/m)
+  })
+
+  it('holds the Go history depth and its TypeScript mirror at the same number', () => {
+    expect(goConstant(go, 'historyLimit')).toBe(tsConstant(ts, 'MAX_ENGINE_HISTORY_ENTRIES'))
+    // Pinned as a numeral for the reason the derivations above are: a silent
+    // joint edit of both files still has to face the number recorded here.
+    expect(goConstant(go, 'historyLimit')).toBe('100')
+  })
+
+  it('consumes the mirror at both sites that refuse a discard above it', () => {
+    // THE FOOTER'S DISABLE. This is the site the author sees, and it is where a
+    // stale inline literal would be invisible.
+    expect(dialog).toMatch(/^import \{ MAX_ENGINE_HISTORY_ENTRIES, type TableColumns \} from '\.\/engine-protocol'$/m)
+    expect(dialog).toMatch(/^ {2}const overHistoryBound = editCount > MAX_ENGINE_HISTORY_ENTRIES$/m)
+    // `fileBusy` JOINED THIS EXPRESSION, and the tie reads the whole of it
+    // rather than the bound alone: `cancelTableEditor` refuses while a save or an
+    // export is in flight, and a button that omitted the flag looked available
+    // during one and swallowed the click.
+    expect(dialog).toMatch(/disabled=\{busy \|\| fileBusy \|\| overHistoryBound\}/)
+    // AND THE LOOP'S OWN REFUSAL, which must not depend on a disabled button: a
+    // greyed control is a UI fact, and the compensating sequence is not allowed
+    // to trust one.
+    expect(app).toMatch(/^ {4}if \(count > MAX_ENGINE_HISTORY_ENTRIES\) return$/m)
+  })
+
+  it('reds on a one-sided number edit AND on a deleted consumption', () => {
+    // The number, from each side in turn.
+    const driftedTs = ts.replace(/^export const MAX_ENGINE_HISTORY_ENTRIES = (\d+)$/m, 'export const MAX_ENGINE_HISTORY_ENTRIES = 7')
+    expect(driftedTs).not.toBe(ts)
+    expect(tsConstant(driftedTs, 'MAX_ENGINE_HISTORY_ENTRIES')).not.toBe(goConstant(go, 'historyLimit'))
+    const driftedGo = go.replace(/^const historyLimit = (\d+)$/m, 'const historyLimit = 7')
+    expect(driftedGo).not.toBe(go)
+    expect(goConstant(driftedGo, 'historyLimit')).not.toBe(tsConstant(ts, 'MAX_ENGINE_HISTORY_ENTRIES'))
+    // The RENAME, which the non-vacuity clause above is the one that catches.
+    const renamed = go.replace(/^const historyLimit = (\d+)$/m, 'const undoDepth = $1')
+    expect(renamed).not.toBe(go)
+    expect(goConstant(renamed, 'historyLimit')).toBeUndefined()
+    expect(renamed).not.toMatch(/^const historyLimit = \d+$/m)
+    // ⚠ AND THE ONE THIS FILE'S OWN COMMENT SAYS THE `sites` COLUMN EXISTS FOR:
+    // deleting the CONSUMPTION while both numbers still agree. A constant that
+    // matches Go and is read by nothing bounds nothing, and the tie would pass
+    // while Cancel offered a discard the engine cannot deliver.
+    const inlined = dialog.replace('editCount > MAX_ENGINE_HISTORY_ENTRIES', 'editCount > 100')
+    expect(inlined).not.toBe(dialog)
+    expect(inlined).not.toMatch(/^ {2}const overHistoryBound = editCount > MAX_ENGINE_HISTORY_ENTRIES$/m)
+    const unguarded = app.replace('if (count > MAX_ENGINE_HISTORY_ENTRIES) return', 'if (count > 100) return')
+    expect(unguarded).not.toBe(app)
+    expect(unguarded).not.toMatch(/^ {4}if \(count > MAX_ENGINE_HISTORY_ENTRIES\) return$/m)
   })
 })

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
-import { shortcutHintsFor } from './shortcuts'
+import { isMacPlatform, shortcutHintsFor } from './shortcuts'
 import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
 import { embeddedFaceFamily } from './embedded-face-family'
@@ -318,12 +318,17 @@ describe('application shell', () => {
     const header = await screen.findByRole('textbox', { name: 'Header for column 1' })
     expect(document.activeElement).toBe(header)
     // STORY 12.3 AMENDED THIS ASSERTION, AND THE AMENDMENT IS THE DECISION
-    // (D-12.3.2). The new order: Close Table Editor, Root collection, Row alias,
-    // the one active matrix cell, then the HEADER AND ROWS controls in document
-    // order, ending at "Header alignment". The old line read like a forward tab
-    // and was in fact the WRAP branch — trapDialog filters to tabIndex >= 0,
-    // which excludes every non-active matrix cell, so the active cell happened
-    // to be last. Both ends of the list are asserted below.
+    // (D-12.3.2). D-12.3.2's order was: Close Table Editor, Root collection, Row
+    // alias, the one active matrix cell, then the HEADER AND ROWS controls in
+    // document order, ending at "Header alignment". The old line before it read
+    // like a forward tab and was in fact the WRAP branch — trapDialog filters to
+    // tabIndex >= 0, which excludes every non-active matrix cell, so the active
+    // cell happened to be last.
+    //
+    // THAT ORDER HAS SINCE MOVED TWICE MORE — Story 14.7 sent the exit down to
+    // the footer bar and Story 14.7b made it a `Cancel` / `Done` pair — so the
+    // list now BEGINS at Root collection and ENDS at Done. Both ends of it are
+    // asserted below, re-derived from the DOM.
 
     // THE FORWARD HANDOFF, ASSERTED RATHER THAN ASSUMED. The amendment removed
     // the old forward-reading line and did not replace it, so the matrix's
@@ -340,23 +345,39 @@ describe('application shell', () => {
     expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(header)
     const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
     const tabbable = Array.from(dialogElement.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
-    // STORY 14.7 RE-ORDERED THIS LIST A SECOND TIME, AND THE RE-ORDERING IS
-    // INTENDED — say so, because an unexplained one reads as a regression to
-    // the next author. `Add column` left the row and became one control BELOW
-    // the grid, so it is what now follows the active matrix cell; and `Close
-    // Table Editor` left the heading for the footer bar, so it stops being
-    // FIRST in the trap's list and becomes LAST. The wrap therefore runs from
-    // `Close Table Editor` to `Root collection` — the dialog's new first
-    // control — and backwards from `Root collection` to `Close Table Editor`.
-    // Both ends are re-derived from the DOM above rather than named.
+    // STORY 14.7 RE-ORDERED THIS LIST A SECOND TIME AND STORY 14.7b HAS NOW
+    // RE-ORDERED IT A THIRD, AND EVERY ONE OF THE THREE IS INTENDED — say so,
+    // because an unexplained re-ordering reads as a regression to the next
+    // author. 14.7: `Add column` left the row and became one control BELOW the
+    // grid, so it is what now follows the active matrix cell; and `Close Table
+    // Editor` left the heading for the footer bar, so it stopped being FIRST in
+    // the trap's list. 14.7b: that one button is now the `Cancel` / `Done` pair,
+    // so the list's LAST member is `Done` and `Cancel` sits immediately before
+    // it. The wrap therefore runs from `Done` to `Root collection` — the
+    // dialog's first control — and backwards from `Root collection` to `Done`.
+    //
+    // ⚠ AND THE LIST'S TAIL IS NOW STATE-DEPENDENT. `trapDialog` selects
+    // `button:not([disabled])`, and `Cancel` is disabled while a command is in
+    // flight and above the engine's history bound — so it drops OUT of this list
+    // in both those states and the wrap ends move again. That case is proved in
+    // `TableEditor.test.tsx`, where the count can be set directly; here the
+    // count is zero and `Cancel` is present. BOTH ENDS ARE RE-DERIVED FROM THE
+    // DOM rather than named, so a fourth re-ordering has to face the assertions
+    // and not the comment.
     expect(tabbable[tabbable.indexOf(header) + 1]).toBe(screen.getByRole('button', { name: 'Add column' }))
-    expect(tabbable[0]).toBe(screen.getByLabelText('Root collection'))
-
-    const lastControl = screen.getByRole('button', { name: 'Close Table Editor' })
-    expect(tabbable[tabbable.length - 1]).toBe(lastControl)
+    // BOTH ENDS ARE THE LIST'S OWN, and the pair's ORDER is read off the list
+    // rather than off a hard-coded offset from its tail: `Cancel` is asserted to
+    // be the member immediately BEFORE whatever the last member turns out to be.
+    // A fourth re-ordering then reds the identity of the ends, which is the
+    // claim, instead of an arithmetic that happens to still land on a button.
+    const firstControl = tabbable[0] as HTMLElement
+    const lastControl = tabbable[tabbable.length - 1] as HTMLElement
+    expect(firstControl).toBe(screen.getByLabelText('Root collection'))
+    expect(lastControl).toBe(screen.getByRole('button', { name: 'Done' }))
+    expect(tabbable[tabbable.indexOf(lastControl) - 1]).toBe(screen.getByRole('button', { name: 'Cancel' }))
     lastControl.focus()
     fireEvent.keyDown(lastControl, { key: 'Tab' })
-    expect(document.activeElement).toBe(screen.getByLabelText('Root collection'))
+    expect(document.activeElement).toBe(firstControl)
     fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(lastControl)
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
@@ -381,7 +402,10 @@ describe('application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
     await screen.findByRole('button', { name: 'Add column' })
     fireEvent.click(screen.getByRole('button', { name: 'Add column' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close Table Editor' }))
+    // STORY 14.7b — `Done`, NOT `Cancel`. This test measures what a COMMITTED
+    // snapshot does after the dialog closes; `Cancel` would issue an undo for
+    // the column just added and change the very thing being measured.
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     releaseProjection()
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
     expect(screen.queryByRole('dialog', { name: 'Table Editor' })).not.toBeInTheDocument()
@@ -1272,6 +1296,178 @@ describe('application shell', () => {
     render(<App engine={engine(request)} initialSnapshot={{ ...snapshot(1), canUndo: true }} />)
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Top margin (pt)' }), keyboard)
     expect(request).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // STORY 14.7b / DW-368 — THE GLOBAL SHORTCUT STOPS AT AN OPEN MODAL.
+  //
+  // The guard above answers "is the TARGET editable?". Inside an open modal the
+  // author is very often focused on a BUTTON, which is not editable, so every
+  // shortcut below the guard line used to fire straight through the dialog at
+  // the document behind it. Measured at 68aa91f: the arrow keys sent
+  // `moveComponent id:"e7"` and Cmd+D sent `duplicateComponent id:"e7"` — and
+  // `e7` is THE VERY TABLE the dialog had open, because both arms require a
+  // single selection and `openTableEditor` requires that selection to be the
+  // table it edits. So the dialog projected one table while the document held
+  // two, with nothing on screen to show it. Cmd+Z was different and no better:
+  // it destroyed the dialog out from under the author.
+  //
+  // These proofs are the counterpart of the count: `Cancel`'s bound of
+  // MAX_ENGINE_HISTORY_ENTRIES undos is sound only while the dialog's own
+  // commands are the only source of history entries. A leaked nudge pushes an
+  // entry the dialog never counted, and the sequence would then leave one of the
+  // dialog's own edits standing.
+  // -------------------------------------------------------------------------
+  const modalTableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
+  // canUndo AND canRedo are BOTH true, and a single component is selected below,
+  // so every suppressed arm is one that WOULD have fired. A snapshot with no
+  // history would make these assertions pass against a guard that does nothing.
+  const modalTableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: modalTableCanvas, canUndo: true, canRedo: true }
+  const modalTableRequest = () => vi.fn(async (operation: string) => operation === 'table-columns'
+    ? { snapshot: modalTableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+    : { snapshot: modalTableSnapshot, ...(operation === 'serialize' ? { bytes } : {}) })
+  const openTableEditorOver = async (fileAccess?: FileAccess) => {
+    const request = modalTableRequest()
+    render(<App engine={engine(request)} {...(fileAccess ? { fileAccess } : {})} initialSnapshot={modalTableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+    await screen.findByRole('dialog', { name: 'Table Editor' })
+    return request
+  }
+
+  it.each([
+    ['Undo', { key: 'z', ctrlKey: true }],
+    ['Redo (Ctrl+Y)', { key: 'y', ctrlKey: true }],
+    ['Redo (Shift+Ctrl+Z)', { key: 'z', ctrlKey: true, shiftKey: true }],
+    ['Duplicate', { key: 'd', ctrlKey: true }],
+    ['ArrowLeft', { key: 'ArrowLeft' }],
+    ['ArrowRight', { key: 'ArrowRight' }],
+    ['ArrowUp', { key: 'ArrowUp' }],
+    ['ArrowDown', { key: 'ArrowDown' }],
+    ['Snap (Alt+S)', { key: 's', altKey: true }],
+    ['Preview (Alt+P)', { key: 'p', altKey: true }],
+  ])('sends no %s to the document from a button inside the open table editor', async (_name, keyboard) => {
+    const request = await openTableEditorOver()
+    const settled = request.mock.calls.length
+    const snap = screen.getByRole('button', { name: /^Snap/ }).getAttribute('aria-pressed')
+    // A BUTTON, NOT AN INPUT. `isEditableTarget` would already have stopped an
+    // input, so a proof taken there would pass against no guard at all.
+    const done = screen.getByRole('button', { name: 'Done' })
+    done.focus()
+    fireEvent.keyDown(done, keyboard)
+    await act(async () => { await Promise.resolve() })
+    // NO OPERATION AND NO COMMAND. Asserted as the whole tail of the call list
+    // rather than as a count of one kind: `moveComponent` and
+    // `duplicateComponent` travel as `command`, undo/redo as their own
+    // operations, and a per-kind filter would have missed whichever kind the
+    // next leak used.
+    expect(request.mock.calls.slice(settled)).toEqual([])
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+    // The two arms that reach no engine at all still have to be seen not to
+    // fire: Alt+S toggles snap in the browser and Alt+P swaps the whole main.
+    expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', snap)
+    expect(screen.getByLabelText('Canvas region')).toBeInTheDocument()
+  })
+
+  // THE POSITIVE CONTROLS FOR EVERY ONE OF THOSE TEN ARMS, AND WITHOUT THEM NINE
+  // OF THE TEN ASSERT NOTHING. "No command reached the engine" is satisfied just
+  // as well by a key that could never have fired — a stale spelling, a state the
+  // fixture does not actually hold, a modifier the platform reads differently —
+  // so each row below presses the SAME key with NO DIALOG OPEN and shows it does
+  // act. The pair is the measurement; either half alone is a shape that passes
+  // against a guard that does nothing, or against a shortcut that does nothing.
+  //
+  // Same fixture, same selection, same snapshot: only the dialog is absent.
+  const selectTableWithNoDialog = () => {
+    const request = modalTableRequest()
+    render(<App engine={engine(request)} initialSnapshot={modalTableSnapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+    // The whole difference from the suppressed rows, asserted rather than
+    // assumed: a row that quietly opened the dialog would be measuring the guard
+    // twice and the shortcut never.
+    expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull()
+    return request
+  }
+  const sentCommands = (request: ReturnType<typeof modalTableRequest>) =>
+    (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+  const sentOperations = (request: ReturnType<typeof modalTableRequest>, operation: string) => request.mock.calls.filter(([sent]) => sent === operation)
+
+  it.each([
+    ['Undo', { key: 'z', ctrlKey: true }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentOperations(request, 'undo')).toHaveLength(1) }],
+    // ⚠ Ctrl+Y IS THE NON-MAC REDO SPELLING, and the arm's dependency on that is
+    // made explicit here rather than left to the environment. The handler's redo
+    // condition is `!mac && modifier && 'y'`, so on a Mac-reporting navigator
+    // this row — and the suppressed row above it — would be vacuous: the key
+    // could not fire with or without a dialog. `navigator.platform` is pinned to
+    // '' for the assertion below, and `isMacPlatform()` is read to prove the pin
+    // took, so a jsdom that starts reporting 'MacIntel' reds this line instead of
+    // silently emptying two proofs.
+    ['Redo (Ctrl+Y)', { key: 'y', ctrlKey: true }, (request: ReturnType<typeof modalTableRequest>) => { expect(isMacPlatform()).toBe(false); expect(sentOperations(request, 'redo')).toHaveLength(1) }],
+    ['Redo (Shift+Ctrl+Z)', { key: 'z', ctrlKey: true, shiftKey: true }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentOperations(request, 'redo')).toHaveLength(1) }],
+    ['Duplicate', { key: 'd', ctrlKey: true }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"duplicateComponent"') }],
+    // THE NUDGE'S DIRECTION IS PART OF THE CONTROL. `moveComponent` alone would
+    // pass for a handler that sent the same command for all four keys, and the
+    // table sits at x = 0, y = 0 in this fixture, so one step is ±1 point.
+    ['ArrowLeft', { key: 'ArrowLeft' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":-1,') }],
+    ['ArrowRight', { key: 'ArrowRight' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":1,') }],
+    ['ArrowUp', { key: 'ArrowUp' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":0,"y":-1,') }],
+    ['ArrowDown', { key: 'ArrowDown' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":0,"y":1,') }],
+    // The two that reach no engine at all, so their controls are read off the
+    // browser: Snap toggles its own pressed state, Alt+P swaps the whole main.
+    ['Snap (Alt+S)', { key: 's', altKey: true }, () => { expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', 'false') }],
+    ['Preview (Alt+P)', { key: 'p', altKey: true }, () => { expect(screen.queryByLabelText('Canvas region')).toBeNull() }],
+  ])('sends %s to the document when no dialog is open, which is what makes the suppressed arm a measurement', async (_name, keyboard, verify) => {
+    const platform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+    Object.defineProperty(window.navigator, 'platform', { value: '', configurable: true })
+    try {
+      const request = selectTableWithNoDialog()
+      // SNAP STARTS PRESSED, so the Alt+S control below is a flip and not a
+      // reading of the initial state.
+      expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), keyboard)
+      await act(async () => { await Promise.resolve() })
+      verify(request)
+    } finally {
+      if (platform) Object.defineProperty(window.navigator, 'platform', platform)
+      else Reflect.deleteProperty(window.navigator, 'platform')
+    }
+  })
+
+  it('keeps the Save shortcut working while the table editor is open, because it sits above the guard', async () => {
+    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat }))
+    const writeSave = vi.fn(async () => ({ name: 'untitled.folio' }))
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
+    await openTableEditorOver(files)
+    const done = screen.getByRole('button', { name: 'Done' })
+    done.focus()
+    fireEvent.keyDown(done, { key: 's', ctrlKey: true })
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+    // Saving is not a mutation of what the modal edits, so the dialog is
+    // untouched by it.
+    expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+  })
+
+  it('leaves the roving lattice inside the dialog moving focus exactly as it did', async () => {
+    await openTableEditorOver()
+    // THE GUARD SUPPRESSES THE DOCUMENT MUTATION, NOT THE DIALOG'S OWN
+    // NAVIGATION. The matrix's arrow keys are React handlers on the cells; the
+    // nudge was a native window listener. Both saw the same key.
+    const header = screen.getByRole('textbox', { name: 'Header for column 1' })
+    header.focus()
+    fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByLabelText('Row field for column 1'))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
+  })
+
+  it('does not over-reach: with no dialog open, Undo still reaches the window handler', async () => {
+    // The guard's negative control. It keys on the MODAL BEING OPEN and on
+    // nothing else — not on a modifier, not on a key list — so with no dialog on
+    // screen the shortcut is exactly what it was.
+    const request = vi.fn(async (operation: string) => ({ snapshot: { ...snapshot(1), canUndo: operation !== 'undo', canRedo: operation === 'undo' } }))
+    render(<App engine={engine(request)} initialSnapshot={{ ...snapshot(1), canUndo: true }} />)
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(1))
   })
 
   // STORY 14.3: A PLACED COMPONENT IS THE SELECTED COMPONENT.
