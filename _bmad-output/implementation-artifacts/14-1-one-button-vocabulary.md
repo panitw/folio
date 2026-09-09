@@ -8,6 +8,31 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — a plain-language summary of what shipped. The frozen Intent below governs
+implementation.*
+
+The designer had no written rule about when a control is spelled with a word and when it is drawn
+as a small picture, so every story that added one picked for itself and the seams showed. This story
+wrote the rule down and built a machine that checks it.
+
+The rule is the deliverable. A control is a word by default; it is a picture only when it is one of
+the mutually exclusive choices of a single setting; controls that belong together are spelled the
+same way; and a picture still announces itself by name to a screen reader. The rule is written in
+the design system's own vocabulary but deliberately **not** into the design document — that file
+records declared values, and a new rule of this kind would either break the build or ship unchecked
+there.
+
+Two surfaces were brought into line: the file actions in the top bar are now all words, and both
+alignment controls in the typography panel are now all icons. The eleven other controls the audit
+turned up as breaking the rule were recorded and deliberately left alone, for later stories to rule
+on with the surface in front of them.
+
+Two limits worth knowing. The checker only sees the screens it actually draws, so several panels
+remain unchecked. And the top bar grew by roughly thirty pixels, which fits by arithmetic against an
+older measurement rather than a real browser run — registered, to be confirmed at the epic's gate.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -537,3 +562,115 @@ confirm a zero, since `npm run build` is the boundary gate's under D-000.33.
 
 - The behavioural rows the contract test cannot make, naming controls directly.
   [`App.test.tsx:1038`](../../folio-designer/src/App.test.tsx#L1038)
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `dbe058b`. Shipped in `1b9b660` (six paths) and `d354a58` (the deferrals and the tracker).
+
+**The rule is the deliverable, and it is not in `DESIGN.md`.** What shipped is a word/glyph
+vocabulary written in `DESIGN.md`'s own terms — V1–V4 in `## Design Notes` — plus a new contract test
+that enforces it over a population it derives rather than lists. `DESIGN.md` itself is deliberately
+untouched, by orchestrator ruling and Epic 16's recorded discriminator: *transcribe a declared value,
+refuse an undeclared one*. A word-versus-glyph rule is undeclared, and the mechanical cost confirmed
+the ruling from both sides — a new top-level key reds the design contract's per-group name-set
+equality unless `design-tokens.ts` moves with it, while a nested sub-key is checked by nothing at all
+and would ship silently unguarded. The sweep is the rule's consequence, not its substance: exactly
+the two surfaces the ACs name were changed, and the eleven other V2 violators the audit derived were
+pinned by accessible name and left alone for 14.2, 14.3, 14.4 and 14.7.
+
+**`role="group"` on `.mode-switch` was outside every acceptance criterion and was included by
+orchestrator ruling R-Q4.** Recording it as a judgement, not as an absorbed sweep: two roleless
+`<div>`s sat in the same header carrying `aria-label`s the accessibility tree drops, and
+`.document-actions` had to be fixed regardless; shipping a story about no two members of a family
+being spelled differently having fixed one of two identical defects in front of it would have
+reintroduced the drift the story removes. It cost one attribute, changed no accessible name, and
+reddened no test. If it had cost more, the ruling said stop — it did not.
+
+**The finding that mattered, and the self-catch inside it.** The verification-gap review layer
+claimed the three new vertical-align glyphs were never asserted to differ from one another. The
+builder tested the claim rather than believing it: setting the `middle` glyph's path to `top`'s exact
+string — a plausible one-line copy/paste slip — left **365 passing / 0 failing**. The control could
+have shipped drawing two identical pictures with nothing red, which is precisely the outcome AC3
+exists to prevent. The part worth preserving is what happened first: the builder's **first** attempt
+at that mutation produced a green it nearly accepted, because a broken grep could not show the edit
+had landed — `App.tsx` carries literal NUL bytes, so a search without `grep -a` silently reports
+nothing. It re-anchored, confirmed the two path strings byte-identical, and only then trusted the
+result. A vacuous proof and a real one look the same from the outside; this one was caught from the
+inside.
+
+**Re-measured at close.** The same mutation was re-planted at `d354a58` (byte-identity of the two
+paths re-confirmed with `grep -a` before running anything) and re-run over the whole module, not one
+package: **1 failed / 1168 passed of 1169**, the single red on exactly the TYPOGRAPHY row, failing
+on the distinctness of the seven align/valign path strings — 7 rendered, 6 distinct. The file was
+restored byte-for-byte and the tree verified clean afterwards. The build's own figure of "1 of 369"
+was a narrower command scope; both describe the same single red.
+
+**The design was forced, not chosen.** `SegmentedProperty` is a single JSX site whose children are
+`{segment.content}`, so Align and Vertical align differ only in the data handed to it. The project's
+usual source-scanning contract idiom is therefore blind to AC3's defect **by construction** — there
+is no divergent markup to scan. The guard observes rendered output because it must, which is also
+why it is a new contract file rather than an addition to the `fs`-reading design contract.
+
+**Six more patches, each a guard that could not fail.** `visibleText` did not strip visually-hidden
+text, so an icon wearing an `.sr-only` caption classified as a *word* and escaped every clause — the
+hidden-class set is now parsed out of `App.css` rather than listed. A named group with fewer than two
+swept members passed silently while reading as covered. R4's census was a `Set`, so a duplicate name
+collapsed; it is now a multiset, which is what "pin by name, never by count" actually requires. The
+coverage clause was itself the one clause never executed to red. And a comment this story added
+stated a false measurement.
+
+**The builder corrected its own spec after implementing it.** The Design Notes estimated "roughly a
+dozen" V2 violators at planning time; measured against the derived sweep it is **eleven**. Two items
+the prose had guessed at are absent, and the classifier is the reason rather than an oversight: `B`
+and `I` classify as **words**, because V1's own test is "contains a letter or digit" and a single
+initial passes it; the drag handles classify as **empty** — no text, no `<svg>` — and are held by R3,
+which they pass, not by R4. Both are documented in the census block rather than folded in quietly.
+Separately, `epics.md`'s "Align is three SVG icons" was stale (it is four since justify landed); the
+orchestrator corrected that itself at `8ea9e56`, and this story inherited D-000.9 item 9's
+pre-registered correction rather than rediscovering it.
+
+**Two limits, stated plainly.**
+1. *The guard checks only what it renders.* Its coverage claim is four declared render states —
+   design with nothing selected, with a text element selected, with a table element selected, and
+   preview. The font browser, the table editor, the diagnostics cards and the page rail are **not**
+   among them and are therefore **unchecked**, not passing. DW-331 additionally discloses `Border
+   edges` as present-but-unchecked, which is better than passing silently but is not coverage.
+2. *The document bar's growth fits by arithmetic, not by a browser.* Open and Save moved from a fixed
+   24px icon square to `.file-button`, about +15px each and **~+30px total**, against 179px of slack
+   measured in Chromium at 1024px **during Story 13.5** — leaving ~149px. That is arithmetic over a
+   measurement taken in another story, not a run. Registered as **DW-332**, to be confirmed at the
+   Epic 14 boundary gate.
+
+**Triage:** 7 patched, 6 deferred, the remainder rejected as cosmetic. `review_loop_iteration` **0** —
+no loopback, no intent gap, no bad spec. The six deferrals are registered as **DW-327 – DW-332**,
+purely additive to the register and minting no duplicate numbers. **DW-327 is the largest and all
+three review layers found it independently**: `.canvas-tools` carries the same defect this story just
+fixed on `.document-actions`, one container over, and the new contract is blind to it in two
+independent ways — its buttons carry no `class` attribute, so the family clause never groups them,
+and its container has no role, so the group clause never sees it. **Story 14.3 owns that surface.**
+
+**Measured gates, re-run at close on `d354a58` with exit codes captured without a pipe:**
+`npx vitest run` — **72 files / 1169 tests / 0 failures**, exit 0 (baseline 71/1144). `npx oxlint` —
+exit 0 with **exactly 4** `react(only-export-components)` warnings, re-anchored at this revision to
+`preview/pdf-viewer.tsx:17:14`, `:18:14`, `App.tsx:4084:14`, `:4091:17`; the count of 4 is a
+convention with no `--max-warnings` and no assertion behind it. `npx tsc -b --force` — exit 0
+(`--force` is required: `npm run typecheck` is `build:wasm && tsc -b`, and `tsc -b` is incremental,
+so it can exit 0 having checked nothing). `npx tsc -p tsconfig.e2e.json --noEmit` — exit 0;
+compile-clean is not passing, and this story adds no e2e spec.
+
+**Suites that did NOT run, in those words:** the browser suite (`npm run test:e2e`), every Go suite in
+`folio-go/` and `lint/`, the hashmatrix matrix legs, `npm run build` as a gate, the `verify:offline*`
+chain, and the `scan:font-hosts` / `scan:host-fonts` font-host scans. All of them run at the **Epic 14
+boundary gate**, which the orchestrator runs, per D-000.33. A guard never invoked is
+indistinguishable from a passing one (D-000.32). Standing Go reds that are not regressions and were
+not re-checked here: `TestCorpusMeetsP6ExerciseFloors` and its subtest `P6g_(opaque_names)`.
+
+**Offline-release slot cost (D-14.0.1): ZERO — stated as a claim, with what was checked named.** What
+was checked: the file list this story writes to (`App.tsx`, `App.css`, `App.test.tsx`, the new
+`control-vocabulary-contract.test.tsx`, plus BMAD artifacts), and that every icon it introduces is a
+JSX component with an inline `path d` rather than an imported file. No `.svg` file is added, and
+`vite.config.ts` sets `assetsInlineLimit: 0`, so only emitted files take a cache row. The release
+stays at 62 assets against the hard maximum of 64, margin of 2 unspent. **No clean build was run to
+confirm the zero** — `npm run build` is the boundary gate's, per D-000.33.
