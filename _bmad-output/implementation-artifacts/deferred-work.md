@@ -12522,3 +12522,25 @@ The fix exists and has never run: `e2e/brand-mark.spec.ts` carries a `toHaveCSS`
 never executed against a browser**. So the story shipped with the correct instrument built and switched off.
 **It closes the first time the browser suite runs against the mark at a boundary gate** - not before, and it
 should not be described as covered until a run log shows it.
+
+### DW-363 - a render diagnostic reports a path as absent when the path is present
+
+- **source_spec:** `_bmad-output/implementation-artifacts/14-6-the-data-tab-is-the-binding-panel-the-design-drew.md`
+- **Found by:** Story 14.6's builder, tracing DW-350's failure to its surface. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+When DW-350's empty-collection binding finally fails, it fails at **render**, and the diagnostic it produces is
+wrong in three ways at once: code **`BINDING_PATH_ABSENT`** for a path that is **present**, an **empty
+`dataPath`** field, and the text *"is a array"*.
+
+**Each of the three defeats a different way of finding the problem.** The code sends the reader to look for a
+missing path. The empty `dataPath` removes the one field that would say which binding. And the message is
+ungrammatical enough to look like a stringly-typed bug rather than the real diagnosis - the value is a
+collection where a scalar was required.
+
+**It is also invisible in most testing**, because the stand-in sample generator supplies a scalar; reproducing it
+needs a real sample file with an empty array. So the defect is hard to hit, and when hit, misdescribes itself.
+
+Registered separately from DW-350 because they need different fixes at different layers: DW-350 is the picker
+withholding the path (Story 14.6's business), this is the engine describing the failure accurately when a path
+gets through anyway - **and the second is still worth doing even after the first, because the picker is not the
+only way a binding can be authored.** A hand-edited `.folio` reaches the same render.
