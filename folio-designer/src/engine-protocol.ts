@@ -160,6 +160,39 @@ export const CAPPING_BANDS = BANDS_CAPPING_VERTICALLY as ReadonlyArray<CappingBa
 // gesture answer 17.4 differently.
 export const BAND_CONTENT_WINDOW_MARGIN = 1
 
+// STORY 14.4: WHICH COMPONENT KINDS MAY RECEIVE A SCALAR BINDING — ONE
+// SPELLING, TWO JUDGEMENTS.
+//
+// Go's authority is `bindComponentScalar`'s single line
+// (`component_commands.go`): `if element.Type != template.ElementText` → *"only
+// text components can receive a scalar binding"*. It reads `element.Type` and
+// NOTHING ELSE — no band, no geometry, no sibling, no document — so it is a
+// property of the FIELD rather than of the open template, which is what makes
+// it mirrorable at all.
+//
+// THIS STORY DID NOT CREATE THE COPY; IT REGISTERED ONE THAT WAS ALREADY
+// SHIPPED. `isCanvas` below has re-derived this rule inline since it was
+// written, untied, and in the harshest failure mode on this boundary: a
+// one-sided Go edit makes the guard return false, `parseInbound` return
+// undefined, and the canvas go permanently blank. The choice was never "one
+// copy or two" — it was "two copies untied, or one constant tied". This is the
+// constant; `engine-bounds-mirror.test.ts`'s `scalar binding legality mirror`
+// is the tie, and it asserts every consumer actually READS this array rather
+// than re-spelling `=== 'text'` for itself.
+//
+// ⚠ THE RULE IS THE COMPONENT-TYPE GATE AND NOTHING ELSE. Whether a picked
+// PATH yields a scalar at render time is runtime data decided by
+// `internal/bind`, and D-6.2.1 deliberately keeps sample runtime kind out of
+// command legality — Go accepts `{{items}}` for an empty collection and reports
+// the mismatch at render. A consumer that widened this into "is this path
+// bindable" would be a second, drifting copy of the binder.
+//
+// "Binding" is overloaded, and the name is deliberate: a TABLE legally takes a
+// binding through `configureTableBinding` / `updateTableColumnBinding`. What
+// this array closes is SCALAR binding, and nothing else.
+export type CanvasComponentType = CanvasProjection['components'][number]['type']
+export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text']
+
 export type EngineError = Readonly<{
   code: string
   message: string
@@ -580,7 +613,11 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     // adjudicating it — a value Go committed is a value Go already ruled on.
     if (component.lineSpacing !== undefined && (typeof component.lineSpacing !== 'number' || !Number.isSafeInteger(component.lineSpacing) || component.lineSpacing < MIN_LINE_SPACING_THOUSANDTHS || component.lineSpacing > MAX_LINE_SPACING_THOUSANDTHS)) return false
 	if (component.type !== 'text' && component.value !== undefined) return false
-	if (component.type !== 'text' && component.binding !== undefined) return false
+	// STORY 14.4: the same array the panel's pre-flight reads, so a Go-side
+	// change to the scalar-binding gate cannot leave this guard and that gate
+	// spelling two different rules. A HOIST, NOT A CHANGE — `['text']` is
+	// byte-for-byte the set the inline literal admitted.
+	if (!SCALAR_BINDING_COMPONENT_TYPES.includes(component.type as CanvasComponentType) && component.binding !== undefined) return false
 	if (component.type !== 'table' && component.tableBind !== undefined) return false
 	if (!['text', 'table'].includes(component.type as string) && ['fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign'].some((key) => component[key] !== undefined)) return false
 	if (!isTextPaint(component.textPaint, box)) return false

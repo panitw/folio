@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { BANDS_CAPPING_VERTICALLY, CAPPING_BANDS, LOCALE_TAGS, type CappingBand } from './engine-protocol'
+import { BANDS_CAPPING_VERTICALLY, CAPPING_BANDS, LOCALE_TAGS, SCALAR_BINDING_COMPONENT_TYPES, type CappingBand } from './engine-protocol'
 
 // D-7.4.5 / DW-25, AS WIDENED BY STORY 7.5.
 //
@@ -54,6 +54,14 @@ const goSources = {
   // here, in engine-protocol.ts's LOCALE_TAGS. Nothing but the describe block
   // at the foot of this file stands between them.
   locale: path.resolve(sourceDir, '../../folio-go/internal/template/locale.go'),
+  // Story 14.4's mirror needs a FIFTH source, and needs it for the same reason
+  // the locale one needed a fourth: the rule it ties is spelled across two Go
+  // files. `component_commands.go` states the gate as `element.Type !=
+  // template.ElementText`; the constant that names the kind is declared here,
+  // in the closed five of `ElementType`. Resolving the identifier through its
+  // own declaration is what makes the comparison a claim about the RULE rather
+  // than about a spelling.
+  templateModel: path.resolve(sourceDir, '../../folio-go/internal/template/model.go'),
 } as const
 const tsPath = path.join(sourceDir, 'engine-protocol.ts')
 // Story 7.6's THIRD consumer of the band-containment tie. The drag clamp used
@@ -94,6 +102,12 @@ const pairs: ReadonlyArray<Pair> = [
   // half-tied.
   { go: 'maxCanvasFontFamilies', source: 'pageSetup', ts: 'MAX_ENGINE_FONT_FAMILIES', sites: [/value\.fontFamilies\.length > MAX_ENGINE_FONT_FAMILIES\b/] },
   { go: 'maxCanvasFontChainEntries', source: 'componentCommands', ts: 'MAX_ENGINE_FONT_CHAIN_ENTRIES', sites: [/chain\.entries\.length <= MAX_ENGINE_FONT_CHAIN_ENTRIES\b/] },
+  // STORY 14.4 / D-14.4.Q4. The binding-string bound had a mirror on both sides
+  // and no row here from the day either was written — the one-sided edit this
+  // list exists to catch, sitting beside the list. It is in scope because it is
+  // the SAME SUBJECT as the scalar-binding tie below (Go/TS agreement on
+  // binding validation) in the SAME FILE that story was already extending.
+  { go: 'maxCanvasBindingString', source: 'pageSetup', ts: 'MAX_ENGINE_BINDING_LENGTH', sites: [/component\.binding\.length > MAX_ENGINE_BINDING_LENGTH\b/] },
 ]
 
 // Both spellings a Go declaration can take: a file-scope `const NAME = N` and
@@ -108,7 +122,7 @@ function tsConstant(source: string, name: string): string | undefined {
 }
 
 describe('canvas projection bounds mirror', () => {
-  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8'), locale: fs.readFileSync(goSources.locale, 'utf8') }
+  const sources: Record<GoSource, string> = { pageSetup: fs.readFileSync(goSources.pageSetup, 'utf8'), lineSpacing: fs.readFileSync(goSources.lineSpacing, 'utf8'), componentCommands: fs.readFileSync(goSources.componentCommands, 'utf8'), locale: fs.readFileSync(goSources.locale, 'utf8'), templateModel: fs.readFileSync(goSources.templateModel, 'utf8') }
   const goValue = (pair: Pair) => goConstant(sources[pair.source], pair.go)
   const ts = fs.readFileSync(tsPath, 'utf8')
 
@@ -118,13 +132,18 @@ describe('canvas projection bounds mirror', () => {
     // whole before any equality is claimed from it.
     expect(pairs.map((pair) => [pair.go, goValue(pair)])).toEqual(pairs.map((pair) => [pair.go, expect.stringMatching(/^\d+$/)]))
     expect(pairs.map((pair) => [pair.ts, tsConstant(ts, pair.ts)])).toEqual(pairs.map((pair) => [pair.ts, expect.stringMatching(/^\d+$/)]))
-    // The count, and the fact that BOTH Go sources are actually read: a pair
-    // list that quietly lost its only linespacing.go member would otherwise
-    // leave this file reading one source and still calling itself the tie.
-    expect(pairs).toHaveLength(8)
-    // The NUMERAL pairs now read all three sources: componentCommands carries
-    // the band-containment predicate tie below AND, since Story 8.1, the
-    // per-chain entry bound the font-chain commands and the projection share.
+    // The count, and the fact that EVERY Go source a NUMERAL pair names is
+    // actually read: a pair list that quietly lost its only linespacing.go
+    // member would otherwise leave this file reading one source and still
+    // calling itself the tie. (`goSources` itself now has FIVE entries — the
+    // locale and template-model files are read by the predicate describes at
+    // the foot of this file, not by any numeral pair.)
+    expect(pairs).toHaveLength(9)
+    // The NUMERAL pairs read three of the five sources: componentCommands
+    // carries the band-containment predicate tie below AND, since Story 8.1,
+    // the per-chain entry bound the font-chain commands and the projection
+    // share. `locale` and `templateModel` carry no numeral and appear only in
+    // the predicate describes.
     expect(new Set(pairs.map((pair) => pair.source))).toEqual(new Set(['pageSetup', 'lineSpacing', 'componentCommands']))
   })
 
@@ -138,6 +157,7 @@ describe('canvas projection bounds mirror', () => {
     expect(goConstant(sources.pageSetup, 'maxCanvasPropertyString')).toBe('512')
     expect(goConstant(sources.lineSpacing, 'MinLineSpacingThousandths')).toBe('1')
     expect(goConstant(sources.lineSpacing, 'MaxLineSpacingThousandths')).toBe('1000000')
+    expect(goConstant(sources.pageSetup, 'maxCanvasBindingString')).toBe('256')
   })
 
   it('consumes every mirrored constant at the validator site it bounds', () => {
@@ -642,5 +662,153 @@ describe('locale tag mirror', () => {
     const driftedTs = ts.replace(/^export const LOCALE_TAGS = \[([^\]]*)\] as const$/m, "export const LOCALE_TAGS = ['en', 'th', 'zh-Hans'] as const")
     expect(driftedTs).not.toBe(ts)
     expect(tsLocaleTags(driftedTs)).not.toEqual(goLocaleTags(go))
+  })
+})
+
+// Go declares the gate against a NAMED CONSTANT, so the identifier is resolved
+// through its own declaration before comparison: `template.ElementText` and
+// `'text'` are the same claim spelled two ways, and it is the CLAIM that has to
+// match. `internal/template/model.go` declares the closed five; a rename there
+// alone must not be able to make this tie pass while meaning something else.
+function goElementTypes(model: string): ReadonlyMap<string, string> {
+  const names = new Map<string, string>()
+  for (const match of model.matchAll(/^\t(Element[A-Za-z]+)\s+ElementType = "([^"]+)"$/gm)) names.set(match[1] as string, match[2] as string)
+  return names
+}
+
+// WRAP-FRAGILE AND LOUD ABOUT IT (D-000.27). The gate is matched together with
+// the refusal text it emits — repo-wide grep puts that string at exactly one
+// site — so a reformat, a moved gate or a reworded refusal produces a RED here
+// rather than a vacuous pass. That is what the non-vacuity `it` below is for.
+function goScalarBindingTypes(commands: string, model: string): ReadonlyArray<string> {
+  const named = commands.match(/^\tif element\.Type != template\.(Element[A-Za-z]+) \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only text components can receive a scalar binding"\)$/m)?.[1]
+  if (named === undefined) return []
+  const resolved = goElementTypes(model).get(named)
+  return resolved === undefined ? [] : [resolved]
+}
+
+function tsScalarBindingTypes(source: string): ReadonlyArray<string> {
+  const list = source.match(/^export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = \[([^\]]*)\]$/m)?.[1]
+  if (list === undefined) return []
+  return list.split(',').map((entry) => entry.trim().replace(/^'|'$/g, '')).filter((entry) => entry.length > 0)
+}
+
+// STORY 14.4's MIRROR, and the THIRD here that ties a PREDICATE.
+//
+// The invariant: which component kinds may receive a SCALAR binding. Go
+// enforces it on the COMMAND path (`bindComponentScalar`, after `findComponent`
+// and before any mutation); TypeScript enforces it again on the PROJECTION path
+// (`isCanvas`), and — since this story — states it a third time in the DATA
+// PANEL, before the command is sent at all.
+//
+// ⚠ THIS TIE DOES NOT REGISTER A NEW COPY; IT REGISTERS ONE THAT WAS ALREADY
+// SHIPPED. `engine-protocol.ts` has re-derived Go's rule inline since it was
+// written, untied and outside the mirror census, in the harshest failure mode
+// on this boundary: a one-sided Go edit makes `isCanvas` return false,
+// `parseInbound` return undefined and the canvas go permanently blank — not a
+// wrong tooltip, a dead editor. So the choice this story faced was never "one
+// copy or two"; it was "two copies untied, or one constant tied". The pre-flight
+// was gated on this describe existing, not the other way round.
+//
+// ⚠ WHAT IS TIED IS THE COMPONENT-TYPE GATE AND NOTHING ELSE. Whether a picked
+// PATH yields a scalar at render is runtime data decided by `internal/bind`, and
+// D-6.2.1 deliberately keeps sample runtime kind out of command legality
+// (`component_commands_test.go`: `segments:["items"]` on an empty collection is
+// ACCEPTED and canonicalised). Nothing here may grow into "is this path
+// bindable" without crossing that authority boundary.
+describe('scalar binding legality mirror', () => {
+  const go = fs.readFileSync(goSources.componentCommands, 'utf8')
+  const model = fs.readFileSync(goSources.templateModel, 'utf8')
+  const ts = fs.readFileSync(tsPath, 'utf8')
+  const panel = fs.readFileSync(path.join(sourceDir, 'DataPanel.tsx'), 'utf8')
+  const app = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+
+  it('reads the gate from Go and the list from the browser side, or fails rather than passing vacuously', () => {
+    // Non-vacuity FIRST, as a separate row, because an extraction that quietly
+    // stopped matching would make every equality below true and meaningless.
+    // The five element kinds are asserted whole: a rename in model.go alone
+    // must report what moved rather than silently resolving to nothing.
+    // P10. MEMBERSHIP, NOT AN ORDERED WHOLE. Asserting the exact five-element
+    // list in order would red on a legitimate gofmt reorder or on a SIXTH
+    // element kind, with a message claiming the extraction had broken — false
+    // in both cases. `toMatchObject` admits extra kinds and ignores order;
+    // what it still refuses is a RENAMED or missing `ElementText`, which is
+    // the only change that can silently unmake this tie.
+    expect(Object.fromEntries(goElementTypes(model)), 'internal/template/model.go no longer declares the ElementType constants this tie reads — ElementText above all — in a spelling this extractor understands; RE-DERIVE the extraction rather than deleting the tie. A REORDERED block or a NEW sixth element kind is not a failure of this row; only a changed SPELLING is.').toMatchObject({ ElementText: 'text', ElementImage: 'image', ElementTable: 'table', ElementLine: 'line', ElementRect: 'rect' })
+    expect(goScalarBindingTypes(go, model), 'component_commands.go no longer spells bindComponentScalar\'s type gate — or its refusal text — where this test can read it; RE-DERIVE the extraction rather than deleting the tie, because the pre-flight in DataPanel.tsx is only legal while this tie holds').toEqual(['text'])
+    expect(tsScalarBindingTypes(ts), 'engine-protocol.ts no longer declares SCALAR_BINDING_COMPONENT_TYPES on one line in the spelling this extractor reads').toEqual(['text'])
+    // And the RUNTIME array, not only its source text: the projection guard,
+    // the inspector and the data panel all read this object.
+    expect([...SCALAR_BINDING_COMPONENT_TYPES]).toEqual(tsScalarBindingTypes(ts))
+  })
+
+  it('agrees on which component kinds may receive a scalar binding', () => {
+    expect(tsScalarBindingTypes(ts)).toEqual(goScalarBindingTypes(go, model))
+    // THE NEGATIVE HALF, and it is not decoration: `table` is the kind most
+    // likely to be added here by mistake, because a Table legally takes a
+    // binding through `configureTableBinding` / `updateTableColumnBinding` —
+    // a DIFFERENT value and a DIFFERENT command. A constant named for
+    // bindability in general would have been wrong on exactly that row.
+    for (const kind of ['table', 'line', 'rect', 'image']) {
+      expect(goScalarBindingTypes(go, model)).not.toContain(kind)
+      expect(tsScalarBindingTypes(ts)).not.toContain(kind)
+    }
+  })
+
+  it('consumes the list at every site that judges a component kind', () => {
+    // A constant nothing reads would tie a dead declaration to a live Go rule
+    // while each judgement kept its own inline spelling — the failure the
+    // pairs table's `sites` column exists to prevent, applied to a predicate.
+    //
+    // 1. THE PROJECTION GUARD (shipped long before this story, registered by it).
+    expect(ts).toMatch(/if \(!SCALAR_BINDING_COMPONENT_TYPES\.includes\(component\.type as CanvasComponentType\) && component\.binding !== undefined\) return false/)
+    // 2. THE DATA PANEL'S PRE-FLIGHT, the site this story added. Matched as the
+    //    whole gate EXPRESSION rather than as a mention of the name, so a panel
+    //    that kept the import and re-spelled the test inline still reds.
+    expect(panel).toMatch(/^import \{ SCALAR_BINDING_COMPONENT_TYPES, type CanvasComponentType \} from '\.\/engine-protocol'$/m)
+    expect(panel).toMatch(/const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(selectedComponentType\)/)
+    // 3. THE INSPECTOR'S BINDING SECTION, gated by the same array.
+    expect(app).toMatch(/const scalarBindable = single === undefined \|\| SCALAR_BINDING_COMPONENT_TYPES\.includes\(single\.type\)/)
+    // AND NO CONSUMER HOLDS A COPY OF ITS OWN. The drift this story invites is
+    // a kind test re-spelled as a bare comparison against the literal, which
+    // both declarations agreeing would hide completely.
+    expect(panel).not.toMatch(/[=!]==\s*'text'/)
+    // P6. `single?.type === 'line'` / `'image'` / `'table'` is how App.tsx
+    // spells every OTHER kind test, so the optional-chained form is the most
+    // likely re-spelling and the pattern must reach it. The earlier
+    // `single\.type` version did not.
+    expect(app).not.toMatch(/single\??\.type [=!]==\s*'text'/)
+  })
+
+  it('turns a one-sided edit of the gate red', () => {
+    // FROM GO, by widening it — the edit that would make the panel refuse a
+    // pick the engine has started accepting.
+    const widenedGo = go.replace(/^\tif element\.Type != template\.ElementText \{$/m, '\tif element.Type != template.ElementImage {')
+    expect(widenedGo).not.toBe(go)
+    expect(goScalarBindingTypes(widenedGo, model)).not.toEqual(tsScalarBindingTypes(ts))
+    // FROM GO, by deleting it — which must red the NON-VACUITY row, not the
+    // agreement one, so the maintainer is told the extraction stopped reading
+    // rather than that the two sides disagree.
+    const deletedGo = go.replace(/^\tif element\.Type != template\.ElementText \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only text components can receive a scalar binding"\)\n\t\}\n/m, '')
+    expect(deletedGo).not.toBe(go)
+    expect(goScalarBindingTypes(deletedGo, model)).toEqual([])
+    // FROM GO, by renaming the kind constant out from under the gate: the
+    // resolution through model.go is what catches this, and it too must land
+    // on the non-vacuity row.
+    const renamedModel = model.replace(/^\tElementText(\s+)ElementType = "text"$/m, '\tElementProse$1ElementType = "text"')
+    expect(renamedModel).not.toBe(model)
+    expect(goScalarBindingTypes(go, renamedModel)).toEqual([])
+    // FROM TYPESCRIPT.
+    const driftedTs = ts.replace(/^export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = \[([^\]]*)\]$/m, "export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text', 'table']")
+    expect(driftedTs).not.toBe(ts)
+    expect(tsScalarBindingTypes(driftedTs)).not.toEqual(goScalarBindingTypes(go, model))
+    // AND FROM THE CONSUMER — the drift this story specifically invites, which
+    // BOTH DECLARATIONS AGREEING WOULD HIDE: a panel that stops reading the
+    // constant and re-spells the rule inline, leaving it hoisted but unused.
+    // If this stayed green the mirror would be decorative.
+    const driftedPanel = panel.replace(/const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(selectedComponentType\)/, "const bindableKind = selectedComponentType === 'text'")
+    expect(driftedPanel).not.toBe(panel)
+    expect(driftedPanel).not.toMatch(/const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(selectedComponentType\)/)
+    expect(driftedPanel).toMatch(/[=!]==\s*'text'/)
   })
 })

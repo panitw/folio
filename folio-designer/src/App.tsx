@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import { CAPPING_BANDS, LOCALE_TAGS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
+import { CAPPING_BANDS, LOCALE_TAGS, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -487,6 +487,22 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // The canvas asks one question — "is there a face registered under this asset
   // key" — and both registrations can answer it.
   const paintableFaces = useMemo(() => machineFaces.size === 0 ? carriedFaces : new Set([...carriedFaces, ...machineFaces]), [carriedFaces, machineFaces])
+
+  // STORY 14.4 / P1. ONE LOOKUP FOR THE ONE SELECTED COMPONENT, and everything
+  // the data panel is told about it derives from THIS object rather than from
+  // its own repeat scan of the projection. It used to be scanned once for the
+  // binding and — when the kind gate was added — a second time for the type,
+  // which is how the two could disagree about whether the component exists at
+  // all: `selectedComponentId` was passed unconditionally from `selected`,
+  // while the type came from a `find` that returns undefined for an absent
+  // canvas or an id no longer in the projection. That id-present/type-absent
+  // state is exactly what the panel's fifth arm must fail CLOSED on.
+  //
+  // The id still comes from `selected`, not from this lookup, and deliberately:
+  // "one component is selected" is true whether or not the projection currently
+  // carries it, and demoting it to "select one component first" would state
+  // something false. The KIND is what becomes unknown, and the panel says so.
+  const selectedComponent = selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0]) : undefined
 
   // The listing is re-read from the store rather than patched in memory, so the
   // store stays the single authority on what this machine holds. A refresh that
@@ -2461,7 +2477,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       <aside className={`inspector-panel${mode === 'preview' ? ' inspector-panel-preview' : ''}`} aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedBinding={selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0])?.binding : undefined} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
             ⚠ THIS IS THE WHOLE OF DW-281's DISCHARGE — an OWNER REQUEST, not a
@@ -2907,6 +2923,17 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   // asserts it still reads `Width (pt)`.
   const line = single?.type === 'line' ? single : undefined
   const image = single?.type === 'image' ? single : undefined
+  // STORY 14.4 / AC1 (D-14.4.Q1: HIDE). The BINDING section holds no control
+  // and can never hold a value for a Line, a Rectangle, an Image or a Table:
+  // Go writes `component.Binding` at exactly one site, inside
+  // `if element.Type == template.ElementText`, so the bind-chip branch is
+  // unreachable for those kinds and hiding the section suppresses NO value.
+  // What it removes is an invitation to attempt something the engine refuses.
+  // A MULTI-SELECTION still shows it — there is no one kind to speak for, and
+  // its existing 'shown for one selected component' sentence is unchanged.
+  // The kind test reads the mirrored constant rather than a fourth spelling
+  // of `=== 'text'`.
+  const scalarBindable = single === undefined || SCALAR_BINDING_COMPONENT_TYPES.includes(single.type)
   const typographic = all((type) => type === 'text' || type === 'table')
   // FOUR segments for an all-text selection, THREE for anything carrying a
   // table. SegmentedProperty never sees component.type — the widening is a
@@ -2942,9 +2969,19 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
     {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onDeclareFamily={onDeclareFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={errorFor('fontFamily')} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('bold')} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('italic')} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('align')} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('valign')} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{!line && borderFields.map(draftFor)}{!line && <BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('borderEdges')} />}{line && borderProjected(line) && <p className="honest-note">This line carries a border in the document — the panel does not offer one, because a line is authored as a thickness and a colour. The stored border is unchanged and still paints. This note reports what the engine projects, not what the PDF draws.</p>}{draftFor(boxFillFieldFor(single?.type))}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
-    {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button><p className="honest-note">Table binding: {table.tableBind ?? 'Not set'} (display only)</p></PropertySection>}
-    <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>
-    <p className="honest-note">{types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Arbitrary CSS is not editable here.'}</p>
+    {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button></PropertySection>}
+    {scalarBindable && <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>}
+    {/* STORY 14.4 / AC3 (D-14.4.Q2(a)). A Table's binding used to be stated
+        THREE times in this panel — here, in the TABLE section above, and in the
+        ungated BINDING section — and was editable in NONE of them. The sole
+        editable site is the table editor's `Root collection` / `Row alias`
+        pair, which Story 14.7 keeps there. So the three became ONE, and the one
+        names where the value is actually changed. Option (b), a main-window
+        editor, was explicitly REFUSED: it would build new capability and
+        contradict 14.7's premise.
+        THE MULTI-SELECTION SENTENCE IS UNTOUCHED — a selection carrying a table
+        alongside other kinds has no single `tableBind` to state. */}
+    <p className="honest-note">{table ? <>Table binding: {table.tableBind ?? 'Not set'} — the panel does not offer it here, because a table's collection and row alias are edited in the table editor, under Configure columns. Table size is not offered either; table geometry is derived from columns. The stored value is unchanged. This note reports what the engine projects, not what the PDF draws.</> : types.has('table') ? 'Table size and binding are not editable here; table geometry is derived from columns.' : 'Only committed engine values are shown. Arbitrary CSS is not editable here.'}</p>
   </>
 }
 

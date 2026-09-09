@@ -547,6 +547,43 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...text, type: 'image' })).toBeUndefined()
   })
 
+  // STORY 14.4 / P3. THE SCALAR-BINDING KIND GATE, TESTED AS BEHAVIOUR.
+  //
+  // ⚠ WHY THE ROW ABOVE DOES NOT COVER IT. `response({ ...text, type: 'image' })`
+  // does reject — but it would reject with the binding guard DELETED, because
+  // that fixture also carries `textPaint`, and a non-text component carrying a
+  // text paint is refused by a different line entirely. Measured: deleting the
+  // guard left 1245 of 1246 tests passing, and the one failure was the mirror's
+  // `toMatch` — a claim about this file's WORDING, not about parseInbound's
+  // behaviour. A rule whose only witness is a regex over its own source text is
+  // not tested.
+  //
+  // So each case below differs from an ADMITTED sibling in the `binding` key
+  // and nothing else. That is what makes the rejection attributable to this
+  // rule rather than to any of the dozen others in `isCanvas`.
+  it('refuses a projected binding on every kind but text, and admits the bare component otherwise', () => {
+    const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
+    // A TABLE IS THE ONE KIND THAT MUST NOT BE `resizable` — `isCanvas` refuses
+    // a resizable table outright (its geometry is derived from its columns), so
+    // the flag is per-kind here rather than shared. Getting this wrong is how a
+    // "rejected" case can look like proof of a rule it never reached.
+    const box = (type: string) => ({ id: 'e1', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: type !== 'table', type })
+    for (const type of ['line', 'rect', 'image', 'table']) {
+      // NON-VACUITY, PER KIND: the same component without a binding is
+      // ADMITTED, so the rejection below is the binding key's doing and not a
+      // malformed fixture quietly failing some other guard.
+      expect(response(box(type)), `a bare ${type} component must be admitted`).toBeDefined()
+      expect(response({ ...box(type), binding: 'customer.name' }), `a ${type} component carrying a binding must be refused`).toBeUndefined()
+    }
+    // AND THE SYMMETRIC HALF. `text` is the one member of
+    // SCALAR_BINDING_COMPONENT_TYPES, so the identical addition must be
+    // ADMITTED there — otherwise a guard that refused every binding outright
+    // would pass every assertion above.
+    const textPaint = { overflow: false, truncated: false, lines: [] }
+    expect(response({ ...box('text'), textPaint })).toBeDefined()
+    expect(response({ ...box('text'), textPaint, binding: 'customer.name' })).toBeDefined()
+  })
+
   // admittedTextLines pulls the first component's paint lines out of a
   // parsed inbound, failing the test if anything on the way is missing.
   // It exists so the tight-leading cases can assert on VALUES: parseInbound

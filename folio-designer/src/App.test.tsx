@@ -2868,7 +2868,14 @@ describe('application shell', () => {
     await waitFor(() => expect(value).toHaveValue('newer literal'))
     fireEvent.click(screen.getByLabelText('table component e2'))
     expect(screen.queryByRole('textbox', { name: 'Width (pt)' })).not.toBeInTheDocument()
-    expect(screen.getByText('Table binding: transactions[] (display only)')).toBeInTheDocument()
+    // STORY 14.4 / AC3. UPDATED, NOT DELETED — this is the only coverage of
+    // that surface in this file. The value is still stated and still comes
+    // straight from the projection; what changed is that the statement now
+    // names WHERE it is edited, and that it is the ONLY one (the `(display
+    // only)` line and the ungated BINDING section both spoke for a table too).
+    const note = screen.getByText(/^Table binding: transactions\[\]/)
+    expect(note).toHaveTextContent('edited in the table editor, under Configure columns')
+    expect(screen.getByRole('button', { name: 'Configure columns' })).toBeInTheDocument()
   })
 })
 
