@@ -5905,3 +5905,56 @@ edit absent. Detecting that failure mode from the inside, and paying a finding f
 run than the finding cost.
 
 **Related:** [D-14.2.2], [D-14.2.1], [D-000.32], [D-000.34], DW-333, DW-336, DW-339.
+
+## D-14.3.1 - BACKFILL: 14.3's plan-gate rulings and its frozen-block amendment lived only inside the story file
+
+**Recorded 2026-09-09**, backfilled at Story 14.3's close, on the closer's finding that this log ended at
+[D-14.2.3] and carried no `D-14.3.x` at all.
+
+**Why this is a defect in the record rather than a formality.** Five rulings that bind later work existed only
+in one story file's Boundaries and Spec Change Log, plus a commit message. **This is exactly the shape
+[D-13.3.1] was backfilled for** - *a plan-gate ruling recorded only inside the story that acted on it*. A story
+file is read by the person working that story; the decision log is read by everyone after. A ruling that
+survives only in the former is one dispatch away from being re-litigated by an agent who cannot find it.
+
+**Q1 - the pre-existing 2px canvas paint floor is left alone, and re-owned as DW-345.** Route (b) of four.
+The ground is **not** a reading of AC2's padding clause: I argued that first and the engineering lead showed
+the argument does not hold, because the floor sits on the element carrying `cursor: move` and the pointer
+events, with a stated reason that a 1pt rule is too small a *target* - **the floor IS hit padding, implemented
+by inflating the box**, which is the thing AC2's next clause forbids. On a plain reading AC2 describes what is
+wrong with the shipped floor. The ruling stands on two other grounds: the canvas is architecturally the
+**approximate** representation ([D-13.4.1] - the exactness promise lives on the PDF and the Preview surface),
+and the floor is declared **twice** (`App.css:197` for every component on both axes, `:242` re-declaring it for
+lines), so changing it alters what every element draws at every zoom below 2.
+
+**Q3 - the hit pad goes `pointer-events: none` while a placement is armed**, keyed on the `.canvas-region-placing`
+class that already exists, so an enlarged hit region cannot swallow the band pointerup a placement needs. This
+follows the precedent at `App.css:140-141`, where placement echoes were made `pointer-events: none` for exactly
+this reason.
+
+**The comfortable hit size is 12px - the owner's ruling**, matching `.selection-handle`, not `.resize-handle`'s
+24px corner grab. The trade shown to the owner: an 11px-per-side pad makes overlap the common case, and overlap
+is what the determinism rule and the placement suppression both have to keep well-behaved.
+
+**It was 13px in code until the arithmetic accounted for the paint floor.** `hitPad` computed its shortfall
+against the **projected** size (1px) while the box draws at `max(2px, …)`, so the pad was added to an
+already-floored box. **The floor this story was told not to touch still reached into it through a side door** -
+worth remembering the next time something is left alone as out of scope.
+
+**The frozen Never clause on stacking order was narrowed by me, and only a human may do that.** It read *"never
+override the natural DOM stacking order to resolve overlaps"* - written about thin-vs-thin overlap, where
+determinism was already free, and over-reaching into pad-vs-neighbour-paint, a case the matrix had no row for
+and which needed exactly the arbitration the clause forbade. Narrowed to thin-vs-thin, two I/O rows added
+(including the complement, so the arbitration cannot be implemented as "the pad never wins anything"), and
+**patched forward with `review_loop_iteration` 0 - no loopback**. The loopback exists to stop code being built
+on a wrong intent; the intent was right and one clause over-reached, so reverting 728 verified lines would have
+burned verification already paid for and changed no conclusion.
+
+**Ratified after the fact: `isolation: isolate` on `.page-band`**, which is an Ask First item that landed
+without being asked. It is load-bearing rather than incidental - nothing on the chain up to `.page-surface`
+creates a stacking context, so a bare `z-index: -1` resolves in the **root** context and sinks the pad below
+the page background. The hazard checked before ratifying: `isolation` does **not** create a containing block
+for `position: fixed`, and `.page-band` carries no `transform`/`filter`/`contain`, so `.placement-ghost` is not
+trapped. (The `transform` that appears near that selector is on `.page-band > span`, the band label.)
+
+**Related:** [D-14.2.2], [D-13.4.1], [D-13.3.1], [D-000.9], DW-344, DW-345, DW-346, DW-347, DW-348.

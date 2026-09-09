@@ -8,6 +8,29 @@ review_loop_iteration: 0
 context: []
 ---
 
+## In plain terms (read this first if you just want the gist)
+
+*Non-normative — a summary for a reader who is not implementing this. The frozen Intent below governs
+implementation. Rewritten at close to describe what shipped.*
+
+Placing a component from the palette used to leave nothing selected, so the author had to hunt for the thing
+they had just made — and for a hairline rule that target was two pixels tall. Now whatever you place is
+immediately the selected thing, it holds the keyboard, and the inspector already shows its properties
+instead of the page settings. Thin components also gained a comfortable, completely invisible grab area, so
+a hairline rule can be picked up without pixel-hunting. Nothing drawn, saved, or sent to the rendering
+engine changed: the grab area is editor chrome and reaches neither the document nor the wire.
+
+Two things will look odd later and are deliberate. First, the invisible grab area sits *underneath* its
+neighbours. On top, a rule tucked under a heading would have stolen the heading's bottom edge — the story's
+own goal would have made everything next to a thin component harder to grab. Putting it underneath required
+making the page band its own stacking layer, and that switch is the half that makes the arbitration work at
+all. Second, the comfortable size is twelve pixels, by the owner's ruling. The code briefly said thirteen:
+the size was computed from the component's declared thickness while the canvas paints thin things at a
+minimum floor, so the arithmetic was off by that floor.
+
+The lesson worth keeping: deleting half of the placement behaviour used to leave the entire test suite
+passing. It no longer does.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
@@ -466,3 +489,85 @@ near lines 3700-3701: plain `diff` prints "Binary files differ" with zero change
 
 - Placement beats the pad, and the pad takes the pointer back afterwards.
   [`placed-component-selection.spec.ts:206`](../../folio-designer/e2e/placed-component-selection.spec.ts#L206)
+
+
+## Delivery Log
+
+### 2026-09-09 — done
+
+Baseline `af2cfbd`. Shipped in `f145b09` on `main`, one commit, six files.
+
+**What shipped.** A placed component becomes the sole selection and takes DOM focus, routed through the
+same `select()` a clicked component uses rather than a second selection path. The created id is derived by
+diffing the component-id set across the commit, because the protocol returns no created id. Both placement
+spellings are covered. Thin components carry a transparent hit pad on a pseudo-element, sized from the
+projection (never from the DOM, which the canvas-authority contract bans), zero once an axis already
+reaches the comfortable size.
+
+**Decisions applied, by ID.** D-12.4.1 (the `FieldSpec` padding prohibition is about a *document* property
+and does not reach an editor hit region — the spec says so to pre-empt the word collision). D-13.4.1 (the
+canvas is the approximate representation, which is why the pre-existing paint floor is left alone rather
+than fixed here). D-000.9 item 2, discharged not by prose but by the `.canvas-box` byte-identity assertion.
+D-12.A Fork 3 (selection and focus are discriminated, so two handlers that happen to agree cannot pass as
+one). D-000.32 and D-000.33 (unrun suites named; heavy suites are the epic-boundary gate). D-14.2.1
+(`diff -a` and `cmp` for every mutation proof on `App.tsx`, whose two NUL bytes make plain `diff` report
+"Binary files differ" with zero changed lines).
+
+**Triage.** One `intent_gap`, ruled and **patched forward — no loopback; `review_loop_iteration` stays 0**.
+Seven findings patched. Three deferred and registered by the coordinator as **DW-346** (`duplicateSelection`
+has the new id in hand and discards it), **DW-347** (the id diff degrades silently when more than one
+component appears) and **DW-348** (a test file asserts in a comment that the e2e suite runs in no workflow,
+which is no longer true). The remainder rejected.
+
+**What the review caught, and it was real.** All three step-04 review layers converged on an interaction
+regression: the transparent pad hit-tested *above* a neighbouring component's painted box and its resize
+handles, so a rule under a heading would steal the heading's bottom edge. A story whose stated purpose is
+making thin components easier to grab would have silently made everything adjacent to one harder to grab.
+The cause was a defect in the spec, not in the implementation — the frozen **Never** clause forbade
+overriding stacking order, a rule written about thin-vs-thin overlap that over-reached into
+pad-vs-a-neighbour's-paint, a case the I/O matrix never covered. A second lock compounded it: the
+byte-identity guard's declaration allowlist reddened the story's own test on `z-index`. The frozen block
+was amended by the human coordinator (never by an agent), narrowing the clause and adding two matrix rows —
+paint outranks a neighbour's pad, **and** the pad still wins over empty canvas, the complement being what
+stops the arbitration degrading into "the pad never wins anything". The enabling half of the fix is
+`isolation: isolate` on `.page-band`: a bare negative `z-index` resolves in the root stacking context and
+sinks the pad below the page background. It was ratified rather than assumed — `.page-band` creates no
+containing block for fixed positioning, so the placement ghost is not trapped by it.
+
+**The 12px is the owner's ruling, and it was 13px in code until the arithmetic was corrected.** The pad was
+computed from the projected size while the canvas draws thin components at a floored thickness, so the
+reachable extent overshot by the floor. Floored to the paint floor, the extent is now exactly 12px. The
+paint floor itself is left alone and re-owned as **DW-345**, which carries the collapse arithmetic: at zoom
+1 a 1pt and a 2pt rule both draw 2px, and at zoom 0.5 1pt, 2pt and 3pt all draw 2px, so the author cannot
+see a difference the PDF will show.
+
+**The story's real lesson.** Deleting `placeInBand`'s selection previously left the **whole suite green at
+1217/1217** — half of AC1 revertible with nothing noticing, on the second placement spelling, because every
+existing row placed on sheet one. It now reds. Re-measured at close rather than relayed: with that
+selection deleted the suite fails **1 file / 1 test of 1221** — `src/App.test.tsx > canvas sheet stack >
+selects and focuses a component placed on a LATER sheet, not only on sheet one`. `App.tsx` was restored
+from a byte-exact copy and `git status` confirmed clean afterwards. The related defect the same area hid:
+the focus move was a `setTimeout(…, 0)` that fired before a later sheet had mounted, dropped the miss
+silently and forever, and was invisible because `waitFor` retries the assertion and never the attempt. It
+is now keyed on the snapshot that mounts the element.
+
+**Gates, measured at `f145b09` with captured exit codes (`cmd > log 2>&1; echo $?`; the shell is zsh, where
+`${PIPESTATUS[0]}` is empty and silently wrong).** `npx vitest run` → 0, **73 files / 1221 tests / 0
+failures**. `npx tsc -b --force` → 0, empty output (`--force` is mandatory; `tsc -b` is incremental and can
+exit 0 having checked nothing). `npx oxlint` → 0, **exactly 4 `only-export-components` warnings, 0 errors**
+(`preview/pdf-viewer.tsx:17,18`; `App.tsx:4425,4432`). `npm run test:e2e:compile` → 0.
+
+**Suites that DID NOT RUN in this story, named per D-000.32:** the browser suite, the Go suites, the matrix
+legs, `npm run build` as a gate, the `verify:offline*` chain, and the font-host scans. These come due at the
+Epic 14 boundary gate, which is the owner's.
+
+**`e2e/placed-component-selection.spec.ts` (5 `test()` rows, counted at close) is COMPILED AND NOT
+EXECUTED.** `npm run test:e2e:compile` is `tsc -p tsconfig.e2e.json --noEmit` and nothing else: it proves
+the file typechecks. It is **not coverage**, and must not be described as coverage — of AC2's pointer
+geometry, of AC3's overlap determinism, or of the two arbitration rows — until a CI run log shows it
+executing. jsdom computes no layout and returns every rect as zeros, so no unit test in this story observes
+a pointer landing near-but-not-on a rule. That is the honest limit of what is proven here.
+
+**Also not re-derived at close:** the baseline test-name-set diff the Verification section asks for. It
+needs the suite run at `af2cfbd`, which needs a checkout or a worktree, and the closer is under a standing
+prohibition on all git state changes. Totals are reported instead, and a total is weaker than a name set.
