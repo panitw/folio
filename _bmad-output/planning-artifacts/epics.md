@@ -5331,7 +5331,7 @@ So that a table is configured in one place rather than in a dialog plus a hand-e
 
 **Given** every control in those two sections
 **When** each is placed
-**Then** it is the control already shipped, sending the command already registered — `table.headerHeight`, `table.altRowBackground`, and `table.headerStyle.<field>` over the closed set at `component_commands.go:2511` — so **the HEADER and CELLS sections add no field, no command and no projection**, and offer no second way to store a value the product can already store (D-12.4.1, D-14.4.Q2(a)). The **one** addition in this story is the BORDERS criterion below, ruled in by the owner on 2026-09-10; **no format field changes and no version increments** anywhere in the story
+**Then** it is the control already shipped, sending the command already registered — `table.headerHeight`, `table.altRowBackground`, and `table.headerStyle.<field>` over the closed set — the `tableHeaderStyleFields` declaration in `folio-go/component_commands.go`, named rather than numbered because the line moves; `:2511-2518` cited below is the ruling **comment** above it, not the set — — so **the HEADER and CELLS sections add no field, no command and no projection**, and offer no second way to store a value the product can already store (D-12.4.1, D-14.4.Q2(a)). The **one** addition in this story is the BORDERS criterion below, ruled in by the owner on 2026-09-10; **no format field changes and no version increments** anywhere in the story
 
 **Given** *Repeat on continuation pages*, which the design draws with a **REQUIRED** badge
 **When** it is shown
