@@ -5487,7 +5487,8 @@ refuse after the fact (UX-DR24)
 **Then** the table editor keeps **showing** each column's bound field as context, and the ruling this
 story records is where it is **edited** — the owner's instruction is that binding happens in the main
 window, so the editor is for structure (add, remove, reorder, width, align, footer aggregate) and the
-matrix's BOUND FIELD is display unless the owner rules otherwise
+matrix's BOUND FIELD is **display-only**. The owner ruled this on 2026-09-07 (D-14.10.1 in
+`epic-11-14-decision-log.md`); the clause is settled and is not an open question for this story
 
 **Given** a table column bound this way
 **When** it is undone

@@ -1733,6 +1733,119 @@ anchor in the original grounding report is SAMPLED until its own plan gate re-de
 
 ---
 
+### Re-grounding refresh — 2026-09-10 (fifth session, Story 14.9's close and 14.10's dispatch)
+
+*Fifth lead of this run. Re-grounded from this section and the numbered rulings below it — NOT re-derived
+from the spine, the ADRs or `epics.md`. Verified at HEAD **`8fb5b13`**, working tree **clean**
+(`git status --porcelain` empty), measured with `git rev-parse` in this turn.*
+
+**The opening `gitStatus` was stale for the fourth time this run, again by an entire epic.** It listed
+Story 13.2's working files — `viewer-navigation.ts`, `pdf-viewer.tsx`, `epic-13-context.md` — and a HEAD
+five commits back, the identical stale block the fourth lead reported. [D-14.8.1]'s rule is now behind four
+independent instances and should be treated as settled law rather than a caution.
+
+**Sources read, CLOSED:** `## Lead Grounding` in full including all four prior refreshes; `D-14.8.1`–`D-14.8.5`,
+`D-14.10.1`, `D-14.10.2` in full; the log's full heading index (203 entries); `sprint-status.yaml` rows for
+Epics 14 and 15; `epics.md` §14.10 verbatim (`:5449-5495`) and Epic 14's accessibility language swept across
+`:4821-5449`; `git log --oneline -12`; the commit messages of `40f3bfc` and `8fb5b13`. Code read directly and
+measured, not inherited: `App.css:415,448`; `App.tsx:271` (`selected`), `:1253` (`select`), `:1277`, `:1331`
+(`deleteSelection`), `:2585` (`onSelect={select}`), `:4979-5009` (the table paint);
+`canvas-authority-contract.test.ts:643-715,1078-1081`.
+
+**[D-14.10.1]'s stated dispatch precondition is UNMET, and I verified all three halves of it myself.** That
+entry says *"if 14.9's paint does not make a column addressable, 14.10's first criterion has nothing to
+select — that dependency is a dispatch precondition for 14.10, not a discovery for its builder."* Measured at
+`8fb5b13`:
+
+1. **`.canvas-table` carries `pointer-events: none`** (`App.css:415`), so a click anywhere inside a painted
+   table falls through to the component. Selection enters through exactly one seam — `onSelect={select}` on
+   `CanvasComponent` (`App.tsx:2585`), and `select` is called from exactly one line (`:1277`);
+   `grep -n "select("` over `App.tsx` returns that single line.
+2. **The paint carries no addressability.** Column headings and cells are plain `<span>`s (`App.tsx:5003`,
+   `:5009`) with a React `key` and nothing else — no `role`, no `tabIndex`, no `data-*`.
+3. **The selection model holds element ids only** — `const [selected, setSelected] = useState<ReadonlyArray<string>>([])`
+   (`App.tsx:271`), read at 33 sites in that file.
+
+**So 14.10 owns hit-testing and a change to the selection model.** That is a larger structural surface than
+the criteria's wording implies, and it is where the story's forks will come from.
+
+**Two facts that narrow it, both measured, and they should be in the dispatch rather than found at the plan gate.**
+
+- **No engine or projection change is needed for addressability.** The projection already carries a
+  per-column `id` — `App.tsx:5003` and `:5009` build their React keys from `column.id`. The hook a hit-test
+  needs already exists on the wire; only the DOM lacks it.
+- **Coordinate-based hit-testing is blocked at the contract, not merely inelegant.** The AD-17 scan's
+  `App.tsx` carve-out is a **source-text deletion of the `placementPoint` function body**
+  (`canvas-authority-contract.test.ts:1078-1081`), so any pointer-coordinate read elsewhere in `App.tsx` is a
+  scan violation, and `getBoundingClientRect` / `offset*` are banned outright. **The only legal shape is DOM
+  targeting** — restore `pointer-events` on the column spans, carry the column id as a `data-*` attribute, and
+  read it off the event target inside the existing `select` seam. This is the same class of constraint that
+  made 13.2's fit-width a contract question rather than an implementation one.
+
+**One hazard the selection-model change creates, named now so it is a guardrail and not an incident.**
+`deleteSelection` (`App.tsx:1331`) fires on the canvas component's `onDelete` and issues
+`deleteComponentCommand(selected[0])` whenever `selected.length === 1`. If a column identity is carried inside
+the `selected` array — a compound id such as `e8#c2` is the obvious way to avoid touching 33 read sites — then
+**pressing Delete on a selected column sends a `deleteComponent` command naming a column id.** Whatever shape
+14.10 chooses, the delete path must be proved to refuse or to no-op on a column selection, positively, with a
+test that fails if the guard is removed. `revokeTableEditor` and the extend-select branch in `select` (`:1253`)
+are the two other consumers that see the new value.
+
+**Epic 14 has no epic-wide accessibility floor, and I checked this rather than inheriting it.** [D-14.8.2]
+rests on *"Epic 14's accessibility floor is explicit"*, which is true **for 14.8**, because 14.7's own criteria
+pin the editor's roving grid (`epics.md:5239-5241`). Swept across the whole epic, every keyboard/assistive
+criterion is attached to a specific story — 14.1 (`:4907`), 14.5 (`:5063`), 14.6 (`:5133`), 14.7 (`:5239`),
+14.7b (`:5277`), 14.8 (`:5328`). **§14.10 contains no keyboard, `aria` or accessibility criterion of any kind.**
+So keyboard reachability of a column selection is **outside 14.10's fence as written**, and it is an owner
+call, not a lead ruling. This paragraph is [D-14.8.4] applied to myself: the floor was a paraphrase I was
+about to rule from, and its precondition did not fire for this story.
+
+**Two facts belong in that escalation, and neither is a scope argument.** First, [DW-385] — filed against
+14.9 — records that the canvas table's drawing is **entirely presentational**, so none of it reaches assistive
+technology. A keyboard-reachable column selection is therefore not a small addition to 14.10; it is **the
+first assistive-technology surface the canvas would have**, which is an epic-sized act arriving inside a
+story. Second, and pulling the other way: **AD-17's own `[ASSUMPTION]` clause names an accessibility floor at
+spine level and says the architecture paid for it.** Verbatim (`ARCHITECTURE-SPINE.md:369-372`): *"DOM and SVG
+over Canvas2D — chosen because EXPERIENCE's accessibility floor (keyboard reach, visible focus, accessible
+names) is far cheaper in DOM."* **The canvas is DOM specifically so that keyboard reach would be cheap, and it
+currently delivers none of it.** So the owner is not choosing whether to invent a commitment; they are
+choosing when to pay one the architecture already made and the canvas has not yet honoured. Neither fact
+settles the scope question — 14.10 still does not ask for it — and both belong in front of whoever does settle
+it. **The owner settled it on 2026-09-10: see [D-14.10.3].**
+
+**14.10's last criterion is probably free, and its honest limit should be stated rather than discovered** —
+the binding commits through the existing `updateTableColumnBinding` command unchanged (`table-column-command.ts:22`),
+and every command is one undo step already. This is [D-14.7.1]'s AC7 shape: assert it, state what it does not
+promise, build nothing.
+
+**A citation defect corrected here rather than left to rot.** The 2026-09-08 refresh cites the spine as
+`ARCHITECTURE-SPINE.md:361-372`, which does not resolve read repo-root-relative; the file is at
+`_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md`. The **line
+numbers are correct** and the quoted rule text is verbatim, which is exactly why the defect survived review —
+the quoted material checks out. Use the full path.
+
+**Carried forward, unclosed:** the Epic 14 boundary gate is unbooked and now carries five items, every one of
+which [D-14.10.2] requires be **re-measured at the gate, not quoted** — [DW-332], [DW-339], [DW-356], the
+asset-cache margin (54 against 64, worst case on the books 61), and [DW-383], the only one that is a coverage
+gap in the project's central reproducibility claim rather than a UI verification gap.
+
+**Closed since the last refresh, and retired here so a sixth lead does not re-raise them.** (1) 14.8's
+un-dispatchable criteria, amended at `5867bf0`/`f5ef015`. (2) **The two boundary gates the 2026-09-05 refresh
+recorded as "owed and unbooked" are both accounted for, and neither epic was advanced without one.** **Epic 17
+never owed a gate** — `sprint-status.yaml:646-651` records all six stories done with **zero** boundary-gate
+deferrals across all six specs, against a positive control of six in 12.5's spec; the same block records the
+honest residue rather than hiding it, namely that Epic 12's gate ran the matrix and Playwright at a HEAD
+already containing all of Epic 17's work, so Epic 17 is covered **incidentally** and its evidence is weaker
+than every other closed epic's ([D-000.29]). **Epic 16's gate RAN and concluded FAIL** ([D-000.19]) with three
+registered items, the third a hang rather than a slow test; closure was then held on a separate condition —
+Epic 16 closes once 16.11's guard exists, because closing over a guard vacuous about its own headline face
+would make the gate ceremonial ([D-000.12(4)], `sprint-status.yaml:634-638`) — and 16.11 is `done`, so the
+condition was met. `epic-16-retrospective` is `optional`, not owed. **The finding worth keeping is not that
+anything was wrong: it is that neither fact was in `## Lead Grounding`, so a lead re-grounding from this
+section alone re-raises a settled question.** That is [D-000.22]'s shape reaching the grounding section itself.
+
+---
+
 ## D-12.C — The loose regexp is a breach of a comment's promise, not a disagreement between peers
 
 **Story 12.2.** The builder held three tasks at `[HELD-B]` on one question: `setDocumentUTCOffset`
@@ -6699,3 +6812,136 @@ any element kind — and it is the only one of the five that is a coverage gap i
 reproducibility claim rather than a UI verification gap.
 
 **Related:** [D-14.8.5], [DW-332], [DW-339], [DW-356], [DW-383].
+
+## D-14.9.1 - BACKFILL: the display-paint test, the axis it replaced, and why the marker class is named for the property
+
+**Recorded 2026-09-10 as a backfill, by the fifth lead.** Story 14.9 shipped a ruling that generalises beyond
+its own story and this log carries no entry for it: `grep -c "D-14\.9"` returns **0**, exit 1, against a
+positive control of **15** for `D-14.8`. The rule itself is not lost — it is written into
+`canvas-authority-contract.test.ts` and machine-anchored there — but the log is the artefact written for
+someone who was not in the run, and a boundary reading of an AD is the highest-value thing this run produces.
+This is [D-000.22]'s shape (*an epic shipped without being written in the document builders read*) and
+[D-13.3.1]/[D-14.3.1]'s (*a plan-gate ruling recorded only inside the story*), both of which this run chose to
+backfill rather than shrug at.
+
+**The question.** Story 14.9 makes the canvas paint a string that **also appears in the PDF** — table header
+labels and a representative row, at the engine's column widths. Every string the canvas had painted by browser
+layout until then was chrome. Is painting a document string allowed under **AD-17**
+(`_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:361-372`,
+*"the canvas paints DOM and SVG, and gets **every** text metric and line break from the engine's measure API"*)?
+
+**The axis that was refused, and why it was a coincidence rather than a principle.** Both the builder and the
+orchestrator proposed the rule *chrome versus document text* — the canvas may paint what does not print.
+**That is an accident of the population, not a rule.** The reason every canvas string had been safe was never
+that it does not print; it is that **nothing depended on its measured extent**. A "chrome only" rule fails in
+both directions: it forbids something harmless (a document label whose measured width nobody reads) and
+permits something dangerous (a chrome string whose width drives a layout decision) the moment anyone writes
+the latter. AD-17's own **Prevents** clause names the harm as a canvas *"systematically wrong about where
+content lands, and therefore about which band it fits in"* — a harm about **authority over geometry**, not
+about which glyphs print.
+
+**Verdict — the three-condition display-paint test.** Text may be painted by the browser on the canvas **only**
+where all three hold:
+
+1. **The rectangle is the engine's.** Every coordinate and extent bounding the painted text comes from the
+   engine's projection. No browser measurement contributes to the box.
+2. **The browser makes no break decision.** Wrapping disabled (`white-space: pre`/`nowrap`); overflow clipped
+   or ellipsised **by CSS**, never re-flowed. A JavaScript truncation that measures the string or its box is
+   **not** condition-2 compliant.
+3. **Nothing flows back.** No quantity derived from the painted text — width, height, line count, overflow
+   state, scroll extent — reaches geometry, a page count, a band-fit decision, a command, or a projection field.
+
+**If all three hold the paint is display-only and AD-17 permits it, whether or not the string also prints. If
+any one fails, the text must arrive as pre-measured, pre-broken runs from the measure API.**
+
+**Why this is a scoped permission and not a waiver, which is the load-bearing half.** **Condition 3 is already
+machine-enforced, and by the same file that states the rule.** `canvas-authority-contract.test.ts` scans
+`src/**` and `e2e/**` for every route by which a browser-measured quantity could be **obtained at all** —
+`getBoundingClientRect`, `offset*`, `client*`, `scroll*`, `ResizeObserver`, `getComputedStyle`, `Range`.
+**A value that cannot be obtained cannot flow back.** And the exception is a **naming convention, not a
+carve-out in the scan**: unlike Story 8.4a's seam and Story 13.2's, nothing about `.canvas-display-paint`
+removes a single pattern from `App.tsx`, which the test proves by planting each measurement route inside a
+marked element and watching the scan wake (`:690-700`). The whole prohibition list stays live on the file
+carrying the exception. **That is the difference between a boundary reading and a permission slip, and it is
+why this ruling did not need to spend a guard.**
+
+**The marker class is `.canvas-display-paint`, and the name was ruled rather than left to the implementer.**
+Every element painting text under this exception carries it. The class is **also** the mechanism for condition
+2 — its `App.css` rule is `min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis`. It is
+named for the **property** (display-only paint) and **not** for the feature that first needed it, because a
+future author will not know to grep for a three-condition rule they have never heard of, but they **will** grep
+the class they are about to copy. `.canvas-table-header-label` would have said nothing about the rule it lives
+under. The naming requirement is itself machine-enforced: the test reads the real class spellings out of
+`App.css` and asserts none matches `/table|column|header|chip/` (`:661-671`).
+
+**Where it lives, so the entry is greppable from the test and the test from the entry.**
+- The rule, the refused axis and the residue: `folio-designer/src/canvas-authority-contract.test.ts:160-215`
+  (comment block).
+- The executable half: `:642-688`, `describe('the display-paint exception is marked, and its marker carries
+  condition 2 (Story 14.9)')` — the marker exists on both sides (a paint claiming it, and the CSS rule making
+  condition 2 true of it) and that rule still spells condition 2.
+- The scan stays whole on the marked file: `:689-700`.
+- The per-element pin over the rendered DOM: `folio-designer/src/canvas-table-paint.test.tsx`.
+- The paint sites: `App.tsx:4987`, `:4988`, `:5003`, `:5009`; the CSS rule in `App.css`.
+
+**Two hazards this run's catalogue caught inside the guard itself, both worth carrying.** The marker row was
+originally `expect(appTsx).toContain(marker)` — which **this file's own comment block already satisfies**, and
+which measured **green with the class stripped from all six paint sites**: *an instrument whose silence is its
+answer*, in the guard written to hold the ruling. It is now anchored on `className=`. And the class-property
+assertion reads the spellings **out of `App.css`** rather than from the test's own local literal four lines
+above, which could only have failed if someone edited the test's own string — *a tautology wearing an
+assertion's clothes*.
+
+**The bound, stated so a later use meets a trigger instead of re-arguing five consequences.** This ruling
+covers **display-only paint of text whose box the engine already fixed**. A later use that fails conditions 1
+or 2 **mechanically**, or where condition 3 is **asserted rather than scan-covered** — a new file, a new
+surface, or any relaxation of the prohibition list on the file carrying the paint — **is a NEW ruling and
+inherits nothing from this one.** The permitted residue is exactly what `epics.md` Story 5.13's AC already
+scopes: **a label may clip where the PDF wraps.** That is the allowed text-only inaccuracy; a geometry error
+never is.
+
+**Related:** [D-000.32], [D-14.7.4], [D-14.8.2], [DW-385].
+
+---
+
+## D-14.10.3 - OWNER DECISION: 14.10 ships mouse-only, and the canvas's accessibility is registered rather than absorbed
+
+**Decided by the OWNER on 2026-09-10, at 14.10's dispatch, before the story was written.** Story 14.10 makes a
+table column clickable so it can be bound from the main window. **Its acceptance criteria say nothing about the
+keyboard**, so as written a column is selectable with a mouse and by no other means. The question put to the
+owner was whether 14.10 should also make column selection keyboard-reachable.
+
+**Ruling: OUT OF SCOPE for 14.10, and REGISTERED.** 14.10 ships exactly the criteria it carries. The keyboard
+gap is filed as deferred work alongside [DW-385].
+
+**Why the question was put to the owner at all rather than ruled by the lead.** The fifth lead swept Epic 14
+and established that **there is no epic-wide accessibility floor**: every keyboard or assistive criterion in
+the epic is attached to a specific story — 14.1 (`epics.md:4907`), 14.5 (`:5063`), 14.6 (`:5133`), 14.7
+(`:5239`), 14.7b (`:5277`), 14.8 (`:5328`) — and **§14.10 contains none of any kind**. Widening a story past
+its written fence is an owner call by this run's standing rule, never a lead's. The lead reached that position
+by applying [D-14.8.4] to itself: *"Epic 14's accessibility floor is explicit"* was a paraphrase true only of
+14.8, and it was about to rule from it.
+
+**The two facts the owner was given, which pull opposite ways, and both of which are measured.**
+
+- **Against absorbing it into 14.10:** [DW-385] records that the canvas table's drawing is **entirely
+  presentational** — none of it reaches assistive technology. So a keyboard-reachable column selection is not a
+  small addition to a binding story; it would be **the first assistive-technology surface the canvas has ever
+  had**, an epic-sized act arriving inside a story that did not ask for it.
+- **For paying it:** **AD-17's own `[ASSUMPTION]` clause makes a spine-level accessibility commitment and says
+  the architecture already paid for it.** Verbatim (`ARCHITECTURE-SPINE.md:369-372`): *"DOM and SVG over
+  Canvas2D — chosen because EXPERIENCE's accessibility floor (keyboard reach, visible focus, accessible names)
+  is far cheaper in DOM."* **The canvas is DOM specifically so that keyboard reach would be cheap, and it
+  currently delivers none of it.** The owner was therefore not choosing whether to invent a commitment, but
+  **when to pay one already made**.
+
+**What this ruling does NOT do, stated so it is not read as more than it is.** It does not retire the
+commitment, does not find the canvas acceptable as it stands, and does not rule on where the work belongs. It
+scopes **one story**. The debt is real, is registered, and is now carried with AD-17's `[ASSUMPTION]` clause
+attached to it rather than as a bare UI nicety — which is a stronger register entry than [DW-385] alone was.
+
+**Consequence for the Epic 14 boundary gate.** The gate's item count is unchanged at five; this is not a sixth.
+[DW-356]'s Epic 14 accessibility item is where a canvas keyboard gap would be missed, and the deferral filed
+under this ruling names that adjacency explicitly.
+
+**Related:** [D-14.8.4], [D-14.10.1], [D-14.10.2], [DW-356], [DW-385].

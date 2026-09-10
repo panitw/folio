@@ -13345,3 +13345,43 @@ the next reader, and the whole point of this story is a canvas that shows the ta
 **How we'd know it was forgotten.** An author gives a table a footer aggregate, sees no footer on the canvas,
 and concludes the aggregate did not take — or sets `headerHeight: 0`, sees a header drawn, and concludes it
 will print.
+
+---
+
+### DW-387 - a table column can be selected only with a mouse, and the canvas has no keyboard reach at all
+
+- **source_spec:** `_bmad-output/planning-artifacts/epics.md` §Story 14.10; `folio-designer/src/App.tsx`
+- **Found by:** the fifth engineering lead, at 14.10's dispatch. **Owner:** unassigned. **Severity:** MEDIUM.
+  **Status:** OPEN. **Registered by OWNER DECISION** — see [D-14.10.3].
+
+Story 14.10 makes a table column clickable so it can be bound from the main window, and its acceptance
+criteria say nothing about the keyboard. So the column selection it introduces is reachable with a pointer and
+by no other means. **The owner was asked before the story was dispatched and ruled it out of 14.10's scope, to
+be registered here rather than absorbed** — 14.10 ships exactly the criteria it carries.
+
+**Why this is MEDIUM and not LOW, which is the part a later reader needs.** This is not one control missing a
+`tabIndex`. Two measured facts set the size of it:
+
+1. **[DW-385]: the canvas table's drawing is entirely presentational** — none of it reaches assistive
+   technology. A keyboard-reachable column selection would be **the first assistive-technology surface the
+   canvas has ever had**, not an increment on an existing one.
+2. **AD-17's `[ASSUMPTION]` clause makes a spine-level commitment that the canvas has not honoured.** Verbatim
+   (`_bmad-output/planning-artifacts/architecture/architecture-folio-2026-08-23/ARCHITECTURE-SPINE.md:369-372`):
+   *"DOM and SVG over Canvas2D — chosen because EXPERIENCE's accessibility floor (keyboard reach, visible
+   focus, accessible names) is far cheaper in DOM."* **The canvas is DOM specifically so that keyboard reach
+   would be cheap.** The architecture paid for this floor in its choice of rendering technology and the canvas
+   delivers none of it.
+
+So the debt is not "a nicety 14.10 skipped": it is a commitment the architecture already bought and no story
+has yet spent. That framing is the reason this entry exists separately from [DW-385], which records the
+*absence*; this one records the *unpaid commitment* and names its source.
+
+**How we'd know it was forgotten.** An author who cannot use a pointer can bind every other value in the
+product and cannot bind a table column — in a story whose entire premise is that binding lives in one place.
+There is no error, no refusal and no message; the column simply cannot be reached.
+
+**Adjacency, so it is not missed twice.** [DW-356]'s Epic 14 accessibility item is the boundary-gate entry
+where a canvas keyboard gap would otherwise be looked for. This entry does **not** add a sixth item to the
+Epic 14 boundary gate — see [D-14.10.2] for the five that gate carries.
+
+**Related:** [D-14.10.3], [DW-356], [DW-385].

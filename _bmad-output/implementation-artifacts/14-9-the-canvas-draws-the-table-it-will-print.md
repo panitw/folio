@@ -10,28 +10,24 @@ context: []
 
 # Story 14.9: The canvas draws the table it will print
 
-**In plain terms.** Put a table on the canvas today and you get a small box with the word "Table" in it.
-You cannot see how many columns it has, what they are called, what data they are bound to, or how wide
-they are. To learn any of that you have to open the table editor, and to see it laid out you have to
-render a preview. This story makes the canvas draw the table instead: a strip along the top naming the
-collection it is bound to and how many columns it has, the real column headings underneath, and one
-example row below that.
+**In plain terms.** *(Rewritten at close; the frozen Intent below governs implementation.)*
 
-The example row shows each column's binding rather than a value — `{{date}}`, `{{debit}}` — because a
-canvas shows you the shape of the document, not its contents, and because one row is enough to show
-structure where thirty-four would just be noise. Columns are drawn at the widths they were given and
-aligned the way they will print, so a money column set to the right reads as right-aligned before you
-render anything.
+A table on the canvas used to be a small box with the word "Table" in it. It now draws itself: a strip
+along the top naming the collection it is bound to and its column count, the real column headings
+beneath, and one example row showing what each column is bound to, not a value. Columns sit at the
+widths they were given, aligned the way they will print. A table with no columns says so instead of an
+empty frame, and a column with nothing bound to it reads as unset rather than blank.
 
-Two cases get said out loud rather than drawn as an empty frame. A table with no columns yet says so, so
-that it does not look like something failed. And a column whose binding has not been set reads as
-unbound rather than as a blank cell, so an unfinished table looks unfinished.
+Two things changed after the plan was approved. Alignment needed two answers per column, not one, because
+the heading row and the body row work it out differently. And the plan would have had an over-long column
+heading refuse to draw the table at all — which, proved by running it, would have permanently blanked the
+designer for a document that prints fine. That was amended: a long heading is cut short and still drawn,
+so the column count never disagrees with the headings under it.
 
-The rule this story had to be careful about is that the canvas is not allowed to work out the shape of
-anything for itself — every position and size comes from the engine, so that the picture on screen cannot
-drift from the document that prints. This is the first time the canvas will draw a piece of text that
-actually appears in the PDF, so the conditions under which that is safe are written down here and in the
-test that enforces them, not just followed once.
+What this story deliberately did not do: a column still cannot be clicked, no footer row is drawn, and to
+a screen reader the whole drawing is silent. All three are recorded as follow-up work. Two limits worth
+naming: no browser ran this drawing in the story's own checks, and the project's strongest
+reproducibility checks cannot cover it at all — the picture on the canvas never reaches a PDF file.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -946,3 +942,138 @@ Stops are grouped by concern. Every line number was measured at the final tree; 
 
 - The probe table returns to eight; clipping is asserted in the same function.
   [`canvas_body_text_bounds_test.go:1`](../../folio-go/canvas_body_text_bounds_test.go#L1)
+
+## Delivery Log
+
+### 2026-09-10 — done
+
+Baseline `40f3bfc`. Shipped as `8fb5b13` — *"Draw the table on the canvas, and clip rather than blank
+it"*, **13 paths**. **It was already pushed when this close began** (`HEAD` and `origin/main` both at
+`8fb5b13`), so nothing was amended and no commit was made here; the closer's edits to this file are handed
+to the orchestrator to commit. `git show --stat` carries only this story's files: this spec, the tracker,
+the register, four designer sources/tests and five Go sources/tests. The span `40f3bfc..HEAD` holds **one
+other commit**, `2c1dd33` — **record-only**, a 57-line append to `epic-11-14-decision-log.md` carrying the
+owner's 14.10 BOUND FIELD ruling. It touches **no source file** and is not this story's churn, but it is
+named here so a later reader diffing the span is not surprised by it. Subject line matches the project's
+imperative convention and the required `Co-Authored-By:` trailer is present. On `main`, tree clean at
+start; nothing ahead of upstream. This file's frontmatter already read `status: 'done'` in the commit —
+the build loop sets it there and the tracker lags, which is this project's normal shape — so the only
+status hop left is the tracker's, and that is the orchestrator's to apply. **The tree is deliberately
+NOT clean at finish**: it holds this file's record edits and one **concurrent, unrelated** planning edit
+described below, which the closer neither made nor touched.
+
+**What shipped.** The canvas projection gained a per-column member — id, label, width in millipoints,
+binding, and **two** resolved alignments — populated beside the existing `tableBind` assignment, and both
+canvas paint sites replaced the word `Table` with a real drawing: chip (glyph, bound collection in the
+bind accent, column count), the header labels at the engine's declared track widths through the one
+existing zoom mapping, and one representative row of binding placeholders. The browser-side guard was
+widened **first**, because the component clause is a subset check and a Go key the browser does not list
+terminates the worker with no respawn.
+
+**Two changes to the plan, both substantive.** The alignment field became **two** fields per column, each
+obtained by *calling* the renderer's own cascade rather than mirroring it — which forced a
+behaviour-preserving extraction of the last cascade step that had been open-coded at four render sites
+(the fifth hit, the editor's deliberately different cascade, was correctly left alone). And the frozen
+intent contradicted itself: one clause forbade newly refusing a document that ships today while two matrix
+rows had an over-long column label **abort** the projection. Proved by execution, not argument — the
+golden fixture with a 600-byte label parses and renders a real 64,123-byte PDF, and its canvas projection
+aborted, which by this spec's own text blanks the designer permanently. Amended to **clip on a rune
+boundary and still paint the column**; omitting the column would have made the chip's count disagree with
+the headers beneath it, which is being systematically wrong about structure — the exact harm the governing
+ruling exists to prevent.
+
+**Triage — and the record does not support a tally, which is said here rather than invented.** This story
+file carries the review *outcomes* (Spec Change Log 1, its KEEP list, and Deviations 1 and 2, both
+ratified) but **no enumerated finding-by-finding triage**, no severity split and no rejection count, and
+this closer neither found one elsewhere nor reconstructed one. What the record does support: **one
+`intent_gap` finding at step-04**, which moved `review_loop_iteration` 0 → 1 and was **patched forward,
+not looped back** — re-deriving would have discarded verification already paid for and changed no
+conclusion; **one review finding** described below; and **3 deferred** — DW-384, DW-385, DW-386. The
+register was checked for integrity rather than assumed: 390 `### DW-` headings, four **pre-existing**
+duplicated numbers (DW-100, DW-162, DW-238, DW-284) and a maximum of DW-386, so 390 − 4 = 386 reconciles,
+and this story's commit minted **no** duplicate. All three new entries are contiguous, attributed to
+14.9's builder, and OPEN.
+
+**What review caught, and it is the better finding of the two.** The requirement that every element
+painting an engine-owned string carry the display-paint marker was asserted by a **whole-file substring
+check** — which the contract file's own comment block already satisfied. Measured green with the class
+**stripped from all six paint sites**: an instrument whose silence was its answer. It is now anchored on
+`className=` at the file level and pinned **per element over the rendered DOM**, and the test carries its
+own note saying so, so the next author cannot re-introduce the tautology by accident.
+
+**The measured gates**, run by the orchestrator at this tree, from the directories the spec names:
+
+- `npx vitest run` (from `folio-designer/`) — exit 0, **77 files / 1409 tests / 0 failures**. Baseline
+  76 / 1383 → **+1 file, +26 tests**, and every one is accounted for **by name**: 23 new `it(` in
+  `canvas-table-paint.test.tsx` and 3 in `canvas-authority-contract.test.ts`. Verified as a **multiset** —
+  no parameterised (`.each`) multiplication in either file, and **no vitest test was removed**; the only
+  two designer test files in the diff are those two.
+- `npx tsc -b --force` — exit 0, **0 bytes** of output. Run with `--force`, so it typechecked rather than
+  short-circuiting on a build-info cache.
+- `npx oxlint` — exit 0, 0 errors. Warning **SET** unchanged, recorded as a per-file set and never an
+  integer (D-14.7.2): `src/App.tsx` ×2, `src/preview/pdf-viewer.tsx` ×2, `src/segmented-control.tsx` ×3,
+  all `react(only-export-components)`. No new key, despite `App.tsx` gaining 115 lines.
+- `npm run test:e2e:compile` — exit 0.
+- `go test -count=1 -skip "^TestCorpusMeetsP6ExerciseFloors$" ./...` (from `folio-go/`, CI's invocation
+  verbatim) — exit 0, **15 `ok`**. No Go test **count** is quoted, because `./...` does not print one; the
+  new `canvas_table_column_projection_test.go` joins an existing package, so the package tally is
+  unchanged rather than improved.
+
+**The untagged Go suite ran**, on CI's exact invocation, because this story changes Go. The known-red
+`TestCorpusMeetsP6ExerciseFloors` stayed **quarantined rather than silenced**; the filter was neither
+widened nor de-anchored.
+
+**Suites that deliberately did not run** (D-000.32): **the browser suite, the matrix legs, `npm run build`
+as a gate, the `verify:offline*` chain, and the font-host scans.** The matrix legs are `//go:build
+matrix`-tagged and `./...` does not reach them. **"The Go suites" is deliberately absent from that list** —
+including it would be a false absence claim.
+
+**⚠ CI is green on `8fb5b13` across both workflows — and that is not evidence this drawing is correct.**
+Attributed to CI, not to the local cadence: `folio-designer`, `folio-go`, `folio-go-known-red`,
+`folio-go-matrix`, `folio-designer-e2e`, `lint` and `hashmatrix` all passed. But **this story added no
+Playwright spec and changed nothing under `e2e/`**, so `folio-designer-e2e`'s green says only that nothing
+else regressed — **no browser has ever executed this table drawing.** And **nothing byte-level covers it,
+by construction rather than by oversight**: the matrix legs, `hashmatrix` and the cross-target
+byte-identity workflow all render **PDF bytes**, and the canvas projection is never serialized into a
+golden and never enters a PDF. Adding a fixture would not change that. What does cover it: the new
+component-level wire record (Go bytes ↔ the browser guard's own text, closing DW-74), the behavioural Go
+tests over the projection, the clipping probes, and the designer unit tests over the painted DOM.
+
+**Manual checks, re-run over `40f3bfc..HEAD` rather than carried from the spec.** Nothing under
+`folio-go/internal/template/` (0 paths), nothing under `fixtures/` or `_bmad-output/planning-artifacts/`
+(0 paths), and **no version constant moved** — the three `version` hits in the diff are an import of the
+protocol-version symbol into a test, its use in a test envelope, and a `"version": "1.0"` inside a test
+fixture literal, none of them a constant's value. The spec's remaining manual check — *"`git log
+--oneline -1` still reports `06c279a`"* — was written for the **implementer's** dirty tree and is
+superseded by the orchestrator's commit; it is not a failed check. All **17** file:line anchors in
+`## Suggested Review Order` were re-resolved at this tree and every one still lands on what it claims.
+
+**⚠ Output-tree and record state, checked rather than assumed.** `_bmad-output/` carries **no debris from
+this story** — no orphaned review prompt, no reverted-implementation patch, no unresolved result file, no
+slug-collision duplicate of this spec. The one patch-shaped file in the tree,
+`8-4j-attempted-implementation.patch`, is **preserved evidence**: it is cited by `epic-16-decision-log.md`
+and by Story 8.4j's own spec, and was left alone. Every `done` key under `epic-14` resolves to a spec file
+on disk.
+
+`epic-14-context.md` is **flagged stale by mtime only, and clear by hunk scope** — reported, not deleted
+and not recompiled. It was written at `06c279a` with a well-formed header, and the most recent
+planning-artifact *commit* (`096aa23`, one mockup) is an **ancestor** of it. But **during this close an
+uncommitted edit landed in `_bmad-output/planning-artifacts/epics.md`**, made by neither the builder nor
+the closer: a two-line change settling §Story 14.10's BOUND FIELD clause from *"display unless the owner
+rules otherwise"* to **display-only**, citing [D-14.10.1]. Its mtime is now newer than the cache, so a
+naive newer-than test will call the cache stale at 14.10's dispatch. **It falsifies no bullet in the
+cache**: the hunk sits inside §Story 14.10, not in Epic 14's shared preamble, and the cache's three
+14.10 bullets are about the 14.9 → 14.10 dependency and the 14.4 ↔ 14.10 distinction — none of which the
+hunk touches, and none of which asserts anything about the BOUND FIELD's editability. Recompiling before
+14.10 is a judgement for the orchestrator, not a correction this close owes.
+
+**⚠ ESCALATED, NOT FIXED: this log has no `D-14.9.x` entry at all.** The decision log jumps `D-14.8.5` →
+`D-14.10.1`. Story 14.9's plan-gate rulings — in particular **R1's three-condition display-paint test**,
+which was written *as a bounded precedent for future authors* — and the **orchestrator's post-approval
+amendment to a frozen block**, which only a human may make, exist **only inside this story file and one
+commit message**. That is the exact defect [D-14.3.1] was backfilled for at Story 14.3's close, and
+[D-13.3.1] before it: *a plan-gate ruling recorded only inside the story that acted on it*. The one
+mitigation, and it is real, is that R1's substance was deliberately written into
+`canvas-authority-contract.test.ts`'s own comment block, which is where a future candidate for the
+exception will actually look — so the **precedent** is findable even though the **ruling** is not. The
+closer does not own this log and did not write to it; the backfill is handed to the orchestrator.
