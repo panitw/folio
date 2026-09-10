@@ -7,7 +7,7 @@ import type { TableHeaderStyleField } from './table-style-command'
 type Field = 'header' | 'width' | 'align'
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onBind: (id: string, field: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
 
 // STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
@@ -32,6 +32,14 @@ type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boole
 // anywhere. Deriving the offset makes a widened control impossible to get wrong
 // here, and `TableEditor.test.tsx` asserts every address in the dialog is
 // unique so the property is checked rather than merely intended.
+//
+// ⚠ STORY 14.10 EMPTIED ADDRESS 4 AND MOVED NOTHING. `CELL.bound` was the Row
+// field input, which [D-14.10.1] removed: binding is edited in the main window
+// now. These are CONSTANTS, not an occupancy count, so address 4 is simply a
+// hole in every row — designed behaviour under the paragraph above, and
+// `moveFocus`'s `enabled()` walks past it exactly as it walks past a disabled
+// cell. `CELL.bound` is kept rather than deleted so the addresses either side
+// of it keep the numbers four pinned traversal walks were written against.
 const ALIGN_CELL = 6
 const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, width: 5, align: ALIGN_CELL, aggregate: ALIGN_CELL + alignSegments.length, footerOf: ALIGN_CELL + alignSegments.length + 1, footerFormat: ALIGN_CELL + alignSegments.length + 2 }
 const cellCount = CELL.footerFormat + 1
@@ -70,7 +78,7 @@ const authored = (thousandths: number): string => String(thousandths / 1000)
 // is a third thing again.
 const resolvedNote = (value: string, whenEmpty: string): string => value === '' ? whenEmpty : `Using: ${value}`
 
-export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onConfigure, onBind, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
+export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
   const table = projection.table
   const columns = table.columns
   // THE MATRIX OPENS ON THE FIRST EDITABLE CELL, NOT ON CELL ZERO. Cell zero is
@@ -465,7 +473,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
-      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Sample data suggests field names; the engine validates every saved binding.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
+      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Structure only: columns, widths, alignment and footer totals. A column’s bound field is set in the main window — select the column on the canvas, then pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
       {/* THE COLLECTION AND THE ROW ALIAS STAY EDITABLE HERE. `DW-351` records
           this as the ONLY site in the product where a table's collection can be
           changed, and Story 14.6's context bar now routes authors to it, so the
@@ -476,8 +484,15 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
 
           role="group" IS LOAD-BEARING: an aria-label on a plain div with NO role
           is dropped by the accessibility tree, so this section named nothing to
-          a screen reader while carrying an aria-label that read as if it did. */}
-      <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'This is the only place a table’s collection and row alias can be changed. Candidate values come from the loaded sample; the engine validates every saved binding.' : 'This is the only place a table’s collection and row alias can be changed. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
+          a screen reader while carrying an aria-label that read as if it did.
+
+          ⚠ STORY 14.10 SCOPED THIS CLAIM AND DID NOT REVOKE IT. [D-14.10.1]
+          moved the PER-COLUMN BOUND FIELD out of this dialog and left the
+          COLLECTION and the ROW ALIAS exactly where they are, so "the only site
+          in the product where a table's collection can be changed" is still
+          true and DW-351 still stands. What is no longer true anywhere in this
+          file is that a column's field is edited here. */}
+      <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'This is the only place a table’s collection and row alias can be changed. Candidate collections come from the loaded sample; the engine validates every saved binding.' : 'This is the only place a table’s collection and row alias can be changed. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
       {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button ref={emptyAdd} type="button" className="file-button" disabled={busy} onClick={() => dispatchOnce(() => onAdd(0))}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={COLUMN_COUNT} className="table-matrix">
         <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BOUND FIELD · row scope</span><span role="columnheader">WIDTH</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
         {columns.map((column, index) => <div role="row" aria-rowindex={index + 2} aria-selected={active.row === index} className="matrix-row" key={column.id}>
@@ -489,7 +504,25 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               become unreachable. A disabled end states WHICH end it is. */}
           <span role="gridcell" aria-colindex={1} className="matrix-rail"><span className="matrix-ordinal">{index + 1}</span><span className="matrix-actions"><button {...matrixCell(index, CELL.moveEarlier)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} earlier`} title={index === 0 ? `Column ${index + 1} is already first` : `Move column ${index + 1} earlier`} disabled={busy || index === 0} onClick={() => dispatchOnce(() => onMove(column.id, index - 1))}>↑</button><button {...matrixCell(index, CELL.moveLater)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} later`} title={index === columns.length - 1 ? `Column ${index + 1} is already last` : `Move column ${index + 1} later`} disabled={busy || index === columns.length - 1} onClick={() => dispatchOnce(() => onMove(column.id, index + 1))}>↓</button><button {...matrixCell(index, CELL.remove)} type="button" className="matrix-affordance" aria-label={`Remove column ${index + 1}`} title={`Remove column ${index + 1}`} disabled={busy} onClick={() => dispatchOnce(() => onRemove(column.id))}>×</button></span></span>
           <span role="gridcell" aria-colindex={2}><input {...matrixCell(index, CELL.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onBlur={(event) => { if (!busy && event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
-          <span role="gridcell" aria-colindex={3} className="matrix-bound"><input {...matrixCell(index, CELL.bound)} aria-label={`Row field for column ${index + 1}`} list={`table-field-candidates-${index}`} disabled={busy || !column.rowFieldEditable} aria-describedby={!column.rowFieldEditable ? `binding-display-${index}` : undefined} defaultValue={column.rowField} onBlur={(event) => { const field = event.currentTarget.value; if (!busy && column.rowFieldEditable && field && field !== column.rowField) onBind(column.id, field) }} /><output id={`binding-display-${index}`} aria-label={`Binding for column ${index + 1}`}>{column.binding}</output><datalist id={`table-field-candidates-${index}`}>{candidates.filter((candidate) => candidate.collection === projection.table.collection).map((candidate) => <option key={candidate.field} value={candidate.field} />)}</datalist></span>
+          {/* STORY 14.10 / [D-14.10.1] — BOUND FIELD IS DISPLAY-ONLY, AND THE
+              REMOVAL IS THE POINT RATHER THAN A SIDE EFFECT.
+              This cell used to carry an `<input list=…>` — the ONE value in the
+              product edited somewhere other than the main window, and the one
+              thing `TableEditor.dc.html` never drew: the design draws BOUND
+              FIELD as a dense binding chip with no input border, no chevron and
+              muted ink, visibly unlike every editable neighbour in the same row.
+              The shipped input was the thing that departed from the design.
+              A column's field is now bound where every other binding is made:
+              select the column on the canvas, then pick a path in the DATA tab.
+              This editor is structure — add, remove, reorder, width, align,
+              footer aggregate — plus the table's collection and row alias, which
+              [D-14.10.1] explicitly leaves editable here.
+              ⚠ THE `<output>` STAYS, AND SO DOES ITS ADDRESS IN THE LATTICE'S
+              ARITHMETIC. `CELL.bound = 4` is a CONSTANT, not a count of
+              occupants, so address 4 is simply a hole now and `moveFocus`'s
+              `enabled()` already treats an absent cell exactly like a disabled
+              one. Nothing else moved. */}
+          <span role="gridcell" aria-colindex={3} className="matrix-bound"><output id={`binding-display-${index}`} aria-label={`Binding for column ${index + 1}`}>{column.binding}</output></span>
           {/* THE UNIT IS SHOWN BESIDE THE NUMBER because the columnheader is
               `WIDTH`, as the design spells it, and a bare number in a design
               tool is ambiguous. It is `pt` and not `mm`: D-14.2.Q3 settled the

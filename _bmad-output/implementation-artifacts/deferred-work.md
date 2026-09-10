@@ -13493,3 +13493,169 @@ between the two functions, uses a browser measurement in it because the code aro
 scan that exists to prevent exactly that stays green. The failure is silent by construction.
 
 **Related:** [D-14.9.1], [DW-382].
+
+---
+
+### DW-390 - `rowFieldEditable` survives on the wire with zero production readers, held there by the test that stops it being deleted
+
+- **source_spec:** `folio-go/table_columns_projection.go`; `folio-designer/src/engine-protocol.ts`
+- **Found by:** Story 14.10. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+[D-14.10.1] removed `rowFieldEditable`'s only production reader — the table editor's Row field input. The
+field must nevertheless **keep arriving**: `engine-protocol.ts:639` validates the projection with
+`hasExactKeys`, so dropping it from the wire is fatal at the protocol boundary, not merely untidy. Story 14.10
+therefore pinned its continued arrival with an assertion whose failure message names [D-14.10.1].
+
+**Why that is a stable state and not a fixed one.** A wire member whose only reader is *the test that stops it
+being deleted* will outlive everyone who remembers why it is there. The pin is doing its job — it converts a
+silent breakage into an explained one — but it is holding a field alive rather than resolving it. Retiring it
+means moving **both sides together**: the Go projection stops emitting it and `hasExactKeys` stops requiring
+it, in one change, or the protocol breaks in whichever direction goes first.
+
+**How we'd know it was forgotten.** Someone greps for `rowFieldEditable`, finds a projection field, a protocol
+key and exactly one test, concludes the test is the stale thing, deletes it — and the next projection change
+removes the field with nothing left to object.
+
+**Related:** [D-14.10.1], [D-14.10.6].
+
+---
+
+### DW-391 - Q4b relocated CAP-13's authoring leg but did not fully preserve it
+
+- **source_spec:** `folio-designer/e2e/browser-native-roundtrip.spec.ts`;
+  `folio-designer/e2e/table-column-binding.spec.ts`
+- **Found by:** Story 14.10's builder, reporting against its own story's owner ruling.
+  **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+**The owner ruling ([D-14.10.6], option 4) was chosen partly on the ground that it *relocates* the "authored
+through the browser's own commands" leg rather than deleting it. Measured after implementation, that premise is
+weaker than it was stated.** The golden arm of CAP-13 now asserts `commands: []` — it loads a prepared document
+rather than authoring one — and the replacement spec (`table-column-binding.spec.ts`) binds a column **without
+saving, rendering, or comparing bytes**. So **no test now authors a full golden document through the command
+path end to end.** The two halves each cover their own concern and neither covers the join.
+
+**This is registered by the builder against its own story's ruling, which is the behaviour to keep.** The ruling
+is not withdrawn — its failure-attribution argument stands and is why it was chosen — but the record must say
+what it actually bought, not what it was expected to buy.
+
+**One leg specifically checked and NOT lost:** the image-asset path is still covered end to end by
+`e2e/image-asset.spec.ts`, verified at three sites rather than assumed.
+
+**A fact that materially strengthens what CAP-13 does still prove**, and which was not known when the ruling was
+made: because CAP-13 now loads `fixtures/statement-1/input.folio`, its three renders — browser, native, and the
+repeat — all produce **76,744 bytes / `114df1d6…`**, which **is the project's attested golden digest for
+`statement-1`**, pinned in `folio-go/byte_neutrality_test.go:231` and re-attested by Stories 7.1, 7.3 and 15.1.
+Before this story CAP-13 rendered an ad-hoc inline document of 32,428 bytes with no relation to the corpus. So
+byte identity is now **anchored to the golden corpus** instead of floating free. That is a strictly stronger
+claim on the render side, and it is the reason this entry is MEDIUM rather than HIGH.
+
+**How we'd know it was forgotten.** A regression in the command path that only manifests in emitted bytes —
+exactly what CAP-13 was built to catch — would now pass both tests: the golden arm never exercises the commands,
+and the binding spec never looks at bytes.
+
+**Related:** [D-14.10.6], [DW-383].
+
+---
+
+### DW-392 - `tableSampleCandidates`' 50-candidate slice can now tell an author a genuine row field "is not a row field"
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.10. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The 50-candidate slice **predates Story 14.10.** What 14.10 changed is its job: [D-14.10.5] (Q2) made
+`tableSampleCandidates` the **single source of truth** for row-scope membership, so the same list now (a) gates
+which fields are pickable and (b) **authors the refusal sentence** for everything it omits.
+
+**A truncation that was harmless as a suggestion list is a false statement as an authority.** In its old role
+the slice fed a datalist, where an incomplete list of suggestions costs the author nothing. Past **50
+(collection, field) pairs**, the panel now says a genuine row field *is not a row field* — stating a falsehood
+**before the engine gets the chance to accept it**, which is precisely the harm UX-DR24's "say why rather than
+letting the engine refuse after the fact" was meant to prevent, inverted.
+
+**There is no truncation signal to fall back on.** Measured: `grep` for `candidatesTruncated` returns **0**,
+against a positive control of **2** for `TABLE ONLY`. Nothing anywhere tells the author the list was cut.
+
+**How we'd know it was forgotten.** Only on a wide document — a collection with many fields, or many
+collections — where an author is told a field they can see in their own data does not exist as a row field. The
+smaller a test fixture, the more certainly this passes.
+
+**Related:** [D-000.25], [D-14.10.5].
+
+---
+
+### DW-393 - `sample-data.ts`'s comment still cites a control Story 14.10 deleted
+
+- **source_spec:** `folio-designer/src/sample-data.ts`
+- **Found by:** Story 14.10. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+`sample-data.ts:24` describes its output as feeding the Table Editor's per-column **"Row field" datalist**.
+AC5 removed that control. The comment now explains the code by pointing at something that no longer exists.
+
+**Left unedited deliberately, and that is the correct outcome rather than an oversight.** `sample-data.ts` is
+outside Story 14.10's named files and [D-14.10.5] (Q2) fenced the story out of it explicitly — the ruling's
+whole point was that the shared parser is not touched. Fixing a comment is not a reason to cross a fence that
+was drawn on purpose; [D-000.28]'s stale-assertion shape is real, and so is the rule against opportunistic
+edits outside a story's named files.
+
+**How we'd know it was forgotten.** A reader trying to understand why `array()` suppresses row-relative paths
+follows the comment to a datalist, finds no datalist, and cannot tell whether the code or the comment is the
+stale one.
+
+**Related:** [D-000.28], [D-14.10.5].
+
+---
+
+### DW-394 - with a column selected, the DATA panel never says what the column is currently bound to
+
+- **source_spec:** `folio-designer/src/DataPanel.tsx`
+- **Found by:** Story 14.10. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+The panel's `Current engine binding:` line is fed from `selectedComponent?.binding`. Under [D-14.10.5] (Q1) the
+selected **component** in column mode is the **table**, so with a column selected that line shows the table's
+binding or nothing at all — never the column's.
+
+**Why this matters more than a missing label.** The author is offered a set of fields to bind **without being
+told what is being replaced.** And the one control that did show this — the table editor's Row field input,
+which displayed the column's current binding as its value — is the control [D-14.10.1] removed. So the story
+that moved binding into the main window moved it there **minus the one fact the old surface conveyed.**
+
+The `<output id={binding-display-N}>` in the editor still shows it, so the information exists in the product;
+it is absent from the surface where binding now happens.
+
+**How we'd know it was forgotten.** An author rebinding a column cannot see the current value at the moment of
+choosing its replacement, and discovers what they overwrote only by undoing.
+
+**Related:** [D-14.10.1], [D-14.10.5], [UX-DR24].
+
+---
+
+### DW-395 - a Story 6.7 evidence artefact is regenerated by a test Story 14.10 now owns, and its filename misattributes it
+
+- **source_spec:** `_bmad-output/implementation-artifacts/evidence/story-6.7-roundtrip-manifest.json`
+- **Found by:** the orchestrator, committing Story 14.10. **Owner:** unassigned. **Severity:** LOW.
+  **Status:** OPEN.
+
+**Every run of `e2e/browser-native-roundtrip.spec.ts` rewrites this tracked file**, which is named for Story
+6.7. After [D-14.10.6] rewrote that spec to load `fixtures/statement-1/input.folio` instead of authoring its
+own document, the manifest's contents changed substantially — **46 insertions, 503 deletions** — because it now
+records a different document. Its recorded digests moved from 32,428 bytes to **76,744 bytes / `114df1d6…`**.
+
+**This is not damage, and the new content is stronger than the old:** 76,744 / `114df1d6…` is the project's
+attested golden digest for `statement-1`, so the manifest now records browser, native and repeat renders all
+agreeing with the golden corpus, where before it recorded an ad-hoc document unrelated to it.
+
+**The defect is attribution, not content.** A file named `story-6.7-…` is now written by a test whose behaviour
+Story 14.10 defines, and a reader auditing Story 6.7's evidence will find a manifest describing a document
+Story 6.7 never attested. Either the file belongs to the spec that regenerates it and should be named for it,
+or it is a per-run output and does not belong in version control at all — that choice is the work, and it is
+not Story 14.10's to make.
+
+**One thing that was NOT verified and is stated as unverified:** the manifest's content *appears* deterministic
+— hashes, fixed inputs, platform/arch/node, no timestamps or run ids — but **nobody snapshotted it before the
+first run**, so determinism is an inference from reading it, not a measurement. If it is in fact
+non-deterministic, it will produce a spurious dirty file on every run for every future story.
+
+**How we'd know it was forgotten.** Silently: a future story's commit sweeps up a rewritten manifest under a
+name that attributes it to Story 6.7, and the audit trail for 6.7 quietly describes work it never did.
+
+**Related:** [D-14.10.6], [DW-391].

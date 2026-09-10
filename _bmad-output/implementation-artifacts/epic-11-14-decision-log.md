@@ -7175,3 +7175,43 @@ covering the thing this entire escalation was about — *a fixture more complete
 precondition is a guard that cannot see the defect* ([D-14.8.4]).
 
 **Related:** [D-000.17], [D-14.7.1], [D-14.8.2], [D-14.8.4], [D-14.10.1], [D-14.10.5], [DW-383].
+
+
+---
+
+## D-14.10.7 - I accept an oxlint baseline move: a lint warning bought a guard that cannot go vacuous
+
+**Decided 2026-09-10, at Story 14.10's close.** The per-file oxlint **SET** — recorded as a set and never as an
+integer, per [D-14.7.2] — moved for the first time since Epic 13:
+
+| | baseline `c209c74` | at 14.10 |
+|---|---|---|
+| `src/App.tsx` | ×2 | **×3** |
+| `src/preview/pdf-viewer.tsx` | ×2 | ×2 |
+| `src/segmented-control.tsx` | ×3 | ×3 |
+
+All eight are the same rule, `react(only-export-components)`. Verified independently by the orchestrator at the
+final tree: `npx oxlint` exit **0**, eight occurrences, the SET exactly as above.
+
+**What bought it.** [D-14.10.5] (Q2) requires that the DATA panel's pickable set be **exactly**
+`tableSampleCandidates`' output, *"asserted against a fixture so the two cannot drift"* — explicitly not "the
+panel filters similarly". Satisfying that literally means the test must compare against **the function's real
+return value**, which means the function must be exported from `App.tsx`, which is what the rule warns about.
+
+**Why I accept it rather than route around it.** The alternative that keeps the SET frozen is a test comparing
+against a **hand-copied list** of expected candidates — and a hand-copied expectation is *a guard that cannot
+fail* the moment the real function diverges from the copy, which is the first entry in this run's defect
+catalogue and precisely the drift Q2's ruling was written to prevent. **A warning in a category already
+present eight times over is a smaller cost than a guard that silently stops guarding.** The trade is knowing,
+not accidental.
+
+**Why it is recorded rather than absorbed.** A recorded baseline moved. [D-14.7.2] exists because an integer
+hides a substitution — three warnings becoming three different warnings reads as "unchanged" — and the same
+logic condemns a silent set change. **The builder reported the move itself rather than letting it pass**, which
+is the behaviour that makes the baseline worth keeping at all.
+
+**The honest residue.** The clean resolution is to move `tableSampleCandidates` into its own module, where
+exporting it warns about nothing. That is a file-boundary change outside Story 14.10's named files and outside
+its fence; it is not deferred work so much as the obvious shape of whatever next touches that function.
+
+**Related:** [D-14.7.2], [D-14.10.5].

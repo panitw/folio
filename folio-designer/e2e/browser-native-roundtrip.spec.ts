@@ -4,18 +4,39 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const sample = Buffer.from(`{
-  "customer": {"name": "Ada Lovelace"},
-  "account": {"number": "001-9"},
-  "period": {"from": "2026-08-01", "to": "2026-08-29"},
-  "transactions": [
-    {"date":"2026-08-01","description": "Opening balance — สวัสดี 世界", "debitDisplay":"", "creditDisplay":"1,250.10", "balanceDisplay":"1,250.10", "amount": 1250.10},
-    {"date":"2026-08-29","description": "Service charge — 支払い", "debitDisplay":"480.33", "creditDisplay":"", "balanceDisplay":"769.77", "amount": 480.33}
-  ]
-}\n`)
-const params = Buffer.from(`{\n  "reportDate": "2026-08-29",\n  "generatedDate": "2026-08-29",\n  "documentDate": "2026-08-29T00:00:00Z"\n}\n`)
 const root = path.resolve(import.meta.dirname, '../..')
 const goRoot = path.join(root, 'folio-go')
+// STORY 14.10 / Q4b — CAP-13 NOW AUTHORS FROM A LOADED DOCUMENT.
+//
+// This test used to TYPE its statement into the designer: place a text, set a
+// font, fill Y, fill the value, place a table, fill a collection, add five
+// columns, fill five row fields, fill five headers, set a footer aggregate. Its
+// byte-identity claim — the most trusted number in the project — was therefore
+// permanently coupled to first-run designer UI, and 14.10 removes one of the
+// controls that path drove (the Row field input, [D-14.10.1]). Rewriting those
+// keystrokes would have coupled it to the NEXT UI instead.
+//
+// The claim itself is unchanged and nothing is lost: what the browser SAVES is
+// still asserted byte-identical to what its own engine serialized, to what it
+// sent to render, and to what the native CLI renders. What moved out is the
+// authoring leg — *"a document authored through the browser's own commands
+// round-trips"* — which is now `e2e/table-column-binding.spec.ts`'s subject, so
+// a red HERE means reproducibility broke and a red THERE means the UI moved.
+// That is the only arm that fixes failure ATTRIBUTION, which is what a misread
+// of exactly this signal cost in DW-383.
+//
+// ⚠ THE FIXTURE IS READ-ONLY AND ITS PRECONDITION IS ASSERTED, NOT ASSUMED.
+// `fixtures/statement-1/input.folio` carries the logo asset, the account
+// framing, the generated-date/page footer AND a five-column table with every
+// column bound — which is exactly what `assertCustomerStatementFacts` in
+// `folio-go/browser_roundtrip_witness_test.go` reads out of the Go-owned model.
+// `openPreparedStatement` re-asserts the five bound columns through the shipped
+// dialog on every run: a fixture that stopped matching the precondition is a
+// guard that cannot see the defect ([D-14.8.4]).
+const fixtures = path.join(root, 'fixtures/statement-1')
+const template = readFileSync(path.join(fixtures, 'input.folio'))
+const sample = readFileSync(path.join(fixtures, 'data.json'))
+const params = readFileSync(path.join(fixtures, 'params.json'))
 
 type CapturedRequest = Readonly<{ sessionId: string; operation: string; requestId: string; command?: number[]; render?: Readonly<{ template: number[]; data: number[]; params: number[] }> }>
 type Captured = Readonly<{ requests: ReadonlyArray<CapturedRequest>; responses: ReadonlyArray<string>; serializations: ReadonlyArray<number[]>; renders: ReadonlyArray<number[]>; failures: ReadonlyArray<string> }>
@@ -173,110 +194,41 @@ async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']
   await waitForRevisionAdvance(page, beforeValue)
 }
 
-// A 1x1 opaque grey PNG: the smallest picture this library will accept
-// (it refuses transparency), so the witness embeds a real asset without
-// carrying a fixture file around.
-const statementLogoBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAADklEQVR4nGJqAAQAAP//AIYAg0yeIEsAAAAASUVORK5CYII='
-
-async function authorStatementFraming(page: Page): Promise<void> {
-  const header = page.getByRole('region', { name: 'Page Header', exact: true })
-  const content = page.getByRole('region', { name: 'Content', exact: true })
-  const footer = page.getByRole('region', { name: 'Page Footer', exact: true })
-  await page.getByRole('button', { name: 'Place Image' }).click()
-  await header.press('Enter')
-  const logo = header.getByRole('button', { name: /image component/ })
-  await expect(logo).toHaveCount(1)
-  // A placed image box starts empty, so the statement's logo is a file this
-  // session actually chooses — through the same fallback <input type=file>
-  // tier this witness runs in. That is what puts an embedded asset in the
-  // saved bytes for the native half to find.
-  await logo.click()
-  await openTab(page, 'PROPERTIES')
+// STORY 14.10 / Q4b — THE PREPARED DOCUMENT, OPENED THROUGH THE SHIPPED FILE
+// TIER RATHER THAN TYPED.
+//
+// This is the whole of what replaced ~90 lines of keystrokes. It uses the same
+// `readFileSync` + `setFiles` idiom eleven other specs already use, and it
+// re-proves the fixture's precondition on every run: five columns, EVERY ONE
+// BOUND. That second half is not decoration — CAP-13 exists to cover the
+// statement the escalation was about, and a fixture that quietly lost its table
+// bindings would leave this test green while covering nothing ([D-14.8.4]).
+async function openPreparedStatement(page: Page): Promise<void> {
   const chooser = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: 'Choose image…' }).click()
-  await (await chooser).setFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(statementLogoBase64, 'base64') })
-  await expect(logo.locator('img.canvas-image-paint')).toBeVisible()
-  await placeStatementText(page, header, 'CUSTOMER ACCOUNT STATEMENT', 30)
-  await placeStatementText(page, content, 'Customer: {{customer.name}}', 30)
-  await placeStatementText(page, content, 'Account: {{account.number}}', 60)
-  await placeStatementText(page, content, 'Statement period: {{period.from}} to {{period.to}}', 90)
-  await placeStatementText(page, footer, 'Confidential — generated {{params.generatedDate}} / report {{params.reportDate}}', 0)
-  await placeStatementText(page, footer, 'Page {{page}} of {{pages}}', 12)
-}
-
-async function authorTableWithFooter(page: Page, content: ReturnType<Page['getByRole']>): Promise<void> {
-  await page.getByRole('button', { name: 'Place Table' }).click()
-  await content.press('Enter')
-  const table = content.getByRole('button', { name: /table component/ }).last()
-  await table.click()
+  await page.getByRole('button', { name: 'Open local template' }).click()
+  await (await chooser).setFiles({ name: 'statement-1.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement-1.folio', { timeout: 12_000 })
+  // The Go-owned facts `assertCustomerStatementFacts` will read, seen first
+  // through the app's own canvas.
+  await expect(page.getByRole('button', { name: /image component e1/ })).toBeVisible({ timeout: 12_000 })
+  await expect(page.getByRole('button', { name: /table component e8/ })).toBeVisible()
+  // THE PRECONDITION, ASSERTED THROUGH THE SHIPPED DIALOG. `Binding for column
+  // N` is the `<output>` [D-14.10.1] kept — the editor still SHOWS each
+  // column's bound field, it just no longer lets you edit it there.
+  await page.getByRole('button', { name: /table component e8/ }).click()
   await openTab(page, 'PROPERTIES')
-  const yField = page.getByRole('textbox', { name: 'Y (pt)' })
-  await yField.fill('120')
-  await yField.press('Enter')
-  await setFontFamily(page)
   await page.getByRole('button', { name: 'Configure columns' }).click()
   const dialog = page.getByRole('dialog', { name: 'Table Editor' })
-  // A datalist input has the browser's `combobox` accessibility role.
-  const collection = dialog.getByRole('combobox', { name: 'Root collection' })
-  const beforeCollection = await revision(page)
-  await collection.fill('transactions[]', { timeout: 12_000 })
-  // TableEditor commits its normal, user-facing scope field on focus exit.
-  // Tab both supplies that real interaction and avoids racing a synthetic blur
-  // with the worker's busy-state transition.
-  await collection.press('Tab')
-  await waitForRevisionAdvance(page, beforeCollection)
-  await expect(dialog.getByRole('combobox', { name: 'Root collection' })).toHaveValue('transactions[]', { timeout: 12_000 })
-  await dialog.getByRole('button', { name: 'Add column' }).click()
   await expect(dialog.getByRole('grid', { name: 'Table columns' })).toBeVisible({ timeout: 12_000 })
-  const field1 = dialog.getByRole('combobox', { name: 'Row field for column 1' })
-  const beforeFirstField = await revision(page)
-  await field1.fill('date', { timeout: 12_000 })
-  await field1.blur()
-  await waitForRevisionAdvance(page, beforeFirstField)
-  // STORY 14.7 RESEQUENCED THIS LOOP AND WEAKENED NOTHING. `Add after` left the
-  // row: there is now ONE `Add column` control below the grid and it APPENDS,
-  // which is the same column in the same position for a loop that was already
-  // adding them left to right. Every field, every header and the footer below
-  // are authored exactly as before, and each still waits on the engine's own
-  // revision rather than on a timeout.
-  for (const [column, rowField] of ['description', 'debitDisplay', 'creditDisplay', 'balanceDisplay'].entries()) {
-    const index = column + 1
-    const beforeColumn = await revision(page)
-    await dialog.getByRole('button', { name: 'Add column' }).click()
-    await waitForRevisionAdvance(page, beforeColumn)
-    const field = dialog.getByRole('combobox', { name: `Row field for column ${index + 1}` })
-    const beforeField = await revision(page)
-    await field.fill(rowField, { timeout: 12_000 })
-    await field.blur()
-    await waitForRevisionAdvance(page, beforeField)
+  await expect(dialog.getByRole('grid', { name: 'Table columns' })).toHaveAttribute('aria-rowcount', '6')
+  for (const index of [1, 2, 3, 4, 5]) {
+    await expect(dialog.getByLabel(`Binding for column ${index}`), `fixture column ${index} must still be bound for CAP-13 to cover what it claims`).not.toBeEmpty()
   }
-  const headers = ['Date', 'Description', 'Debit', 'Credit', 'Balance']
-  for (const [index, header] of headers.entries()) {
-    const input = dialog.getByRole('textbox', { name: `Header for column ${index + 1}` })
-    const beforeHeader = await revision(page)
-    await input.fill(header)
-    await input.blur()
-    await waitForRevisionAdvance(page, beforeHeader)
-  }
-  // THE FOOTER SOURCE IS REVEALED BY THE AGGREGATE THAT NEEDS IT, so the order
-  // here is now load-bearing rather than incidental: the box does not exist
-  // until `sum` is committed and the panel re-projects. Asserted before it is
-  // filled, so a reveal that stopped happening fails HERE rather than as a
-  // confusing fill timeout further down.
-  const beforeFooter = await revision(page)
-  await dialog.getByRole('combobox', { name: 'Footer aggregate for column 5' }).selectOption('sum')
-  await waitForRevisionAdvance(page, beforeFooter)
-  const footerSource = dialog.getByRole('textbox', { name: 'Footer source for column 5' })
-  await expect(footerSource).toBeVisible({ timeout: 12_000 })
-  const beforeFooterSource = await revision(page)
-  await footerSource.fill('transactions.amount', { timeout: 12_000 })
-  await footerSource.blur()
-  await waitForRevisionAdvance(page, beforeFooterSource)
-  // `Done`, NEVER `Cancel` (Story 14.7b). This helper has just authored five
-  // columns and a footer aggregate, and `Cancel` would undo every one of them —
-  // and still pass as a rename while destroying the only end-to-end proof that
-  // authoring reaches the engine.
+  // AC5 — the editor offers NO control to edit a bound field, here in a real
+  // browser as well as in the unit suite.
+  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(dialog).toHaveCount(0)
 }
 
 async function authorAlternateReport(page: Page): Promise<void> {
@@ -284,7 +236,7 @@ async function authorAlternateReport(page: Page): Promise<void> {
   const content = page.getByRole('region', { name: 'Content', exact: true })
   const footer = page.getByRole('region', { name: 'Page Footer', exact: true })
   await placeStatementText(page, header, 'ACCOUNT NOTICE', 30)
-  await placeStatementText(page, footer, 'Archive copy — {{params.reportDate}}', 0)
+  await placeStatementText(page, footer, 'Archive copy — {{params.generatedDate}}', 0)
   await page.getByRole('button', { name: 'Place Rectangle' }).click()
   await content.press('Enter')
   await expect(content.getByRole('button', { name: /rect component/ })).toHaveCount(1)
@@ -383,15 +335,24 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   const goldenStartup = await captured(goldenPage)
   expect(goldenStartup.requests.map(({ operation }) => operation)).toEqual(['initialize', 'serialize'])
   expect(await goldenPage.getByRole('button', { name: /component/ }).count()).toBe(0)
+  // ⚠ THE TEMPLATE FIRST, THE SAMPLE SECOND, AND THE ORDER IS LOAD-BEARING.
+  // `open()` calls `clearSampleData()` — a sample belongs to the document that
+  // was on screen when it was chosen — so loading the fixture after the sample
+  // silently drops it and Preview falls back to STAND-IN data, which is not an
+  // exact production PDF and never reaches `EXACT LOCAL PRODUCTION PDF`.
+  await openPreparedStatement(goldenPage)
   await loadSample(goldenPage)
-  const goldenContent = goldenPage.getByRole('region', { name: 'Content', exact: true })
-  await authorStatementFraming(goldenPage)
-  await bindTextToCustomer(goldenPage, goldenContent)
-  await authorTableWithFooter(goldenPage, goldenContent)
-  const golden = await savePreviewAndCapture(goldenPage, 'Untitled template.folio', output, 'golden')
+  const golden = await savePreviewAndCapture(goldenPage, 'statement-1.folio', output, 'golden')
   const goldenSession = golden.requests
-  expect(goldenSession.filter(({ operation, command }) => operation === 'command' && command).length).toBeGreaterThanOrEqual(8)
-  expect(goldenSession.filter(({ operation }) => operation === 'load' || operation === 'initialize').map(({ operation }) => operation)).toEqual(['initialize'])
+  // STORY 14.10 / Q4b — THE GOLDEN DOCUMENT ARRIVES WHOLE, so this session
+  // issues NO document command at all. It was `>= 8` while the statement was
+  // typed in; asserting ZERO is the stronger claim and is what makes the
+  // byte-identity result attributable to reproducibility rather than to the
+  // designer's controls.
+  expect(goldenSession.filter(({ operation, command }) => operation === 'command' && command).map(({ command }) => new TextDecoder().decode(new Uint8Array(command!)))).toEqual([])
+  // ONE session, ONE engine, and the document reached it by `load` — the leg
+  // this rewrite added, asserted rather than implied.
+  expect(goldenSession.filter(({ operation }) => operation === 'load' || operation === 'initialize').map(({ operation }) => operation)).toEqual(['initialize', 'load'])
   await goldenContext.close()
 
   const alternateContext = await browser.newContext()

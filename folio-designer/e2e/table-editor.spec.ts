@@ -42,8 +42,10 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(page.getByRole('status', { name: 'Column summary' })).toContainText('1 column · 0 aggregates')
   const header = page.getByRole('textbox', { name: 'Header for column 1' })
   await header.focus()
-	await page.keyboard.press('ArrowRight')
-	await expect(page.getByRole('combobox', { name: 'Row field for column 1' })).toBeFocused()
+	// STORY 14.10 DELETED EXACTLY ONE HOP HERE, as transcription (Q4a).
+	// [D-14.10.1] made BOUND FIELD display-only, so `CELL.bound` is a hole and
+	// ArrowRight from the header lands on the width. Same form, same exact
+	// accessible names, one cell fewer.
 	await page.keyboard.press('ArrowRight')
 	await expect(page.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toBeFocused()
 	// THE ALIGNMENT CONTROL IS THREE REACHABLE SEGMENTS, not one select: each

@@ -498,7 +498,7 @@ development_status:
   14-7b-the-table-editor-s-cancel-discards-what-it-counted: done
   14-8-the-table-editor-carries-the-header-cell-and-border-sections: done
   14-9-the-canvas-draws-the-table-it-will-print: done
-  14-10-a-table-column-is-bound-from-the-main-window: backlog
+  14-10-a-table-column-is-bound-from-the-main-window: review
   epic-14-retrospective: optional
 
   # Epic 15 is the release blocker set, and 15.1 was URGENT rather than merely first.

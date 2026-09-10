@@ -28,7 +28,31 @@ type RowShape = Readonly<{ pickable: boolean; dimmed: boolean; marker?: string; 
 // What the panel still never does is pre-judge whether a SCALAR path will yield
 // a scalar at runtime. That is the binder's call; a second copy of it here would
 // drift the moment the runtime data differed from the sample.
-export type BindingErrorScope = Readonly<{ sample: SampleData; componentID: string; segments: ReadonlyArray<string>; message: string }>
+// STORY 14.10 WIDENED THIS BY TWO OPTIONAL MEMBERS, and they are optional
+// because a COLUMN refusal is scoped by different facts than a scalar one. A
+// scalar bind is identified by the component and the picked PATH; a column bind
+// has no path at all — a row-scope leaf carries no `segments` — so it is
+// identified by the column and the row-relative FIELD. Re-narrowing on the
+// wrong pair is how a refusal ends up rendered beside a pick that did not
+// cause it.
+export type BindingErrorScope = Readonly<{ sample: SampleData; componentID: string; segments: ReadonlyArray<string>; message: string; columnId?: string; field?: string }>
+
+// STORY 14.10 — WHAT THE PANEL NEEDS TO OFFER A TABLE COLUMN ITS ROW FIELDS,
+// AND IT IS ONE SET RATHER THAN A SECOND DERIVATION.
+//
+// `rowFields` IS `tableSampleCandidates`' OWN ANSWER, threaded in from App.tsx
+// (Q2(a)). The panel cannot derive it: a row-scope leaf carries no `segments`,
+// so the row-relative path the engine wants is not on the node. And it must not
+// derive it — `tableSampleCandidates` already builds the collection key
+// byte-identically to the canvas's `tableBind`, and that agreement with the
+// engine is shipped and exercised. A second derivation would owe a proof that
+// the two agree.
+//
+// ⚠ ONE SET, BOTH CONSUMERS. Pickability is `rowFields.has(node)` and AC4's
+// refusal reason is stated exactly when that is false. Computing the two from
+// different sets is how a panel comes to say "outside row scope" about a path
+// it is also offering (D-000.25's shape).
+export type ColumnBindScope = Readonly<{ tableId: string; columnId: string; label: string; collection: string; rowFields: ReadonlyMap<SampleNode, string> }>
 
 // The engine's own discovered parameter namespace, projected by the host from
 // `parameter-references` plus the Preview parameter document. It is a DIFFERENT
@@ -42,12 +66,27 @@ export type RuntimeParameters = Readonly<{ status: 'pending' | 'ready' | 'failed
 // and spelled `Rectangle` for `rect` because the abbreviation is not a word.
 const kindNoun: Readonly<Record<CanvasComponentType, string>> = { text: 'Text', image: 'Image', table: 'Table', line: 'Line', rect: 'Rectangle' }
 
-export function DataPanel({ sample, error, busy, available, selectedComponentId, selectedComponentType, selectedBinding, bindingError, bindingBusy, runtimeParameters, onLoad, onConnect }: Readonly<{ sample?: SampleData; error?: string; busy: boolean; available: boolean; selectedComponentId?: string; selectedComponentType?: CanvasComponentType; selectedBinding?: string; bindingError?: BindingErrorScope; bindingBusy?: boolean; runtimeParameters?: RuntimeParameters; onLoad: () => void; onConnect?: (segments: ReadonlyArray<string>) => void }>) {
+export function DataPanel({ sample, error, busy, available, selectedComponentId, selectedComponentType, selectedBinding, bindingError, bindingBusy, runtimeParameters, columnScope, onLoad, onConnect, onConnectColumn }: Readonly<{ sample?: SampleData; error?: string; busy: boolean; available: boolean; selectedComponentId?: string; selectedComponentType?: CanvasComponentType; selectedBinding?: string; bindingError?: BindingErrorScope; bindingBusy?: boolean; runtimeParameters?: RuntimeParameters; columnScope?: ColumnBindScope; onLoad: () => void; onConnect?: (segments: ReadonlyArray<string>) => void; onConnectColumn?: (field: string) => void }>) {
   const action = sample ? 'Replace sample JSON' : 'Load sample JSON'
   const [pickedState, setPickedState] = useState<Readonly<{ sample: SampleData; node: SampleNode }>>()
   const picked = pickedState && pickedState.sample === sample ? pickedState.node : undefined
   const candidate = picked?.segments
-  const currentBindingError = bindingError && sample === bindingError.sample && selectedComponentId === bindingError.componentID && candidate && sameSegments(candidate, bindingError.segments) ? bindingError.message : undefined
+  // The row-relative field the picked node stands for, or undefined when no
+  // column is selected. It is read out of the threaded set, never recomputed.
+  const pickedColumnField = picked && columnScope ? columnScope.rowFields.get(picked) : undefined
+  // ⚠ NARROWED ON BOTH IDS, BECAUSE THAT IS THE KEY THE SELECTION ITSELF IS
+  // KEYED ON. App.tsx:311-313 states it outright — "a bare column id is not
+  // unique across tables, and a column id that outlives its table would resolve
+  // against whichever table happened to reuse the spelling" — and a refusal
+  // narrowed on the column id alone contradicts the state shape it is reading.
+  // `bindPickedColumn` records the owning table in `componentID`, so the table
+  // half is already on the record and only had to be asked for. Without it a
+  // refusal raised against one table's column `eN` renders beside a DIFFERENT
+  // table's column `eN` the moment the author selects it — the scalar arm has
+  // always compared its component, and this arm now compares its table.
+  const currentBindingError = bindingError && sample === bindingError.sample && (columnScope
+    ? bindingError.componentID === columnScope.tableId && bindingError.columnId === columnScope.columnId && bindingError.field !== undefined && bindingError.field === pickedColumnField
+    : selectedComponentId === bindingError.componentID && candidate && sameSegments(candidate, bindingError.segments)) ? bindingError.message : undefined
   // THE COMPONENT-KIND GATE, INHERITED FROM STORY 14.4 AND NOT RE-DERIVED. It
   // fails CLOSED on an unknown kind — the id is passed from the selection
   // unconditionally while the kind comes from the projection, so an absent
@@ -59,7 +98,20 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
   // DW-352: a Line's refusal is read up front rather than after a round trip.
   // DW-353: a Table is not told "unavailable"; a table legally binds a
   // collection, just not here, so the bar names where.
-  const context = selectedComponentId === undefined
+  // STORY 14.10 — A SELECTED COLUMN GETS ITS OWN SENTENCE, AHEAD OF THE
+  // COMPONENT ARMS. The owning table is still the component selection, so
+  // without this the bar would read "Table selected · a table binds its
+  // collection in the table editor" while the author is looking at a column
+  // they just clicked. That sentence stays TRUE and stays SHIPPED for a table
+  // with no column selected — [D-14.10.1] leaves the COLLECTION editable there,
+  // and only the per-column bound field moved.
+  const columnBindable = columnScope !== undefined && columnScope.collection !== ''
+  const accented = columnScope ? columnBindable : bindableKind
+  const context = columnScope
+    ? columnBindable
+      ? `Column ${columnScope.label} selected · binding to a row field of ${columnScope.collection}`
+      : `Column ${columnScope.label} selected · its table is bound to no collection, so it has no row fields to offer.`
+    : selectedComponentId === undefined
     ? 'No single component selected · select one component, then pick a path.'
     : selectedComponentType === undefined
       ? 'The selected component is not in the current projection · no path can be bound to it.'
@@ -79,7 +131,20 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
     // accent, so setting it before the dispatch is decided paints a row as
     // bound when the command was withheld — a refused kind, no selection, a
     // bind already in flight, or no `onConnect` at all. Decide first, then mark.
-    if (!sample || !node.segments) return
+    if (!sample) return
+    // STORY 14.10 — A COLUMN PICK COMMITS THE ROW-RELATIVE FIELD THE THREADED
+    // SET NAMES, and a node the set does not name is not dispatchable at all —
+    // the same membership test that decided pickability, asked again at the
+    // dispatch so a stale row cannot send a field this table has no business
+    // binding.
+    if (columnScope) {
+      const field = columnScope.rowFields.get(node)
+      if (field === undefined || bindingBusy || onConnectColumn === undefined) return
+      setPickedState({ sample, node })
+      onConnectColumn(field)
+      return
+    }
+    if (!node.segments) return
     if (!bindableKind || selectedComponentId === undefined || bindingBusy || onConnect === undefined) return
     setPickedState({ sample, node })
     onConnect(node.segments)
@@ -94,11 +159,11 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
       <RuntimeParameterSection parameters={runtimeParameters} />
     </> : <>
       <p className="data-file" role="status"><span className="data-file-name">{sample.name}</span><code className="data-file-size">{formatRenderSize(sample.bytes.byteLength)}</code></p>
-      <p className={`binding-chip data-context${bindableKind ? '' : ' data-context-refused'}`} role="status">{bindableKind && <span className="binding-dot" aria-hidden="true" />}{context}</p>
+      <p className={`binding-chip data-context${accented ? '' : ' data-context-refused'}`} role="status">{accented && <span className="binding-dot" aria-hidden="true" />}{context}</p>
       {selectedBinding && <p className="binding-status" role="status">Current engine binding: <code>{selectedBinding}</code></p>}
       {sample.truncated && <p className="data-message" role="status">Tree inspection is truncated to keep this local panel responsive.</p>}
       <p className="section-label">PATHS</p>
-      <DataTree key={treeIdentity(sample.tree)} root={sample.tree} picked={picked} onPick={bind} />
+      <DataTree key={treeIdentity(sample.tree)} root={sample.tree} picked={picked} scope={columnScope} onPick={bind} />
       <RuntimeParameterSection parameters={runtimeParameters} />
       {bindingBusy && <p className="binding-status" role="status">Asking the engine to bind the picked path…</p>}
       {currentBindingError && <p className="data-message" role="alert">{currentBindingError}</p>}
@@ -128,7 +193,7 @@ function RuntimeParameterSection({ parameters }: Readonly<{ parameters?: Runtime
   </section>
 }
 
-function DataTree({ root, picked, onPick }: Readonly<{ root: SampleNode; picked?: SampleNode; onPick: (node: SampleNode) => void }>) {
+function DataTree({ root, picked, scope, onPick }: Readonly<{ root: SampleNode; picked?: SampleNode; scope?: ColumnBindScope; onPick: (node: SampleNode) => void }>) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([keyFor(root, 0)]))
   const visible = useMemo(() => flatten(root, expanded), [root, expanded])
   const [active, setActive] = useState(() => keyFor(root, 0))
@@ -147,10 +212,10 @@ function DataTree({ root, picked, onPick }: Readonly<{ root: SampleNode; picked?
     if (event.key === 'End') return move(visible.length - 1)
     if (event.key === 'ArrowRight' && branch) { event.preventDefault(); if (!expanded.has(current.key)) setExpanded((value) => new Set(value).add(current.key)); else if (visible[index + 1]?.parent === current.key) focus(visible[index + 1]!.key); return }
     if (event.key === 'ArrowLeft') { event.preventDefault(); if (branch && expanded.has(current.key)) setExpanded((value) => { const next = new Set(value); next.delete(current.key); return next }); else if (current.parent) focus(current.parent); return }
-    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (branch) toggle(current.key); else if (rowFor(current).pickable) onPick(current.node) }
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (branch) toggle(current.key); else if (rowFor(current, scope).pickable) onPick(current.node) }
   }
   return <ul className="data-tree" role="tree" aria-label="Sample data paths">{visible.map((entry) => {
-    const shape = rowFor(entry)
+    const shape = rowFor(entry, scope)
     const branch = entry.node.children.length > 0
     // ⚠ EVERY BADGE AND EVERY REASON IS A PLAIN `<span>` INSIDE THE TREEITEM
     // BUTTON, never a control of its own: a badge must be announced as part of
@@ -165,16 +230,88 @@ function DataTree({ root, picked, onPick }: Readonly<{ root: SampleNode; picked?
 //
 // ⚠ THIS IS WHERE DW-350 IS CLOSED, AND IT IS THE ONLY PLACE. A collection DOES
 // carry a `segments` marker — `tableSampleCandidates` needs it for the Table
-// Editor's datalists — so `pickable` refuses `collection` and `inCollection` by
+// Editor's `Root collection` datalist, which is the ONE datalist still drawn
+// there: [D-14.10.1] took the per-column Row-field input and its
+// `table-field-candidates-N` list out of that dialog, so the plural in the
+// earlier spelling of this line named something that no longer exists — so
+// `pickable` refuses `collection` and `inCollection` by
 // KIND, never by the absence of the marker. An earlier spelling of this story
 // stripped the marker in `sample-data.ts` instead and emptied those datalists
 // for every template. Judging the kind here is a presentation choice about what
 // to offer; it leaves command legality exactly where D-6.2.1 put it.
-const rowFor = (entry: VisibleNode): RowShape => {
+const rowFor = (entry: VisibleNode, scope?: ColumnBindScope): RowShape => {
   const node = entry.node
   const collection = node.kind === 'collection'
   const runtime = entry.rootKey === 'params'
   const scoped = entry.inCollection
+  // STORY 14.10 — COLUMN MODE, AND IT IS A DIFFERENT QUESTION RATHER THAN A
+  // RELAXATION OF THE ONE BELOW.
+  //
+  // With a column selected the panel is not asking "may a TEXT component bind
+  // this path" — it is asking "is this node one of THIS table's row fields",
+  // which is membership in the threaded set and nothing else. Flipping `scoped`
+  // out of the expression below would not have worked and would have been the
+  // wrong shape anyway: a row-scope leaf carries no `segments`, so there is no
+  // path here to offer.
+  //
+  // ⚠ THE REASON IS STATED EXACTLY WHEN THE MEMBERSHIP TEST SAYS NO, so the
+  // panel cannot refuse a path it also offers, and it is stated BEFORE the
+  // engine would refuse it (AC4, UX-DR24). A BRANCH that is neither a
+  // collection nor a candidate — an object inside the row whose own leaves are
+  // the candidates — is left unmarked: it is operable, it expands, and calling
+  // it refused would misdescribe the one gesture it answers.
+  //
+  // ⚠ THREE THINGS THE FIRST SPELLING OF THIS BRANCH GOT WRONG, all of them on
+  // reachable paths and all of them fixed here rather than papered over.
+  //
+  // (1) AN UNBOUND TABLE HAS NO COLLECTION TO NAME. `columnBindScope` is built
+  //     whenever a column is selected — only `rowFields` is emptied when the
+  //     table binds nothing — so `scope.collection` is `''` on a perfectly
+  //     normal mid-authoring table, and the sentences below interpolated it
+  //     into a missing noun and a double space. UX-DR24 wants the reason to
+  //     name the location, and "a row field of " names nothing. The unbound
+  //     case gets its own sentences, in the register the context bar already
+  //     ships one sentence up. Suppressing them instead is not open: DESIGN.md
+  //     requires a stated reason next to anything disabled.
+  //
+  // (2) `TABLE ONLY` IS INHERITED VOCABULARY THAT STOPPED BEING TRUE HERE. The
+  //     badge was minted for the scalar gate, where it means "a table, not this
+  //     text component, is what binds a collection". In column mode the author
+  //     is inside a table, being told this table's column cannot bind the
+  //     collection — the badge and the sentence beside it then contradict each
+  //     other. It is dropped rather than reworded: the sentence already says
+  //     the whole of what is true, and a second, terser half-truth beside it
+  //     only competes with it.
+  //
+  // (3) A `params` LEAF IS NOT MERELY "NOT A ROW FIELD". `runtime` was computed
+  //     here and read only by the badge, so a params path fell through to the
+  //     row-scope sentence — accurate but silent about the refusal that
+  //     actually governs it. Go refuses a `params` root as a data binding
+  //     outright (`component_commands.go:749-751`), for a column exactly as for
+  //     a scalar, so it is stated first and in the shipped runtime register.
+  if (scope) {
+    const pickable = scope.rowFields.has(node)
+    const unbound = scope.collection === ''
+    return {
+      pickable,
+      dimmed: !pickable && node.children.length === 0,
+      marker: node.kind === 'object' ? '{ }' : undefined,
+      value: node.children.length === 0 ? valueText(node) : undefined,
+      reason: pickable
+        ? undefined
+        : runtime
+          ? 'Runtime parameter · not a row field, and the engine refuses a params path as a data binding.'
+          : collection
+            ? unbound
+              ? 'Collection · this column’s table is bound to no collection, so it has no row scope.'
+              : `Collection · a column binds one row field of ${scope.collection}, never a collection.`
+            : node.children.length > 0
+              ? undefined
+              : unbound
+                ? 'Not a row field · this column’s table is bound to no collection.'
+                : `Not a row field of ${scope.collection} · that is all a table column can bind.`,
+    }
+  }
   return {
     pickable: node.segments !== undefined && !collection && !runtime && !scoped,
     // DESIGN.md:550 — a node that can be neither picked NOR expanded is

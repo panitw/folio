@@ -460,6 +460,22 @@ const plantedEverywhere = (offender: string, markup: (id: string) => string): Re
   ]
 }
 
+// EVERY WAY A CELL COULD BECOME EDITABLE AGAIN — the four native controls plus
+// the three ARIA roles that make an arbitrary element one. Written as a plain
+// selector because the fences here read the DOM directly (see above): a role
+// query would skip an `aria-hidden` subtree and could not see a violation on
+// the scanned node itself.
+const EDITABLE_IN_A_CELL = 'input, select, textarea, button, [role="textbox"], [role="combobox"], [role="spinbutton"]'
+const EDITABLE_PLANTS: ReadonlyArray<string> = [
+  '<input aria-label="Bound field for column 1" />',
+  '<select aria-label="Bound field for column 1"></select>',
+  '<textarea aria-label="Bound field for column 1"></textarea>',
+  '<button type="button">Pick a row field</button>',
+  '<span role="textbox" contenteditable="true"></span>',
+  '<span role="combobox"></span>',
+  '<span role="spinbutton"></span>',
+]
+
 describe('the six columns the design draws, and the four that left', () => {
   it('carries exactly six columnheaders, spelled as the design spells them', async () => {
     await openEditor(tableEngine())
@@ -474,6 +490,41 @@ describe('the six columns the design draws, and the four that left', () => {
       for (const [where, root] of plantedEverywhere(offender, () => `<span role="columnheader">${offender}</span>`)) {
         expect(retiredColumnHeaders(root), where).toEqual([offender])
       }
+    }
+  })
+
+  // STORY 14.10 / [D-14.10.1] — AC5'S ABSENCE, PINNED TO THE CELL RATHER THAN
+  // TO THE NAME OF THE CONTROL THAT LEFT.
+  //
+  // Every other live assertion of this absence names `Row field for column 1`
+  // or the `table-field-candidates-N` datalist it fed. Re-adding an editable
+  // control inside `.matrix-bound` under a DIFFERENT accessible name, and
+  // without a `data-matrix-cell` so the traversal walks still land
+  // header -> width, leaves the entire suite green — the regression
+  // [D-14.10.1] exists to prevent, returning unobserved. So the claim asserted
+  // here is about the CELL and not about a name: nothing inside the BOUND FIELD
+  // gridcell is editable, and the projected binding is still read out of it.
+  it('leaves nothing editable inside the BOUND FIELD cell while still reading the binding out of it', async () => {
+    await openEditor(tableEngine())
+    const grid = screen.getByRole('grid', { name: 'Table columns' })
+    const cell = grid.querySelector('.matrix-row [role="gridcell"][aria-colindex="3"]') as HTMLElement
+    expect(cell, 'the BOUND FIELD cell must exist for this row to be about anything').toBeTruthy()
+    expect(cell.className).toContain('matrix-bound')
+    expect(cell.querySelectorAll(EDITABLE_IN_A_CELL)).toHaveLength(0)
+    // AND THE HALF [D-14.10.1] KEPT IS STILL THERE: the `<output>` reads the
+    // engine's own projected binding, alias and all.
+    expect(within(cell).getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.amount}}')
+    // ⚠ PROVED BY PLANTING, NEVER BY REMOVING. Removing the `<output>` cannot
+    // falsify an absence claim — a query that finds nothing finds nothing
+    // whether the rule holds or the query is broken — so every forbidden
+    // control is put INTO the cell in turn and the query is asserted to see it.
+    for (const markup of EDITABLE_PLANTS) {
+      const planted = document.createElement('span')
+      planted.innerHTML = markup
+      cell.appendChild(planted)
+      expect(cell.querySelectorAll(EDITABLE_IN_A_CELL), `a planted ${markup} went unseen`).toHaveLength(1)
+      planted.remove()
+      expect(cell.querySelectorAll(EDITABLE_IN_A_CELL), `a planted ${markup} outlived its plant`).toHaveLength(0)
     }
   })
 
@@ -1256,7 +1307,7 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
   const renderFooter = (editCount: number, busy = false, fileBusy = false, discarding = false) => {
     const onCancel = vi.fn()
     const onClose = vi.fn()
-    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onBind={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
+    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
     return { onCancel, onClose, unmount }
   }
 
@@ -1416,7 +1467,7 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     const onHeaderStyle = vi.fn()
     const panel = (over: Partial<typeof tableHeaderProjection>) => {
       const projection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
-      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onBind={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
+      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
     }
     const { unmount, rerender } = render(panel(header))
     return { onHeaderStyle, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }

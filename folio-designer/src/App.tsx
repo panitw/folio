@@ -65,9 +65,32 @@ const MAX_PARAMETER_DOCUMENT_BYTES = 8 * 1024 * 1024
 // over the SAME `segments.join('.')` collection spelling, so the two could
 // disagree about which nodes are addressable while appearing to agree.
 const SAMPLE_PATH_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]*$/
-function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Readonly<{ collection: string; field: string }>> {
-  if (!root) return []
-  const candidates = new Map<string, Readonly<{ collection: string; field: string }>>()
+// STORY 14.10 — THE RETURN IS WIDENED, AND `candidates` IS BYTE-FOR-BYTE WHAT
+// IT ALWAYS WAS.
+//
+// The DATA panel now has to answer "is THIS tree node one of this table's row
+// fields, and which one" — and it cannot work that out for itself: a row-scope
+// leaf carries NO `segments` at all (`sample-data.ts`'s `array()` recurses with
+// a hardcoded `rootScoped: false`), so the row-relative path the engine wants is
+// simply not on the node. Q2(a) therefore threads THIS walk's answer through
+// rather than deriving the path a second time, because a second derivation would
+// owe a proof that the two agree and there is only one.
+//
+// `byNode` IS BUILT AFTER THE 50-CANDIDATE SLICE, deliberately: the panel's
+// pickable set must be EXACTLY `candidates`, and a node whose candidate was
+// sliced off would otherwise be offered by the panel and be absent from the
+// editor's datalist — two sets again, wearing one function's name.
+//
+// One (collection, field) pair can be reached from SEVERAL item nodes — the
+// parser keeps up to `SAMPLE_LIMITS.items` children — so every one of those
+// nodes maps to the one deduplicated candidate.
+export type TableCandidate = Readonly<{ collection: string; field: string }>
+export type TableCandidateScan = Readonly<{ candidates: ReadonlyArray<TableCandidate>; byNode: ReadonlyMap<SampleNode, TableCandidate> }>
+const EMPTY_TABLE_CANDIDATE_SCAN: TableCandidateScan = { candidates: [], byNode: new Map() }
+export function tableSampleCandidates(root: SampleNode | undefined): TableCandidateScan {
+  if (!root) return EMPTY_TABLE_CANDIDATE_SCAN
+  const candidates = new Map<string, TableCandidate>()
+  const sources = new Map<string, SampleNode[]>()
   const visit = (node: SampleNode) => {
     if (node.kind === 'collection' && node.segments?.length && node.segments.every((part) => SAMPLE_PATH_SEGMENT.test(part))) {
       const collection = `${node.segments.join('.')}[]`
@@ -76,7 +99,10 @@ function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Read
         if (value.kind === 'object') { value.children.forEach((child) => fields(child, [...prefix, child.label])); return }
         if (prefix.length && prefix.every((part) => SAMPLE_PATH_SEGMENT.test(part))) {
           const field = prefix.join('.')
-          candidates.set(`${collection}\u0000${field}`, { collection, field })
+          const key = `${collection}\u0000${field}`
+          candidates.set(key, { collection, field })
+          const seen = sources.get(key)
+          if (seen) seen.push(value); else sources.set(key, [value])
         }
       }
       node.children.forEach((item) => fields(item, []))
@@ -84,7 +110,10 @@ function tableSampleCandidates(root: SampleNode | undefined): ReadonlyArray<Read
     node.children.forEach(visit)
   }
   visit(root)
-  return [...candidates.values()].sort((a, b) => a.collection.localeCompare(b.collection) || a.field.localeCompare(b.field)).slice(0, 50)
+  const admitted = [...candidates.entries()].sort(([, a], [, b]) => a.collection.localeCompare(b.collection) || a.field.localeCompare(b.field)).slice(0, 50)
+  const byNode = new Map<SampleNode, TableCandidate>()
+  for (const [key, candidate] of admitted) for (const node of sources.get(key) ?? []) byNode.set(node, candidate)
+  return { candidates: admitted.map(([, candidate]) => candidate), byNode }
 }
 
 // STORY 14.7 — HOW MANY ITEMS THE LOADED SAMPLE HOLDS FOR THE TABLE'S OWN
@@ -269,6 +298,24 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // ambiguous drop target this epic's own rule forbids.
   const [hoverBand, setHoverBand] = useState<string>()
   const [selected, setSelected] = useState<ReadonlyArray<string>>([])
+  // STORY 14.10 — THE COLUMN SELECTION, AND IT IS NOT IN `selected` (Q1(b)).
+  //
+  // `selected` holds ELEMENT IDS and continues to: all 32 read expressions over
+  // it were written on that premise, `openTableEditor` guards on
+  // `selectedRef.current[0] !== id`, and a compound id in there would have
+  // killed the table's own "Configure columns" button — working function
+  // repaired to accommodate this story's own state shape. AD-15 / I-4 puts
+  // transient interaction state in the UI; this is that state, and nothing here
+  // reaches the document.
+  //
+  // ⚠ KEYED ON BOTH IDS, and both halves are load-bearing. A bare column id is
+  // not unique across tables, and a column id that outlives its table would
+  // resolve against whichever table happened to reuse the spelling.
+  //
+  // ⚠ IT HOLDS IDS, NEVER THE COLUMN OBJECT. `selectedTableColumn` below
+  // re-resolves it from the projection on EVERY render, so a column removed in
+  // the editor stops resolving and the selection simply drops.
+  const [columnSelection, setColumnSelection] = useState<Readonly<{ tableId: string; columnId: string }>>()
   const [drag, setDrag] = useState<DragState>()
   const [preset, setPreset] = useState<string>(initialSnapshot?.canvas?.preset ?? 'A4')
   const [orientation, setOrientation] = useState<string>(initialSnapshot?.canvas?.orientation ?? 'portrait')
@@ -597,6 +644,45 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // carries it, and demoting it to "select one component first" would state
   // something false. The KIND is what becomes unknown, and the panel says so.
   const selectedComponent = selected.length === 1 ? canvas?.components.find((component) => component.id === selected[0]) : undefined
+
+  // STORY 14.10 — THE COLUMN SELECTION, RE-RESOLVED FROM THE PROJECTION ON
+  // EVERY RENDER, AND NEVER CACHED.
+  //
+  // The state holds two ids and nothing else. If either stops resolving — the
+  // column removed in the editor and `commitTableColumn` re-projected, the
+  // table deleted, the document replaced — this reads `undefined` and every
+  // consumer of it goes with it: the identity strip, the cyan mark, the DATA
+  // panel's column mode. The panel can therefore never offer a column that does
+  // not exist, without anyone remembering to clear anything.
+  //
+  // ⚠ IT ALSO NEEDS `selected` TO STILL BE THAT ONE TABLE. The column mode
+  // borrows the single-component selection's own gate rather than inventing a
+  // second one, so a multi-selection or a different component leaves no column
+  // selected and every `length === 1` gate keeps its current meaning.
+  // ONE WALK OF THE SAMPLE, TWO CONSUMERS (Q2(a)). The table editor takes
+  // `.candidates` — byte-for-byte what it has always received — and the DATA
+  // panel takes the node map built from the same admitted set. Two calls would
+  // be two sets that merely look alike.
+  const sampleCandidateScan = useMemo(() => tableSampleCandidates(sampleData?.tree), [sampleData])
+  const selectedTableColumn = (() => {
+    if (!columnSelection || !canvas) return undefined
+    if (selected.length !== 1 || selected[0] !== columnSelection.tableId) return undefined
+    const table = canvas.components.find((component) => component.id === columnSelection.tableId)
+    const column = table?.columns?.find((entry) => entry.id === columnSelection.columnId)
+    return table && column ? { tableId: table.id, columnId: column.id, label: column.label, collection: table.tableBind ?? '' } : undefined
+  })()
+  // WHAT THE DATA PANEL IS GIVEN FOR THAT COLUMN: the two ids, the label the
+  // canvas and the editor already show, the collection the table is bound to,
+  // and the row fields of THAT collection — filtered out of the one walk above
+  // rather than re-derived. An unnamed column falls back to its id so the bar
+  // and the strip still have something to name it by.
+  const columnBindScope = selectedTableColumn === undefined ? undefined : {
+    tableId: selectedTableColumn.tableId,
+    columnId: selectedTableColumn.columnId,
+    label: selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label,
+    collection: selectedTableColumn.collection,
+    rowFields: new Map([...sampleCandidateScan.byNode].filter(([, candidate]) => candidate.collection === selectedTableColumn.collection && selectedTableColumn.collection !== '').map(([node, candidate]) => [node, candidate.field] as const)),
+  }
 
   // The listing is re-read from the store rather than patched in memory, so the
   // store stays the single authority on what this machine holds. A refresh that
@@ -1222,6 +1308,46 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if (documentGeneration.current === requestGeneration) setBindingBusy(false)
     }
   }
+  // STORY 14.10 — THE COLUMN BIND, IN `bindPickedPath`'S SHAPE AND NOT IN
+  // `commitTableColumn`'S.
+  //
+  // It is a DATA-PANEL bind: the same `bindingInFlight` latch, the same
+  // `bindingBusy` indicator and the same scoped `bindingError`, so a refusal is
+  // presented where the pick was made rather than in a dialog that is not open.
+  // `commitTableColumn` is the table editor's committer — it gates on
+  // `tableEditor` being present and counts edits against a dialog session — and
+  // reusing it here would have made a main-window pick a no-op.
+  //
+  // ⚠ ONE COMMAND, AND `updateTableColumnBindingCommand` IS UNCHANGED. It takes
+  // the BARE row-relative field; Go resolves the alias itself (`row` unless the
+  // table sets `as`) and writes `Bind = "{{" + alias + "." + field + "}}"`.
+  // Nothing is sent before it — no `configureTableBinding` — because the column
+  // is only offered fields of the collection the table is ALREADY bound to. That
+  // is what makes AC6's one undo step true: `wasm/engine.go`'s `Apply` pushes
+  // exactly one undo per accepted byte-changing command. It is asserted, not
+  // built.
+  const bindPickedColumn = async (field: string) => {
+    const scope = selectedTableColumn
+    if (!engine || fileBusy || !scope || bindingInFlight.current) return
+    const requestGeneration = documentGeneration.current
+    const priorRevision = snapshotRef.current?.revision
+    const requestSample = sampleDataRef.current
+    setBindingError(undefined)
+    bindingInFlight.current = true
+    setBindingBusy(true)
+    try {
+      const result = await engine.request('command', updateTableColumnBindingCommand(scope.tableId, scope.columnId, field))
+      if (documentGeneration.current === requestGeneration && snapshotRef.current?.revision === priorRevision) {
+        if (result.snapshot.revision !== priorRevision) invalidatePreview()
+        setCurrentSnapshot(result.snapshot)
+      }
+    } catch (error) {
+      if (requestSample && documentGeneration.current === requestGeneration && sampleDataRef.current === requestSample && snapshotRef.current?.revision === priorRevision) setBindingError({ sample: requestSample, componentID: scope.tableId, segments: [], message: componentDiagnostic(error), columnId: scope.columnId, field })
+    } finally {
+      bindingInFlight.current = false
+      if (documentGeneration.current === requestGeneration) setBindingBusy(false)
+    }
+  }
   const place = (x: number, y: number) => {
     if (!placing) return
     const kind = placing
@@ -1250,7 +1376,31 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     clearInteraction()
     void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled)).then((placed) => selectPlaced(placed, from))
   }
-  const select = (id: string, extend: boolean) => { setBindingError(undefined); revokeTableEditor(); setSelected((current) => extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id]) }
+  // STORY 14.10 — THE COLUMN IS READ OFF THE EVENT TARGET, NEVER OFF A
+  // COORDINATE.
+  //
+  // `closest('[data-column-id]')` asks the DOM which painted span was hit.
+  // Mapping a pointer coordinate to a column would mean computing where each
+  // column's edge lands on screen — a browser-side model of the columns, which
+  // is exactly what AD-15 / I-4 bars and exactly the premise Story 14.9 was
+  // built on: the canvas paints tables from the ENGINE's projection, never a
+  // browser-side model of the columns.
+  //
+  // ⚠ A COLUMN CLICK IS A PLAIN CLICK, shift or no shift. A mixed
+  // table-and-column selection is then unrepresentable by construction rather
+  // than by a guard somebody has to remember.
+  //
+  // ⚠ AND THE TARGET IS OPTIONAL BECAUSE THE KEYBOARD PATH HAS NONE. Enter and
+  // Space on a canvas component pass nothing, so they select the component and
+  // drop any column selection — 14.10 ships mouse-only by [D-14.10.3], and
+  // DW-387 registers the unmet half of UX-DR25.
+  const select = (id: string, extend: boolean, target?: EventTarget | null) => {
+    setBindingError(undefined); revokeTableEditor()
+    const host = target instanceof Element ? target.closest('[data-column-id]') : null
+    const columnId = host?.getAttribute('data-column-id') ?? undefined
+    setColumnSelection(columnId ? { tableId: id, columnId } : undefined)
+    setSelected((current) => extend && !columnId ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id])
+  }
   // STORY 14.3 — PLACING IS SELECTING, AND SELECTING IS STILL ONE FUNCTION.
   //
   // Placing a component used to leave nothing selected, so the inspector stayed
@@ -1328,7 +1478,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setPendingFocus(undefined)
     placed.focus()
   }, [pendingFocus, snapshot])
-  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]) }) }
+  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]); setColumnSelection(undefined) }) }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
@@ -2168,7 +2318,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
@@ -2291,7 +2441,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const id = location?.elementId
     const current = snapshotRef.current?.canvas?.components
     clearInteraction()
-    if (id && current?.some((component) => component.id === id)) { revokeTableEditor(); setSelected([id]); setLocateStatus(`Selected ${id} in Design.`) }
+    if (id && current?.some((component) => component.id === id)) { revokeTableEditor(); setSelected([id]); setColumnSelection(undefined); setLocateStatus(`Selected ${id} in Design.`) }
     else if (id && announceUnavailable) setLocateStatus('Locate unavailable: the authoritative element is no longer present.')
     else setLocateStatus(undefined)
     returnToDesign()
@@ -2565,7 +2715,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // and RTL and Playwright both fail outright on a duplicate exact label.
     const many = sheets > 1
     const pageOf = many ? ` ${sheet.index + 1} of ${sheets}` : ''
-    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onClick={() => { revokeTableEditor(); setSelected([]) }}>
+    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onClick={() => { revokeTableEditor(); setSelected([]); setColumnSelection(undefined) }}>
       {projection.bands.map((band) => {
         const content = band.name === 'content'
         // The content band is one WINDOW of the column, so a component's
@@ -2582,7 +2732,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
           : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // A band holding a drag in progress stops clipping for the duration.
         // The dragged component's rendered position already tracks the
@@ -2776,7 +2926,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           defect class: an inert-until-needed pointer surface, so a click 4px
           from an existing rule is a PLACEMENT and not a selection of the
           neighbour. */}
-      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]) } }}>
+      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]); setColumnSelection(undefined) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
         {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
@@ -2809,8 +2959,21 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         tests as present and behaves as absent is worse than no alert. */}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}</main>}
       <aside className={`inspector-panel${mode === 'preview' ? ' inspector-panel-preview' : ''}`} aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} /></div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode !== 'preview' && selectedTableColumn && <p className="column-identity" role="status">{/* STORY 14.10 / Q3(a) — AN IDENTITY STRIP, AND IT IS THE WHOLE OF WHAT AC1
+            FORCES HERE. It ACKNOWLEDGES the column selection in the vocabulary
+            the canvas and the table editor already use — the column's own label
+            — and offers no control of any kind.
+            ⚠ NO BINDING SECTION AND NO COLUMN CONTROLS. [D-14.4.Q2(a)] removed
+            binding from the inspector once already; putting a column's binding
+            here would re-commit that error inside the story written to finish
+            undoing it, and would leave one value with two editing sites, which
+            is the problem [D-14.10.1] exists to end. AC1's own gloss settles the
+            scope: selecting a column is how binding one BEGINS — the binding
+            itself belongs to the DATA panel.
+            "Configure columns" stays live throughout: the TABLE is still the
+            component selection, so `openTableEditor`'s
+            `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} columnScope={columnBindScope} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} onConnectColumn={(field) => void bindPickedColumn(field)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
             ⚠ THIS IS THE WHOLE OF DW-281's DISCHARGE — an OWNER REQUEST, not a
@@ -2851,7 +3014,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         re-implemented; the item count is `SampleNode.count`. `undefined` on any
         of the three means UNKNOWN, and the dialog says so rather than drawing a
         zero. */}
-    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} fileBusy={fileBusy} discarding={tableEditorDiscarding} error={tableEditorError} candidates={tableSampleCandidates(sampleData?.tree)} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onBind={(columnId, field) => void commitTableColumn(updateTableColumnBindingCommand(tableEditor.table.tableId, columnId, field))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} editCount={tableEditorEditCount} onCancel={() => void cancelTableEditor()} />}
+    {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} fileBusy={fileBusy} discarding={tableEditorDiscarding} error={tableEditorError} candidates={sampleCandidateScan.candidates} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => void commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} editCount={tableEditorEditCount} onCancel={() => void cancelTableEditor()} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
@@ -4819,7 +4982,7 @@ function componentDiagnostic(error: unknown): string { const received = componen
 // the author's hand. `proposed` is the only field a move rewrites.
 type BoundaryDrag = Readonly<{ band: CappingBand; pointerId: number; startClientY: number; original: number; limit: number; proposed: number; changed: boolean }>
 type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
-function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, selected, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, selected, selectedColumnId, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; selectedColumnId?: string; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean, target?: EventTarget | null) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const selectedByPointer = useRef(false)
   const proposal = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
   // Component geometry is COLUMN geometry, in every band; this sheet shows one
@@ -4827,7 +4990,7 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   // repeating bands and 0 for the first window, which is why a single-sheet
   // document paints at exactly the coordinates it painted at before.
   const active = { ...proposal, y: proposal.y - origin }
-  const begin = (event: PointerEvent, mode: DragAnchor) => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
+  const begin = (event: PointerEvent, mode: DragAnchor) => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey, event.target); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
   // Ruling I. A linear pixel delta knows nothing about the page footer, the
   // gap and the page header standing between one window's foot and the next
   // window's head, so across a seam the component drifts from the hand by
@@ -4839,7 +5002,7 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey, event.target); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} selectedColumnId={selectedColumnId} /> : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -4969,7 +5132,13 @@ const canvasTableUnsetBinding = 'Not set'
 // vocabulary is the design's; the call to action belongs to the surface that
 // can honour it.
 const canvasTableNoColumnsNotice = 'No columns yet.'
-function TablePaint({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
+// STORY 14.10 — `selectedColumnId` IS THE ONLY THING THIS PAINTER GAINED, and
+// it is a marking input, not a model: the columns still come from the engine's
+// projection, in the engine's order, at the engine's widths. The ECHO passes
+// nothing, so a repeated body on a later sheet paints unmarked — it carries no
+// role, no handlers and no name either, and a second cyan column would claim a
+// selection the author cannot act on there.
+function TablePaint({ component, zoom, selectedColumnId }: { component: CanvasProjection['components'][number]; zoom: number; selectedColumnId?: string }) {
   const columns: ReadonlyArray<CanvasTableColumn> | undefined = component.columns
   // ABSENCE, NOT AN EMPTY FRAME. Go omits the member entirely for a table that
   // declares no columns, and DESIGN.md's placeholder grammar — "Dashed grey on
@@ -5000,13 +5169,13 @@ function TablePaint({ component, zoom }: { component: CanvasProjection['componen
           headerStyle.align differs from its style.align aligns its two rows
           differently, and so does this drawing. Swapping these two keys is
           meant to turn a test red. */}
-      {columns.map((column) => <span key={`${component.id}-heading-${column.id}`} className="canvas-table-heading canvas-display-paint" style={{ textAlign: column.headerAlign }}>{column.label}</span>)}
+      {columns.map((column) => <span key={`${component.id}-heading-${column.id}`} data-column-id={column.id} className={`canvas-table-heading canvas-display-paint${column.id === selectedColumnId ? ' canvas-table-column-selected' : ''}`} style={{ textAlign: column.headerAlign }}>{column.label}</span>)}
       {/* ONE REPRESENTATIVE ROW, SHOWING EACH COLUMN'S BINDING RATHER THAN A
           VALUE: a canvas shows the SHAPE of the document, not its contents, and
           the canvas has no data. A column nobody has pointed at data yet reads
           as unbound in the muted ink — not in the bind accent, because an
           unbound cell has no data to mark. */}
-      {columns.map((column) => <span key={`${component.id}-cell-${column.id}`} className={column.bind === '' ? 'canvas-table-unset canvas-display-paint' : 'canvas-table-cell canvas-display-paint'} style={{ textAlign: column.cellAlign }}>{column.bind === '' ? canvasTableUnsetBinding : column.bind}</span>)}
+      {columns.map((column) => <span key={`${component.id}-cell-${column.id}`} data-column-id={column.id} className={`${column.bind === '' ? 'canvas-table-unset canvas-display-paint' : 'canvas-table-cell canvas-display-paint'}${column.id === selectedColumnId ? ' canvas-table-column-selected' : ''}`} style={{ textAlign: column.cellAlign }}>{column.bind === '' ? canvasTableUnsetBinding : column.bind}</span>)}
     </span>
   </span>
 }

@@ -440,6 +440,45 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-table-heading { padding: 4px 5px; color: var(--color-page-ink); font: var(--type-page-body); font-weight: 600; border-bottom: var(--hairline) solid var(--color-page-ink); }
 .canvas-table-cell { padding: 4px 5px; color: var(--color-bind-on-page); font: var(--type-page-mono); }
 .canvas-table-grid .canvas-table-unset { padding: 4px 5px; }
+/* STORY 14.10 — THE COLUMN SPANS ARE THE ONE PART OF THE TABLE PAINT THAT IS
+   HIT-TESTED, AND THIS DECLARATION IS THE WHOLE MECHANISM.
+
+   `.canvas-table` above carries `pointer-events: none`, so until this rule a
+   click anywhere inside a painted table fell through to the component wrapper
+   and there was nothing to read a column off. Restoring hit testing on the
+   heading and cell spans — and on nothing else, so the chip, the count and the
+   grid gaps still select the table — is what makes `closest('[data-column-id]')`
+   in App.tsx's `select` seam able to answer at all.
+
+   ⚠ jsdom DOES NOT IMPLEMENT `pointer-events` HIT TESTING. `fireEvent.click(span)`
+   makes the span the target whatever this file says, so the unit suite passes
+   with this declaration entirely absent and the product is inert without it.
+   That is why the story carries BOTH covers: a source-text pin in
+   table-column-binding.test.tsx and a real-browser click in
+   e2e/table-column-binding.spec.ts, each mutation-proved by deleting this line.
+
+   The cursor says the span answers a click. `cursor:` is unconstrained for
+   `.canvas-table-*` and mints no token.
+
+   ⚠ THE CONTINUATION-SHEET ECHOES ARE EXCLUDED, AND THE EXCLUSION IS THE SAME
+   DEFECT `.canvas-component-echo` ALREADY CARRIES A FIX FOR ABOVE. `ComponentEcho`
+   paints the repeated table body with these exact class names, and
+   `pointer-events: none` on the echo ROOT does not survive a descendant setting
+   it back to `auto` — a re-enabling descendant is hit-tested whatever its
+   ancestors say, which is precisely the mechanism this rule relies on. Without
+   the `:not()` an echoed column advertised `cursor: pointer` and swallowed the
+   click the page surface beneath it was meant to receive, clearing the
+   selection instead of keeping it. `:not(.canvas-component-echo *)` keeps the
+   selector a bare `.canvas-table-*` one — no z-index, no `@media`, no colour —
+   and leaves the home occurrence untouched. */
+.canvas-table-heading:not(.canvas-component-echo *), .canvas-table-grid .canvas-table-cell:not(.canvas-component-echo *), .canvas-table-grid .canvas-table-unset:not(.canvas-component-echo *) { pointer-events: auto; cursor: pointer; }
+/* SELECTION IS CYAN, NEVER THE BIND ACCENT — DESIGN.md says three separate
+   times that amber marks data and never marks selection. The design draws no
+   selected column anywhere, so this MATCHES `.canvas-component-selected`, the
+   shipped page-safe idiom: the same soft select tint, with the edge drawn as an
+   inset ring rather than a border so the engine's declared track width is not
+   moved by a pixel. No new token, no `@media`, no colour literal, no z-index. */
+.canvas-table-column-selected { background: var(--tint-select-fill-soft); box-shadow: inset 0 0 0 var(--hairline) var(--color-select); }
 /* The no-columns state, in ImagePlaceholder's shipped idiom: the palette's own
    table glyph over the reason this frame has nothing to draw. It is a plain
    span — never a <button>, never role="group" — because control-vocabulary-
@@ -527,6 +566,12 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .component-identity .palette-icon { color: var(--color-select); }
 .component-identity-name { color: var(--color-ink-high); font: var(--type-body-em); font-weight: 500; text-transform: capitalize; }
 .component-identity-meta { min-width: 0; margin-left: auto; overflow: hidden; color: var(--color-ink-ghost); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
+/* STORY 14.10 — THE SELECTED COLUMN'S IDENTITY STRIP. It sits above the table's
+   own (unchanged) properties and reads like `.component-identity` because it is
+   the same kind of statement: what is selected, named, with no control on it. */
+.column-identity { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); padding-bottom: var(--space-3); border-bottom: var(--hairline) solid var(--color-line); }
+.column-identity-name { color: var(--color-ink-high); font: var(--type-label); letter-spacing: var(--tracking-label); text-transform: uppercase; }
+.column-identity-meta { min-width: 0; margin-left: auto; overflow: hidden; color: var(--color-ink); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
 .property-section { display: grid; gap: var(--space-2); margin-bottom: var(--space-5); padding-top: var(--space-5); border-top: var(--hairline) solid var(--color-line); }
 .property-section:first-of-type { padding-top: 0; border-top: 0; }
 .property-section > .section-label { margin: 0; }
