@@ -7727,11 +7727,12 @@ describe('preview with no sample data', () => {
     // Admit the PDF, which is what would otherwise promote the screen to the
     // exact-production claim.
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
-    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    expect(screen.queryByText('NO-DATA LAYOUT PREVIEW')).not.toBeInTheDocument()
     expect(screen.queryByText('EXACT LOCAL PRODUCTION PDF')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Current no-data layout PDF/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Current exact local production PDF/ })).not.toBeInTheDocument()
     expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Current no-data layout PDF')
+    expect(document.getElementById('preview-freshness-status')).toHaveClass('sr-only')
     expect(document.getElementById('preview-freshness-status')).not.toHaveTextContent('exact')
     expect(screen.getByText(/Stand-in local digest/)).toBeInTheDocument()
     expect(screen.queryByText(/Historical producer digest/)).not.toBeInTheDocument()
@@ -7749,9 +7750,8 @@ describe('preview with no sample data', () => {
   // suppressing the token or narrowing it to something like `stand-in` reads
   // like more honesty. It is not. The bar answers HOW OLD, and a no-data render
   // that is current is exactly as current as any other. Story 13.4's exactness
-  // disclosure stays where 13.4 put it, and this test pins all three of those
-  // places alongside the token so the token cannot quietly take over their job.
-  it('reads current in the bar for a no-data render while every exactness withholding stays where 13.4 put it', async () => {
+  // disclosure stays where 13.4 put it, and this test pins the single visible warning alongside the token.
+  it('reads current in the bar for a no-data render with a single visible no-data warning', async () => {
     const { request, loaded } = noDataEngine()
     render(<App engine={engine(request)} initialSnapshot={loaded} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
@@ -7763,9 +7763,10 @@ describe('preview with no sample data', () => {
     // second disclosure smuggled into the frame.
     expect(freshnessText()).toMatch(FRESH_CURRENT)
     expect(screen.getByLabelText('Render freshness').textContent).not.toMatch(/stand|no-data|layout|exact/i)
-    // AND THE THREE PLACES THAT DO CARRY THE EXACTNESS CLAIM STILL CARRY IT.
-    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    // The warning carries the visible disclosure; the viewer retains its accessible status.
+    expect(screen.queryByText('NO-DATA LAYOUT PREVIEW')).not.toBeInTheDocument()
     expect(document.getElementById('preview-freshness-status')).toHaveTextContent('Current no-data layout PDF')
+    expect(document.getElementById('preview-freshness-status')).toHaveClass('sr-only')
     expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
   })
 
@@ -8470,7 +8471,7 @@ describe('Story 13.3: the preview screen is the evidence screen', () => {
     expect(block).not.toHaveTextContent('Byte-identical across')
     expect(block.querySelector('.rail-hash-value')!.textContent).toBe(exportedPdfDigest)
     // 13.4's other withholdings are untouched.
-    expect(screen.getByText('NO-DATA LAYOUT PREVIEW')).toBeInTheDocument()
+    expect(screen.queryByText('NO-DATA LAYOUT PREVIEW')).not.toBeInTheDocument()
     expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save no-data PDF' })).toBeInTheDocument()
   })

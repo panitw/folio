@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 // scrollable container from a non-scrollable one, or a pinned element from one
 // that has scrolled out of view. Every CSS claim this story makes therefore has
 // its only proof here. The distinguishing observable is WHAT STAYS PUT: if
-// `.preview-region` is the scroller, the preview heading, the no-data notice
+// `.preview-region` is the scroller, the no-data notice
 // and the evidence line scroll away with the page; if `.pdf-preview-scroll` is,
 // they hold while the page moves under them.
 //
@@ -52,7 +52,7 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   await expect(page.locator('.document-name')).toHaveText('statement.folio')
 
   // The no-data fixture is chosen because it is the one that renders the most
-  // chrome around the page: 13.4's amber notice as well as the heading, the
+  // chrome around the page: 13.4's amber notice, the
   // freshness line and the evidence line. Story 13.4's own witness establishes
   // that this template reaches an admitted preview with no sample data.
   await page.getByRole('button', { name: 'PREVIEW' }).click()
@@ -72,7 +72,6 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
 
   const canvas = pageArea.locator('canvas')
   await expect(canvas).toBeVisible()
-  const heading = page.getByText('NO-DATA LAYOUT PREVIEW')
   const notice = page.getByRole('note', { name: 'No-data preview notice' })
   // ⚠ STORY 13.3 — THE DIGEST IS NO LONGER ONE OF THE HELD-POSITION SUBJECTS,
   // AND REMOVING IT FROM THAT LIST IS THE POINT (review P7).
@@ -82,7 +81,7 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   // rail put it in the Inspector column, which is a different, non-scrolling
   // container: `after.evidence.y === before.evidence.y` there is true of any
   // element in any sibling of the scroller, guards nothing, and reads as a pin.
-  // `heading` and `notice` are still inside the preview region and still carry
+  // The notice is still inside the preview region and still carries
   // that claim. What survives for the digest is the claim that IS still real —
   // it stays on screen and keeps saying the same thing across the scroll — and
   // it is asserted below rather than measured here.
@@ -93,12 +92,12 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   // Read once, at rest, and then compared after the scroll. `boundingBox()` is
   // viewport-relative, which is exactly the frame this claim is about.
   const boxes = async () => {
-    const measured = await Promise.all([canvas, pageArea, heading, notice, statusBar].map(async (locator) => {
+    const measured = await Promise.all([canvas, pageArea, notice, statusBar].map(async (locator) => {
       const box = await locator.boundingBox()
       expect(box).not.toBeNull()
       return box!
     }))
-    return { canvas: measured[0]!, pageArea: measured[1]!, heading: measured[2]!, notice: measured[3]!, statusBar: measured[4]! }
+    return { canvas: measured[0]!, pageArea: measured[1]!, notice: measured[2]!, statusBar: measured[3]! }
   }
   const before = await boxes()
 
@@ -134,13 +133,13 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
 
   // Everything the chrome assertions depend on is on screen to begin with, so
   // "still visible afterwards" is a change and not a restatement.
-  for (const locator of [heading, notice, evidence]) await expect(locator).toBeInViewport()
+  for (const locator of [notice, evidence]) await expect(locator).toBeInViewport()
 
   // THE SCROLL ITSELF, DRIVEN AS A USER DRIVES IT. A wheel over the page area
   // scrolls the nearest scrollable ancestor. Which element that is IS the
   // property under test: before this story `.pdf-preview-scroll` had no height
   // at all, so its own overflow never activated vertically and the wheel
-  // reached `.preview-region` instead, taking the heading and the notice with
+  // reached `.preview-region` instead, taking the notice with
   // it. Both outcomes move something; only one of them moves the right thing.
   await canvas.hover()
   await page.mouse.wheel(0, 600)
@@ -157,7 +156,6 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   // "visible" by that measure. Position is the property; presence is not.
   expect(after.pageArea.y).toBe(before.pageArea.y)
   expect(after.pageArea.height).toBe(before.pageArea.height)
-  expect(after.heading.y).toBe(before.heading.y)
   expect(after.notice.y).toBe(before.notice.y)
   expect(after.statusBar.y).toBe(before.statusBar.y)
 
@@ -165,7 +163,7 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   // diagnostic the author cannot see while looking at the thing it describes is
   // one that may as well not be rendered, and `toBeInViewport` is the assertion
   // that can tell the two apart.
-  for (const locator of [heading, notice, evidence]) await expect(locator).toBeInViewport()
+  for (const locator of [notice, evidence]) await expect(locator).toBeInViewport()
   await expect(statusBar.getByRole('button', { name: 'Next PDF page' })).toBeInViewport()
 
   // The horizontal axis is DW-191's own axis — the one on which the tear-down
@@ -174,10 +172,9 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   await page.mouse.wheel(400, 0)
   await expect.poll(async () => (await canvas.boundingBox())!.x, { timeout: 10_000 }).toBeLessThan(before.canvas.x - 100)
   const sideways = await boxes()
-  expect(sideways.heading.x).toBe(before.heading.x)
   expect(sideways.notice.x).toBe(before.notice.x)
   expect(sideways.pageArea.x).toBe(before.pageArea.x)
-  for (const locator of [heading, notice, evidence]) await expect(locator).toBeInViewport()
+  for (const locator of [notice, evidence]) await expect(locator).toBeInViewport()
   // AND THE DIGEST STILL SAYS THE SAME THING. This is the digest claim that a
   // scroll can actually break — a rail re-rendered or re-keyed mid-scroll would
   // change or lose it — where its viewport position cannot.
@@ -202,10 +199,9 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   await expect.poll(async () => (await canvas.boundingBox())!.width, { timeout: 10_000 }).toBeLessThanOrEqual((await pageArea.boundingBox())!.width)
   // The chrome is still where it was through all of that.
   const fitted = await boxes()
-  expect(fitted.heading.y).toBe(before.heading.y)
   expect(fitted.notice.y).toBe(before.notice.y)
   expect(fitted.statusBar.y).toBe(before.statusBar.y)
-  for (const locator of [heading, notice, evidence]) await expect(locator).toBeInViewport()
+  for (const locator of [notice, evidence]) await expect(locator).toBeInViewport()
 })
 
 // STORY 13.5 — THE STATUS BAR FITS ITS OWN CONTENTS, WHICH NO UNIT TEST CAN SEE.

@@ -62,7 +62,8 @@ test('previews a bound template with no sample data, and claims nothing about pr
   // controls the clock, not a browser test that races it.
   await expect(page.getByRole('region', { name: /Current no-data layout PDF, revision \d+/ })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('note', { name: 'No-data preview notice' })).toBeVisible()
-  await expect(page.getByText('NO-DATA LAYOUT PREVIEW')).toBeVisible()
+  await expect(page.getByText('NO-DATA LAYOUT PREVIEW')).toHaveCount(0)
+  await expect(page.locator('#preview-freshness-status')).toHaveClass('sr-only')
   // STORY 13.3 — THE DIGEST IS IN THE RAIL NOW, IN TWO FIXED LINES.
   // `Stand-in local digest` labels the block; the 64 characters live in
   // `.rail-hash-value` as two 32-character lines, so they are asserted off the
