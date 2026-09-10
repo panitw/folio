@@ -12977,3 +12977,74 @@ afternoon.
 **How we'd know it was forgotten.** An author sets a header border, sees exactly what the unset
 attributes will draw, then sets a body border in the inspector and sees nothing — and reasonably
 concludes the inspector's border has no defaults at all.
+
+---
+
+### DW-377 - a located header-border refusal pops to a segment that names an element property field
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.8's builder at the plan gate. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 14.8 adds the dotted fields `border.width`, `border.color` and `border.edges` to
+`tableHeaderStyleFields`, so a refusal is located at `table.headerStyle.border.width`. `printsDataPath`
+(`App.tsx`) decides whether to print a located path with
+`!isPropertyField(error.dataPath.split('.').pop() ?? '')` — it pops the **last** segment. That segment is
+now `width`, which is a member of `PROPERTY_FIELDS` (`component-property-command.ts`). **The camelCase
+spelling would have been no better:** it pops to `borderWidth`, also a member.
+
+**Why it does not bite today.** `printsDataPath` takes a `PropertyCommitError` — the inspector's
+property-commit channel — and the table editor holds its own error state, so a header-border refusal never
+reaches it. The collision is latent in **both** spellings, and the dotted spelling was chosen for a
+different and stronger reason: `propertyPath` returns the bare field name, so an element border refusal
+reports `component.borderWidth`, a key the document does not have (**DW-333**), leaving no truthful
+mapping to mirror. Dotted names are truthful by construction under `path := "table.headerStyle." + field`.
+
+**How we'd know it was forgotten.** A story routes table-editor refusals through the property-commit
+channel — a plausible consolidation — and header-border refusals silently stop printing their location,
+because a last-segment membership test cannot tell `style.border.width` from
+`table.headerStyle.border.width`. **The durable repair is DW-333:** make `propertyPath` report the path
+the document actually has, after which the membership test is no longer load-bearing.
+
+---
+
+### DW-378 - the mockups measure in millimetres and the product measures in points, in four files out of six
+
+- **source_spec:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/`
+- **Found by:** Story 14.8's builder, checking its own unit corrections; **scope widened by the orchestrator.** **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+**D-14.2.Q3 settled points product-wide.** The mockups did not follow, and the gap is wider than the line
+that surfaced it. Measured across all six drawings:
+
+| Mockup | `mm` occurrences | `pt` occurrences |
+|---|---|---|
+| `Main.dc.html` | **6** | 1 |
+| `Font Browser.dc.html` | **6** | 1 |
+| `TableEditor.dc.html` | **3** | 2 (both added by Story 14.8) |
+| `Binding.dc.html` | **2** | 0 |
+| `Load.dc.html` | 0 | 0 |
+| `Preview.dc.html` | 0 | 0 |
+
+**17 millimetre figures across four files**, against three point figures of which **two were added today**.
+
+**What the builder found and what it actually is.** It reported `TableEditor.dc.html:138`'s
+`Σ 174.0 mm` — the matrix width budget, where the product's real budget is in points. That line is real
+and there are **two** of them in that file (`:138` and `:140`, `174.0 mm available`), plus a third
+elsewhere. The finding was correct; the **scope** was one line where it is a property of the drawing set.
+
+**Why Story 14.8 correctly did not fix it.** 14.8's criterion asks the mockup to stop promising four
+settings the product does not have. It does not ask for a unit sweep, and no criterion names these
+figures. The builder fixed the two boxes **it introduced** — `6.0 mm` → `17.0 pt`, `0.25 mm` → `0.5 pt` —
+because newly written millimetres would have been drift this story *created*, and it left the pre-existing
+figures alone and reported them. **That is the fence working, and the entry exists so the fence's cost is
+visible rather than silent.**
+
+**Why LOW.** Nothing reads a mockup (see [DW-375]); no test, script or guard opens a `.dc.html`. The cost
+is that an author reading a drawing sees a unit the product will never show them, and a future story
+sizing a control from a mockup would carry the wrong scale into a real control — which is how
+`min-width: 1320px` and the millimetre budget got into the product's own comments in the first place.
+
+**How we'd know it was forgotten.** Someone reads `Σ 174.0 mm` next to the shipped `Σ 500.0 of 500.0`
+in points and concludes the product's budget is wrong rather than the drawing. Or a story "fixes" one
+mockup's units in passing, leaving three inconsistent with each other as well as with the product —
+strictly worse than the uniform drift there is now. **If this is picked up, it is one sweep over four
+files, not a per-story correction.**
