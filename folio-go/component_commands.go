@@ -2511,11 +2511,53 @@ func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasPr
 // tableHeaderStyleFields is the closed set of headerStyle fields a command may
 // author, in the order a refusal names them.
 //
-// NINE, AND THE TWO ABSENTEES ARE EACH A RULING (D-8.1.2's map, stated in
-// full in Story 8.1's Design Notes). `border` is deferred — the resolver arm
-// exists but it is a nested block the cascade treats block-granularly, and it
-// waits on Story 14.8's BORDERS section. `padding` is forbidden outright by
-// D-12.4.1: the panel never authors padding, on a table or anywhere else.
+// TWELVE, AND THE ONE ABSENTEE IS A RULING (D-8.1.2's map, stated in full in
+// Story 8.1's Design Notes). `padding` is forbidden outright by D-12.4.1: the
+// panel never authors padding, on a table or anywhere else.
+//
+// ⚠ IT WAS NINE UNTIL STORY 14.8, AND THIS PARAGRAPH IS THE RULING IT
+// RETIRED — EDITED, NOT DELETED, so the history reads. It said: "`border` is
+// deferred — the resolver arm exists but it is a nested block the cascade
+// treats block-granularly, and it waits on Story 14.8's BORDERS section."
+// The BORDERS section exists now, and the block-granularity is still true and
+// is exactly what the panel has to disclose in words — it is not a reason to
+// keep the field unauthorable.
+//
+// THE THREE NEW MEMBERS ARE FLAT DOTTED KEYS — `border.width`, `border.color`,
+// `border.edges` — AND NOT ONE `border` MEMBER CARRYING AN OBJECT. Three
+// grounds, recorded because the next person who adds a NESTED member to this
+// closed set meets the identical trap:
+//
+//  1. THE PRODUCT ALREADY ANSWERED THIS QUESTION IN THIS FILE. An element's
+//     nested `style.border` is authored from three flat keys —
+//     `borderWidth`, `borderColor`, `borderEdges` in applyPropertyChanges —
+//     with materialise-on-write and collapse-on-clear. A block on the wire
+//     would be a second, contradictory answer to a settled question.
+//
+//  2. A COMPOSITE `value` CANNOT EXPRESS ONE-ATTRIBUTE-AT-A-TIME AUTHORING.
+//     The command surface is {id, field, op, value}: one field, one op. A
+//     block `set` writes the whole object, so changing a width would mean
+//     re-transmitting the colour and the edges read back from the projection —
+//     read-modify-write across an async boundary, and a value the author never
+//     chose riding in a command they did think they were sending. Sending only
+//     the attribute the author touched and a block on the wire are
+//     incompatible; the panel sends only what was touched.
+//
+//  3. DOTTED, NOT camelCase, AND THE REASON IS MEASURED. `path` below is
+//     "table.headerStyle." + field, so a dotted field name produces
+//     `table.headerStyle.border.width` — a path the document actually has.
+//     camelCase would produce `table.headerStyle.borderWidth`, a key no
+//     document carries, which is DW-333's defect at the element level
+//     (propertyPath returns the bare command key and the element path reports
+//     `component.borderWidth`).
+//
+// COLLAPSE-ON-CLEAR IS THE THIRD LEG OF THE SAME MECHANISM, not an extra.
+// Flat keys + materialise-on-write + collapse-on-clear is ONE mechanism with
+// three parts; cleanupEmptyHeaderStyle carried only two of the three until this
+// story because nothing could reach the third. Without it, clearing the last
+// border attribute leaves `border: {}`, whose `Border.Set` keeps the
+// empty-headerStyle check from ever firing and pins `headerStyle` alive in the
+// file forever.
 //
 // ⚠ IT WAS SEVEN UNTIL STORY 11.2, AND THIS PARAGRAPH IS THE RULING IT
 // RETIRED — EDITED, NOT DELETED, so the history reads. It said: "`bold` and
@@ -2525,7 +2567,7 @@ func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasPr
 // resolveHeaderStyle now cascades both, in the same `.Set && !.Null` spelling
 // its siblings use, and the header row resolves the declared variant from its
 // own chain (FR57, AC2). The tripwire fired exactly as it was written to.
-var tableHeaderStyleFields = []string{"fontFamily", "fontSize", "lineSpacing", "background", "color", "valign", "align", "bold", "italic"}
+var tableHeaderStyleFields = []string{"fontFamily", "fontSize", "lineSpacing", "background", "color", "valign", "align", "bold", "italic", "border.width", "border.color", "border.edges"}
 
 // tableCommandTarget repeats the two-line gate all seven column arms share:
 // the element must exist and it must be a table. It is the same pair of
@@ -2677,9 +2719,21 @@ func setTableAltRowBackground(t *Template, raw map[string]json.RawMessage) (Canv
 // two colours. A command door that admitted what the file door refuses could
 // stamp out a document the designer cannot reopen.
 //
-// CLEARING THE LAST FIELD REMOVES THE BLOCK. An empty `headerStyle: {}` is a
-// key in the file that means nothing, so cleanupEmptyHeaderStyle drops it — the
-// same move cleanupEmptyStyle makes for element.Style.
+// CLEARING THE LAST FIELD REMOVES THE BLOCK, AND SINCE STORY 14.8 THAT IS TWO
+// NESTED COLLAPSES RATHER THAN ONE. An empty `headerStyle: {}` is a key in the
+// file that means nothing, so cleanupEmptyHeaderStyle drops it; and when the
+// field just cleared was one of the three `border.*` attributes, an empty
+// `border: {}` it just produced goes first — the same two moves
+// cleanupEmptyStyle makes for element.Style. ⚠ The inner collapse is passed the
+// cleared FIELD and fires only for a `border.*` clear, because unlike element
+// `style.border` an empty header `border: {}` is a MEANINGFUL document that wins
+// the cascade whole; see cleanupEmptyHeaderStyle's own comment.
+//
+// THE THREE BORDER ATTRIBUTES ARE WRITTEN ONE AT A TIME AND SEED NOTHING. The
+// cascade takes the header's border WHOLE (see headerBorderFor below), so the
+// first attribute authored is the moment the table's border stops reaching the
+// header row — a consequence the PANEL discloses in words, never one this arm
+// papers over by filling in the other two.
 func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	id, err := commandString(raw, "id")
 	if err != nil {
@@ -2738,8 +2792,25 @@ func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (Canvas
 			style.Bold = template.Presence[bool]{}
 		case "italic":
 			style.Italic = template.Presence[bool]{}
+		// THE THREE BORDER ATTRIBUTES CLEAR WITHOUT MATERIALISING THE BLOCK,
+		// which is applyPropertyChanges' own spelling for `borderEdges`: a
+		// clear against a border that is not there has nothing to remove, and
+		// creating an empty `border: {}` only to have cleanupEmptyHeaderStyle
+		// drop it again walks the document through a state it should never hold.
+		case "border.width":
+			if style.Border.Set && !style.Border.Null {
+				style.Border.Value.Width = template.Presence[geom.Length]{}
+			}
+		case "border.color":
+			if style.Border.Set && !style.Border.Null {
+				style.Border.Value.Color = template.Presence[string]{}
+			}
+		case "border.edges":
+			if style.Border.Set && !style.Border.Null {
+				style.Border.Value.Edges = template.Presence[[]string]{}
+			}
 		}
-		cleanupEmptyHeaderStyle(element)
+		cleanupEmptyHeaderStyle(element, field)
 		return Canvas(t)
 	}
 	switch field {
@@ -2768,6 +2839,49 @@ func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (Canvas
 		} else {
 			style.Italic = template.Presence[bool]{Set: true, Value: flag}
 		}
+	case "border.width":
+		// A LENGTH, READ BY THE SAME DECODER EVERY OTHER LENGTH ON THIS PATH
+		// USES, and then bounded by the rule the LOADER asks rather than a
+		// second one invented here: parse_bands.go refuses a NEGATIVE border
+		// width (ISO 32000-1 §8.4.3.2 — a PDF line width is non-negative) and
+		// accepts ZERO, which is the thinnest device line PDF can draw and not
+		// an absent border. The check is restated at this door only because it
+		// has to be LOCATED: without it the refusal arrives from ParseTemplate
+		// on the round-trip in wasm's Apply, which names no element and no
+		// field, and the author is told nothing they can act on.
+		width, err := propertyLength(value, "border.width")
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, path, "border.width must be a length in points with at most three decimal places")
+		}
+		if width < 0 {
+			return CanvasProjection{}, componentFailure(id, path, "border.width must not be negative: a PDF line width is non-negative (ISO 32000-1 8.4.3.2); use 0 for the thinnest line")
+		}
+		headerBorderFor(style).Width = template.Presence[geom.Length]{Set: true, Value: width}
+	case "border.edges":
+		// AN ARRAY ON THE WIRE, decoded exactly as applyPropertyChanges decodes
+		// `borderEdges`: a plain json.Unmarshal into []string, refusing the
+		// EMPTY array. An empty edge list is not "no border" — it is a stroke
+		// with no side to draw, which the author expresses by clearing the
+		// attribute instead.
+		//
+		// AND EVERY NAME IS CHECKED AGAINST THE LOADER'S OWN CLOSED SET, for
+		// the same reason the width and colour arms restate the loader's rules:
+		// so the refusal is LOCATED. Without it `["middle"]` is admitted here,
+		// mutates the document, and the refusal arrives from ParseTemplate on
+		// wasm's round-trip naming no element and no field. The set is not a
+		// second literal beside the loader's — template.IsBorderEdge reads the
+		// very map parse_bands.go reads, so this door cannot legalise a value
+		// the file door still refuses.
+		var edges []string
+		if json.Unmarshal(value, &edges) != nil || len(edges) == 0 {
+			return CanvasProjection{}, componentFailure(id, path, "border.edges must be a non-empty string array")
+		}
+		for _, edge := range edges {
+			if !template.IsBorderEdge(edge) {
+				return CanvasProjection{}, componentFailure(id, path, "border.edges must name only "+strings.Join(template.BorderEdgeTokens, ", ")+": "+edge+" is not one of them")
+			}
+		}
+		headerBorderFor(style).Edges = template.Presence[[]string]{Set: true, Value: edges}
 	default:
 		text, err := propertyString(value)
 		if err != nil {
@@ -2802,9 +2916,41 @@ func updateTableHeaderStyle(t *Template, raw map[string]json.RawMessage) (Canvas
 				return CanvasProjection{}, componentFailure(id, path, "align must be one of "+strings.Join(template.TableStyleAlignTokens, ", "))
 			}
 			style.Align = template.Presence[string]{Set: true, Value: text}
+		case "border.color":
+			// THE SAME validPropertyColor THE OTHER TWO COLOURS ASK, and this
+			// one has to be asked HERE rather than left to the loader: a border
+			// colour is the one border sub-key the file door CANNOT check
+			// (AD-1 forbids internal/template to import parseHexColor), so a
+			// malformed one loads and surfaces at RENDER. Refusing it at the
+			// command door is what keeps the author's own edit located.
+			if !validPropertyColor(text) {
+				return CanvasProjection{}, componentFailure(id, path, "border.color must be a #RRGGBB colour")
+			}
+			headerBorderFor(style).Color = template.Presence[string]{Set: true, Value: text}
 		}
 	}
 	return Canvas(t)
+}
+
+// headerBorderFor is headerStyleFor's one-level-deeper twin: it materialises the
+// optional `border` block so ONE of its attributes can be written into it.
+//
+// ⚠ MATERIALISING THE BLOCK IS EXACTLY WHERE THE CASCADE CHANGES HANDS, and
+// that is a product fact rather than a storage detail. resolveHeaderStyle takes
+// the header's border WHOLE — `case hasHeader && header.Border.Set &&
+// !header.Border.Null` — with the table's own `style.border` only as a sibling
+// `case`, never a field-by-field merge. So the first attribute written here
+// stops the table's border contributing to the header row at all, and whatever
+// the author does not set falls to the format's own defaults instead of to the
+// table's. Nothing is seeded on their behalf to soften that: TableColumns
+// projects the resolved trio so the panel can SAY what will be drawn, and the
+// panel says the takeover in words. Seeding the other two would write values
+// the author never chose into their document.
+func headerBorderFor(style *template.Style) *template.Border {
+	if !style.Border.Set || style.Border.Null {
+		style.Border = template.Presence[template.Border]{Set: true}
+	}
+	return &style.Border.Value
 }
 
 // headerStyleFor is styleFor's header-only twin: it materialises the optional
@@ -2823,15 +2969,56 @@ func headerStyleFor(element *template.Element) *template.Style {
 // rather than an empty object. Extra is consulted for the same reason
 // cleanupEmptyStyle consults it: unknown keys ride opaquely through a load and
 // a save, and dropping a block that still carries one would delete an author's
-// data. The four fields this story cannot author (bold, italic, border,
-// padding) are checked too — a hand-authored block that still declares one is
-// not empty.
-func cleanupEmptyHeaderStyle(element *template.Element) {
+// data. The one field this story cannot author (padding) is checked too — a
+// hand-authored block that still declares it is not empty.
+//
+// ⚠ THE EMPTY-`border` COLLAPSE IS STORY 14.8's, AND IT IS THE THIRD LEG OF
+// THE MECHANISM RATHER THAN A TIDY-UP. This function counted `style.Border.Set`
+// from the day it was written but had no way to make it FALSE again, because
+// nothing could clear a border attribute. Now something can, and without the
+// collapse the last clear leaves `border: {}` — a block that declares nothing,
+// whose `Border.Set` is nonetheless true, so the whole-style check below can
+// never fire and `headerStyle` is pinned alive in the file forever. It is
+// cleanupEmptyStyle's own six lines (`:1485-1490`), mirrored, and `Extra` is
+// consulted inside the border for the same reason it is consulted outside it.
+//
+// ⚠ AND IT IS GATED ON `clearedField`, WHICH cleanupEmptyStyle's twin IS NOT,
+// BECAUSE `border: {}` IS A MEANINGFUL DOCUMENT HERE. resolveHeaderStyle's arm
+// is `case hasHeader && header.Border.Set && !header.Border.Null` — it takes the
+// header's border block WHOLE, so a present-but-EMPTY border wins the cascade
+// and paints the resolved 0.5pt black on all four edges instead of the table's
+// border. writeBorder emits `{}` for it, so it is a load/serialize fixed point:
+// a hand-authored `"border": {}` is a rendered choice, not debris. Ungated, this
+// collapse ran on every one of the twelve fields' clears, so a command about
+// `background` silently deleted that border and changed the PDF. A collapse must
+// only ever remove a block THIS command emptied — hence the prefix test. The
+// outer whole-`headerStyle` collapse below stays ungated: it removes a block
+// whose emptiness this command's own clear is what produced.
+//
+// ⚠ IT MIRRORS cleanupEmptyStyle's Border HALF AND NOT ITS Padding HALF, and
+// that asymmetry is DELIBERATE rather than an omission. `cleanupEmptyStyle`
+// collapses an empty Border AND an empty Padding because element `style.padding`
+// is authorable; `headerStyle.padding` is NOT and never will be (D-12.4.1 struck
+// padding from the panel), so no command can ever empty it and a padding
+// collapse here would have no clear to run on. The consequence is worth stating
+// plainly rather than leaving implied: a HAND-AUTHORED `headerStyle:
+// {"padding": {}}` still pins `headerStyle` alive in the file forever, because
+// `style.Padding.Set` is true and nothing in this repo can make it false. That
+// is a document the panel cannot produce and cannot clean up. If padding ever
+// becomes authorable, the Padding half of `cleanupEmptyStyle:1491-1496` is what
+// this function then owes — gated on `clearedField` the same way.
+func cleanupEmptyHeaderStyle(element *template.Element, clearedField string) {
 	table := &element.Table.Value
 	if !table.HeaderStyle.Set || table.HeaderStyle.Null {
 		return
 	}
-	style := table.HeaderStyle.Value
+	style := &table.HeaderStyle.Value
+	if strings.HasPrefix(clearedField, "border.") && style.Border.Set && !style.Border.Null {
+		border := style.Border.Value
+		if !border.Color.Set && !border.Width.Set && !border.Edges.Set && len(border.Extra) == 0 {
+			style.Border = template.Presence[template.Border]{}
+		}
+	}
 	if !style.Align.Set && !style.Background.Set && !style.Bold.Set && !style.Color.Set && !style.Italic.Set && !style.Border.Set && !style.FontFamily.Set && !style.FontSize.Set && !style.LineSpacing.Set && !style.Padding.Set && !style.Valign.Set && len(style.Extra) == 0 {
 		table.HeaderStyle = template.Presence[template.Style]{}
 	}

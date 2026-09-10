@@ -273,6 +273,42 @@ export type TableHeaderStyle = Readonly<{
   headerAlign: string; headerAlignResolved: string
   headerBold: boolean; headerBoldResolved: boolean
   headerItalic: boolean; headerItalicResolved: boolean
+  // STORY 14.8 ADDS THE TENTH, ELEVENTH AND TWELFTH PAIRS, AND THE DOTS IN
+  // THEIR NAMES ARE NOT A STYLE CHOICE. The engine authors the header border one
+  // attribute at a time through the field names `border.width`, `border.color`
+  // and `border.edges` — dotted so that the refusal it locates,
+  // `table.headerStyle.border.width`, is a path the document actually has — and
+  // `table_header_style_test.go` derives these key names from those field names
+  // by string transformation. The dot therefore arrives here from the command
+  // spelling, and it is why these three pairs are quoted properties.
+  //
+  // `headerBorder.edgesResolved` IS THE ONE MEMBER THAT SAYS "NOTHING IS
+  // PAINTED", by being empty — which happens both when no border reaches the
+  // header row and when a declared edge list names no side.
+  //
+  // ⚠ THE WIDTH PAIR IS A PAIR OF STRINGS, AND IT IS THE ONLY LENGTH ON THIS
+  // PROJECTION THAT IS. The units are UNCHANGED — integer thousandths of a
+  // point, exactly like `headerHeight` and `headerFontSize`, so `authored()`
+  // renders them the same way; what changes is only how ABSENCE is spelled.
+  // `''` is absent, `'0'` is a declared zero, `'500'` is a declared half point.
+  //
+  // The reason is the file door's, not this file's. `parse_bands.go` says of a
+  // border width: "ZERO IS VALID and stays accepted: it is the thinnest device
+  // line PDF can draw, not an absent border." So `0` is a legal AUTHORED value
+  // here in a way it is not for a header height — a zero header height is not a
+  // meaningful declaration, a zero border width is — and a number whose absence
+  // is spelled `0` cannot tell the two apart. It did not: a header border
+  // authored as nothing but `{"width": 0}` read as unauthored, and the panel
+  // told the author "nothing here is set, so this header row takes the table's
+  // own border" about a header that had taken the border over.
+  //
+  // BOTH halves are strings and the resolved one is formatted in GO. Every pair
+  // on this projection shares one type across the pair; a committed string
+  // beside a resolved number would be the first breach of that invariant, and
+  // it would breach it on the pair a reader is most likely to mis-read.
+  'headerBorder.width': string; 'headerBorder.widthResolved': string
+  'headerBorder.color': string; 'headerBorder.colorResolved': string
+  'headerBorder.edges': string; 'headerBorder.edgesResolved': string
 }>
 export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
 
@@ -467,8 +503,55 @@ const isError = (value: unknown): value is EngineError => isRecord(value) && has
 const isDiagnostic = (value: unknown): value is EngineDiagnostic => isRecord(value) && hasExactKeys(value, ['severity', 'code', 'elementId', 'dataPath', 'message']) && value.severity === 'warning' && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 96 && typeof value.elementId === 'string' && value.elementId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof value.dataPath === 'string' && value.dataPath.length <= MAX_ENGINE_DATA_PATH_LENGTH && typeof value.message === 'string' && value.message.length <= 512
 const isPreview = (value: unknown): value is PreviewEvidence => isRecord(value) && hasOnly(value, ['revision', 'identity', 'pdfSha256', 'diagnostics', 'elapsedMs', 'version']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && typeof value.identity === 'string' && /^[a-f0-9]{64}$/.test(value.identity) && ((value.pdfSha256 === undefined && value.diagnostics === undefined && value.elapsedMs === undefined && value.version === undefined) || (typeof value.pdfSha256 === 'string' && /^[a-f0-9]{64}$/.test(value.pdfSha256) && Array.isArray(value.diagnostics) && value.diagnostics.length <= MAX_ENGINE_DIAGNOSTICS && value.diagnostics.every(isDiagnostic) && typeof value.elapsedMs === 'number' && Number.isSafeInteger(value.elapsedMs) && value.elapsedMs >= 0 && typeof value.version === 'string' && value.version.length > 0 && value.version.length <= 64))
 const isParameterReferences = (value: unknown): value is ParameterReferences => isRecord(value) && hasExactKeys(value, ['revision', 'names']) && typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision >= 0 && Array.isArray(value.names) && value.names.length <= MAX_ENGINE_PARAMETER_REFERENCES && value.names.every((name) => typeof name === 'string' && name.length > 0 && name.length <= MAX_ENGINE_PARAMETER_NAME_LENGTH && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) && new Set(value.names).size === value.names.length && value.names.every((name, index, names) => index === 0 || names[index - 1]! < name)
+// The four border edges in the FORMAT's own order, which is the order Go joins
+// them in. It is a wire fact for this guard and nothing else — the closed set
+// itself lives in `internal/template/closedsets.go`, the loader is the door that
+// refuses an unknown name, and this admits only what that door already admitted.
+const BORDER_EDGE_ORDER = ['top', 'right', 'bottom', 'left'] as const
+const isCanonicalEdgeList = (value: unknown): boolean => {
+  if (typeof value !== 'string') return false
+  if (value === '') return true
+  let next = 0
+  for (const part of value.split(',')) {
+    // `indexOf` FROM `next`, so the list is strictly ascending in the canonical
+    // order: that refuses an unknown name, a repeated one and a re-ordered pair
+    // in one expression, and every list Go can send passes it.
+    const at = (BORDER_EDGE_ORDER as ReadonlyArray<string>).indexOf(part, next)
+    if (at < 0) return false
+    next = at + 1
+  }
+  return true
+}
+// A LENGTH IN INTEGER THOUSANDTHS, SPELLED AS A STRING SO THAT ABSENCE HAS ITS
+// OWN VALUE: `''` is absent, `'0'` is a declared zero, `'500'` is half a point.
+//
+// ⚠ THE CANONICAL SPELLING IS ASSERTED, NOT MERELY THE CHARACTER CLASS, and the
+// two refusals below are the point of this helper rather than pedantry. This
+// clause exists because a string member replaced a bounded NUMBER, and the
+// number carried `Number.isSafeInteger`; a guard that only asked for digits
+// would be WIDER than the member it replaced, which is the opposite of what a
+// re-spelling is allowed to do.
+//
+//  - NO LEADING ZEROS. `'007'` and `'0'` would both be 7 and 0 to `Number()`
+//    while being different strings, so a member the panel branches on as a
+//    STRING (`committed === ''`, `committed === '0'`) would have two spellings
+//    for one value and the remount key would treat them as different states.
+//    `strconv.FormatInt` cannot emit one, so this refuses only what Go cannot
+//    send. Hence `0|[1-9][0-9]*` rather than `[0-9]+`.
+//  - AND THE SAFE-INTEGER MAGNITUDE, which the digit pattern alone does not
+//    bound at all: `'9'.repeat(30)` is all digits and is not a number this or
+//    any other member can carry through arithmetic. `authored()` divides these
+//    by 1000, and past 2^53 that division is silently lossy.
+//
+// Digits with no sign is the same bound the old `>= 0` carried, and it is
+// measured rather than inherited: `parse_bands.go` REFUSES a negative border
+// width outright (ISO 32000-1 §8.4.3.2 — a PDF line width is non-negative) and
+// accepts zero as the thinnest device line, so a negative one cannot come from a
+// loaded document. This is deliberately the same spirit as `isCanonicalEdgeList`
+// beside it, which also refuses non-canonical spellings of a legal value.
+const isThousandthsLengthString = (value: unknown): boolean => typeof value === 'string' && (value === '' || (/^(?:0|[1-9][0-9]*)$/.test(value) && Number.isSafeInteger(Number(value))))
 const isTableColumns = (value: unknown): value is TableColumns => {
-  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'columns'])) return false
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'columns'])) return false
   const table = value.table
   // THE TYPED CLAUSES FOR STORY 12.3's SIXTEEN MEMBERS. Every one is REQUIRED
   // and never optional: hasExactKeys above already refuses a response that
@@ -500,7 +583,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   // [MinLineSpacingThousandths, MaxLineSpacingThousandths] = [1, 1000000], and
   // 0 is this projection's spelling of absent.
   const headerRatio = (key: keyof TableHeaderStyle) => headerLength(key) && (table[key] as number) >= 0
-  if (!(['altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved'] as const).every(headerString)) return false
+  if (!(['altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerBorder.color', 'headerBorder.colorResolved'] as const).every(headerString)) return false
   if (!(['headerHeight', 'headerFontSize', 'headerFontSizeResolved'] as const).every(headerLength)) return false
   if (!(['headerLineSpacing', 'headerLineSpacingResolved'] as const).every(headerRatio)) return false
   // A COMMITTED alignment may be '' — that is what absent looks like — while a
@@ -514,6 +597,25 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   // an absence in — so both values are admitted on both halves, and there is
   // nothing to adjudicate beyond the type.
   if (!(['headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved'] as const).every((key) => typeof table[key] === 'boolean')) return false
+  // STORY 14.8's BORDER TRIO. THE TWO WIDTHS ARE STRINGS, AND A STRING MEMBER
+  // REPLACING A BOUNDED NUMBER MUST TIGHTEN THE CLAUSE, NEVER LOOSEN IT — a
+  // string with no format assertion is how a garbage value walks onto a
+  // projection that used to be a checked integer. `isThousandthsLengthString`
+  // above asserts the CANONICAL spelling and the safe-integer magnitude, which
+  // together admit exactly what `strconv.FormatInt` emits and no more; read its
+  // comment for why the two refusals it adds are load-bearing.
+  //
+  // `headerString` supplies the typeof and the length bound every other string
+  // member on this projection already gets; the helper supplies the format.
+  if (!(['headerBorder.width', 'headerBorder.widthResolved'] as const).every((key) => headerString(key) && isThousandthsLengthString(table[key]))) return false
+  // THE EDGE LISTS, CHECKED THE WAY `column.align` IS CHECKED — against the
+  // closed set, not against a shape. `''` is admitted on BOTH halves and means
+  // two different things: on the committed member it is "the document declares
+  // no edge list", and on the resolved one it is "nothing is painted" (no border
+  // reaches the header row, or a declared list names no side). Order is
+  // CANONICAL because Go joins in the format's own order; a re-ordered or
+  // repeated list is a projection this engine does not produce.
+  if (!(['headerBorder.edges', 'headerBorder.edgesResolved'] as const).every((key) => isCanonicalEdgeList(table[key]))) return false
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {

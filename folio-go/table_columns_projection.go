@@ -2,9 +2,12 @@ package folio
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/pagemodel"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
 
@@ -19,8 +22,8 @@ type TableColumnsProjection struct {
 	Collection string `json:"collection"`
 	Alias      string `json:"alias"`
 
-	// STORY 12.3 — the table-level header and row properties, twenty
-	// members since Story 11.3, and the arithmetic is 9 x 2 + 1 + 1.
+	// STORY 12.3 — the table-level header and row properties, twenty-six
+	// members since Story 14.8, and the arithmetic is 12 x 2 + 1 + 1.
 	//
 	// TWO MEMBERS PER HEADER-STYLE FIELD. The committed one is what the
 	// document actually declares — empty/zero when the key is absent —
@@ -94,6 +97,70 @@ type TableColumnsProjection struct {
 	HeaderBoldResolved        bool   `json:"headerBoldResolved"`
 	HeaderItalic              bool   `json:"headerItalic"`
 	HeaderItalicResolved      bool   `json:"headerItalicResolved"`
+
+	// STORY 14.8's THREE PAIRS, AND THE DOTTED KEY NAMES ARE FORCED RATHER
+	// THAN CHOSEN. `tableHeaderStyleFields` spells the authorable attributes
+	// `border.width`, `border.color` and `border.edges` — dotted, so that
+	// `table.headerStyle.` + field is a path the document actually has —
+	// and table_header_style_test.go derives THESE key names from THOSE
+	// field names by string transformation (strip `header`, lowercase the
+	// first letter) and requires the two sets to be equal. So the dot
+	// propagates out of the command spelling, into the json tag, into the
+	// browser's hasExactKeys list, and into quoted TypeScript property
+	// access. There is no independent naming decision here to make.
+	//
+	// ⚠ THE RESOLVED TRIO IS NOT A FIELD-BY-FIELD CASCADE, and that is the
+	// one thing about these six members a reader has to know.
+	// resolveHeaderStyle takes the header's border WHOLE: the moment
+	// `headerStyle.border` exists at all, the table's own `style.border`
+	// stops contributing, and every sub-key the header does not declare
+	// falls to the FORMAT's default (0.5pt, #000000, all four edges) rather
+	// than to the table's value for it. These members report that, computed
+	// by the same three functions the RENDERER calls (table_render.go's
+	// resolvedBorderWidth/Color/Edges) so the panel cannot show a number the
+	// PDF does not draw. The panel discloses the block-granularity in words;
+	// nothing here softens it.
+	//
+	// HeaderBorderEdgesResolved IS EMPTY EXACTLY WHEN NOTHING IS PAINTED —
+	// both when no border resolves at all and when a declared `edges: []`
+	// leaves no side to stroke — and it is the ONLY member that can say
+	// so about the PAINT. The colour members spell "no border resolves"
+	// as this projection's ordinary absence, "".
+	//
+	// ⚠ AND THE WIDTH PAIR IS THE ONE PLACE ON THIS PROJECTION WHERE A
+	// LENGTH IS SPELLED AS A STRING RATHER THAN AS THOUSANDTHS OF A POINT.
+	// "" is absent, "0" is a declared zero, "500" is a declared half point.
+	// THE UNITS ARE UNCHANGED — still integer thousandths, exactly as
+	// HeaderHeight and HeaderFontSize — only the SPELLING OF ABSENCE moves.
+	//
+	// The reason is the loader's own, and it is why this pair differs from
+	// HeaderHeight rather than being inconsistent with it.
+	// internal/template/parse_bands.go says of a border width: "ZERO IS
+	// VALID and stays accepted: it is the thinnest device line PDF can
+	// draw, not an absent border. Only a NEGATIVE width is refused." So a
+	// header border authored as nothing but `{"width": 0}` is a real,
+	// declared, painted border — and a numeric member whose absence is
+	// spelled 0 cannot tell it apart from a header that declares no border
+	// at all. It did not, and the panel therefore told an author "nothing
+	// here is set, so this header row takes the table's own border" about a
+	// header that had taken the border over. HeaderHeight never needed this
+	// spelling because a zero header height is not a meaningful declaration
+	// of anything; a zero border width is.
+	//
+	// BOTH HALVES OF THE PAIR ARE STRINGS, and the resolved half is
+	// formatted in Go. Every other pair on this struct shares one type
+	// across the pair (HeaderFontSize/HeaderFontSizeResolved are both
+	// int64); a committed string beside a resolved number would be the
+	// first breach of that, and it would breach it on the one pair a reader
+	// is most likely to mis-read. Both-strings also makes the border trio
+	// uniform — six string members, "" meaning absent throughout, the same
+	// as the colour and edge pairs beside them.
+	HeaderBorderWidth         string `json:"headerBorder.width"`
+	HeaderBorderWidthResolved string `json:"headerBorder.widthResolved"`
+	HeaderBorderColor         string `json:"headerBorder.color"`
+	HeaderBorderColorResolved string `json:"headerBorder.colorResolved"`
+	HeaderBorderEdges         string `json:"headerBorder.edges"`
+	HeaderBorderEdgesResolved string `json:"headerBorder.edgesResolved"`
 
 	Columns []TableColumnProjection `json:"columns"`
 }
@@ -205,6 +272,12 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		HeaderBoldResolved:        resolved.bold,
 		HeaderItalic:              committedStyleBool(committed.Italic),
 		HeaderItalicResolved:      resolved.italic,
+		HeaderBorderWidth:         committedBorderWidth(committedHeaderBorder(committed).Width),
+		HeaderBorderWidthResolved: resolvedHeaderBorderWidth(resolved),
+		HeaderBorderColor:         committedStyleString(committedHeaderBorder(committed).Color),
+		HeaderBorderColorResolved: resolvedHeaderBorderColor(resolved),
+		HeaderBorderEdges:         canonicalEdgeList(committedHeaderBorder(committed).Edges),
+		HeaderBorderEdgesResolved: resolvedHeaderBorderEdges(resolved),
 		Columns:                   make([]TableColumnProjection, 0, len(element.Table.Value.Columns)),
 	}
 	for _, column := range element.Table.Value.Columns {
@@ -264,6 +337,26 @@ func committedRatio(value template.Presence[int64]) int64 {
 	return 0
 }
 
+// committedBorderWidth is committedLength's STRING sibling, and it exists for
+// exactly one member. It reads the SAME UNITS — integer thousandths of a point
+// — and differs only in how it spells absence: "" rather than 0.
+//
+// It cannot be committedLength, because for a border width 0 is a LEGAL
+// DECLARED VALUE. parse_bands.go: "ZERO IS VALID and stays accepted: it is the
+// thinnest device line PDF can draw, not an absent border." So `{"width": 0}`
+// and no `width` at all are two different documents that a numeric member
+// reports identically — and the panel's "nothing here is set, so this header
+// row takes the table's own border" was said about the first of them, which is
+// false. Absence needs a spelling of its own here; it does not for
+// committedLength's other caller, because a zero font size is not a
+// declaration.
+func committedBorderWidth(value template.Presence[geom.Length]) string {
+	if value.Set && !value.Null {
+		return strconv.FormatInt(int64(value.Value), 10)
+	}
+	return ""
+}
+
 // resolvedHeaderFontFamily and resolvedHeaderBackground read the two
 // cascade results that carry a presence flag beside their value. Empty
 // means the cascade found nothing to resolve from — a font chain is
@@ -282,4 +375,92 @@ func resolvedHeaderBackground(resolved resolvedHeaderStyle) string {
 		return resolved.background
 	}
 	return ""
+}
+
+// committedHeaderBorder reads the header's border block AS THE DOCUMENT
+// DECLARES IT. An absent or explicitly null `border` yields the zero Border,
+// whose three Presence members all read as absent — which is exactly what it
+// means, and what makes "clear this attribute back to absent" expressible.
+func committedHeaderBorder(committed template.Style) template.Border {
+	if !committed.Border.Set || committed.Border.Null {
+		return template.Border{}
+	}
+	return committed.Border.Value
+}
+
+// THE THREE RESOLVED BORDER MEMBERS, AND ALL THREE ASK THE RENDERER'S OWN
+// FUNCTIONS. resolvedBorderWidth, resolvedBorderColor and resolvedBorderEdges
+// live in table_render.go beside the emitter that consumes them, so what this
+// projection tells the author is what the PDF draws — by construction, not by
+// two implementations agreeing. `resolved.hasBorder` is resolveHeaderStyle's own
+// verdict on whether ANY border reaches the header row.
+// resolvedHeaderBorderWidth is a STRING for the same reason its committed twin
+// is — the pair shares one type, as every pair on this struct does — and the
+// formatting happens HERE, in Go, so the browser is never the place a length
+// acquires a spelling. Thousandths, unchanged; "" only when no border reaches
+// the header row at all.
+func resolvedHeaderBorderWidth(resolved resolvedHeaderStyle) string {
+	if !resolved.hasBorder {
+		return ""
+	}
+	return strconv.FormatInt(int64(resolvedBorderWidth(resolved.border)), 10)
+}
+
+func resolvedHeaderBorderColor(resolved resolvedHeaderStyle) string {
+	if !resolved.hasBorder {
+		return ""
+	}
+	return resolvedBorderColor(resolved.border)
+}
+
+// resolvedHeaderBorderEdges is the member that carries "nothing is painted",
+// and it says so by being EMPTY — for both of the two ways that happens: no
+// border resolves at all, and a border whose declared `edges` names no side.
+// internal/pdf/rectdoc.go's emission gate is exactly that disjunction, so an
+// empty string here and no stroke in the PDF are the same condition.
+func resolvedHeaderBorderEdges(resolved resolvedHeaderStyle) string {
+	if !resolved.hasBorder {
+		return ""
+	}
+	return edgeListOf(resolvedBorderEdges(resolved.border))
+}
+
+// canonicalEdgeList and edgeListOf are the ONE spelling of an edge set on this
+// wire: the four names in the format's own order, comma-joined, and "" for none.
+// The order is canonical rather than the author's, because the browser's guard
+// admits a canonical list and a re-ordered one would be refused — and because a
+// set has no order to preserve. An unknown name in a hand-edited document is
+// dropped here exactly as the renderer's own switch drops it; the loader is the
+// door that refuses it, and this projection is not a second one.
+func canonicalEdgeList(edges template.Presence[[]string]) string {
+	if !edges.Set || edges.Null {
+		return ""
+	}
+	declared := pagemodel.RectEdges{}
+	for _, edge := range edges.Value {
+		switch edge {
+		case "top":
+			declared.Top = true
+		case "right":
+			declared.Right = true
+		case "bottom":
+			declared.Bottom = true
+		case "left":
+			declared.Left = true
+		}
+	}
+	return edgeListOf(declared)
+}
+
+func edgeListOf(edges pagemodel.RectEdges) string {
+	names := make([]string, 0, 4)
+	for _, edge := range []struct {
+		name string
+		on   bool
+	}{{"top", edges.Top}, {"right", edges.Right}, {"bottom", edges.Bottom}, {"left", edges.Left}} {
+		if edge.on {
+			names = append(names, edge.name)
+		}
+	}
+	return strings.Join(names, ",")
 }

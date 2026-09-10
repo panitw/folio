@@ -61,7 +61,7 @@ const carried = (assetKey: string, variants: Partial<Readonly<{ bold: string; it
 // every committed member is absent while every resolved one carries the
 // cascade's answer — which is the shape that makes "the panel shows the
 // resolved value" observable at all.
-const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false }
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
@@ -560,9 +560,14 @@ describe('application shell', () => {
     // all have one.
     expect(screen.queryByRole('button', { name: 'Clear Header height (pt)' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Clear Header height in points' })).toBeNull()
-    for (const label of ['Alternating row background', 'Header font family', 'Header font size (pt)', 'Header line spacing', 'Header background', 'Header text colour']) {
+    for (const label of ['Alternating row background', 'Header font family', 'Header font size (pt)', 'Header line spacing', 'Header background', 'Header text colour', 'Header border width (pt)', 'Header border colour']) {
       expect(screen.getByRole('button', { name: `Clear ${label}` })).toBeInTheDocument()
     }
+    // ⚠ AND THE EDGE SET HAS NO `×` OF ITS OWN, WHICH IS ALSO A RULING. A glyph
+    // button outside a segmented control moves `control-vocabulary-contract`'s
+    // V2 census, and the engine refuses an empty edge array — so unchecking every
+    // edge already expresses the clear, and the panel sends `op: "clear"` for it.
+    expect(screen.queryByRole('button', { name: 'Clear Header border edges' })).toBeNull()
   })
 
   // THE COLOUR ROW IS HALF-CONTROLLED, AND THE TWO HALVES MUST NOT DRIFT.

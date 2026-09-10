@@ -29,12 +29,22 @@
 // no field in this story accepts that, and all three arms refuse it — because
 // an explicit null is still the key in the file: it changes the bytes, burns an
 // undo entry and raises the document's required format version.
-import { commandBytes, jsonNumber, jsonString, type JsonField } from './command-json'
+import { commandBytes, jsonArray, jsonNumber, jsonString, type JsonField } from './command-json'
 
-// The seven header-style fields THIS MODULE can author. The four `Style` fields
-// absent from this union are each a ruling, not an oversight: `border` is
-// deferred to Story 14.8's BORDERS section, and `padding` is forbidden outright
-// by D-12.4.1.
+// The ten header-style fields THIS MODULE can author. The fields absent from
+// this union are each a ruling, not an oversight: `padding` is forbidden
+// outright by D-12.4.1, and `bold`/`italic` are held out on the transport
+// ground stated below.
+//
+// STORY 14.8 ADDS THE HEADER BORDER, ONE ATTRIBUTE PER COMMAND. The names are
+// the engine's own dotted spelling — `border.width`, `border.color`,
+// `border.edges` — because `updateTableHeaderStyle` builds its located path as
+// `table.headerStyle.` + field, so the dots make the refusal name a path the
+// document actually has. There is deliberately NO `border` member carrying a
+// whole object: the command surface is one field and one op, so a block `set`
+// would have to re-transmit the two attributes the author did not touch, read
+// back from the projection across an async boundary. Sending only what was
+// touched and sending the block whole are incompatible.
 //
 // ⚠ `bold`/`italic` USED TO BE JUSTIFIED HERE AS "no arm in the engine's header
 // cascade to resolve from — a header style declaring either would be stored and
@@ -52,13 +62,25 @@ import { commandBytes, jsonNumber, jsonString, type JsonField } from './command-
 // to send one — `TableEditor.tsx` has no header B/I — and DW-240 was read-back
 // plumbing, not authoring. Adding either here means adding a boolean arm and
 // the control that uses it, together.
-export type TableHeaderStyleField = 'fontFamily' | 'fontSize' | 'lineSpacing' | 'background' | 'color' | 'valign' | 'align'
+export type TableHeaderStyleField = 'fontFamily' | 'fontSize' | 'lineSpacing' | 'background' | 'color' | 'valign' | 'align' | 'border.width' | 'border.color' | 'border.edges'
 
-// The two header-style fields whose value is a NUMBER on the wire: a length in
-// points and a dimensionless ratio. Everything else is a string. This is a
-// transport fact about Go's decoders, not a second opinion about what a legal
-// value is.
-const NUMERIC_HEADER_STYLE_FIELDS: ReadonlyArray<TableHeaderStyleField> = ['fontSize', 'lineSpacing']
+// The three header-style fields whose value is a NUMBER on the wire: two lengths
+// in points and a dimensionless ratio. This is a transport fact about Go's
+// decoders, not a second opinion about what a legal value is.
+const NUMERIC_HEADER_STYLE_FIELDS: ReadonlyArray<TableHeaderStyleField> = ['fontSize', 'lineSpacing', 'border.width']
+
+// The ONE header-style field whose value is a JSON ARRAY on the wire, because
+// Go decodes it with a plain `json.Unmarshal` into `[]string` — the same decoder
+// the element-level `borderEdges` command uses. The caller passes the edge names
+// comma-joined, which is the spelling the PROJECTION uses for the same set, so
+// the panel never has to convert between two shapes of one value.
+//
+// AN EMPTY DRAFT ENCODES AS `[]`, NOT AS A GUESS. Go refuses the empty array
+// with a located sentence, exactly as it refuses one from the inspector's border
+// control; sending `[""]` or silently dropping the command would each be this
+// module inventing a rule, which it does not do. A panel that wants to remove
+// the attribute sends `op: "clear"` instead.
+const ARRAY_HEADER_STYLE_FIELDS: ReadonlyArray<TableHeaderStyleField> = ['border.edges']
 
 // `height` is the author's DRAFT, in points, passed as typed. There is no
 // clear: `headerHeight` is required by the format (`parse_bands.go` hard-errors
@@ -78,9 +100,14 @@ export function tableAltRowBackgroundCommand(id: string, operation: 'set' | 'cle
 
 // One field of the header-only Style block. A cleared field is removed from the
 // block, and clearing the LAST one removes the block itself — both are the
-// engine's doing, not this module's.
+// engine's doing, not this module's. Since Story 14.8 that collapse is two deep:
+// clearing the last border attribute removes the empty `border` block, and if it
+// was the block's only member the `headerStyle` key goes with it. Again the
+// engine's doing; nothing here counts what is left.
 export function tableHeaderStyleCommand(id: string, field: TableHeaderStyleField, operation: 'set' | 'clear', value = ''): ArrayBuffer {
-  const encoded = NUMERIC_HEADER_STYLE_FIELDS.includes(field) ? jsonNumber(value) : jsonString(value)
+  const encoded = ARRAY_HEADER_STYLE_FIELDS.includes(field) ? jsonArray(value === '' ? [] : value.split(',').map(jsonString))
+    : NUMERIC_HEADER_STYLE_FIELDS.includes(field) ? jsonNumber(value)
+    : jsonString(value)
   return commandBytes('updateTableHeaderStyle', [['id', jsonString(id)], ['field', jsonString(field)], ...operationFields(operation, encoded)])
 }
 

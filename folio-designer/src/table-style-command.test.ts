@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand } from './table-style-command'
 
-// THIS FILE IS THE SINGLE AUTHORITY ON STORY 12.3's WIRE BYTES, and the story
+// THIS FILE IS THE SINGLE AUTHORITY ON THESE WIRE BYTES — Story 12.3's seven
+// header-style fields and Story 14.8's border trio alike — and the story
 // spec deliberately does not restate the arity: the spec owns the op grammar
 // and the shared `findComponent` gate, and pinning the arity in prose as well
 // would be a second spelling of one rule — the defect Story 12.2 spent its
@@ -68,17 +69,42 @@ describe('tableHeaderStyleCommand', () => {
     expect(keys(tableHeaderStyleCommand('e7', 'align', 'clear'))).toEqual(['kind', 'version', 'id', 'field', 'op'])
   })
 
-  it('sends the two numeric fields unquoted and the five string fields quoted', () => {
-    // TRANSPORT, not validation. Go decodes fontSize with a length decoder and
-    // align with a string one; a value in the wrong JSON type could not reach
-    // either rule to be judged by it.
-    expect(text(tableHeaderStyleCommand('e7', 'fontSize', 'set', '14'))).toContain('"value":14')
-    expect(text(tableHeaderStyleCommand('e7', 'lineSpacing', 'set', '1.5'))).toContain('"value":1.5')
-    for (const field of ['fontFamily', 'background', 'color', 'valign', 'align'] as const) {
-      expect(text(tableHeaderStyleCommand('e7', field, 'set', 'x'))).toContain('"value":"x"')
+  // ⚠ THE ENUMERATION IS THE POINT OF THIS TEST, so it must enumerate what the
+  // MODULE encodes rather than what it once encoded. Story 14.8 took the union
+  // from seven fields to TEN, and it did not add them evenly: the three JSON
+  // shapes are now THREE numeric fields, SIX string fields and ONE array field.
+  // A file that calls itself the single authority on these wire bytes and skips
+  // three of the ten is not one.
+  it('sends the three numeric fields unquoted, the six string fields quoted, and the one array field as an array', () => {
+    // TRANSPORT, not validation. Go decodes fontSize with a length decoder,
+    // align with a string one and border.edges with `json.Unmarshal` into
+    // `[]string`; a value in the wrong JSON type could not reach any of those
+    // rules to be judged by it.
+    for (const [field, draft] of [['fontSize', '14'], ['lineSpacing', '1.5'], ['border.width', '0.5']] as const) {
+      expect(text(tableHeaderStyleCommand('e7', field, 'set', draft)), field).toContain(`"value":${draft}`)
     }
+    for (const field of ['fontFamily', 'background', 'color', 'valign', 'align', 'border.color'] as const) {
+      expect(text(tableHeaderStyleCommand('e7', field, 'set', 'x')), field).toContain('"value":"x"')
+    }
+    // THE ONE ARRAY FIELD. The caller passes the edge names comma-joined — the
+    // spelling the PROJECTION uses for the same set — and the module splits them,
+    // so the panel never converts between two shapes of one value.
+    expect(text(tableHeaderStyleCommand('e7', 'border.edges', 'set', 'top,bottom')))
+      .toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.edges","op":"set","value":["top","bottom"]}')
     // And an emptied numeric draft is `null`, never a 0 nobody typed.
     expect(text(tableHeaderStyleCommand('e7', 'fontSize', 'set', ''))).toContain('"value":null')
+    // ⚠ BUT AN EMPTIED BORDER WIDTH IS `null` FOR A DIFFERENT REASON AND WITH A
+    // DIFFERENT CONSEQUENCE, and it is worth pinning because ZERO IS LEGAL for
+    // this one field: `0` is the thinnest device line PDF can draw, so a factory
+    // that turned an empty draft into `0` would author a real border out of an
+    // emptied box. `null` is refused whole by `tableCommandOp`, which is the
+    // correct outcome — the panel sends `op: "clear"` to remove it.
+    expect(text(tableHeaderStyleCommand('e7', 'border.width', 'set', ''))).toContain('"value":null')
+    expect(text(tableHeaderStyleCommand('e7', 'border.width', 'set', '0'))).toContain('"value":0')
+    // AND AN EMPTIED EDGE DRAFT IS `[]`, NOT A GUESS. Go refuses the empty array
+    // with a located sentence; inventing `[""]` or dropping the command would be
+    // this module holding a rule of its own, which it does not.
+    expect(text(tableHeaderStyleCommand('e7', 'border.edges', 'set', ''))).toContain('"value":[]')
   })
 
   it('cannot be made to carry a second field or a second value from one typed string', () => {

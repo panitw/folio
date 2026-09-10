@@ -482,6 +482,18 @@ var tableColumnsProjectionWireKeys = []string{
 	"headerBackgroundResolved",
 	"headerBold",
 	"headerBoldResolved",
+	// STORY 14.8's THREE PAIRS. The DOT is part of the key, not a typo: the
+	// command spells the authorable attributes `border.width`, `border.color`
+	// and `border.edges` so that its located path is one the document has, and
+	// table_header_style_test.go derives these key names from those field names.
+	// `extractedKeyList` splits the TypeScript literal on COMMAS, so a dotted
+	// key extracts whole; a key with a comma in it would not.
+	"headerBorder.color",
+	"headerBorder.colorResolved",
+	"headerBorder.edges",
+	"headerBorder.edgesResolved",
+	"headerBorder.width",
+	"headerBorder.widthResolved",
 	"headerColor",
 	"headerColorResolved",
 	"headerFontFamily",
@@ -515,7 +527,7 @@ var tableProjectionGuardKeyList = regexp.MustCompile(`hasExactKeys\(value\.table
 // engine actually emits for a table that uses these members rather than against
 // a struct literal.
 //
-// IT SETS ALL NINE HEADER-STYLE FIELDS, not one. It used to set only
+// IT SETS ALL TWELVE HEADER-STYLE FIELDS, not one. It used to set only
 // `altRowBackground` and `fontSize` while its own comment claimed a table "that
 // uses these members", leaving five committed members zero-valued in the very
 // fixture the wire-key record is measured against. The key SET does not depend
@@ -548,6 +560,9 @@ func projectedTableForWireKeys(t *testing.T) TableColumnsProjection {
 		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"align","op":"set","value":"center"}`,
 		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"bold","op":"set","value":true}`,
 		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"italic","op":"set","value":true}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"border.width","op":"set","value":2}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"border.color","op":"set","value":"#334455"}`,
+		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"border.edges","op":"set","value":["top","bottom"]}`,
 	} {
 		if _, err := ApplyComponentCommand(tpl, []byte(command)); err != nil {
 			t.Fatalf("apply %s: %v", command, err)
@@ -565,7 +580,8 @@ func projectedTableForWireKeys(t *testing.T) TableColumnsProjection {
 		projection.HeaderFontFamily == "" || projection.HeaderFontSize == 0 ||
 		projection.HeaderLineSpacing == 0 || projection.HeaderBackground == "" ||
 		projection.HeaderColor == "" || projection.HeaderValign == "" || projection.HeaderAlign == "" ||
-		!projection.HeaderBold || !projection.HeaderItalic {
+		!projection.HeaderBold || !projection.HeaderItalic ||
+		projection.HeaderBorderWidth == "" || projection.HeaderBorderColor == "" || projection.HeaderBorderEdges == "" {
 		t.Fatalf("the wire-key fixture leaves a committed member zero-valued, so the record is measured against a table that does not use it: %#v", projection)
 	}
 	return projection

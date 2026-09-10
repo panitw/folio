@@ -575,6 +575,71 @@ func buildCellRect(elementID string, x, y, w, h geom.Length, hasBackground bool,
 		"style.background/headerStyle.background", hasBorder, border)
 }
 
+// THE PAINT-TIME DEFAULTS FOR A BORDER WHOSE SUB-KEYS ARE EACH INDEPENDENTLY
+// OPTIONAL, IN ONE PLACE, AND STORY 14.8 IS WHY THEY ARE NAMED AT ALL.
+//
+// They used to be three literals inlined in buildCellRectWithBackgroundField.
+// That was fine while the renderer was the only reader — and it stopped being
+// fine the moment the table editor had to SHOW an author what an unset border
+// attribute will actually draw. `TableColumns` projects a resolved twin beside
+// every committed header-style member (D-12.3.1), and for the border trio that
+// twin IS these three answers. A second copy of them in the projection, or a
+// third in TypeScript, is a third thing to drift out of step with the PDF; the
+// designer already learned that lesson once with `?? 500` / `?? '#000000'` on
+// the canvas. So the renderer and the projection ask the same three functions.
+//
+// `parse_bands.go` is the authority for what may be STORED here (a negative
+// width is refused at load; ZERO is accepted and is the thinnest device line
+// PDF can draw, not an absent border). These functions decide only what an
+// ABSENT sub-key means, which is a render question and belongs in this file.
+const (
+	// folio-format.md's documented defaults for an unset border sub-key.
+	defaultBorderWidth geom.Length = 500
+	defaultBorderColor             = "#000000"
+)
+
+func resolvedBorderWidth(border template.Border) geom.Length {
+	if border.Width.Set && !border.Width.Null {
+		return border.Width.Value
+	}
+	return defaultBorderWidth
+}
+
+func resolvedBorderColor(border template.Border) string {
+	if border.Color.Set && !border.Color.Null {
+		return border.Color.Value
+	}
+	return defaultBorderColor
+}
+
+// resolvedBorderEdges answers ALL FOUR for an absent `edges`, and an explicitly
+// declared list by exactly the sides it names — so a declared `[]` resolves to
+// no side at all. That is not a hole: `internal/pdf/rectdoc.go` emits a stroke
+// only `if r.HasStroke && (Edges.Top || Right || Bottom || Left)`, so no side
+// means nothing is painted, and it is the one shape a hand-edited document can
+// use to say "this border draws nothing". A command cannot write it — the
+// `border.edges` arm refuses the empty array — because clearing the attribute is
+// how an author says the same thing without a block that means nothing.
+func resolvedBorderEdges(border template.Border) pagemodel.RectEdges {
+	if !border.Edges.Set || border.Edges.Null {
+		return pagemodel.RectEdges{Top: true, Right: true, Bottom: true, Left: true}
+	}
+	edges := pagemodel.RectEdges{}
+	for _, e := range border.Edges.Value {
+		switch e {
+		case "top":
+			edges.Top = true
+		case "right":
+			edges.Right = true
+		case "bottom":
+			edges.Bottom = true
+		case "left":
+			edges.Left = true
+		}
+	}
+	return edges
+}
+
 // buildCellRectWithBackgroundField is buildCellRect's located-field form.
 // Most callers use the ordinary style cascade through buildCellRect; an
 // alternating data row passes table.altRowBackground so a malformed value is
@@ -593,39 +658,17 @@ func buildCellRectWithBackgroundField(elementID string, x, y, w, h geom.Length, 
 	}
 
 	if hasBorder {
-		width := geom.Length(500) // folio-format.md's documented default: 0.5pt
-		if border.Width.Set && !border.Width.Null {
-			width = border.Width.Value
-		}
-		colorHex := "#000000"
-		if border.Color.Set && !border.Color.Null {
-			colorHex = border.Color.Value
-		}
+		width := resolvedBorderWidth(border)
+		colorHex := resolvedBorderColor(border)
 		c, ok := parseHexColor(colorHex)
 		if !ok {
 			return pagemodel.Rect{}, newRenderError(DiagCodeStyleColorInvalid, elementID, "",
 				fmt.Errorf("folio: Render: element %s: style.border.color/headerStyle.border.color %q is not a #RRGGBB colour", elementID, colorHex))
 		}
-		edges := pagemodel.RectEdges{Top: true, Right: true, Bottom: true, Left: true}
-		if border.Edges.Set && !border.Edges.Null {
-			edges = pagemodel.RectEdges{}
-			for _, e := range border.Edges.Value {
-				switch e {
-				case "top":
-					edges.Top = true
-				case "right":
-					edges.Right = true
-				case "bottom":
-					edges.Bottom = true
-				case "left":
-					edges.Left = true
-				}
-			}
-		}
 		rect.HasStroke = true
 		rect.Stroke = c
 		rect.StrokeWidth = width
-		rect.Edges = edges
+		rect.Edges = resolvedBorderEdges(border)
 	}
 
 	return rect, nil

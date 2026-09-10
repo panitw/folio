@@ -480,7 +480,7 @@ describe('canvas projection protocol guard', () => {
     for (const align of ['middle', 'JUSTIFY', 'flush', '']) expect(response(component(align))).toBeUndefined()
 
     // The COLUMN set stays the triple, on its own projection.
-    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
+    const columns = (align: string) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'rows[]', alias: 'row', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', columns: [{ id: 'e8', header: 'Amount', width: 72000, align, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } })
     expect(columns('right')).toBeDefined()
     expect(columns('justify')).toBeUndefined()
 
@@ -814,7 +814,7 @@ describe('canvas projection protocol guard', () => {
     const request = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'request', requestId: 'table-1', operation: 'table-columns', payload }
     expect(parseRequest(request)).toBeDefined()
     expect(parseRequest({ ...request, payload: undefined })).toBeUndefined()
-    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
+    const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
     expect(parseInbound(response)).toBeDefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, revision: 6 } })).toBeUndefined()
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, table: { ...response.tableColumns.table, columns: [{ ...response.tableColumns.table.columns[0], bind: 'row.amount' }] } } })).toBeUndefined()
@@ -836,7 +836,7 @@ describe('canvas projection protocol guard', () => {
   // <TableEditor>, which never mounts. So the assertion is on parseInbound's
   // RETURN VALUE and never on a visual symptom.
   it('refuses a table projection with a missing member and one with a surplus key alike', () => {
-    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [] }
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', columns: [] }
     const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
     expect(parseInbound(responseFor(table))).toBeDefined()
     // DIRECTION ONE — a projected member the guard's list does not name. Modelled
@@ -871,6 +871,75 @@ describe('canvas projection protocol guard', () => {
     // are the same wire value, a limit TableColumnsProjection's own comment
     // discloses — so nothing here may read a meaning into either one.
     expect(parseInbound(responseFor({ ...table, headerBold: true, headerBoldResolved: true, headerItalic: false, headerItalicResolved: true }))).toBeDefined()
+    // STORY 14.8's THREE PAIRS. The DOTTED key names are not cosmetic: the engine
+    // authors the header border one attribute at a time through the field names
+    // `border.width`/`border.color`/`border.edges`, so its located refusals name
+    // a path the document has, and Go derives these projection keys from those
+    // field names. A bare `headerBorder` is therefore still a SURPLUS key —
+    // asserted above, and it is a different claim from these.
+    //
+    // THE WIDTH PAIR IS A PAIR OF STRINGS — the only length on this projection
+    // that is — BECAUSE `0` IS A LEGAL AUTHORED WIDTH AND THEREFORE CANNOT ALSO
+    // BE THE SPELLING OF ABSENCE. `parse_bands.go`: zero "is the thinnest device
+    // line PDF can draw, not an absent border". The units did not move (integer
+    // thousandths, as `headerFontSize`); only absence acquired a spelling of its
+    // own, `''`.
+    //
+    // AND THE CLAUSE HAD TO TIGHTEN RATHER THAN LOOSEN, because a string member
+    // replacing a bounded number is how a garbage value walks in. Digits only,
+    // with no sign, no decimal point, no exponent and no surrounding space —
+    // which is exactly what Go's `strconv.FormatInt` can emit — plus `''`. The
+    // no-negative half is the same bound the numeric clause carried and it is
+    // measured: `parse_bands.go` REFUSES a negative border width (ISO 32000-1
+    // §8.4.3.2), so one cannot come from a loaded document.
+    for (const key of ['headerBorder.width', 'headerBorder.widthResolved'] as const) {
+      for (const admitted of ['', '0', '500', '3000']) {
+        expect(parseInbound(responseFor({ ...table, [key]: admitted })), `${key} = ${JSON.stringify(admitted)} must be admitted`).toBeDefined()
+      }
+      // A NUMBER IS NOW REFUSED, AND THAT IS THE HALF THAT PINS THE SEAM. Go
+      // sends a string; a number arriving here is a Go/TypeScript disagreement
+      // about this member's type, which is the failure `hasExactKeys` exists to
+      // turn into a refusal rather than into a silently wrong panel.
+      // ⚠ A LEADING ZERO IS REFUSED, AND SO IS A MAGNITUDE PAST THE SAFE-INTEGER
+      // RANGE. The digit pattern alone admitted both, which made this clause
+      // WIDER than the bounded number it replaced — the number carried
+      // `Number.isSafeInteger`, and a re-spelling is not allowed to spend that.
+      //
+      // `'007'` matters because the panel branches on this member as a STRING
+      // (`committed === ''`, `committed === '0'`) and keys a remount on it: two
+      // spellings of one value are two states to the key and one value to
+      // `Number()`, which is the exact conflation the string spelling was
+      // introduced to remove. `'0007'` and `'00'` are the same defect.
+      //
+      // The magnitudes matter because `authored()` divides these by 1000, and
+      // past 2^53 that division is silently lossy — a projected length that
+      // cannot survive its own display. `strconv.FormatInt` emits neither shape,
+      // so refusing them refuses only what Go cannot send.
+      for (const refused of [0, 500, -1, 0.5, null, undefined, ['500'], '-1', '+500', '0.5', '1e3', ' 500', '500 ', '5 0 0', 'abc', '٥٠٠', '007', '0007', '00', '01', '9007199254740992', '99999999999999999999999999999999']) {
+        expect(parseInbound(responseFor({ ...table, [key]: refused })), `${key} = ${JSON.stringify(refused)} must be refused`).toBeUndefined()
+      }
+      // AND THE BOUNDARY ITSELF IS ADMITTED, so the magnitude refusal above is
+      // pinned as a bound rather than as an arbitrary cut: 2^53 - 1 is the last
+      // integer `Number` represents exactly.
+      expect(parseInbound(responseFor({ ...table, [key]: '9007199254740991' })), `${key} = the largest safe integer must be admitted`).toBeDefined()
+    }
+    // THE EDGE LISTS, AGAINST THE CLOSED SET AND IN THE FORMAT'S OWN ORDER. Go
+    // joins them canonically, so a re-ordered or repeated list is a projection
+    // this engine does not produce and an unknown name is one the loader already
+    // refused. `''` is admitted on both halves and means two different things:
+    // "the document declares no list" on the committed member, and "nothing is
+    // painted" on the resolved one — the only member that reports the second way
+    // nothing gets painted, a border that DOES resolve while its declared edges
+    // name no side. (The first way, no border at all, the resolved width now
+    // reports too, by being '' rather than a digit.)
+    for (const key of ['headerBorder.edges', 'headerBorder.edgesResolved'] as const) {
+      for (const admitted of ['', 'top', 'bottom', 'top,left', 'top,right,bottom,left']) {
+        expect(parseInbound(responseFor({ ...table, [key]: admitted })), `${key} = ${JSON.stringify(admitted)} must be admitted`).toBeDefined()
+      }
+      for (const refused of ['middle', 'left,top', 'top,top', 'TOP', 'top, left', 'top,', ',top', ['top']]) {
+        expect(parseInbound(responseFor({ ...table, [key]: refused })), `${key} = ${JSON.stringify(refused)} must be refused`).toBeUndefined()
+      }
+    }
   })
 
   // A NEGATIVE LENGTH THE FILE DOOR ADMITS MUST NOT KILL THE WORKER.
@@ -888,7 +957,7 @@ describe('canvas projection protocol guard', () => {
   // loader would narrow the format, which the story forbids itself. The guard's
   // job is to admit exactly what the file door admits.
   it('admits the negative lengths the loader itself admits, and still refuses a negative line spacing', () => {
-    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, columns: [] }
+    const table = { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', columns: [] }
     const responseFor = (value: Record<string, unknown>) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: value } })
     // The document that loads today: a negative headerHeight, and the negative
     // fontSize that cascades into its resolved twin.

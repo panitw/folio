@@ -309,10 +309,12 @@ const rectComponent = { id: 'e3', type: 'rect' as const, band: 'content' as cons
 // have swept the design surface behind the dialog and reported a healthy count
 // while proving nothing about the dialog at all.
 //
-// The projection is the FULL twenty-member header block plus a `columns` array,
-// because `TableColumns` is exact on the wire and a partial one is not a
-// projection this panel can render.
-const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false }
+// The projection is the FULL twenty-six-member header block plus a `columns`
+// array, because `TableColumns` is exact on the wire and a partial one is not a
+// projection this panel can render. Twenty-six is `headerHeight` and
+// `altRowBackground` plus twelve committed/resolved pairs — Story 14.8 took it
+// from twenty by adding the border trio's three pairs.
+const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
 const tableColumnsReply = {
   snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 },
   tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72_000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum' as const, footerOf: 'items.amount', footerFormat: '#,##0.00' }] } },
@@ -519,6 +521,20 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · the table editor open · Clear Header line spacing',
   'design · the table editor open · Clear Header background',
   'design · the table editor open · Clear Header text colour',
+  // STORY 14.8's BORDERS section, and only TWO members join the census from it.
+  // The width and the colour are the shipped `styleNumber`/`styleColour` rows,
+  // each with the same `×` clear its six siblings above carry. The four EDGE
+  // controls do not appear, and that is by construction rather than by luck:
+  // they are `<input type="checkbox">` and the sweep's population is
+  // `button, [role="button"]`, so a checkbox is never swept — which is exactly
+  // why the edge control was built from bare checkboxes instead of copying
+  // `BorderEdgesProperty`, whose `role="group"` and `×` clear would have moved
+  // `GROUP_INSTANCE_FLOOR` and this census at once.
+  //
+  // MEASURED by executing the sweep and reading the two names it reported, per
+  // the rule recorded at the bottom of this file — never derived on paper.
+  'design · the table editor open · Clear Header border width (pt)',
+  'design · the table editor open · Clear Header border colour',
   // The PDF navigation group — uniform within its group, so R2 is green.
   'preview · Previous PDF page',
   'preview · Next PDF page',
@@ -880,6 +896,28 @@ describe('control vocabulary contract', () => {
     // drops the state whose two groups the expectation below names. The
     // expected list was re-derived by running it, never edited by hand.
     const shrunk = await sweepStates(states.slice(0, -1))
+    // ⚠ STORY 14.8's OWN PROOF, AND IT IS A MEASURED NULL-DIFF RATHER THAN A
+    // GREEN SUITE. That story split the Table Editor's one undivided run into
+    // HEADER / CELLS / BORDERS, and the arm it chose — three `<h3>` headings
+    // inside the ONE existing `role="group"` — spends nothing on this guard only
+    // if it really added no group instance. "The suite stayed green" does not
+    // establish that: a sweep that stopped visiting the Table Editor state
+    // altogether would also stay green here, because the pinned list below is
+    // about the states that REMAIN. The count is therefore asserted as a NUMBER,
+    // against the floor it must stay under, so a heading promoted to a group
+    // (whether by `role="group"` or by `aria-labelledby`) reddens with the
+    // number that moved rather than with a list that happens to still match.
+    //
+    // ⚠ AND THE MEASUREMENT IS COMPARED AGAINST THE CONSTANT, NOT THE CONSTANT
+    // AGAINST ITSELF. `expect(GROUP_INSTANCE_FLOOR).toBe(33)` was a guard that
+    // could not fail: anyone editing the constant edits the assertion in the same
+    // breath, so it pinned a literal to its own literal and said nothing about
+    // the sweep. What actually has to hold is the RELATION — the shrunk sweep
+    // must stay UNDER the floor, because that is the only condition under which
+    // the pinned R0 clause below reports a dropped state rather than nothing.
+    const shrunkGroups = shrunk.flatMap((entry) => groupsIn(entry.root)).length
+    expect(shrunkGroups, 'Story 14.8 regrouped the table editor with headings, not groups — a group instance appearing here would clear GROUP_INSTANCE_FLOOR and turn the pinned clause below into a guard that cannot fail').toBe(32)
+    expect(shrunkGroups, `the shrunk sweep must stay under GROUP_INSTANCE_FLOOR (${GROUP_INSTANCE_FLOOR}) or the pinned R0 clause below stops proving that a dropped state is reported`).toBeLessThan(GROUP_INSTANCE_FLOOR)
     expect(shrunk.flatMap((entry) => entry.controls).length).toBeGreaterThanOrEqual(CONTROL_FLOOR)
     expect(new Set(shrunk.flatMap((entry) => entry.controls).flatMap((control) => control.classes)).size).toBeGreaterThanOrEqual(CLASS_FAMILY_FLOOR)
     expect(r0Violations(shrunk)).toEqual([

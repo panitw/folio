@@ -650,9 +650,43 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .table-editor-empty { display: grid; gap: var(--space-5); padding: var(--space-6); border: var(--hairline) dashed var(--color-line-strong); background: var(--color-raised); }.table-editor-empty p { margin: 0; }
 .table-editor-header { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); margin-top: var(--space-6); padding-top: var(--space-5); border-top: var(--hairline) solid var(--color-line); }
 .table-editor-header .section-label, .table-editor-header .honest-note { grid-column: 1 / -1; margin: 0; }
+/* STORY 14.8 — THE SECOND AND THIRD HEADINGS NEED THE SEPARATION THE FIRST GETS
+   FOR FREE. HEADER sits under the section's own `border-top`; CELLS and BORDERS
+   would sit flush against the control row above them, parted by nothing but the
+   grid's `gap`, so a new section would be drawn and not read as one. The rule
+   above sets `margin: 0` deliberately (the heading is a full-width grid item and
+   a bottom margin would double the gap under it), so the separation is added
+   here rather than by relaxing that.
+
+   `:not(:first-of-type)` COUNTS `<h3>`s, which is what makes it the second and
+   third headings rather than the second and third children — the honest-note
+   below is a `<p>` and the controls between them are labels, so element-type
+   ordinality is the only reading that stays right when a control is added. */
+.table-editor-header .section-label:not(:first-of-type) { margin-top: var(--space-4); padding-top: var(--space-5); border-top: var(--hairline) solid var(--color-line); }
 .table-header-field { display: grid; gap: var(--space-2); margin: 0; align-content: start; }
 .table-header-control { display: flex; gap: var(--space-2); align-items: center; }.table-header-control input[type="text"], .table-header-control input:not([type]), .table-header-control input[type="number"] { flex: 1; min-width: 0; }
 .table-editor-header output { color: var(--color-ink); font: var(--type-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The four edge checkboxes, borrowing the inspector's own edge-row treatment
+   without borrowing its markup — no group role and no × clear (see the note at
+   the control in TableEditor.tsx).
+
+   12px AND NOT `.property-edges`' 11px, WHICH IS THE ONE MEASUREMENT NOT COPIED
+   FROM THAT ROW. 12px is this epic's ratified minimum for a pointer target and
+   already the size of every other one in the app — `.selection-handle` is a 12px
+   box carrying a 6px painted mark (:388), and `.segment-icon` is 12px (:637). An
+   11px checkbox is an 11px hit target, and there is no reason for a brand-new
+   control to ship under a floor the rest of the surface already meets. The
+   inspector's own 11px predates the precedent and is not this story's to move. */
+.table-header-edges { flex-wrap: wrap; gap: var(--space-3); }
+.table-header-edges label { display: flex; align-items: center; gap: var(--space-1); margin: 0; color: var(--color-ink); font: var(--type-body); }
+.table-header-edges input[type="checkbox"] { width: 12px; min-height: 12px; flex: none; accent-color: var(--color-select); }
+/* A derived fact: the name with its badge, the value the engine will use, and
+   the reason it is not a control — `Binding.dc.html`'s locked idiom, in tokens. */
+.table-header-fact { color: var(--color-ink-low); }
+.table-header-fact-name { display: flex; align-items: center; gap: var(--space-2); }
+.table-header-fact-badge { padding: 0 var(--space-1); border: var(--hairline) solid var(--color-edge); color: var(--color-ink-low); font: var(--type-label); letter-spacing: var(--tracking-label); }
+.table-editor-header output.table-header-fact-value { color: var(--color-ink-low); }
+.table-header-fact-reason { margin: 0; color: var(--color-ink-low); font: var(--type-body); }
 .table-editor-header :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 /* STORY 14.7 — THE MATRIX IS SIX TRACKS AND NO LONGER SCROLLS SIDEWAYS.
    `min-width: 1320px; overflow-x: auto` is gone with the eleven tracks that

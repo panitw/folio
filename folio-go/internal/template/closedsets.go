@@ -186,9 +186,34 @@ var closedValigns = func() map[string]bool {
 // door still refuses.
 func IsStyleValign(s string) bool { return closedValigns[s] }
 
-var closedBorderEdges = map[string]bool{
-	"top": true, "right": true, "bottom": true, "left": true,
-}
+// BorderEdgeTokens is the closed set `style.border.edges` and a table's
+// `headerStyle.border.edges` admit, in the order a refusal names them —
+// and in the order the projection joins them. One declaration, exactly
+// as StyleValignTokens is: the loader's own refusal reads the lookup
+// derived from it below, and the command door asks IsBorderEdge rather
+// than restating the four names.
+var BorderEdgeTokens = []string{"top", "right", "bottom", "left"}
+
+// closedBorderEdges is BorderEdgeTokens as a lookup, built from the
+// slice so the set and the sentence that reports it cannot drift apart.
+var closedBorderEdges = func() map[string]bool {
+	set := make(map[string]bool, len(BorderEdgeTokens))
+	for _, token := range BorderEdgeTokens {
+		set[token] = true
+	}
+	return set
+}()
+
+// IsBorderEdge reports whether s is a member of the border-edge set.
+// Exported for the command path (component_commands.go's Story 14.8
+// `headerStyle.border.edges` arm), which owes the author a LOCATED
+// refusal drawn from the SAME source the loader reads. Without it an
+// unknown edge name is admitted at the command door, mutates the
+// document, and surfaces later as an unlocated ParseTemplate failure off
+// the wasm round-trip — naming no element and no field, exactly the
+// failure the border.width and border.color arms restate the loader's
+// rules to avoid.
+func IsBorderEdge(s string) bool { return closedBorderEdges[s] }
 
 var closedFooterKinds = map[string]bool{
 	"sum": true, "count": true, "avg": true,

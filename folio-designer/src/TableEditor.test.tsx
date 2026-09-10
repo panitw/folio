@@ -38,7 +38,7 @@ const canvas = {
   ],
   components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 23276, y: 0, width: 300000, height: 12000, resizable: false }],
 }
-const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false }
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
 
 type Footer = '' | 'sum' | 'avg' | 'count'
 type ColumnFixture = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; rowField: string; footer: Footer; footerOf: string; footerFormat: string }>
@@ -95,8 +95,53 @@ const snapshotOf = (over: Partial<typeof canvas> = {}) => ({ documentState: 'loa
 // on an unset field is the reachable no-op AC3 is driven through, and a mock
 // that ignored header commands would have made every header edit a no-op and
 // the proof vacuous.
-const HEADER_STYLE_KEYS = { fontFamily: 'headerFontFamily', fontSize: 'headerFontSize', lineSpacing: 'headerLineSpacing', background: 'headerBackground', color: 'headerColor', valign: 'headerValign', align: 'headerAlign' } as const
+// ⚠ THIS MAP IS THE MOCK'S WHOLE KNOWLEDGE OF WHAT A HEADER-STYLE COMMAND DOES,
+// AND UNTIL STORY 14.8 A FIELD MISSING FROM IT WAS A SILENT NO-OP. The arm below
+// used to read `if (key !== undefined)` and do nothing otherwise, so a test
+// driving a NEW field would have watched the panel send a command, watched the
+// projection not move, and passed — proving nothing at all. That was not a live
+// vacuity while the map's seven entries matched the panel's seven-field union; it
+// became one the moment the union grew, which is this story. `headerStyleKeyFor`
+// now THROWS, and `refuses a header-style command naming a field the mock does
+// not model` is the negative control that keeps it throwing — for the field after
+// the twelfth as much as for these three.
+const HEADER_STYLE_KEYS = { fontFamily: 'headerFontFamily', fontSize: 'headerFontSize', lineSpacing: 'headerLineSpacing', background: 'headerBackground', color: 'headerColor', valign: 'headerValign', align: 'headerAlign', 'border.width': 'headerBorder.width', 'border.color': 'headerBorder.color', 'border.edges': 'headerBorder.edges' } as const
 const NUMERIC_HEADER_KEYS: ReadonlyArray<string> = ['headerFontSize', 'headerLineSpacing']
+// The one field whose value is an ARRAY on the wire. The mock stores the edge set
+// in the projection's own comma-joined spelling, so it converts once, here.
+const ARRAY_HEADER_KEYS: ReadonlyArray<string> = ['headerBorder.edges']
+// ⚠ AND THE ONE LENGTH THE PROJECTION SPELLS AS A STRING. `headerBorder.width`
+// carries the same thousandths as its numeric siblings and differs only in how it
+// spells ABSENCE: `''` rather than 0, because `0` is a legal declared width (the
+// thinnest device line PDF can draw) and a numeric member cannot hold both
+// meanings. The mock has to store it the way Go sends it, or every test that
+// reads the panel back through a re-projection would be reading a shape the
+// engine never emits — which is the one thing this mock exists not to do.
+const MILLIPOINT_STRING_HEADER_KEYS: ReadonlyArray<string> = ['headerBorder.width']
+// ⚠ AND IT ROUNDS, BECAUSE `String(Number(v) * 1000)` COULD PRODUCE A VALUE THE
+// REAL GUARD REFUSES. `Number('0.29') * 1000` is `289.99999999999994` in IEEE-754
+// doubles, and `String()` of that is a non-integer string — a shape
+// `isTableColumns`' digits-only clause rejects outright and one Go's
+// `strconv.FormatInt` can never emit. A mock that stores it is a harness admitting
+// what production forbids, which turns every read-back below into an assertion
+// about a projection the engine does not produce.
+//
+// Go's own arm reads this through `propertyLength`, which accepts THREE decimal
+// places and refuses a fourth. So this rounds to the nearest thousandth — which
+// recovers the 290 the engine computes — and THROWS if the input carried more
+// precision than that, rather than silently accepting a value the command door
+// would have refused.
+function millipointString(value: unknown): string {
+  const raw = Number(value) * 1000
+  const thousandths = Math.round(raw)
+  if (!Number.isFinite(raw) || Math.abs(raw - thousandths) > 1e-6) throw new Error(`the table-editor engine mock was sent ${JSON.stringify(value)}, which is not a length in points to at most three decimal places — propertyLength refuses it, so the mock must not admit it`)
+  return String(thousandths)
+}
+export function headerStyleKeyFor(field: string): string {
+  const key = (HEADER_STYLE_KEYS as Record<string, string | undefined>)[field]
+  if (key === undefined) throw new Error(`the table-editor engine mock does not model the header-style field ${JSON.stringify(field)} — a command it cannot apply is a command whose test proves nothing`)
+  return key
+}
 
 // (3) A REFUSAL. `refuseCommand` lets a test send a command that REACHES the
 // engine and comes back an error — which is the only honest way to drive the
@@ -155,12 +200,21 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
     if (command.kind === 'setTableHeaderHeight') state.header = { ...state.header, headerHeight: Number(command.height) * 1000 }
     if (command.kind === 'setTableAltRowBackground') state.header = { ...state.header, altRowBackground: command.op === 'clear' ? '' : String(command.value) }
     if (command.kind === 'updateTableHeaderStyle') {
-      const key = HEADER_STYLE_KEYS[String(command.field) as keyof typeof HEADER_STYLE_KEYS]
+      const key = headerStyleKeyFor(String(command.field))
       // A clear REMOVES the key, which the projection reports as the field's
       // empty value — '' for a string, 0 for a length. Clearing what is already
       // empty therefore leaves canonical form untouched, which is the whole of
       // the no-op arm.
-      if (key !== undefined) state.header = { ...state.header, [key]: command.op === 'clear' ? (NUMERIC_HEADER_KEYS.includes(key) ? 0 : '') : (NUMERIC_HEADER_KEYS.includes(key) ? Number(command.value) * 1000 : String(command.value)) }
+      // ⚠ THE `set` BRANCH IS A FUNCTION AND NOT A VALUE, because a CLEAR
+      // carries no `value` at all: computed eagerly, the array branch read
+      // `undefined.join(',')` and threw, so every edge clear arrived at the
+      // dialog as a refusal rather than as the no-op it is.
+      const cleared = NUMERIC_HEADER_KEYS.includes(key) ? 0 : ''
+      const set = () => ARRAY_HEADER_KEYS.includes(key) ? (command.value as ReadonlyArray<string>).join(',')
+        : NUMERIC_HEADER_KEYS.includes(key) ? Number(command.value) * 1000
+        : MILLIPOINT_STRING_HEADER_KEYS.includes(key) ? millipointString(command.value)
+        : String(command.value)
+      state.header = { ...state.header, [key]: command.op === 'clear' ? cleared : set() }
     }
   }
   const snap = () => ({ ...snapshotOf(over), revision: state.revision, canUndo: history.undo.length > 0, canRedo: history.redo.length > 0 })
@@ -1336,5 +1390,389 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
     expect(committing.onClose).toHaveBeenCalledOnce()
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
     expect(committing.onClose).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// STORY 14.8 — HEADER, CELLS AND BORDERS.
+//
+// The regroup, the two derived-fact statements, and the header border: its
+// resolved twins, its one-attribute-per-command wire shape, and the words that
+// disclose the cascade taking the block whole. The wire-shape rows of the I/O
+// matrix live in `folio-go/table_header_style_test.go`, because they are claims
+// about the bytes a command leaves behind; these are the rows only the panel can
+// answer.
+// ---------------------------------------------------------------------------
+describe('the table editor\'s three headed sections', { timeout: 30_000 }, () => {
+  // A dialog rendered DIRECTLY, so a test can hand it a projection the little
+  // in-memory engine cannot reach — in particular a header border that RESOLVES
+  // to something the committed members do not carry, which is the only shape
+  // that can tell a resolved twin from an echo of the authored value.
+  // `reproject` re-renders the SAME mount with a new header projection, which is
+  // the only way to observe a REMOUNT: a fresh `render` would give a new DOM node
+  // whether or not React re-keyed anything, so node identity across a rerender is
+  // what distinguishes "the key changed" from "the test mounted twice".
+  const renderPanel = (header: Partial<typeof tableHeaderProjection> = {}) => {
+    const onHeaderStyle = vi.fn()
+    const panel = (over: Partial<typeof tableHeaderProjection>) => {
+      const projection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
+      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onConfigure={vi.fn()} onBind={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
+    }
+    const { unmount, rerender } = render(panel(header))
+    return { onHeaderStyle, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }
+  }
+
+  it('draws HEADER, CELLS and BORDERS as real headings inside the ONE existing group', () => {
+    renderPanel()
+    const group = screen.getByRole('group', { name: 'Table header and rows' })
+    // THREE HEADINGS, in the design's order, and they are HEADINGS rather than
+    // styled paragraphs: a screen-reader user must perceive the three sections a
+    // sighted author sees, which is this story's own subject.
+    expect(within(group).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['HEADER', 'CELLS', 'BORDERS'])
+    // ⚠ AND THE SECTION IS STILL ONE GROUP. Three groups would have taken the
+    // shrunk sweep in `control-vocabulary-contract.test.tsx` from 32 group
+    // instances to 34 and CLEARED its floor of 33, turning a pinned clause into
+    // a guard that cannot fail. That file asserts the count; this asserts the
+    // markup that produces it, so a heading promoted to a group reds here too —
+    // whether by `role="group"` or by `aria-labelledby`.
+    expect(within(group).queryAllByRole('group')).toEqual([])
+    expect(screen.queryByRole('group', { name: 'Border edges' })).toBeNull()
+    // The old undivided heading is gone rather than kept alongside them.
+    expect(screen.queryByText('HEADER AND ROWS')).toBeNull()
+  })
+
+  it('keeps every control the regroup moved, under the accessible name it already had', () => {
+    renderPanel()
+    const group = screen.getByRole('group', { name: 'Table header and rows' })
+    // A REGROUP CHANGES NO ACCESSIBLE NAME. Every one of Story 12.3's nine
+    // subjects is still here and still named the same, including the ONE that
+    // moved sections — `Alternating row background` is the only data-row-scoped
+    // control in the section, so it is the only block CELLS receives.
+    for (const name of ['Header height in points', 'Header font family', 'Header font size (pt)', 'Header line spacing', 'Header background', 'Header text colour', 'Alternating row background']) {
+      expect(within(group).getByLabelText(name), name).toBeInTheDocument()
+    }
+    for (const name of ['Header vertical alignment', 'Header alignment']) {
+      expect(within(group).getByRole('combobox', { name }), name).toBeInTheDocument()
+    }
+    // AND IT LANDED UNDER THE RIGHT HEADING, which is the whole point of the
+    // story: the headings and the controls are siblings in one grid, so "under
+    // CELLS" means "after the CELLS heading and before the BORDERS one" in
+    // document order. Compared by DOM position rather than by index, so adding a
+    // control cannot silently change what this asserts.
+    const cells = within(group).getByRole('heading', { level: 3, name: 'CELLS' })
+    const borders = within(group).getByRole('heading', { level: 3, name: 'BORDERS' })
+    const alt = within(group).getByLabelText('Alternating row background')
+    expect(cells.compareDocumentPosition(alt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(borders.compareDocumentPosition(alt) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    // The eight header-scoped controls stay ahead of CELLS.
+    expect(cells.compareDocumentPosition(within(group).getByLabelText('Header font family')) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+  })
+
+  it('states the two derived facts rather than offering them as settings', () => {
+    renderPanel()
+    // NEITHER IS A CONTROL AT ALL — not a live one and not a disabled one. The
+    // mockup drew `Row height` with a dropdown chevron and `Repeat on
+    // continuation pages` as a ticked checkbox with a REQUIRED badge; the format
+    // has no field behind either, and DESIGN.md's "don't draw an affordance the
+    // product cannot honour" settles that against the drawing.
+    expect(screen.queryByRole('combobox', { name: /Row height/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /Repeat on continuation/ })).toBeNull()
+    expect(screen.queryByText('REQUIRED')).toBeNull()
+    // THE VALUE THE ENGINE WILL USE, AND THE REASON IT IS NOT A CHOICE — the
+    // shipped locked idiom, which DESIGN.md's "state the reason next to anything
+    // disabled" is the rule for.
+    expect(screen.getByLabelText('Row height note')).toHaveTextContent('auto')
+    expect(screen.getByText(/Every row is as tall as the content it holds/)).toBeInTheDocument()
+    // ⚠ AND THE REPEAT IS NOT WORDED AS AN ABSOLUTE. The engine carries
+    // `DiagCodeTableHeaderRepeatSuppressed` — its own record of the page where
+    // reserving the header would leave no room for a row — so a badge promising
+    // a guarantee would promise what the engine can suspend. The sentence has to
+    // name the exception, not merely avoid the word "always".
+    expect(screen.getByText(/drops the repeat for that page only and warns/)).toBeInTheDocument()
+  })
+
+  it('shows the engine\'s resolved border, never the value the author typed', () => {
+    // THE SEPARATING FIXTURE: the header declares a 3pt border and NOTHING else,
+    // while the engine resolves a 1pt black bottom edge. Every committed member
+    // therefore disagrees with its resolved twin, so a twin wired to the
+    // committed value — the both-sides-move-together shape, which asserts
+    // nothing — fails on all three.
+    renderPanel({
+      'headerBorder.width': '3000', 'headerBorder.widthResolved': '1000',
+      'headerBorder.color': '', 'headerBorder.colorResolved': '#000000',
+      'headerBorder.edges': '', 'headerBorder.edgesResolved': 'bottom',
+    })
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveValue(3)
+    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 1pt')
+    expect(screen.getByRole('textbox', { name: 'Header border colour' })).toHaveValue('')
+    expect(screen.getByLabelText('Resolved Header border colour')).toHaveTextContent('Using: #000000')
+    expect(screen.getByLabelText('Resolved Header border edges')).toHaveTextContent('Using: bottom')
+    // The four edge boxes reflect what the DOCUMENT declares, not what resolves:
+    // a checkbox showing the resolved set could never be unchecked back to absent.
+    for (const edge of ['top', 'right', 'bottom', 'left']) {
+      expect(screen.getByRole('checkbox', { name: `Header border ${edge} edge` }), edge).not.toBeChecked()
+    }
+    // ⚠ `min="0"`, NOT `min="0.5"`. Zero is the thinnest device line PDF can
+    // draw and the loader accepts it; a control that refused it locally would
+    // refuse a border the format defines.
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveAttribute('min', '0')
+  })
+
+  it('says nothing is painted when nothing is painted, which only the edge list can tell it', () => {
+    // NO BORDER ANYWHERE — the resolved edge list is empty, and it is the ONLY
+    // member the panel can read for "nothing is painted". Not because a resolved
+    // width of 0 is ambiguous (it is not: the width is a string, so `''` is "no
+    // border reaches this row" and `'0'` is a declared zero-width one) but
+    // because of the OTHER way to paint nothing — a border that resolves while
+    // its declared `edges` names no side, where the width resolves to a real
+    // number and the emitter still strokes nothing.
+    const nothing = renderPanel()
+    for (const label of ['Resolved Header border width (pt)', 'Resolved Header border colour', 'Resolved Header border edges']) {
+      expect(screen.getByLabelText(label), label).toHaveTextContent('Using: nothing — no border is painted')
+    }
+    // ⚠ THE FIRST DIALOG IS UNMOUNTED BEFORE THE SECOND IS RENDERED. Two live
+    // `role="dialog"` trees would leave every `getBy*` below ambiguous and force
+    // the assertion onto an ARRAY POSITION — a query keyed on mount order rather
+    // than on the state under test, which silently reads the wrong panel the
+    // moment either render moves. `renderPanel` returns `unmount` for this.
+    nothing.unmount()
+    // AND THE CONTRAST: a border that IS painted with a zero width says so rather
+    // than reusing the nothing-painted sentence. This is the pair that makes the
+    // assertions above a discrimination rather than a single reading.
+    renderPanel({ 'headerBorder.widthResolved': '0', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 0pt')
+    expect(screen.getByLabelText('Resolved Header border edges')).toHaveTextContent('Using: top,right,bottom,left')
+  })
+
+  // ⚠ THE BOX ITSELF, FOR BOTH SPELLINGS OF "NO NUMBER TO SHOW". The declared-zero
+  // test below this one asserts the takeover PROSE, and prose alone left the box
+  // free to render anything and stay green — which is where the original defect
+  // survived one layer up: `Number(table['headerBorder.width'])` folded `'0'` and
+  // `''` both to 0, `styleNumber` rendered `defaultValue={committed === 0 ? '' :
+  // …}`, and a LEGAL DECLARED ZERO-WIDTH BORDER showed an EMPTY box —
+  // indistinguishable from unauthored. So the spinbutton's own value is asserted
+  // for both cases, and it is the assertion the prose cannot make.
+  it('shows a declared zero-width border as 0 and an absent one as empty', () => {
+    const absent = renderPanel()
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveValue(null)
+    absent.unmount()
+    const zero = renderPanel({ 'headerBorder.width': '0', 'headerBorder.widthResolved': '0', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveValue(0)
+    zero.unmount()
+    // AND A DECLARED NON-ZERO STILL READS IN POINTS, so the branch above did not
+    // buy the two absence spellings at the cost of the ordinary case.
+    renderPanel({ 'headerBorder.width': '1500', 'headerBorder.widthResolved': '1500', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveValue(1.5)
+  })
+
+  // AND THE REMOUNT KEY DISTINGUISHES THE TWO, which `Number()` also destroyed:
+  // `boxKey(0)` was the key for BOTH `''` and `'0'`, so CLEARING a declared zero
+  // re-keyed nothing, React reused the same uncontrolled input, and the box kept
+  // whatever text was in it — the half-controlled-row defect `boxKey` exists to
+  // prevent, on the one pair of states it could no longer tell apart.
+  //
+  // Asserted as NODE IDENTITY ACROSS A REPROJECTION, which is the mechanism
+  // itself: a changed key remounts and yields a new element, an unchanged key
+  // reuses the old one. Two separate `render` calls could not say this — they
+  // always produce different nodes.
+  it('remounts the width box when a declared zero is cleared, and not on an unrelated change', () => {
+    const panel = renderPanel({ 'headerBorder.width': '0', 'headerBorder.widthResolved': '0', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    const declaredZero = screen.getByRole('spinbutton', { name: 'Header border width (pt)' })
+    // The author types over the declared zero, and the CLEAR lands.
+    fireEvent.change(declaredZero, { target: { value: '2' } })
+    panel.reproject({ 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.colorResolved': '', 'headerBorder.edgesResolved': '' })
+    const cleared = screen.getByRole('spinbutton', { name: 'Header border width (pt)' })
+    expect(cleared).not.toBe(declaredZero)
+    // AND THE BOX SHOWS THE DOCUMENT'S ANSWER RATHER THAN THE TYPED TEXT, which
+    // is the whole point of the remount.
+    expect(cleared).toHaveValue(null)
+    panel.unmount()
+  })
+
+  // ⚠ THE UN-AUTHORED BRANCH MAKES NO CLAIM ABOUT PROVENANCE, AND THIS TEST
+  // ASSERTS THE ABSENCE OF THE CLAIM RATHER THAN THE PRESENCE OF THE TWINS.
+  //
+  // It used to say the header "takes the table's own border". That is a sentence
+  // the panel CANNOT justify: a header declaring `{"border": {}}` — an empty
+  // block the loader admits and `resolveHeaderStyle` takes WHOLE — has already
+  // taken the border over while committing no sub-field, so all three committed
+  // members read `''`, `borderAuthored` is false, and the panel asserted
+  // inheritance about a header that had ended it. `{"border": {"edges": []}}` is
+  // the same class. The resolved trio cannot rescue it either: a header that
+  // genuinely inherits also resolves to a non-empty edge list.
+  //
+  // ASSERTING THE ABSENCE IS THE POINT. A test that only checked the resolved
+  // notes were present would stay green if someone found this branch bare,
+  // thought it unfinished, and reinstated the sentence — which is precisely the
+  // move this narrowing has to survive. The two fixtures below are the empty
+  // block and the empty edge list, i.e. the two states that made the old
+  // sentence false, both driven through the real panel.
+  it('makes no claim about provenance when nothing is authored', () => {
+    // (a) THE EMPTY BLOCK: committed all absent, resolved at the format's own
+    // defaults — the state the old sentence lied about.
+    const emptyBlock = renderPanel({ 'headerBorder.widthResolved': '500', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.queryByText(/takes the table’s own border/)).toBeNull()
+    expect(screen.queryByText(/table’s border stops reaching/)).toBeNull()
+    expect(screen.queryByText(/no longer follows the table’s border/)).toBeNull()
+    // What it DOES say: nothing is authored, and the notes are the engine's.
+    expect(screen.getByText(/No header border attribute is authored here/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 0.5pt')
+    emptyBlock.unmount()
+    // (b) THE EMPTY EDGE LIST: `hasBorder` is true and nothing is painted, and
+    // the branch still claims no provenance.
+    renderPanel({ 'headerBorder.widthResolved': '', 'headerBorder.colorResolved': '', 'headerBorder.edgesResolved': '' })
+    expect(screen.queryByText(/takes the table’s own border/)).toBeNull()
+    expect(screen.getByText(/No header border attribute is authored here/)).toBeInTheDocument()
+  })
+
+  // ⚠ THE TAKEOVER SENTENCE IS DRIVEN BY A THREE-WAY `||`, AND IT GETS THREE
+  // CASES BECAUSE A DISJUNCTION TESTED THROUGH ONE DISJUNCT IS TWO GUARDS THAT
+  // ARE NEVER INVOKED. It used to have exactly one case, through the COLOUR, and
+  // that is why nothing caught the width defect: `headerBorder.width` was a
+  // number spelling absence as 0, `0` is also a LEGAL DECLARED WIDTH (the
+  // thinnest device line PDF can draw — `parse_bands.go` says so in those
+  // words), so a header border authored as nothing but `{"width": 0}` failed
+  // every disjunct and the panel told the author "nothing here is set, so this
+  // header row takes the table's own border" about a header that had taken the
+  // border over. The projection now spells the width as a string in the same
+  // thousandths, `''` absent and `'0'` declared, which is what makes the first
+  // case below expressible at all.
+  //
+  // EACH CASE AUTHORS EXACTLY ONE ATTRIBUTE AND LEAVES THE OTHER TWO ABSENT, so
+  // deleting ONE disjunct from `borderAuthored` reds exactly ONE of them. Three
+  // cases that all pass because some other disjunct is true would be the same
+  // defect in a different costume, and a green suite would not say so. Measured
+  // by actually performing the three deletions.
+  //
+  // ONE attribute authored is enough in every case: the cascade takes the block
+  // WHOLE, so there is no half-way state to describe and the words must not wait
+  // for the third attribute before saying so.
+  it('states the takeover when the WIDTH alone is authored, including a declared ZERO', () => {
+    // `'0'` BY NAME, because it is the value that produced the finding: a legal,
+    // painted, declared border that a numeric member reported as absent. The
+    // resolved trio is what the engine answers for it — a zero-width stroke on
+    // all four edges in the format's own black.
+    renderPanel({ 'headerBorder.width': '0', 'headerBorder.widthResolved': '0', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.getByText(/no longer follows the table’s border/)).toBeInTheDocument()
+    expect(screen.queryByText(/takes the table’s own border/)).toBeNull()
+    expect(screen.getByText(/falls to the format’s own default rather than to the table’s value/)).toBeInTheDocument()
+  })
+
+  it('states the takeover when the COLOUR alone is authored', () => {
+    renderPanel({ 'headerBorder.color': '#c81e1e', 'headerBorder.colorResolved': '#c81e1e', 'headerBorder.widthResolved': '500', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
+    expect(screen.getByText(/no longer follows the table’s border/)).toBeInTheDocument()
+    expect(screen.queryByText(/takes the table’s own border/)).toBeNull()
+    expect(screen.getByText(/falls to the format’s own default rather than to the table’s value/)).toBeInTheDocument()
+  })
+
+  it('states the takeover when the EDGE LIST alone is authored', () => {
+    renderPanel({ 'headerBorder.edges': 'bottom', 'headerBorder.edgesResolved': 'bottom', 'headerBorder.widthResolved': '500', 'headerBorder.colorResolved': '#000000' })
+    expect(screen.getByText(/no longer follows the table’s border/)).toBeInTheDocument()
+    expect(screen.queryByText(/takes the table’s own border/)).toBeNull()
+    expect(screen.getByText(/falls to the format’s own default rather than to the table’s value/)).toBeInTheDocument()
+  })
+
+  it('sends exactly the attribute the author touched, and nothing beside it', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    const width = screen.getByRole('spinbutton', { name: 'Header border width (pt)' })
+    fireEvent.change(width, { target: { value: '1.5' } })
+    fireEvent.blur(width)
+    await waitFor(() => expect(harness.commands).toHaveLength(1))
+    // ONE FIELD, ONE OP, ONE VALUE. A colour or an edge list riding along here
+    // would be a value the author never chose — and it is the reason the wire
+    // carries three flat dotted attributes rather than one `border` object: a
+    // block `set` could only be built by reading the other two back from the
+    // projection and re-transmitting them.
+    expect(harness.commands[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.width","op":"set","value":1.5}')
+    // The colour box beside it is a separate command, and still carries only its
+    // own attribute.
+    const colour = screen.getByRole('textbox', { name: 'Header border colour' })
+    fireEvent.change(colour, { target: { value: '#c81e1e' } })
+    fireEvent.blur(colour)
+    await waitFor(() => expect(harness.commands).toHaveLength(2))
+    expect(harness.commands[1]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.color","op":"set","value":"#c81e1e"}')
+  })
+
+  it('authors the edge set from four bare checkboxes, in the format\'s own order, and clears it by emptying it', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    // TICKING `bottom` FIRST AND `top` SECOND, so the command's order cannot be
+    // the click order: the engine's projection joins the set canonically and the
+    // panel sends it the same way, because the browser's own guard admits only
+    // the format's order.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Header border bottom edge' }))
+    await waitFor(() => expect(harness.commands).toHaveLength(1))
+    expect(harness.commands[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.edges","op":"set","value":["bottom"]}')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Header border top edge' }))
+    await waitFor(() => expect(harness.commands).toHaveLength(2))
+    expect(harness.commands[1]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.edges","op":"set","value":["top","bottom"]}')
+    // AND EMPTYING THE SET IS THE CLEAR. There is no `×` here and there must not
+    // be one: a glyph button outside a segmented control moves `V2_CENSUS`, and
+    // the engine refuses an empty edge array, so an emptied set can only mean
+    // "remove the attribute".
+    expect(screen.queryByRole('button', { name: 'Clear Header border edges' })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Header border top edge' }))
+    await waitFor(() => expect(harness.commands).toHaveLength(3))
+    expect(harness.commands[2]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.edges","op":"set","value":["bottom"]}')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Header border bottom edge' }))
+    await waitFor(() => expect(harness.commands).toHaveLength(4))
+    expect(harness.commands[3]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"border.edges","op":"clear"}')
+    // AND THE READ-BACK: the boxes come back unchecked because the DOCUMENT no
+    // longer declares an edge list, which is what makes the clear a clear rather
+    // than a set of nothing.
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Header border bottom edge' })).not.toBeChecked())
+  })
+
+  it('does not count a border clear that removes what was never there', async () => {
+    // MATRIX ROW: "clearing what is already absent" is a BYTE-LEVEL no-op, and
+    // the claim that has to be made is about the EDIT COUNT rather than about the
+    // absence of an error — `commitTableColumn` only counts when the engine's
+    // revision actually moved, and a test that merely watched for an alert would
+    // pass against a count keyed on dispatches. The count is observed the only
+    // way this dialog exposes it: `Cancel` sends exactly that many undos.
+    const harness = tableEngine()
+    await openEditor(harness)
+    const atOpen = harness.canonical()
+    await retitle(1, 'Total')
+    // THREE LEGAL COMMANDS THAT REMOVE NOTHING. All three reach the engine.
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Header border width (pt)' }))
+    await idle()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Header border colour' }))
+    await idle()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Header border width (pt)' }))
+    await idle()
+    expect(harness.commands).toHaveLength(4)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    // EXACTLY ONE, not four: the retitle moved the document and the three clears
+    // did not.
+    expect(operations(harness, 'undo')).toHaveLength(1)
+    expect(harness.canonical()).toBe(atOpen)
+  })
+
+  // THE NEGATIVE CONTROL FOR THIS FILE'S OWN ENGINE MOCK, and it protects the
+  // NEXT header-style field to be added rather than these three.
+  //
+  // ⚠ TWO POPULATIONS LIVE HERE AND THEY HAVE DIFFERENT SIZES, so neither is
+  // described with the other's number. Go's `tableHeaderStyleFields` closed set
+  // is TWELVE (it carries `bold` and `italic`, which the panel does not author —
+  // DW-369, out of fence); the PANEL's authoring union, which is what
+  // `HEADER_STYLE_KEYS` models and what this mock has to answer for, is TEN.
+  //
+  // The mock's header arm used to read `if (key !== undefined)` and silently do
+  // nothing for a field absent from `HEADER_STYLE_KEYS`. That made an unmodelled
+  // field a NO-OP: a test could drive the panel, watch the command go out, watch
+  // the projection not move, and pass — proving nothing at all. It was not a live
+  // vacuity while the map matched the panel's union exactly; it became one the
+  // moment the union grew, which is this story. So the map is no longer allowed
+  // to be quietly incomplete.
+  it('refuses a header-style command naming a field the engine mock does not model', () => {
+    expect(() => headerStyleKeyFor('border.dash')).toThrow(/does not model the header-style field "border.dash"/)
+    // And the TEN of the panel's union that it DOES model all answer, so the
+    // guard above is not simply refusing everything.
+    for (const field of ['fontFamily', 'fontSize', 'lineSpacing', 'background', 'color', 'valign', 'align', 'border.width', 'border.color', 'border.edges']) {
+      expect(headerStyleKeyFor(field), field).toMatch(/^header/)
+    }
   })
 })

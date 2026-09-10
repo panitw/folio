@@ -37,6 +37,14 @@ const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, wid
 const cellCount = CELL.footerFormat + 1
 const COLUMN_COUNT = 6
 
+// THE FOUR BORDER EDGES, IN THE FORMAT'S OWN ORDER, which is the order the
+// checkboxes are drawn in AND the order the engine's projection joins them in.
+// The closed set itself is the engine's — `internal/template/closedsets.go` —
+// and the loader is the door that refuses an unknown name; this is the panel's
+// rendering order, exactly as `alignSegments` is the alignment control's rather
+// than a second opinion about what a legal alignment is.
+const BORDER_EDGES = ['top', 'right', 'bottom', 'left'] as const
+
 // The display unit is POINTS, one decimal (D-14.2.Q3, settled product-wide).
 // The stored value is millipoints and is untouched by anything in this file.
 const pointsOf = (millipoints: number): string => (millipoints / 1000).toFixed(1)
@@ -297,14 +305,51 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // both arms behind them require a POSITIVE length — so the control advertised
   // a value the engine refuses, which the matrix's own Width cell already knew
   // not to do (`min="1"`).
-  const styleNumber = (field: TableHeaderStyleField, label: string, committed: number, resolved: string, step: string, min: string) =>
+  //
+  // `whenUnresolved` IS PER-CONTROL for the same reason `styleColour`'s is: an
+  // empty resolved string does not mean the same thing for every number. For the
+  // header font size it means the cascade found nothing, which is what the
+  // default sentence says; for the header BORDER width it means no border is
+  // painted at all, which is a different fact and gets its own sentence.
+  //
+  // ⚠ `committed` IS `number | string`, AND THE UNION IS THE WHOLE OF THIS
+  // CONTROL'S ABSENCE HANDLING. Two of the three lengths this factory draws
+  // spell absence as `0` because a zero of their own is not a meaningful
+  // declaration (a zero font size, a zero line spacing); the header border width
+  // spells absence as `''` because a zero width IS a declaration — the thinnest
+  // device line PDF can draw — and a number whose absence is spelled `0` cannot
+  // tell the two apart. `Number()` on the way in would fold `'0'` straight back
+  // to the absent case and undo the projection's string spelling ONE LAYER UP,
+  // which is exactly the defect the string spelling was introduced to remove:
+  // a declared zero-width border would render an EMPTY box, indistinguishable
+  // from unauthored, and clearing a declared `'0'` would not even remount the
+  // box because `boxKey(0)` is the key it already had.
+  //
+  // So the branch is on the STRING, in `authoredBox` below, and `boxKey` is
+  // handed the committed value UNCONVERTED so that `''` and `'0'` are two keys.
+  const authoredBox = (committed: number | string): string => typeof committed === 'string' ? (committed === '' ? '' : authored(Number(committed))) : (committed === 0 ? '' : authored(committed))
+  const styleNumber = (field: TableHeaderStyleField, label: string, committed: number | string, resolved: string, step: string, min: string, whenUnresolved = 'Using: nothing') =>
     <label className="table-header-field">{label}
       <span className="table-header-control">
-        <input key={boxKey(committed)} aria-label={label} type="number" min={min} step={step} disabled={busy} defaultValue={committed === 0 ? '' : authored(committed)} onBlur={commitStyleText(field, committed === 0 ? '' : authored(committed))} />
+        <input key={boxKey(committed)} aria-label={label} type="number" min={min} step={step} disabled={busy} defaultValue={authoredBox(committed)} onBlur={commitStyleText(field, authoredBox(committed))} />
         <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onHeaderStyle(field, 'clear'))}>×</button>
       </span>
-      <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, 'Using: nothing')}</output>
+      <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, whenUnresolved)}</output>
     </label>
+  // A FACT THE ENGINE DERIVES, STATED AS ONE — never offered as a control and
+  // never drawn as a disabled control either. `Row height` and `Repeat on
+  // continuation pages` are both things the design drew as settings and the
+  // format has no field for: a row is as tall as its content, and the header
+  // repeat is the engine's own pagination behaviour. The idiom is the shipped
+  // one (`Binding.dc.html`'s badge, plain-sentence reason, dimmed value) and it
+  // honours DESIGN.md's "state the reason next to anything disabled" — a greyed
+  // box with no reason is the thing that rule exists against.
+  const derivedFact = (name: string, value: string, badge: string, reason: string) =>
+    <div className="table-header-field table-header-fact">
+      <span className="table-header-fact-name">{name}<span className="table-header-fact-badge">{badge}</span></span>
+      <output className="table-header-fact-value" aria-label={`${name} note`} aria-live="off">{value}</output>
+      <p className="table-header-fact-reason">{reason}</p>
+    </div>
   const matrixCell = (row: number, column: number) => ({ 'data-matrix-cell': `${row}:${column}`, tabIndex: active.row === row && active.column === column ? 0 : -1, onFocus: () => { cellHeldFocus.current = true; setActive({ row, column }) }, onKeyDown: (event: KeyboardEvent<HTMLElement>) => moveFocus(event, row, column) })
   // ONE ALIGNMENT CONTROL IN THE PRODUCT — this is the inspector's own module,
   // imported, not a copy. Only the labels are per-row, because three buttons
@@ -372,6 +417,52 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // rules do not move.
   const showsFooterOf = (footer: string) => footer !== '' && footer !== 'count'
   const showsFooterFormat = (footer: string) => footer !== ''
+  // THE HEADER BORDER'S THREE READINGS, AND NONE OF THEM RE-DERIVES THE ENGINE.
+  //
+  // `committedEdges` is what the DOCUMENT declares, which is what the boxes
+  // above it must show: a checkbox reflecting the RESOLVED set could never be
+  // unchecked back to absent.
+  //
+  // `borderPainted` is read off `edgesResolved` and off nothing else, because it
+  // is still the only member that can answer it — though NOT for the reason it
+  // once was. The resolved width no longer collapses the two states: it is a
+  // string, so `''` is "no border reaches this row" and `'0'` is "a declared
+  // zero-width border". What the width cannot report is the SECOND way to paint
+  // nothing: a border that does resolve while its declared `edges` names no
+  // side. An empty resolved edge list is exactly the emitter's own no-stroke
+  // condition (`internal/pdf/rectdoc.go`: `HasStroke && (Top || Right || Bottom
+  // || Left)`), and it covers both ways at once.
+  //
+  // ⚠ `borderAuthored` READS THE THREE COMMITTED MEMBERS, AND ALL THREE SPELL
+  // ABSENCE AS `''`. The width used to be a NUMBER whose absence was 0 — and
+  // `parse_bands.go` accepts a zero width as "the thinnest device line PDF can
+  // draw, not an absent border", so a header border authored as nothing but
+  // `{"width": 0}` read as unauthored and this panel then said "nothing here is
+  // set, so this header row takes the table's own border" about a header that
+  // had taken the border over. The projection now spells the width as a string
+  // in the SAME thousandths — `''` absent, `'0'` a declared zero — so absence
+  // and a declared zero are two different values here, and each of the three
+  // disjuncts below is independently sufficient.
+  //
+  // ⚠ AND THE UN-AUTHORED BRANCH MAKES NO CLAIM ABOUT PROVENANCE, DELIBERATELY.
+  // It once said the header "takes the table's own border". It cannot know that:
+  // a header declaring `{"border": {}}` — an empty block, which the loader
+  // admits and `resolveHeaderStyle` takes WHOLE — has already taken the border
+  // over while committing no sub-field, so all three members read `''` and this
+  // flag reads false. `{"border": {"edges": []}}` is the same class.
+  // NOR CAN THE RESOLVED TRIO SETTLE IT: a header that genuinely inherits the
+  // table's border also has a non-empty `edgesResolved`, so `resolved !== ''`
+  // cannot tell "declares an empty block" from "inherits the table's" either.
+  // A flat projection of N sub-field members cannot carry the block's N+1 bits
+  // of state — its own presence plus each sub-field's — and a presence member is
+  // refused from both sides of `table_header_style_test.go`'s pair/unpaired tie.
+  // So the branch states what it CAN know: that nothing is authored, and what
+  // the engine resolved. Provenance is left unsaid rather than guessed.
+  // DO NOT REINSTATE A SENTENCE ABOUT INHERITANCE HERE — the test named
+  // "makes no claim about provenance" exists to catch exactly that.
+  const committedEdges: ReadonlyArray<string> = table['headerBorder.edges'] === '' ? [] : table['headerBorder.edges'].split(',')
+  const borderPainted = table['headerBorder.edgesResolved'] !== ''
+  const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
       <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Sample data suggests field names; the engine validates every saved binding.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
@@ -446,18 +537,31 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
           div with NO role is dropped by the accessibility tree, so the section
           named nothing to a screen reader. */}
       <div className="table-editor-header" role="group" aria-label="Table header and rows">
-        <p className="section-label">HEADER AND ROWS</p>
+        {/* THREE HEADINGS INSIDE ONE GROUP, NOT THREE GROUPS, AND THAT IS A
+            RULING RATHER THAN A LAYOUT PREFERENCE (Story 14.8).
+
+            Three `role="group"`s would take the shrunk sweep in
+            `control-vocabulary-contract.test.tsx` from 32 group instances to 34
+            and so CLEAR `GROUP_INSTANCE_FLOOR = 33` — the pinned clause would
+            stop proving anything about a dropped render state and become a guard
+            that cannot fail, arriving as a side effect of markup. Raising the
+            floor would have been defensible, since the counted population really
+            did grow; it is the wrong bar when an arm exists that spends nothing.
+
+            PLAIN `<p>` HEADINGS WERE REFUSED ON THE ACCESSIBILITY AXIS. The
+            design draws three sections; a screen-reader user would have
+            perceived one undifferentiated group — this epic's own subject
+            failing inside the epic. `<h3>` is a correct non-skipping descent
+            under the dialog's `<h2>Configure columns</h2>`, nothing pins
+            `section-label` to `<p>`, and no heading-order contract exists.
+
+            ⚠ DO NOT PROMOTE ANY OF THESE TO A GROUP WITH `aria-labelledby`.
+            That is the same arm through the back door: it is the ROLE that the
+            sweep counts, not the label. */}
+        <h3 className="section-label">HEADER</h3>
         <label className="table-header-field">Header height (pt)
           <input key={boxKey(table.headerHeight)} aria-label="Header height in points" type="number" min="1" step="1" disabled={busy} defaultValue={authored(table.headerHeight)} onBlur={(event) => { const input = event.currentTarget; if (busy) { setRestore((count) => count + 1); return } if (input.validity?.badInput) return; if (input.value !== authored(table.headerHeight)) onHeaderHeight(input.value) }} />
           <output aria-label="Header height note">Required by the format, so it has no clear.</output>
-        </label>
-        <label className="table-header-field">Alternating row background
-          <span className="table-header-control">
-            <input key={boxKey(table.altRowBackground)} aria-label="Alternating row background" disabled={busy} defaultValue={table.altRowBackground} onBlur={(event) => { const input = event.currentTarget; if (busy) { setRestore((count) => count + 1); return } const value = input.value; if (value === table.altRowBackground) return; if (value === '') onAltRowBackground('clear'); else onAltRowBackground('set', value) }} />
-            <input type="color" className={`property-swatch${isHexColour(table.altRowBackground) ? '' : ' property-swatch-unset'}`} aria-label="Pick Alternating row background" value={swatchColor(table.altRowBackground)} disabled={busy} onChange={(event) => { const value = event.target.value; dispatchOnce(() => onAltRowBackground('set', value)) }} />
-            <button type="button" className="property-inline-action" aria-label="Clear Alternating row background" title="Clear Alternating row background" disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onAltRowBackground('clear'))}>×</button>
-          </span>
-          <output aria-label="Alternating row background note">Odd rows only; cleared rows use the table background.</output>
         </label>
         <label className="table-header-field">Header font family
           <span className="table-header-control">
@@ -477,7 +581,119 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
         {styleColour('color', 'Header text colour', table.headerColor, table.headerColorResolved, "Using: the renderer's default ink")}
         {styleSelect('valign', 'Header vertical alignment', table.headerValign, table.headerValignResolved, [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']])}
         {styleSelect('align', 'Header alignment', table.headerAlign, table.headerAlignResolved, [['left', 'Left'], ['center', 'Center'], ['right', 'Right']])}
-        <p className="honest-note">A field left blank falls back to the table's own style and then to the format's default. The engine resolves it; the note under each control is the engine's answer, not this panel's.</p>
+        {/* NOT A SETTING, AND SAID SO RATHER THAN DRAWN AS A DISABLED CHECKBOX.
+            The mockup drew `Repeat on continuation pages` as a ticked box with a
+            `REQUIRED` badge; there is no format field behind it, and DESIGN.md's
+            "don't draw an affordance the product cannot honour" settles that
+            against the drawing. The reason line is the shipped idiom for a
+            derived value, and DESIGN.md's "state the reason next to anything
+            disabled" is the rule it honours.
+
+            ⚠ AND NOTHING HERE IS WORDED AS AN ABSOLUTE — the BADGE included.
+            The engine carries `DiagCodeTableHeaderRepeatSuppressed`, its own
+            record of the page where reserving the header would leave no room for
+            a row, so the repeat is dropped for that page and a warning is raised.
+            The mockup's `REQUIRED` promised a guarantee the engine can suspend;
+            so would a badge reading `ALWAYS`, which is why this one says
+            `DERIVED` — the honest claim is that the repeat is the engine's
+            behaviour rather than the author's choice, and the reason line names
+            the exception rather than merely avoiding the word. */}
+        {derivedFact('Repeat on continuation pages', 'on', 'DERIVED', 'The header is redrawn at the top of each page a table continues onto. On a page where reserving it would leave no room for a row, the engine drops the repeat for that page only and warns.')}
+        <h3 className="section-label">CELLS</h3>
+        <label className="table-header-field">Alternating row background
+          <span className="table-header-control">
+            <input key={boxKey(table.altRowBackground)} aria-label="Alternating row background" disabled={busy} defaultValue={table.altRowBackground} onBlur={(event) => { const input = event.currentTarget; if (busy) { setRestore((count) => count + 1); return } const value = input.value; if (value === table.altRowBackground) return; if (value === '') onAltRowBackground('clear'); else onAltRowBackground('set', value) }} />
+            <input type="color" className={`property-swatch${isHexColour(table.altRowBackground) ? '' : ' property-swatch-unset'}`} aria-label="Pick Alternating row background" value={swatchColor(table.altRowBackground)} disabled={busy} onChange={(event) => { const value = event.target.value; dispatchOnce(() => onAltRowBackground('set', value)) }} />
+            <button type="button" className="property-inline-action" aria-label="Clear Alternating row background" title="Clear Alternating row background" disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onAltRowBackground('clear'))}>×</button>
+          </span>
+          <output aria-label="Alternating row background note">Odd rows only; cleared rows use the table background.</output>
+        </label>
+        {/* The mockup drew `Row height` with the SAME dropdown chevron as the
+            footer aggregate pickers, so `auto` read as one option among several.
+            There is no other option and no field to hold one. */}
+        {derivedFact('Row height', 'auto', 'DERIVED', 'Every row is as tall as the content it holds, so there is nothing to choose. Only the HEADER row has a height of its own.')}
+        <h3 className="section-label">BORDERS</h3>
+        {/* THE TABLE'S OWN BORDER IS NOT RESTATED HERE. It is authored in the
+            inspector's BOX section for every non-line component including a
+            table (D-14.4.Q2(a)); this section adds the HEADER-ROW override and
+            nothing else. */}
+        {/* `min="0"` AND `step="0.001"`, AND BOTH COME FROM THE SAME PLACE: THE
+            SMALLEST VALUE AND THE FINEST GRANULARITY THE ENGINE ARM ACCEPTS.
+            Every other number in this panel advertises the smallest value its
+            arm accepts, and for a border width that value is ZERO —
+            `parse_bands.go` accepts it as the thinnest device line PDF can draw
+            and refuses only a NEGATIVE one, so a control that refused zero
+            locally would refuse a border the format defines.
+
+            ⚠ THE STEP IS `0.001` AND NOT `0.5` FOR THE IDENTICAL REASON. The arm
+            reads this value through `propertyLength`, which accepts THREE DECIMAL
+            PLACES, so `0.3pt` and `0.125pt` are legal border widths. A `step` of
+            `0.5` advertised a granularity the engine does not enforce, and it
+            advertised it toothlessly: `stepMismatch` is not `badInput`, so the
+            blur handler committed the off-step value anyway. The control was
+            drawing a rule that neither it nor the engine applied — the same
+            defect as a `min` the arm does not have, in the other axis. */}
+        {/* THE COMMITTED VALUE IS PASSED AS THE STRING IT IS, NOT THROUGH
+            `Number()`. The projection spells this one length as a STRING so that
+            `''` (absent) and `'0'` (a declared zero — a legal border, the
+            thinnest line PDF can draw) are different values, and `Number()` here
+            would fold them back together and reintroduce the very conflation the
+            re-spelling removed. `styleNumber` branches on the string; see
+            `authoredBox`. The RESOLVED half is a different question and `Number()`
+            is right there — absence on that half is `''`, which `borderPainted`
+            has already answered before this expression is reached. */}
+        {styleNumber('border.width', 'Header border width (pt)', table['headerBorder.width'], borderPainted ? `${authored(Number(table['headerBorder.widthResolved']))}pt` : '', '0.001', '0', 'Using: nothing — no border is painted')}
+        {styleColour('border.color', 'Header border colour', table['headerBorder.color'], borderPainted ? table['headerBorder.colorResolved'] : '', 'Using: nothing — no border is painted')}
+        {/* ⚠ FOUR BARE CHECKBOXES, WITH NO `role="group"` AND NO `×` CLEAR, AND
+            BOTH ABSENCES ARE DELIBERATE. The obvious move is to copy the
+            inspector's `BorderEdgesProperty`, and copying it verbatim breaks two
+            guards at once: its `<div role="group" aria-label="Border edges">`
+            takes the shrunk sweep's group count 32 -> 33 and CLEARS
+            `GROUP_INSTANCE_FLOOR`, which is the arm this section refused for its
+            headings, arriving through the back door; and its
+            `.property-inline-action ×` is a glyph button outside any segmented
+            control, so it moves `V2_CENSUS`. Four checkboxes with individual
+            accessible names cost nothing on either guard — the sweep's
+            population is `button, [role="button"]`, so a checkbox is never
+            swept.
+
+            AND THE CLEAR AFFORDANCE IS NOT MISSING: unchecking every edge IS
+            the clear. The engine refuses an empty edge array, so an emptied set
+            can only mean "remove the attribute", and that is what is sent. */}
+        <div className="table-header-field">Header border edges
+          <span className="table-header-control table-header-edges">
+            {BORDER_EDGES.map((edge) => <label key={edge}>
+              <input type="checkbox" aria-label={`Header border ${edge} edge`} disabled={busy} checked={committedEdges.includes(edge)} onChange={() => { const next = BORDER_EDGES.filter((name) => name === edge ? !committedEdges.includes(name) : committedEdges.includes(name)); dispatchOnce(() => next.length === 0 ? onHeaderStyle('border.edges', 'clear') : onHeaderStyle('border.edges', 'set', next.join(','))) }} />
+              {edge}
+            </label>)}
+          </span>
+          <output aria-label="Resolved Header border edges">{resolvedNote(table['headerBorder.edgesResolved'], 'Using: nothing — no border is painted')}</output>
+        </div>
+        {/* THE TAKEOVER, IN WORDS, AND IT IS THIS STORY'S PRINCIPAL CORRECTNESS
+            RISK RATHER THAN A COURTESY. The engine resolves the header's border
+            BLOCK-GRANULARLY: `resolveHeaderStyle` takes `headerStyle.border`
+            whole, with the table's own `style.border` only as a sibling case and
+            never a field-by-field merge. So authoring ONE attribute stops the
+            table's border reaching the header row entirely, and the other two
+            fall to the format's defaults rather than to the table's values.
+            Three resolved numbers tell an author what is drawn; they do not say
+            THAT, and it is not visible from the field's name.
+
+            ⚠ A `<p>` AND NOT AN `<output>`, WHICH IS A CONSTRAINT RATHER THAN A
+            preference. Every `<output>` in this section is a one-line read-out
+            with `text-overflow: ellipsis; white-space: nowrap`, and a sentence
+            needs to wrap — but `white-space: normal` is in
+            `canvas-authority-contract.test.ts`'s prohibited vocabulary, because
+            the ENGINE owns text wrapping and a CSS file re-deciding it is the
+            defect that scan exists for. `.honest-note` already spans the grid
+            and wraps, so the sentence takes the element that fits it. It
+            therefore carries NO `aria-label`: one on a bare `<p>` is dropped by
+            the accessibility tree, and this panel has been burned by that twice
+            already — the text itself is what a reader and a test both read. */}
+        <p className="honest-note">{borderAuthored
+          ? 'This header border is authored as a whole: it no longer follows the table’s border, and anything left blank above falls to the format’s own default rather than to the table’s value. Clear all three to give the table’s border back.'
+          : 'No header border attribute is authored here. The note under each control is the engine’s resolved answer for that attribute. Setting any one of the three authors the header’s border as a whole, and from then on the other two fall to the format’s own default.'}</p>
+        <p className="honest-note">A field left blank falls back to the table's own style and then to the format's default — except the three border attributes, which the engine takes as one block, as the line above says. The engine resolves every one of them; the note under each control is the engine's answer, not this panel's.</p>
       </div>
       {error && <p role="alert" className="file-message">{error}</p>}
       {/* THE FOOTER BAR: THE SUMMARY, AND THE TWO WAYS OUT (Story 14.7b).

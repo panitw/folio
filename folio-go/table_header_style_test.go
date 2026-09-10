@@ -280,15 +280,32 @@ func TestAMalformedAlternatingRowColourIsRefused(t *testing.T) {
 
 func TestAnUnknownHeaderStyleFieldIsRefused(t *testing.T) {
 	tpl := headerStyleFixture(t)
-	// `padding` and `border` are refused by the SAME gate as a nonsense name:
-	// the arm's closed set is the only door, and neither is in it.
+	// `padding` and a bare `border` are refused by the SAME gate as a nonsense
+	// name: the arm's closed set is the only door, and neither is in it.
 	//
 	// ⚠ `bold` and `italic` LEFT THIS LIST AT STORY 11.2 and are in the
 	// closed set now — resolveHeaderStyle cascades both, so a header style
 	// declaring either is read by something that draws (FR57, AC2). They are
 	// asserted below instead, where a NON-BOOLEAN value for them is refused
 	// at the field itself rather than at the gate.
-	for _, field := range []string{"paddingTop", "border", "padding", "notAField"} {
+	//
+	// ⚠ A BARE `border` STAYS ON THIS LIST AT STORY 14.8, AND THAT IS THE
+	// SHAPE DECISION MADE OBSERVABLE. The story made the header border
+	// authorable as three FLAT DOTTED attributes — `border.width`,
+	// `border.color`, `border.edges` — and deliberately NOT as one member
+	// carrying an object, because a `{id, field, op, value}` command is one
+	// field and one op, so a block `set` could only be built by re-sending the
+	// two attributes the author never touched. `border` naming the whole block
+	// is therefore still not a thing a command can say, and this row is what
+	// keeps that true.
+	//
+	// THE NEAR MISSES ARE HERE FOR THE SAME REASON. `borderWidth` is the
+	// element-level command's camelCase spelling, which would produce the path
+	// `table.headerStyle.borderWidth` — a key no document has, which is DW-333;
+	// `border.notAKey` and `padding.top` are the dotted form pointed at
+	// something that is not in the set. All three are refused at the gate, so
+	// the dot is not a wildcard.
+	for _, field := range []string{"paddingTop", "border", "padding", "notAField", "borderWidth", "borderColor", "borderEdges", "border.notAKey", "border.", "padding.top"} {
 		refusalLeavesTheDocumentAlone(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"set","value":"x"}`, "table.headerStyle")
 	}
 	// The two booleans take their own arm, so `"x"` is refused by the VALUE
@@ -297,7 +314,7 @@ func TestAnUnknownHeaderStyleFieldIsRefused(t *testing.T) {
 	for _, field := range []string{"bold", "italic"} {
 		refusalLeavesTheDocumentAlone(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"set","value":"x"}`, "table.headerStyle."+field)
 	}
-	// And the nine that ARE in it are all reachable, so the closed set is not
+	// And the twelve that ARE in it are all reachable, so the closed set is not
 	// simply refusing everything.
 	for _, field := range tableHeaderStyleFields {
 		if err := applyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"`+theWorkedExampleTable+`","field":"`+field+`","op":"clear"}`); err != nil {
@@ -735,6 +752,29 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 			func(v TableColumnsProjection) string { return strconv.FormatBool(v.HeaderBoldResolved) }},
 		{"italic", "HeaderItalicResolved", `"italic": true`, `false`, "true", "false",
 			func(v TableColumnsProjection) string { return strconv.FormatBool(v.HeaderItalicResolved) }},
+		// STORY 14.8's THREE, AND THEY WALK A DIFFERENT CASCADE FROM THEIR NINE
+		// SIBLINGS — which is exactly why they are worth walking. The nine above
+		// fall through FIELD BY FIELD, so leg one's value survives on every
+		// field the header does not name. The border does not: resolveHeaderStyle
+		// takes `headerStyle.border` WHOLE, so leg two's `headerStyle` border
+		// declares the ONE attribute under test and the other two resolve to the
+		// FORMAT's defaults rather than to the table's.
+		//
+		// The leg-one table style therefore declares a full border whose every
+		// attribute differs from the format's default (3pt / #445566 / two
+		// edges), and leg two's expected value is the attribute the command just
+		// wrote. A member wired to the committed field fails leg one; one wired
+		// to `style.border` fails leg two, exactly as for the nine.
+		{"border.width", "HeaderBorderWidthResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `1.5`, "3000", "1500",
+			func(v TableColumnsProjection) string { return v.HeaderBorderWidthResolved }},
+		{"border.color", "HeaderBorderColorResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `"#c81e1e"`, "#445566", "#c81e1e",
+			func(v TableColumnsProjection) string { return v.HeaderBorderColorResolved }},
+		// AND THE EDGES ROW IS THE ONE THAT PINS THE CANONICAL ORDER AS WELL AS
+		// THE CASCADE: the command sends `["left","top"]` and the projection must
+		// answer `top,left`, because the browser's guard admits only the format's
+		// own order and Go is the side that fixes it.
+		{"border.edges", "HeaderBorderEdgesResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `["left", "top"]`, "top,bottom", "top,left",
+			func(v TableColumnsProjection) string { return v.HeaderBorderEdgesResolved }},
 	}
 	// THE TIE DW-240 WAS MISSING, AND THE DURABLE HALF OF ITS FIX. Nothing
 	// related `tableHeaderStyleFields` to this projection's member list, which
@@ -900,18 +940,40 @@ func committedTwin(t *testing.T, view TableColumnsProjection, field string) stri
 		return strconv.FormatBool(view.HeaderBold)
 	case "italic":
 		return strconv.FormatBool(view.HeaderItalic)
+	// ⚠ A MISSING ARM HERE DOES NOT RED — the switch used to fall out and
+	// return "", which is one of the three spellings of ABSENT the caller
+	// accepts, so a new field's leg-one check would have MEASURED NOTHING
+	// rather than failed. Vacuity, not failure. The t.Fatalf below is what
+	// turns the omission into a report, and these three arms are why it has
+	// never fired.
+	case "border.width":
+		return view.HeaderBorderWidth
+	case "border.color":
+		return view.HeaderBorderColor
+	case "border.edges":
+		return view.HeaderBorderEdges
 	}
 	t.Fatalf("no committed twin for %q", field)
 	return ""
 }
 
-// cleanupEmptyHeaderStyle's PROTECTION FOR THE FIELDS NO COMMAND CAN AUTHOR.
+// cleanupEmptyHeaderStyle's PROTECTION FOR A BLOCK THAT STILL DECLARES
+// SOMETHING THE COMMAND WAS NOT ASKED ABOUT.
 //
-// The predicate consults Bold, Italic, Border, Padding and Extra as well as the
-// seven authorable fields, and nothing tested that. Shortening it to the seven
-// left every test green while an author who had hand-written a header border
-// lost it the moment they touched header alignment — the block would go from
-// "declares align and border" to "declares border" to, wrongly, absent.
+// The predicate consults Border, Padding and Extra as well as the fields the
+// panel authors, and nothing tested that. Shortening it left every test green
+// while an author who had hand-written a header border lost it the moment they
+// touched header alignment — the block would go from "declares align and border"
+// to "declares border" to, wrongly, absent.
+//
+// ⚠ ITS TITLE SAID "the last AUTHORABLE field" AND MEANT "the last field a
+// COMMAND CAN WRITE", WHICH STOPPED BEING THE SAME THING AT STORY 14.8. The
+// border IS authorable now, one attribute at a time. What this test still pins is
+// unchanged and is what matters: a command asked about ALIGNMENT must not delete
+// a border it was not asked about. The border here is hand-authored in FULL, so
+// the collapse Story 14.8 added to cleanupEmptyHeaderStyle — which drops an
+// EMPTY `border: {}` — cannot fire on it, and the two behaviours are
+// distinguishable rather than one masking the other.
 //
 // Precedent for the shape: line_spacing_test.go's
 // TestLineSpacingClearedFromTheOnlyStyleFieldStrandsNoStyleBlock, which pins
@@ -941,6 +1003,62 @@ func TestClearingTheLastAuthorableHeaderFieldKeepsAHandAuthoredBorder(t *testing
 	}
 	// And the document still loads, which is what "survives in the canonical
 	// bytes" has to mean for a block the loader will read back.
+	if _, err := ParseTemplate(encoded); err != nil {
+		t.Fatalf("the surviving document no longer loads: %v", err)
+	}
+}
+
+// ⚠ AND THE SAME CLAIM AGAINST AN *EMPTY* HAND-AUTHORED BORDER, WHICH THE TEST
+// ABOVE CANNOT SEE.
+//
+// WHY THE GUARD ABOVE MISSED THIS: it hand-authors the border in FULL —
+// `{"edges": ["bottom"], "color": "#112233", "width": 1}` — so Story 14.8's
+// empty-`border` collapse could never fire on it no matter which field the
+// command cleared, and the test stayed green over a real deletion. A FIXTURE
+// MORE COMPLETE THAN THE DEFECT'S PRECONDITION IS A GUARD THAT CANNOT SEE IT.
+// The next person will reach for the same fully-populated fixture; the border
+// here is deliberately EMPTY, which is the only state the collapse can act on.
+//
+// AND `"border": {}` IS A MEANINGFUL DOCUMENT, NOT DEBRIS. resolveHeaderStyle's
+// arm is `case hasHeader && header.Border.Set && !header.Border.Null`, so a
+// present-but-empty header border wins the cascade WHOLE and paints the resolved
+// 0.5pt black on all four edges; writeBorder emits `{}` for it, so it survives a
+// load and a save as a fixed point. This fixture therefore declares NO table
+// border, which makes the resolved trio the discriminator: 500/#000000/all-four
+// while the empty block stands, and ""/""/"" — nothing painted at all — the
+// instant it is deleted. The byte search alone would be weaker; the PDF changing
+// is the defect.
+//
+// UNGATED, this collapse ran on every one of the twelve fields' clears, so this
+// command — about BACKGROUND — deleted the border and then the whole headerStyle.
+// RED PROOF: drop `strings.HasPrefix(clearedField, "border.")` from
+// cleanupEmptyHeaderStyle and this test fails on all three assertions.
+func TestClearingANonBorderHeaderFieldKeepsAnEmptyHandAuthoredBorder(t *testing.T) {
+	tpl := headerCascadeDocument(t, "", `"headerStyle": {"background": "#445566", "border": {}},`)
+	// PRECONDITION: the empty border block already wins the cascade whole, and
+	// the table declares none of its own, so every resolved value below is the
+	// header's block answering.
+	before := projectHeaderCascade(t, tpl)
+	if before.HeaderBorderWidthResolved != "500" || before.HeaderBorderColorResolved != "#000000" || before.HeaderBorderEdgesResolved != "top,right,bottom,left" {
+		t.Fatalf("precondition: an empty header border must resolve to the renderer's own defaults, got %#v", before)
+	}
+	// A COMMAND ABOUT BACKGROUND. It names no border attribute at all.
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"background","op":"clear"}`)
+	encoded := canonicalBytes(t, tpl)
+	if bytes.Contains(encoded, []byte(`"background"`)) {
+		t.Errorf("the cleared background survived:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"border"`)) {
+		t.Errorf("a command about background deleted a hand-authored empty header border:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"headerStyle"`)) {
+		t.Errorf("a command about background dropped a headerStyle that still declares a border:\n%s", encoded)
+	}
+	// AND THE RENDERED ANSWER IS UNCHANGED, which is the half that makes this a
+	// correctness claim rather than a tidiness one.
+	if after := projectHeaderCascade(t, tpl); after.HeaderBorderWidthResolved != "500" || after.HeaderBorderColorResolved != "#000000" || after.HeaderBorderEdgesResolved != "top,right,bottom,left" {
+		t.Errorf("clearing the background changed what the header row paints: now %q/%q/%q, want the unchanged 500/#000000/top,right,bottom,left", after.HeaderBorderWidthResolved, after.HeaderBorderColorResolved, after.HeaderBorderEdgesResolved)
+	}
 	if _, err := ParseTemplate(encoded); err != nil {
 		t.Fatalf("the surviving document no longer loads: %v", err)
 	}
@@ -993,4 +1111,353 @@ func TestSetTheHeaderHeightLocatesItsArityRefusal(t *testing.T) {
 	refusalSaysWhy(t, tpl, `{"kind":"setTableHeaderHeight","version":1,"id":"`+theWorkedExampleTable+`","height":18,"surplus":1}`, "table.headerHeight", want)
 	// And a missing one.
 	refusalSaysWhy(t, tpl, `{"kind":"setTableHeaderHeight","version":1,"id":"`+theWorkedExampleTable+`"}`, "table.headerHeight", want)
+}
+
+// ---------------------------------------------------------------------------
+// STORY 14.8 — THE HEADER BORDER'S OWN I/O MATRIX, AT THE WIRE-SHAPE LAYER.
+//
+// The four rows below are the ones only Go can answer, because each is a claim
+// about the BYTES a command leaves behind rather than about what the panel
+// shows: one attribute per command, a second attribute leaving the first alone,
+// a clear of one, and the clear of the last collapsing two nested blocks. The
+// two refusal rows are here for the same reason — a refusal is located or it is
+// not, and only the engine knows.
+//
+// EVERY ONE IS RED-PROVED BY DELETING THE BEHAVIOUR UNDER TEST, never by
+// reverting the story: an absence claim ("no colour was written") passes far too
+// easily under a revert, because a revert removes the command that would have
+// written one.
+// ---------------------------------------------------------------------------
+
+// A table whose OWN border is fully declared and whose header declares none, so
+// every leg of the block-granular takeover is observable: the header inherits
+// the table's border until the first attribute is authored, and stops inheriting
+// it entirely from that moment.
+func headerBorderDocument(t *testing.T, headerStyle string) *Template {
+	t.Helper()
+	return headerCascadeDocument(t, `"style": {"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}},`, headerStyle)
+}
+
+// ROW 1 — the FIRST attribute authored. It materialises the block, it writes
+// EXACTLY the attribute named, and it seeds neither of the other two. That last
+// clause is the whole of "Arm C" at the storage layer: a colour or an edge list
+// appearing in the file here would be a value the author never chose, written on
+// their behalf to soften a cascade change the panel discloses in words instead.
+func TestAuthoringOneHeaderBorderAttributeWritesOnlyThatAttribute(t *testing.T) {
+	tpl := headerBorderDocument(t, "")
+	// PRECONDITION: the header inherits the table's border, whole.
+	before := projectHeaderCascade(t, tpl)
+	if before.HeaderBorderWidthResolved != "3000" || before.HeaderBorderColorResolved != "#445566" || before.HeaderBorderEdgesResolved != "top,bottom" {
+		t.Fatalf("precondition: the header must inherit the table's border, got %#v", before)
+	}
+	if before.HeaderBorderWidth != "" || before.HeaderBorderColor != "" || before.HeaderBorderEdges != "" {
+		t.Fatalf("precondition: the header must declare no border of its own, got %#v", before)
+	}
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"set","value":1.5}`)
+	encoded := canonicalBytes(t, tpl)
+	if !bytes.Contains(encoded, []byte(`"headerStyle"`)) || !bytes.Contains(encoded, []byte(`"width": 1.5`)) {
+		t.Fatalf("the authored width did not reach the file:\n%s", encoded)
+	}
+	// THE TWO ATTRIBUTES NOBODY TOUCHED ARE ABSENT FROM THE HEADER'S BLOCK.
+	// Asserted on the PROJECTION's committed members rather than by string
+	// search, because the table's own border legitimately carries both and a
+	// byte-level search for "#445566" would find it there.
+	view := projectHeaderCascade(t, tpl)
+	if view.HeaderBorderWidth != "1500" {
+		t.Errorf("committed headerBorder.width = %q, want \"1500\"", view.HeaderBorderWidth)
+	}
+	if view.HeaderBorderColor != "" || view.HeaderBorderEdges != "" {
+		t.Errorf("authoring the width seeded the other two attributes: colour %q, edges %q — the command must carry exactly what the author chose", view.HeaderBorderColor, view.HeaderBorderEdges)
+	}
+	// AND THE CASCADE HAS CHANGED HANDS. The two untouched attributes now
+	// resolve to the FORMAT's defaults, not to the table's border, because
+	// resolveHeaderStyle takes the header's block whole. This is the fact the
+	// panel has to state in words, and it is asserted here so the words are
+	// describing something real.
+	if view.HeaderBorderColorResolved != "#000000" || view.HeaderBorderEdgesResolved != "top,right,bottom,left" {
+		t.Errorf("after authoring one attribute the untouched two resolve to %q / %q, want the format's own #000000 / all four edges — the table's border must stop contributing entirely", view.HeaderBorderColorResolved, view.HeaderBorderEdgesResolved)
+	}
+	if _, err := ParseTemplate(encoded); err != nil {
+		t.Fatalf("the document a single border attribute produced no longer loads: %v", err)
+	}
+}
+
+// ROW 2 — the SECOND attribute authored leaves the first alone.
+func TestAuthoringASecondHeaderBorderAttributeLeavesTheFirstAlone(t *testing.T) {
+	tpl := headerBorderDocument(t, `"headerStyle": {"border": {"width": 1.5}},`)
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.color","op":"set","value":"#c81e1e"}`)
+	view := projectHeaderCascade(t, tpl)
+	if view.HeaderBorderWidth != "1500" {
+		t.Errorf("committed headerBorder.width = %q after authoring the COLOUR, want the stored \"1500\" untouched", view.HeaderBorderWidth)
+	}
+	if view.HeaderBorderColor != "#c81e1e" {
+		t.Errorf("committed headerBorder.color = %q, want #c81e1e", view.HeaderBorderColor)
+	}
+	if view.HeaderBorderEdges != "" {
+		t.Errorf("committed headerBorder.edges = %q, want absent — two commands must not add up to three attributes", view.HeaderBorderEdges)
+	}
+}
+
+// ROW 3 — clearing ONE attribute removes it, leaves its siblings, and leaves a
+// border that is still drawn.
+func TestClearingOneHeaderBorderAttributeKeepsTheRest(t *testing.T) {
+	tpl := headerBorderDocument(t, `"headerStyle": {"border": {"width": 1.5, "color": "#c81e1e"}},`)
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.color","op":"clear"}`)
+	view := projectHeaderCascade(t, tpl)
+	if view.HeaderBorderColor != "" {
+		t.Errorf("committed headerBorder.color = %q after a clear, want absent", view.HeaderBorderColor)
+	}
+	if view.HeaderBorderWidth != "1500" {
+		t.Errorf("committed headerBorder.width = %q, want the \"1500\" the clear was not asked about", view.HeaderBorderWidth)
+	}
+	// STILL DRAWN: the block survives with one attribute, so the cleared colour
+	// falls to the FORMAT's default rather than back to the table's — the
+	// takeover is not undone by clearing one of three.
+	if view.HeaderBorderEdgesResolved == "" {
+		t.Error("clearing one attribute stopped the border being painted at all")
+	}
+	if view.HeaderBorderColorResolved != "#000000" {
+		t.Errorf("resolved headerBorder.color = %q after the clear, want the format's #000000 — the header still owns its border as a whole", view.HeaderBorderColorResolved)
+	}
+	encoded := canonicalBytes(t, tpl)
+	if bytes.Contains(encoded, []byte(`"#c81e1e"`)) {
+		t.Errorf("the cleared colour survived in the bytes:\n%s", encoded)
+	}
+	// "the header's border block survived" is asserted through the PROJECTION
+	// above and never by searching the bytes for `"border"`: this fixture's
+	// TABLE declares one too, so that search would pass whatever happened to
+	// the header's.
+	if !bytes.Contains(encoded, []byte(`"headerStyle"`)) {
+		t.Errorf("clearing one of two attributes dropped the whole headerStyle:\n%s", encoded)
+	}
+}
+
+// ROW 4 — clearing the LAST attribute collapses TWO nested blocks, and this is
+// the one that reds if cleanupEmptyHeaderStyle's empty-`border` mirror is
+// deleted. Without it the file keeps `"border": {}`, whose `Border.Set` is still
+// true, so the whole-style check can never fire and `headerStyle` is pinned
+// alive forever.
+func TestClearingTheLastHeaderBorderAttributeCollapsesBorderAndHeaderStyle(t *testing.T) {
+	tpl := headerBorderDocument(t, `"headerStyle": {"border": {"width": 1.5}},`)
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"clear"}`)
+	encoded := canonicalBytes(t, tpl)
+	if bytes.Contains(encoded, []byte(`"border": {}`)) {
+		t.Errorf("an empty border block survived the clear:\n%s", encoded)
+	}
+	if bytes.Contains(encoded, []byte(`"headerStyle"`)) {
+		t.Errorf("clearing the header style's only member left a headerStyle key:\n%s", encoded)
+	}
+	// THE TABLE'S OWN BORDER IS BACK, which is what makes the collapse a
+	// behaviour rather than tidiness: the header inherits again.
+	view := projectHeaderCascade(t, tpl)
+	if view.HeaderBorderWidthResolved != "3000" || view.HeaderBorderColorResolved != "#445566" || view.HeaderBorderEdgesResolved != "top,bottom" {
+		t.Errorf("after clearing the last attribute the header resolves %#v, want the table's own 3pt/#445566/top,bottom back", view)
+	}
+	if _, err := ParseTemplate(encoded); err != nil {
+		t.Fatalf("the collapsed document no longer loads: %v", err)
+	}
+}
+
+// AND THE INNER COLLAPSE ON ITS OWN, so the test above cannot be satisfied by
+// the outer one alone: a header style that declares something ELSE keeps its
+// headerStyle key and must still lose the emptied border.
+func TestClearingTheLastBorderAttributeCollapsesTheBorderInsideALivingHeaderStyle(t *testing.T) {
+	// NO BORDER ON THE TABLE'S OWN STYLE HERE, deliberately: the byte search
+	// below is for the word `border` anywhere in the file, and a table border
+	// would satisfy it and make the assertion meaningless.
+	tpl := headerCascadeDocument(t, "", `"headerStyle": {"align": "center", "border": {"width": 1.5}},`)
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"clear"}`)
+	encoded := canonicalBytes(t, tpl)
+	if bytes.Contains(encoded, []byte(`"border"`)) {
+		t.Errorf("the emptied border survived inside a headerStyle that still declares align:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"align": "center"`)) {
+		t.Errorf("the collapse took the align it was not asked about:\n%s", encoded)
+	}
+}
+
+// A clear of a border attribute against a document with NO headerStyle at all
+// moves no bytes — the short-circuit ahead of headerStyleFor, asserted for the
+// nested path as well as the flat one.
+func TestClearingAHeaderBorderAttributeThatIsAlreadyAbsentMovesNoBytes(t *testing.T) {
+	tpl := headerBorderDocument(t, "")
+	before := canonicalBytes(t, tpl)
+	for _, field := range []string{"border.width", "border.color", "border.edges"} {
+		mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"`+field+`","op":"clear"}`)
+	}
+	if after := canonicalBytes(t, tpl); !bytes.Equal(before, after) {
+		t.Errorf("clearing three already-absent border attributes changed the document:\nbefore\n%s\nafter\n%s", before, after)
+	}
+	// AND AGAINST A PRESENT headerStyle WITH NO border, which takes the other
+	// branch: headerStyleFor materialises nothing, the clear arm's own guard
+	// declines to create a border, and the collapse finds nothing to drop.
+	present := headerBorderDocument(t, `"headerStyle": {"align": "center"},`)
+	beforePresent := canonicalBytes(t, present)
+	mustApplyToTable(t, present, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.edges","op":"clear"}`)
+	if after := canonicalBytes(t, present); !bytes.Equal(beforePresent, after) {
+		t.Errorf("clearing an absent border inside a present headerStyle changed the document:\nbefore\n%s\nafter\n%s", beforePresent, after)
+	}
+}
+
+// THE TWO REFUSAL ROWS, LOCATED AT THE DOTTED PATH. The dot is the whole reason
+// the field names are spelled the way they are: `table.headerStyle.border.width`
+// is a path the document actually has, where the camelCase alternative would
+// have located at `table.headerStyle.borderWidth`, a key no file carries
+// (DW-333).
+func TestAMalformedHeaderBorderValueIsRefusedAtItsOwnDottedPath(t *testing.T) {
+	tpl := headerBorderDocument(t, "")
+	// A NEGATIVE WIDTH — the loader's own rule (ISO 32000-1 §8.4.3.2), restated
+	// at this door only so the author gets a LOCATED sentence instead of an
+	// unlocated parse failure off the round-trip.
+	refusalSaysWhy(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"set","value":-1}`,
+		"table.headerStyle.border.width",
+		"border.width must not be negative: a PDF line width is non-negative (ISO 32000-1 8.4.3.2); use 0 for the thinnest line")
+	// A COLOUR THE FILE DOOR CANNOT CHECK. `internal/template` may not import
+	// parseHexColor (AD-1), so a malformed border colour LOADS and surfaces at
+	// render; refusing it here is what keeps the author's own edit located.
+	refusalSaysWhy(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.color","op":"set","value":"red"}`,
+		"table.headerStyle.border.color", "border.color must be a #RRGGBB colour")
+	// AND THE EMPTY EDGE ARRAY, which is not "no border" but a stroke with no
+	// side to draw. Clearing the attribute is how an author says the other thing.
+	refusalSaysWhy(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.edges","op":"set","value":[]}`,
+		"table.headerStyle.border.edges", "border.edges must be a non-empty string array")
+	// AND AN EDGE NAME THE LOADER'S CLOSED SET DOES NOT CARRY. This arm validated
+	// no name at all, so `["middle"]` was ADMITTED here, mutated the document, and
+	// the refusal arrived from ParseTemplate on wasm's round-trip naming no
+	// element and no field — the unlocated failure the width and colour arms
+	// restate the loader's own rules to avoid. template.IsBorderEdge reads the
+	// very map parse_bands.go reads, so this door cannot drift from that one.
+	refusalSaysWhy(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.edges","op":"set","value":["middle"]}`,
+		"table.headerStyle.border.edges", "border.edges must name only top, right, bottom, left: middle is not one of them")
+	// A LEGAL NAME BESIDE AN ILLEGAL ONE IS STILL REFUSED — the check is per
+	// name, not "at least one is known".
+	refusalSaysWhy(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.edges","op":"set","value":["top","Bottom"]}`,
+		"table.headerStyle.border.edges", "border.edges must name only top, right, bottom, left: Bottom is not one of them")
+	// That the document did not move is asserted by refusalSaysWhy itself, which
+	// runs refusalLeavesTheDocumentAlone first — and it is the load-bearing half
+	// here: the old arm mutated the template and only then failed, downstream.
+}
+
+// ZERO IS ACCEPTED, AND IT IS NOT THE SAME AS ABSENT. It is the thinnest device
+// line PDF can draw (parse_bands.go says so in those words), so the command door
+// must not borrow the positive-length rule its font-size sibling uses.
+func TestAZeroHeaderBorderWidthIsAcceptedAndPainted(t *testing.T) {
+	tpl := headerBorderDocument(t, "")
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"set","value":0}`)
+	encoded := canonicalBytes(t, tpl)
+	if !bytes.Contains(encoded, []byte(`"width": 0`)) {
+		t.Errorf("a zero border width did not reach the file:\n%s", encoded)
+	}
+	view := projectHeaderCascade(t, tpl)
+	// THE RESOLVED PAIR IS WHERE A DECLARED ZERO IS STILL LEGIBLE. The COMMITTED
+	// member cannot say it — 0 is this projection's spelling of absent, a
+	// collapse TableColumnsProjection's own comment discloses — but the resolved
+	// twin reads 0 for a declared zero and 500 for a genuinely absent width, so
+	// the panel can still tell an author what will be drawn.
+	if view.HeaderBorderWidthResolved != "0" {
+		t.Errorf("resolved headerBorder.width = %q for a declared zero, want \"0\" — the format's 0.5pt default must not overwrite an explicit zero", view.HeaderBorderWidthResolved)
+	}
+	if view.HeaderBorderEdgesResolved != "top,right,bottom,left" {
+		t.Errorf("resolved headerBorder.edges = %q, want all four — a zero-width border is still a border that is painted", view.HeaderBorderEdgesResolved)
+	}
+}
+
+// "NOTHING IS PAINTED" IS SAID BY THE EDGES MEMBER AND BY NOTHING ELSE, AND THE
+// REASON IS NOT THE ONE IT USED TO BE. It is not that a resolved width of 0 is
+// ambiguous — since the width pair became a STRING, "" means "no border reaches
+// the header row" and "0" means "a declared zero-width border", which are two
+// different values. It is the SECOND way to paint nothing that only the edge
+// list can report: a border that DOES resolve but whose declared `edges` names
+// no side. There the width resolves to a real number and the emitter still draws
+// nothing, because its gate is `HasStroke && (Top || Right || Bottom || Left)`.
+// Both halves are asserted below, which is why this test has two parts.
+func TestNoBorderAnywhereProjectsAnEmptyResolvedEdgeList(t *testing.T) {
+	tpl := headerCascadeDocument(t, "", "")
+	view := projectHeaderCascade(t, tpl)
+	if view.HeaderBorderEdgesResolved != "" {
+		t.Errorf("resolved headerBorder.edges = %q with no border declared anywhere, want empty — no border reaches the header row, so nothing is stroked", view.HeaderBorderEdgesResolved)
+	}
+	if view.HeaderBorderWidthResolved != "" || view.HeaderBorderColorResolved != "" {
+		t.Errorf("with no border anywhere the width/colour resolve to %q/%q, want this projection's own absence spelling \"\"/\"\"", view.HeaderBorderWidthResolved, view.HeaderBorderColorResolved)
+	}
+	// AND A DECLARED `edges: []` — a hand-edited shape no command can write —
+	// reaches the same empty answer, because the PDF emitter's own gate is
+	// `HasStroke && (Top || Right || Bottom || Left)`. Two ways to paint
+	// nothing, one member that reports it.
+	none := headerCascadeDocument(t, `"style": {"border": {"width": 2, "edges": []}},`, "")
+	if got := projectHeaderCascade(t, none).HeaderBorderEdgesResolved; got != "" {
+		t.Errorf("a declared empty edge list resolves to %q, want empty — no side means no stroke is emitted", got)
+	}
+}
+
+// A HAND-AUTHORED BORDER CARRYING AN UNKNOWN SUB-KEY SURVIVES EVERY EDIT THIS
+// PANEL CAN MAKE, including the collapse. `Border.Extra` is consulted inside
+// cleanupEmptyHeaderStyle's new mirror for the same reason `Style.Extra` is
+// consulted outside it: an unknown key rides opaquely through a load and a save,
+// and dropping a block that still carries one deletes an author's data.
+func TestAnUnknownHeaderBorderSubKeySurvivesTheCollapse(t *testing.T) {
+	tpl := headerBorderDocument(t, `"headerStyle": {"border": {"width": 1.5, "dash": "2 2"}},`)
+	if !bytes.Contains(canonicalBytes(t, tpl), []byte(`"dash"`)) {
+		t.Fatalf("precondition: the unknown sub-key must round-trip:\n%s", canonicalBytes(t, tpl))
+	}
+	mustApplyToTable(t, tpl, `{"kind":"updateTableHeaderStyle","version":1,"id":"e1","field":"border.width","op":"clear"}`)
+	encoded := canonicalBytes(t, tpl)
+	if bytes.Contains(encoded, []byte(`"width": 1.5`)) {
+		t.Errorf("the cleared width survived:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"dash"`)) {
+		t.Errorf("the collapse deleted an unknown sub-key it was not asked about:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"headerStyle"`)) {
+		t.Errorf("the headerStyle was dropped although its border still declares something:\n%s", encoded)
+	}
+}
+
+// THE PROJECTION'S RESOLVED TRIO IS THE RENDERER'S OWN ANSWER, NOT A SECOND
+// IMPLEMENTATION OF IT, and this is the tie that keeps it that way. Both sides
+// call resolvedBorderWidth/Color/Edges; a copy of the defaults on either side
+// would drift.
+//
+// ⚠ FOUR ASSERTIONS, AND THEY ASSERT TWO DIFFERENT PROPERTIES. READ THIS
+// BEFORE DELETING ANY OF THEM — AND IN PARTICULAR, DO NOT DELETE THE FOURTH.
+//
+// THE FIRST THREE ASSERT DELEGATION, AND THAT IS A REAL PROPERTY. TableColumns
+// projects each resolved border member by CALLING resolvedBorderWidth/Color/
+// Edges — the same three functions these assertions compare it against — so
+// while the projection delegates they cannot fail for any input: both sides are
+// one expression. That does not make them worthless. They are exactly what
+// WOULD fail if someone later inlined a different value into the projection
+// instead of delegating, which is the second-copy drift Story 14.8 extracted
+// these functions to prevent, and which the designer's own `?? 500` /
+// `?? '#000000'` already cost once. What they do NOT assert is the DEFAULTS:
+// they say the two sides agree, never what the two sides agree ON.
+//
+// THE FOURTH ASSERTION IS THE ONLY ONE THAT PINS THE DEFAULTS THEMSELVES —
+// 500, #000000, top,right,bottom,left — and therefore the only one that can
+// fail if both sides move together. It is the reason a joint edit still has to
+// face folio-format.md's documented values. DELETE THE FOURTH AND THIS TEST
+// CANNOT FAIL AT ALL. Anyone reading "the first three are derived" as a licence
+// to trim has it exactly backwards: the derived three are the delegation guard
+// and stay, and the fourth is the coverage and stays.
+//
+// Checked over a border with EVERY sub-key absent, because that is the only
+// input where the defaults are what answer.
+func TestTheProjectedHeaderBorderDefaultsAreTheRenderersOwn(t *testing.T) {
+	tpl := headerCascadeDocument(t, "", `"headerStyle": {"border": {}},`)
+	view := projectHeaderCascade(t, tpl)
+	empty := template.Border{}
+	if want := strconv.FormatInt(int64(resolvedBorderWidth(empty)), 10); view.HeaderBorderWidthResolved != want {
+		t.Errorf("resolved headerBorder.width = %q, and the renderer answers %q for the same border", view.HeaderBorderWidthResolved, want)
+	}
+	if want := resolvedBorderColor(empty); view.HeaderBorderColorResolved != want {
+		t.Errorf("resolved headerBorder.color = %q, and the renderer answers %q for the same border", view.HeaderBorderColorResolved, want)
+	}
+	if want := edgeListOf(resolvedBorderEdges(empty)); view.HeaderBorderEdgesResolved != want {
+		t.Errorf("resolved headerBorder.edges = %q, and the renderer answers %q for the same border", view.HeaderBorderEdgesResolved, want)
+	}
+	// AND THE NUMBERS THEMSELVES, PINNED ONCE, so a joint edit of both sides
+	// still has to face folio-format.md's documented defaults.
+	if view.HeaderBorderWidthResolved != "500" || view.HeaderBorderColorResolved != "#000000" || view.HeaderBorderEdgesResolved != "top,right,bottom,left" {
+		t.Errorf("an all-absent border resolves to %q/%q/%q, want the format's documented 500/#000000/top,right,bottom,left", view.HeaderBorderWidthResolved, view.HeaderBorderColorResolved, view.HeaderBorderEdgesResolved)
+	}
 }
