@@ -2,8 +2,9 @@
 title: 'Story 14.9: The canvas draws the table it will print'
 type: 'feature'
 created: '2026-09-10'
-status: 'draft'
-review_loop_iteration: 0
+status: 'done'
+review_loop_iteration: 1
+baseline_commit: '40f3bfce5f831efc43d2f557b6ce1e5bdc5cfdd1'
 context: []
 ---
 
@@ -73,6 +74,27 @@ changes.
   it rejects a surplus key and tolerates a missing one), so a Go key the browser does not list makes
   `isCanvas` false → `parseInbound` returns undefined → `engine-client` raises `PROTOCOL_INVALID`,
   **terminates the worker, and there is no respawn path**. The session is dead until reload.
+- **⚠ AMENDED 2026-09-10 BY THE ORCHESTRATOR, AFTER APPROVAL, RESOLVING A CONTRADICTION INSIDE THIS BLOCK.**
+  As approved, this Always clause and the two projection-bound rows of the I/O matrix gave **opposite answers
+  about the same document**, and step-04 proved it by execution: the golden fixture with one 600-byte column
+  label parses, renders a real 64,123-byte PDF, and had its canvas projection **abort** — which by this spec's
+  own text terminates the worker with no respawn, so a template that prints correctly blanks the designer's
+  canvas until reload. **The matrix rows are amended to clip rather than abort; this clause governs.** The
+  contradiction was mine: I approved a frozen block containing both readings. Recorded rather than quietly
+  rewritten, because a frozen block edited after approval must show what changed and why.
+- **The reading is settled by the matrix's own neighbouring row**, not only by this clause: *"Zero or negative
+  column width … the canvas paints what it is given and refuses nothing it accepts today — N/A, must not become
+  an error."* Same principle, two rows apart, opposite answer. **A document the engine prints is a document the
+  canvas draws.**
+- **Clip, never omit.** A column dropped from the projection would make the canvas *systematically wrong about
+  the document's structure* — the chip's column count would disagree with the header row it sits above — and
+  being systematically wrong about structure is precisely the harm AD-17 exists to prevent. Clipping is a
+  display concern on a surface that is display-only paint by [R1], and `.canvas-display-paint` already
+  ellipsises visually.
+- **Clip on a rune boundary.** A byte-cut mid-rune emits invalid UTF-8 and breaks the JSON envelope, turning a
+  display concern back into the fatal one this amendment removes. **The browser guard must accept the clipped
+  value** — note the projection bounds bytes while the guard bounds UTF-16 length, so a multibyte label is the
+  case where those two disagree, and it needs a test.
 - **The new field must not newly refuse a document that ships today.** A column with width `0` or a
   negative width loads, projects, and paints now; the browser-side guard must accept any safe
   integer width, never `> 0`.
@@ -128,8 +150,8 @@ changes.
 | Column with no binding | `bind: ""` on one column | that cell reads as unbound in the muted page ink — **not** in the bind accent, because amber means data and an unbound cell has none | N/A |
 | Column with empty label | `label: ""` (legal; the key is required, the value may be empty) | the header cell is drawn, no label text is painted — matching the renderer, which builds the rect then skips glyphs on an empty label | N/A |
 | Single column | 1 column | chip reads `1 column`, singular | N/A |
-| Column label over the projection bound | label longer than 512 bytes | Go aborts the canvas projection with a bounded, named error, matching the seven existing identifier sites | projection error, surfaced as every other canvas projection error is |
-| Column binding over the projection bound | bind longer than 512 bytes | as above, with its own message | as above |
+| Column label over the projection bound | label longer than 512 bytes (**loads and prints today** — `decodeColumn` imposes no cap) | **CLIPPED at the bound, on a rune boundary, and painted.** Never an error, and the column is never omitted: the chip's count and the header row must keep agreeing with the document | N/A — must not become an error |
+| Column binding over the projection bound | bind longer than 512 bytes | as above, clipped on a rune boundary, its own column still drawn | N/A — must not become an error |
 | Zero or negative column width | `width: 0` / `width: -5` (both load today) | projected verbatim; the browser guard accepts it; the canvas paints what it is given and refuses nothing it accepts today | N/A — must not become an error |
 | Non-table component | any `text`/`image`/`line`/`rect` component | the columns member is absent, and the browser guard **rejects** a non-table component that carries it, mirroring the existing `tableBind` cross-clause | guard returns false |
 | Echoed table on a later sheet | multi-sheet document | `ComponentEcho` draws the same table body, `aria-hidden`, with no chip duplication of an accessible name | N/A |
@@ -249,7 +271,7 @@ The ruling line, to be quoted at review so this is not re-litigated:
 
 ## Code Map
 
-All anchors measured by me at `06c279a` on 2026-09-10, tree clean. **Anchor rot is endemic in this
+All anchors measured by me at `06c279a` on 2026-09-10, tree clean. **HEAD has since moved to `40f3bfc` (this story's `baseline_commit`) and the anchors still hold: `git diff --name-only 06c279a..40f3bfc` is three paths, all under `_bmad-output/implementation-artifacts/` (this spec, `deferred-work.md`, `sprint-status.yaml`) — no file under `folio-go/` or `folio-designer/` moved, and the five baseline suite measurements below were taken before that and are unaffected.** **Anchor rot is endemic in this
 epic — `App.tsx` and `TableEditor.tsx` have both moved repeatedly — so find every site by the named
 identifier and re-measure before editing. Nothing here was carried from the epic context or a
 register without checking; three claims that arrived from investigation were measured wrong and are
@@ -541,33 +563,45 @@ leave the tree dirty for the orchestrator.**
 
 **Execution:**
 
-- [ ] `folio-designer/src/engine-protocol.ts` -- add the per-column type and widen the guard
+- [x] `folio-designer/src/engine-protocol.ts` -- add the per-column type and widen the guard
   **first**, before the Go change -- the component guard is `hasOnly`, so TS-then-Go is safe and
   Go-then-TS terminates the worker. Add the member to the `CanvasProjection['components']` type as
   **optional**, add its name to the `hasOnly(component, [...])` list, add a nested per-column clause
   in the shape of `isTableColumns`' (array, length bound, `hasExactKeys` per column, closed set for
   each alignment, safe-integer width with **no `> 0` requirement**), and add the cross-clause twin of
   `component.type !== 'table' && component.tableBind !== undefined`.
-- [ ] `folio-go/page_setup.go` -- add the per-column projection struct and the `CanvasComponent`
+- [x] `folio-go/page_setup.go` -- add the per-column projection struct and the `CanvasComponent`
   member (`omitempty`), and populate it inside `canvasComponents`' existing
   `element.Type == template.ElementTable` block, beside the `TableBind` assignment -- the columns are
-  already in scope there. Bound the label and the binding at `maxCanvasPropertyString` with their own
-  named errors, matching the seven existing identifier sites, and update that constant's "Seven
-  sites" comment. **Per R2, carry TWO resolved alignments per column, `headerAlign` and `cellAlign`,
+  already in scope there. ~~Bound the label and the binding at `maxCanvasPropertyString` with their own
+  named errors, matching the seven existing identifier sites~~ **— SUPERSEDED by the frozen amendment
+  (Spec Change Log 1). CLIP both at `maxCanvasPropertyString`, on a rune boundary; never return an
+  error and never omit the column.** Update that constant's site-count comment, which must now
+  distinguish the seven sites that ABORT from the two that CLIP. **Per R2, carry TWO resolved alignments per column, `headerAlign` and `cellAlign`,
   each obtained by CALLING `resolveHeaderStyle` / `resolveBodyStyle` from `table_render.go`** --
   never by re-implementing or mirroring their cascades beside them (14.8's Part 4 requirement again:
   one source shared with the renderer; a mirrored cascade drifts, and the failure mode is a canvas
   that lies about print while every test passes). Never reuse `TableColumns`' validating gate.
-- [ ] `folio-go/canvas_projection_wire_test.go` -- add the missing **component-level** record: a
+- [x] `folio-go/canvas_projection_wire_test.go` -- add the missing **component-level** record: a
   `canvasComponentWireKeys` literal asserted against the marshalled bytes of a **table-bearing**
   document, and a `canvasGuardComponentKeyList` regex anchored on `hasOnly(component, [` compared
   against `engine-protocol.ts`. Give it a `t.Fatal` fixture precondition so it cannot pass
   vacuously on a document with no table. This closes DW-74 and is the only guard that would catch a
   Go/TS drift on this field before it kills the worker.
-- [ ] `folio-go/canvas_body_text_bounds_test.go` -- add one probe per new bounded string site (column
-  label, column binding) to `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve`, each
-  asserting its own message. Do not touch the pre-existing probe gap (DW-104's wider scope).
-- [ ] `folio-go/` (a Go test file, new or existing beside the canvas projection tests) -- assert the
+  **The record pins the whole accepted component key set — all 31 existing keys plus the new one —
+  and that is its purpose, not a side effect.** A record pinning only the new key would be a denylist,
+  which is the shape this project refuses: it would go green on the next field someone adds. Since
+  the canvas projection is byte-invisible by construction, this record is also the **only** artefact
+  in the repository that can prove this change at the seam.
+- [x] `folio-go/canvas_body_text_bounds_test.go` -- ~~add one probe per new bounded string site
+  (column label, column binding) to `TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve`,
+  each asserting its own message~~ **— SUPERSEDED by the frozen amendment (Spec Change Log 1). Those
+  two sites no longer refuse, so a probe asserting refusal there would assert a defect.** The
+  coverage MOVES rather than disappearing: assert CLIPPING for both, in that same function, and make
+  the function's site-count comment name clipping as a third category on the same constant. The
+  probe table returns to its original **eight** entries. Do not touch the pre-existing probe gap
+  (DW-104's wider scope).
+- [x] `folio-go/` (a Go test file, new or existing beside the canvas projection tests) -- assert the
   projected columns behaviourally, in the shape of `component_properties_test.go`'s `tableBind`
   check: labels, widths in millipoints, both resolved alignments, and bindings for a table-bearing
   document; the member **absent** for a table with `columns: []`; the member absent for every
@@ -581,7 +615,7 @@ leave the tree dirty for the orchestrator.**
   case that made option (b) wrong.
   (ii) **an assertion of which row CONSUMES which key.** Presence is not enough: **swapping
   `headerAlign` and `cellAlign` must red something.** A presence assertion cannot see a swap.
-- [ ] `folio-designer/src/canvas-authority-contract.test.ts` -- **write R1's three-condition
+- [x] `folio-designer/src/canvas-authority-contract.test.ts` -- **write R1's three-condition
   display-paint test into that file's own comment block**, in the shape its existing scoping comments
   use. It must state the three conditions; state that condition 3 is enforced by this very file,
   because it scans `src/` and `e2e/` for every route by which a browser-measured quantity could be
@@ -592,7 +626,7 @@ leave the tree dirty for the orchestrator.**
   the deliverable** -- the ruling's own words: *"that file's comments have carried scoping rulings
   correctly across this entire run and are the one place in this repo demonstrated to be read years
   later. A spec is read once."* Do not put the test only in this spec.
-- [ ] `folio-designer/src/App.tsx` -- replace `component.type === 'table' ? 'Table' : ''` at **both**
+- [x] `folio-designer/src/App.tsx` -- replace `component.type === 'table' ? 'Table' : ''` at **both**
   sites (`CanvasComponent` and `ComponentEcho`) with one new non-interactive painter that draws the
   chip, the header labels and one representative row from the projection, using `canvasDisplay.css`
   for track widths and `paletteGlyphs.table` for the glyph. **Every element painting text under R1's
@@ -602,7 +636,14 @@ leave the tree dirty for the orchestrator.**
   so `treatmentOf` stays `'word'`. Draw the no-columns state in the `ImagePlaceholder` idiom.
   **The header row must consume `headerAlign` and the representative row `cellAlign`** -- not one
   value used twice.
-- [ ] `folio-designer/src/App.css` -- add the `canvas-table-*` rules: chip on
+  ⚠ **The no-columns notice must NOT be a `<button>` and must NOT carry `role="group"`.** Meet the
+  constraint deliberately rather than discovering it as a failure: `control-vocabulary-contract.test.tsx`'s
+  `tableComponent` fixture carries no columns and no `tableBind`, and **six of its seven states mount
+  it**, so this notice renders in six swept states on every run of that file. That is free incidental
+  coverage and worth keeping — but a `role="group"` there reds three separate assertions (the pinned
+  `toBe(32)` shrink proof, its `toBeLessThan(GROUP_INSTANCE_FLOOR)` sibling, and the pinned R0 list),
+  and a `<button>` enters the R1/R4 populations.
+- [x] `folio-designer/src/App.css` -- add the `canvas-table-*` rules: chip on
   `var(--color-page-thead)` with a `var(--color-page-thead-line)` bottom rule, collection text in
   `var(--color-bind-on-page)`, count in `var(--color-page-ink-muted)`, header labels in
   `var(--color-page-ink)` with `font-weight: 600` and a `var(--color-page-ink)` bottom rule, cells in
@@ -611,7 +652,7 @@ leave the tree dirty for the orchestrator.**
   computed ellipsis** — and the dashed-outline flip for the no-columns state. Tokens only, no
   `@media`, no `border-radius`, and **never** a class containing `canvas-text` nor a rule grouped
   with a `.canvas-text*` selector.
-- [ ] `folio-designer/src/` (unit tests) -- cover every row of the I/O & Edge-Case Matrix against the
+- [x] `folio-designer/src/` (unit tests) -- cover every row of the I/O & Edge-Case Matrix against the
   canvas: bound table, unbound table, no columns, unbound column, empty label, one column (singular),
   non-table component rejected by the guard, zero-width column accepted, and the echo. Assert the
   **unbound** cell is **not** in the bind accent. **Assert the consumption direction (R2): give a
@@ -643,6 +684,69 @@ leave the tree dirty for the orchestrator.**
   matches or improves on the recorded baseline, with every new test name accounted for.
 
 ## Spec Change Log
+
+### 1 — ORCHESTRATOR AMENDMENT TO FROZEN INTENT AFTER APPROVAL (2026-09-10)
+
+**Triggering finding (step-04, `intent_gap`, review_loop_iteration 0 -> 1).** The frozen `## Boundaries &
+Constraints` **Always** clause *"The new field must not newly refuse a document that ships today"* and the two
+frozen I/O-matrix rows for an over-long column `label` / `bind` gave **opposite answers about the same
+document**. Proved by execution, not argument: the golden fixture `worked-example.json` with column `e3`'s
+label at 600 bytes **parses**, **renders a real 64,123-byte PDF**, and had its canvas projection **abort**
+(`folio: component table column label exceeds the projection bound`) — which by this spec's own frozen text
+terminates the worker with no respawn. Measured on both sides: at `2c1dd33` without the story the same
+document projected **OK**; with the story it aborted. The precondition was checked rather than assumed —
+`decodeColumn` in `internal/template/parse_bands.go` imposes **no** length cap on `label` or `bind`.
+
+**What was amended, and by whom.** The **orchestrator** amended the frozen block: the two projection-bound
+matrix rows now read *clipped, never an error, column never omitted*, and four bullets were added to
+**Always** — the amendment notice, the neighbouring-row argument, clip-never-omit, and the rune-boundary
+requirement. This is an edit to frozen intent **after approval**, which only a human may make; it is recorded
+here rather than quietly rewritten so the change and its reason stay visible.
+
+**Ruling: (B), remedy CLIP — not omit.** The reading was settled by the matrix's **own neighbouring row**,
+which neither the builder nor the orchestrator had cited: *"Zero or negative column width … the canvas paints
+what it is given and refuses nothing it accepts today — must not become an error."* Same principle, two rows
+apart, opposite answer — so the matrix was **not internally consistent**, which removes the consistency
+argument for keeping the aborts.
+
+**The builder recommended OMIT and was overruled, and the reason is the substance.** A column dropped from the
+projection makes the canvas *systematically wrong about the document's structure* — the chip's `5 columns`
+would sit above four drawn headers — and being systematically wrong about structure is precisely the harm
+AD-17 exists to prevent, the same sentence [R1] leans on. **Omitting converts a display problem into a
+structural lie.** Clipping keeps every column, keeps the projection bounded, and is a display concern on a
+surface that is display-only paint by [R1].
+
+**Known-bad state avoided.** A template that prints correctly blanking the designer's canvas until reload —
+a fatal, silent-until-reload outcome for a display concern. And the two worse remedies: **omit** (the
+structural lie above) and **(C) bound at the loader** (refused — it touches `internal/template/`, which the
+frozen **Never** forbids, and would newly refuse the document at *load*, which is worse than what is fixed).
+
+**KEEP instructions — what must survive and was NOT re-derived.** The gap was **two bounded sites**. This was
+patched, not looped back: re-deriving would have discarded work already proved. Preserve all of it —
+- the **R2 pair**, both asserting **direction** and re-proved by mutation at step-04: the Go
+  differ-precondition plus `HeaderAlign == "right"` / `CellAlign == "center"` from their own cascades, and the
+  TSX `['right','right']` / `['center','center']` with the explicit `not.toEqual` between rows;
+- `columnAlign`'s extraction in `table_render.go` — a behaviour-preserving change forced by this spec's own
+  anti-mirroring rule, adopted at **all four** open-coded render sites (the fifth hit,
+  `table_columns_projection.go`, is the editor's deliberately different cascade and is correctly left alone);
+- the **component-level wire record** closing DW-74, with its `t.Fatal` fixture preconditions;
+- the contract-test **comment block** carrying [R1]'s three conditions, and its **three executable planted
+  violations**, which pin by regex identity (`prohibited[1]`, `[2]`, `[9]`) rather than by description;
+- **Deviation 1** (no `columns` length cap in the browser guard) and **Deviation 2** (the shortened
+  `No columns yet.` notice) — both premises independently verified and **ratified**.
+
+**Counted deliberately:** this is the **third** clause in Epic 14 to forbid the thing it required, and it is
+to be counted alongside the two from Story 14.8.
+
+**Two Task bullets were left stale by the amendment and are now reconciled (builder, step-04).** The
+`page_setup.go` bullet still said *"with their own named errors"* and the `canvas_body_text_bounds_test.go`
+bullet still said *"one probe per new bounded string site ... each asserting its own message"* — both written
+under the pre-amendment reading. **The implementer followed the amendment, which governs, and flagged the
+divergence rather than silently reconciling it or silently obeying stale text; that was the right call and is
+recorded as such.** Both bullets are struck through in place rather than rewritten away, so a later reader
+sees what the instruction used to say and why it changed. The probe table returns to its original **eight**
+entries — verified: no pre-existing subtest was lost, and the clipping assertion took the coverage's place in
+the same function.
 
 ## Design Notes
 
@@ -768,25 +872,77 @@ reach them.
 
 ## Suggested Review Order
 
-1. **The wire seam** — `page_setup.go`'s new struct and json tags against `engine-protocol.ts`'s
-   `hasOnly(component, …)` list and nested clause, then the new record in
-   `canvas_projection_wire_test.go`. A drift here is a dead worker with everything green, so read it
-   first and confirm the record cannot pass vacuously on a table-less fixture.
-2. **The alignment resolution (R2)** — that Go **calls** `resolveHeaderStyle`/`resolveBodyStyle`
-   rather than copying their cascades; that a test exists in which the two values genuinely
-   **differ**; and that **swapping `headerAlign` and `cellAlign` reds something** on both sides. A
-   presence assertion cannot see a swap, and two keys populated from one cascade pass everything else.
-3. **The display-paint precedent (R1)** — that the three-condition test is written into
-   `canvas-authority-contract.test.ts`'s comment block and not only into this spec; that the marker
-   class is named for the property rather than this feature; that the precedent is explicitly
-   bounded; and that clipping is CSS-only with no computed ellipsis anywhere.
-4. **The refusals** — the two new `maxCanvasPropertyString` sites, their messages, their probes, and
-   that nothing that loads and paints today is newly refused (`width: 0`, `width: -5`,
-   `columns: []`, `label: ""`, `bind: ""`).
-5. **The painted DOM** — no new `role`, no `role="group"`, no second `data-component-id`, no inner
-   `aria-label`, no `.canvas-box` on a cell, `treatmentOf` still `'word'`, and the empty-columns
-   notice on the dashed-outline idiom.
-6. **The CSS** — tokens only, no `canvas-text` class name, no rule grouped with a `.canvas-text*`
-   selector, no `@media`, no colour literal (including in comments).
-7. **The absence tests** — each "is not there" claim proved by **adding** the forbidden thing at
-   every position it could occupy, not by reverting the implementation.
+Stops are grouped by concern. Every line number was measured at the final tree; `App.tsx` and
+`TableEditor.tsx` move constantly in this epic, so re-measure before quoting any of these elsewhere.
+
+**The wire seam — read this first; a drift here is a dead worker with every test green**
+
+- The entry point: the projected column, six keys, millipoints, both alignments resolved in Go.
+  [`page_setup.go:358`](../../folio-go/page_setup.go#L358)
+
+- The member on the component, `omitempty`, so a non-table carries nothing.
+  [`page_setup.go:312`](../../folio-go/page_setup.go#L312)
+
+- The browser's mirror of that shape, and the closed sets it admits.
+  [`engine-protocol.ts:799`](../../folio-designer/src/engine-protocol.ts#L799)
+
+- `hasOnly` is a subset check, so Go-then-TS is fatal and TS-then-Go is inert.
+  [`engine-protocol.ts:715`](../../folio-designer/src/engine-protocol.ts#L715)
+
+- Closes DW-74: the component key set had no record on either side until now.
+  [`canvas_projection_wire_test.go:663`](../../folio-go/canvas_projection_wire_test.go#L663)
+
+- The cross-language fence, anchored on `hasOnly(component, [` rather than the top-level list.
+  [`canvas_projection_wire_test.go:820`](../../folio-go/canvas_projection_wire_test.go#L820)
+
+**Clipping — the frozen amendment, and the reason it is not an abort**
+
+- Clips at the bound walking back to a rune boundary; a byte cut would break the JSON envelope.
+  [`page_setup.go:1959`](../../folio-go/page_setup.go#L1959)
+
+- Returns no error at all: a document that prints must never blank the canvas.
+  [`page_setup.go:1921`](../../folio-go/page_setup.go#L1921)
+
+**Alignment — one source shared with the renderer, never a mirror of it**
+
+- The cascade's last step, extracted so the projection calls it instead of copying it.
+  [`table_render.go:521`](../../folio-go/table_render.go#L521)
+
+**The display-paint exception — R1's ruling, and the only place it is enforced**
+
+- The three conditions, where a later author will actually find them.
+  [`canvas-authority-contract.test.ts:150`](../../folio-designer/src/canvas-authority-contract.test.ts#L150)
+
+- Condition 2 in CSS: wrapping off, clipping by CSS, no computed ellipsis.
+  [`App.css:414`](../../folio-designer/src/App.css#L414)
+
+- The marker pinned per element; removing it from any one site reds.
+  [`canvas-authority-contract.test.ts:642`](../../folio-designer/src/canvas-authority-contract.test.ts#L642)
+
+**The paint**
+
+- Replaces the word "Table"; non-interactive, so 14.10 still owns addressability.
+  [`App.tsx:4972`](../../folio-designer/src/App.tsx#L4972)
+
+- Tracks come from engine millipoints through the one zoom mapping.
+  [`App.tsx:4995`](../../folio-designer/src/App.tsx#L4995)
+
+- A display-only floor: a negative width would void the whole grid declaration.
+  [`App.tsx:4958`](../../folio-designer/src/App.tsx#L4958)
+
+- The surface never takes pointer events, keeping one control per component.
+  [`App.css:415`](../../folio-designer/src/App.css#L415)
+
+- The no-columns placeholder takes the design's dashed grammar, not an empty frame.
+  [`App.css:449`](../../folio-designer/src/App.css#L449)
+
+**Peripherals**
+
+- Every matrix row, plus the marker, zoom, negative-width and long-path cases.
+  [`canvas-table-paint.test.tsx:1`](../../folio-designer/src/canvas-table-paint.test.tsx#L1)
+
+- Behavioural cover for both cascades, clipping, the rune boundary and column-id uniqueness.
+  [`canvas_table_column_projection_test.go:1`](../../folio-go/canvas_table_column_projection_test.go#L1)
+
+- The probe table returns to eight; clipping is asserted in the same function.
+  [`canvas_body_text_bounds_test.go:1`](../../folio-go/canvas_body_text_bounds_test.go#L1)

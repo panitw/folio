@@ -13271,3 +13271,77 @@ or a target-specific defect in the border path ships and is found by a user rath
 set, registered in the matrix and given a golden expectation per target, so the field enters the corpus the
 byte-identity claim is made over. Pair it with the `edges` array in a non-default order, since the canonical
 join is what the projection promises and nothing byte-level has ever exercised it.
+
+---
+
+### DW-384 - the table editor's column projection still hardcodes `align := "left"` beside the shared helper the renderer and canvas now agree on
+
+- **source_spec:** `folio-go/table_columns_projection.go`
+- **Found by:** Story 14.9's builder. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 14.9 extracted `columnAlign` in `table_render.go` — the last, shared step of the alignment cascade — and
+adopted it at **all four** render sites plus the two canvas projection sites. `table_columns_projection.go`
+keeps its own `align := "left"` fallback, compensated beside it by a table-level `HeaderAlignResolved`.
+
+**Measured:** for a table declaring `style.align: "right"` with a column declaring none, **the editor projects
+`align: "left"` while the PDF prints right.**
+
+**Pre-existing and deliberately out of 14.9's scope** — the editor's cascade is a different cascade, not a
+missed copy, and 14.9 verified no fifth copy of the *render* pattern was left behind. It is filed because the
+existence of a shared helper makes the divergence look like an oversight to the next reader, and because the
+editor is the surface an author uses to reason about alignment.
+
+**How we'd know it was forgotten.** Someone adopts `columnAlign` here without noticing the table-level
+`HeaderAlignResolved` that compensates for it, and the editor starts disagreeing with itself instead of with
+the renderer.
+
+---
+
+### DW-385 - the canvas table's drawing is entirely presentational, so none of it reaches assistive technology
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.9's builder. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`.canvas-component` keeps `role="button"` with the accessible name `table component <id>`, and **every node
+Story 14.9 adds sits inside it with `pointer-events: none` and no accessible name of its own.** So the bound
+collection, the column count, the header labels and the per-column bindings — the entire substance of the
+story — reach a screen reader as **nothing**.
+
+**Not a regression:** the previous `'Table'` string was equally opaque. But 14.9 adds substantial visual
+information with no non-visual equivalent, **against the epic's stated hard accessibility floor**, and this
+epic has already ruled once ([D-14.8.2]) that a story whose deliverable is "the editor reads as one designed
+thing" delivering that only to sighted users is the epic's own subject failing inside the epic. The same
+argument applies to a canvas that draws a table's structure.
+
+**The fix is cheap and needs no new control:** an extended accessible name on the component — collection,
+column count, and column labels — costs no measurement and no interaction. It is filed rather than done
+because 14.9's ACs do not name it and the epic's accessibility work has been ruled per-story rather than
+swept.
+
+**How we'd know it was forgotten.** The Epic 14 boundary gate's accessibility item ([DW-356]) is discharged on
+the panels alone, and the canvas — now the surface carrying the most information in the product — is never
+checked.
+
+---
+
+### DW-386 - the canvas draws a header row a zero-height table will not print, and never draws a footer row it will
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.9's builder. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Two divergences between what Story 14.9's canvas draws and what the engine prints, in opposite directions:
+
+1. **A table with footer aggregates prints a footer row the canvas never draws.** `collectBandTableRuns`
+   builds one from `footerFormat`/`footerOf`. The canvas draws chip + header labels + one representative row
+   and stops.
+2. **The canvas draws a header row for a table whose `headerHeight` is `0`.** `headerHeight` is a required
+   field that may legally be zero.
+
+**Both are out of 14.9's scope** — its ACs specify exactly chip, header labels and one representative row, and
+say nothing about either case. **Neither is mentioned as a deliberate exclusion anywhere, and neither has a
+test**, which is why this entry exists: an undocumented omission and a deliberate one are indistinguishable to
+the next reader, and the whole point of this story is a canvas that shows the table it will print.
+
+**How we'd know it was forgotten.** An author gives a table a footer aggregate, sees no footer on the canvas,
+and concludes the aggregate did not take — or sets `headerHeight: 0`, sees a header drawn, and concludes it
+will print.

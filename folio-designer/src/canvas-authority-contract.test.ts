@@ -146,6 +146,94 @@ const prohibited = [
   /className=[^>]*canvas-text[^>]*style=\{\{[^>]*font-?(?:weight|style)/i,
 ]
 
+// ===========================================================================
+// THE AD-17 DISPLAY-PAINT TEST — THREE CONDITIONS, ALL REQUIRED.
+// Ruled by the engineering lead at Story 14.9's plan gate, 2026-09-10, and
+// written HERE rather than only in that story's spec: a spec is read once, and
+// this file's comments are the one place in this repository demonstrated to be
+// read years later.
+// ===========================================================================
+//
+// THE QUESTION IT SETTLES. Story 14.9 draws a table on the canvas — the bound
+// collection, the real header labels, one row of binding placeholders — and is
+// the first thing in the designer to paint a string with the browser that ALSO
+// APPEARS IN THE PDF. Is that allowed under AD-17?
+//
+// THE AXIS THAT WAS REFUSED, VERBATIM, because it is the wrong rule and would
+// be reached for again:
+//
+//   "That axis is a coincidence, not the rule, and the spec must not state it
+//   as one. The reason every string the canvas paints today has been safe was
+//   never that it does not print — it is that NOTHING DEPENDS ON ITS MEASURED
+//   EXTENT. Were the rule 'chrome only', it would forbid something harmless
+//   and permit something dangerous the moment someone painted a chrome string
+//   whose width drove a layout decision."
+//
+// THE TEST. Text may be painted by the browser on the canvas only where:
+//
+//   1. THE RECTANGLE IS THE ENGINE'S. Every coordinate and extent bounding the
+//      painted text comes from the engine's projection. No browser measurement
+//      contributes to the box.
+//   2. THE BROWSER MAKES NO BREAK DECISION. Wrapping disabled
+//      (`white-space: pre`/`nowrap`); overflow clipped or ellipsised BY CSS,
+//      never re-flowed.
+//   3. NOTHING FLOWS BACK. No quantity derived from the painted text — width,
+//      height, line count, overflow state, scroll extent — reaches geometry, a
+//      page count, a band-fit decision, a command, or a projection field.
+//
+//   "If all three hold the paint is display-only and AD-17 permits it whether
+//   or not the string also prints. If any one fails, the text must arrive as
+//   pre-measured, pre-broken runs from the measure API."
+//
+// WHY THIS IS A SCOPED PERMISSION AND NOT A WAIVER — CONDITION 3 IS ALREADY
+// ENFORCED, BY THIS FILE:
+//
+//   "canvas-authority-contract.test.ts scans src/ and e2e/ for every route by
+//   which a browser-measured quantity could be OBTAINED AT ALL —
+//   getBoundingClientRect, offset*, client*, scroll*, ResizeObserver,
+//   getComputedStyle, Range. A VALUE THAT CANNOT BE OBTAINED CANNOT FLOW BACK."
+//
+// That is the `prohibited` list above, applied to production `src/**`, the unit
+// tests and `e2e/**` alike — `page.evaluate` bodies included, because the scan
+// is plain regex over whole file text.
+//
+// THE MARKER. Every element painting text under this exception carries the
+// class `.canvas-display-paint`, and that class is ALSO the mechanism for
+// condition 2: its rule in App.css is `min-width: 0; overflow: hidden;
+// white-space: pre; text-overflow: ellipsis`. It is named for the PROPERTY —
+// display-only paint — and NOT for the feature that first needed it, so that a
+// later author grepping the class lands on this rule and the next candidate for
+// the exception recognises its own case. `.canvas-table-header-label` would
+// have said nothing about the rule it lives under.
+//
+// NO COMPUTED ELLIPSIS. CSS `text-overflow` is condition-2 compliant; a
+// JavaScript truncation that measures the string or its box is not, and there
+// is none anywhere in this feature.
+//
+// THE PERMITTED RESIDUE is exactly what epics.md's Story 5.13 AC already
+// scopes: A LABEL MAY CLIP WHERE THE PDF WRAPS. That is the allowed text-only
+// inaccuracy, and never a geometry error. The canvas stays "explicitly
+// approximate about text only".
+//
+// ⚠ THE PRECEDENT IS BOUNDED, AND THIS PARAGRAPH IS THE BOUND. This ruling
+// carries a later paint ONLY where all three conditions hold the same way they
+// hold here. Two cases are explicitly NOT carried and each needs a NEW RULING:
+//
+//   (a) any use that fails condition 1 or condition 2 MECHANICALLY — a box the
+//       browser sized from content, or text the browser was allowed to wrap or
+//       re-flow; and
+//   (b) any use where condition 3 is ASSERTED rather than covered by this
+//       scan — if the measured quantity can be obtained at all, "we do not use
+//       it" is a promise, not an enforcement, and this ruling does not reach it.
+//
+// ⚠ AND IT SAYS NOTHING ABOUT THE CHROME NOTICES THAT PREDATE IT.
+// `.canvas-image-placeholder`, `.canvas-text-truncated` and the no-columns
+// notice are fixed English sentences in a placeholder frame; they wrap, they
+// carry no engine string, and they claim no exception. They were safe before
+// this ruling for condition 3's reason alone — nothing depends on their
+// measured extent — which is precisely the reasoning the refused axis above
+// mistook for "chrome never prints".
+
 // STORY 8.2. THE SECOND LOCK ON "THE BROWSER HOLDS NO ENGINE RULE".
 //
 // A chain edit is refused by the engine in the engine's own sentence, and the
@@ -540,6 +628,91 @@ describe('canvas projection authority contract', () => {
     }
     // The two that ARE waived, on the same lines, in the same function.
     expect(violationsForFile(seam, inside('document.fonts.add(new FontFace(family, bytes))'))).toEqual([])
+  })
+})
+
+// STORY 14.9 — THE DISPLAY-PAINT EXCEPTION, CHECKED RATHER THAN ONLY WRITTEN.
+//
+// The three-condition ruling above is the deliverable, and a comment can rot.
+// These rows hold the two halves of it that are mechanical: the marker class
+// exists on both sides (a paint claiming the exception, and the CSS rule that
+// makes condition 2 true of it), and that rule still spells condition 2. They
+// do NOT try to prove condition 3 — that is the corpus scan above, which is the
+// whole point of the ruling being scoped to this file.
+describe('the display-paint exception is marked, and its marker carries condition 2 (Story 14.9)', () => {
+  const marker = 'canvas-display-paint'
+  const appCss = fs.readFileSync(path.join(sourceDir, 'App.css'), 'utf8')
+  const appTsx = fs.readFileSync(path.join(sourceDir, 'App.tsx'), 'utf8')
+
+  it('names the marker for the property, not for the feature that first needed it', () => {
+    // ⚠ ANCHORED ON `className=`, NOT ON RAW FILE TEXT. It was
+    // `expect(appTsx).toContain(marker)`, which THIS FILE'S OWN COMMENT BLOCK
+    // above already satisfies — an instrument whose silence is its answer, and
+    // measured green with the class stripped from all six paint sites. The
+    // per-ELEMENT pin, over the rendered DOM, is in canvas-table-paint.test.tsx;
+    // this row only holds the two file-level facts.
+    expect(appTsx).toMatch(new RegExp(`className=[^>]*${marker}`))
+    expect(appCss).toContain(`.${marker} {`)
+    // ⚠ AND THE PROPERTY IS ASSERTED OF THE CLASS NAMES THE CODE ACTUALLY USES,
+    // not of the local literal four lines up — that pair could only fail if
+    // someone edited this test's own string, which is a tautology wearing an
+    // assertion's clothes. These read the real spellings out of App.css.
+    const declared = [...appCss.matchAll(/\.(canvas-display-[a-z-]+)/g)].map((match) => match[1] as string)
+    expect(declared, 'App.css must declare at least one display-paint class').toContain(marker)
+    for (const name of new Set(declared)) {
+      // Named for the PROPERTY, never for the feature that first needed it:
+      // `.canvas-table-header-label` would say nothing about the rule it lives
+      // under.
+      expect(name, name).not.toMatch(/table|column|header|chip/)
+      // And no `canvas-text` substring — rules 15/16/17 above forbid
+      // font-weight/font-style anywhere on that surface, and the header labels
+      // this exception exists for need a weight.
+      expect(name, name).not.toContain('canvas-text')
+    }
+  })
+
+  it('spells condition 2 in the marker\'s own rule — wrapping off, clipped, CSS ellipsis only', () => {
+    const rule = appCss.match(new RegExp(`\\.${marker}\\s*\\{([^}]*)\\}`))
+    expect(rule, 'App.css must declare a `.canvas-display-paint` rule').toBeTruthy()
+    const body = (rule as RegExpMatchArray)[1] as string
+    expect(body).toMatch(/white-space:\s*(?:pre|nowrap)\b/)
+    expect(body).toMatch(/overflow:\s*hidden\b/)
+    // `text-overflow` is a CSS decision about glyphs that nothing reads back.
+    // A JS truncation that measured the string or its box would not be, and
+    // there is none: the `prohibited` scan above is what forbids the measuring
+    // half, and this only records that the clipping is CSS's.
+    expect(body).toMatch(/text-overflow:\s*ellipsis\b/)
+  })
+
+  it('leaves the whole prohibition list live on the file that carries the exception', () => {
+    // The exception is a NAMING convention, not a carve-out in the scan: unlike
+    // Story 8.4a's seam and Story 13.2's, nothing about `.canvas-display-paint`
+    // removes a single pattern from `App.tsx`. Proved by planting each of the
+    // measurement routes inside a marked element and watching the scan wake.
+    // ⚠ THE RULES ARE LOOKED UP BY THEIR OWN SOURCE, NOT BY ORDINAL. Every
+    // other block in this file writes `prohibited[14]` and friends, and each is
+    // correct today — but inserting or reordering one pattern silently
+    // re-points a row at a DIFFERENT rule, and the row would go on passing
+    // while proving something else. `ruleFor` fails loudly instead, and
+    // asserting exactly one match is what makes the lookup a pin.
+    const ruleFor = (source: string) => {
+      const found = prohibited.filter((pattern) => pattern.source === source)
+      expect(found, `no single prohibited pattern has the source ${source}`).toHaveLength(1)
+      return found[0] as RegExp
+    }
+    const offsets = ruleFor('\\b(?:offset(?:Width|Height|Left|Top|Parent)|client(?:Width|Height|Left|Top)|scroll(?:Width|Height|Left|Top))\\b')
+    const rects = ruleFor('\\b(?:getBoundingClientRect|getClientRects)\\s*\\(')
+    const computed = ruleFor('\\bgetComputedStyle\\s*\\(')
+    for (const [line, rule] of [
+      ['<span className="canvas-display-paint" style={{ width: node.offsetWidth }} />', offsets],
+      ['<span className="canvas-display-paint" style={{ width: box.getBoundingClientRect().width }} />', rects],
+      ['<span className="canvas-display-paint" style={{ width: getComputedStyle(cell).width }} />', computed],
+      ['<span className="canvas-display-paint">{text.slice(0, columnWidth / cell.scrollWidth)}</span>', offsets],
+    ] as const) {
+      expect(violationsForSource(line).map(String), line).toContain(String(rule))
+    }
+    // And App.tsx as it actually stands, carrying the exception, is clean.
+    expect(violations([path.join(sourceDir, 'App.tsx')])).toEqual([])
   })
 })
 

@@ -622,3 +622,248 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 		t.Errorf("the designer's isTableColumns guard accepts the table keys\n\t%v\nand the recorded protocol set is\n\t%v — one side of this seam has moved and the other has not, and the symptom is not a blank canvas: parseInbound returns undefined, engine-client terminates the worker, and a FIRST table-editor open shows nothing at all because the panel that would render the error never mounts", keys, tableColumnsProjectionWireKeys)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// THE SIXTH AND SEVENTH RECORDS — THE COMPONENT LEVEL, AND ONE TABLE COLUMN
+// INSIDE IT. Story 14.9, closing DW-74.
+// ---------------------------------------------------------------------------
+//
+// WHY THIS LEVEL WAS UNPINNED UNTIL NOW, measured rather than supposed.
+// `canvasGuardKeyList` above is `(?s)const isCanvas = .*?hasOnly\(value, \[(.*?)\]\)`
+// and the `.*?` is NON-GREEDY, so it stops at the TOP-LEVEL key list and never
+// reaches `hasOnly(component, [`. None of the five records above descends into
+// a component's own keys: the fragment record jumps straight past them to
+// `textPaint -> lines -> fragments`. So every one of the thirty-one keys a
+// component carries — `tableBind`, `imageUnavailable`, the whole typography
+// block — has been pinned by NOTHING on the TypeScript side since the day it
+// was added. Story 14.9 is the first story to add a component key and therefore
+// the first that can break it.
+//
+// THE RECORD PINS THE WHOLE ACCEPTED SET, ALL THIRTY-TWO KEYS, AND THAT IS THE
+// POINT RATHER THAN A SIDE EFFECT. A record naming only the new key would be a
+// DENYLIST: it would go green on the next field someone adds, which is the
+// shape this project refuses. A key-set record is a key SET.
+//
+// AND IT IS THE ONLY ARTEFACT IN THE REPOSITORY THAT CAN PROVE STORY 14.9 AT
+// THE SEAM. `CanvasProjection` appears zero times in serialize.go and zero
+// times in internal/pdf; it is never serialized into a golden and never enters
+// a PDF, so the matrix legs, `hashmatrix` and the cross-target byte-identity
+// workflow are all blind to a canvas-projection field BY CONSTRUCTION — not by
+// an oversight a new fixture could fix.
+//
+// THE GUARD IS `hasOnly`, A SUBSET CHECK, so what is recorded here is the
+// ACCEPTED set, exactly as the fragment record is — not an emitted one. A
+// component NEVER marshals all thirty-two keys: almost every member is a
+// pointer or a slice with `omitempty`, and `value`, `tableBind`, `columns`,
+// `textPaint`, `image` and `imageUnavailable` belong to mutually exclusive
+// populations. So the Go side is pinned two ways: every key any component
+// actually emits must be IN the record (a key Go sends that the guard does not
+// list is what terminates the worker), and the TABLE component's own emission
+// set is pinned exactly, so the new member cannot silently stop being sent.
+var canvasComponentWireKeys = []string{
+	"align",
+	"background",
+	"band",
+	"binding",
+	"bold",
+	"borderColor",
+	"borderEdges",
+	"borderWidth",
+	"color",
+	"columns",
+	"fontFamily",
+	"fontSize",
+	"height",
+	"id",
+	"image",
+	"imageUnavailable",
+	"italic",
+	"lineSpacing",
+	"paddingBottom",
+	"paddingLeft",
+	"paddingRight",
+	"paddingTop",
+	"resizable",
+	"tableBind",
+	"textPaint",
+	"type",
+	"valign",
+	"value",
+	"visibleIf",
+	"width",
+	"x",
+	"y",
+}
+
+// canvasComponentColumnWireKeys is the recorded key set of ONE TABLE COLUMN —
+// one level below a component, and the level Story 14.9 added.
+//
+// ITS GUARD IS `hasExactKeys`, WHICH REJECTS IN BOTH DIRECTIONS: a key Go stops
+// sending fails it as surely as a key Go starts sending. Nothing on
+// CanvasTableColumn carries `omitempty`, and the zero-value identity below is
+// what holds that property — `label` and `bind` are REQUIRED keys whose values
+// may legally be empty, so an `omitempty` on either would drop the key for
+// exactly the documents that leave it empty and terminate the worker for
+// exactly those.
+var canvasComponentColumnWireKeys = []string{"bind", "cellAlign", "headerAlign", "id", "label", "width"}
+
+// canvasTableComponentEmittedKeys is the EXACT set a bound table with one
+// column marshals, recorded so the new member cannot quietly stop being sent.
+// The subset check below cannot see that: a component that emits FEWER keys
+// than the record is still a subset of it.
+var canvasTableComponentEmittedKeys = []string{"band", "columns", "fontFamily", "fontSize", "height", "id", "resizable", "tableBind", "type", "width", "x", "y"}
+
+// componentsFromProjectionBytes reads the projected components as raw objects,
+// by the same rule every helper in this file uses: from the marshalled bytes,
+// never from the struct tags a rename would have edited in the same breath.
+func componentsFromProjectionBytes(t *testing.T, projection CanvasProjection) []json.RawMessage {
+	t.Helper()
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(mustMarshal(t, projection), &object); err != nil {
+		t.Fatalf("unmarshal CanvasProjection: %v", err)
+	}
+	var components []json.RawMessage
+	if err := json.Unmarshal(object["components"], &components); err != nil {
+		t.Fatalf("unmarshal components: %v", err)
+	}
+	return components
+}
+
+// TestCanvasComponentWireKeysAreTheRecordedSet is the Go half of the component
+// record.
+//
+// ⚠ ITS FIXTURE IS TABLE-BEARING, AND THAT IS LOAD-BEARING RATHER THAN
+// INCIDENTAL. All four canvas records above project
+// `canvasWindowCountControlTemplateJSON`, which contains NO TABLE AT ALL
+// (measured: zero occurrences of `table` in it). A component record built on it
+// would never see `tableBind` and would never see `columns`, and would go green
+// proving nothing about either — a fixture more complete than the defect's
+// precondition is a guard that cannot see it. The preconditions below are
+// `t.Fatal`, not skips, for that reason.
+func TestCanvasComponentWireKeysAreTheRecordedSet(t *testing.T) {
+	projection := projectWithPaint(t, parseWindowCountTemplate(t, canvasWindowCountOneColumnTableTemplateJSON))
+	components := componentsFromProjectionBytes(t, projection)
+	if len(components) == 0 {
+		t.Fatal("fixture precondition: the component wire-key fixture projected no components at all, so this record asserts nothing")
+	}
+	tables, columned, nonTables := 0, 0, 0
+	for _, raw := range components {
+		keys := marshalledObjectKeys(t, raw)
+		for _, key := range keys {
+			if !slices.Contains(canvasComponentWireKeys, key) {
+				t.Errorf("a projected component marshals the key %q, which the recorded component key set does not name (the record is\n\t%v\n) — the designer's guard is hasOnly, so an unlisted key makes isCanvas false, parseInbound undefined and PROTOCOL_INVALID terminate the worker, and the session is dead until reload", key, canvasComponentWireKeys)
+			}
+		}
+		var component map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &component); err != nil {
+			t.Fatalf("unmarshal a component: %v", err)
+		}
+		if string(component["type"]) != `"table"` {
+			nonTables++
+			if _, ok := component["columns"]; ok {
+				t.Errorf("a %s component carries a columns member: %s — the designer's cross-clause rejects that outright, exactly as it does a tableBind on a non-table", string(component["type"]), raw)
+			}
+			continue
+		}
+		tables++
+		if !reflect.DeepEqual(keys, canvasTableComponentEmittedKeys) {
+			t.Errorf("a bound one-column table marshals the keys\n\t%v\nand the recorded emission set is\n\t%v", keys, canvasTableComponentEmittedKeys)
+		}
+		rawColumns, ok := component["columns"]
+		if !ok {
+			continue
+		}
+		columned++
+		var columns []json.RawMessage
+		if err := json.Unmarshal(rawColumns, &columns); err != nil {
+			t.Fatalf("unmarshal a component's columns: %v", err)
+		}
+		if len(columns) == 0 {
+			t.Fatal("a columns member was emitted as an EMPTY array; the member is omitempty precisely so that a table with no columns carries no member at all")
+		}
+		for _, rawColumn := range columns {
+			columnKeys := marshalledObjectKeys(t, rawColumn)
+			if !reflect.DeepEqual(columnKeys, canvasComponentColumnWireKeys) {
+				t.Errorf("a projected table column marshals the keys\n\t%v\nand the recorded protocol set is\n\t%v — the designer checks a column with hasExactKeys, so a dropped key terminates the worker as surely as a surplus one", columnKeys, canvasComponentColumnWireKeys)
+			}
+		}
+	}
+	if tables == 0 {
+		t.Fatal("fixture precondition: the component wire-key fixture projects no TABLE component, so neither `tableBind` nor `columns` is ever emitted and this record passes vacuously — which is exactly what a record built on canvasWindowCountControlTemplateJSON would have done")
+	}
+	if columned == 0 {
+		t.Fatal("fixture precondition: the component wire-key fixture's table emitted no `columns` member, so the key set Story 14.9 added is unmeasured")
+	}
+	if nonTables == 0 {
+		t.Fatal("fixture precondition: the component wire-key fixture projects only tables, so the cross-clause assertion — that a non-table carries no columns member — said nothing")
+	}
+	// AND THE COLUMN CARRIES NO `omitempty`, checked the way the chain and
+	// entry records check theirs: a zero value must marshal the same key set a
+	// projected one does. `label` and `bind` are required keys whose values may
+	// be empty, so this is the property that keeps an empty label from dropping
+	// a key the browser's exact-key guard requires.
+	zeroColumn := marshalledObjectKeys(t, mustMarshal(t, CanvasTableColumn{}))
+	if !reflect.DeepEqual(zeroColumn, canvasComponentColumnWireKeys) {
+		t.Errorf("a zero CanvasTableColumn marshals\n\t%v\nand the recorded protocol set is\n\t%v — an omitempty here drops a key for exactly the documents that leave that column's label or bind empty, and those are the documents this story exists to draw honestly", zeroColumn, canvasComponentColumnWireKeys)
+	}
+}
+
+// canvasGuardComponentKeyList extracts the key list engine-protocol.ts's
+// isCanvas guard passes to hasOnly FOR ONE COMPONENT.
+//
+// Anchored on the `component` parameter name, for the reason the fragment and
+// chain extractors are anchored on theirs: `hasOnly(value, [...])` is this
+// file's whole idiom, and an unanchored match would read the TOP-LEVEL list and
+// compare it to this record — a green test asserting the wrong thing. It is
+// also why `canvasGuardKeyList` above could never reach this list: its `.*?` is
+// non-greedy and stops at the first `hasOnly(value, [`.
+var canvasGuardComponentKeyList = regexp.MustCompile(`hasOnly\(component, \[(.*?)\]\)`)
+
+// canvasGuardComponentColumnKeyList extracts the TABLE COLUMN's key list from
+// the same guard.
+//
+// ⚠ ANCHORED ON `const isCanvas =` AND NOT ON `column` ALONE, because
+// `hasExactKeys(column, [...])` is ALSO isTableColumns' spelling one screen
+// earlier in the same file — the table EDITOR's ten-member column, a different
+// surface with a different contract. An unanchored match reads THAT list and
+// compares it to this record, which is the "green test asserting the wrong
+// thing" every other extractor in this file is anchored to avoid. isCanvas is
+// declared after isTableColumns, so the non-greedy `.*?` lands on the canvas
+// clause.
+var canvasGuardComponentColumnKeyList = regexp.MustCompile(`(?s)const isCanvas = .*?hasExactKeys\(column, \[(.*?)\]\)`)
+
+// TestCanvasComponentWireKeysAreTheOnesTheDesignerAccepts is the TypeScript
+// half, and the one assertion in this repository that would have caught Story
+// 14.9's field being added on one side only — before it shipped green and
+// terminated the worker at runtime.
+func TestCanvasComponentWireKeysAreTheOnesTheDesignerAccepts(t *testing.T) {
+	path := filepath.Join(repoRootFromTest(t), "folio-designer", "src", "engine-protocol.ts")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the designer's protocol guard: %v", err)
+	}
+	match := canvasGuardComponentKeyList.FindSubmatch(source)
+	if match == nil {
+		t.Fatal("engine-protocol.ts no longer has an isCanvas component clause whose hasOnly list this test can read; if the guard was restructured, re-derive this extraction rather than deleting the check")
+	}
+	keys := extractedKeyList(string(match[1]))
+	if !reflect.DeepEqual(keys, canvasComponentWireKeys) {
+		t.Errorf("the designer's component guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — one side of this seam has moved and the other has not; a Go key the guard does not list makes isCanvas false, parseInbound undefined and PROTOCOL_INVALID terminate the worker, and there is no respawn path", keys, canvasComponentWireKeys)
+	}
+	columnMatch := canvasGuardComponentColumnKeyList.FindSubmatch(source)
+	if columnMatch == nil {
+		t.Fatal("engine-protocol.ts no longer checks a projected canvas table COLUMN's keys where this test can read it; if the guard was restructured, re-derive this extraction rather than deleting the check")
+	}
+	columnKeys := extractedKeyList(string(columnMatch[1]))
+	if !reflect.DeepEqual(columnKeys, canvasComponentColumnWireKeys) {
+		t.Errorf("the designer's canvas table COLUMN guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — this clause is hasExactKeys, so it rejects in both directions", columnKeys, canvasComponentColumnWireKeys)
+	}
+	// AND THE ANCHOR IS PROVED TO HAVE FOUND THE RIGHT CLAUSE. isTableColumns
+	// spells `hasExactKeys(column, [...])` too, one screen earlier, and its list
+	// is the table EDITOR's ten-member column. If this extraction ever drifted
+	// onto that one it would still find A list, and the failure would read as a
+	// protocol change rather than as a broken regexp.
+	if slices.Contains(columnKeys, "rowFieldEditable") || slices.Contains(columnKeys, "footerFormat") {
+		t.Fatalf("the canvas column extraction matched isTableColumns' editor column instead of isCanvas's: %v", columnKeys)
+	}
+}

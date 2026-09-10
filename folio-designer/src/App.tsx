@@ -1,7 +1,7 @@
 import './App.css'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
-import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
+import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CanvasTableColumn, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
 import { engineMayStart } from './offline-lifecycle'
@@ -4839,7 +4839,7 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
 }
@@ -4897,6 +4897,118 @@ function ImagePaint({ component, zoom, engine, generation }: { component: Canvas
 // which of its two cases applies and this still echoes it.
 function ImagePlaceholder({ children }: { children: string }) {
   return <span className="canvas-image-placeholder" aria-hidden="true"><svg className="canvas-placeholder-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square">{paletteGlyphs.image}</svg><span>{children}</span></span>
+}
+// STORY 14.9 — THE CANVAS DRAWS THE TABLE IT WILL PRINT, and this is the only
+// place in the designer that paints a string which ALSO ENDS UP IN THE PDF.
+//
+// R1's THREE-CONDITION DISPLAY-PAINT TEST is what makes that legal, and the
+// canonical statement of it — with condition 3's enforcement named and the
+// precedent explicitly bounded — lives in `canvas-authority-contract.test.ts`'s
+// own comment block, because that file is read years later and a spec is read
+// once. In short: (1) the rectangle is the ENGINE's, (2) the browser makes no
+// break decision, (3) nothing derived from the painted text flows back. Every
+// element below that paints an engine-owned string carries
+// `.canvas-display-paint` — named for the PROPERTY, display-only paint, so the
+// next author with a candidate for this exception recognises their own case in
+// it, and so grepping that class lands on the three-condition rule.
+//
+// CONDITION 1, MECHANICALLY. The surface is `inset: 0` on `.canvas-component`,
+// whose box is the engine's `x/y/width/height`; the column TRACKS are the
+// engine's `column.width` through `canvasDisplay.css`, the one millipoints→
+// display mapping the whole canvas uses; and horizontal overflow is CLIPPED by
+// CSS, exactly as `.canvas-text-paint` clips it. No browser measurement
+// contributes to any of it — there is no arithmetic here beyond that zoom scale.
+//
+// CONDITION 2. `white-space: pre` and `overflow: hidden` with a CSS
+// `text-overflow` on every text cell. There is no computed ellipsis anywhere:
+// the browser decides where the glyphs stop, and NOTHING reads that decision.
+// The permitted residue is exactly epics.md's Story 5.13 AC — a label may CLIP
+// where the PDF wraps, a text-only inaccuracy and never a geometry error.
+//
+// CONDITION 3. Nothing here derives a width, a height, a line count, an
+// overflow state or a scroll extent from anything painted, and
+// canvas-authority-contract.test.ts scans this file for every API by which such
+// a quantity could be OBTAINED at all: a value that cannot be obtained cannot
+// flow back.
+//
+// AND IT ADDS NO INTERACTIVE ELEMENT. No `role`, no `tabIndex`, no second
+// `data-component-id`, no `aria-label` on any inner node: `.canvas-component`
+// stays the single `role="button"` the control vocabulary sweeps, and its
+// accessible name is unchanged. Making a column selectable is Story 14.10's
+// work and its selection-model change; 14.9 paints only.
+//
+// ⚠ AND THE PAINT IS DELIBERATELY NOT `aria-hidden`. `control-vocabulary-
+// contract.test.tsx`'s `treatmentOf` reads a control's visible text with the
+// `aria-hidden` subtrees stripped and falls through to 'glyph' when it finds an
+// `<svg>`; hiding the whole table and leaving the chip's glyph inside it would
+// flip this control from 'word' to 'glyph' and move a pinned census. Only the
+// two decorative glyphs are hidden.
+// trackWidth is a DISPLAY-ONLY FLOOR, and it refuses nothing: the projection
+// still carries the engine's value verbatim, the guard still accepts it, and
+// the inspector still reads it. It exists because a NEGATIVE `<length>` is not
+// a valid grid track size, so one negative column would invalidate the whole
+// `grid-template-columns` declaration — and the browser would then auto-size
+// EVERY track from content, handing the engine's geometry back to the very
+// layout engine AD-15 and R1's condition 1 exist to keep out of it. A negative
+// width loads and paints today (the matrix requires it to), so the choice is
+// between drawing a zero-width track for that one column and drawing every
+// column at whatever width the browser feels like. It is a clamp on the paint,
+// not arithmetic on the document: nothing derived from it reaches a command, a
+// projection field or a geometry decision.
+function trackWidth(width: number): number { return Math.max(0, width) }
+const canvasTableUnsetBinding = 'Not set'
+// The design draws neither of these two sentences, so they are MATCHED rather
+// than invented: `Not set` is already the shipped word for an unset binding
+// (the honest note renders `Table binding: {tableBind ?? 'Not set'}`), and
+// `No columns yet.` is the opening of what `TableEditor.tsx` already says.
+//
+// ⚠ THE EDITOR'S SECOND SENTENCE IS DELIBERATELY NOT REPEATED HERE. It reads
+// "Add a column to start the matrix.", and in the editor it sits beside an
+// `Add column` BUTTON that carries it out. The canvas offers no such control —
+// 14.9 paints only — so repeating the instruction would point at nothing. The
+// vocabulary is the design's; the call to action belongs to the surface that
+// can honour it.
+const canvasTableNoColumnsNotice = 'No columns yet.'
+function TablePaint({ component, zoom }: { component: CanvasProjection['components'][number]; zoom: number }) {
+  const columns: ReadonlyArray<CanvasTableColumn> | undefined = component.columns
+  // ABSENCE, NOT AN EMPTY FRAME. Go omits the member entirely for a table that
+  // declares no columns, and DESIGN.md's placeholder grammar — "Dashed grey on
+  // page | A placeholder with no content yet" — is what says so: the glyph, the
+  // reason in words, and App.css flipping this component's outline from dotted
+  // to dashed, the same idiom ImagePlaceholder already ships.
+  if (columns === undefined) return <span className="canvas-table-empty"><svg className="canvas-placeholder-icon" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="square">{paletteGlyphs.table}</svg><span>{canvasTableNoColumnsNotice}</span></span>
+  const collection = component.tableBind ?? ''
+  return <span className="canvas-table">
+    <span className="canvas-table-chip">
+      <svg className="canvas-table-chip-icon" aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="square">{paletteGlyphs.table}</svg>
+      {/* The bind accent means DATA and only data (DESIGN.md), so a table that
+          is bound to nothing says so in the muted page ink instead — painting
+          `Not set` in amber would say the opposite of what the accent means. */}
+      <span className={collection === '' ? 'canvas-table-unset canvas-display-paint' : 'canvas-table-collection canvas-display-paint'}>{collection === '' ? canvasTableUnsetBinding : collection}</span>
+      <span className="canvas-table-count canvas-display-paint">{columns.length === 1 ? '1 column' : `${columns.length} columns`}</span>
+    </span>
+    {/* ONE GRID, TWO ROWS, AND THE TRACKS ARE THE ENGINE'S DECLARED WIDTHS.
+        TableEditor.dc.html states the rule this honours: "Column widths are
+        fixed and never negotiated against content." A zero or negative width is
+        passed through as the engine gave it — both load and paint today, and
+        the canvas refuses nothing it accepts. */}
+    <span className="canvas-table-grid" style={{ gridTemplateColumns: columns.map((column) => canvasDisplay.css(trackWidth(column.width), zoom)).join(' ') }}>
+      {/* THE HEADER ROW CONSUMES `headerAlign` AND THE ROW BELOW `cellAlign` —
+          never one value used twice. The engine resolves them through two
+          different cascades (resolveHeaderStyle takes headerStyle.align first;
+          resolveBodyStyle never sees headerStyle at all), so a table whose
+          headerStyle.align differs from its style.align aligns its two rows
+          differently, and so does this drawing. Swapping these two keys is
+          meant to turn a test red. */}
+      {columns.map((column) => <span key={`${component.id}-heading-${column.id}`} className="canvas-table-heading canvas-display-paint" style={{ textAlign: column.headerAlign }}>{column.label}</span>)}
+      {/* ONE REPRESENTATIVE ROW, SHOWING EACH COLUMN'S BINDING RATHER THAN A
+          VALUE: a canvas shows the SHAPE of the document, not its contents, and
+          the canvas has no data. A column nobody has pointed at data yet reads
+          as unbound in the muted ink — not in the bind accent, because an
+          unbound cell has no data to mark. */}
+      {columns.map((column) => <span key={`${component.id}-cell-${column.id}`} className={column.bind === '' ? 'canvas-table-unset canvas-display-paint' : 'canvas-table-cell canvas-display-paint'} style={{ textAlign: column.cellAlign }}>{column.bind === '' ? canvasTableUnsetBinding : column.bind}</span>)}
+    </span>
+  </span>
 }
 // Display-only reading aid. Go painted this text and owns the expression
 // grammar outright — scope, validation, evaluation, diagnostics. Tinting the
@@ -5013,7 +5125,7 @@ function componentAccessibleName(component: CanvasProjection['components'][numbe
 // accessible names (Ruling G).
 function ComponentEcho({ component, carriedFaces, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; y: number; zoom: number; engine?: EngineClient; generation: number }) {
   const paint = component.textPaint
-  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? 'Table' : ''}</span>
+  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : ''}</span>
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

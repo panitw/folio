@@ -214,6 +214,26 @@ export const BAND_CONTENT_WINDOW_MARGIN = 1
 export type CanvasComponentType = CanvasProjection['components'][number]['type']
 export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text']
 
+// STORY 14.9 — ONE TABLE COLUMN AS THE CANVAS PROJECTION CARRIES IT, derived
+// from the projection type rather than restated, so the painter and the guard
+// can never name a different shape than the one this file admits.
+//
+// It is DELIBERATELY NOT `TableColumns`' column. That one is the TABLE EDITOR's
+// projection — ten members, a validating producer that hard-errors on
+// `width <= 0`, on more than 128 columns and on a bind that fails
+// `rootCollectionPath` — and the canvas tolerates every one of those. Sharing a
+// type between the two would invite sharing the gate, and the gate is what
+// would blank a document that paints today.
+//
+// TWO RESOLVED ALIGNMENTS, NOT ONE (Story 14.9 / R2). The engine resolves a
+// header cell's alignment through `resolveHeaderStyle` (headerStyle.align, then
+// style.align, then "left") and a data cell's through `resolveBodyStyle`
+// (style.align, then "left"), and the column's own `align` wins over either. A
+// canvas that drew both rows from one value would be wrong on every table whose
+// `headerStyle.align` differs from its `style.align` — authorable from the
+// shipped UI since Story 14.8.
+export type CanvasTableColumn = NonNullable<CanvasProjection['components'][number]['columns']>[number]
+
 export type EngineError = Readonly<{
   code: string
   message: string
@@ -396,7 +416,7 @@ export type CanvasProjection = Readonly<{
 	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -692,7 +712,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
     if (bandIndex < priorBand) return false
@@ -742,6 +762,45 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
 	// byte-for-byte the set the inline literal admitted.
 	if (!SCALAR_BINDING_COMPONENT_TYPES.includes(component.type as CanvasComponentType) && component.binding !== undefined) return false
 	if (component.type !== 'table' && component.tableBind !== undefined) return false
+	// STORY 14.9 — THE PER-COLUMN CLAUSE, in the shape isTableColumns' own
+	// per-column clause uses: a record per column, `hasExactKeys` so a key Go
+	// stops sending fails as hard as a key Go starts sending, and a CLOSED SET
+	// for each of the two resolved alignments. `columns[].align`'s vocabulary is
+	// three values, never four — `ColumnAlignTokens` in
+	// internal/template/closedsets.go — and a justified table is refused at
+	// load, so `justify` cannot reach either of these keys.
+	//
+	// ⚠ THE WIDTH IS ANY SAFE INTEGER, AND `> 0` WOULD BE A DEFECT. A column
+	// with `width: 0` or a negative width LOADS, PROJECTS AND PAINTS today;
+	// requiring positivity here would make isCanvas false, parseInbound
+	// undefined and PROTOCOL_INVALID terminate the worker on a document that
+	// works now. isTableColumns DOES require `width > 0`, because the table
+	// editor's producer refuses such a column outright — a different surface
+	// with a different contract, and copying its bound onto this one is the
+	// specific mistake this comment exists to stop.
+	//
+	// ⚠ THE IDS ARE UNIQUE, matching the component-level `ids` Set above and
+	// isTableColumns' own per-table dedupe. This CANNOT newly refuse a document
+	// that ships today — `parse.go`'s `claimID` is the one door into an element
+	// id and it refuses a duplicate outright, "ids are unique document-wide
+	// (AD-10)", for a column exactly as for a component
+	// (`columns[].id`, parse_bands.go), which
+	// TestColumnIdsAreUniqueDocumentWide proves rather than assumes. What it
+	// stops is a malformed message reaching the painter, which keys its two
+	// rows on the column id.
+	//
+	// ⚠ AND THE ARRAY CARRIES NO LENGTH CAP, for the same reason. The loader
+	// (internal/template/parse_bands.go) imposes no minimum and no maximum on
+	// `columns`; the 128 cap belongs to the table EDITOR's projection and to
+	// `addTableColumn`, neither of which is on this path. A hand-authored
+	// hundred-and-fifty-column document paints today, so a cap here would newly
+	// kill it — and `components` itself, one level up, is unbounded in this same
+	// guard for exactly this reason.
+	if (component.columns !== undefined && (!Array.isArray(component.columns) || !component.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'label', 'width', 'headerAlign', 'cellAlign', 'bind']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.label === 'string' && column.label.length <= MAX_CANVAS_PROPERTY_STRING && typeof column.width === 'number' && Number.isSafeInteger(column.width) && ['left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.cellAlign as string) && typeof column.bind === 'string' && column.bind.length <= MAX_CANVAS_PROPERTY_STRING) || new Set(component.columns.map((column) => (column as Record<string, unknown>).id)).size !== component.columns.length)) return false
+	// The twin of the `tableBind` cross-clause above: only a table has columns,
+	// and a non-table component carrying them is a producer that has lost track
+	// of which element it is projecting.
+	if (component.type !== 'table' && component.columns !== undefined) return false
 	if (!['text', 'table'].includes(component.type as string) && ['fontFamily', 'fontSize', 'bold', 'italic', 'align', 'valign'].some((key) => component[key] !== undefined)) return false
 	if (!isTextPaint(component.textPaint, box)) return false
 	if (component.type === 'text' ? component.textPaint === undefined : component.textPaint !== undefined) return false

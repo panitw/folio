@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -28,9 +29,28 @@ const MaxCanvasMillipoints int64 = 9007199254740991
 
 // maxCanvasPropertyString bounds an IDENTIFIER, a COLOUR or an EXPRESSION —
 // a font-family name, `color`, `background`, `border.color`, `visibleIf` and
-// a table's `bind`. Seven sites, all legitimately short, and all of them
-// still ABORT the projection: Epic 7 makes none of them newly reachable, so
-// that residue is recorded rather than fixed (DW-25).
+// a table's `bind`. SEVEN sites that ABORT, all legitimately short: Epic 7
+// makes none of them newly reachable, so that residue is recorded rather than
+// fixed (DW-25).
+//
+// ⚠ STORY 14.9 ADDED TWO SITES THAT DO NOT ABORT, AND THAT IS THE WHOLE POINT
+// OF THEM. A table COLUMN's `label` and its own `bind` are bounded by this same
+// constant and are CLIPPED to it (clipCanvasPropertyString), never refused and
+// never dropped. `decodeColumn` imposes no length cap on either field, so a
+// document with a 600-byte column label LOADS and PRINTS today — measured: it
+// renders a real 64,123-byte PDF — and aborting the projection for it would
+// terminate the worker with no respawn, blanking the designer for a template
+// that prints correctly. A document the engine prints is a document the canvas
+// draws. Clipping is a display concern on a surface that is display-only paint
+// by [R1], and the column is never omitted: a dropped column would put the
+// chip's `5 columns` above four drawn headers, which is being systematically
+// wrong about STRUCTURE — precisely the harm AD-17 exists to prevent.
+//
+// ⚠ THE COUNTS ABOVE ARE PROSE AND THEREFORE LOSSY, and this comment has been
+// wrong twice before. DW-104 holds the remedy (derive the site list from this
+// file by grep and assert the probe table covers it minus a NAMED exception
+// list). Story 14.9 covered its OWN two sites — as clipping assertions, since
+// they do not refuse — and deliberately did not close the wider gap.
 //
 // It used to bound document body text as well, which is the two-jobs
 // conflation D-7.4.2 §3 ruled must be SPLIT rather than raised: 512 bytes is
@@ -286,6 +306,10 @@ type CanvasComponent struct {
 	// the projection's authority: it is still Go stating which of two
 	// bounded, enumerated reasons applies, never bytes or a path.
 	ImageUnavailable *string `json:"imageUnavailable,omitempty"`
+	// Columns is Story 14.9's per-column paint data for a TABLE, and it is
+	// absent — never an empty array — for a table that declares none, and for
+	// every non-table component. See CanvasTableColumn below.
+	Columns []CanvasTableColumn `json:"columns,omitempty"`
 }
 
 // imageUnavailableMissing / imageUnavailableUndecodable are
@@ -296,6 +320,51 @@ const (
 	imageUnavailableMissing     = "missing"
 	imageUnavailableUndecodable = "undecodable"
 )
+
+// CanvasTableColumn is Story 14.9's read-only, paint-only projection of ONE
+// table column: what the canvas needs to draw the table it will print, and
+// nothing more.
+//
+// IT IS NOT TableColumnProjection, AND THE DIFFERENCE IS THE GATE. That type
+// (table_columns_projection.go) serves the table EDITOR, is requested per table
+// by element id, and its producer VALIDATES — it hard-errors on `width <= 0`,
+// on more than 128 columns, and on a bind that fails `rootCollectionPath`. The
+// canvas tolerates all three today, and a canvas-projection error blanks the
+// WHOLE designer, so reusing that function or its gate would newly kill
+// documents that currently paint. The derivations are copied; the gate is not.
+//
+// TWO RESOLVED ALIGNMENTS, BECAUSE THE CANVAS DRAWS TWO ROWS (Story 14.9 / R2).
+// The engine resolves a header cell's alignment and a data cell's through
+// DIFFERENT cascades — resolveHeaderStyle takes `headerStyle.align` then
+// `style.align`, resolveBodyStyle takes `style.align` alone — and a column's
+// own `align` wins over either. One value used for both rows would be wrong on
+// every table whose `headerStyle.align` differs from its `style.align`, which
+// Story 14.8 made authorable from the shipped UI. Both are obtained by CALLING
+// those two functions plus the shared columnAlign, never by mirroring them:
+// a mirrored cascade drifts, and the failure mode is a canvas that lies about
+// print while every test passes.
+//
+// Width is MILLIPOINTS, unconverted — the wire unit, as everywhere else on this
+// projection — and is projected verbatim, including zero and negative values,
+// which load and paint today.
+//
+// Label and Bind are REQUIRED KEYS WHOSE VALUES MAY BE EMPTY. internal/template
+// hand-decodes `columns` and both keys are mandatory there, so `""` means
+// "declared empty", not "absent": an empty label is a header cell the renderer
+// builds and then skips the glyphs for, and an empty bind is a column nobody
+// has pointed at data yet. Neither is `omitempty`, because the browser's guard
+// is hasExactKeys per column and a dropped key fails it as hard as a surplus
+// one.
+type CanvasTableColumn struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Width int64  `json:"width"`
+	// HeaderAlign is resolveHeaderStyle's fallback with the column's own
+	// `align` applied over it; CellAlign is resolveBodyStyle's, the same way.
+	HeaderAlign string `json:"headerAlign"`
+	CellAlign   string `json:"cellAlign"`
+	Bind        string `json:"bind"`
+}
 
 // CanvasImagePaint is Story 5.13's read-only, paint-only projection of one
 // placed image element's Go-owned display data: the declared media type,
@@ -1795,6 +1864,7 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, fmt.Errorf("folio: component table bind exceeds the projection bound")
 				}
 				component.TableBind = stringPointer(element.Table.Value.Bind)
+				component.Columns = canvasTableColumns(element)
 			}
 			if element.Style.Set && !element.Style.Null {
 				if err := applyCanvasStyle(&component, element.Type, element.Style.Value); err != nil {
@@ -1805,6 +1875,96 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 		}
 	}
 	return out, nil
+}
+
+// canvasTableColumns is Story 14.9's per-column projection: the canvas draws
+// the table it will print, so it needs each column's label, its declared width
+// and the alignment the engine will actually use for EACH of the two rows the
+// canvas paints.
+//
+// THE ALIGNMENTS COME FROM THE RENDERER'S OWN FUNCTIONS, CALLED. resolveHeader-
+// Style and resolveBodyStyle are pure, need no fonts and no data, and live in
+// the same package (table_render.go); columnAlign is the last step both rows
+// share. Nothing here re-implements a cascade — 14.8's Part 4 requirement, and
+// R2's binding guardrail: a projection that mirrors the cascade drifts, and the
+// failure mode is a canvas that lies about print while every test passes.
+//
+// THE TWO BOUNDED STRINGS CLIP, THEY DO NOT ABORT, AND THE COLUMN IS NEVER
+// DROPPED. This is the one place on the canvas projection where an over-bound
+// string is not a refusal, and the reason is that these two are the only ones
+// a LEGAL, PRINTING document can exceed: `decodeColumn` caps neither `label`
+// nor `bind`, so `worked-example.json` with a 600-byte column label parses,
+// renders a real 64,123-byte PDF, and — with an abort here — blanked the
+// designer's canvas until reload. Measured on both sides, at HEAD without this
+// story and with it. A document the engine prints is a document the canvas
+// draws; that is the matrix's own answer for a zero or negative column width,
+// two rows away, and it is the same principle.
+//
+// ⚠ CLIP, NEVER OMIT — and the difference is not stylistic. A column dropped
+// from the projection makes the canvas systematically wrong about the
+// document's STRUCTURE: the chip's `5 columns` would sit above four drawn
+// headers. Being systematically wrong about structure is precisely the harm
+// AD-17 names, so omitting converts a display problem into a structural lie.
+// Clipping keeps every column, keeps the projection bounded, and lands on a
+// surface that is display-only paint by [R1] — where `.canvas-display-paint`
+// already ellipsises what does not fit.
+//
+// ⚠ IT VALIDATES NOTHING ELSE, AND THAT IS DELIBERATE. `width: 0`, a NEGATIVE
+// width, an empty label, an empty bind and `columns: []` all load, project and
+// paint today; TableColumns' validating gate refuses the first three, and
+// reusing it here would blank the whole designer for a document that currently
+// draws. Absence, not an empty slice, for a table with no columns: `omitempty`
+// drops the key, and the browser's guard admits its absence.
+//
+// It returns no error, and that is a property worth keeping: there is no
+// document shape that makes a column unprojectable.
+func canvasTableColumns(element template.Element) []CanvasTableColumn {
+	declared := element.Table.Value.Columns
+	if len(declared) == 0 {
+		return nil
+	}
+	header := resolveHeaderStyle(element)
+	body := resolveBodyStyle(element)
+	columns := make([]CanvasTableColumn, 0, len(declared))
+	for _, column := range declared {
+		columns = append(columns, CanvasTableColumn{
+			ID:          string(column.ID),
+			Label:       clipCanvasPropertyString(column.Label),
+			Width:       int64(column.Width),
+			HeaderAlign: columnAlign(header.alignFallback, column),
+			CellAlign:   columnAlign(body.alignFallback, column),
+			Bind:        clipCanvasPropertyString(column.Bind),
+		})
+	}
+	return columns
+}
+
+// clipCanvasPropertyString cuts value to at most maxCanvasPropertyString BYTES,
+// ON A RUNE BOUNDARY.
+//
+// ⚠ THE RUNE BOUNDARY IS LOAD-BEARING, NOT TIDINESS. A byte-cut through the
+// middle of a multibyte rune emits invalid UTF-8, encoding/json would then
+// replace it with U+FFFD or fail the envelope, and a display concern would
+// become the fatal outcome the clipping exists to remove. Thai and CJK are
+// three bytes to the character, so this is the ordinary case for this
+// codebase's own corpus, not an exotic one.
+//
+// ⚠ AND THE CLIPPED VALUE IS ALWAYS ACCEPTABLE TO THE BROWSER GUARD, which
+// bounds `column.label.length` — UTF-16 code units — against the same 512
+// while this bounds BYTES. The two units disagree, but only in one direction:
+// a BMP rune is 1 UTF-16 unit and 1–3 UTF-8 bytes, a supplementary rune is 2
+// units and 4 bytes, so UTF-16 length is never greater than byte length. A
+// value inside the byte bound is therefore inside the guard's bound too, and
+// the test for that computes both rather than reasoning about it.
+func clipCanvasPropertyString(value string) string {
+	if len(value) <= maxCanvasPropertyString {
+		return value
+	}
+	cut := maxCanvasPropertyString
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut]
 }
 
 func directCanvasBinding(value string) string {

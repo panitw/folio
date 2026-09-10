@@ -283,7 +283,20 @@ func TestPaginationIsIndependentOfCanvasPaintTruncation(t *testing.T) {
 // them newly reachable, so that residue is recorded rather than fixed
 // (D-7.4.2 §6) — and this test is where "recorded" is executable.
 //
-// ALL EIGHT, and each by its OWN refusal message. Probing a subset would
+// ALL EIGHT, and STILL EIGHT AFTER STORY 14.9 — deliberately, and the reason
+// is the sharpest thing in this comment. 14.9 added two sites bounded by
+// maxCanvasPropertyString (a table COLUMN's `label` and its own `bind`) and
+// they belong in NEITHER list, because they do not REFUSE: they CLIP. A
+// document with a 600-byte column label loads and prints a real PDF —
+// `decodeColumn` caps neither field — so refusing it would blank the designer's
+// canvas until reload for a template that prints correctly. A probe asserting
+// refusal for those two would now be asserting a defect. Their coverage was not
+// deleted, it MOVED: the clipping assertion is at the foot of this function,
+// and the behavioural half is in canvas_table_column_projection_test.go. This is
+// a THIRD category on the same constant, and the category is what DW-104's
+// grep-derived remedy will have to carry.
+//
+// Each by its OWN refusal message. Probing a subset would
 // leave the unprobed sites free to move without anything going red, which is
 // the opposite of recording them; and asserting only that Canvas returned
 // SOME error would let any unrelated parse or projection failure keep this
@@ -460,6 +473,29 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 	}
 	if got := len(paint.Lines[0].Fragments[0].Text); got != maxCanvasPropertyString+1 {
 		t.Fatalf("the fragment painted %d bytes, want the whole %d", got, maxCanvasPropertyString+1)
+	}
+	// AND STORY 14.9's TWO SITES DO NOT REFUSE AT ALL — the third category this
+	// function's comment names. They are here, beside the eight that do, so the
+	// contrast is readable in one place: over the same bound, on the same
+	// constant, these two CLIP and keep their column. Deleting the clip and
+	// restoring an abort reddens this.
+	table := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
+	element := &table.doc.Bands.Content.Elements[0]
+	element.Type = template.ElementTable
+	element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{
+		Bind:    "rows[]",
+		Columns: []template.Column{{ID: "e9", Label: long, Width: 80000, Bind: long}},
+	}}
+	clipped, err := Canvas(table)
+	if err != nil {
+		t.Fatalf("an over-bound column label or bind was REFUSED; both must clip, because the document that carries them loads and prints: %v", err)
+	}
+	projected := canvasTableColumnsOf(t, clipped, "e1")
+	if len(projected) != 1 {
+		t.Fatalf("the over-bound column was dropped rather than clipped: %#v", projected)
+	}
+	if len(projected[0].Label) != maxCanvasPropertyString || len(projected[0].Bind) != maxCanvasPropertyString {
+		t.Fatalf("the over-bound label/bind projected %d/%d bytes, want both clipped to %d", len(projected[0].Label), len(projected[0].Bind), maxCanvasPropertyString)
 	}
 }
 

@@ -370,6 +370,83 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-image-paint { position: absolute; display: block; pointer-events: none; -webkit-user-drag: none; user-drag: none; }
 .canvas-image-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; pointer-events: none; -webkit-user-drag: none; user-drag: none; color: var(--color-page-placeholder); font: var(--type-page-mono); line-height: 1; text-align: center; }
 .canvas-placeholder-icon { width: 14px; height: 14px; flex: none; }
+/* STORY 14.9 — THE CANVAS TABLE, drawn as Binding.dc.html draws it: a chip
+   naming the bound collection and the column count, the real header labels
+   beneath it, and one representative row of binding placeholders.
+
+   EVERY VALUE COMES FROM THE ENGINE'S PROJECTION. The tracks are the declared
+   column widths through canvasDisplay.css; the two text alignments are the two
+   the engine RESOLVED, one per row. Nothing here cascades, measures or
+   negotiates a width against content — TableEditor.dc.html states that rule for
+   the format and this drawing keeps it.
+
+   R1's DISPLAY-PAINT EXCEPTION IS WHAT LETS THE BROWSER PAINT DOCUMENT TEXT
+   HERE AT ALL, and its three conditions are stated in full in
+   canvas-authority-contract.test.ts. Condition 2 is this file's part of the
+   bargain: `white-space: pre` on every text cell so the browser makes no break
+   decision, and clipping done entirely in CSS. `text-overflow` is a CSS
+   decision about glyphs nothing reads back; there is no computed ellipsis
+   anywhere in this feature.
+
+   THE SURFACE CLIPS HORIZONTALLY AND SPILLS VERTICALLY, which is
+   `.canvas-text-paint`'s own idiom two rules above and for the same reason: the
+   engine's box for a table is the column sum by the HEADER height, so the
+   representative row genuinely sits below it, exactly as a painted text line
+   does. Clipping the width is what keeps the drawing inside the engine's
+   rectangle.
+
+   ⚠ NO CLASS HERE CONTAINS `canvas-text`, AND NONE OF THESE RULES IS GROUPED
+   WITH A `.canvas-text*` SELECTOR. Rules 15/16/17 of the authority contract
+   forbid `font-weight`/`font-style` on that surface in every spelling, its
+   selector bound reaches across a grouped selector, and the header labels need
+   a weight. */
+/* THE MARKER CLASS IS ALSO THE MECHANISM, and that is deliberate: R1's
+   condition 2 — "the browser makes no break decision" — is what these four
+   declarations ARE. Wrapping off, the box clipped, and the only ellipsis a CSS
+   one, so nothing in TypeScript ever measures a string or its box to decide
+   where it stops. `min-width: 0` is load-bearing on a grid item, whose default
+   `auto` minimum would otherwise let content widen a track the ENGINE sized.
+   Named for the PROPERTY — display-only paint — so a later author grepping this
+   class lands on the three-condition rule in
+   canvas-authority-contract.test.ts, and so the next candidate for this
+   exception recognises itself. A feature name would say nothing about the rule
+   it lives under. */
+.canvas-display-paint { min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
+.canvas-table { position: absolute; inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; color: var(--color-page-ink); }
+.canvas-table-chip { display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; padding: 3px 5px; background: var(--color-page-thead); border-bottom: var(--hairline) solid var(--color-page-thead-line); }
+.canvas-table-chip-icon { width: 10px; height: 10px; flex: none; color: var(--color-page-ink-muted); }
+/* Mono, in the bind accent: this is a data path a machine reads.
+
+   ⚠ IT IS THE SHRINKING ELEMENT IN THE CHIP, AND THE COUNT IS NOT. A
+   collection path has no length limit worth relying on, and `flex: none` here
+   pushed `.canvas-table-count` past the clip edge — so the column count
+   vanished on exactly the documents whose chip is hardest to read. The count is
+   a short, fixed fact about the table and must always be legible; the path is
+   the part that can afford to ellipsise, which `.canvas-display-paint` already
+   does for it (`min-width: 0` there is what lets it shrink at all). */
+.canvas-table-collection { flex: 0 1 auto; color: var(--color-bind-on-page); font: var(--type-page-mono); }
+/* The muted page ink, NOT the accent — DESIGN.md: "amber means data, and only
+   data. … It never marks selection and never marks structure." A table bound to
+   nothing, and a column pointed at nothing, both have no data to mark. */
+.canvas-table-unset { flex: 0 1 auto; color: var(--color-page-ink-muted); font: var(--type-page-mono); }
+.canvas-table-count { flex: none; margin-left: auto; color: var(--color-page-ink-muted); font: var(--type-page-mono); }
+.canvas-table-grid { display: grid; }
+/* THE 8px/600 SANS HEADER LABEL HAS NO PAGE-RAMP TOKEN: `--type-page-body` is a
+   400 weight and `--type-page-eyebrow` carries tracking, so the weight is a
+   LITERAL here. The design's own precedent for a value with no token is a
+   component literal (components.band-tab declares paddingY: '3px'), and minting
+   a token is not available — design-contract.test.ts asserts token-NAME equality
+   between designTokenSets and DESIGN.md, which is read-only for this story. */
+.canvas-table-heading { padding: 4px 5px; color: var(--color-page-ink); font: var(--type-page-body); font-weight: 600; border-bottom: var(--hairline) solid var(--color-page-ink); }
+.canvas-table-cell { padding: 4px 5px; color: var(--color-bind-on-page); font: var(--type-page-mono); }
+.canvas-table-grid .canvas-table-unset { padding: 4px 5px; }
+/* The no-columns state, in ImagePlaceholder's shipped idiom: the palette's own
+   table glyph over the reason this frame has nothing to draw. It is a plain
+   span — never a <button>, never role="group" — because control-vocabulary-
+   contract.test.tsx mounts a columnless table in six of its seven swept states,
+   and either of those would red a pinned census there. */
+.canvas-table-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; pointer-events: none; color: var(--color-page-placeholder); font: var(--type-page-mono); line-height: 1; text-align: center; }
+.canvas-component:not(.canvas-component-selected):has(.canvas-table-empty)::after { border-style: dashed; border-color: var(--color-page-outline-dash); }
 /* Story 9.2: the component's own box — the fill and border the engine will
    paint — beneath the content and beneath the selection chrome. */
 .canvas-box { position: absolute; inset: 0; box-sizing: border-box; pointer-events: none; }

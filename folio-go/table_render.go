@@ -500,6 +500,31 @@ func resolveBodyStyle(el template.Element) resolvedBodyStyle {
 	return r
 }
 
+// columnAlign is the LAST STEP of the alignment cascade, and the one step both
+// rows share: a column's OWN `align` is the most specific of the three
+// declarations and wins over whichever row fallback its caller resolved
+// (AC4's grounds, extended one level). The fallback differs per row —
+// resolveHeaderStyle's for a header cell, resolveBodyStyle's for a data or
+// footer cell — and that difference is the caller's, not this function's.
+//
+// IT IS A FUNCTION BECAUSE STORY 14.9 GAINED A FIFTH CALLER OUTSIDE THE
+// RENDERER. The canvas projection now carries a resolved alignment per column
+// per row (page_setup.go, canvasComponents), and this three-line pattern was
+// open-coded at four sites in this file. A fifth copy in a different file is
+// exactly the drift 14.8's Part 4 requirement names: one source shared with the
+// renderer, because a projection that MIRRORS the cascade will drift and the
+// failure mode is a canvas that lies about print while every test passes.
+//
+// `columns[].align` is a three-value closed set (ColumnAlignTokens), so this
+// never returns `justify` unless the fallback it was handed already was one —
+// and TableStyleAlignTokens refuses `justify` on a table's own style at load.
+func columnAlign(fallback string, col template.Column) string {
+	if col.Align.Set && !col.Align.Null {
+		return col.Align.Value
+	}
+	return fallback
+}
+
 // paddingEdges returns the four padding insets, each independently
 // defaulting to zero when its own field is absent (AC3, R6).
 func paddingEdges(p template.Padding) (top, right, bottom, left geom.Length) {
@@ -807,10 +832,7 @@ func collectBandTableRuns(
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: has a column label but no style.fontFamily (nor headerStyle.fontFamily) to resolve a font from", el.ID)
 			}
 
-			align := hs.alignFallback
-			if col.Align.Set && !col.Align.Null {
-				align = col.Align.Value
-			}
+			align := columnAlign(hs.alignFallback, col)
 
 			contentX := cg.X + padLeft
 			contentW := cg.Width - padLeft - padRight
@@ -1010,10 +1032,7 @@ func collectBandTableRuns(
 					cg := geometry.Columns[ci]
 					contentW := cg.Width - padLeftB - padRightB
 
-					align := bs.alignFallback
-					if col.Align.Set && !col.Align.Null {
-						align = col.Align.Value
-					}
+					align := columnAlign(bs.alignFallback, col)
 
 					// AC4: the column's bind resolves in the table's
 					// ROW SCOPE — bind.Resolve, never bind.BindTextSpans
@@ -1256,17 +1275,11 @@ func collectBandTableRuns(
 						// AC1: "a column that declares no footer carries
 						// no value" — DECISION-3 gives it chrome only,
 						// built unconditionally below.
-						align := bs.alignFallback
-						if col.Align.Set && !col.Align.Null {
-							align = col.Align.Value
-						}
+						align := columnAlign(bs.alignFallback, col)
 						cellResults[ci] = cellResult{align: align}
 						continue
 					}
-					align := bs.alignFallback
-					if col.Align.Set && !col.Align.Null {
-						align = col.Align.Value
-					}
+					align := columnAlign(bs.alignFallback, col)
 
 					exprText, exprErr := footerCellExprText(doc, tbl, col, len(items) == 0, scope, fc)
 					if exprErr != nil {
