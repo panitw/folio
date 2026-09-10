@@ -13048,3 +13048,76 @@ in points and concludes the product's budget is wrong rather than the drawing. O
 mockup's units in passing, leaving three inconsistent with each other as well as with the product —
 strictly worse than the uniform drift there is now. **If this is picked up, it is one sweep over four
 files, not a per-story correction.**
+
+---
+
+### DW-379 - a hand-authored empty header border block is real, rendering-affecting, and undisclosed
+
+- **source_spec:** `folio-go/table_columns_projection.go`
+- **Found by:** two of Story 14.8's review layers independently, **proven by probe** against `fixtures/alternating-rows/input.folio` (read-only, never modified). **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+`headerStyle: {"border": {}}` — and `{"border":{"edges":[]}}` — are stable load/serialize fixed points
+(`internal/template/serialize.go:532` calls `writeObject` **unconditionally**, so an empty `Set` block
+round-trips) in which `resolveHeaderStyle`'s arm `header.Border.Set && !header.Border.Null` **wins the
+cascade whole.** The header row therefore stops inheriting the table's border and falls to the format's
+defaults — 0.5pt, `#000000`, all four edges — with **nothing authored on the header at all.**
+
+Story 14.8 was ruled to say **nothing about provenance** in this state rather than to state it wrongly, so
+the author has no way to learn from the panel that the takeover has happened.
+
+**Why disclosing it is not a spelling problem and cannot be patched.** Flat sub-field members project **N**
+optional values; the block carries **N+1** pieces of state — its own presence, plus each sub-field's. **A
+flat projection of N members cannot carry N+1 bits**, so no re-spelling of width, colour or edges reaches
+it. Nor can it be derived: if the **table** declares a border and the header declares none, the header
+inherits it — `hasBorder` is true and the resolved edges are non-empty — while nothing is authored on the
+header. **The resolved trio cannot distinguish *declares* from *inherits*.**
+
+**The cost, priced so a future story does not re-derive it.** It needs a projected presence member, and
+`folio-go/table_header_style_test.go` closes that from **both** sides: `:869` asserts `paired` **equals**
+`sorted(tableHeaderStyleFields)`, and `:872` pins `unpaired` to exactly `["height"]`. So a presence member
+is refused whether paired or unpaired. Admitting one means amending that tie's **central premise** — that
+every projected header-style key corresponds to a command field — to allow a **projected-but-not-commanded**
+category, which is exactly what a nested block's own existence is: state materialised as a side effect
+(`component_commands.go:1457-1459`), authored by no field. **That is a guard-premise change and belongs to a
+story that owns it, with the owner's sign-off, not to a patch.**
+
+**⚠ STANDING TRIGGER, recorded so nobody re-argues five consequences.** This is a **disclosed limitation,
+not a defect** — no frozen requirement demands the bit that flat cannot carry, which is the only reason the
+flat shape stands. **If a later story needs the empty-block state disclosed, or needs the header's border
+authored in a way that must distinguish *declares* from *inherits*, that story does not get a presence
+member: it gets the shape question, and the shape goes back to the owner then.** See [D-14.8.4].
+
+**How we'd know it was forgotten.** An author hand-edits a template to `{"border": {}}`, opens the panel,
+sees three values and no explanation, and concludes the panel is showing them the table's border. Or a
+story adds the presence member as an "obvious" projection addition and re-baselines the tie's exception
+list to accept it, which is the erosion [DW-371]'s and this entry's reasoning both exist to prevent.
+
+---
+
+### DW-380 - `cleanupEmptyStyle` deletes a hand-authored empty element border on a clear about something else
+
+- **source_spec:** `folio-go/component_commands.go`
+- **Found by:** Story 14.8, as the element-level twin of the defect it fixed at the header level. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Story 14.8 found and fixed this at the header level: `cleanupEmptyHeaderStyle` ran on a clear of **any**
+header-style field, so clearing `background` on a document carrying `{"border": {}}` deleted the border
+block and then the whole `headerStyle` — **a silent rendered-PDF change from a command about background.**
+Proven by execution. 14.8's fix gates the collapse on the cleared field being `border.*`.
+
+**`cleanupEmptyStyle` (`:1485-1490`) has the identical shape at the element level and was not fixed**, because
+it is outside 14.8's fence and pre-existing. Clearing a non-border element field on an element carrying
+`style.border: {}` will collapse it the same way.
+
+**Why 14.8 correctly did not fix it.** The element path is not this story's surface, and 14.8's own fix was
+already a correction to a task that had named a mechanism without its trigger. Widening to the element path
+would have meant changing a shipped code path no criterion in the story names — the same fence reasoning as
+[DW-371] and [DW-376], and the **third** instance in this epic of the sibling surface holding the worse
+behaviour. **Take it with those two.**
+
+**The fix is known and small:** gate `cleanupEmptyStyle`'s `Border` and `Padding` collapses on the cleared
+field belonging to the block being collapsed, and red-proof each by clearing a **non**-block field on a
+document carrying an empty block. Note the guard that missed it at the header level and will miss it here
+too: a test using a **fully declared** border cannot exercise a collapse that only fires on an empty one.
+
+**How we'd know it was forgotten.** An author clears a font size and their element's border disappears from
+the rendered PDF, with no diagnostic, because the command that removed it was about something else.

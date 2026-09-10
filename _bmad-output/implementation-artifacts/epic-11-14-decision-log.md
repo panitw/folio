@@ -6542,3 +6542,57 @@ the loss of its original justification is stronger evidence than one nobody test
 which argument actually holds it up.
 
 **Related:** [D-14.7.2], [D-14.7.3], [D-14.8.1], [D-000.32].
+
+## D-14.8.4 - I escalated a proven state as a proven contradiction, and the requirement I said it violated was never triggered
+
+**Recorded 2026-09-10.** This is filed against me. The lead caught it by reading the frozen matrix at source
+rather than ruling from my description of it.
+
+**What happened.** Two of Story 14.8's review layers converged on a real defect: with
+`headerStyle: {"border": {}}`, the panel prints *"Nothing here is set, so this header row takes the table's own
+border"* while the three resolved twins directly above it report the **format's** defaults, because the cascade
+has already changed hands. The builder **proved the state by execution** against a real fixture. It then
+described the defect as *"directly contradicts frozen matrix row 1"*, and **I forwarded that to the engineering
+lead as the basis of a re-open of a shape ruling — without reading row 1.**
+
+**Row 1 was not contradicted. It was not triggered.** Its precondition, verbatim, is *"Table with `style.border`
+set, no `headerStyle.border`; **author sets header border width**"* — **an authoring action.** In the
+`{"border": {}}` state nothing was authored; the document arrived that way. The row that might have covered it
+instead — *"No border anywhere | **Neither** the table **nor** the header declares a border"* — fails too,
+because the header does declare a border, an empty one. **No frozen row governs that state**, and the false
+sentence appears **zero times** in the frozen block: it was the builder's own wording for an unconstrained
+`else` branch. The fix was to delete one sentence.
+
+**What the error nearly cost, which is the reason this is a decision entry and not a note.** The escalation's
+stated remedy space was *"the refused presence member, or an amendment to a frozen matrix row."* On that framing
+we were one ruling away from **amending a frozen requirement** or **eroding a guard's central premise** — the
+`table_header_style_test.go` tie — to fix a defect that needed neither. The lead declined both by checking the
+text. **A false explanation attached to a true finding does not stay harmless: it sets the remedy space, and the
+remedy space is where the expensive decisions live.**
+
+**The rule I am adopting from it: a proven state plus an unverified requirement is not a proven contradiction.**
+The builder's half was rigorous — it probed a real document and read the projection's actual output. My half was
+not: I treated "contradicts row 1" as inheriting that rigour when it was a separate claim about a separate
+artefact, and the artefact was three lines long and sitting in a file I had already read. **Before escalating a
+contradiction, quote the requirement's precondition and check it fires.**
+
+**This is [D-14.7.3] for the fifth time in this run and the second time it is mine.** The shape is stable enough
+now to state as a law: *the finding and its explanation are separate claims with separate evidence, and the
+explanation is the one that propagates.* Four of the five instances were caught by someone re-measuring an
+assertion rather than by review, which is [D-14.8.3]'s point restated from the other end.
+
+**Also recorded: a FOURTH entry for the guard catalogue, and the first about the fixture rather than the
+assertion.** *A fixture more complete than the defect's precondition is a guard that cannot see it.*
+`TestClearingTheLastAuthorableHeaderFieldKeepsAHandAuthoredBorder` exists to protect exactly the border the
+collapse deleted, and could not fire, because its fixture declares a **fully populated** border while the defect
+requires an **empty** one. It sits beside *a guard that cannot fail*, *a guard never invoked*, and *a guard that
+can only just pass* ([D-14.7.4]). The builder found it; the wording is mine.
+
+**And the shape ruling's standing trigger, which is the honest residue.** Flat stands **only** because nothing
+frozen demands the bit it cannot carry — a flat projection of N members cannot express N+1 pieces of state, and
+the block's own presence is the extra one ([DW-379]). **If a later story needs the empty-block state disclosed,
+or needs the header border authored in a way that distinguishes *declares* from *inherits*, that story does not
+get a presence member — it gets the shape question, and the shape goes to the owner.** A named condition, so the
+next person meets a trigger instead of re-arguing five consequences.
+
+**Related:** [D-14.7.3], [D-14.8.3], [D-14.7.4], [DW-379], [DW-380].
