@@ -13175,7 +13175,7 @@ the canvas keeps drawing the old value — the exact drift the extraction remove
 
 ---
 
-### DW-383 - NO fixture declares a border at all, so nothing byte-level in this repository covers a bordered document
+### DW-383 - the golden corpus has NEVER covered the border render path, in any element kind, in any spelling
 
 - **source_spec:** `fixtures/`
 - **Found by:** the orchestrator, closing Story 14.8 — while checking whether CI's green actually discharged the story's own stated caveat. **Owner:** unassigned. **Severity:** HIGH — raised from MEDIUM when the measurement below was corrected. **Status:** OPEN.
@@ -13207,6 +13207,42 @@ untagged golden corpus.
 `#000000` defaults, with the edges branch the same predicate by De Morgan — plus structural bordered-header
 coverage in `table_render_test.go` and `TestTableStyleFieldsAreNotDataDrivenControl/border`, a byte-**dis**equality
 control. **That is a logic-identity argument with structural coverage, not a byte-identity proof.**
+
+**⚠ WIDENED 2026-09-10 — this is a COVERAGE gap, not an evidence gap, and the retitling is the point.** The
+engineering lead observed that if the corpus is border-free then the finding is not *"14.8's extraction lacks a
+byte proof"* but **"the golden corpus has never covered the border render path at all"** — not element borders,
+not table cell borders, and not the header cascade Story 14.8 shipped. It asked me to re-verify with a positive
+control **because the previous measurement in this exact area was wrong and this one is load-bearing for a HIGH
+entry.** Re-measured over the full population, one command, labelled, spellings enumerated:
+
+| token | fixtures containing it (of **26**) |
+|---|---|
+| `border` | **0** |
+| `borderWidth` | **0** |
+| `borderColor` | **0** |
+| `borderEdges` | **0** |
+| `edges` | **0** |
+| `fontFamily` | **24** ← positive control |
+| `headerStyle` | **3** ← positive control |
+| `align` | **8** ← positive control |
+
+**The controls return non-zero on the same population, so the negative is a measurement and not a broken
+grep.** Every border spelling is absent from every fixture.
+
+**So the border render path — `buildCellRect`'s `hasBorder` arm, `writeBorder`, `decodeBorder`, the header
+cascade, and the three defaults `resolvedBorderWidth`/`resolvedBorderColor`/`resolvedBorderEdges` — has never
+been exercised by a single byte-compared document, on any target, in the history of this repository.** The
+matrix legs, `hashmatrix`, the byte-identity workflow and the untagged golden corpus are all blind to it, and
+always have been. It is covered by unit and structural tests only.
+
+**The remedy is now one artefact that discharges both halves.** A bordered fixture in the golden corpus
+converts 14.8's logic-identity argument into bytes **and** gives the entire border path its first byte-level
+coverage. Specify it as: a table declaring `style.border` **and** a `headerStyle.border` differing from it in
+all three attributes, with `edges` in a **non-default order** (the canonical join is what the projection
+promises and nothing byte-level has ever exercised it), registered in the matrix with a golden expectation per
+target. Until it exists, **the register must say in these words that the extraction is unproven at the byte
+level** — a logic-identity argument read line for line is real evidence, and it is also the class of evidence
+this run has found wrong four separate times.
 
 So `folio-go-matrix`, `hashmatrix` and the byte-identity workflow all ran, all passed, and **none of them
 rendered a header border on any target.** The field's cross-target behaviour is exactly as unproven after CI
