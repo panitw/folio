@@ -356,8 +356,11 @@ jobs:
 
   # DW-268. THE BROWSER SUITE, RUN.
   #
-  # `npm run test:e2e` — 36 Playwright tests at the time this was written,
-  # 52 as of 2026-09-10 — ran in NO workflow at all.
+  # `npm run test:e2e` — 36 Playwright tests at the time this was written —
+  # ran in NO workflow at all. Do not maintain that count here: it moved 52 ->
+  # 55 -> 58 in a single day (2026-09-10) as two stories added specs, so any
+  # integer written down is stale within hours. Measure it instead:
+  #   git grep -cE '^ *test\(' -- 'folio-designer/e2e/*.spec.ts'
   # The only e2e-shaped thing CI did was `test:e2e:compile`, which is
   # `tsc --noEmit` over the spec files: it proves the specs still typecheck,
   # which is not the same claim as the specs still passing, and the

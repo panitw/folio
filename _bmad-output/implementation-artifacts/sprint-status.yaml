@@ -487,7 +487,13 @@ development_status:
   epic-13-retrospective: optional
 
   # 14.1 writes the button rule FIRST; the sweep is its consequence, not its substance.
-  epic-14: in-progress
+  # Boundary gate run 2026-09-10 at 09a41e4, CONCLUDED -- 4 items concluded, 1 unconcludable.
+  # Done WITH THREE UNMET ITEMS CARRIED, not clear: UX-DR25 keyboard reach for table columns
+  # (DW-387), DW-383 still uncovered (the border render path has never been byte-compared on
+  # any target), and DW-385 (the canvas drawing reaches assistive technology not at all).
+  # The gate also found three register entries measurably wrong; DW-356 needs RE-BASING, not
+  # closing -- its subject was deleted at bd634bd. See epic-11-14-decision-log.md D-14.11.1.
+  epic-14: done
   14-1-one-button-vocabulary: done
   14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and: done
   14-3-a-placed-component-is-the-selected-component: done
@@ -498,7 +504,7 @@ development_status:
   14-7b-the-table-editor-s-cancel-discards-what-it-counted: done
   14-8-the-table-editor-carries-the-header-cell-and-border-sections: done
   14-9-the-canvas-draws-the-table-it-will-print: done
-  14-10-a-table-column-is-bound-from-the-main-window: review
+  14-10-a-table-column-is-bound-from-the-main-window: done
   epic-14-retrospective: optional
 
   # Epic 15 is the release blocker set, and 15.1 was URGENT rather than merely first.
