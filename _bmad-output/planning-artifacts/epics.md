@@ -5325,7 +5325,7 @@ So that a table is configured in one place rather than in a dialog plus a hand-e
 > **The owner also amended the block itself on 2026-09-10**: BORDERS authors `headerStyle.border` —
 > see the final criterion, which is capability rather than presentation and is admitted knowingly.
 
-**Given** the editor's single `HEADER AND ROWS` group (`TableEditor.tsx:427`), which today holds everything Story 12.3 made authorable in one undifferentiated block
+**Given** the editor's single `HEADER AND ROWS` group — `div.table-editor-header`, carrying `role="group" aria-label="Table header and rows"`, which is how to find it and **not** a line number ([D-14.7.4]'s neighbours: the anchor written here as `TableEditor.tsx:427` on 2026-09-10 rotted to `:448` the same day when Story 14.7b moved the file by +22 lines; **re-measure it, never quote it**) — which today holds everything Story 12.3 made authorable in one undifferentiated block
 **When** it is restyled
 **Then** it becomes the design's **HEADER** and **CELLS** sections — HEADER carrying the header height and the header text fields (font family, size, line spacing, background, colour, vertical align, align), CELLS carrying the alternating row background, which is the one field in the set scoped to data rows rather than to the header. No control is added, removed or rewired: this is a regrouping, and the story is done when the editor reads as one designed thing rather than when it can do something new
 
