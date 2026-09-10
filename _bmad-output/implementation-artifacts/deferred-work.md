@@ -13447,3 +13447,49 @@ value in it, and gets either silence or an engine refusal naming an empty id arr
 `ids` for an action they took on a font.
 
 **Related:** [D-000.17], [D-14.10.5], [DW-385].
+
+---
+
+### DW-389 - the AD-17 carve-out for `App.tsx` is a lazy match that GROWS, and anything parked inside it is silently waived
+
+- **source_spec:** `folio-designer/src/canvas-authority-contract.test.ts`
+- **Found by:** Story 14.10's builder, while writing the story's own "Ask First" boundary.
+  **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN. **Currently LATENT, not active.**
+
+**The mechanism.** The AD-17 corpus scan deletes one approved region from `App.tsx` before scanning the rest,
+so the sole sanctioned pointer-coordinate read does not trip the prohibition list. The seam
+(`canvas-authority-contract.test.ts:1082`) is:
+
+```
+/export function placementPoint\(event: Pick<MouseEvent,[\s\S]*?\n}\nfunction pageStyle/
+```
+
+`[\s\S]*?` is lazy, but its terminator is **the next top-level `function pageStyle`, not the end of
+`placementPoint`**. So the waived region is *everything between those two declarations*. **Any new top-level
+code inserted between them is deleted before the scan runs and receives a free waiver** — it could call
+`getBoundingClientRect`, read `offsetWidth`, or construct a `ResizeObserver`, and the contract test would stay
+green.
+
+**Why this is a real asymmetry rather than a nitpick — the sibling seam four lines above gets it right.** The
+`measuredViewerBox` seam (`:1070`) terminates on `\n}\n`, the function's **own closing brace**, so that region
+**cannot grow**. It also asserts the seam matches **exactly once**, with a comment naming the reason: *"a second
+copy of the seam prepended above this one would otherwise be the region the lazy match selects, waiving a
+reading this story exists to bound."* The `App.tsx` seam has **neither** protection: no occurrence count, and a
+terminator that lets the region expand without limit. The hazard that was reasoned about carefully for one
+seam was not applied to its neighbour.
+
+**Measured state today: LATENT.** `placementPoint` is declared at `App.tsx:4807` and `pageStyle` at `:4810`, so
+the waived region is currently **three lines and contains nothing but `placementPoint` itself**. Nothing is
+being wrongly waived right now. This entry exists because the guard's correctness depends on **two declarations
+staying adjacent**, which nothing checks and no one would think to preserve.
+
+**What would close it.** Terminate the seam on `placementPoint`'s own closing brace rather than on the next
+declaration, matching the sibling; and assert it matches exactly once, also matching the sibling. Both are
+one-line changes to a test, but they change what a guard covers, so they belong to a story rather than to a
+passing edit — and Story 14.10 is fenced out of them explicitly (its "Ask First" names this gap).
+
+**How we'd know it was forgotten.** Nobody would. That is the entire severity: a future author adds a helper
+between the two functions, uses a browser measurement in it because the code around it appears to, and the
+scan that exists to prevent exactly that stays green. The failure is silent by construction.
+
+**Related:** [D-14.9.1], [DW-382].
