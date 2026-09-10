@@ -6434,3 +6434,42 @@ That is the cadence working as designed — the claim was **always** going to be
 that I read the answer this time instead of pushing past it ([DW-366]).
 
 **Related:** [D-000.32], [D-000.33], [D-14.7.3], [DW-366].
+
+## D-14.8.1 - an investigator relayed the session's opening `gitStatus` as a measurement, and it would have discredited correct anchors
+
+**Recorded 2026-09-10**, caught by Story 14.8's builder, which re-measured rather than accepting the report.
+
+One of four parallel investigators reported the working tree as carrying uncommitted edits to `App.css`,
+`App.tsx`, `tokens.css`, `canvas-authority-contract.test.ts` and `pdf-viewer.tsx` — and, on that basis,
+**caveated every anchor it returned as "not HEAD anchors"**. The tree was **clean**; `git status --porcelain`
+was empty, measured directly. The investigator had relayed the **stale `gitStatus` block from its own prompt
+context** instead of running the command.
+
+**Why this is worth an entry rather than a shrug: the failure is inverted, and inverted failures survive
+review.** The catalogued shape [D-000.32] names — *a fact echoed back by the agents told it* — has always
+appeared as false **confirmation**: an agent repeats a claim it was handed, and the claim is believed because
+it came back. This is the same mechanism producing false **doubt**. Its anchors were correct and it labelled
+them untrustworthy. Had the builder accepted that caveat, it would have discarded a set of good measurements
+and re-derived them — or, worse, written the caveat into the spec, where a later reader would have found
+correct anchors marked unreliable and mistrusted the file rather than the note.
+
+**The specific trap is that the prompt's `gitStatus` block looks exactly like a measurement.** It is
+formatted like command output, it is dated, and it sits in the same context window as the request. Nothing in
+its presentation says "this was true when this session started, and stories have shipped since." **The
+engineering lead independently reported the same block as stale at its own grounding this session — twice,
+and the second time by an entire epic**, listing Story 13.2's working files and a HEAD five commits back.
+Two agents, same session, same false input, different jobs.
+
+**The rule, which is now standing and applies to every agent in this run.** The session's opening `gitStatus`
+is a **snapshot of some earlier moment, never of now**, and it may be stale by hours or by an entire epic. Any
+statement about the working tree, about HEAD, or about whether an anchor is current **must come from a command
+run in that turn** — `git status --porcelain`, `git rev-parse HEAD`, `git diff --name-only`. A tree claim
+sourced from context rather than from a command is not a weak measurement; it is not a measurement.
+
+**What made this cost nothing.** The builder ran `git status --porcelain` itself, found the report false, said
+so explicitly rather than quietly ignoring it, and then **re-verified every load-bearing number that
+investigator had given it rather than discarding the whole set** — the proportionate response, since the
+investigator's error was in its provenance claim and not necessarily in its arithmetic. That is the behaviour
+to copy: distrust the caveat, re-measure the content, and report both.
+
+**Related:** [D-000.32], [D-14.7.3], [D-14.4.2].
