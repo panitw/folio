@@ -356,7 +356,8 @@ jobs:
 
   # DW-268. THE BROWSER SUITE, RUN.
   #
-  # `npm run test:e2e` — 36 Playwright tests — ran in NO workflow at all.
+  # `npm run test:e2e` — 36 Playwright tests at the time this was written,
+  # 52 as of 2026-09-10 — ran in NO workflow at all.
   # The only e2e-shaped thing CI did was `test:e2e:compile`, which is
   # `tsc --noEmit` over the spec files: it proves the specs still typecheck,
   # which is not the same claim as the specs still passing, and the
