@@ -6642,3 +6642,60 @@ chain.** The closer caught it by re-measuring a fact it had been handed, which i
 for the fifth time.
 
 **Related:** [D-14.8.3], [D-14.8.4], [D-000.32], [DW-383].
+
+## D-14.10.1 - the table editor's BOUND FIELD is display; a column's binding is edited in the main window only
+
+**Owner decision, taken at the terminal 2026-09-10**, ahead of Story 14.10's dispatch so the story does not
+stall at its own last criterion.
+
+**Verdict: display only, as `epics.md` §14.10's final criterion is written.** The table editor keeps **showing**
+each column's bound field as context. **Editing a column's binding happens in the main window** — select the
+column on the canvas, pick a row-scope field in the DATA panel. The editor becomes structure-only: add, remove,
+reorder, width, align, footer aggregate.
+
+**Why the question was put at all.** That criterion ends *"unless the owner rules otherwise"*, and it is not a
+no-op: **the matrix's `Row field` input is editable today.** Story 14.7 shipped it, gated on the projected
+`rowFieldEditable` (`table_columns_projection.go:213`). So the criterion removes a path that works, which is a
+different act from declining to build one, and the owner should decide it knowingly rather than have it happen
+as a consequence of a story about the canvas.
+
+**The reason the recommendation was to accept it: keeping both is the shape [D-14.4.Q2(a)] already removed.**
+One value with two editing sites, each individually reasonable, is exactly what that decision refused when a
+table's binding was stated in three places and editable in none. Two surfaces would additionally have to agree
+about refusals, focus and undo — and **nothing in this project compares behaviour across surfaces**, which is
+the gap [DW-370] records for the two modal `Cancel` buttons that mean different things.
+
+**What does NOT become read-only, stated because it would be easy to over-apply this.** The dialog is not
+read-only overall. Its **collection** and **row alias** stay editable, and 14.7's own `honest-note` says in the
+product's own words that the dialog is the only place those can be changed. This ruling scopes to the per-column
+**bound field** and nothing else.
+
+**How this interacts with 14.9, which is in flight.** 14.10 depends on 14.9 having drawn the columns, because
+"click a column" requires columns to be visible and hit-testable on the canvas. If 14.9's paint does not make a
+column addressable, 14.10's first criterion has nothing to select — **that dependency is a dispatch
+precondition for 14.10, not a discovery for its builder.**
+
+**Related:** [D-14.4.Q2(a)], [DW-370].
+
+## D-14.10.2 - the Epic 14 boundary gate's asset-cache margin is 3, not the figure I had been repeating
+
+**Recorded 2026-09-10**, correcting my own recollection while preparing the gate.
+
+I have been describing the Epic 14 boundary gate's asset-cache item as *"the `assetCount` 62-against-64
+margin"*. Measured in `deferred-work.md`: the fixture carried **44** assets against `maximumCacheAssets` **64**;
+it later moved **44 → 54**; and the recorded arithmetic *"if all seven consume slots"* projects **54 → 61**.
+
+**So the current figure is 54, the worst case on the books is 61, and the cap is 64 — a margin of 3, not 2, and
+not from the number I was quoting.** The error was small and in the safe direction, but the gate is precisely
+where a remembered number gets used instead of a measured one, and this run has now recorded three separate
+occasions where a plausible figure survived because nobody re-derived it ([D-14.7.2], [D-14.8.5], and this).
+
+**Standing instruction for the boundary gate: every one of its four items is re-measured at the gate, not
+quoted from here.** That includes this entry. The gate's four items are [DW-332] (document-bar fit at the
+shell's 1024px minimum), [DW-339] (`OrientationProperty` rendering full-bleed, unverified by any run),
+[DW-356] (the disabled Connect button's stated reason not programmatically tied to it), and this asset-cache
+margin. **[DW-383] is now a fifth candidate** — the golden corpus has never covered the border render path in
+any element kind — and it is the only one of the five that is a coverage gap in the project's central
+reproducibility claim rather than a UI verification gap.
+
+**Related:** [D-14.8.5], [DW-332], [DW-339], [DW-356], [DW-383].
