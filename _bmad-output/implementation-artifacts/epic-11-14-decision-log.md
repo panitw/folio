@@ -7215,3 +7215,143 @@ exporting it warns about nothing. That is a file-boundary change outside Story 1
 its fence; it is not deferred work so much as the obvious shape of whatever next touches that function.
 
 **Related:** [D-14.7.2], [D-14.10.5].
+
+
+---
+
+## D-14.11.1 - THE EPIC 14 BOUNDARY GATE, RUN AT `09a41e4`: four items concluded, one unconcludable, and three register entries measured wrong
+
+**Executed 2026-09-10** at HEAD `09a41e4`, immediately after Story 14.10 and immediately before the owner's
+pause ([D-000.97]). Every item was **executed, never quoted** — [D-14.10.2]'s standing requirement — and every
+conclusion resting on an **absence** carries a positive control, because an instrument that silently matches
+nothing reports the same "clean" as an instrument that ran correctly.
+
+**The gate's fence, set before it ran: the gate CONCLUDES and REGISTERS, it does NOT fix.** A repair at a gate
+is unstoried work with no acceptance criteria and no plan gate, arriving exactly when the owner has stopped
+watching. Building an **instrument** to measure an item is not a fix and was in scope; changing product code to
+make an item pass was not. **No product code was touched.** One instrument was built.
+
+### The five verdicts
+
+| # | Item | Verdict |
+|---|---|---|
+| 1 | [DW-332] document-bar fit at 1024px | **CONCLUDED-PASS** — and the entry's arithmetic is wrong |
+| 2 | [DW-339] `OrientationProperty` full-bleed | **CONCLUDED** — full-bleed confirmed, contained |
+| 3 | asset-cache margin | **CONCLUDED-PASS** — 62/64, margin **2**, confirming [D-14.10.4] |
+| 4 | [DW-356] the Connect button's tie | **CONCLUDED** — tie absent, but **its subject no longer exists** |
+| 5 | [DW-383] border path in the golden corpus | **UNCONCLUDED, and unconcludable at a gate. STILL UNCOVERED.** |
+
+### 1. [DW-332] — it fits, and the headroom behind it is a third of what the entry claims
+
+Measured at 1024×768 over a real opened template, in three states. The bar stays at exactly **1024.00 × 40.00**,
+single row, nothing wraps, both ends inside the viewport at `ratio: 1`. **It fits.**
+
+**RED-PROVEN through the product, not by mutating it:** an in-file positive control drives the bar overfull with
+a 220-character single-token file name → `bar 1989.25`. Inverting the control to assert the fit produced
+`Expected: <= 1024, Received: 1989.25`.
+
+**The disagreement.** [DW-332] predicted *"~149px left"* from Story 13.5's 179px of slack. Measured free space
+is **127.03px** in design mode — and **the entry never considered PREVIEW mode**, where `.later-control` swaps
+to the render-freshness line and free space falls to **55.03px**, roughly a third of the predicted figure. The
+fit holds; *the margin behind the fit was overstated, and the tightest state is one the entry does not name.*
+Stated honestly by the gate: its "free space" is the actions→later-control gap and cannot be proven identical
+to the quantity 13.5 called 179px.
+
+### 2. [DW-339] — the register's factual claim is correct
+
+`grid 275.00, column 134.50, orientation editor 275.00 at x 993.00, columns spanned 2.045`. **The premise was
+measured rather than read off CSS** — the grid's first two children share a row, the second starts past the
+first, and the two are equal width, so it is a real `1fr 1fr`. Against that the control is **two columns wide,
+not one**, starts at the grid's own x, and its painted segmented group fills the box. **It does not escape the
+inspector panel.** RED-PROVEN by perturbing to assert one column: `Expected: 134.5, Received: 275`.
+
+Unverified since Story 14.2 — **eight stories**. Whether full-bleed is *desired* is a design call and is
+explicitly **not** what this gate decided; the number the entry asked for is 2, not 1.
+
+### 3. The asset-cache margin — the gate independently reproduced [D-14.10.4]
+
+From a build the gate ran itself, verbatim: *"the release carries 62 cache assets against a declared maximum of
+64 — the margin is 2."* Confirmed **three ways**: that build, a second build (Playwright's `webServer`), and the
+emitted `dist/offline-release-manifest.json` (`s1.assetCount = 62`). Cap is `release-payload.ts:42`, hard
+`reject('asset-count-over-maximum')` at `:85`. **Two slots remain — not release-blocking.** The warn threshold
+(56) is already crossed, so the warning is live and will stay live.
+
+**A note on how this arrived, because it matters more than the number.** The gate flagged [D-14.10.2] as
+factually wrong and did not know that [D-14.10.4] had already withdrawn its arithmetic — [D-14.10.4] was filed
+hours earlier, from the same sources, prompted by the fifth lead. **So the margin of 2 has now been established
+three times by three parties working independently**: the lead from the register, the orchestrator verifying it
+before accepting, and the gate from a build. [D-14.10.2]'s verdict — re-measure at the gate, never quote —
+survives; its arithmetic remains withdrawn. **No further correction is owed, and filing one would be a third
+entry about a settled fact.**
+
+### 4. [DW-356] — the tie is still absent, and the control it names was deleted
+
+`aria-describedby` in `DataPanel.tsx`: **0**, against a positive control of **8** in `App.tsx` from the same run
+of greps. The grep works; the tie is absent.
+
+**But the subject is gone.** `binding-connect` matches **0** across `src/` and `e2e/` at HEAD and **1** at
+`e70d3a3` (Story 14.4's tree) — a positive control on the same string. It was removed at **`bd634bd`** under an
+owner ruling recorded in `DataPanel.tsx`: *"A PICK BINDS IMMEDIATELY … There is no intermediate 'connect'
+control."*
+
+**The defect class survives in changed shape**: the refusal sentence now lives in `.binding-chip.data-context`
+as a bare `<p role="status">`, tied to no control. Mitigating, and the gate found this rather than assuming it:
+the per-row reasons (`shape.reason`) render **inside** the tree-item `<button>`, so those are in the accessible
+name and are **not** the same gap.
+
+**A SECOND DISAGREEMENT, and it undercuts the entry's severity.** [DW-356] was raised LOW→MEDIUM on the ground
+that it is *"the second instance of the same defect in three stories — Story 14.3 registered the same gap
+against its orientation control."* **The gate could not corroborate that claim.** Story 14.3's spec contains no
+mention of `orientation` or `aria-describedby`; no register entry matches; and at HEAD `OrientationProperty`
+(`App.tsx:4896`) **does** carry `aria-describedby` pointing at `<p id="property-orientation-square">`. **The
+escalation rests on a sibling instance that appears not to exist.** [DW-356] therefore needs **re-basing, not
+closing** — a real gap, wrongly described and wrongly sized.
+
+### 5. [DW-383] — still uncovered, and it must not be reported as "checked"
+
+**No instrument can close this at a gate**, and the entry says so itself: closing it needs a new fixture, matrix
+registration in `matrix_registration_test.go`, **and** a golden expectation per target. Extending
+`alternating-rows` is worse, not cheaper — it feeds a byte-comparing golden test, so a border there moves
+committed golden bytes; and `fixtures/declared-variants/` is human-attested and untouchable by any agent.
+
+Re-derived from scratch over **26** tracked `fixtures/*/input.folio`, one token per invocation:
+
+| token | fixtures of 26 | |
+|---|---|---|
+| `border` | **0** | |
+| `borderWidth` / `borderColor` / `borderEdges` / `edges` | **0** | |
+| `fontFamily` | 24 | control |
+| `headerStyle` | 3 | control |
+| `align` | 8 | control |
+
+**Three further controls, and the first is the one that makes this trustworthy:** the gate **built a seeded
+corpus** — `alternating-rows/input.folio` copied with a `headerStyle.border` injected — and ran the *identical*
+pipeline against it, which reported `border = 1`. **The pattern would have found a border had one been there.**
+Also: a case-insensitive sweep of the entire tracked `fixtures/**` tree matches exactly one file,
+`fixtures/keep-together/README.md`, which is prose; and `matrix_registration_test.go` contains `border` **0**
+times.
+
+**The border render path has never been exercised by a single byte-compared document, on any target.** The green
+byte-identity workflow does not cover it and never has. **This is reported UNCONCLUDED and STILL UNCOVERED, per
+[D-000.17].** The failure mode [DW-383] exists to name is someone citing that green workflow as though it
+covered this field; a gate reporting "checked" without "still uncovered" is how that begins.
+
+### What the gate did NOT do, named so the absence is not mistaken for coverage
+
+It did not run the full matrix legs, the `verify:offline*` chain beyond what a build performs, or the font-host
+scans as gates in their own right. It concluded five registered items; it is not a general audit of Epic 14.
+
+### The instrument, and the decision to keep it
+
+`folio-designer/e2e/document-bar-fit.spec.ts` — the gate's only tree change. Three tests: the [DW-332] fit in
+three states, the [DW-332] overflow positive control, and the [DW-339] column measurement. It uses Playwright's
+own out-of-page `boundingBox()`/`viewportSize()` and spells no prohibited identifier, so it passes the AD-17
+corpus scan with itself enrolled (28/28), and it passes `test:e2e:compile`.
+
+**Kept and committed, deliberately.** CI's `folio-designer-e2e` job runs `npm run test:e2e` on every push, so
+keeping it converts [DW-332] and [DW-339] from **one-off gate observations into per-commit coverage** — the
+difference between knowing the bar fits today and knowing when it stops fitting. This is not the "gate fixes
+things" the fence forbids: **no product behaviour changes, and no register item is closed by it.** It is the
+gate declining to throw away the only instrument that ever measured either item.
+
+**Related:** [D-000.17], [D-000.33], [D-000.97], [D-14.10.2], [D-14.10.4], [DW-332], [DW-339], [DW-356], [DW-383].

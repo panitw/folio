@@ -12037,6 +12037,23 @@ width. **Nothing does the same for the document bar** - which this story just wi
 guard was structurally incapable of failing until it was executed, so this project has direct experience of
 what arithmetic-instead-of-execution is worth here. Confirm it at the Epic 14 boundary gate.
 
+
+**MEASURED AT THE EPIC 14 BOUNDARY GATE, 2026-09-10, HEAD `09a41e4` — IT FITS, and this entry's arithmetic was
+wrong.** See [D-14.11.1]. At 1024×768 over a real opened template the bar stays at exactly **1024.00 × 40.00**,
+single row, nothing wraps, both ends inside the viewport at `ratio: 1`, mode-switch right edge 1012.00.
+**Red-proven through the product rather than by mutating it**: a 220-character single-token file name drives the
+bar to `1989.25`, and inverting that control to assert the fit fails with `Expected: <= 1024, Received: 1989.25`.
+
+**Two corrections to what is written above.** (1) This entry predicted *"~149px left"*; measured free space is
+**127.03px** in design mode. (2) **This entry never considered PREVIEW mode**, where `.later-control` swaps to
+the render-freshness line and free space falls to **55.03px** — roughly a third of the predicted figure, and the
+tightest state the bar has. The fit holds; the headroom behind it was overstated and its worst case was unnamed.
+*Stated honestly: the gate's "free space" is the actions→later-control gap and cannot be proven identical to the
+quantity Story 13.5 called 179px.*
+
+**Now under per-commit coverage** rather than one-off observation: `folio-designer/e2e/document-bar-fit.spec.ts`
+runs in CI's `folio-designer-e2e` job on every push.
+
 ### DW-333 - `propertyPath` returns the first canonical key, not the failing one, so a multi-key refusal names the wrong field
 
 - **source_spec:** `_bmad-output/implementation-artifacts/14-2-a-line-is-a-thickness-and-a-colour-a-rectangle-is-a-fill-and.md`
@@ -12145,6 +12162,21 @@ rests on a read of the stylesheet, not on a rendered pixel.
 **Confirm at the Epic 14 boundary gate**, alongside DW-332's document-bar fit at 1024px, which rests on
 arithmetic for the same reason. Both are in the same category: a visual claim this cadence structurally
 cannot check until the gate.
+
+
+**MEASURED AT THE EPIC 14 BOUNDARY GATE, 2026-09-10, HEAD `09a41e4` — this entry's factual claim is CORRECT.**
+See [D-14.11.1]. `grid 275.00, column 134.50, orientation editor 275.00 at x 993.00, columns spanned 2.045`.
+**The `1fr 1fr` premise was measured rather than read off CSS**: the grid's first two children share a row, the
+second starts past the first, and the two are equal width. Against that the control is **two columns wide, not
+one**, starts at the grid's own x, and its painted segmented group fills the box. **It does not escape the
+inspector panel** — no overflow, no indent, no spill. Red-proven by perturbing the assertion to expect one
+column: `Expected: 134.5, Received: 275`.
+
+**Unverified since Story 14.2 — eight stories — and now verified.** What remains is not a verification question:
+**whether full-bleed is the DESIRED presentation is a design call**, and the gate explicitly did not make it.
+The number this entry asked for is 2, not 1.
+
+**Now under per-commit coverage**: `folio-designer/e2e/document-bar-fit.spec.ts`, run by CI on every push.
 
 ### DW-340 - independent `pendingRef`s let a Thickness blur-commit and an orientation click be in flight together
 
@@ -12437,6 +12469,29 @@ although the rest of the panel wires errors to their controls.
 floor (UX-DR25), and this is the **second** instance of the same defect in three stories - Story 14.3 registered
 the same gap against its orientation control. A story that states a reason a sighted user can see and a screen
 reader cannot has met the letter of "state the reason before the attempt" and missed its point.
+
+
+**MEASURED AT THE EPIC 14 BOUNDARY GATE, 2026-09-10, HEAD `09a41e4` — THIS ENTRY NEEDS RE-BASING, NOT CLOSING.**
+See [D-14.11.1]. Three findings, in order of how much they change the entry:
+
+1. **The tie is still absent.** `aria-describedby` in `DataPanel.tsx`: **0**, against a positive control of **8**
+   in `App.tsx` from the same run. The grep works.
+2. **But the control this entry NAMES no longer exists.** `binding-connect` matches **0** across `src/` and
+   `e2e/` at HEAD and **1** at `e70d3a3` (Story 14.4's tree) — positive control on the same string. It was
+   removed at **`bd634bd`** under an owner ruling recorded in `DataPanel.tsx`: *"A PICK BINDS IMMEDIATELY …
+   There is no intermediate 'connect' control."* **The live gap is the untied refusal sentence in
+   `.binding-chip.data-context`, a bare `<p role="status">` tied to no control.** Mitigating, and found rather
+   than assumed: the per-row reasons (`shape.reason`) render **inside** the tree-item `<button>`, so those are
+   in the accessible name and are NOT the same gap.
+3. **The MEDIUM escalation rests on a sibling instance that appears not to exist.** This entry was raised
+   LOW→MEDIUM on the ground that it is *"the second instance of the same defect in three stories — Story 14.3
+   registered the same gap against its orientation control."* The gate could not corroborate it: Story 14.3's
+   spec contains **no** mention of `orientation` or `aria-describedby`; no register entry matches; and at HEAD
+   `OrientationProperty` (`App.tsx:4896`) **does** carry `aria-describedby` pointing at
+   `<p id="property-orientation-square">`.
+
+**So this is a real gap, wrongly described and wrongly sized.** Re-basing it onto the `.data-context` sentence,
+and re-deciding its severity without the uncorroborated sibling, is the work — and it is not a gate's to do.
 
 ### DW-357 - a mutating review layer runs in parallel with read-only ones and with the coordinator's own verification
 
@@ -13271,6 +13326,27 @@ or a target-specific defect in the border path ships and is found by a user rath
 set, registered in the matrix and given a golden expectation per target, so the field enters the corpus the
 byte-identity claim is made over. Pair it with the `edges` array in a non-default order, since the canonical
 join is what the projection promises and nothing byte-level has ever exercised it.
+
+
+**RE-DERIVED AT THE EPIC 14 BOUNDARY GATE, 2026-09-10, HEAD `09a41e4` — UNCONCLUDED, AND STILL UNCOVERED.**
+See [D-14.11.1]. **This item cannot be concluded at a gate and was not softened into one that could be**
+([D-000.17]).
+
+Re-measured from scratch over **26** tracked `fixtures/*/input.folio`, one token per invocation (never two greps
+in one block — [D-14.8.5]): `border` **0**, `borderWidth` **0**, `borderColor` **0**, `borderEdges` **0**,
+`edges` **0**. Positive controls from the same sweep: `fontFamily` **24**, `headerStyle` **3**, `align` **8**.
+
+**And the control that makes this trustworthy rather than merely repeated:** the gate **built a seeded corpus** —
+`alternating-rows/input.folio` copied with a `headerStyle.border` injected — and ran the *identical* pipeline
+against it, which reported `border = 1`. **The pattern would have found a border had one been there.** This
+matters because the previous measurement in this exact area was wrong in the opposite direction: someone once
+reported three fixtures carrying a border when the true answer was zero. Two further controls: a
+case-insensitive sweep of the whole tracked `fixtures/**` tree matches exactly one file,
+`fixtures/keep-together/README.md`, which is prose; and `folio-go/matrix_registration_test.go` contains `border`
+**0** times.
+
+**The border render path has never been exercised by a single byte-compared document, on any target.** The green
+`Cross-target byte identity` workflow does not cover it and never has. **Do not report this as "checked".**
 
 ---
 
