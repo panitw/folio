@@ -6945,3 +6945,52 @@ attached to it rather than as a bare UI nicety — which is a stronger register 
 under this ruling names that adjacency explicitly.
 
 **Related:** [D-14.8.4], [D-14.10.1], [D-14.10.2], [DW-356], [DW-385].
+
+
+---
+
+## D-14.10.4 - CORRECTION to D-14.10.2: the asset-cache margin is 2, not 3. My correction reached past the current figure to two superseded ones.
+
+**Recorded 2026-09-10.** [D-14.10.2] was written to correct a figure I had been repeating from memory. Its
+verdict — **re-measure every boundary-gate item at the gate, never quote it** — stands and is strengthened by
+this entry. **Its supporting arithmetic is withdrawn.**
+
+**What D-14.10.2 says, and what is wrong with it.** It records the asset-cache margin as *"54 current, 61 worst
+case, cap 64 — a margin of 3, not the 62-against-64 I had been repeating"*. **The 62 I had been repeating was
+correct.** Measured, one command per block:
+
+- `deferred-work.md` **DW-313** (`source_spec:` Story **13.6**): *"`s1.assetCount = 62`. Two slots."*
+- `deferred-work.md` **DW-325**: *"measured, **62 assets** = 48 `.ttf` (77%), 5 `.js`, 4 `.bcmap`…"*
+- `folio-designer/src/release-payload.ts:42`: `const maximumCacheAssets = 64`.
+- **[D-14.0.1]** in this log: *"every `npm run build` has been printing `the margin is 2` — and it has been
+  walked past. It appeared three times in my own Epic 13 boundary-gate output."*
+
+**So the margin is 2.** The `44 → 54` move and the *"if all seven consume slots"* → 61 arithmetic I corrected
+*to* are **both older than Story 13.6**, which is where 62 was measured. I reached past the current number to
+two that were already superseded, and **overstated headroom by 50%** in a figure that gates a release
+(`release-payload.ts:85` rejects outright at `> 64` — the failure is a refusal, not a degradation).
+
+**Why this entry exists in this shape rather than as an edit.** This run's rule is to **correct the ruling, not
+the record**: a silently amended entry destroys the evidence that the error was made, and this particular error
+is worth keeping visible. It is **[D-14.8.3]'s own subject arriving inside the entry written about it** — a
+plausible figure surviving because nobody re-derived it, in the entry whose entire point was that a remembered
+number gets used in place of a measured one. A correction that is itself uncorroborated is not a correction; it
+is the same defect with more confidence. **Found by the fifth engineering lead; verified independently by the
+orchestrator before acceptance**, which is the only reason it is not now a third figure.
+
+**A second finding from the same measurement, and it is why the gate's clean build is now load-bearing.**
+[D-14.0.1]'s verdict requires that *"each story states its slot cost in its spec and re-measures `s1.assetCount`
+after a clean build"*. Measured over all ten Epic 14 spec files: **3 of 10 mention a slot at all** (14.1, 14.2,
+14.5), against a positive control of **10 of 10** containing a `## Verification` section. **None of the last
+five — 14.6, 14.7, 14.7b, 14.8, 14.9 — records a slot cost.** Nothing was probably spent (14.5's logo was the
+only known spender; the rest are UI logic), but **the obligation that would have told us cheaply was not kept**,
+so the gate's clean build is now the only thing that knows the number. An unkept accounting obligation is
+invisible precisely while it is cheap to keep.
+
+**Consequence for the Epic 14 boundary gate.** The asset-cache item is now the **cheapest** of the five to
+execute — one clean `npm run build`, read `s1.assetCount`, compare against 64 — and the **most likely to
+surprise**, because its recorded figure was wrong and five stories skipped the tracking that would have caught
+drift. If the count has passed 64 the release is **rejected**, which is a release-blocking discovery that must
+happen before a pause rather than after it. Report the actual integer, never this entry's.
+
+**Related:** [D-000.17], [D-14.0.1], [D-14.8.3], [D-14.10.2], [DW-313], [DW-325].
