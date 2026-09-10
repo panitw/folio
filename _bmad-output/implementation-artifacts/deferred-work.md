@@ -13172,3 +13172,48 @@ reads as the extraction having failed rather than as having been scoped.
 
 **How we'd know it was forgotten.** The engine's default border width or colour changes, the PDF moves, and
 the canvas keeps drawing the old value — the exact drift the extraction removed on the header path.
+
+---
+
+### DW-383 - no fixture declares a header border, so the matrix legs and the byte-identity workflow cannot see the field Story 14.8 added
+
+- **source_spec:** `fixtures/`
+- **Found by:** the orchestrator, closing Story 14.8 — while checking whether CI's green actually discharged the story's own stated caveat. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Story 14.8 made `headerStyle.border` authorable. Its own `## Verification` correctly warned that
+**cross-target byte identity for a document carrying a header border was unproven** at its tree, because the
+matrix legs are `//go:build matrix`-tagged and the per-story cadence does not reach them.
+
+**CI then went green on all seven guardrail jobs plus `Cross-target byte identity` — and that green does NOT
+discharge the caveat.** Measured across every `fixtures/*/input.folio` by walking the parsed JSON for a
+`headerStyle` carrying a `border`: **zero fixtures declare one.** `alignment-rounding`, `alternating-rows`
+and `line-spacing` carry a `headerStyle`, and three fixtures carry a `border`, but **no fixture carries a
+border inside a `headerStyle`.**
+
+So `folio-go-matrix`, `hashmatrix` and the byte-identity workflow all ran, all passed, and **none of them
+rendered a header border on any target.** The field's cross-target behaviour is exactly as unproven after CI
+as before it.
+
+**Why this is filed rather than fixed at the close.** Adding a fixture is not a one-line change: a new
+fixture needs matrix registration (`matrix_registration_test.go`), a golden expectation per target, and a
+place in the corpus census — which is story-sized work, and Story 14.8's criteria did not ask for it.
+Extending an **existing** fixture is worse, not better: `alternating-rows` feeds a byte-comparing golden test,
+so adding a header border to it would move committed golden bytes, and the fixtures under
+`fixtures/declared-variants/` are **human-attested and must never be edited by any agent.**
+
+**The shape, which is why the severity is MEDIUM and not LOW.** This is *a guard never invoked* wearing the
+project's strongest guard as a disguise. Byte identity across targets is the central reproducibility claim
+([AD-21], [D-000.5]), and it is the claim most likely to be cited as covering a new field — precisely because
+it is the most rigorous thing in the repository. **A green matrix leg proves the corpus reproduces, not that
+the feature reproduces**, and the distinction is invisible from the badge. It is the same structure as
+[D-14.7.4]'s Story 14.7 defect (six claims compiled and never executed) and of every table fixture having had
+exactly one column until 14.7 ([DW-351]).
+
+**How we'd know it was forgotten.** Someone cites the green byte-identity workflow as evidence that the
+header border is target-stable — a reasonable-looking inference from the most trusted guard in the project —
+or a target-specific defect in the border path ships and is found by a user rather than by the matrix.
+
+**What would close it.** One fixture whose table declares a `headerStyle.border` with all three attributes
+set, registered in the matrix and given a golden expectation per target, so the field enters the corpus the
+byte-identity claim is made over. Pair it with the `edges` array in a non-default order, since the canonical
+join is what the projection promises and nothing byte-level has ever exercised it.
