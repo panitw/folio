@@ -28,9 +28,13 @@ properties, scalar binding from discovered JSON paths, and table-structure editi
 - Story 14.9: The canvas draws the table it will print
 - Story 14.10: A table column is bound from the main window
 
-14.1–14.5 are delivered; 14.6 is the next in the intended order (14.6, then 14.7, 14.8, 14.9, 14.10),
-so the rules below that were "written down first" by 14.1 and settled during 14.2–14.5 are now
-inherited constraints rather than open questions.
+⚠ **Refreshed 2026-09-10.** **14.1–14.7 and 14.7b are delivered**; **14.8 is next**, then 14.9 and
+14.10, and then the Epic 14 boundary gate — which is not yet booked and must confirm DW-332's
+document-bar fit at 1024px, DW-339's layout claims, DW-356's accessibility floor, and the
+`assetCount` margin. (This paragraph previously read "14.6 is the next in the intended order"; it was
+stale by four stories.) Story **14.7b** was split out of 14.7 on 2026-09-10 and is not in the list
+above. The rules below, "written down first" by 14.1 and settled during 14.2–14.5, are now inherited
+constraints rather than open questions.
 
 ## Requirements & Constraints
 
@@ -59,9 +63,21 @@ inherited constraints rather than open questions.
 - **The padding control is dead everywhere.** An owner ruling forbids the panel authoring padding on
   any element kind, including a table — no gate in the project would catch a violation, because the
   command it sends is legal, so it must not be built.
-- **14.8 is a restyle only.** An owner decision reduced it to grouping the controls Epic 12 already
-  ships into the drawn HEADER / CELLS / BORDERS sections. "Show header row" and the three-way borders
-  preset have no format field and are not coming; the mockup is to be corrected, not implemented.
+- **14.8 is a restyle PLUS exactly one new capability.** ⚠ **Corrected 2026-09-10** — this bullet said
+  "a restyle only", which was true of the owner's 2026-09-05 decision and is **no longer true**. The
+  bulk of the story is still grouping the controls Epic 12 already ships into the drawn HEADER and
+  CELLS sections, and "Show header row" and the three-way None/Horizontal/All borders preset still
+  have **no format field and are not coming**; the mockup is to be corrected, not implemented.
+  **But the owner amended that decision on 2026-09-10:** the BORDERS section authors
+  `headerStyle.border` — the header row's own border, distinct from the table's — extending the
+  closed command field set at `component_commands.go` from nine fields to ten. `epics.md` calls this
+  **"capability rather than presentation"** in the criterion itself. It was ruled in knowingly,
+  against a recommendation to split it into its own story, because the engine's own source comment
+  says `border` *"waits on Story 14.8's BORDERS section"* — so emptying BORDERS would have stranded a
+  deferral pointed at this story. **Dispatching 14.8 from the old bullet would hand the builder a
+  scope smaller than the owner ruled.** Read `epics.md` §14.8 directly; it is the authority, and it
+  also carries the story's principal correctness risk (the header border cascade is block-granular,
+  so setting one attribute replaces the whole block).
 - **Accessibility is a hard floor:** every interactive element keyboard-reachable and operable,
   visible focus using the select token, an accessible name on every icon-only control, canvas hit
   targets larger than their visual footprint, and the table editor behaving as a data grid under

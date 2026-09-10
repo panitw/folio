@@ -10,28 +10,29 @@ context: []
 
 # Story 14.7b: The table editor's Cancel discards what it counted
 
-**In plain terms.** Open the table editor today and every change you make is already saved by the time
-you look away from the box. There is no way out. If you opened it to try something and did not like it,
-you undo each change yourself, one at a time, and you have to remember how many you made. This story
-gives the dialog a **Cancel** that does that counting for you: it remembers how many of your edits
-actually changed anything, presses undo exactly that many times, and closes. **Done** closes and keeps
-your work, and so does Escape.
+**In plain terms.** *Not normative — the frozen Intent below governs. Rewritten at close to say what
+happened.*
 
-Two details are deliberate rather than incidental. If a change did not really change anything — clicking
-*clear* on a colour that was already unset, say — it is **not** counted, because counting it would make
-Cancel reach back past the moment you opened the dialog and undo work you did before. And if the undo
-runs out part-way, the dialog **stays open** and tells you where it actually got to, rather than closing
-and letting you assume everything was discarded.
+The table editor now has a **Cancel**. Before this, every change was saved the moment you looked away
+from the box, and the only way out was to undo each edit yourself, counting as you went. Cancel counts
+for you and closes. **Done** closes and keeps your work, and so does Escape.
 
-The other half of the story is a bug that has been shipping. While the table editor is open, keyboard
-shortcuts meant for the main window still work through it. Pressing the arrow keys nudges the very table
-you have open, and Cmd+D duplicates it — so the dialog is showing you one table while the document now
-holds two, and you cannot see it happen. Undo behaves differently again: it closes the dialog out from
-under you. All of them are shut off while the dialog is open, which is also what makes the counting
-trustworthy — the count can only be right if nothing else is quietly editing behind it.
+Two things will look like mistakes and are not. A change that did not really change anything is not
+counted, so Cancel cannot reach back past the moment you opened the dialog. And Escape keeps rather
+than discards, because Cancel switches off when there is more to unwind than the product can promise,
+and a dialog you could not leave by keyboard would be worse.
 
-Not in this story: the font browser has the same shortcut leak and keeps it for now (`DW-371`), and the
-two dialogs' `Cancel` buttons will mean different things until someone decides which is wrong (`DW-370`).
+The main window's keyboard shortcuts also no longer fire through the open dialog. They had been nudging
+and duplicating the table you were editing.
+
+The review found one real fault, which this story created, in two halves: leaving the dialog mid-unwind
+could tear the unwind down part-way, and the recovered document was not being put back on screen. Both
+were fixed before anything shipped.
+
+Still open: the font browser keeps the same shortcut leak (`DW-371`), and the two dialogs' `Cancel`
+buttons will mean different things until someone rules (`DW-370`). Three notes record where this work
+is argued rather than tested (`DW-372`–`DW-374`), and the new shortcut guard was proved only in a
+simulated browser, never a real one.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -563,16 +564,16 @@ moved, so the baselines stand. Re-measure anyway before trusting them.
 **Proofs (read last)**
 
 - The destructive failure mode, with pre-dialog history as its positive control.
-  [`TableEditor.test.tsx:776`](../../folio-designer/src/TableEditor.test.tsx#L776)
+  [`TableEditor.test.tsx:793`](../../folio-designer/src/TableEditor.test.tsx#L793)
 
 - A refused command reaches the engine and still does not count.
-  [`TableEditor.test.tsx:815`](../../folio-designer/src/TableEditor.test.tsx#L815)
+  [`TableEditor.test.tsx:832`](../../folio-designer/src/TableEditor.test.tsx#L832)
 
 - Done and Escape cannot leave the engine ahead of the screen.
-  [`TableEditor.test.tsx:1015`](../../folio-designer/src/TableEditor.test.tsx#L1015)
+  [`TableEditor.test.tsx:1032`](../../folio-designer/src/TableEditor.test.tsx#L1032)
 
 - 101 real edits prove the App's count reaches the footer.
-  [`TableEditor.test.tsx:1097`](../../folio-designer/src/TableEditor.test.tsx#L1097)
+  [`TableEditor.test.tsx:1114`](../../folio-designer/src/TableEditor.test.tsx#L1114)
 
 - Ten shortcuts suppressed while the modal is open.
   [`App.test.tsx:1349`](../../folio-designer/src/App.test.tsx#L1349)
@@ -582,3 +583,112 @@ moved, so the baselines stand. Re-measure anyway before trusting them.
 
 - Compiled, not executed here: the footer's two buttons in a browser.
   [`table-editor.spec.ts:82`](../../folio-designer/e2e/table-editor.spec.ts#L82)
+
+## Delivery Log
+
+### 2026-09-10 — done
+
+Baseline `6c643ac`. Shipped as specified: the table editor's single `Close Table Editor` became a
+**`Cancel` / `Done`** pair; the application holds an integer count of the dialog's commands that
+actually moved the revision, and `Cancel` issues exactly that many `undo` operations with the dialog
+still open, installing the reached snapshot once and then closing. `Done` and Escape close and keep.
+No engine change, no new command, no format field, no version increment — the count never crosses the
+worker boundary. The second half landed as the same claim rather than an adjacent fix: the global
+shortcut guard was re-keyed from *"is the target editable?"* to *"is a modal open?"*, closing `DW-368`
+for the table editor, because the `N ≤ 100` bound is only sound while nothing else can commit behind
+the open dialog.
+
+**Decisions applied.** `D-14.7.1` (the `Cancel` / `Done` labels; the Cancel-issues-the-undos-it-counted
+model; no engine change) and its guardrails 1–6, which the acceptance criteria carry in full — the
+decision log's own word "six" is not the predicate, its AC enumeration is. `D-14.7.4` (a guard that can
+only just pass is a guard that will red a true claim) drove the follow-up below. `D-14.4.1` (the
+implementer commits nothing) held throughout; every commit here is the orchestrator's. `Q1 = B′` kept
+`fontBrowserOpen` out of the guard, so the font browser's identical leak stands as `DW-371`.
+`D-14.7.2` governs how the lint baseline is recorded below. `D-000.33` set the four-gate cadence,
+`D-000.32` the wording of what did not run.
+
+**Triage: 12 patched / 2 deferred / 4 rejected.** `review_loop_iteration` 0 — no `intent_gap`, no
+`bad_spec`, no loopback. The triage tally is the build's; this close did not re-litigate it and did not
+re-derive the population.
+
+**What the review caught, and it was this story's own defect.** `Done` and Escape could tear the undo
+sequence down mid-flight, and the loop returned before installing the reached snapshot — leaving the
+engine k undos back while the canvas still painted the old document. Silently: the same
+screen-disagrees-with-document divergence class the shortcut guard exists to close, arriving from
+inside the feature that closes it. Fixed with a dedicated `discarding` flag rather than the general
+`busy` flag, deliberately: `clearDocumentInteraction` never clears `busy`, so gating Escape on it would
+have made the modal inescapable — a worse bug than the one being fixed.
+
+**Gates, re-measured at this close on the tree at `cc19032`, from `folio-designer/`.** All four exit 0.
+
+- `npx vitest run` — **76 files, 1368 tests, 0 failures.** The multiset diff against the `68aa91f`
+  baseline of 1320 (**+48 new, 0 test titles removed anywhere**) is the build's measurement, carried
+  here rather than re-derived: reproducing it needs a checkout of the baseline tree, which this close
+  is not permitted to make. The 1368 total is this close's own.
+- `npx tsc -b --force` — exit 0, **0 bytes** of output. `--force` was used; an incremental `tsc -b` can
+  exit 0 without typechecking.
+- `npx oxlint` — exit 0, **0 errors**. Warning baseline recorded as a per-file **SET**, never an
+  integer (`D-14.7.2`), and re-measured, with no line numbers: `react(only-export-components)` in
+  `src/App.tsx` ×2, `src/preview/pdf-viewer.tsx` ×2, `src/segmented-control.tsx` ×3. **No new key.**
+  Nothing was changed to restore a count.
+- `npm run test:e2e:compile` — exit 0. This is `tsc --noEmit` over the e2e sources. **It is not a
+  browser run and is not reported as one.**
+
+A third commit, `bd94ed4`, landed from a concurrent Story 14.8 planning agent while these gates were
+running. `git diff cc19032..bd94ed4` returns `_bmad-output/planning-artifacts/epics.md` and nothing
+else, so no code moved under the run and the figures above stand for both revisions.
+
+**Did not run:** the browser suite, the Go suites, the matrix legs, `npm run build` as a gate, the
+`verify:offline*` chain, and the font-host scans. CI was green on `cc19032` across all seven jobs plus
+cross-target byte identity; that is CI's measurement, not this close's.
+
+**AC4 has NO browser coverage, and must not be read as covered.** No e2e spec presses the undo, redo or
+duplicate keyboard shortcut anywhere in the repo — re-verified at this close by enumerating every
+`keyboard.press` / `.press(` call across all 24 e2e specs, which returns `Meta+S`/`Control+S`, `Enter`,
+`Escape`, `Delete`, `Tab` and arrow keys and no `Meta+Z`, `Control+Z`, `Shift+Meta+Z`, `Control+Y` or
+`Meta+D`; the same sweep returns many hits, so the absence is a real absence and not a broken search.
+Two specs click the toolbar's `Undo` / `Redo` **buttons**, which is a different path and does not touch
+the guard. The modal-open guard is therefore proved only in jsdom, where the ordering between the
+native `window` listener and React's synthetic handlers is jsdom's and not Chromium's. Separately, the
+footer's four-child layout and the legibility of the disabled-`Cancel` note are compiled here and
+executed only by CI.
+
+**Follow-up commit `cc19032`.** Two of the `Cancel discards what it counted` tests timed out on CI at
+`482ea5d` while passing locally — the unit job red and the browser job green, the opposite of this
+epic's usual failure, and nothing wrong with the product or the assertions. The timeout was raised on
+the **whole describe block** rather than on the two that happened to fail, because four more tests in
+it sit at 1.0–1.3s locally against a 5s default on a runner measured 3–5× slower under jsdom with
+`userEvent` — patching only the two would have left a suite-level instance of the shape `D-14.7.4`
+names. Red-proved rather than assumed: `describe` silently ignoring an unknown options object would
+look identical to it working, so the block was set to 50ms and reds 21 tests with *"Test timed out in
+50ms"* — the option is honoured and it reaches every test in the block.
+
+**Deferred, all filed by the orchestrator at `482ea5d`, all unassigned.** `DW-372` — the ring-buffer
+eviction the `N ≤ 100` bound rests on is asserted only as source text and no Go test executes it;
+deleting one line from `appendBounded` leaves both pinning regexes matching, and a 100-step `Cancel`
+would then land on the wrong document and report success. `DW-373` — the discard is proved only against
+a mock that restates the engine's own rules, so a wrong reading would be wrong in both places and
+agree. `DW-374` — the App-side limit guard is unreachable, so its off-by-one is pinned by nothing
+executing. Carried forward unfixed and pre-existing: `DW-370` (two modal `Cancel` buttons will mean two
+different things; no contract test can see it, since R1 checks spelling within a class and never
+meaning) and `DW-371` (the font browser keeps the shortcut leak).
+
+**Also disclosed, not fixed:** the ring buffer can evict the author's pre-dialog history. If a session
+is already at 100 entries the dialog's own commands push the oldest out; `Cancel` stays correct because
+it only ever needs the newest N, but the author's ability to undo *past* the dialog is reduced by N.
+Pre-existing in `appendBounded`, deliberately not widened into.
+
+**Housekeeping at this close.** Story 14.7's signed footer disclosure — *"⚠ THIS BAR CARRIES NO Cancel /
+Done PAIR AND NO EDIT COUNTER"* — is gone, as its own handover required; verified by grep, not assumed.
+Four `Suggested Review Order` anchors into `TableEditor.test.tsx` were re-derived: they were written at
+`482ea5d` and `cc19032` inserted 17 lines above all of them, so `:776`, `:815`, `:1015` and `:1097`
+rotted to `:793`, `:832`, `:1032` and `:1114`. Every one of the section's nineteen anchors was then
+printed at `HEAD` and checked against the line it claims. Epic 14 has recorded this shape before: the
+`epics.md` §14.8 block notes an anchor written as `TableEditor.tsx:427` on 2026-09-10 that rotted to
+`:448` the same day when this very story moved the file by +22 lines, and says of it *re-measure it,
+never quote it*. The same warning applies to the four corrected here.
+
+Committed by the orchestrator at `482ea5d` (implementation and review patches, the register entries and
+the tracker hop to `review`) and `cc19032` (the timeout). Both were already pushed before this close, so
+nothing here was amended into them; this close's edits to the story file are left uncommitted for the
+orchestrator.
