@@ -12911,3 +12911,69 @@ site saying the branch is deliberately unreachable and why.
 
 **How we'd know it was forgotten.** A second caller appears and the boundary is trusted because it is
 written down twice, which reads as belt-and-braces rather than as one tested check and one untested copy.
+
+---
+
+### DW-375 - `.working/` holds a tracked, byte-identical twin of the mockup Story 14.8 corrected
+
+- **source_spec:** `_bmad-output/planning-artifacts/ux-designs/ux-folio-2026-08-23/.working/TableEditor.dc.html`
+- **Found by:** Story 14.8's builder at the plan gate. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 14.8 edits `mockups/TableEditor.dc.html` so it stops drawing four settings the product does not
+have — `Show header row`, the three-way None / Horizontal / All borders preset, `Padding`, and `Row
+height` as an editable dropdown. `.working/TableEditor.dc.html` was `cmp`-identical to it before that
+edit and is git-tracked, so after the story it still draws all four.
+
+**Why it was deliberately left alone.** `.working/` has **exactly one commit in its entire history**
+(`6976a39`, the initial commit), and `a9ec59c` added `Font Browser.dc.html` to `mockups/` **only** — so
+the directory holds 5 of the 6 mockups and the project has already, deliberately, let it drift.
+Editing it now would assert that it is a maintained second source of truth, which is a larger claim
+than this story should make. A dot-directory with one commit that has already been left behind is a
+scratch snapshot.
+
+**Why LOW rather than MEDIUM.** Nothing reads it. No test, script or guard opens any `.dc.html`;
+measured repo-wide **with a positive control** (`design-contract.test.ts:132` and three other sites cite
+`Font Browser.dc.html` by name **in prose only** and open nothing). The two files under that tree that
+ARE read are `DESIGN.md` and `EXPERIENCE.md`, neither of which is a mockup.
+
+**Also worth recording alongside it:** before Story 14.8, **no mockup in this repo had ever been
+modified** — `git log --diff-filter=M` over `mockups/` is empty. 14.8 is the first, which is why the
+question of what else mirrors a mockup had never come up.
+
+**How we'd know it was forgotten.** Someone opens `.working/TableEditor.dc.html`, finds a drawing that
+promises `Show header row` and a borders preset, and builds from it — the precise harm 14.8's last
+criterion exists to prevent, reintroduced by the copy the story did not touch.
+
+---
+
+### DW-376 - after 14.8 the table editor discloses a border's resolved defaults and the inspector still does not
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** the engineering lead, ruling Story 14.8's Arm C. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+Story 14.8's BORDERS section ships **Arm C**: when an author sets one of the header border's three
+attributes, the other two are shown **resolved** beside it, reading the engine's own defaults — 0.5pt,
+`#000000`, all four edges (`table_render.go:595-612`).
+
+**The inspector's BOX section ships Arm A, with no disclosure at all.** `borderFields` offers width and
+colour only; the same engine defaults are mirrored on the canvas at `App.tsx:5038` as `?? 500` and
+`?? '#000000'` and are stated **nowhere in the panel**. So after 14.8 the product discloses a border's
+resolved defaults in the **table editor** and not in the **inspector** — for the same three attributes,
+on the same rendering path, with the newer surface holding the better behaviour.
+
+**Explicitly not Story 14.8's to fix.** 14.8 owns one section of one dialog. Widening it to the
+inspector would change a shipped surface no criterion in the story names — the same reasoning that
+produced [DW-371], and the same reasoning the owner accepted there.
+
+**⚠ This is the SECOND time this epic has found the sibling surface holding the worse behaviour, and
+two instances make it a pattern rather than two entries.** [DW-371] is the first: the font browser keeps
+the shortcut leak that 14.7b closed on the table editor. In both cases the story under construction
+fixed its own surface correctly, the fence held correctly, and the product ended up **less consistent
+than before the story ran**. That is the cost of a tight fence, and it is the right cost to pay per
+story — but it accumulates, and it is now worth a story of its own rather than a third register entry.
+**Whoever picks this up should take DW-371 with it**; they are the same shape and probably the same
+afternoon.
+
+**How we'd know it was forgotten.** An author sets a header border, sees exactly what the unset
+attributes will draw, then sets a body border in the inspector and sees nothing — and reasonably
+concludes the inspector's border has no defaults at all.

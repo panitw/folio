@@ -6473,3 +6473,72 @@ investigator's error was in its provenance claim and not necessarily in its arit
 to copy: distrust the caveat, re-measure the content, and report both.
 
 **Related:** [D-000.32], [D-14.7.3], [D-14.4.2].
+
+## D-14.8.2 - Story 14.8's three sections are headings inside the one existing group, because the alternative spent a guard
+
+**Recorded 2026-09-10**, ruled by the engineering lead at 14.8's plan gate on a fork the builder raised.
+
+**Verdict: three `<h3 className="section-label">` inside the single existing `role="group"`.** No group instance
+is added, neither guard is touched, and no re-baseline arises.
+
+**The arm that looked obvious spends a working bound.** Three sibling `role="group"`s would take the shrunk R0
+sweep from 32 instances to 34 — **clearing the floor of 33** — so the pinned clause
+`'R0 the sweep visited 32 group instances, under the floor of 33'` stops being emitted and the bound
+**silently stops bounding**. That is *a guard that cannot fail*, arriving as a side effect of markup rather than
+as anyone's decision. Raising the floor to 35 restores it but is the "edit the pinned artefact to accommodate
+your change" this run forbids. The lead recorded that raising it **would have been defensible** — the floor
+counts group *instances* and that population genuinely grew, so a +2 move preserves the same margin — and
+refused anyway, on the ground that **"defensible" is the wrong bar when an arm exists that spends nothing.**
+Both the builder and I had declined to re-baseline on our own judgement, which was correct.
+
+**The plain-`<p>` arm was refused on an axis nobody had raised until the orchestrator raised it.** `section-label`
+is a `<p>` at every site in the codebase, so three visual sections would leave a screen-reader user perceiving
+**one** undifferentiated group. Epic 14's accessibility floor is explicit, and a story whose entire deliverable
+is *"the editor reads as one designed thing"* delivering that only to sighted users is **the epic's own subject
+failing inside the epic**. The heading level was then settled by measurement rather than preference: the dialog
+already carries an `<h2>` (`TableEditor.tsx:377`), the sibling modal does too (`FontBrowser.tsx:280`), so `<h3>`
+is a correct non-skipping descent; and neither a `section-label` test pin nor any heading-order contract exists
+anywhere in the repo — both greps empty.
+
+**Guardrail worth generalising: prove a null result positively.** The change must assert the sweep's
+group-instance count is **unchanged** at 32/33, not merely that the suite stayed green — because a sweep that
+stopped visiting would also stay green. *An instrument whose silence is its answer* is only trustworthy when
+something else proves it still speaks.
+
+**Related:** [D-000.32], [D-14.7.4], [DW-356].
+
+## D-14.8.3 - a ruling corrected twice by measurement is worth more than one that looks stable because nobody re-checked it
+
+**Recorded 2026-09-10.** This is a property of the cadence, not of any one story, and it is filed at the lead's
+request after it was corrected twice in a day on the same criterion.
+
+**The four instances, in order.** (1) [D-14.7.2] — I leaned toward restoring oxlint to four warnings; the
+builder ruled otherwise and was right, and the integer turned out to be a proxy for a set. (2) 14.7b's Q1 — the
+builder's probe showed that `Cmd+Z` **destroys** the table-editor modal rather than mutating the document behind
+it, falsifying a mechanism asserted in both [DW-368] and [D-14.7.1]'s guardrail 2. (3) 14.8's part 2 — I
+measured `engine-protocol.ts:517` and falsified the lead's stated ground for the flat shape ("no local example
+at all"), which the lead had itself named as its falsifier and asked to be told about. (4) 14.8's F1 — the
+builder falsified **my** hybrid proposal (block on the wire, flat in the projection) with
+`TestTheProjectionCarriesAPairForEveryHeaderStyleFieldACommandCanWrite`, which mechanically ties the projection's
+key names to the command's field names, so the combination could only be satisfied by editing the tie.
+
+**In two of the four, the corrected party is the one who asked to be corrected.** The lead named its own
+falsifier and requested a re-rule rather than letting the story absorb it; I asked the builder to tell me if it
+found a reason my hybrid was worse. That is the mechanism, and it is the part worth keeping: **this run made
+re-measuring an assertion a normal move rather than an accusation.** Nobody has had to accuse anyone of being
+wrong to find out that they were.
+
+**Why it is worth an entry rather than a nice observation.** The failure it prevents is specific and this run has
+caught it repeatedly: [D-14.7.3]'s shape, *a correct finding carrying an incorrect explanation*, where the
+explanation is the half that propagates into comments, specs and later dispatches. A ruling's **verdict** can be
+right while its **stated reason** is false — 14.8's part 2 is exactly that, and the verdict survived the reason
+being withdrawn. **If the reason had never been re-checked, the log would now carry "flat won on novelty cost",
+which is not true, and the next person to weigh a nested projection member would have weighed it against a
+falsehood recorded as a ruling.**
+
+**The operational rule.** When a ruling is corrected, **withdraw the reason explicitly rather than quietly
+restating the verdict**, and say in the record that it was corrected and how many times. A verdict that survives
+the loss of its original justification is stronger evidence than one nobody tested — but only if the record shows
+which argument actually holds it up.
+
+**Related:** [D-14.7.2], [D-14.7.3], [D-14.8.1], [D-000.32].
