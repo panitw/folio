@@ -10,29 +10,25 @@ context: []
 
 # Story 14.8: The table editor carries the header, cell and border sections
 
-**In plain terms.** The table editor's settings all sit in one undivided run today, even though the
-design draws them as three named sections. This story separates them into HEADER, CELLS and BORDERS,
-which is mostly a tidying job — the controls themselves do not change, they just end up under the
-heading they belong to, and the headings become real headings so that someone using a screen reader
-hears the same three sections a sighted author sees.
+**In plain terms.** *(Rewritten at close; the frozen Intent below governs implementation.)*
 
-The one genuinely new thing is a header border. A table can already be given a border, but the header
-row cannot be given a *different* one, even though the engine has always known how to draw that and
-has been holding the field in reserve for this story by name. So BORDERS gets a width, a colour and a
-choice of which edges to draw, for the header row only.
+The table editor's settings used to sit in one undivided run. They now sit under three real headings —
+HEADER, CELLS and BORDERS — so a screen-reader user hears the same three sections a sighted author
+sees. No control changed; each just moved under the heading it belongs to. Two things the design drew as
+settings are now stated as facts, because the engine decides them; the design file was corrected to stop
+promising settings the product lacks.
 
-That comes with a catch worth understanding, because it is the reason this was left until now. The
-engine treats the header's border as all-or-nothing: the moment you set any part of it, the header
-stops taking anything from the table's border. So setting just a width would quietly throw away the
-colour the header had been drawing with. The panel therefore does two things. It shows you what the
-parts you have not set will actually draw — half a point, black, all four edges — and it tells you, in
-words, that the header border has stopped following the table's. Setting one thing never silently
-sets the other two on your behalf.
+The genuinely new thing is a header border: the header row can now be given its own width, colour and
+choice of edges. Setting one never sets the other two, and the panel shows what the ones you left alone
+will draw. It also says, in words, that setting any part of the header's border stops it taking anything
+from the table's. What it deliberately does not say is where an un-set border came from: it cannot tell
+inheritance from an empty border of its own, so it says nothing rather than guessing — a disclosed
+limit, not an oversight.
 
-Two smaller notes. Some things the design drew are not settings at all: the header always repeats onto
-continuation pages, and row height always comes from the content, so those are stated as facts rather
-than offered as controls. And the design file itself is being corrected, because it draws four
-settings the product does not have and should not keep promising them.
+Two things will look wrong later and are not. The three sections stack as full-width bands rather than
+the design's side-by-side columns — deliberate: three separate groups would have quietly disabled an
+accessibility check. And the project's strongest reproducibility check went green without covering this
+feature: no test document has ever carried a header border. The gap is filed, not fixed.
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
@@ -580,6 +576,21 @@ coverage** in the untagged suite, and `fixtures/alternating-rows/input.folio` **
 `TestAlternatingRowsGoldenFixture` passes at this tree. **A bordered document renders byte-identically
 after the extraction, proved by bytes.** The grep is the corroborating negative, not the proof.
 
+⚠ **CORRECTED AT CLOSE — this entry's load-bearing claim is FALSE, and it is corrected in place rather
+than removed, because it is the claim a later reader would rely on.** `fixtures/alternating-rows/input.folio`
+does **not** declare a border: it declares `headerStyle: {"background": "#445566"}` and nothing else, and
+the string `border` occurs in **none** of the 26 tracked `fixtures/*/input.folio` in any spelling — the
+only mention anywhere under `fixtures/` is prose in `fixtures/keep-together/README.md`. So
+`TestAlternatingRowsGoldenFixture` byte-compares an **unbordered** document, and **no byte-identity
+evidence anywhere in this repository covers a bordered document** — not the matrix legs, not the
+byte-identity workflow, and not the untagged golden corpus either. **[DW-383] is scoped to the first two
+and needs widening to the third.** What survives, measured at the close: the extraction is
+**logic-identical** to `9488ec1`'s inlined block read line for line; `table_render_test.go` covers a
+bordered header structurally (`TestTableHeaderBorderEdgesSubset`, the headerStyle-only-border cascade
+case, the no-border negative); and `TestTableStyleFieldsAreNotDataDrivenControl/border` proves a border
+reaches the PDF bytes by **disequality**. Structural coverage plus a disequality control is not a
+byte-identity proof and must not be cited as one. See `## Delivery Log`.
+
 **8. The criterion that forbade what it required — amended upstream.** `epics.md` §14.8 said *"No parse,
 serialize or render code changes"*, which as written forbade the extraction Part 4 mandated. It **meant**
 no change to what the renderer draws. The orchestrator amended it to: no change to what the renderer
@@ -855,3 +866,170 @@ matrix`-tagged and `./...` does not reach them.
 
 - BORDERS keeps its section; the unbuildable three-way preset is gone.
   [`TableEditor.dc.html:188`](../planning-artifacts/ux-designs/ux-folio-2026-08-23/mockups/TableEditor.dc.html#L188)
+
+## Delivery Log
+
+### 2026-09-10 — done
+
+Baseline `9488ec1`. Shipped as `096aa23` — *"Give the table editor its three sections and a header
+border"*, 19 paths — with `003def4` following. **Both were already pushed when this close began**, so
+nothing was amended and no commit was made here; the closer's edits to this file are handed to the
+orchestrator to commit. `git show --stat` on both carries only this story's files: the spec, the
+tracker, the mockup, the designer sources and tests, five Go files, and `003def4`'s single append to the
+register. Tree clean at start and at finish, on `main`, nothing ahead of upstream.
+
+**What shipped.** The controls Story 12.3 made authorable were regrouped under three `<h3>` headings —
+HEADER, CELLS, BORDERS — inside the one pre-existing group, adding no control and rewiring none.
+`headerStyle.border` became authorable: the closed command set went from nine fields to twelve
+(`border.width`, `border.color`, `border.edges`, dotted so a refusal names a path the document has), the
+projection went from 24 keys to 30 with a `Resolved` twin per attribute, and the collapse-on-clear leg
+`cleanupEmptyHeaderStyle` never had was added and then gated. One attribute per command; the resolved
+trio is computed once in Go, shared with the renderer's own defaults, and never copied into TypeScript.
+`Row height` and `Repeat on continuation pages` are stated as engine-derived facts rather than offered
+as controls, and the mockup stopped drawing four settings the product does not have.
+
+**Triage.** **2 high, 4 medium and 7 low patched**, plus the ruled Gap 2 narrowing; **3 deferred**
+(DW-380, DW-381, DW-382); **0 rejected**. `review_loop_iteration` is **0** and was never incremented —
+**neither escalation was a loopback**; both were adjudicated in place. These counts are recorded as the
+orchestrator handed them down: this story file carries the review *outcomes* (Spec Change Log 9, 10 and
+11) but no enumerated finding-by-finding tally, so the closer could not re-derive the severity split
+from the record and did not attempt to.
+
+**What review caught.** Two correctness gaps, both proven by execution rather than by argument. First,
+**the collapse this spec itself mandated deleted a border it was never asked about**: `cleanupEmptyStyle`
+was mirrored faithfully, including its unconditional trigger, so on a header carrying
+`{"background": …, "border": {}}` a single *clear background* command removed the border block and then
+the whole `headerStyle` — a silent rendered-PDF change from a command about background. Fixed by gating
+the empty-`Border` collapse on the cleared field being a `border.*` field. **The spec is at fault, not
+the implementer**: the task said "mirror `cleanupEmptyStyle`" and never asked whether the *trigger*
+should narrow. Second, the `border.edges` **set** arm validated no edge name, so `["middle"]` was
+admitted, **mutated the document**, and surfaced later as an **unlocated** `ParseTemplate` failure naming
+neither element nor field; fixed by exporting the loader's own set rather than restating it.
+
+**The measured gates**, all five re-run by the closer at this tree, from the directories the spec names:
+
+- `npx vitest run` (from `folio-designer/`) — exit 0, **76 files / 1383 tests / 0 failures**. Baseline
+  1368 → 1383 is **+15**.
+- `npx tsc -b --force` — exit 0, **0 bytes** of output.
+- `npx oxlint` — exit 0, 0 errors. Warning **SET** unchanged, recorded as a set and never an integer
+  (D-14.7.2): `src/App.tsx` ×2, `src/preview/pdf-viewer.tsx` ×2, `src/segmented-control.tsx` ×3, all
+  `react(only-export-components)`.
+- `npm run test:e2e:compile` — exit 0.
+- `go test -count=1 -skip "^TestCorpusMeetsP6ExerciseFloors$" ./...` (from `folio-go/`, CI's invocation
+  verbatim) — exit 0, **15 `ok`**, 0 `FAIL`, 3 packages with no test files.
+
+**The untagged Go suite ran**, on CI's exact invocation, because this story changes Go. The known-red
+`TestCorpusMeetsP6ExerciseFloors` stayed **quarantined rather than silenced**: run alone it still fails,
+at `P6g (opaque names) floor not met: got 7, need >=20`. The filter was neither widened nor de-anchored.
+
+**Suites that deliberately did not run** (D-000.32): **the browser suite, the matrix legs, `npm run
+build` as a gate, the `verify:offline*` chain, and the font-host scans.** The matrix legs are
+`//go:build matrix`-tagged and `./...` does not reach them. **"The Go suites" is deliberately absent from
+that list** — including it would be a false absence claim.
+
+Manual checks both hold: over `9488ec1..HEAD` the diff under `folio-go/internal/template/` is
+`closedsets.go` and nothing else, **no version constant moves** (the `"version":1` occurrences in the
+diff are the command envelope's own field inside test literals, not a constant), and
+`.working/TableEditor.dc.html` is untouched. All 22 file:line anchors in `## Suggested Review Order` were
+re-resolved at this tree and every one still lands on what it claims.
+
+**⚠ CI's green does NOT prove cross-target byte identity for a header border, and this entry will not
+pretend otherwise.** Every `fixtures/*/input.folio` was walked: **zero declare a border inside a
+`headerStyle`.** So `folio-go-matrix`, `hashmatrix` and the `Cross-target byte identity` workflow all
+ran, all passed, and **none of them rendered a header border on any target.** The field's cross-target
+behaviour is exactly as unproven after CI as before it. Filed as **DW-383**.
+
+**⚠ AND THE GAP IS WIDER THAN DW-383 AS FILED — corrected here rather than left standing, because the
+claim it replaces is the one a later reader would rely on.** Spec Change Log 7 offers as the extraction's
+"real proof" that *"`fixtures/alternating-rows/input.folio` **declares a border**"* and therefore that
+*"a bordered document renders byte-identically after the extraction, proved by bytes."* **Both halves are
+false.** Measured: the string `border` does not occur in **any** of the 26 tracked
+`fixtures/*/input.folio` — not once, in any spelling — and the only mention anywhere under `fixtures/` is
+prose in `fixtures/keep-together/README.md`. `fixtures/alternating-rows/input.folio` declares
+`headerStyle: {"background": "#445566"}` and no border at all, and `alternating_rows_fixture_test.go`
+renders an inline constant which its own line 106 asserts is byte-equal to that file. **So
+`TestAlternatingRowsGoldenFixture` byte-compares an UNBORDERED document**, and it passes for reasons that
+have nothing to do with this story. The same false measurement appears in DW-383's own text and in
+`003def4`'s commit message as *"three fixtures carry a `border`"*; **zero do.** The honest position is
+that **no byte-level evidence anywhere in this repository covers a bordered document** — not the matrix
+legs, not the byte-identity workflow, and **not the untagged golden corpus either.** DW-383 is scoped to
+the first two and needs widening to the third.
+
+**What the `table_render.go` extraction actually rests on, measured at this tree.** The extraction is
+**logic-identical**, verified by reading `9488ec1`'s inlined `if hasBorder` block against HEAD's three
+helpers line for line: same 500 default, same `#000000` default, and the edges branch is the same
+predicate written by De Morgan (`Set && !Null` → guarded early return of all-four). Beside that:
+`table_render_test.go` (untagged) asserts the page-model consequences of a bordered header —
+`TestTableHeaderBorderEdgesSubset`, the headerStyle-only-border cascade case asserting `HasStroke` and a
+`#112233` stroke *"from headerStyle.border, not a table default"*, and the no-border negative asserting
+`HasStroke` false; `TestTableStyleFieldsAreNotDataDrivenControl/border` renders two documents differing
+only in `border.color` and asserts **the bytes differ**, which proves a border reaches the PDF bytes;
+and `TestTheProjectedHeaderBorderDefaultsAreTheRenderersOwn`'s single literal pin. All confirmed passing
+by name. That is structural coverage plus a byte **dis**equality control — **not** a byte-identity proof,
+and it must not be cited as one.
+
+**One pattern, recorded once rather than as two incidents: a "do not touch file X" clause and a "share
+one source with X" clause are in tension by construction.** Two of this spec's own criteria forbade the
+change they required. One put `table_render.go` on Ask First while Part 4 required a single shared source
+for the paint-time defaults, which lived in it. The other asserted nothing under `internal/template/`
+would move while Part 3 required every field to validate through *"the same predicates the loader
+asks"* — and the edges predicate was unexported there. Both breaches were forced, both were surfaced
+rather than absorbed, both were ratified, and both criteria now name **the behaviour to preserve** —
+what the renderer draws, what the loader admits — rather than the file to avoid. A file-named fence turns
+any refactor serving the spec's own goals into a breach.
+
+**The most expensive error in this story was an explanation, not a finding (D-14.8.4).** The
+`{"width": 0}` defect was real and was proven by execution: `0` was the projection's spelling of an
+*absent* width while `border.width: 0` is a legal authored value, so a header authored as nothing but a
+zero width made the panel print *"Nothing here is set, so this header row takes the table's own
+border"*. But it was then reported as contradicting a **frozen matrix row whose precondition is an
+authoring action** — so that row governed nothing about a document that merely arrived in that state, and
+the false sentence was **this spec's own unconstrained wording**, not a frozen requirement. It nearly
+drove an amendment to a frozen matrix. Recorded against the builder and the orchestrator **jointly**:
+**a proven state plus an unverified requirement is not a proven contradiction.** The fix — both halves of
+the width pair respelled as strings, `''` absent and `'0'` a declared zero — stands; the explanation did
+not.
+
+**Three additions to this run's defect catalogue, and all three were found in guards rather than in
+product code.** *A fixture more complete than the defect's precondition is a guard that cannot see it* —
+`TestClearingTheLastAuthorableHeaderFieldKeepsAHandAuthoredBorder` exists to protect exactly the border
+the collapse deleted, uses a **fully declared** border where the defect needs an empty one, and stayed
+green over deletion of the gate. *An instrument whose silence is its answer* — `table-style-command.test.ts`
+claimed authority over these wire bytes with **zero** border coverage. And *a guard that could not fail,
+inside the file whose job is guarding counts.* The catalogue sentences live in the test files, so the next
+person does not reach for the same fully-populated fixture.
+
+**DW-379 carries a standing trigger, and it is a disclosed limitation rather than a defect.** The panel
+cannot distinguish a header that *declares* an empty border from one that *inherits* the table's, because
+a flat projection of N sub-field members cannot carry the block's N+1 bits of state, and inferring
+presence from the resolved values would put a fourth copy of the engine's defaults into TypeScript. The
+un-authored branch therefore says nothing about provenance, with a fourth disclosure case asserting the
+**absence** of the claim over both states that made the old sentence false. **A later story needing
+*declares* versus *inherits* gets the shape question and the owner — not a presence member.** A presence
+member was refused here because the `unpaired` pin is **an exception list, not a population count**, and
+an exception list grants permission: the guard would be gone in four stories without one wrong decision
+being made.
+
+**The mockup's three side-by-side columns versus the panel's three stacked full-width bands is a
+deliberate, ratified divergence, not an oversight.** It is the accepted consequence of the Q1 ruling —
+three headings inside the one existing group — chosen because three `role="group"`s would have taken the
+shrunk sweep from 32 to 34 and **cleared** `GROUP_INSTANCE_FLOOR = 33`, turning a live bound into a guard
+that cannot fail as a side effect of markup. Neither side is to be changed to match the other. The story
+proves the null result positively: the sweep still reports exactly 32 instances, measured and asserted
+rather than inferred from a green suite.
+
+**Deferred, all OPEN and all unassigned** — no owner was named for any of them, which the orchestrator
+must resolve: **DW-380** (the element-level twin of the collapse defect, deliberately not fixed here as
+out of fence and pre-existing), **DW-381** (the projected resolved header border colour is unvalidated,
+so the panel can state a colour the render will refuse), **DW-382** (the canvas still holds TypeScript
+copies of the engine's border defaults — the third copy this story's Go extraction was written to
+prevent), and **DW-383** (no fixture exercises the field; needs widening per the correction above).
+Also standing against this surface: **DW-375** (`.working/` holds a tracked, byte-identical twin of the
+mockup this story corrected), **DW-376**, **DW-377** and **DW-378**.
+
+**Housekeeping.** No debris attributable to this story: the output tree carries exactly one spec file for
+14.8, no duplicate spec, no orphaned patch, no review-layer prompt dumps and no ad-hoc report. Nothing
+was moved and nothing was removed. `sprint-status.yaml` needed no narrative stripped — it holds status
+values and structural comments only. **`epic-14-context.md` is stale and is flagged rather than edited**:
+it still says *"14.8 is next"*, and it still describes the closed command set as going *"from nine fields
+to ten"*, which the shipped twelve-member flat shape and the `epics.md` amendment both falsify.

@@ -28,8 +28,8 @@ properties, scalar binding from discovered JSON paths, and table-structure editi
 - Story 14.9: The canvas draws the table it will print
 - Story 14.10: A table column is bound from the main window
 
-⚠ **Refreshed 2026-09-10.** **14.1–14.7 and 14.7b are delivered**; **14.8 is next**, then 14.9 and
-14.10, and then the Epic 14 boundary gate — which is not yet booked and must confirm DW-332's
+⚠ **Refreshed again 2026-09-10 (second refresh).** **14.1–14.7, 14.7b and 14.8 are delivered**; **14.9 is
+next**, then 14.10, and then the Epic 14 boundary gate — which is not yet booked and must confirm DW-332's
 document-bar fit at 1024px, DW-339's layout claims, DW-356's accessibility floor, and the
 `assetCount` margin. (This paragraph previously read "14.6 is the next in the intended order"; it was
 stale by four stories.) Story **14.7b** was split out of 14.7 on 2026-09-10 and is not in the list
@@ -69,8 +69,11 @@ constraints rather than open questions.
   CELLS sections, and "Show header row" and the three-way None/Horizontal/All borders preset still
   have **no format field and are not coming**; the mockup is to be corrected, not implemented.
   **But the owner amended that decision on 2026-09-10:** the BORDERS section authors
-  `headerStyle.border` — the header row's own border, distinct from the table's — extending the
-  closed command field set at `component_commands.go` from nine fields to ten. `epics.md` calls this
+  `headerStyle.border` — the header row's own border, distinct from the table's. **14.8 SHIPPED** it as
+  **three flat members** (`border.width`, `border.color`, `border.edges`), taking the closed command field
+  set at `component_commands.go` from nine to **TWELVE**, not ten. *(This bullet said "to ten" through two
+  refreshes; ten was the engineering lead's provisional guess before the command's wire types were measured,
+  and it was corrected in `epics.md` on 2026-09-10 — twice. Do not quote "ten".)* `epics.md` calls this
   **"capability rather than presentation"** in the criterion itself. It was ruled in knowingly,
   against a recommendation to split it into its own story, because the engine's own source comment
   says `border` *"waits on Story 14.8's BORDERS section"* — so emptying BORDERS would have stranded a

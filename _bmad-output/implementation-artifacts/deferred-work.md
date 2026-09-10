@@ -13175,20 +13175,38 @@ the canvas keeps drawing the old value — the exact drift the extraction remove
 
 ---
 
-### DW-383 - no fixture declares a header border, so the matrix legs and the byte-identity workflow cannot see the field Story 14.8 added
+### DW-383 - NO fixture declares a border at all, so nothing byte-level in this repository covers a bordered document
 
 - **source_spec:** `fixtures/`
-- **Found by:** the orchestrator, closing Story 14.8 — while checking whether CI's green actually discharged the story's own stated caveat. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+- **Found by:** the orchestrator, closing Story 14.8 — while checking whether CI's green actually discharged the story's own stated caveat. **Owner:** unassigned. **Severity:** HIGH — raised from MEDIUM when the measurement below was corrected. **Status:** OPEN.
 
 Story 14.8 made `headerStyle.border` authorable. Its own `## Verification` correctly warned that
 **cross-target byte identity for a document carrying a header border was unproven** at its tree, because the
 matrix legs are `//go:build matrix`-tagged and the per-story cadence does not reach them.
 
 **CI then went green on all seven guardrail jobs plus `Cross-target byte identity` — and that green does NOT
-discharge the caveat.** Measured across every `fixtures/*/input.folio` by walking the parsed JSON for a
-`headerStyle` carrying a `border`: **zero fixtures declare one.** `alignment-rounding`, `alternating-rows`
-and `line-spacing` carry a `headerStyle`, and three fixtures carry a `border`, but **no fixture carries a
-border inside a `headerStyle`.**
+discharge the caveat.** Measured across all **26** tracked `fixtures/*/input.folio`: **zero declare a border
+at all.** `alignment-rounding`, `alternating-rows` and `line-spacing` carry a `headerStyle`
+(`alternating-rows`' is `{"background": "#445566"}`), and **no fixture contains the string `border` in any
+spelling** — the only mention anywhere under `fixtures/` is prose in `fixtures/keep-together/README.md`.
+
+⚠ **CORRECTED 2026-09-10, and the correction WIDENS this entry rather than narrowing it.** This entry, and
+`003def4`'s commit message, first said *"three fixtures carry a `border`"*. **That was false**, and it was the
+orchestrator's measurement error: two `grep` invocations were run in one block and their concatenated output
+was mis-attributed — the three filenames printed were the `headerStyle` matches, and the `border` grep matched
+nothing and printed nothing. Because the corpus is **border-free**, the gap is larger than this entry's
+original title claimed: **the untagged golden corpus cannot see the field either.** Story 14.8's Spec Change
+Log 7 said `TestAlternatingRowsGoldenFixture` byte-compares *"a bordered document"* and that
+*"a bordered document renders byte-identically after the extraction, proved by bytes"* — **both halves are
+false**, corrected in place by that story's closer. **There is no byte-level evidence anywhere in this
+repository covering a bordered document:** not the matrix legs, not the byte-identity workflow, and not the
+untagged golden corpus.
+
+**What the `table_render.go` extraction actually rests on**, stated so nobody cites bytes for it again: it is
+**logic-identical** to `9488ec1`'s inlined `if hasBorder` block, read line for line — the same `500` and
+`#000000` defaults, with the edges branch the same predicate by De Morgan — plus structural bordered-header
+coverage in `table_render_test.go` and `TestTableStyleFieldsAreNotDataDrivenControl/border`, a byte-**dis**equality
+control. **That is a logic-identity argument with structural coverage, not a byte-identity proof.**
 
 So `folio-go-matrix`, `hashmatrix` and the byte-identity workflow all ran, all passed, and **none of them
 rendered a header border on any target.** The field's cross-target behaviour is exactly as unproven after CI

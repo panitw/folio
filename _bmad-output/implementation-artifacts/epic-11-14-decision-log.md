@@ -6596,3 +6596,49 @@ get a presence member — it gets the shape question, and the shape goes to the 
 next person meets a trigger instead of re-arguing five consequences.
 
 **Related:** [D-14.7.3], [D-14.8.3], [D-14.7.4], [DW-379], [DW-380].
+
+## D-14.8.5 - I ran two greps in one block and attributed one's output to the other
+
+**Recorded 2026-09-10**, caught by Story 14.8's closer, which re-measured a claim I had handed it as fact.
+
+I ran, in a single shell block:
+
+```
+grep -rln "headerStyle" ../fixtures/*/input.folio | head
+grep -rl "\"border\"" ../fixtures/*/input.folio | head
+```
+
+The output was three filenames. **They were all from the first grep. The second matched nothing and printed
+nothing.** I read the three as the `border` matches and concluded *"three fixtures carry a `border`"*. The
+truth, measured properly: **zero of 26 tracked fixtures contain the string `border` in any spelling.**
+
+**What the error propagated into before it was caught.** I told the engineering lead and the builder that
+`TestAlternatingRowsGoldenFixture` *"asserts `bytes.Equal` on a rendered PDF from a fixture that declares a
+border"*, and used it as the byte-level proof that the `table_render.go` extraction preserved behaviour — the
+proof the lead had specifically and correctly asked for, because grep is an absence check and bytes are not.
+The builder wrote it into the spec's Spec Change Log 7. It also went into [DW-383] and into `003def4`'s commit
+message. **Four artefacts, one unread grep.**
+
+**The correction makes the gap WIDER, which is the part worth noticing.** [DW-383] originally said the matrix
+legs and the byte-identity workflow cannot see a header border. With a **border-free corpus**, the untagged
+golden corpus cannot see it either — so there is **no byte-level evidence anywhere in this repository covering
+a bordered document.** The entry is raised to HIGH. What the extraction actually rests on is a **logic-identity
+argument** — read line for line against `9488ec1`'s inlined block, same defaults, edges branch equivalent by
+De Morgan — plus structural coverage. That is a good argument. **It is not the thing I said it was.**
+
+**The specific hazard, added to the measurement list.** *Two commands in one block produce one undifferentiated
+output, and a command that matches nothing contributes nothing to it — so the surviving lines silently
+re-attribute to whichever command the reader expects.* This is the same family as the zsh hazards already
+recorded (an unquoted glob failing while a following `echo` still prints; `${PIPESTATUS[0]}` empty) and it has
+the same signature: **a plausible result, produced by measuring something other than what was asked.** The fix
+is one line: **label every measurement's output, or run one command per block.** I have been requiring exactly
+this of subagents all run.
+
+**And it is [D-14.8.4] repeating one story later, with the roles reversed.** There, I escalated a proven state
+attached to an unverified requirement. Here I supplied a *false* measurement as the answer to a request for
+rigour — the lead asked for bytes precisely because grep proves absence and not correctness, and I answered
+with a misread grep. **The request for rigour was right and the response to it was the weakest link in the
+chain.** The closer caught it by re-measuring a fact it had been handed, which is [D-14.8.3] earning its keep
+for the fifth time.
+
+**Related:** [D-14.8.3], [D-14.8.4], [D-000.32], [DW-383].
