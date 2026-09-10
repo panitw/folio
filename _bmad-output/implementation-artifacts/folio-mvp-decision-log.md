@@ -14822,3 +14822,38 @@ a breaking change against a published artifact.
 different from the old ones beyond the footer's `Page N of M` sitting flush against the right margin,
 the attribution is incomplete and the re-record must be undone — the four byte counts 76,744 / 127,363
 / 269,884 / 555,829 are predicted exactly by this entry, and any other difference falsifies it.
+
+
+---
+
+### D-000.97 — OWNER: the Epics 11-15 run PAUSES after Epic 14. Epic 15 is not this run's work.
+
+**Decided by the OWNER on 2026-09-10**, while Story 14.10 was in flight.
+
+**This amends the run's standing goal.** The instruction that opened this run was *"continue the dev cycle
+until epic 11-15 are done"*. The owner has now narrowed the end condition: **the run stops when Epic 14 is
+closed.** Epic 15 is not abandoned and nothing about it is retracted — it is simply not this run's work.
+
+**What "Epic 14 is closed" means here, stated so the boundary is not read loosely.** Two things remain, in
+order:
+
+1. **Story 14.10** carried to `done` — built, reviewed, committed, pushed, CI green, closed on the record.
+2. **The Epic 14 boundary gate**, which is unbooked and carries **five** items, every one of which
+   [D-14.10.2] requires be **re-measured at the gate, never quoted**: [DW-332] (document-bar fit at the
+   shell's 1024px minimum), [DW-339] (`OrientationProperty` full-bleed, unverified by any run), [DW-356]
+   (the disabled Connect button's reason is not programmatically tied), the asset-cache margin (54 against a
+   cap of 64, worst case on the books 61), and [DW-383] (the golden corpus has never covered the border
+   render path — the only one of the five that is a coverage gap in the project's central reproducibility
+   claim rather than a UI verification gap).
+
+**The gate is inside the pause, not after it.** Closing an epic without its boundary gate is the specific
+failure this project has already paid for once: [D-000.19] and the `sprint-status.yaml:634-638` block record
+that **Epic 16 closed without a gate, and that is why the matrix regression hid.** An owner instruction to
+pause after Epic 14 is an instruction to *finish* Epic 14, and an epic whose gate never ran is not finished.
+So the run does not stop at 14.10's commit.
+
+**What is explicitly NOT in scope under this ruling.** Stories 15.0, 15.2 and 15.3 remain `backlog` and are
+not to be dispatched. 15.1, 15.2a and 15.2b are already `done` and are untouched. `epic-15` stays
+`in-progress` in the tracker — it is genuinely in progress, and marking it otherwise would be false.
+
+**Related:** [D-000.19], [D-14.10.2], [DW-332], [DW-339], [DW-356], [DW-383].
