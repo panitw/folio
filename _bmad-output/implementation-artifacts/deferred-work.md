@@ -13114,6 +13114,13 @@ would have meant changing a shipped code path no criterion in the story names �
 [DW-371] and [DW-376], and the **third** instance in this epic of the sibling surface holding the worse
 behaviour. **Take it with those two.**
 
+**Two details from the builder's independent finding of the same defect**, merged here rather than filed
+twice: `cleanupEmptyStyle` is called from `applyPropertyChanges` for **any** property change, not only a
+clear — so the trigger surface is wider at the element level than at the header level — and the element
+path additionally collapses an empty `style.padding`, so **both** nested blocks need the same treatment.
+Story 14.8 deliberately did **not** mirror the padding half at the header level either, and its comment now
+says so plainly: `{"padding": {}}` therefore still pins `headerStyle` alive.
+
 **The fix is known and small:** gate `cleanupEmptyStyle`'s `Border` and `Padding` collapses on the cleared
 field belonging to the block being collapsed, and red-proof each by clearing a **non**-block field on a
 document carrying an empty block. Note the guard that missed it at the header level and will miss it here
@@ -13121,3 +13128,47 @@ too: a test using a **fully declared** border cannot exercise a collapse that on
 
 **How we'd know it was forgotten.** An author clears a font size and their element's border disappears from
 the rendered PDF, with no diagnostic, because the command that removed it was about something else.
+
+---
+
+### DW-381 - the projected resolved header border colour is unvalidated, so the panel can state a colour the render will refuse
+
+- **source_spec:** `folio-go/table_columns_projection.go`
+- **Found by:** Story 14.8's builder during review triage. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+A `headerStyle.border.color` is **not** validated at load — `internal/template` may not import the module
+root's `parseHexColor` (AD-1), so a malformed colour is admitted by the file door and refused only at render
+(`table_render.go`: *"style.border.color/headerStyle.border.color … is not a #RRGGBB colour"*).
+
+Story 14.8's projection reports the resolved colour as **"what will be drawn"**. So for a hand-authored
+non-`#RRGGBB` colour, the table editor states a value the renderer will **reject outright** — the panel is
+confidently wrong about the one thing it is claiming to report.
+
+**Not a regression.** The same load/render asymmetry already governs `headerStyle.background` and the
+element-level border. **Filed because Story 14.8 is what makes the header border visible in the panel**,
+which is where a mis-stated resolved value is now read by a person rather than sitting in a file.
+
+**How we'd know it was forgotten.** An author hand-edits a colour, the panel shows it as resolved, and the
+render fails with a diagnostic naming a value the panel had just told them was fine.
+
+---
+
+### DW-382 - the canvas still holds TypeScript copies of the engine's border defaults
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.8's builder during review triage. **Owner:** unassigned. **Severity:** LOW. **Status:** OPEN.
+
+Story 14.8 extracted the engine's paint-time border defaults into `resolvedBorderWidth` /
+`resolvedBorderColor` / `resolvedBorderEdges` (`folio-go/table_render.go`) and had the projection call them,
+so the **header** border's resolved values are computed once, in Go, and read from there.
+
+**The canvas preview still mirrors two of those defaults in TypeScript** for the **element-level** border:
+`component.borderWidth ?? 500`, `component.borderColor ?? '#000000'`, plus an all-four edge fallback.
+
+Out of 14.8's fence: closing it needs resolved element-border members on the **canvas** projection, which is
+a projection change belonging to a story that owns the canvas. **Filed because 14.8's own extraction comment
+cites that site as the lesson** — so a reader who follows the citation will find the copy still there, which
+reads as the extraction having failed rather than as having been scoped.
+
+**How we'd know it was forgotten.** The engine's default border width or colour changes, the PDF moves, and
+the canvas keeps drawing the old value — the exact drift the extraction removed on the header path.
