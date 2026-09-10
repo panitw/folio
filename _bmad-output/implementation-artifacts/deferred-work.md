@@ -13376,6 +13376,24 @@ So the debt is not "a nicety 14.10 skipped": it is a commitment the architecture
 has yet spent. That framing is the reason this entry exists separately from [DW-385], which records the
 *absence*; this one records the *unpaid commitment* and names its source.
 
+**THE UNMET REQUIREMENT, QUOTED RATHER THAN PARAPHRASED.** [D-000.17] is absolute — an unmet floor is
+reported unmet, never softened — and this floor is not a general principle but a named design rule that
+**names table columns explicitly**. **UX-DR25** (`_bmad-output/planning-artifacts/epics.md:283`), verbatim:
+
+> UX-DR25: Meet the accessibility floor as behavioural obligations, independent of formal conformance being
+> out of scope: **every interactive element keyboard-reachable and operable (palette, properties, binding
+> tree, table columns)**; visible focus on every focusable element using `colors.select`; accessible names on
+> every icon-only control; errors and diagnostics announced and distinguished by **shape before colour**;
+> canvas handle hit targets larger than their visual footprint; the Table Editor behaving as a data grid
+> under keyboard navigation.
+
+A table column is therefore not an element the accessibility floor forgot to mention — **it is one of the
+four things the rule lists by name.** Story 14.10 makes a table column an interactive element for the first
+time, and ships it neither keyboard-reachable nor operable. **State it in those words at the Epic 14 boundary
+gate:** not "the canvas has no assistive surface", but *a named UX design rule is unsatisfied for a control
+this epic shipped*. The owner ruled with AD-17's `[ASSUMPTION]` clause on the record ([D-14.10.3]); this entry
+records what that ruling leaves unmet, which is the register's job and not a re-opening.
+
 **How we'd know it was forgotten.** An author who cannot use a pointer can bind every other value in the
 product and cannot bind a table column — in a story whose entire premise is that binding lives in one place.
 There is no error, no refusal and no message; the column simply cannot be reached.
