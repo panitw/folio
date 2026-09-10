@@ -13403,3 +13403,47 @@ where a canvas keyboard gap would otherwise be looked for. This entry does **not
 Epic 14 boundary gate — see [D-14.10.2] for the five that gate carries.
 
 **Related:** [D-14.10.3], [DW-356], [DW-385].
+
+---
+
+### DW-388 - the inspector opens on an unresolvable selection and renders every control live, labelled "0 selected"
+
+- **source_spec:** `folio-designer/src/App.tsx`
+- **Found by:** Story 14.10's builder, while measuring the blast radius of a *different* selection shape it then
+  did not adopt. **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
+
+**The mechanism, measured.** `App.tsx:2812` gates the properties panel on `selected.length > 0 && canvas` — on
+the selection being **non-empty**, never on its ids **resolving** — and then passes
+`components={canvas.components.filter((component) => selected.includes(component.id))}`, which is `[]` when no
+id resolves. Inside `ComponentProperties` (`App.tsx:3251-3254`) the predicate helper is
+`const all = (predicate) => [...types].every(predicate)` over `types = new Set([])`, so **`all(…)` is vacuously
+true for every predicate it is ever asked**. The panel therefore renders essentially in full — POSITION, the
+whole TYPOGRAPHY section including the font-family combobox and Bold/Italic, the four-segment align control,
+BOX, and BINDING — under an identity strip reading **`0 selected`**. Committing from any of those controls calls
+`applyProperties([], …)` → `updateComponentProperties {"ids":[]}`, which Go refuses at
+`component_commands.go:1040` with *"component ids must be a non-empty string array"*.
+
+**Why it is registered rather than fixed.** This is *a guard that cannot fail* in its purest form — a vacuous
+truth holding an entire panel open — and **nothing in the 1409-test suite covers it.** There is no assertion
+anywhere that the panel's contents agree with its own count.
+
+**Reachability is UNKNOWN, and is stated that way deliberately.** No route was found: of the fourteen
+`setCurrentSnapshot` call sites, three pass `clearDocumentInteraction = true`, and one of those three is
+`applyHistory` (`App.tsx:2278`), so undo and redo — the obvious way to make a selected component vanish — do
+clear the selection. `deleteSelection` clears on success, and the Locate-in-Design route at `:2294` is the one
+mutation site that already validates against the projection. **That is an unsuccessful search, not a proof.**
+The defect is that the panel's correctness rests on **no id ever going stale, rather than on a check**; whether
+an id can go stale today is a separate question nobody has answered. Recording it as *unreachable* would be the
+stronger claim and the evidence does not support it — see [D-000.17] on reporting what is actually known.
+
+**Why Story 14.10 did not absorb it.** 14.10 neither creates nor touches this. Its column selection is separate
+UI state ([D-14.10.5], Q1) and `selected` keeps meaning exactly what it has always meant, so the panel sees
+precisely what it sees today. The rejected alternative — a compound `table#column` id inside `selected` — would
+have made this defect **reachable by design**, which is one of the reasons that arm was refused. An absorbed
+fix here would have been scope creep that also hid the bug from the backlog.
+
+**How we'd know it was forgotten.** An author sees a full, live properties panel headed `0 selected`, edits a
+value in it, and gets either silence or an engine refusal naming an empty id array — a diagnostic about
+`ids` for an action they took on a font.
+
+**Related:** [D-000.17], [D-14.10.5], [DW-385].

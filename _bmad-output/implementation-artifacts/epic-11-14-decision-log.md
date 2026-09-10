@@ -6994,3 +6994,184 @@ drift. If the count has passed 64 the release is **rejected**, which is a releas
 happen before a pause rather than after it. Report the actual integer, never this entry's.
 
 **Related:** [D-000.17], [D-14.0.1], [D-14.8.3], [D-14.10.2], [DW-313], [DW-325].
+
+---
+
+## D-14.10.5 - Story 14.10's five plan-gate rulings: where a column selection lives, where its path comes from, what the inspector shows, and what may observe the click
+
+**Ruled 2026-09-10 by the fifth engineering lead at 14.10's open-questions checkpoint**, before any spec text
+was written, so the answers went in as statements rather than as questions. All five are settled and none is
+re-openable by the builder.
+
+**Q1 — a column selection is SEPARATE UI state, keyed on the owning table id AND the column id.** `selected`
+continues to hold component ids only and every existing `length === 1` gate keeps its current meaning.
+Grounding is **AD-15 / I-4**: transient interaction state lives in the UI and never enters the document.
+
+*The decisive fact was not the list of side effects.* The rejected arm — a compound `table#column` id inside
+`selected` — **breaks working function**: `openTableEditor` guards on `selectedRef.current[0] !== id`, so a
+compound id kills the table's own "Configure columns" button. A story that silently repairs four other paths
+to accommodate its own state shape has left its fence, and the arm that spends nothing was available, which is
+[D-14.8.2]'s bar. The compound arm would also have made [DW-388] **reachable by design**.
+
+Guardrails: **resolve the column from the projection on every render, never cache the column object** —
+`commitTableColumn` re-projects after every command, so a column removed in the editor while selected leaves a
+stale id, and the DATA panel would then offer to bind a column that no longer exists; if the id does not
+resolve, the selection drops. And **clear it at every site that clears or replaces `selected`**, that set
+derived by measurement rather than from the lead's list.
+
+**The measurement corrected the orchestrator twice.** The record's "33 read sites" was a grep artefact — it
+counted 12 comment lines and 2 `aria-selected` attributes and **missed `selectedRef` entirely**; the true
+figure is **32 read expressions across 27 lines**. And the authoritative clear-site set is **exactly six
+`setSelected(` lines in `App.tsx`** — `:1253` (`select`), `:1331` (`deleteSelection`), `:2171`
+(`setCurrentSnapshot`'s `clearDocumentInteraction`), `:2294` (Locate in Design), `:2568` (page-surface click
+clear), `:2779` (canvas-region Escape) — **and nowhere else in the repo**, with `DataPanel.tsx` and
+`TableEditor.tsx` as positive controls: both contain `selected`, neither contains `setSelected`, so the empty
+result elsewhere is evidence rather than a filtered grep. `selectedRef.current` is a `useEffect` mirror on
+`[selected]` and needs no separate clear — it cannot hold a value `selected` does not.
+
+**Q2 — reuse `tableSampleCandidates`' shipped derivation; `sample-data.ts` is not changed.** Verified first
+that this was not a matter of flipping a flag: `array()` recurses with a hardcoded `rootScoped: false` and
+`value()` gates the marker on `rootScoped && segments.length > 0`, so **every descendant of a collection has
+`segments === undefined`** and the row-relative path the panel needs does not exist anywhere today.
+
+*The deciding property is agreement with the engine, not "leave the shared parser alone."* AC4 requires the
+panel to decide row-scope membership **before** the engine would refuse, and `tableSampleCandidates` **already
+builds the collection key byte-identically to the canvas's `tableBind`**. That agreement is shipped and
+exercised. The rejected arm would have created a second derivation of the same fact and then owed a proof that
+the two agree; this one owes nothing, because there is only one.
+
+Guardrails: the panel's pickable set is **exactly** `tableSampleCandidates`' output, asserted against a fixture
+so the two cannot drift — not "the panel filters similarly". The table editor's `candidates` behaviour must not
+change. And **AC4's refusal message is derived from the same set that gates pickability**, never written
+independently, or the panel can say "outside row scope" about something it also offers, which is [D-000.25]'s
+shape.
+
+**Q3 — the owning table's panel unchanged, plus an identity strip naming the selected column.** No column
+controls in the inspector and **no binding section in the inspector**. The rejected arm was not merely richer,
+it was actively wrong: it would have put binding in the inspector **and** the DATA panel, re-committing the
+exact error [D-14.4.Q2(a)] removed, **inside the story written to finish removing it**. AC1's own gloss settles
+what "addresses it" means — *"selecting a column is how binding one **begins**"* — and beginning is
+acknowledgement; the binding itself is AC2's, in the DATA panel. The identity strip is a **forced consequence
+of AC1** and is the whole of what is forced; nothing in DESIGN.md or any of the three mockups draws a
+column-selected inspector, so anything richer is invented rather than matched.
+
+**Q5 — a real-browser proof of the hit-test is REQUIRED, narrowed to a targeted run.** Both covers ship: an
+`App.css` source-text pin **mutation-proved** by deleting `pointer-events: auto`, **and** a real-browser click.
+`## Verification` carries a **targeted** Playwright run (single spec or `--grep`), not the full 52-test suite —
+separability confirmed (`testDir: './e2e'`, no `projects`).
+
+**Why the pin alone is not enough, which is the reusable half.** **jsdom does not implement `pointer-events`
+hit-testing.** `fireEvent.click(span)` targets the span regardless of any CSS, while a real browser removes the
+whole `pointer-events: none` subtree from hit testing. So a DOM-targeting implementation **passes all 1409 unit
+tests while being completely inert in the product** — *a mechanism correct while unreachable* plus *a guard
+that cannot fail*, landing on this story's central mechanism and on AC1's literal words ("the author clicks a
+column"). The browser run is the **forced price of AC1's own stated acceptance**. And the source-text pin is a
+**proxy**: it proves the rule exists in the stylesheet, not that the click resolves to the column — a later
+overriding rule, a covering element, or a wrapper that still captures would each leave it green. The Playwright
+assertion must **fail if `pointer-events: auto` is removed, proved red, not asserted**.
+
+**A REASON WITHDRAWN, THE VERDICT KEPT ON A BETTER ONE.** The dispatch told the builder that coordinate-based
+hit-testing is *"blocked at the contract"*, citing the AD-17 corpus scan. **The builder read the `prohibited`
+array and falsified it**: pattern 4 is `client(?:Width|Height|Left|Top)`, **`clientX`/`clientY` are not banned**,
+`App.tsx` already spells them at **eight sites outside the carve-out with the scan green**, and
+`elementFromPoint` is not named either. The scan forecloses **box measurement**, not **coordinate reading**.
+
+The lead withdrew the reason explicitly rather than quietly restating the verdict, and re-grounded it on
+**AD-15 / I-4**: mapping a pointer coordinate to a column means computing where each column's edge lands on
+screen, which **is a browser-side model of the columns** — and that is the very premise Story 14.9 was built
+on. It is the AD-17 **harm** (authority over geometry) reached **without spelling a prohibited identifier**,
+which is exactly the case a regex scan cannot catch and a ruling must. **So: element-resolution (the event
+target, or `elementFromPoint` — both respect `pointer-events`, both legal), never coordinate geometry. Cite
+AD-15 and 14.9's premise, never the scan.** This is [D-14.7.3]'s shape — a correct finding carrying an
+incorrect explanation — found by the agent it was dispatched to.
+
+**Two smaller calls approved as the builder proposed them.** A column selection is **non-extendable** —
+shift-click behaves as a plain click — which follows from Q1 anyway, since a mixed table+column array is what
+Q1 makes unrepresentable. And the selection treatment **matches the shipped component-selection idiom scoped to
+the column box** (`--color-select` border plus `--tint-select-fill-soft`), **minting no token**:
+`design-contract.test.ts` asserts token-name equality against a read-only DESIGN.md, and DESIGN.md states three
+separate times that the bind accent never marks selection, so the alternative spends a guard **and**
+contradicts the document.
+
+**Related:** [D-000.25], [D-14.4.Q2(a)], [D-14.7.3], [D-14.8.2], [D-14.10.1], [D-14.10.6], [DW-388].
+
+---
+
+## D-14.10.6 - the Q4 trigger fired: four pinned assertions are transcription, but the byte-identity proof authored its document through the input being removed
+
+**Ruled and escalated 2026-09-10.** [D-14.10.1] authorized removing the table editor's editable Row field, and
+the dispatch reserved one trigger: **if the removal reds a keyboard or roving-grid assertion Story 14.7 pinned,
+stop.** It fired — and the wider search found something that is not a pinned assertion at all.
+
+**THE NEAR-MISS IS PART OF THE RECORD, because the behaviour is the point.** The builder measured the trigger
+in `TableEditor.test.tsx`, found both roving assertions self-deriving (each compares the walk against what is
+actually in the DOM and enabled, so removing a cell removes it from both sides) and `aria-colcount` pinned at
+6 drawn columns — BOUND FIELD stays a drawn column, so that holds. **It was about to report "no pin, proceed."**
+In its own words, that verdict was *"proved in one file and would have been reported about the corpus."* A
+repo-wide search reversed it. That is **an instrument whose scope is narrower than its claim**, caught by the
+agent holding it, before it spoke. It is the fourth time this run that the party who would have been
+embarrassed is the one who found it.
+
+**RULING (Q4a) — the four pins are NOT [D-14.8.2]'s shape. Update them in the removal's own commit, keep them
+as walks, form unchanged.** They are three explicit lattice walks in `App.test.tsx` (`:303`, `:755`, `:1463`),
+pinned by exact accessible name — focus `Header for column 1`, ArrowRight, assert `Row field for column 1`,
+ArrowRight, assert `Width for column 1 in points` — plus one focus pin at `e2e/table-editor.spec.ts:46`.
+
+**The distinction, stated so it is reusable: an edit is ACCOMMODATION when the new value is CHOSEN; it is
+TRANSCRIPTION when the new value is DETERMINED.** [D-14.8.2] refused a floor edit because it was a judgement
+about how much margin to keep **and** an arm existed that spent nothing. Neither holds here: AC5 forces the
+removal, there is no arm in which the pins stay untouched and the story is done, and ArrowRight from Header
+lands on Width whether anyone likes it or not. `TableEditor.tsx:12-35` settles the rest — the lattice covers
+the **maximal** row shape, a smaller row simply has holes in it, and `moveFocus`'s `enabled()` already treats
+an absent cell exactly like a disabled one. **A hole at address 4 is designed behaviour**, so the updated walks
+assert the same property over a lattice one cell smaller.
+
+Guardrails: **delete exactly one hop and change nothing else about the walk.** If an update reaches for a
+regex, a `some`-style match, or "the next enabled cell", **that is the accommodation [D-14.8.2] forbids, and it
+converts a pin into a guard that cannot fail.** Keeping them as **walks** is binding, not preference — a
+deleted traversal assertion is how the next removal goes unnoticed, and four assertions that survive a lattice
+change by *failing* are the only thing standing between this grid and silent keyboard rot.
+
+**THE ESCALATION (Q4b) — `e2e/browser-native-roundtrip.spec.ts`, the CAP-13 byte-identity test, AUTHORS ITS
+DOCUMENT THROUGH THE INPUT BEING REMOVED.** It binds column 1 at `:231-235`, loops the remaining four at
+`:242-251` with `fill` + `blur` + `waitForRevisionAdvance` (the engine's own revision, not a timeout), then
+renders through the engine compiled into the browser **and** through a natively-built `folio-go/cmd/folio` and
+asserts the outputs are **byte-identical**. That is the end-to-end evidence for **AD-21**. Remove the input and
+the test has no way to bind a table column at all.
+
+**Why this went to the owner when [D-14.10.1]'s removal did not.** The removal was **already ruled** — the
+owner was told in [D-14.10.1]'s own words that the criterion *"removes a path that works, which is a different
+act from declining to build one"*, and ruled anyway; re-asking would have been asking twice. **Q4b is a NEW
+FACT, not a new argument.** Nobody told the owner — because nobody knew — that the AD-21 proof authors its
+document through that input. [D-14.8.4] cuts **for** escalation here: the orchestrator had declined a
+split-the-story arm on the stated premise that the removal was clean, **that premise was measured false**, and
+the builder raised it as *"the premise changed, not a re-litigation"*, which is exactly how a premise change
+should arrive.
+
+**The fence, stated so the builder is not left guessing:** the removal and the four pin updates are **in**.
+**Touching `browser-native-roundtrip.spec.ts` at all is OUT** — forced-consequence reasoning gets you to *"CAP-13
+cannot be left broken"* and no further; it does not authorize choosing among prices with different permanent
+meanings.
+
+**OWNER DECISION: split the TEST, not the story.** CAP-13 keeps its byte-identity claim and **authors from a
+loaded document**; a **separate** spec covers *"the new binding path produces the expected document."*
+
+**Why this arm and not the other three.** It is the only one that fixes **failure attribution**: a red in
+CAP-13 then means reproducibility broke, a red in the new spec means the UI moved. Rewriting CAP-13 to bind
+through the new path — 14.10's builder's recommendation, offered with a well-judged condition that the rewrite
+be sequenced after 14.10's own browser proof is green — fixes the **first run** but not the **standing
+coupling**, which is the cost that recurs every quarter after this one; given what a misread of this exact
+signal already cost in [DW-383], permanently coupling the most trusted number in the project to first-run
+designer UI is the arm nobody wanted to defend later. Merely loading a fixture would have **deleted** the
+"authored through the browser's own commands round-trips" leg; this **relocates** it. **The lead recorded that
+it differed from the builder here, deliberately and on the record** — the builder's recommendation was
+reasonable and reasoned, and was outvoted on the standing cost, not on its merits.
+
+**GATE CONDITIONS, whichever way this had gone, and they bind now.** The rewritten CAP-13 must be **observed
+green in a real run before Epic 14 closes** — a byte-identity test that has been rewritten and not executed is
+[DW-383]'s shape wearing the same disguise a second time, and the intent to run it is not a run. And the
+fixture `.folio` that CAP-13 loads must **contain bound table columns**, proved, or CAP-13 silently stops
+covering the thing this entire escalation was about — *a fixture more complete or less complete than the
+precondition is a guard that cannot see the defect* ([D-14.8.4]).
+
+**Related:** [D-000.17], [D-14.7.1], [D-14.8.2], [D-14.8.4], [D-14.10.1], [D-14.10.5], [DW-383].
