@@ -56,7 +56,7 @@ test('the evidence rail occupies the inspector column, with the whole hash wrapp
   // The REAL Go engine, the REAL wasm render and the REAL PDF.js admission —
   // and the digest below is the one the browser recomputed over the bytes it is
   // holding before it would install them at all.
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible({ timeout: 60_000 })
 
   const inspector = page.getByRole('complementary', { name: 'Inspector' })
   const rail = page.getByLabel('Render evidence')
@@ -137,6 +137,6 @@ test('the evidence rail occupies the inspector column, with the whole hash wrapp
   await page.getByRole('button', { name: 'Re-render' }).focus()
   await expect(page.getByRole('button', { name: 'Re-render' })).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('alert')).toHaveCount(0)
 })

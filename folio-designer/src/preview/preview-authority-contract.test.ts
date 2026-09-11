@@ -20,7 +20,7 @@ describe('Preview local-only authority boundary', () => {
     expect(app).toContain('setPreviewStatus(\'stale\')')
     expect(app).not.toContain('<p role="alert">Local PDF render failed')
     expect(app).toMatch(/id="preview-freshness-status"[^>]*role="status"/)
-    expect(app).toContain("standInNotice && previewStatus === 'current' ? 'sr-only' : 'preview-status'")
+    expect(app).toContain("previewStatus === 'current' ? 'sr-only' : 'preview-status'")
     expect(viewer).toContain('aria-describedby={describedBy}')
     expect(viewer).not.toContain('aria-label="Exact local production PDF preview"')
 

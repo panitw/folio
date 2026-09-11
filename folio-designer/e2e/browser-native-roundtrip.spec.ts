@@ -284,7 +284,7 @@ async function savePreviewAndCapture(page: Page, fileName: string, output: strin
     // Identity deliberately hashes the complete shipped font set before the
     // one Go render and PDF.js admission. This is runtime work, not a locator
     // ambiguity (all selector-facing steps above retain short timeouts).
-    await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible({ timeout: 60_000 })
   } catch (error) {
     const proof = await captured(page)
     throw new Error(`Preview was not admitted; worker evidence: ${JSON.stringify({ requests: proof.requests.map(({ operation }) => operation), responses: proof.responses, failures: proof.failures })}`, { cause: error })

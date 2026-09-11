@@ -47,7 +47,7 @@ test('the fallback tier downloads the current preview as a .pdf without touching
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   await page.getByRole('tab', { name: 'INPUTS' }).click()
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+  await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible()
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Save PDF' }).click()
   const saved = await download
@@ -109,7 +109,7 @@ test('the activation-gated tier writes exactly the bytes the displayed producer 
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   await page.getByRole('tab', { name: 'INPUTS' }).click()
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+  await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible()
   await page.getByRole('button', { name: 'Save PDF' }).click()
   await expect.poll(() => page.evaluate(() => (window as PdfSaveProbe).__folioPdfBytes?.length ?? 0)).toBeGreaterThan(0)
   await expect(page.getByText(/Saved PDF of revision \d+ as statement\.pdf/)).toBeVisible()

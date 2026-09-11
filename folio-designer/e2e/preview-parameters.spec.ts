@@ -45,7 +45,7 @@ test('discovers reportDate from Go, keeps an absent value as a located engine fa
 	// There is no admitted historical PDF after the initial missing-parameter
 	// failure; accepted input therefore schedules a fresh local render rather
 	// than labelling a non-existent last-good PDF stale.
-	await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+	await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible()
   await page.getByRole('button', { name: 'Re-render' }).click()
-  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toBeVisible()
+  await expect(page.getByRole('img', { name: /Current exact local production PDF, revision/ })).toBeVisible()
 })

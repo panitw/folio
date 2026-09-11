@@ -48,6 +48,8 @@ test('Preview renders local identity evidence and marks an edited last-good PDF 
   await expect(page.getByRole('button', { name: /return to design/i })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'DESIGN' })).toBeVisible()
   await expect(page.locator('#preview-freshness-status')).toHaveText('Current exact local PDF')
+  await expect(page.locator('#preview-freshness-status')).toHaveClass('sr-only')
+  await expect(page.getByText('EXACT LOCAL PRODUCTION PDF')).toHaveCount(0)
   await page.getByRole('textbox', { name: 'Raw parameter JSON' }).fill('{"preview":"changed"}')
   await expect(page.locator('#preview-freshness-status')).toContainText('STALE — inputs changed')
   await expect(page.getByRole('region', { name: /Stale historical PDF|Current exact local production PDF/ })).toBeVisible()
