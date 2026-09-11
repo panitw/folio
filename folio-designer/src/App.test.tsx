@@ -7998,10 +7998,10 @@ const commitTyped = (field: HTMLElement, value: string) => {
   fireEvent.keyDown(field, { key: 'Enter' })
 }
 
-describe('Story 13.2: the viewer navigates from the status bar', () => {
-  it('carries every PDF navigation control in the status bar, under names the canvas zoom cannot answer to', async () => {
+describe('Story 13.2: the viewer navigates from the preview toolbar', () => {
+  it('carries every PDF navigation control above the PDF, under names the canvas zoom cannot answer to', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     expect(within(bar).getByRole('button', { name: 'Previous PDF page' })).toBeInTheDocument()
     expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeInTheDocument()
     expect(within(bar).getByRole('textbox', { name: 'PDF page number' })).toBeInTheDocument()
@@ -8045,13 +8045,13 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
   // not have, so Preview now drops exactly two items — and the row that used to
   // assert "nothing moved" is the right place to say precisely WHICH two, and
   // that the other three did not go with them.
-  it('keeps the snapshot, the offline region and the mode beside the navigation, having dropped exactly two items', async () => {
+  it('keeps the snapshot, the offline region and the mode in the footer, having dropped exactly two items', async () => {
     await showNavigablePreview()
     const bar = screen.getByLabelText('Status bar')
     expect(within(bar).getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 1')
     expect(within(bar).getByTestId('offline-status')).toBeInTheDocument()
     expect(within(bar).getByText('PREVIEW MODE')).toBeInTheDocument()
-    expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeInTheDocument()
+    expect(within(bar).queryByRole('button', { name: 'Next PDF page' })).not.toBeInTheDocument()
     // THE TWO THAT WENT, and nothing else. `offline-status` in particular stays
     // — it is a live region with five states, two of which ('Update available',
     // 'Offline cache unavailable') can arrive while an author sits in Preview.
@@ -8062,9 +8062,9 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     expect(within(bar).queryByTestId('template-font-count')).toBeNull()
   })
 
-  it('reaches every control in bar order and moves the page from the keyboard alone', async () => {
+  it('reaches every control in toolbar order and moves the page from the keyboard alone', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByRole('group', { name: 'PDF navigation' })
     // Off page one first: `◀` is disabled on the first page, and a disabled
     // control is out of the tab order for a reason that is not this story's.
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
@@ -8095,7 +8095,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
 
   it('refuses a typed page the document does not have and puts the current page back in the field', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     const field = within(bar).getByRole('textbox', { name: 'PDF page number' })
     const status = within(bar).getByLabelText('PDF page status')
     // The row that DOES navigate, first, so every refusal below is the refusal
@@ -8114,7 +8114,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
 
   it('clamps a typed zoom into the viewer bounds and refuses one that is not a number at all', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     const field = within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })
     expect(field).toHaveValue('100')
     commitTyped(field, '250')
@@ -8132,7 +8132,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
 
   it('drops the fit the moment the author zooms by hand', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     const choice = within(bar).getByRole('combobox', { name: 'PDF zoom' })
     fireEvent.change(choice, { target: { value: 'fit-width' } })
     expect(choice).toHaveValue('fit-width')
@@ -8155,7 +8155,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
   // back, or that compared the state against itself, would have passed over it.
   it('keeps the page, the zoom, the fit and the scroll across a trip through Design', async () => {
     const request = await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
     fireEvent.change(within(bar).getByRole('combobox', { name: 'PDF zoom' }), { target: { value: 'fit-width' } })
@@ -8186,7 +8186,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
   // here rather than being swallowed by App's de-dupe.
   it('keeps an active fit when focus merely passes through the typed fields', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     fireEvent.change(within(bar).getByRole('combobox', { name: 'PDF zoom' }), { target: { value: 'fit-width' } })
     const settled = { page: 1, scale: 1, fit: 'width', ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 }
     expect(previewViewerState()).toEqual(settled)
@@ -8214,7 +8214,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
   // nothing reached.
   it('stores the page fit the select offers beside fit width', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     const choice = within(bar).getByRole('combobox', { name: 'PDF zoom' })
     fireEvent.change(choice, { target: { value: 'fit-page' } })
     expect(choice).toHaveValue('fit-page')
@@ -8226,7 +8226,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
   // be deleted without a single assertion noticing.
   it('disables the stepper at whichever end of the document the author is on', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     const previous = within(bar).getByRole('button', { name: 'Previous PDF page' })
     const next = within(bar).getByRole('button', { name: 'Next PDF page' })
     expect(previous).toBeDisabled()
@@ -8249,7 +8249,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     await waitFor(() => expect(screen.getByText('Admit local PDF')).toBeInTheDocument())
     fireEvent.click(screen.getByText('Admit local PDF'))
     await waitFor(() => expect(screen.getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 1'))
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     expect(within(bar).getByRole('button', { name: 'Previous PDF page' })).toBeDisabled()
     expect(within(bar).getByRole('button', { name: 'Next PDF page' })).toBeDisabled()
   })
@@ -8265,7 +8265,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Admit long local PDF' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Admit long local PDF' }))
     await waitFor(() => expect(screen.getByLabelText('PDF page status')).toHaveTextContent('Page 1 of 34'))
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
     expect(previewViewerState()).toEqual({ page: 7, scale: 1.5, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 })
@@ -8277,7 +8277,7 @@ describe('Story 13.2: the viewer navigates from the status bar', () => {
     // Preview mode, so they can see the reset the viewer is no longer there
     // to report — page 7 back to 1, 150% back to 100%.
     await waitFor(() => expect(screen.queryByTestId('pdf-viewer-state')).toBeNull())
-    const cleared = screen.getByLabelText('Status bar')
+    const cleared = screen.getByLabelText('Preview region')
     expect(within(cleared).getByRole('textbox', { name: 'PDF page number' })).toHaveValue('1')
     expect(within(cleared).getByRole('textbox', { name: 'PDF zoom percentage' })).toHaveValue('100')
     // And the count went with it: 34 belonged to a document that is gone, so

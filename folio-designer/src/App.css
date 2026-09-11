@@ -1220,3 +1220,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .font-browser-confirm:hover:not(:disabled) { border-color: var(--color-select-hover); background: var(--color-select-hover); }
 .font-browser-refusals { display: grid; gap: var(--space-1); margin: 0; padding: 0 var(--space-6) var(--space-4); list-style: none; }
 .font-browser :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+
+/* Preview uses the same compact, centered toolbar as the design canvas. */
+.preview-region > .preview-nav { align-self: center; flex-wrap: wrap; justify-content: center; gap: var(--space-3); }

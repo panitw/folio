@@ -92,7 +92,7 @@ test('enumerates the render as rasterised page thumbnails, and navigates by them
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   const pageArea = page.getByRole('img', { name: /PDF, revision \d+/ })
   await expect(pageArea).toBeVisible({ timeout: 60_000 })
-  const statusBar = page.getByLabel('Status bar')
+  const statusBar = page.getByRole('group', { name: 'PDF navigation' })
   await expect(statusBar.getByLabel('PDF page status')).toHaveText('Page 1 of 5', { timeout: 60_000 })
 
   // THE COLUMN SWAPPED, AND THE PALETTE IS GONE FROM THE DOCUMENT.
