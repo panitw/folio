@@ -1366,9 +1366,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // would resolve to whichever band of page ONE it happened to land in, and
   // be created there rather than refused. `createComponent` already exists on
   // the channel, already carries the band NAME and a band-relative
-  // coordinate, and Go already handles it; the first sheet keeps today's
-  // dropComponent payload byte for byte, because a single-page template must
-  // behave exactly as it did.
+  // coordinate, and Go already handles it. Repeated header/footer image
+  // placements use their template page point instead, so Go applies the same
+  // image-drop containment on every occurrence.
   const placeInBand = (band: CanvasProjection['bands'][number]['name'], x: number, y: number) => {
     if (!placing) return
     const kind = placing
@@ -1500,15 +1500,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // the anchor recorded BEFORE setPointerCapture (which throws NotFoundError on
   // an inactive pointerId and would otherwise swallow the press).
   const beginBoundaryDrag = (band: CappingBand, event: PointerEvent<HTMLButtonElement>) => {
-    // A PALETTE PRESS IS NOT A RESIZE. Every other band pointer handler is
-    // gated on `placing` and this one must be too: the strip spans the whole
-    // page width plus 118px and lies over the band, so with a kind armed a
-    // placement press anywhere along the boundary would start a drag instead.
-    // RESIDUE, STATED: the press now does nothing rather than resizing. Routing
-    // it on to the placement underneath is not this patch — the band's own
-    // pointerup is gated on `event.currentTarget === event.target` and the
-    // press landed on the button, so the placement is lost either way. What is
-    // fixed here is the wrong action; the missing one is recorded.
+    // CSS makes the strip transparent to placement pointer events so the
+    // underlying band receives the drop. Keep this guard for direct events
+    // too: an armed palette must never begin a boundary resize.
     if (placing) return
     if (event.button !== 0) return
     if (boundaryDragRef.current !== undefined && boundaryDragRef.current.pointerId !== event.pointerId) return
@@ -2723,6 +2717,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // origin. A repeating band is the same band on every sheet, so its
         // origin is zero on all of them.
         const origin = content ? sheet.origin : 0
+        // An empty repeating band has no page hit target; keep its named
+        // creation path so the engine refuses it instead of hitting Content.
+        const dropOnPage = placing === 'image' && !content ? band.height > 0 : sheet.index === 0
         // The two repeating bands are drawn on every sheet because the engine
         // repeats them — but exactly ONE occurrence of each of their
         // components is interactive and accessibly named, the same rule a
@@ -2768,7 +2765,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (sheet.index === 0) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (sheet.index === 0) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}
     </section>
   }

@@ -5546,6 +5546,19 @@ describe('canvas sheet stack', () => {
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":120,"y":1440,"width":72,"height":24,"snap":true}')
   })
 
+  it.each(['Enter', ' '])('keeps image placement in a zero-height repeated header from targeting Content with %s', async (key) => {
+    const emptyHeader = { ...threeWindows, bands: threeWindows.bands.map((band) => band.name === 'pageHeader' ? { ...band, height: 0 } : band) }
+    const request = vi.fn(async () => { throw new Error('component geometry must stay within pageHeader') })
+    render(<App engine={engine(request)} initialSnapshot={snapshotOf(emptyHeader)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Image' }))
+    fireEvent.keyDown(screen.getByLabelText('Page Header on page 2 of 3'), { key })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const sent = JSON.parse(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]))
+    expect(sent).toMatchObject({ kind: 'createComponent', type: 'image', band: 'pageHeader' })
+    expect(screen.getByRole('button', { name: 'Place Image' })).toHaveAttribute('aria-pressed', 'false')
+    expect(await screen.findByRole('alert')).toHaveTextContent('component geometry must stay within pageHeader')
+  })
+
   it('keeps the FIRST sheet on today dropComponent payload even when the stack is deep', async () => {
     const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
     render(<App engine={engine(request)} initialSnapshot={snapshotOf(threeWindows)} />)
@@ -8320,7 +8333,7 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
   it('hands the rail the page count and the current page from the one page-state authority', async () => {
     await showNavigablePreview()
     expect(JSON.parse(screen.getByTestId('page-rail-props').textContent ?? '{}')).toEqual({ pages: 34, currentPage: 1 })
-    commitTyped(within(screen.getByLabelText('Status bar')).getByRole('textbox', { name: 'PDF page number' }), '7')
+    commitTyped(within(screen.getByLabelText('Preview region')).getByRole('textbox', { name: 'PDF page number' }), '7')
     // The rail reads the SAME value the viewer does, because there is only one.
     expect(JSON.parse(screen.getByTestId('page-rail-props').textContent ?? '{}')).toEqual({ pages: 34, currentPage: 7 })
     expect(previewViewerState().page).toBe(7)
@@ -8329,9 +8342,9 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
   // THE FUNNEL, THROUGH THE REAL `App`, COMPARED AS A WHOLE OBJECT. A rail that
   // navigated by building a fresh view state would silently reset the zoom, and
   // an assertion on `page` alone would pass straight over that.
-  it('moves the page through the same funnel the status bar writes through, disturbing nothing else', async () => {
+  it('moves the page through the same funnel the preview toolbar writes through, disturbing nothing else', async () => {
     await showNavigablePreview()
-    const bar = screen.getByLabelText('Status bar')
+    const bar = screen.getByLabelText('Preview region')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
     const settled = previewViewerState()
     expect(settled.scale).toBe(1.5)
@@ -8341,9 +8354,9 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
     expect(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' })).toHaveValue('150')
   })
 
-  it('leaves a page the rail truncated away reachable from the status bar, and marks none as current', async () => {
+  it('leaves a page the rail truncated away reachable from the preview toolbar, and marks none as current', async () => {
     await showNavigablePreview()
-    commitTyped(within(screen.getByLabelText('Status bar')).getByRole('textbox', { name: 'PDF page number' }), '30')
+    commitTyped(within(screen.getByLabelText('Preview region')).getByRole('textbox', { name: 'PDF page number' }), '30')
     expect(previewViewerState().page).toBe(30)
     // Twelve entries, page 30 among none of them, and the rail marks nothing
     // rather than marking page 12 — the rail is never the only route to a page.

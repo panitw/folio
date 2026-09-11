@@ -241,6 +241,9 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    inside it would be clipped and inert. */
 .band-boundary-handle { position: absolute; top: -3px; height: 7px; left: calc(-1 * var(--band-x) - 104px); width: calc(var(--page-display-width) + 118px); background: transparent; border: 0; padding: 0; cursor: ns-resize; touch-action: none; }
 .band-boundary-handle:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+/* Placement reaches the band beneath the strip, including its 3px header
+   overlap. The strip resumes normal resizing when placement is disarmed. */
+.canvas-region-placing .band-boundary-handle { pointer-events: none; }
 /* The proposal: ONE LINE, at original ± Δ over one projected number, drawn on
    the same overhang as the boundary rule it proposes to replace. No band rect
    moves while it is up (AD-24) — the browser may show where a gesture has got

@@ -1675,6 +1675,7 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
 	unsnappedX, unsnappedY := x, y
+	fitImage := elementType == template.ElementImage && slices.Contains(bandsCappingVertically, projected.Name)
 	if snap {
 		var valid bool
 		x, valid = SnapToGrid(x)
@@ -1685,10 +1686,22 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		if !valid {
 			return CanvasProjection{}, componentFailure("", "component.y", "component y overflows grid snapping")
 		}
-		if containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
+		if !fitImage && containComponent(projected, unsnappedX, unsnappedY, width, height) == nil {
 			x = containEdge(x, geom.Length(projected.Width)-width)
 			y = containEdgeY(projected, y, geom.Length(projected.Height)-height)
 		}
+	}
+	// An empty image placeholder keeps its drop origin and shrinks only the
+	// dimensions that exceed the remaining header/footer space. A snapped
+	// point must stay strictly inside the band so both dimensions stay positive.
+	// Explicit geometry and the content column keep their existing contracts.
+	if fitImage {
+		if snap {
+			x = min(x, floorToGrid(geom.Length(projected.Width)-1))
+			y = min(y, floorToGrid(geom.Length(projected.Height)-1))
+		}
+		width = min(width, geom.Length(projected.Width)-x)
+		height = min(height, geom.Length(projected.Height)-y)
 	}
 	return createComponentInBand(t, elementType, projected.Name, x, y, width, height)
 }

@@ -625,6 +625,180 @@ func TestDropComponentUsesGoHalfOpenBandHitTesting(t *testing.T) {
 	}
 }
 
+func imageDropTemplate(t *testing.T, width, height geom.Length) *Template {
+	t.Helper()
+	tpl := componentTemplate(t)
+	tpl.doc.Page.SizeIsName = false
+	tpl.doc.Page.SizeName = ""
+	tpl.doc.Page.SizeCustom = template.PageSize{Width: width + 72000, Height: 842000}
+	tpl.doc.Bands.Content.Elements = nil
+	for _, band := range []*template.Band{&tpl.doc.Bands.PageHeader, &tpl.doc.Bands.PageFooter} {
+		band.Elements = nil
+		band.Height.Value = height
+	}
+	return tpl
+}
+
+func TestImageDropsFitAtTheirOriginInHeaderAndFooter(t *testing.T) {
+	for _, bandName := range []string{"pageHeader", "pageFooter"} {
+		for _, snap := range []bool{false, true} {
+			for _, tc := range []struct {
+				name               string
+				x, y               int64
+				unsnapped, snapped [4]int64
+			}{
+				{"interior", 8000, 7000, [4]int64{8000, 7000, 96000, 48000}, [4]int64{6000, 6000, 96000, 48000}},
+				{"midpoint", 12000, 30500, [4]int64{12000, 30500, 96000, 30500}, [4]int64{12000, 30000, 96000, 31000}},
+				{"bottom", 12000, 60999, [4]int64{12000, 60999, 96000, 1}, [4]int64{12000, 60000, 96000, 1000}},
+				{"right", 196999, 7000, [4]int64{196999, 7000, 1, 48000}, [4]int64{192000, 6000, 5000, 48000}},
+				{"bottom right", 196999, 60999, [4]int64{196999, 60999, 1, 1}, [4]int64{192000, 60000, 5000, 1000}},
+				{"snap overflows only width", 100000, 7000, [4]int64{100000, 7000, 96000, 48000}, [4]int64{102000, 6000, 95000, 48000}},
+			} {
+				t.Run(fmt.Sprintf("%s/snap=%t/%s", bandName, snap, tc.name), func(t *testing.T) {
+					tpl := imageDropTemplate(t, 197000, 61000)
+					before, _ := Canvas(tpl)
+					band := projectedBands(t, tpl)[bandName]
+					command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"image","x":%s,"y":%s,"snap":%t}`, pointLiteral(band.X+tc.x), pointLiteral(band.Y+tc.y), snap)
+					after, err := ApplyComponentCommand(tpl, []byte(command))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := tc.unsnapped
+					if snap {
+						want = tc.snapped
+					}
+					image := newProjectedComponent(t, before, after)
+					if image.Band != bandName || [4]int64{image.X, image.Y, image.Width, image.Height} != want {
+						t.Fatalf("image = %#v, want %s %v", image, bandName, want)
+					}
+					if len(after.Components) != len(before.Components)+1 || !reflect.DeepEqual(before.Bands, after.Bands) {
+						t.Fatal("image placement changed a band or added more than one component")
+					}
+				})
+			}
+			t.Run(fmt.Sprintf("%s/snap=%t/grid boundary", bandName, snap), func(t *testing.T) {
+				tpl := imageDropTemplate(t, 96000, 48000)
+				before, _ := Canvas(tpl)
+				band := projectedBands(t, tpl)[bandName]
+				after, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"image","x":%s,"y":%s,"snap":%t}`, pointLiteral(band.X+95999), pointLiteral(band.Y+47999), snap)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := [4]int64{95999, 47999, 1, 1}
+				if snap {
+					want = [4]int64{90000, 42000, 6000, 6000}
+				}
+				image := newProjectedComponent(t, before, after)
+				if [4]int64{image.X, image.Y, image.Width, image.Height} != want {
+					t.Fatalf("image at the grid boundary = %#v, want %v", image, want)
+				}
+			})
+		}
+	}
+}
+
+func TestImageDropsResizeToUndersizedBands(t *testing.T) {
+	for _, bandName := range []string{"pageHeader", "pageFooter"} {
+		for _, snap := range []bool{false, true} {
+			for _, size := range []struct{ width, height geom.Length }{{95000, 61000}, {197000, 47000}, {1000, 1}} {
+				t.Run(fmt.Sprintf("%s/snap=%t/%dx%d", bandName, snap, size.width, size.height), func(t *testing.T) {
+					tpl := imageDropTemplate(t, size.width, size.height)
+					band := projectedBands(t, tpl)[bandName]
+					before, _ := Canvas(tpl)
+					after, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"image","x":%s,"y":%s,"snap":%t}`, pointLiteral(band.X), pointLiteral(band.Y), snap)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					image := newProjectedComponent(t, before, after)
+					if image.X != 0 || image.Y != 0 || image.Width != min(96000, int64(size.width)) || image.Height != min(48000, int64(size.height)) {
+						t.Fatalf("resized image = %#v", image)
+					}
+					if !reflect.DeepEqual(before.Bands, after.Bands) {
+						t.Fatal("image placement grew a band")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestImageDropKeepsContentAndHalfOpenHitTesting(t *testing.T) {
+	for _, snap := range []bool{false, true} {
+		t.Run(fmt.Sprintf("snap=%t", snap), func(t *testing.T) {
+			tpl := imageDropTemplate(t, 197000, 61000)
+			bands := projectedBands(t, tpl)
+			content, header, footer := bands["content"], bands["pageHeader"], bands["pageFooter"]
+			for _, tc := range []struct {
+				y    int64
+				band string
+			}{
+				{header.Y + header.Height, "content"},
+				{content.Y + content.Height - 1, "content"},
+				{content.Y + content.Height, "pageFooter"},
+			} {
+				before, _ := Canvas(tpl)
+				after, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"image","x":%s,"y":%s,"snap":%t}`, pointLiteral(content.X), pointLiteral(tc.y), snap)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				image := newProjectedComponent(t, before, after)
+				if image.Band != tc.band || image.Width != 96000 || image.Height != 48000 {
+					t.Fatalf("boundary image = %#v, want %s", image, tc.band)
+				}
+				if tc.y == content.Y+content.Height-1 && (image.Y < content.Height-3000 || image.Y+image.Height <= content.Height) {
+					t.Fatalf("content image was pulled up into the first window: %#v", image)
+				}
+			}
+			for _, point := range [][2]int64{
+				{content.X + content.Width - 1, content.Y}, // Content retains strict horizontal containment.
+				{header.X - 1, header.Y}, {header.X, header.Y - 1},
+				{header.X + header.Width, header.Y}, {footer.X, footer.Y + footer.Height},
+			} {
+				before, _ := SerializeTemplate(tpl)
+				_, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"image","x":%s,"y":%s,"snap":%t}`, pointLiteral(point[0]), pointLiteral(point[1]), snap)))
+				if err == nil {
+					t.Fatalf("drop at (%d,%d) unexpectedly succeeded", point[0], point[1])
+				}
+				if after, _ := SerializeTemplate(tpl); !bytes.Equal(before, after) {
+					t.Fatal("rejected image drop changed canonical bytes")
+				}
+			}
+		})
+	}
+}
+
+func TestImagePaletteFitKeepsExplicitGeometryStrict(t *testing.T) {
+	for _, bandName := range []string{"pageHeader", "pageFooter"} {
+		for _, snap := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/snap=%t", bandName, snap), func(t *testing.T) {
+				tpl := imageDropTemplate(t, 197000, 61000)
+				before, _ := Canvas(tpl)
+				created, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"createComponent","version":1,"type":"image","band":%q,"x":0,"y":0,"width":96,"height":48,"snap":false}`, bandName)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				id := newProjectedComponent(t, before, created).ID
+				band := projectedBands(t, tpl)[bandName]
+				for _, command := range []string{
+					fmt.Sprintf(`{"kind":"createComponent","version":1,"type":"image","band":%q,"x":0,"y":30,"width":96,"height":48,"snap":%t}`, bandName, snap),
+					fmt.Sprintf(`{"kind":"moveComponent","version":1,"id":%q,"x":0,"y":30,"snap":%t}`, id, snap),
+					fmt.Sprintf(`{"kind":"resizeComponent","version":1,"id":%q,"width":96,"height":72,"snap":%t}`, id, snap),
+					fmt.Sprintf(`{"kind":"setComponentBounds","version":1,"id":%q,"x":0,"y":30,"width":96,"height":48,"snap":%t}`, id, snap),
+					fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"rect","x":%s,"y":%s,"snap":%t}`, pointLiteral(band.X), pointLiteral(band.Y+band.Height-1), snap),
+				} {
+					canonical, _ := SerializeTemplate(tpl)
+					if _, err := ApplyComponentCommand(tpl, []byte(command)); err == nil {
+						t.Fatalf("out-of-bounds command unexpectedly succeeded: %s", command)
+					}
+					if after, _ := SerializeTemplate(tpl); !bytes.Equal(canonical, after) {
+						t.Fatalf("rejected command changed canonical bytes: %s", command)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestSetComponentBoundsMovesOriginAndSizeInOneCommand(t *testing.T) {
 	tpl := componentTemplate(t)
 	before, _ := Canvas(tpl)
