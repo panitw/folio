@@ -275,6 +275,8 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return applyTableColumnCommand(t, raw, bindTableCollection)
 	case "updateTableColumnBinding":
 		return applyTableColumnCommand(t, raw, updateTableColumnBinding)
+	case "updateTableColumnExpression":
+		return applyTableColumnCommand(t, raw, updateTableColumnExpression)
 	case "updateTableColumnFooter":
 		return applyTableColumnCommand(t, raw, updateTableColumnFooter)
 	case "addFontChain":
@@ -705,6 +707,40 @@ func updateTableColumnBinding(t *Template, raw map[string]json.RawMessage) (Canv
 	binding := "{{" + alias + "." + field + "}}"
 	if len(binding) > maxCanvasBindingString {
 		return CanvasProjection{}, componentFailure(id, "column.bind", "binding with the current row alias exceeds the table editor text limit")
+	}
+	element.Table.Value.Columns[index].Bind = binding
+	return Canvas(t)
+}
+
+// updateTableColumnExpression accepts the complete authored text unchanged.
+// applyTableColumnCommand reparses the candidate with canonical text-expression
+// and footer validation before installing any document changes.
+func updateTableColumnExpression(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 5); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	columnID, err := commandString(raw, "columnId")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
+	}
+	binding, ok := optionalCommandString(raw, "binding", maxCanvasBindingString)
+	if !ok || bytes.Equal(bytes.TrimSpace(raw["binding"]), []byte("null")) {
+		return CanvasProjection{}, componentFailure(id, "column.bind", "binding must be an explicit string of at most 256 bytes")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	index := tableColumnIndex(element, columnID)
+	if index < 0 {
+		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
 	}
 	element.Table.Value.Columns[index].Bind = binding
 	return Canvas(t)

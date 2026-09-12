@@ -13,7 +13,7 @@ const goRoot = path.join(root, 'folio-go')
 // columns, fill five row fields, fill five headers, set a footer aggregate. Its
 // byte-identity claim — the most trusted number in the project — was therefore
 // permanently coupled to first-run designer UI, and 14.10 removes one of the
-// controls that path drove (the Row field input, [D-14.10.1]). Rewriting those
+// controls that path drove (the Binding input, [D-14.10.1]). Rewriting those
 // keystrokes would have coupled it to the NEXT UI instead.
 //
 // The claim itself is unchanged and nothing is lost: what the browser SAVES is
@@ -213,7 +213,7 @@ async function openPreparedStatement(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: /image component e1/ })).toBeVisible({ timeout: 12_000 })
   await expect(page.getByRole('button', { name: /table component e8/ })).toBeVisible()
   // THE PRECONDITION, ASSERTED THROUGH THE SHIPPED DIALOG. `Binding for column
-  // N` is the engine binding readout beside the editable relative field.
+  // N` is the complete binding in its single editable input.
   await page.getByRole('button', { name: /table component e8/ }).click()
   await openTab(page, 'PROPERTIES')
   await page.getByRole('button', { name: 'Configure columns' }).click()
@@ -221,11 +221,11 @@ async function openPreparedStatement(page: Page): Promise<void> {
   await expect(dialog.getByRole('grid', { name: 'Table columns' })).toBeVisible({ timeout: 12_000 })
   await expect(dialog.getByRole('grid', { name: 'Table columns' })).toHaveAttribute('aria-rowcount', '6')
   for (const index of [1, 2, 3, 4, 5]) {
-    await expect(dialog.getByLabel(`Binding for column ${index}`), `fixture column ${index} must still be bound for CAP-13 to cover what it claims`).not.toBeEmpty()
+    await expect(dialog.getByLabel(`Binding for column ${index}`), `fixture column ${index} must still be bound for CAP-13 to cover what it claims`).not.toHaveValue('')
   }
   // Merely opening the editor keeps this native-PDF witness read-only.
-  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toBeVisible()
-  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('date')
+  await expect(dialog.getByRole('combobox', { name: 'Binding for column 1' })).toBeVisible()
+  await expect(dialog.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.date}}')
   await dialog.getByRole('button', { name: 'Done' }).click()
   await expect(dialog).toHaveCount(0)
 }

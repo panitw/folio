@@ -846,7 +846,7 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
    screen. Restored alone it keeps this story's win (the grid asks for no
    scrollbar at any ordinary width) and contains the overflow to the grid when
    the window really is too narrow. */
-.table-matrix { display: grid; gap: var(--space-2); overflow-x: auto; }.matrix-header, .matrix-row { display: grid; grid-template-columns: 120px minmax(150px, 2fr) minmax(180px, 2.4fr) minmax(88px, 1fr) 112px minmax(190px, 2.2fr); gap: var(--space-2); align-items: center; padding: var(--space-3); border-left: 2px solid var(--color-line); background: var(--color-raised); }.matrix-header { color: var(--color-ink); font: var(--type-label); letter-spacing: var(--tracking-label); }.matrix-row[aria-selected="true"] { border-left-color: var(--color-select); background: var(--color-select-fill); }.matrix-row label { margin: 0; }.matrix-row output { display: block; overflow: hidden; color: var(--color-ink); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
+.table-matrix { display: grid; gap: var(--space-2); overflow-x: auto; }.matrix-header, .matrix-row { display: grid; grid-template-columns: 120px minmax(150px, 2fr) minmax(180px, 2.4fr) minmax(88px, 1fr) 112px minmax(190px, 2.2fr); gap: var(--space-2); align-items: center; padding: var(--space-3); border-left: 2px solid var(--color-line); background: var(--color-raised); }.matrix-header { color: var(--color-ink); font: var(--type-label); letter-spacing: var(--tracking-label); }.matrix-row { align-items: start; }.matrix-row[aria-selected="true"] { border-left-color: var(--color-select); background: var(--color-select-fill); }.matrix-row label { margin: 0; }
 /* ⚠ `:not(.property-segment)` IS THE WHOLE OF THE SPECIFICITY FIX, AND IT IS
    THE DW-226 CLASS OF DEFECT THIS FILE RECORDS AT :35-37.
    `.matrix-row button` is (0,1,1) and sets `border`, `border-radius`,
@@ -877,6 +877,7 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .matrix-affordance { width: 28px; padding: 0; }
 .matrix-bound, .matrix-footer-cell { display: grid; gap: var(--space-1); min-width: 0; }
 .matrix-width { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; }
+.matrix-binding-multiline { min-height: 28px; height: 28px; resize: vertical; padding: 2px; }
 .matrix-unit { color: var(--color-ink-low); font: var(--type-body); }
 .matrix-reveal { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--color-ink-low); font: var(--type-body); }
 /* Add column and the width budget, below the grid rather than inside every row. */

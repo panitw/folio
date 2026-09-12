@@ -284,8 +284,8 @@ describe('application shell', () => {
     await screen.findByRole('grid', { name: 'Table columns' })
     const optionValues = (id: string) => Array.from(container.querySelectorAll(`#${id} option`)).map((option) => option.getAttribute('value'))
     expect(optionValues('table-collection-candidates')).toEqual(['transactions[]'])
-    expect(optionValues('table-row-field-candidates')).toEqual(['date', 'debit'])
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('')
+    expect(optionValues('table-row-field-candidates')).toEqual(['{{row.date}}', '{{row.debit}}'])
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('')
     expect(screen.getByLabelText('Binding for column 1')).toBeInTheDocument()
   })
 
@@ -310,8 +310,8 @@ describe('application shell', () => {
     // The exact walk includes the restored row-field control.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
-    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Binding for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', altKey: true })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
     expect(screen.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
 		expect(screen.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
@@ -763,12 +763,12 @@ describe('application shell', () => {
     // Row-field authoring is one stop between the label and width.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
-    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Binding for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', altKey: true })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' })
-    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Binding for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft', altKey: true })
     expect(document.activeElement).toBe(header)
     // Home reaches the row's FIRST ENABLED control, which on a one-column table
     // is `Remove column 1`: both reorder affordances are disabled at both ends
@@ -1477,8 +1477,8 @@ describe('application shell', () => {
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus()
     fireEvent.keyDown(header, { key: 'ArrowRight' })
-    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Binding for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', altKey: true })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
   })
 

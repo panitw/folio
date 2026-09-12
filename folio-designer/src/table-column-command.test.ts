@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
+import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand, updateTableColumnExpressionCommand, tableColumnBindingSuggestion } from './table-column-command'
 
 const decode = (command: ArrayBuffer): Record<string, unknown> => JSON.parse(new TextDecoder().decode(command)) as Record<string, unknown>
 
@@ -23,5 +23,22 @@ describe('table-column command bytes', () => {
     for (const field of ['customer.name', '', 'bad"\\\npath']) {
       expect(decode(updateTableColumnBindingCommand('e7', 'e8', field))).toEqual({ kind: 'updateTableColumnBinding', version: 1, id: 'e7', columnId: 'e8', field })
     }
+  })
+})
+
+describe('complete table column expression commands and sample suggestions', () => {
+  it('passes complete formulas, interpolation, line endings, literals and clears unchanged', () => {
+    for (const binding of ['{{upper(row.trn_code)}}', '{{formatNumber(row.amount * 1.07, "#,##0.00")}}', ' Code: {{row.code}}\r\n', 'literal', '', 'bad"\\\nformula']) {
+      expect(decode(updateTableColumnExpressionCommand('e7', 'c1', binding))).toEqual({ kind: 'updateTableColumnExpression', version: 1, id: 'e7', columnId: 'c1', binding })
+    }
+  })
+
+  it('formats only safe projected paths within the binding bound for sample presentation', () => {
+    expect(tableColumnBindingSuggestion('txn', 'customer.name')).toBe('{{txn.customer.name}}')
+    expect(tableColumnBindingSuggestion('row', 'x'.repeat(248))).toHaveLength(256)
+    for (const field of ['', 'x'.repeat(249), 'customer..name', 'customer[0]', 'bad field', 'é', '{{row.date}}']) {
+      expect(tableColumnBindingSuggestion('row', field)).toBeUndefined()
+    }
+    expect(tableColumnBindingSuggestion('bad.alias', 'date')).toBeUndefined()
   })
 })

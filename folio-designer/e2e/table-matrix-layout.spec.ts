@@ -53,7 +53,7 @@ async function openEditorOverOneColumn(page: import('@playwright/test').Page): P
   const dialog = page.getByRole('dialog', { name: 'Table Editor' })
   await expect(dialog.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toHaveValue('523.276')
   await expect(dialog.getByRole('grid', { name: 'Table columns' })).toBeVisible({ timeout: 12_000 })
-  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toBeEditable()
+  await expect(dialog.getByRole('combobox', { name: 'Binding for column 1' })).toBeEditable()
   return dialog
 }
 

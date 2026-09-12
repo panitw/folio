@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test'
 // true when the browser job was added.
 //
 // STORY 14.7 REWROTE THE ROVING WALK FOR THE SIX-COLUMN LATTICE. The matrix
-// draws six columns — `#`, HEADER LABEL, BOUND FIELD · row scope, WIDTH, ALIGN,
+// draws six columns — `#`, HEADER LABEL, BINDING, WIDTH, ALIGN,
 // FOOTER AGGREGATE — while the KEYBOARD lattice behind them is wider than six,
 // because the alignment control is three segments and the row's reorder/remove
 // affordances are three more controls inside the `#` cell. Every control the
@@ -33,7 +33,7 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toBeVisible()
   await expect(starterWidth).toHaveValue('261.638')
   await expect(page.getByRole('spinbutton', { name: 'Width for column 2 in points' })).toHaveValue('261.638')
-  await expect(page.getByRole('combobox', { name: 'Row field for column 2' })).toBeEditable()
+  await expect(page.getByRole('combobox', { name: 'Binding for column 2' })).toBeEditable()
   await page.getByRole('button', { name: 'Remove column 2' }).click()
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toHaveCount(0)
   const grid = page.getByRole('grid', { name: 'Table columns' })
@@ -41,7 +41,7 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(grid).toHaveAttribute('aria-rowcount', '2')
 	await expect(grid).toHaveAttribute('aria-colcount', '6')
 	// The retired four are gone as COLUMNS and present as row affordances.
-	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BOUND FIELD · row scope', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
+	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BINDING', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
 	await expect(page.getByRole('button', { name: 'Add column after column 1' })).toHaveCount(0)
 	// The collection and the row alias are still edited here, and nowhere else.
 	await expect(page.getByRole('combobox', { name: 'Root collection' })).toBeVisible()
@@ -54,8 +54,8 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
   await header.focus()
 	// The row-field input occupies its original lattice address.
 	await page.keyboard.press('ArrowRight')
-	await expect(page.getByRole('combobox', { name: 'Row field for column 1' })).toBeFocused()
-	await page.keyboard.press('ArrowRight')
+	await expect(page.getByRole('combobox', { name: 'Binding for column 1' })).toBeFocused()
+	await page.keyboard.press('Alt+ArrowRight')
 	await expect(page.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toBeFocused()
 	// THE ALIGNMENT CONTROL IS THREE REACHABLE SEGMENTS, not one select: each
 	// takes its own lattice position, so no segment becomes unreachable.

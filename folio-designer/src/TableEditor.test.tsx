@@ -61,11 +61,21 @@ const defaultColumns: ReadonlyArray<ColumnFixture> = [
   { id: 'c3', header: 'Note', width: 42000, align: 'center', rowField: 'note', footer: 'count', footerOf: '', footerFormat: '0' },
 ]
 
-const projected = (columns: ReadonlyArray<ColumnFixture>, alias = 'row') => columns.map((column) => ({
-  id: column.id, header: column.header, width: column.width, align: column.align,
-  binding: column.binding ?? (column.rowField === '' ? '' : `{{${alias}.${column.rowField}}}`), rowField: column.rowField, rowFieldEditable: column.rowFieldEditable ?? true,
-  footer: column.footer, footerOf: column.footerOf, footerFormat: column.footerFormat,
-}))
+// This fixture recognizes only the simple row-path projection used by these
+// UI tests. Full expression validity and alias migration remain Go test claims.
+const mockRowBinding = (binding: string, alias: string) => {
+  const simple = /^\{\{([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}\}$/.exec(binding)
+  const field = simple?.[1] === alias ? simple[2]! : ''
+  return { rowField: field, rowFieldEditable: binding === '' || field !== '' }
+}
+const projected = (columns: ReadonlyArray<ColumnFixture>, alias = 'row') => columns.map((column) => {
+  const binding = column.binding ?? (column.rowField === '' ? '' : `{{${alias}.${column.rowField}}}`)
+  return {
+    id: column.id, header: column.header, width: column.width, align: column.align,
+    binding, ...mockRowBinding(binding, alias),
+    footer: column.footer, footerOf: column.footerOf, footerFormat: column.footerFormat,
+  }
+})
 
 const snapshotOf = (over: Partial<typeof canvas> = {}) => ({ documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: { ...canvas, ...over } })
 
@@ -190,9 +200,17 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
     // POINTS (the command layer divides millipoints by 1000), and it is a change
     // like any other: history entry, revision, the lot.
     if (command.kind === 'moveComponent') state.componentX = Number(command.x) * 1000
-    if (command.kind === 'configureTableBinding') { state.collection = String(command.collection); state.alias = String(command.alias) === '' ? 'row' : String(command.alias) }
+    if (command.kind === 'configureTableBinding') {
+      const alias = String(command.alias) === '' ? 'row' : String(command.alias)
+      state.columns = state.columns.map((column) => {
+        if (column.binding === undefined) return column
+        const row = mockRowBinding(column.binding, state.alias)
+        return row.rowField ? { ...column, binding: `{{${alias}.${row.rowField}}}`, ...row } : column
+      })
+      state.collection = String(command.collection); state.alias = alias
+    }
     if (command.kind === 'updateTableColumnFooter') edit((column) => ({ ...column, footer: command.footer as Footer, footerOf: String(command.footerOf), footerFormat: String(command.footerFormat) }))
-    if (command.kind === 'updateTableColumnBinding') edit((column) => ({ ...column, rowField: String(command.field) }))
+    if (command.kind === 'updateTableColumnExpression') edit((column) => ({ ...column, binding: String(command.binding), ...mockRowBinding(String(command.binding), state.alias) }))
     if (command.kind === 'updateTableColumn' && command.field === 'align') edit((column) => ({ ...column, align: command.value as ColumnFixture['align'] }))
     if (command.kind === 'updateTableColumn' && command.field === 'header') edit((column) => ({ ...column, header: String(command.value) }))
     if (command.kind === 'updateTableColumn' && command.field === 'width') edit((column) => ({ ...column, width: Number(command.value) * 1000 }))
@@ -352,7 +370,7 @@ describe('the table editor matrix lattice', () => {
       const cell = activeCell()
       if (cell === undefined || visited.has(cell)) break
       visited.add(cell)
-      press('ArrowRight')
+      fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', altKey: true })
     }
     const enabledInRow = Array.from(dialog.querySelectorAll<HTMLElement>('[data-matrix-cell^="0:"]')).filter((cell) => !cell.matches(':disabled'))
     expect(enabledInRow.length).toBeGreaterThan(1)
@@ -477,7 +495,7 @@ describe('the six columns the design draws, and the four that left', () => {
   it('carries exactly six columnheaders, spelled as the design spells them', async () => {
     await openEditor(tableEngine())
     const grid = screen.getByRole('grid', { name: 'Table columns' })
-    expect(columnHeaderNames(grid)).toEqual(['#', 'HEADER LABEL', 'BOUND FIELD · row scope', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
+    expect(columnHeaderNames(grid)).toEqual(['#', 'HEADER LABEL', 'BINDING', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
     expect(retiredColumnHeaders(grid)).toEqual([])
     expect(grid).toHaveAttribute('aria-colcount', '6')
   })
@@ -490,12 +508,13 @@ describe('the six columns the design draws, and the four that left', () => {
     }
   })
 
-  it('offers a named row-field input beside the engine binding in the bound-field cell', async () => {
+  it('offers one named full binding input in the bound-field cell', async () => {
     await openEditor(tableEngine())
     const cell = screen.getByRole('grid', { name: 'Table columns' }).querySelector('.matrix-row [aria-colindex="3"]') as HTMLElement
     expect(cell.className).toContain('matrix-bound')
-    expect(within(cell).getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('amount')
-    expect(within(cell).getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.amount}}')
+    expect(within(cell).getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
+    expect(within(cell).queryByRole('status')).toBeNull()
+    expect(cell.querySelectorAll('input')).toHaveLength(1)
   })
 
   it('keeps reorder and remove as named, keyboard-operable row affordances', async () => {
@@ -647,7 +666,7 @@ describe('the row scope stays editable here, and the document answers', () => {
     const alias = screen.getByRole('textbox', { name: 'Row alias' })
     fireEvent.blur(alias, { target: { value: 'txn' } })
     await waitFor(() => expect(harness.commands).toContain('{"kind":"configureTableBinding","version":1,"id":"e7","collection":"transactions[]","alias":"txn"}'))
-    await waitFor(() => expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{txn.amount}}'))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.amount}}'))
   })
 
   it('names itself to the accessibility tree and says where a collection is changed', async () => {
@@ -1805,35 +1824,35 @@ describe('table column field authoring', () => {
     await openEditor(harness, sample)
     fireEvent.blur(screen.getByRole('textbox', { name: 'Row alias' }), { target: { value: 'txn' } })
     await idle()
-    const field = screen.getByRole('combobox', { name: 'Row field for column 1' })
-    expect(field).toHaveValue('amount')
+    const field = screen.getByRole('combobox', { name: 'Binding for column 1' })
+    expect(field).toHaveValue('{{txn.amount}}')
     const options = Array.from(document.querySelectorAll('#table-row-field-candidates option')).map((option) => option.getAttribute('value'))
-    expect(options).toEqual(sample === undefined ? [] : ['customer.name', 'date'])
-    fireEvent.blur(field, { target: { value: 'customer.name' } })
+    expect(options).toEqual(sample === undefined ? [] : ['{{txn.customer.name}}', '{{txn.date}}'])
+    fireEvent.blur(field, { target: { value: '{{txn.customer.name}}' } })
     await idle()
-    expect(harness.commands.at(-1)).toBe('{"kind":"updateTableColumnBinding","version":1,"id":"e7","columnId":"c1","field":"customer.name"}')
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('customer.name')
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{txn.customer.name}}')
+    expect(harness.commands.at(-1)).toBe('{"kind":"updateTableColumnExpression","version":1,"id":"e7","columnId":"c1","binding":"{{txn.customer.name}}"}')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.customer.name}}')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.customer.name}}')
     expect(harness.state.revision).toBe(3)
   })
 
   it('re-scopes suggestions to the current root collection after it changes', async () => {
     await openEditor(tableEngine(), '{"transactions":[{"date":"today"}],"other":[{"name":"Ada"}]}')
     const values = () => Array.from(document.querySelectorAll('#table-row-field-candidates option')).map((option) => option.getAttribute('value'))
-    expect(values()).toEqual(['date'])
+    expect(values()).toEqual(['{{row.date}}'])
     fireEvent.blur(screen.getByRole('combobox', { name: 'Root collection' }), { target: { value: 'other[]' } })
     await idle()
-    expect(values()).toEqual(['name'])
+    expect(values()).toEqual(['{{row.name}}'])
   })
 
   it('clears once, skips untouched empty fields, and restores the binding with one undo', async () => {
     const harness = tableEngine()
     await openEditor(harness)
-    fireEvent.blur(screen.getByRole('combobox', { name: 'Row field for column 1' }), { target: { value: '' } })
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 1' }), { target: { value: '' } })
     await idle()
-    expect(harness.commands).toEqual(['{"kind":"updateTableColumnBinding","version":1,"id":"e7","columnId":"c1","field":""}'])
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toBeEmptyDOMElement()
-    fireEvent.blur(screen.getByRole('combobox', { name: 'Row field for column 1' }))
+    expect(harness.commands).toEqual(['{"kind":"updateTableColumnExpression","version":1,"id":"e7","columnId":"c1","binding":""}'])
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('')
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 1' }))
     expect(harness.commands).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
@@ -1841,20 +1860,20 @@ describe('table column field authoring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
     await screen.findByRole('dialog', { name: 'Table Editor' })
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('amount')
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.amount}}')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
   })
 
   it('restores the committed field after each refusal and counts no discarded edit', async () => {
-    const harness = tableEngine(defaultColumns, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnBinding' })
+    const harness = tableEngine(defaultColumns, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnExpression' })
     const before = harness.canonical()
     await openEditor(harness)
     for (let attempt = 0; attempt < 2; attempt++) {
-      fireEvent.blur(screen.getByRole('combobox', { name: 'Row field for column 1' }), { target: { value: 'customer..name' } })
+      fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 1' }), { target: { value: '{{row.customer..name}}' } })
       await screen.findByRole('alert')
       await idle()
-      expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('amount')
-      expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.amount}}')
+      expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
+      expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
     }
     expect(harness.commands).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -1863,26 +1882,80 @@ describe('table column field authoring', () => {
     expect(harness.canonical()).toBe(before)
   })
 
-  it('preserves complex expressions and skips their disabled simple-field controls', async () => {
+  it('edits complete formulas even when the relative-field projection is not editable', async () => {
     const expression = '{{formatNumber(row.amount, "#,##0.00")}}'
+    const replacement = ' Total: {{formatNumber(row.amount * 1.07, "#,##0.00")}} '
     const harness = tableEngine([{ ...defaultColumns[0]!, rowField: '', binding: expression, rowFieldEditable: false }, ...defaultColumns.slice(1)])
     await openEditor(harness)
-    const field = screen.getByRole('combobox', { name: 'Row field for column 1' })
-    expect(field).toBeDisabled()
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent(expression)
-    expect(screen.getByText(/Simple field editing is unavailable to preserve it/)).toBeVisible()
+    const field = screen.getByRole('combobox', { name: 'Binding for column 1' })
+    expect(field).toBeEnabled()
+    expect(field).toHaveValue(expression)
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); press('ArrowRight')
-    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
-    fireEvent.blur(field, { target: { value: 'date' } })
+    expect(document.activeElement).toBe(field)
+    fireEvent.blur(field, { target: { value: replacement } })
+    await idle()
+    expect(harness.state.columns[0]!.binding).toBe(replacement)
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue(replacement)
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 1' }))
+    expect(harness.commands).toHaveLength(1)
+  })
+
+  it.each(['\n', '\r\n', '\r'])('does not commit untouched multiline binding with %j line endings on blur or Done', async (newline) => {
+    const binding = `Code:${newline}{{upper(row.trn_code)}}`
+    const harness = tableEngine([{ ...defaultColumns[0]!, binding, rowFieldEditable: false }])
+    await openEditor(harness)
+    const field = screen.getByRole('textbox', { name: 'Binding for column 1' })
+    expect(field.tagName).toBe('TEXTAREA')
+    expect(field).toHaveValue('Code:\n{{upper(row.trn_code)}}')
+    fireEvent.blur(field)
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
     expect(harness.commands).toEqual([])
-    expect(harness.state.columns[0]!.binding).toBe(expression)
+    expect(harness.state.columns[0]!.binding).toBe(binding)
+  })
+
+  it.each(['Add column', 'Done', 'Escape', 'Cancel'])('handles pending multiline edits through %s without losing authored newlines', async (action) => {
+    const binding = 'Code:\r\n{{row.trn_code}}'
+    const draft = 'Updated:\n{{upper(row.trn_code)}}'
+    const harness = tableEngine([{ ...defaultColumns[0]!, binding, rowFieldEditable: false }])
+    await openEditor(harness)
+    const field = screen.getByRole('textbox', { name: 'Binding for column 1' })
+    field.focus()
+    fireEvent.change(field, { target: { value: draft } })
+    if (action === 'Escape') fireEvent.keyDown(field, { key: 'Escape' })
+    else {
+      const button = screen.getByRole('button', { name: action })
+      expect(fireEvent.mouseDown(button, { button: 0 })).toBe(false)
+      fireEvent.click(button)
+    }
+    if (action === 'Add column') await idle()
+    else await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(harness.state.columns[0]!.binding).toBe(action === 'Cancel' ? binding : draft)
+    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(action === 'Cancel' ? [] : action === 'Add column' ? ['updateTableColumnExpression', 'addTableColumn'] : ['updateTableColumnExpression'])
+  })
+
+  it('restores a multiline binding after rejection and permits a subsequent exact edit', async () => {
+    const binding = 'Code:\r\n{{row.trn_code}}'
+    let refuse = true
+    const harness = tableEngine([{ ...defaultColumns[0]!, binding, rowFieldEditable: false }], {}, { refuseCommand: () => refuse })
+    await openEditor(harness)
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Binding for column 1' }), { target: { value: '{{upper(}}\n' } })
+    await screen.findByRole('alert')
+    await idle()
+    expect(screen.getByRole('textbox', { name: 'Binding for column 1' })).toHaveValue('Code:\n{{row.trn_code}}')
+    expect(harness.state.columns[0]!.binding).toBe(binding)
+    refuse = false
+    const draft = 'Code:\n{{upper(row.trn_code)}}'
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Binding for column 1' }), { target: { value: draft } })
+    await idle()
+    expect(harness.state.columns[0]!.binding).toBe(draft)
   })
 
   it('keeps ordinary matrix navigation and provides the native suggestion route on Alt+Down', async () => {
     const harness = tableEngine()
     await openEditor(harness, '{"transactions":[{"date":"today"}]}')
-    const field = screen.getByRole('combobox', { name: 'Row field for column 1' })
+    const field = screen.getByRole('combobox', { name: 'Binding for column 1' })
     const showPicker = vi.fn()
     Object.defineProperty(field, 'showPicker', { configurable: true, value: showPicker })
     field.focus()
@@ -1891,7 +1964,7 @@ describe('table column field authoring', () => {
     expect(document.activeElement).toBe(field)
     expect(harness.commands).toEqual([])
     press('ArrowDown')
-    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 2' }))
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Binding for column 2' }))
   })
 
   it('refreshes a previously edited width when Add splits it, and Cancel restores this session', async () => {
@@ -1906,8 +1979,8 @@ describe('table column field authoring', () => {
     expect(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toHaveValue(250)
     expect(screen.getByRole('spinbutton', { name: 'Width for column 2 in points' })).toHaveValue(250)
     expect(screen.getByRole('status', { name: 'Width budget' })).toHaveTextContent('Σ 500.0 of 500.0 available')
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.amount}}')
-    fireEvent.blur(screen.getByRole('combobox', { name: 'Row field for column 2' }), { target: { value: 'date' } })
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 2' }), { target: { value: '{{row.date}}' } })
     await idle()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
@@ -1933,10 +2006,10 @@ describe('table column field authoring', () => {
 })
 
 
-describe('table editor actions with a pending row field', () => {
+describe('table editor actions with a pending formula', () => {
   const oneColumn = [{ ...defaultColumns[0]!, width: 500000 }]
   const typeField = (value: string) => {
-    const input = screen.getByRole('combobox', { name: 'Row field for column 1' })
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' })
     input.focus()
     fireEvent.change(input, { target: { value } })
     return input
@@ -1950,12 +2023,12 @@ describe('table editor actions with a pending row field', () => {
   it('commits a dirty field before Add and preserves both commands in order', async () => {
     const harness = tableEngine(oneColumn)
     await openEditor(harness)
-    typeField('date')
+    typeField('{{upper(row.trn_code)}}')
     clickAction('Add column')
     await waitFor(() => expect(harness.state.columns).toHaveLength(2))
     await idle()
-    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnBinding', 'addTableColumn'])
-    expect(screen.getByRole('status', { name: 'Binding for column 1' })).toHaveTextContent('{{row.date}}')
+    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnExpression', 'addTableColumn'])
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{upper(row.trn_code)}}')
     expect(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toHaveValue(250)
     expect(screen.getByRole('spinbutton', { name: 'Width for column 2 in points' })).toHaveValue(250)
     expect(screen.getByRole('textbox', { name: 'Header for column 2' })).toHaveValue('Column 2')
@@ -1964,70 +2037,70 @@ describe('table editor actions with a pending row field', () => {
   it('waits for a delayed binding before dispatching the requested Add', async () => {
     const harness = tableEngine(oneColumn, {}, { pauseCommandAt: 1 })
     await openEditor(harness)
-    typeField('date')
+    typeField('{{upper(row.trn_code)}}')
     clickAction('Add column')
     expect(screen.getByRole('button', { name: 'Add column' })).toBeDisabled()
     expect(harness.commands).toHaveLength(1)
     expect(harness.state.columns).toHaveLength(1)
     await act(async () => { harness.releaseCommand() })
     await waitFor(() => expect(harness.state.columns).toHaveLength(2))
-    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnBinding', 'addTableColumn'])
+    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnExpression', 'addTableColumn'])
   })
 
   it('refuses Add when its pending binding is rejected, retaining committed values and history', async () => {
-    const harness = tableEngine(oneColumn, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnBinding' })
+    const harness = tableEngine(oneColumn, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnExpression' })
     const before = harness.canonical()
     await openEditor(harness)
-    typeField('bad..field')
+    typeField('{{row.bad..field}}')
     clickAction('Add column')
     await screen.findByRole('alert')
     await idle()
     expect(harness.commands).toHaveLength(1)
     expect(harness.canonical()).toBe(before)
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('amount')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
     expect(screen.queryByRole('textbox', { name: 'Header for column 2' })).toBeNull()
   })
 
   it.each(['Done', 'Escape'])('commits the pending field before closing with %s', async (action) => {
     const harness = tableEngine(oneColumn)
     await openEditor(harness)
-    const input = typeField('date')
+    const input = typeField('{{upper(row.trn_code)}}')
     if (action === 'Escape') fireEvent.keyDown(input, { key: 'Escape' })
     else clickAction(action)
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
-    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnBinding'])
-    expect(harness.state.columns[0]!.rowField).toBe('date')
+    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumnExpression'])
+    expect(harness.state.columns[0]!.binding).toBe('{{upper(row.trn_code)}}')
   })
 
   it.each(['Done', 'Escape'])('keeps the editor open when %s refuses a pending field', async (action) => {
-    const harness = tableEngine(oneColumn, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnBinding' })
+    const harness = tableEngine(oneColumn, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnExpression' })
     await openEditor(harness)
-    const input = typeField('bad..field')
+    const input = typeField('{{row.bad..field}}')
     if (action === 'Escape') fireEvent.keyDown(input, { key: 'Escape' })
     else clickAction(action)
     await screen.findByRole('alert')
     await idle()
     expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeVisible()
     expect(harness.state.columns[0]!.rowField).toBe('amount')
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('amount')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{row.amount}}')
   })
 
   it.each(['Done', 'Escape'])('never follows an in-flight binding with Add after %s revokes the session', async (action) => {
     const harness = tableEngine(oneColumn, {}, { pauseCommandAt: 1 })
     await openEditor(harness)
-    typeField('date')
+    typeField('{{upper(row.trn_code)}}')
     clickAction('Add column')
     expect(harness.commands).toHaveLength(1)
     if (action === 'Escape') fireEvent.keyDown(screen.getByRole('dialog', { name: 'Table Editor' }), { key: 'Escape' })
     else fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
     await act(async () => { harness.releaseCommand() })
-    await waitFor(() => expect(harness.state.columns[0]!.rowField).toBe('date'))
+    await waitFor(() => expect(harness.state.columns[0]!.binding).toBe('{{upper(row.trn_code)}}'))
     expect(harness.commands).toHaveLength(1)
     expect(harness.state.columns).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
     await screen.findByRole('dialog', { name: 'Table Editor' })
-    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('date')
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{upper(row.trn_code)}}')
     expect(screen.queryByRole('textbox', { name: 'Header for column 2' })).toBeNull()
   })
 
@@ -2036,7 +2109,7 @@ describe('table editor actions with a pending row field', () => {
     const before = harness.canonical()
     await openEditor(harness)
     await retitle(1, 'Edited')
-    typeField('date')
+    typeField('{{upper(row.trn_code)}}')
     clickAction('Cancel')
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
     expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(['updateTableColumn'])
@@ -2059,14 +2132,132 @@ describe('table editor actions with a pending row field', () => {
     expect(harness.commands).toEqual([])
   })
 
-  it('leaves modified caret and selection keys to the row-field input', async () => {
+  it('leaves normal caret and selection keys to the formula input and uses Alt arrows for matrix navigation', async () => {
     await openEditor(tableEngine(oneColumn))
-    const field = typeField('customer.name')
-    for (const modifier of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey']) {
+    const field = typeField('{{row.amount}}')
+    for (const modifier of ['', 'shiftKey', 'ctrlKey', 'metaKey']) {
       for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
         expect(fireEvent.keyDown(field, { key, [modifier]: true })).toBe(true)
         expect(document.activeElement).toBe(field)
       }
     }
+    fireEvent.keyDown(field, { key: 'ArrowRight', altKey: true })
+    expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
+    field.focus()
+    fireEvent.keyDown(field, { key: 'ArrowLeft', altKey: true })
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Header for column 1' }))
+  })
+})
+
+describe('creating multiline binding drafts', () => {
+  const oneColumn = [{ ...defaultColumns[0]!, binding: '', rowField: '', width: 500000 }]
+  const paste = (input: HTMLInputElement, text: string) => fireEvent.paste(input, { clipboardData: { getData: () => text } })
+  const multiline = () => screen.getByRole('textbox', { name: 'Binding for column 1' }) as HTMLTextAreaElement
+
+  it.each(['blur', 'Add column', 'Done', 'Escape', 'Cancel'])('preserves multiline paste into an empty binding through %s', async (action) => {
+    const harness = tableEngine(oneColumn)
+    const before = harness.canonical()
+    await openEditor(harness)
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' }) as HTMLInputElement
+    input.focus()
+    expect(paste(input, 'Code:\r\n{{upper(row.trn_code)}}')).toBe(false)
+    const draft = 'Code:\n{{upper(row.trn_code)}}'
+    expect(multiline()).toHaveValue(draft)
+    expect(document.activeElement).toBe(multiline())
+    expect(multiline().selectionStart).toBe(draft.length)
+    expect(harness.commands).toEqual([])
+    if (action === 'blur') fireEvent.blur(multiline())
+    else if (action === 'Escape') fireEvent.keyDown(multiline(), { key: 'Escape' })
+    else {
+      const button = screen.getByRole('button', { name: action })
+      expect(fireEvent.mouseDown(button, { button: 0 })).toBe(false)
+      fireEvent.click(button)
+    }
+    if (action === 'blur' || action === 'Add column') await idle()
+    else await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(harness.state.columns[0]!.binding).toBe(action === 'Cancel' ? '' : draft)
+    expect(harness.commands.map((command) => JSON.parse(command).kind)).toEqual(action === 'Cancel' ? [] : action === 'Add column' ? ['updateTableColumnExpression', 'addTableColumn'] : ['updateTableColumnExpression'])
+    if (action === 'Cancel') expect(harness.canonical()).toBe(before)
+  })
+
+  it('preserves surrounding text and replacement selection when paste promotes a single-line literal', async () => {
+    await openEditor(tableEngine([{ ...oneColumn[0]!, binding: 'prefix OLD suffix' }]))
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' }) as HTMLInputElement
+    input.focus()
+    input.setSelectionRange(7, 10, 'backward')
+    paste(input, 'first\rsecond')
+    expect(multiline()).toHaveValue('prefix first\nsecond suffix')
+    expect(document.activeElement).toBe(multiline())
+    expect(multiline().selectionStart).toBe('prefix first\nsecond'.length)
+    expect(multiline().selectionEnd).toBe(multiline().selectionStart)
+  })
+
+  it('promotes Shift+Enter without a command and retains native multiline caret and selection keys', async () => {
+    const harness = tableEngine([{ ...oneColumn[0]!, binding: 'Code: OLD {{row.trn_code}}' }, defaultColumns[1]!])
+    await openEditor(harness)
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' }) as HTMLInputElement
+    input.focus()
+    input.setSelectionRange(6, 10)
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(false)
+    expect(multiline()).toHaveValue('Code: \n{{row.trn_code}}')
+    expect(multiline().selectionStart).toBe(7)
+    expect(harness.commands).toEqual([])
+    for (const key of ['ArrowUp', 'ArrowDown']) {
+      for (const shiftKey of [false, true]) {
+        expect(fireEvent.keyDown(multiline(), { key, shiftKey })).toBe(true)
+        expect(document.activeElement).toBe(multiline())
+      }
+    }
+    fireEvent.blur(multiline())
+    await idle()
+    expect(harness.state.columns[0]!.binding).toBe('Code: \n{{row.trn_code}}')
+  })
+
+  it('restores the original binding after a promoted draft is refused and does not recommit the reset', async () => {
+    const harness = tableEngine(defaultColumns, {}, { refuseCommand: (command) => command.kind === 'updateTableColumnExpression' })
+    const before = harness.canonical()
+    await openEditor(harness)
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' }) as HTMLInputElement
+    input.focus(); input.select()
+    paste(input, '{{upper(}}\n')
+    fireEvent.blur(multiline())
+    await screen.findByRole('alert')
+    await idle()
+    expect(multiline()).toHaveValue('{{row.amount}}')
+    expect(harness.canonical()).toBe(before)
+    fireEvent.blur(multiline())
+    expect(harness.commands).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(harness.request.mock.calls.filter(([operation]) => operation === 'undo')).toHaveLength(0)
+  })
+
+  it('does not commit when a promoted draft returns to the original full binding', async () => {
+    const harness = tableEngine()
+    const before = harness.canonical()
+    await openEditor(harness)
+    const input = screen.getByRole('combobox', { name: 'Binding for column 1' }) as HTMLInputElement
+    input.focus(); input.select()
+    paste(input, 'Changed:\n{{row.amount}}')
+    fireEvent.change(multiline(), { target: { value: '{{row.amount}}' } })
+    fireEvent.blur(multiline())
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Table Editor' })).toBeNull())
+    expect(harness.commands).toEqual([])
+    expect(harness.canonical()).toBe(before)
+  })
+
+  it('keeps projected row metadata and alias migration consistent after a complete simple binding edit', async () => {
+    const harness = tableEngine()
+    await openEditor(harness)
+    fireEvent.blur(screen.getByRole('combobox', { name: 'Binding for column 1' }), { target: { value: '{{row.customer.name}}' } })
+    await idle()
+    expect(harness.state.columns[0]).toMatchObject({ binding: '{{row.customer.name}}', rowField: 'customer.name', rowFieldEditable: true })
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Row alias' }), { target: { value: 'txn' } })
+    await idle()
+    expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.customer.name}}')
+    expect(document.getElementById('table-editor-help')).toHaveTextContent('{{txn.date}}')
+    expect(document.getElementById('table-editor-help')).toHaveTextContent('{{upper(txn.trn_code)}}')
+    expect(document.getElementById('table-editor-help')).toHaveTextContent('In single-line bindings, Alt+Down')
   })
 })

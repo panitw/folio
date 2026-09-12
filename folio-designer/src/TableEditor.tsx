@@ -3,11 +3,13 @@ import { MAX_ENGINE_HISTORY_ENTRIES, type TableColumns } from './engine-protocol
 import { alignSegments, SegmentedControl } from './segmented-control'
 import { isHexColour, swatchColor } from './swatch-color'
 import type { TableHeaderStyleField } from './table-style-command'
+import { tableColumnBindingSuggestion } from './table-column-command'
 
 type Field = 'header' | 'width' | 'align'
+type BindingControl = HTMLInputElement | HTMLTextAreaElement
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onBinding: (id: string, field: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
 
 // STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
@@ -33,8 +35,7 @@ type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boole
 // here, and `TableEditor.test.tsx` asserts every address in the dialog is
 // unique so the property is checked rather than merely intended.
 //
-// The row-field input occupies CELL.bound; complex bindings leave that cell
-// disabled, so navigation skips it using the same enabled-cell scan.
+// Full binding text occupies CELL.bound, including formulas and literals.
 const ALIGN_CELL = 6
 const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, width: 5, align: ALIGN_CELL, aggregate: ALIGN_CELL + alignSegments.length, footerOf: ALIGN_CELL + alignSegments.length + 1, footerFormat: ALIGN_CELL + alignSegments.length + 2 }
 const cellCount = CELL.footerFormat + 1
@@ -93,30 +94,63 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const emptyAdd = useRef<HTMLButtonElement>(null)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const pendingRowField = () => {
-    for (const input of Array.from(dialog.current?.querySelectorAll<HTMLInputElement>('input[data-column-binding]') ?? [])) {
+  // Browsers normalize textarea CRLF and sanitize single-line input text.
+  // Compare against the mounted DOM value to avoid treating normalization as
+  // an author edit; the untouched canonical binding remains engine-owned.
+  const originalBindingValues = useRef(new WeakMap<BindingControl, string>())
+  const recordBindingControl = (input: BindingControl | null) => {
+    if (input && !originalBindingValues.current.has(input)) originalBindingValues.current.set(input, input.value)
+  }
+  const bindingChanged = (input: BindingControl) => input.value !== originalBindingValues.current.get(input)
+  // Promotion is an editor preference, not document state. Keep it for this
+  // session so refusal/reset can restore text without replacing the focused
+  // control. Only the normal blur/action path sends the resulting draft to Go.
+  const [multilineDrafts, setMultilineDrafts] = useState<ReadonlySet<string>>(() => new Set())
+  const pendingBindingInsertion = useRef<{ id: string; text: string; caret: number } | undefined>(undefined)
+  const insertMultilineBinding = (input: HTMLInputElement, inserted: string) => {
+    if (busy || discarding) return
+    const id = input.dataset.columnBinding
+    if (!id) return
+    const start = input.selectionStart ?? input.value.length
+    const end = input.selectionEnd ?? start
+    const beforeCaret = input.value.slice(0, start) + inserted
+    pendingBindingInsertion.current = { id, text: beforeCaret + input.value.slice(end), caret: beforeCaret.replace(/\r\n?/g, '\n').length }
+    setMultilineDrafts((current) => new Set(current).add(id))
+  }
+  useLayoutEffect(() => {
+    const insertion = pendingBindingInsertion.current
+    if (!insertion) return
+    const input = Array.from(dialog.current?.querySelectorAll<HTMLTextAreaElement>('textarea[data-column-binding]') ?? []).find((candidate) => candidate.dataset.columnBinding === insertion.id)
+    if (!input) return
+    input.value = insertion.text
+    input.focus()
+    input.setSelectionRange(insertion.caret, insertion.caret)
+    pendingBindingInsertion.current = undefined
+  }, [multilineDrafts])
+  const pendingBinding = () => {
+    for (const input of Array.from(dialog.current?.querySelectorAll<BindingControl>('[data-column-binding]') ?? [])) {
       const column = columns.find((candidate) => candidate.id === input.dataset.columnBinding)
-      if (column?.rowFieldEditable && input.value !== column.rowField) return { id: column.id, field: input.value }
+      if (column && bindingChanged(input)) return { id: column.id, binding: input.value }
     }
     return undefined
   }
   // Keep the focused field until the clicked action can read it. Otherwise its
   // blur starts a commit and disables Add/Cancel before the browser sends click.
   const keepPendingFieldForAction = (event: MouseEvent<HTMLButtonElement>) => {
-    if (event.button === 0 && pendingRowField()) event.preventDefault()
+    if (event.button === 0 && pendingBinding()) event.preventDefault()
   }
   const afterPendingField = async (action: 'add' | 'close') => {
     // Done and Escape remain available during a request. Closing revokes its
     // session, so a pending bind cannot follow up with an Add in a later editor.
     if (busy) { if (action === 'close') onClose(); return }
-    const pending = pendingRowField()
-    if (pending && !await onBinding(pending.id, pending.field)) return
+    const pending = pendingBinding()
+    if (pending && !await onBinding(pending.id, pending.binding)) return
     if (!mounted.current) return
     if (action === 'add') onAdd(columns.length)
     else onClose()
   }
   const discardPendingField = () => {
-    for (const input of Array.from(dialog.current?.querySelectorAll<HTMLInputElement>('input[data-column-binding]') ?? [])) input.value = input.defaultValue
+    for (const input of Array.from(dialog.current?.querySelectorAll<BindingControl>('[data-column-binding]') ?? [])) input.value = input.defaultValue
     onCancel()
   }
 
@@ -193,13 +227,16 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   }, [projection, error]) // eslint-disable-line react-hooks/exhaustive-deps
   const moveFocus = (event: KeyboardEvent<HTMLElement>, row: number, column: number) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-    // Alt+Down hands the native datalist its suggestion keyboard route.
+    if (column === CELL.bound && event.currentTarget instanceof HTMLTextAreaElement && ['ArrowUp', 'ArrowDown'].includes(event.key)) return
+    // Alt+Down hands a single-line control's native datalist its suggestions.
     if (column === CELL.bound && event.altKey && event.key === 'ArrowDown') {
       const input = event.currentTarget
       if (input instanceof HTMLInputElement && typeof input.showPicker === 'function') { input.showPicker(); event.preventDefault() }
       return
     }
-    if (column === CELL.bound && (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    // Formula text keeps normal caret/selection keys. Alt+Left/Right is the
+    // explicit horizontal matrix-navigation route from this input.
+    if (column === CELL.bound && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) && !(event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey && ['ArrowLeft', 'ArrowRight'].includes(event.key))) return
     event.preventDefault()
 		const enabled = (candidateRow: number, candidateColumn: number) => dialog.current?.querySelector<HTMLElement>(`[data-matrix-cell="${candidateRow}:${candidateColumn}"]`)?.matches(':disabled') === false
 		if (event.key === 'Home' || event.key === 'End') {
@@ -237,7 +274,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     // ordinary blur commit leaves Escape working exactly as it did.
     if (event.key === 'Escape') { event.preventDefault(); if (discarding) return; void afterPendingField('close'); return }
     if (event.key !== 'Tab') return
-    const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])') ?? []).filter((element) => element.tabIndex >= 0)
+    const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])') ?? []).filter((element) => element.tabIndex >= 0)
     if (!focusable.length) return
     const index = focusable.indexOf(document.activeElement as HTMLElement)
     if ((!event.shiftKey && index === focusable.length - 1) || (event.shiftKey && index <= 0)) { event.preventDefault(); focusable[event.shiftKey ? focusable.length - 1 : 0]?.focus() }
@@ -295,7 +332,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // uncontrolled input. Restore from React's projected defaults in place;
   // remounting the entire form here would steal focus from the next Tab stop.
   useLayoutEffect(() => {
-    for (const input of Array.from(dialog.current?.querySelectorAll<HTMLInputElement>('input:not([type="color"]):not([type="checkbox"])') ?? [])) input.value = input.defaultValue
+    for (const input of Array.from(dialog.current?.querySelectorAll<BindingControl>('input:not([type="color"]):not([type="checkbox"]), textarea[data-column-binding]') ?? [])) input.value = input.defaultValue
   }, [projection, error])
   const commitStyleText = (field: TableHeaderStyleField, committed: string) => (event: FocusEvent<HTMLInputElement>) => {
     const input = event.currentTarget
@@ -505,18 +542,40 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // the engine resolved. Provenance is left unsaid rather than guessed.
   // DO NOT REINSTATE A SENTENCE ABOUT INHERITANCE HERE — the test named
   // "makes no claim about provenance" exists to catch exactly that.
+  const bindingControl = (column: typeof columns[number], index: number) => {
+    const props = {
+      ...matrixCell(index, CELL.bound), ref: recordBindingControl,
+      'data-column-binding': column.id, 'aria-label': `Binding for column ${index + 1}`,
+      'aria-describedby': 'table-editor-help', disabled: busy, defaultValue: column.binding,
+      onBlur: (event: FocusEvent<BindingControl>) => {
+        const input = event.currentTarget
+        if (pendingBindingInsertion.current?.id === column.id) return
+        if (busy) { input.value = input.defaultValue; return }
+        if (bindingChanged(input)) void onBinding(column.id, input.value)
+      },
+    }
+    return multilineDrafts.has(column.id) || /[\r\n]/.test(column.binding)
+      ? <textarea key={boxKey(column.binding)} {...props} className="matrix-binding-multiline" rows={1} />
+      : <input key={boxKey(column.binding)} {...props} list="table-row-field-candidates" onPaste={(event) => {
+        const text = event.clipboardData.getData('text/plain')
+        if (/[\r\n]/.test(text)) { event.preventDefault(); insertMultilineBinding(event.currentTarget, text) }
+      }} onKeyDown={(event) => {
+        if (event.key === 'Enter' && event.shiftKey) { event.preventDefault(); insertMultilineBinding(event.currentTarget, '\n'); return }
+        moveFocus(event, index, CELL.bound)
+      }} />
+  }
   const committedEdges: ReadonlyArray<string> = table['headerBorder.edges'] === '' ? [] : table['headerBorder.edges'].split(',')
   const borderPainted = table['headerBorder.edgesResolved'] !== ''
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
-      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, row fields, widths, alignment and footer totals. Enter a relative row field such as date or customer.name; the engine applies the current row alias. Use Alt+Down in a row field for sample suggestions. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
+      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Enter a full binding such as {`{{${table.alias}.date}}`} or a formula such as {`{{upper(${table.alias}.trn_code)}}`}. Use Alt+Left/Right to move between cells. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
       {/* Collection and alias configure the shared row scope. The labelled
           group remains accessible beside the per-column field controls. */}
       <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input key={boxKey(table.collection)} aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input key={boxKey(table.alias)} aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'Set the table’s collection and row alias here. Candidate collections come from the loaded sample; the engine validates every saved binding.' : 'Set the table’s collection and row alias here. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
-      <datalist id="table-row-field-candidates">{(sampleAvailable ? candidates.filter((candidate) => candidate.collection === table.collection) : []).map((candidate) => <option key={candidate.field} value={candidate.field} />)}</datalist>
+      <datalist id="table-row-field-candidates">{(sampleAvailable ? candidates.filter((candidate) => candidate.collection === table.collection && tableColumnBindingSuggestion(table.alias, candidate.field) !== undefined) : []).map((candidate) => <option key={candidate.field} value={tableColumnBindingSuggestion(table.alias, candidate.field)} />)}</datalist>
       {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button ref={emptyAdd} type="button" className="file-button" disabled={busy} onMouseDown={keepPendingFieldForAction} onClick={() => void afterPendingField('add')}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={COLUMN_COUNT} className="table-matrix">
-        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BOUND FIELD · row scope</span><span role="columnheader">WIDTH</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
+        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BINDING</span><span role="columnheader">WIDTH</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
         {columns.map((column, index) => <div role="row" aria-rowindex={index + 2} aria-selected={active.row === index} className="matrix-row" key={column.id}>
           {/* THE ROW'S OWN AFFORDANCES, NOT FOUR MORE COLUMNS. Reorder and
               remove act on THIS ROW, so they live in the row's identity cell
@@ -527,9 +586,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
           <span role="gridcell" aria-colindex={1} className="matrix-rail"><span className="matrix-ordinal">{index + 1}</span><span className="matrix-actions"><button {...matrixCell(index, CELL.moveEarlier)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} earlier`} title={index === 0 ? `Column ${index + 1} is already first` : `Move column ${index + 1} earlier`} disabled={busy || index === 0} onClick={() => dispatchOnce(() => onMove(column.id, index - 1))}>↑</button><button {...matrixCell(index, CELL.moveLater)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} later`} title={index === columns.length - 1 ? `Column ${index + 1} is already last` : `Move column ${index + 1} later`} disabled={busy || index === columns.length - 1} onClick={() => dispatchOnce(() => onMove(column.id, index + 1))}>↓</button><button {...matrixCell(index, CELL.remove)} type="button" className="matrix-affordance" aria-label={`Remove column ${index + 1}`} title={`Remove column ${index + 1}`} disabled={busy} onClick={() => dispatchOnce(() => onRemove(column.id))}>×</button></span></span>
           <span role="gridcell" aria-colindex={2}><input key={boxKey(column.header)} {...matrixCell(index, CELL.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
           <span role="gridcell" aria-colindex={3} className="matrix-bound">
-            <input key={boxKey(column.rowField)} {...matrixCell(index, CELL.bound)} data-column-binding={column.id} aria-label={`Row field for column ${index + 1}`} aria-describedby={`binding-display-${index}${column.rowFieldEditable ? ' table-editor-help' : ` binding-explanation-${index}`}`} list="table-row-field-candidates" disabled={busy || !column.rowFieldEditable} defaultValue={column.rowField} onBlur={(event) => { if (busy || !column.rowFieldEditable) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.rowField) void onBinding(column.id, event.currentTarget.value) }} />
-            <output id={`binding-display-${index}`} aria-label={`Binding for column ${index + 1}`}>{column.binding}</output>
-            {!column.rowFieldEditable && <p id={`binding-explanation-${index}`} className="honest-note">This expression is not a simple row field. Simple field editing is unavailable to preserve it.</p>}
+            {bindingControl(column, index)}
           </span>
           {/* THE UNIT IS SHOWN BESIDE THE NUMBER because the columnheader is
               `WIDTH`, as the design spells it, and a bare number in a design
