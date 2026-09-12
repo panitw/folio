@@ -12269,6 +12269,8 @@ a product decision about what placing a Line should mean, not a selection concer
 - **Found by:** D-000.9 item 2 (registered, unruled); characterised by the engineering lead ruling 14.3's Q1.
 - **Owner:** unassigned. **Severity:** MEDIUM. **Status:** OPEN.
 
+**Line fill corrected (2026-09-12):** `spec-draw-thin-lines-at-declared-thickness.md` sizes ordinary line paint from the projected width and height while preserving the existing padded interaction wrapper. Horizontal and vertical 0.5pt, 1pt, and 2pt lines were verified at 50%, 100%, and 150% zoom with the same 12px hit target. This entry remains open for other component kinds and imported border rendering; the original diagnosis below predates the line-specific correction.
+
 **This entry replaces the adjective with the arithmetic, because the adjective was not schedulable.** The prior
 registration said the floor "changes what is drawn". True, and it undersells the defect by a wide margin.
 

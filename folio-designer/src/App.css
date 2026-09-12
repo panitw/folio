@@ -286,15 +286,11 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    `role="button"` the control vocabulary already sweeps.
 
    ⚠ AND IT PADS WITHOUT INFLATING, WHICH IS THE WHOLE POINT. The element's own
-   box — and therefore the painted `.canvas-box` that fills it at `inset: 0` —
-   is untouched: the pad is a transparent pseudo-element hung OUTSIDE the box on
+   box is untouched: the pad is a transparent pseudo-element hung OUTSIDE the box on
    negative insets, which is why the paint is byte-identical with the padding
-   present and absent. The `max(2px, …)` floor above is the OTHER mechanism: it
-   pads by inflating, so it collapses distinct document states into one
-   appearance (at zoom 1 a 1pt and a 2pt rule both draw 2px). That floor is left
-   exactly as it is and is recorded as DW-345; this rule deliberately does not
-   repeat its shape, and App.test.tsx asserts the difference rather than
-   describing it.
+   present and absent. The `max(2px, …)` floor above still sizes the outer hit
+   box. Lines paint their projected dimensions inside it, so sub-pixel strokes
+   remain distinct. The paint floor for other component kinds remains DW-345.
 
    The pad is zero on any axis already at or over 12px, so a normal component's
    hit region is exactly its box, as today. The `0px` fallbacks keep the rule
@@ -494,11 +490,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 /* Story 9.2: the component's own box — the fill and border the engine will
    paint — beneath the content and beneath the selection chrome. */
 .canvas-box { position: absolute; inset: 0; box-sizing: border-box; pointer-events: none; }
-/* A line is its box now: its fill comes from the document through .canvas-box,
-   not from a canvas-only ink colour that no PDF would print. The height floor
-   stays — a 1pt rule is under two device pixels at 100% — as it does for every
-   component's width and height. */
+/* Keep the line's hit box comfortable, but paint its exact projected size on
+   both axes so horizontal and vertical hairlines retain their thickness. */
 .canvas-component-line { height: max(2px, var(--component-height)); }
+.canvas-component-line .canvas-box { width: var(--component-width); height: var(--component-height); }
 .canvas-component-line::after { content: none; }
 .canvas-component-selected { background: var(--tint-select-fill-soft); }
 .canvas-component-selected::after { content: ''; border-style: solid; border-color: var(--color-select); }

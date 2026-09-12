@@ -1711,10 +1711,8 @@ describe('application shell', () => {
     // THE RULE IS PER-ELEMENT-SIZE, NEVER PER-KIND: the 4pt image is padded on
     // both axes on exactly the terms the 1pt line is padded on one, and the 24pt
     // text box is padded on neither.
-    // 5px, not 5.5px: the 1pt rule DRAWS at 2px because of the paint floor, so
-    // 2 + 2 x 5 is exactly the 12px the owner ruled. Taking the shortfall from
-    // the 1px projection instead reached 13px — DW-345's floor arriving through
-    // the arithmetic rather than through the paint.
+    // The 1pt line paints at 1px inside a 2px interaction wrapper. Its 5px
+    // padding on each side therefore produces the intended 12px hit region.
     expect(screen.getByLabelText('line component e1').style.getPropertyValue('--hit-pad-x')).toBe('0px')
     expect(screen.getByLabelText('line component e1').style.getPropertyValue('--hit-pad-y')).toBe('5px')
     expect(screen.getByLabelText('image component e2').style.getPropertyValue('--hit-pad-x')).toBe('4px')
@@ -1723,7 +1721,7 @@ describe('application shell', () => {
     expect(screen.getByLabelText('text component e3').style.getPropertyValue('--hit-pad-y')).toBe('0px')
   })
 
-  it('recomputes the pad from the drawn size at each zoom rather than pinning a fixed number', () => {
+  it('recomputes the pad from the interaction box at each zoom rather than pinning a fixed number', () => {
     render(<App engine={engine()} initialSnapshot={padSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
     expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('90%')
@@ -1734,10 +1732,8 @@ describe('application shell', () => {
     const image = screen.getByLabelText('image component e2')
     expect(image.style.getPropertyValue('--component-height')).toBe('3.6px')
     expect(image.style.getPropertyValue('--hit-pad-y')).toBe('4.2px')
-    // AND THE 1pt RULE IS THE FLOOR WITNESS, in the same row so the two cannot
-    // be confused. It draws at 2px at BOTH zooms — `max(2px, …)` — so its pad
-    // does not move, and the reachable extent stays 12px rather than drifting to
-    // 13.1px. That is DW-345's floor being read, not changed.
+    // The 1pt line's interaction wrapper stays at 2px at both zooms, so its
+    // pad stays at 5px even though the painted line follows the zoom.
     const line = screen.getByLabelText('line component e1')
     expect(line.style.getPropertyValue('--component-height')).toBe('0.9px')
     expect(line.style.getPropertyValue('--hit-pad-y')).toBe('5px')
@@ -1755,9 +1751,9 @@ describe('application shell', () => {
   // floor above came to exist, and that floor is left alone here on the grounds
   // DW-345 records rather than folded into a selection story.
   //
-  // The paint of a component is three things and no more: the element's own
-  // width/height declarations, the `--component-*` values App.tsx puts on it,
-  // and `.canvas-box`'s `inset: 0`. None of them may mention the pad, and the
+  // Component paint uses the `--component-*` values and `.canvas-box`; lines
+  // override the box's dimensions to avoid inheriting the interaction floor.
+  // Neither paint nor the outer box may mention the pad, and the
   // pad may exist ONLY as a pseudo-element hung outside the box on negative
   // insets. jsdom applies no stylesheet, so the declarations are read from the
   // source the way canvas-authority-contract.test.ts reads it, and the values

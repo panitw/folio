@@ -5385,17 +5385,10 @@ function ComponentBox({ component, zoom }: { component: CanvasProjection['compon
 // HALF the shortfall on each side, so the pointer-reachable extent reaches 12px
 // while the drawn box keeps every pixel it had and not one more.
 //
-// ⚠ THE SHORTFALL IS MEASURED AGAINST WHAT IS DRAWN, NOT AGAINST THE
-// PROJECTION, AND THE DIFFERENCE IS DW-345 REACHING IN THROUGH A SIDE DOOR.
-// The box does not draw at `component.height`; it draws at
-// `max(2px, component.height x zoom)` — the paint floor this story was told to
-// leave alone (App.css:197 and :242). Taking the shortfall from the projection
-// added the pad to an ALREADY-FLOORED box, so a 1pt rule reached 1 + 2 x 5.5 =
-// 13px, not the 12px the owner ruled: 13.1px at zoom 0.9, 13.5px at zoom 0.5.
-// The tell is that 2pt, 4pt and 12pt all landed on exactly 12px — the sizes
-// where the floor is inactive. Flooring here too makes the reachable extent
-// exactly 12px at every zoom, and it does so WITHOUT touching the floor: this
-// reads the floor's value, it does not change it.
+// Measure the shortfall against the outer interaction box, which keeps a 2px
+// floor. Line paint uses the exact projected dimensions inside that box.
+// Padding the projection instead would add 5.5px per side to a 2px wrapper
+// for a 1pt line, making its hit region 13px instead of the intended 12px.
 //
 // ⚠ IT IS KEYED TO ELEMENT SIZE, NEVER TO COMPONENT KIND. A 1pt-tall image or
 // rectangle is as unreachable as a 1pt line and is padded on the same terms.
@@ -5416,10 +5409,10 @@ function ComponentBox({ component, zoom }: { component: CanvasProjection['compon
 const COMFORTABLE_HIT_PX = 12
 // The floor `.canvas-component` declares, read rather than re-decided. If that
 // rule's 2px ever moves, this constant is the one line that has to move with it.
-const PAINT_FLOOR_PX = 2
+const HIT_BOX_FLOOR_PX = 2
 function hitPad(millipoints: number, zoom: number): string {
-  const drawn = Math.max(PAINT_FLOOR_PX, Math.round(millipoints * zoom * 1000) / 1_000_000)
-  return `${Math.max(0, Math.round((COMFORTABLE_HIT_PX - drawn) * 500_000) / 1_000_000)}px`
+  const boxSize = Math.max(HIT_BOX_FLOOR_PX, Math.round(millipoints * zoom * 1000) / 1_000_000)
+  return `${Math.max(0, Math.round((COMFORTABLE_HIT_PX - boxSize) * 500_000) / 1_000_000)}px`
 }
 function componentStyle(component: { x: number; y: number; width: number; height: number }, zoom: number): CSSProperties { return { '--component-x': canvasDisplay.css(component.x, zoom), '--component-y': canvasDisplay.css(component.y, zoom), '--component-width': canvasDisplay.css(component.width, zoom), '--component-height': canvasDisplay.css(component.height, zoom), '--hit-pad-x': hitPad(component.width, zoom), '--hit-pad-y': hitPad(component.height, zoom) } as CSSProperties }
 
