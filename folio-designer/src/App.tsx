@@ -2723,7 +2723,6 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // measures the DOM and nothing multiplies a window height by an index.
   const displayCanvas = canvas && canvasSelection.group ? translatedCanvas(canvas, canvasSelection.group.ids, canvasSelection.group.dx, canvasSelection.group.dy) : canvas
   const stack = displayCanvas ? sheetStack(displayCanvas) : undefined
-  const disclosure = stack ? sheetStackDisclosure(stack) : undefined
   const sheetSurface = (projection: CanvasProjection, model: SheetStack, sheet: Sheet) => {
     const sheets = model.sheets.length
     // A single-sheet document must render exactly the DOM and exactly the
@@ -2943,7 +2942,6 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           neighbour. */}
       {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
-        {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
         {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
 
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
@@ -5328,31 +5326,6 @@ const canvasTruncationNotice = 'Canvas preview cut short. The whole text is in t
 // everything above it in the column, and the canvas has no data, so the page
 // it prints on can differ from the page drawn here.
 const canvasColumnPositionNotice = (page: number, pages: number): string => `on canvas page ${page} of ${pages}, which is a consequence of the content above it and can change when the data does — a column position, not a pin to page ${page}`
-// AC4's CANVAS-WIDE half. The claim the sheets make is narrower than the
-// drawing looks: they show the pages this content column occupies AS THE
-// CANVAS HAS LAID IT OUT, never a forecast of the printed document. Where the
-// engine says the count is NOT EXACT — a bound table, a degraded pagination,
-// text that could not be shaped, an element whose visibility depends on data —
-// the printed document runs to some other number of pages, and the four
-// shipped statement templates are one proof: byte-identical files that print
-// one, five, twenty and fifty pages and project ONE window each.
-const canvasColumnClaim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
-// ⚠ DIRECTION-FREE ON PURPOSE. The previous wording here said the document
-// "prints more pages than are shown", which is true of a bound table and FALSE
-// of an element the data hides — the engine places it and the render omits it,
-// so the printed document is SHORTER. The causes do not agree on a direction
-// and a document can carry two that disagree, so the only honest sentence is
-// that the number is not the printed one.
-const canvasInexactClaim = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
-function sheetStackDisclosure(stack: SheetStack): string | undefined {
-  // Silent for the document that has nothing to disclose: one window, and an
-  // exact count. Saying it anyway would be noise on every
-  // single-page template, and AC5 requires that template's accessible surface
-  // to be what it was.
-  if (stack.sheets.length <= 1 && stack.isExact) return undefined
-  const shown = stack.truncated ? `Showing the first ${stack.sheets.length} sheets of ${stack.windowCount}.` : `Showing ${stack.sheets.length} ${stack.sheets.length === 1 ? 'sheet' : 'sheets'}.`
-  return `${shown} These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document. ${canvasColumnClaim}${stack.isExact ? '' : ` ${canvasInexactClaim}`}`
-}
 function componentAccessibleName(component: CanvasProjection['components'][number], note?: string): string {
   const page = note ? `; ${note}` : ''
   if (component.type !== 'text') return `${component.type} component ${component.id}${page}`

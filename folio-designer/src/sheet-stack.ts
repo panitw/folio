@@ -28,8 +28,8 @@ import type { CanvasProjection } from './engine-protocol'
 // DECLARED placement gap, not from text anyone is reading. 120 is three times
 // the epic's stated target and more than twice what the paint budget can
 // fill. Each sheet is a page's worth of DOM and the canvas is unvirtualised
-// (DW-34), which is the cost this bounds; the count itself is untouched, and
-// the interface says out loud that it is showing the first N of M.
+// (DW-34), which is the cost this bounds. The model retains the full projected
+// count and truncation state independently of the sheets mounted by the UI.
 export const MAX_CANVAS_SHEETS = 120
 
 // The vertical gap between two sheets, in CSS pixels at zoom 1 — the stack's
@@ -66,10 +66,8 @@ export type SheetStack = Readonly<{
   // What the projection said, before the drawing budget was applied.
   windowCount: number
   truncated: boolean
-  // Go's ContentWindowCountIsExact, carried through unchanged. Its sense is
-  // inverted from the `isFloor` this replaced: TRUE means the count can be
-  // trusted, so a projection that forgot to set it degrades to the honest
-  // claim rather than to a confident one.
+  // Go's ContentWindowCountIsExact, retained as model metadata independently
+  // of whether the UI displays a count. True means the projected count is exact.
   isExact: boolean
 }>
 

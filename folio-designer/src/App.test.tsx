@@ -5653,39 +5653,21 @@ describe('canvas sheet stack', () => {
     expect(JSON.parse(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]))).toMatchObject({ kind: 'moveComponents', dy: 865.89, constrainToWindow: true })
   })
 
-  it('states what the sheets claim, in accessible text, whenever there is more than one or the count is not exact', () => {
-    const claim = "A component's page is a consequence of the content above it and can change when the data does — it is a column position, not a pin to page three."
-    const inexact = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
+  it('renders multiple sheets without the sheet-count banner', () => {
     render(<App engine={engine()} initialSnapshot={snapshotOf(threeWindows)} />)
-    const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
-    expect(disclosure).toHaveTextContent('Showing 3 sheets.')
-    expect(disclosure).toHaveTextContent('These are the pages this content column occupies as the canvas has laid it out, not a prediction of the printed document.')
-    expect(disclosure).toHaveTextContent(claim)
-    // Exact, so it must NOT disclaim: a disclosure that always said
-    // everything would say nothing.
-    expect(disclosure).not.toHaveTextContent(inexact)
+    expect(document.querySelectorAll('.page-surface')).toHaveLength(3)
+    expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
   })
 
-  it('says a data-length document can print a different number of pages than are drawn, even when it draws only one sheet', () => {
-    // DIRECTION-FREE, deliberately. The old sentence here promised MORE
-    // pages, which is true of this bound table and false of an element the
-    // data hides — and one document can carry both.
-    const inexact = 'This count depends on data the canvas does not have, so the printed document can run to a different number of pages.'
-    // The shipped statement shape: four byte-identical templates that print
-    // one, five, twenty and fifty pages and project ONE window each, because
-    // the canvas has never been given the data.
+  it('renders a data-length document without the sheet-count banner', () => {
     const bound = { ...canvas, contentWindowCountIsExact: false, components: [{ id: 'e8', type: 'table' as const, band: 'content' as const, x: 0, y: 54_000, width: 400_000, height: 28_000, resizable: false, tableBind: 'transactions[]' }] }
     render(<App engine={engine()} initialSnapshot={snapshotOf(bound)} />)
-    const disclosure = screen.getByRole('status', { name: 'Canvas sheet disclosure' })
-    expect(disclosure).toHaveTextContent('Showing 1 sheet.')
-    expect(disclosure).toHaveTextContent(inexact)
-    // One window, so no seam and no page qualifier — the honesty is in the
-    // words, not in a drawing that would be a second lie.
+    expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
     expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
     expect(sheetLabels()).toEqual(['Report page with Page Header, Content, and Page Footer'])
   })
 
-  it('carries the same claim into the accessible name of a component on a later sheet, and not onto a first-sheet one', () => {
+  it('describes column positioning in later-sheet component names and keeps first-sheet names unchanged', () => {
     render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0), at('e3', 1_450_000)] })} />)
     // The exact sentence, so deleting it turns this red rather than merely
     // shortening a string nobody asserted.
@@ -5694,12 +5676,12 @@ describe('canvas sheet stack', () => {
     expect(screen.getByLabelText('text component e1')).toBeInTheDocument()
   })
 
-  it('draws the first budgeted sheets, says it is showing the first N of M, and never blanks', () => {
+  it('draws the first budgeted sheets without the sheet-count banner and never blanks', () => {
     const many = MAX_CANVAS_SHEETS + 5
     const budgeted = { ...canvas, contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index * 700_000) }
     render(<App engine={engine()} initialSnapshot={snapshotOf(budgeted)} />)
     expect(document.querySelectorAll('.page-surface')).toHaveLength(MAX_CANVAS_SHEETS)
-    expect(screen.getByRole('status', { name: 'Canvas sheet disclosure' })).toHaveTextContent(`Showing the first ${MAX_CANVAS_SHEETS} sheets of ${many}.`)
+    expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
     expect(screen.queryByText('Waiting for Go page geometry.')).not.toBeInTheDocument()
   })
 

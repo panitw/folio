@@ -190,8 +190,6 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    will not use. Absent when the next window begins past this sheet's own
    foot, because then the foot is the boundary. */
 .page-seam { position: absolute; left: 0; right: 0; top: var(--seam-display-y); bottom: 0; border-top: 2px dashed var(--color-select); background: var(--color-page-shell); pointer-events: none; }
-/* What the sheets claim, said out loud rather than in a tooltip. */
-.canvas-disclosure { max-width: 640px; margin: 0; padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-body); }
 .page-surface { width: var(--page-display-width); height: var(--page-display-height); min-width: 1px; position: relative; flex: none; background-color: var(--color-page); box-shadow: var(--shadow-page); color: var(--color-page-ink); }
 .page-surface::before { content: ''; position: absolute; left: var(--page-margin-left); right: var(--page-margin-right); top: 0; bottom: 0; border-left: var(--hairline) solid var(--color-page-guide); border-right: var(--hairline) solid var(--color-page-guide); pointer-events: none; }
 /* Grid coordinates share each band's authored origin with Go snapping. A
