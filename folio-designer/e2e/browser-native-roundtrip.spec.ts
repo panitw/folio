@@ -213,8 +213,7 @@ async function openPreparedStatement(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: /image component e1/ })).toBeVisible({ timeout: 12_000 })
   await expect(page.getByRole('button', { name: /table component e8/ })).toBeVisible()
   // THE PRECONDITION, ASSERTED THROUGH THE SHIPPED DIALOG. `Binding for column
-  // N` is the `<output>` [D-14.10.1] kept — the editor still SHOWS each
-  // column's bound field, it just no longer lets you edit it there.
+  // N` is the engine binding readout beside the editable relative field.
   await page.getByRole('button', { name: /table component e8/ }).click()
   await openTab(page, 'PROPERTIES')
   await page.getByRole('button', { name: 'Configure columns' }).click()
@@ -224,9 +223,9 @@ async function openPreparedStatement(page: Page): Promise<void> {
   for (const index of [1, 2, 3, 4, 5]) {
     await expect(dialog.getByLabel(`Binding for column ${index}`), `fixture column ${index} must still be bound for CAP-13 to cover what it claims`).not.toBeEmpty()
   }
-  // AC5 — the editor offers NO control to edit a bound field, here in a real
-  // browser as well as in the unit suite.
-  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toHaveCount(0)
+  // Merely opening the editor keeps this native-PDF witness read-only.
+  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toBeVisible()
+  await expect(dialog.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('date')
   await dialog.getByRole('button', { name: 'Done' }).click()
   await expect(dialog).toHaveCount(0)
 }

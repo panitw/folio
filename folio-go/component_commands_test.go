@@ -4017,3 +4017,295 @@ func TestTableCreationUsesDefaultFontAndRendersPopulatedItems(t *testing.T) {
 		})
 	}
 }
+
+func tableColumnAuthoringFixture(t *testing.T, widths []geom.Length, spare geom.Length) (*Template, string) {
+	t.Helper()
+	var total geom.Length
+	for _, width := range widths {
+		total += width
+	}
+	tpl := imageDropTemplate(t, total+spare, 20000)
+	before, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := newProjectedComponent(t, before, created).ID
+	_, _, _, element, err := findComponent(tpl, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	element.Table.Value.Columns = nil
+	for i, width := range widths {
+		element.Table.Value.Columns = append(element.Table.Value.Columns, template.Column{
+			ID: template.AllocateElementID(tpl.doc), Label: fmt.Sprintf("Label %d", i), Width: width,
+			Bind: "{{row.date}}", Align: template.Presence[string]{Set: true, Value: "right"},
+			Footer: template.Presence[string]{Set: true, Value: "count"}, FooterFormat: template.Presence[string]{Set: true, Value: "0"},
+		})
+		tpl.doc.NextID++
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err = ParseTemplate(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tpl, id
+}
+
+func TestAddTableColumnFitsWithoutChangingOtherColumnProperties(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		widths []geom.Length
+		spare  geom.Length
+		index  int
+		want   []int64
+	}{
+		{"normal with exact room", []geom.Length{100000, 50000}, 72000, 1, []int64{100000, 72000, 50000}},
+		{"one millipoint short uses split", []geom.Length{100000, 50000}, 71999, 2, []int64{50000, 50000, 50000}},
+		{"full width starter", []geom.Length{523276}, 0, 1, []int64{261638, 261638}},
+		{"crowded widest keeps odd millipoint", []geom.Length{40001, 130003, 60000}, 100, 1, []int64{40001, 65001, 65002, 60000}},
+		{"first widest wins tie", []geom.Length{90001, 90001, 90000}, 0, 3, []int64{45001, 90001, 90000, 45000}},
+		{"smallest split", []geom.Length{1, 2}, 0, 0, []int64{1, 1, 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tpl, id := tableColumnAuthoringFixture(t, tc.widths, tc.spare)
+			_, _, _, original, _ := findComponent(tpl, id)
+			beforeColumns := append([]template.Column(nil), original.Table.Value.Columns...)
+			nextID := tpl.doc.NextID
+			canvas, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":%d}`, id, tc.index)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := TableColumns(tpl, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var widths []int64
+			var total int64
+			for _, column := range view.Columns {
+				widths = append(widths, column.Width)
+				total += column.Width
+			}
+			if !reflect.DeepEqual(widths, tc.want) {
+				t.Fatalf("widths = %v, want %v", widths, tc.want)
+			}
+			if got := componentByID(t, canvas, id).Width; got != total {
+				t.Fatalf("canvas width = %d, want %d", got, total)
+			}
+			_, band, _, element, _ := findComponent(tpl, id)
+			if total > band.Width-int64(element.X) {
+				t.Fatal("added column exceeded band budget")
+			}
+			newColumn := view.Columns[tc.index]
+			if newColumn.Binding != "" || newColumn.RowField != "" || !newColumn.RowFieldEditable || newColumn.Align != "left" || newColumn.Footer != "" || newColumn.FooterFormat != "" {
+				t.Fatalf("new column inherited authoring: %#v", newColumn)
+			}
+			if tpl.doc.NextID != nextID+1 {
+				t.Fatalf("add allocated more than one id: %d -> %d", nextID, tpl.doc.NextID)
+			}
+			for i, beforeColumn := range beforeColumns {
+				afterIndex := i
+				if i >= tc.index {
+					afterIndex++
+				}
+				afterColumn := element.Table.Value.Columns[afterIndex]
+				afterColumn.Width = beforeColumn.Width
+				if !reflect.DeepEqual(afterColumn, beforeColumn) {
+					t.Fatalf("existing column %d changed beyond its width: %#v -> %#v", i, beforeColumn, afterColumn)
+				}
+			}
+			canonical, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reloaded, err := ParseTemplate(canonical)
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := TableColumns(reloaded, id)
+			if err != nil || !reflect.DeepEqual(view, again) {
+				t.Fatalf("reopen changed projection: %#v, err=%v", again, err)
+			}
+		})
+	}
+}
+
+func TestAddTableColumnSplitRefusalsAreAtomic(t *testing.T) {
+	for _, name := range []string{"no splittable column", "id exhaustion", "invalid index", "overflow after split"} {
+		t.Run(name, func(t *testing.T) {
+			widths := []geom.Length{60000, 40000}
+			if name == "no splittable column" {
+				widths = []geom.Length{1, 1}
+			}
+			tpl, id := tableColumnAuthoringFixture(t, widths, 0)
+			index := len(widths)
+			switch name {
+			case "id exhaustion":
+				tpl.doc.NextID = 1<<63 - 1
+			case "invalid index":
+				index++
+			case "overflow after split":
+				_, _, _, element, _ := findComponent(tpl, id)
+				element.X = 1
+			}
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":%d}`, id, index))); err == nil {
+				t.Fatal("invalid add succeeded")
+			}
+			after, err := SerializeTemplate(tpl)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("refusal changed canonical bytes: %v", err)
+			}
+		})
+	}
+}
+
+func TestTableColumnBindingCanBeTypedAndClearedWithoutSample(t *testing.T) {
+	tpl, id := tableColumnAuthoringFixture(t, []geom.Length{100000}, 0)
+	view, _ := TableColumns(tpl, id)
+	columnID := view.Columns[0].ID
+	applyField := func(field string) error {
+		_, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":%s}`, id, columnID, field)))
+		return err
+	}
+	for _, alias := range []string{"", "txn"} {
+		if _, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"configureTableBinding","version":1,"id":%q,"collection":"transactions[]","alias":%q}`, id, alias))); err != nil {
+			t.Fatal(err)
+		}
+		if err := applyField(`"customer.name"`); err != nil {
+			t.Fatal(err)
+		}
+		view, err := TableColumns(tpl, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantAlias := alias
+		if wantAlias == "" {
+			wantAlias = "row"
+		}
+		if view.Columns[0].Binding != "{{"+wantAlias+".customer.name}}" || view.Columns[0].RowField != "customer.name" || !view.Columns[0].RowFieldEditable {
+			t.Fatalf("binding projection = %#v", view.Columns[0])
+		}
+		before, _ := SerializeTemplate(tpl)
+		for _, invalid := range []string{`null`, `  null  `, `7`, `"bad path"`, `"customer..name"`, `"{{row.date}}"`, strconv.Quote(strings.Repeat("a", 193))} {
+			if err := applyField(invalid); err == nil {
+				t.Fatalf("invalid field accepted: %s", invalid)
+			}
+			after, _ := SerializeTemplate(tpl)
+			if !bytes.Equal(before, after) {
+				t.Fatalf("invalid field changed committed binding: %s", invalid)
+			}
+		}
+		if err := applyField(`""`); err != nil {
+			t.Fatal(err)
+		}
+		view, _ = TableColumns(tpl, id)
+		if view.Columns[0].Binding != "" || view.Columns[0].RowField != "" || !view.Columns[0].RowFieldEditable {
+			t.Fatalf("clear projection = %#v", view.Columns[0])
+		}
+		cleared, _ := SerializeTemplate(tpl)
+		if err := applyField(`""`); err != nil {
+			t.Fatal(err)
+		}
+		again, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(cleared, again) {
+			t.Fatal("no-op clear changed canonical bytes")
+		}
+	}
+}
+
+func TestTableColumnBindingAndAliasRespectTheFullExpressionLimit(t *testing.T) {
+	tpl, id := tableColumnAuthoringFixture(t, []geom.Length{100000}, 0)
+	view, _ := TableColumns(tpl, id)
+	columnID := view.Columns[0].ID
+	longAlias := strings.Repeat("a", 64)
+	configure := func(alias string) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"configureTableBinding","version":1,"id":%q,"collection":"transactions[]","alias":%q}`, id, alias))
+	}
+	bind := func(length int) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":%q}`, id, columnID, strings.Repeat("f", length)))
+	}
+	for _, command := range [][]byte{configure(longAlias), bind(187)} {
+		if _, err := ApplyComponentCommand(tpl, command); err != nil {
+			t.Fatalf("exact-limit setup: %v", err)
+		}
+	}
+	view, err := TableColumns(tpl, id)
+	if err != nil || len(view.Columns[0].Binding) != maxCanvasBindingString {
+		t.Fatalf("exact-limit projection = %#v, err=%v", view, err)
+	}
+	before, _ := SerializeTemplate(tpl)
+	for _, length := range []int{188, 192} {
+		if _, err := ApplyComponentCommand(tpl, bind(length)); err == nil {
+			t.Fatalf("%d-character field exceeded the full expression limit without refusal", length)
+		}
+		after, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(before, after) {
+			t.Fatal("overlong expression mutated bytes")
+		}
+	}
+	for _, command := range [][]byte{configure(""), bind(192)} {
+		if _, err := ApplyComponentCommand(tpl, command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, _ = SerializeTemplate(tpl)
+	if _, err := ApplyComponentCommand(tpl, configure(longAlias)); err == nil {
+		t.Fatal("alias migration produced an unprojectable expression")
+	}
+	after, _ := SerializeTemplate(tpl)
+	if !bytes.Equal(before, after) {
+		t.Fatal("overlong alias migration mutated bytes")
+	}
+	if _, err := TableColumns(tpl, id); err != nil {
+		t.Fatalf("refused alias change stranded projection: %v", err)
+	}
+}
+
+func TestClearTableColumnBindingKeepsAggregateSourceValidation(t *testing.T) {
+	for _, aggregate := range []string{"sum", "avg"} {
+		t.Run(aggregate, func(t *testing.T) {
+			tpl, id := tableColumnAuthoringFixture(t, []geom.Length{100000}, 0)
+			view, _ := TableColumns(tpl, id)
+			columnID := view.Columns[0].ID
+			footerCommand := func(source string) []byte {
+				return []byte(fmt.Sprintf(`{"kind":"updateTableColumnFooter","version":1,"id":%q,"columnId":%q,"footer":%q,"footerOf":%q,"footerFormat":"0.00"}`, id, columnID, aggregate, source))
+			}
+			if _, err := ApplyComponentCommand(tpl, footerCommand("")); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := SerializeTemplate(tpl)
+			clear := []byte(fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":""}`, id, columnID))
+			if _, err := ApplyComponentCommand(tpl, clear); err == nil {
+				t.Fatal("clear removed an aggregate's derived source")
+			}
+			after, _ := SerializeTemplate(tpl)
+			if !bytes.Equal(before, after) {
+				t.Fatal("refused clear changed binding or aggregate")
+			}
+			view, err := TableColumns(tpl, id)
+			if err != nil || view.Columns[0].Binding != "{{row.date}}" || view.Columns[0].Footer != aggregate || view.Columns[0].FooterOf != "" {
+				t.Fatalf("refused clear = %#v, err=%v", view, err)
+			}
+			if _, err := ApplyComponentCommand(tpl, footerCommand("items.date")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyComponentCommand(tpl, clear); err != nil {
+				t.Fatalf("clear with explicit source: %v", err)
+			}
+			view, err = TableColumns(tpl, id)
+			if err != nil || view.Columns[0].Binding != "" || view.Columns[0].Footer != aggregate || view.Columns[0].FooterOf != "items.date" || view.Columns[0].FooterFormat != "0.00" {
+				t.Fatalf("clear changed explicit aggregate: %#v, err=%v", view, err)
+			}
+		})
+	}
+}

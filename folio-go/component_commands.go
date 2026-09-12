@@ -371,7 +371,26 @@ func addTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjecti
 	if t.doc.NextID <= 0 || t.doc.NextID == 1<<63-1 {
 		return CanvasProjection{}, componentFailure(id, "column.id", "nextId cannot allocate another column")
 	}
-	column := template.Column{ID: template.AllocateElementID(t.doc), Label: fmt.Sprintf("Column %d", len(columns)+1), Width: geom.Length(72000)}
+	// Keep the normal width when it fits. Otherwise split one existing column
+	// in exact millipoints; the candidate clone makes the resize and insertion
+	// atomic, including a later containment or canonical-validation refusal.
+	width, _ := projectedSize(*element)
+	newWidth := geom.Length(72000)
+	if newWidth > geom.Length(band.Width)-element.X-width {
+		widest := -1
+		for i, existing := range columns {
+			if existing.Width > 1 && (widest < 0 || existing.Width > columns[widest].Width) {
+				widest = i
+			}
+		}
+		if widest < 0 {
+			return CanvasProjection{}, componentFailure(id, "column.width", "no column can be split into two positive widths")
+		}
+		newWidth = columns[widest].Width / 2
+		// The existing column keeps an odd millipoint; the first widest wins ties.
+		columns[widest].Width -= newWidth
+	}
+	column := template.Column{ID: template.AllocateElementID(t.doc), Label: fmt.Sprintf("Column %d", len(columns)+1), Width: newWidth}
 	element.Table.Value.Columns = append(columns, template.Column{})
 	copy(element.Table.Value.Columns[index+1:], element.Table.Value.Columns[index:])
 	element.Table.Value.Columns[index] = column
@@ -628,6 +647,9 @@ func configureTableBinding(t *Template, raw map[string]json.RawMessage) (CanvasP
 				return CanvasProjection{}, componentFailure(id, "table.alias", "alias change cannot migrate a row-scoped column binding")
 			}
 			if migrated {
+				if len(next) > maxCanvasBindingString {
+					return CanvasProjection{}, componentFailure(id, "table.alias", "alias change would exceed the table editor binding text limit")
+				}
 				element.Table.Value.Columns[i].Bind = next
 			}
 		}
@@ -643,9 +665,8 @@ func configureTableBinding(t *Template, raw map[string]json.RawMessage) (CanvasP
 	return Canvas(t)
 }
 
-// updateTableColumnBinding accepts only a canonical single row-relative field
-// expression. The UI passes a discovered field path, while this Go boundary
-// constructs and owns the actual expression spelling.
+// updateTableColumnBinding accepts a single row-relative field path or an
+// empty field to clear. Go owns the actual expression spelling.
 func updateTableColumnBinding(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 5); err != nil {
 		return CanvasProjection{}, err
@@ -658,8 +679,8 @@ func updateTableColumnBinding(t *Template, raw map[string]json.RawMessage) (Canv
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "column.id", err.Error())
 	}
-	field, err := commandString(raw, "field")
-	if err != nil || len(field) > 192 || !rootValuePath.MatchString(field) {
+	field, ok := optionalCommandString(raw, "field", 192)
+	if !ok || bytes.Equal(bytes.TrimSpace(raw["field"]), []byte("null")) || (field != "" && !rootValuePath.MatchString(field)) {
 		return CanvasProjection{}, componentFailure(id, "column.bind", "field must be a bounded row field path")
 	}
 	_, _, _, element, err := findComponent(t, id)
@@ -673,11 +694,19 @@ func updateTableColumnBinding(t *Template, raw map[string]json.RawMessage) (Canv
 	if index < 0 {
 		return CanvasProjection{}, componentFailure(id, "column.id", "column was not found")
 	}
+	if field == "" {
+		element.Table.Value.Columns[index].Bind = ""
+		return Canvas(t)
+	}
 	alias := "row"
 	if element.Table.Value.As.Set && !element.Table.Value.As.Null {
 		alias = element.Table.Value.As.Value
 	}
-	element.Table.Value.Columns[index].Bind = "{{" + alias + "." + field + "}}"
+	binding := "{{" + alias + "." + field + "}}"
+	if len(binding) > maxCanvasBindingString {
+		return CanvasProjection{}, componentFailure(id, "column.bind", "binding with the current row alias exceeds the table editor text limit")
+	}
+	element.Table.Value.Columns[index].Bind = binding
 	return Canvas(t)
 }
 

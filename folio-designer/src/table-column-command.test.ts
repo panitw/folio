@@ -18,4 +18,10 @@ describe('table-column command bytes', () => {
   it('does not construct an invalid JSON number for non-finite local input', () => {
     expect(decode(updateTableColumnCommand('e7', 'e8', 'width', Number.NaN)).value).toBeNull()
   })
+
+  it('passes relative fields, escaped input, and clears to Go without constructing expressions', () => {
+    for (const field of ['customer.name', '', 'bad"\\\npath']) {
+      expect(decode(updateTableColumnBindingCommand('e7', 'e8', field))).toEqual({ kind: 'updateTableColumnBinding', version: 1, id: 'e7', columnId: 'e8', field })
+    }
+  })
 })

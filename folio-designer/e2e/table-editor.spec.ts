@@ -25,15 +25,15 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
   await page.getByRole('button', { name: /table component/ }).click()
   await page.getByRole('button', { name: 'Configure columns' }).click()
   await expect(page.getByRole('button', { name: 'Add column' })).toBeVisible()
-  // Make room before exercising Add: a fresh table already fills its band.
+  // Add splits the full-width starter without a preparatory width edit.
   const starterWidth = page.getByRole('spinbutton', { name: 'Width for column 1 in points' })
   await expect(starterWidth).toHaveValue('523.276')
   await expect(page.getByRole('textbox', { name: 'Header for column 1' })).toHaveValue('')
-  await starterWidth.fill('120')
-  await starterWidth.press('Tab')
-  await expect(page.getByRole('status', { name: 'Width budget' })).toContainText('Σ 120.0')
   await page.getByRole('button', { name: 'Add column' }).click()
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toBeVisible()
+  await expect(starterWidth).toHaveValue('261.638')
+  await expect(page.getByRole('spinbutton', { name: 'Width for column 2 in points' })).toHaveValue('261.638')
+  await expect(page.getByRole('combobox', { name: 'Row field for column 2' })).toBeEditable()
   await page.getByRole('button', { name: 'Remove column 2' }).click()
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toHaveCount(0)
   const grid = page.getByRole('grid', { name: 'Table columns' })
@@ -52,10 +52,9 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(page.getByRole('status', { name: 'Column summary' })).toContainText('1 column · 0 aggregates')
   const header = page.getByRole('textbox', { name: 'Header for column 1' })
   await header.focus()
-	// STORY 14.10 DELETED EXACTLY ONE HOP HERE, as transcription (Q4a).
-	// [D-14.10.1] made BOUND FIELD display-only, so `CELL.bound` is a hole and
-	// ArrowRight from the header lands on the width. Same form, same exact
-	// accessible names, one cell fewer.
+	// The row-field input occupies its original lattice address.
+	await page.keyboard.press('ArrowRight')
+	await expect(page.getByRole('combobox', { name: 'Row field for column 1' })).toBeFocused()
 	await page.keyboard.press('ArrowRight')
 	await expect(page.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toBeFocused()
 	// THE ALIGNMENT CONTROL IS THREE REACHABLE SEGMENTS, not one select: each

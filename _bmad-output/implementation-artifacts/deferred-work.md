@@ -13759,3 +13759,7 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `spec-bind-table-from-data-panel.md`
   summary: Resolve duplicate sample JSON keys consistently with the renderer before offering binding candidates.
   evidence: DiscoveryParser.object retains every duplicate property occurrence, so {"items":[{"id":1}],"items":42} exposes an array candidate although Go JSON decoding keeps the later scalar value; this predates collection picking.
+
+- source_spec: `spec-fix-table-column-authoring.md`
+  summary: Coordinate table-editor input and dismissal behavior with an ongoing file save.
+  evidence: The existing Cmd/Ctrl+S shortcut precedes the modal guard, and commitTableColumn silently refuses while fileBusy although most editor inputs remain enabled. A dirty row field followed by Done/Escape now preserves the draft and leaves the dialog open until the file operation ends; Cancel is already disabled during fileBusy. Review identified this broader pre-existing interlock gap; file-save completion/failure handling across editor inputs remains separate work.

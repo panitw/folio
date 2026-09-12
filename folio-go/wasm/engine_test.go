@@ -1293,3 +1293,282 @@ func TestEngineFreshTableDuplicateHistoryPreservesIndependentColumnIDs(t *testin
 		t.Fatal("undoing the independent column edit changed duplication")
 	}
 }
+
+func TestEngineColumnAuthoringSplitBindingClearAndReopenHistory(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(command string) Snapshot {
+		t.Helper()
+		snapshot, err := engine.Apply([]byte(command))
+		if err != nil {
+			t.Fatalf("%s: %v", command, err)
+		}
+		return snapshot
+	}
+	serialized := func() []byte {
+		t.Helper()
+		data, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	created := apply(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`)
+	known := map[string]bool{}
+	for _, component := range loaded.Canvas.Components {
+		known[component.ID] = true
+	}
+	var id string
+	for _, component := range created.Canvas.Components {
+		if !known[component.ID] {
+			id = component.ID
+		}
+	}
+	starter, err := engine.TableColumns(id)
+	if err != nil || len(starter.Table.Columns) != 1 {
+		t.Fatalf("starter = %#v, err=%v", starter, err)
+	}
+	beforeAdd := serialized()
+	added := apply(fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":1}`, id))
+	columns, err := engine.TableColumns(id)
+	if err != nil || len(columns.Table.Columns) != 2 || added.Revision != created.Revision+1 {
+		t.Fatalf("split add = %#v, err=%v", columns, err)
+	}
+	first, second := columns.Table.Columns[0], columns.Table.Columns[1]
+	if first.Width+second.Width != starter.Table.Columns[0].Width || first.Width != second.Width+(starter.Table.Columns[0].Width%2) || first.ID != starter.Table.Columns[0].ID {
+		t.Fatalf("split changed geometry or original id: %#v", columns)
+	}
+	afterAdd := serialized()
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serialized(), beforeAdd) {
+		t.Fatal("one undo did not restore both the starter width and column count")
+	}
+	if _, err := engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serialized(), afterAdd) {
+		t.Fatal("redo did not restore widths and allocated column id")
+	}
+	apply(fmt.Sprintf(`{"kind":"configureTableBinding","version":1,"id":%q,"collection":"transactions[]","alias":"txn"}`, id))
+	bindCommand := func(field string) string {
+		return fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":%q}`, id, first.ID, field)
+	}
+	beforeBind := engine.Snapshot()
+	bound := apply(bindCommand("customer.name"))
+	columns, err = engine.TableColumns(id)
+	if err != nil || bound.Revision != beforeBind.Revision+1 || columns.Table.Columns[0].Binding != "{{txn.customer.name}}" || columns.Table.Columns[0].RowField != "customer.name" || !columns.Table.Columns[0].RowFieldEditable {
+		t.Fatalf("typed binding = %#v, err=%v", columns, err)
+	}
+	boundBytes := serialized()
+	beforeRefusal := engine.Snapshot()
+	for _, invalid := range []string{bindCommand("customer..name"), fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":9}`, id)} {
+		if _, err := engine.Apply([]byte(invalid)); err == nil {
+			t.Fatalf("invalid command succeeded: %s", invalid)
+		}
+		if !bytes.Equal(serialized(), boundBytes) || !reflect.DeepEqual(engine.Snapshot(), beforeRefusal) {
+			t.Fatal("refusal changed bytes, revision, or history")
+		}
+	}
+	cleared := apply(bindCommand(""))
+	columns, err = engine.TableColumns(id)
+	if err != nil || cleared.Revision != bound.Revision+1 || columns.Table.Columns[0].Binding != "" || columns.Table.Columns[0].RowField != "" || !columns.Table.Columns[0].RowFieldEditable {
+		t.Fatalf("clear = %#v, err=%v", columns, err)
+	}
+	clearedBytes := serialized()
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serialized(), boundBytes) {
+		t.Fatal("clear was not one undo step")
+	}
+	if _, err := engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serialized(), clearedBytes) {
+		t.Fatal("redo did not restore cleared binding")
+	}
+	apply(bindCommand("date"))
+	configuredBytes := serialized()
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	beforeNoop := engine.Snapshot()
+	if !beforeNoop.CanRedo {
+		t.Fatal("no-op test requires redo history")
+	}
+	if snapshot := apply(bindCommand("")); !reflect.DeepEqual(snapshot, beforeNoop) {
+		t.Fatal("no-op clear changed history or revision")
+	}
+	if _, err := engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(serialized(), configuredBytes) {
+		t.Fatal("no-op clear lost redo history")
+	}
+	columns, err = engine.TableColumns(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewEngine()
+	if _, err := reopened.Load(configuredBytes); err != nil {
+		t.Fatal(err)
+	}
+	again, err := reopened.TableColumns(id)
+	if err != nil || !reflect.DeepEqual(columns.Table, again.Table) {
+		t.Fatalf("reopen changed widths or editable bindings: %#v, err=%v", again, err)
+	}
+	persisted, _, err := reopened.Serialize()
+	if err != nil || !bytes.Equal(persisted, configuredBytes) {
+		t.Fatalf("reopen changed saved bytes: %v", err)
+	}
+}
+
+func columnAuthoringEngine(t *testing.T) (*Engine, string, string) {
+	t.Helper()
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, component := range loaded.Canvas.Components {
+		known[component.ID] = true
+	}
+	for _, component := range created.Canvas.Components {
+		if !known[component.ID] {
+			columns, err := engine.TableColumns(component.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return engine, component.ID, columns.Table.Columns[0].ID
+		}
+	}
+	t.Fatal("created table not found")
+	return nil, "", ""
+}
+
+func TestEngineTableColumnBindingLimitRefusalPreservesHistory(t *testing.T) {
+	engine, id, columnID := columnAuthoringEngine(t)
+	configure := func(alias string) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"configureTableBinding","version":1,"id":%q,"collection":"transactions[]","alias":%q}`, id, alias))
+	}
+	bind := func(length int) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":%q}`, id, columnID, strings.Repeat("f", length)))
+	}
+	longAlias := strings.Repeat("a", 64)
+	for _, command := range [][]byte{configure(longAlias), bind(187)} {
+		if _, err := engine.Apply(command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	columns, err := engine.TableColumns(id)
+	if err != nil || len(columns.Table.Columns[0].Binding) != 256 {
+		t.Fatalf("exact-boundary binding = %#v, err=%v", columns, err)
+	}
+	refuseUnchanged := func(command []byte) {
+		t.Helper()
+		before := engine.Snapshot()
+		beforeBytes, _, _ := engine.Serialize()
+		if _, err := engine.Apply(command); err == nil {
+			t.Fatalf("invalid command succeeded: %s", command)
+		}
+		afterBytes, _, _ := engine.Serialize()
+		if !reflect.DeepEqual(before, engine.Snapshot()) || !bytes.Equal(beforeBytes, afterBytes) {
+			t.Fatal("refusal changed bytes/revision/history")
+		}
+		if _, err := engine.TableColumns(id); err != nil {
+			t.Fatalf("refusal stranded the table editor: %v", err)
+		}
+	}
+	refuseUnchanged(bind(188))
+	refuseUnchanged(bind(192))
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if !engine.Snapshot().CanRedo {
+		t.Fatal("redo precondition missing")
+	}
+	refuseUnchanged(bind(188))
+	if _, err := engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range [][]byte{configure(""), bind(192)} {
+		if _, err := engine.Apply(command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	refuseUnchanged(configure(longAlias))
+}
+
+func TestEngineClearDerivedAggregateBindingRefusesUntilSourceIsExplicit(t *testing.T) {
+	for _, aggregate := range []string{"sum", "avg"} {
+		t.Run(aggregate, func(t *testing.T) {
+			engine, id, columnID := columnAuthoringEngine(t)
+			bind := func(field string) []byte {
+				return []byte(fmt.Sprintf(`{"kind":"updateTableColumnBinding","version":1,"id":%q,"columnId":%q,"field":%q}`, id, columnID, field))
+			}
+			footer := func(source string) []byte {
+				return []byte(fmt.Sprintf(`{"kind":"updateTableColumnFooter","version":1,"id":%q,"columnId":%q,"footer":%q,"footerOf":%q,"footerFormat":"0.00"}`, id, columnID, aggregate, source))
+			}
+			for _, command := range [][]byte{bind("amount"), footer("")} {
+				if _, err := engine.Apply(command); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := engine.Snapshot()
+			beforeBytes, _, _ := engine.Serialize()
+			if _, err := engine.Apply(bind("")); err == nil {
+				t.Fatal("clear silently removed the aggregate source")
+			}
+			afterBytes, _, _ := engine.Serialize()
+			if !reflect.DeepEqual(before, engine.Snapshot()) || !bytes.Equal(beforeBytes, afterBytes) {
+				t.Fatal("refused clear changed bytes/revision/history")
+			}
+			if _, err := engine.Apply(footer("items.amount")); err != nil {
+				t.Fatal(err)
+			}
+			explicitBytes, _, _ := engine.Serialize()
+			before = engine.Snapshot()
+			cleared, err := engine.Apply(bind(""))
+			if err != nil || cleared.Revision != before.Revision+1 {
+				t.Fatalf("clear with explicit source: %v", err)
+			}
+			columns, err := engine.TableColumns(id)
+			if err != nil || columns.Table.Columns[0].Binding != "" || columns.Table.Columns[0].Footer != aggregate || columns.Table.Columns[0].FooterOf != "items.amount" || columns.Table.Columns[0].FooterFormat != "0.00" {
+				t.Fatalf("clear altered aggregate: %#v, err=%v", columns, err)
+			}
+			clearedBytes, _, _ := engine.Serialize()
+			if _, err := engine.Undo(); err != nil {
+				t.Fatal(err)
+			}
+			undone, _, _ := engine.Serialize()
+			if !bytes.Equal(undone, explicitBytes) {
+				t.Fatal("undo failed to restore the binding in one step")
+			}
+			if _, err := engine.Redo(); err != nil {
+				t.Fatal(err)
+			}
+			redone, _, _ := engine.Serialize()
+			if !bytes.Equal(redone, clearedBytes) {
+				t.Fatal("redo changed the explicit aggregate")
+			}
+		})
+	}
+}

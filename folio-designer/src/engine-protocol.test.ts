@@ -821,23 +821,9 @@ describe('canvas projection protocol guard', () => {
     expect(parseInbound({ ...response, tableColumns: { ...response.tableColumns, table: { ...response.tableColumns.table, columns: [{ ...response.tableColumns.table.columns[0], width: 0 }] } } })).toBeUndefined()
   })
 
-  // STORY 14.10 — `rowFieldEditable` MUST KEEP ARRIVING, AND AFTER THIS STORY
-  // NOTHING IN PRODUCTION READS IT.
-  //
-  // [D-14.10.1] made the table editor's BOUND FIELD display-only: binding is
-  // edited in the main window now, so the `disabled={busy || !column.rowFieldEditable}`
-  // that was this member's only consumer is gone with the input it gated. The
-  // member is still on the wire, `engine-protocol.ts` still admits the
-  // projection with `hasExactKeys`, and dropping it in Go would therefore make
-  // every table-columns response FAIL ADMISSION — the dialog would simply stop
-  // opening, with nothing anywhere saying why.
-  //
-  // ⚠ SO THIS ROW IS THE MEMBER'S ONLY READER. A field with no readers is next
-  // quarter's silent deletion; this one is load-bearing precisely because the
-  // key set is exact. If you are here because this went red: the answer is NOT
-  // to delete the member from `hasExactKeys` — read [D-14.10.1] first, then
-  // change BOTH sides in one commit, as `engine-bounds-mirror.test.ts` requires
-  // of every invariant that spans the boundary.
+  // The engine's rowFieldEditable flag gates simple-field authoring. It must
+  // remain present on the exact wire shape even for arbitrary expressions.
+
   it('still admits rowFieldEditable on the wire, though [D-14.10.1] left it with no production reader', () => {
     const response = { protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'table-1', ok: true, snapshot: { documentState: 'loaded', revision: 7, byteLength: 1 }, tableColumns: { revision: 7, table: { tableId: 'e7', collection: 'transactions[]', alias: 'transaction', headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', columns: [{ id: 'e8', header: 'Amount', width: 72000, align: 'right', binding: '{{transaction.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum', footerOf: 'transactions.amount', footerFormat: '#,##0.00' }] } } }
     // Non-vacuity: the fixture must be admitted as it stands, or the two

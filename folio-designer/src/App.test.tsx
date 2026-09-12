@@ -270,17 +270,7 @@ describe('application shell', () => {
   // whole suite stayed green, because nothing anywhere read a <datalist>
   // option. This row is that missing reader.
   //
-  // ⚠ STORY 14.10 MOVED THE ROW-FIELD HALF OF THIS FENCE, IT DID NOT DELETE IT.
-  // [D-14.10.1] made BOUND FIELD display-only, so the per-column
-  // `table-field-candidates-N` datalist is gone with the input it fed. The
-  // ROW-FIELD half of `tableSampleCandidates`' output is now read by the DATA
-  // panel, and its reader is `table-column-binding.test.tsx`'s "offers a
-  // pickable set that is EXACTLY tableSampleCandidates output for that
-  // collection" — which compares the panel's offered rows against the function's
-  // own return rather than against a hand-copied list. The COLLECTION half is
-  // still read here, because `table-collection-candidates` is still drawn here:
-  // [D-14.10.1] leaves the collection and the row alias editable in this dialog.
-  it('offers the loaded sample s collections as table editor candidates', async () => {
+  it('offers the loaded sample collections and scoped row fields as table editor candidates', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const request = vi.fn(async (operation: string) => {
@@ -294,10 +284,8 @@ describe('application shell', () => {
     await screen.findByRole('grid', { name: 'Table columns' })
     const optionValues = (id: string) => Array.from(container.querySelectorAll(`#${id} option`)).map((option) => option.getAttribute('value'))
     expect(optionValues('table-collection-candidates')).toEqual(['transactions[]'])
-    // And the per-column field datalist is GONE, with the input it belonged to.
-    expect(container.querySelectorAll('#table-field-candidates-0')).toHaveLength(0)
-    expect(screen.queryByLabelText('Row field for column 1')).toBeNull()
-    // The binding is still SHOWN — that is the half [D-14.10.1] kept.
+    expect(optionValues('table-row-field-candidates')).toEqual(['date', 'debit'])
+    expect(screen.getByRole('combobox', { name: 'Row field for column 1' })).toHaveValue('')
     expect(screen.getByLabelText('Binding for column 1')).toBeInTheDocument()
   })
 
@@ -319,16 +307,11 @@ describe('application shell', () => {
     // them is wider than six and is `TableEditor.test.tsx`'s subject.
     expect(grid).toHaveAttribute('aria-colcount', '6')
 		expect(grid).toHaveAttribute('aria-rowcount', '2')
-    // STORY 14.10 DELETED EXACTLY ONE HOP FROM THIS WALK AND CHANGED NOTHING
-    // ELSE — same exact-accessible-name assertions, same form, one cell fewer.
-    // [D-14.10.1] removed the Row field input, so `CELL.bound` is a hole and
-    // ArrowRight from `Header for column 1` lands on `Width for column 1 in
-    // points`. That is TRANSCRIPTION, not accommodation: the new value is
-    // determined by the lattice rather than chosen (Q4a). A regex, a `some`-style
-    // match or "the next enabled cell" here would convert this pin into a guard
-    // that cannot fail, which is exactly what [D-14.8.2] forbids.
+    // The exact walk includes the restored row-field control.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
     expect(screen.getByRole('button', { name: 'Move column 1 earlier' })).toBeDisabled()
 		expect(screen.getByRole('button', { name: 'Move column 1 later' })).toBeDisabled()
@@ -777,12 +760,14 @@ describe('application shell', () => {
     await openHeaderSection(request, tableSnapshot)
     const grid = screen.getByRole('grid', { name: 'Table columns' })
     expect(grid).toHaveAttribute('aria-colcount', '6')
-    // One hop deleted, the round trip kept (Q4a): with `CELL.bound` emptied by
-    // [D-14.10.1], ArrowRight from the header lands on the width and ArrowLeft
-    // comes straight back. Same property, same form, a lattice one cell smaller.
+    // Row-field authoring is one stop between the label and width.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' })
     expect(document.activeElement).toBe(header)
     // Home reaches the row's FIRST ENABLED control, which on a one-column table
@@ -1492,6 +1477,8 @@ describe('application shell', () => {
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus()
     fireEvent.keyDown(header, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Row field for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
     expect(document.activeElement).toBe(screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }))
   })
 
