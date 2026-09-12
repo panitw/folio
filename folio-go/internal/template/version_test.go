@@ -14,39 +14,33 @@ func withVersion(v string) []byte {
 // supports is a load error naming the declared version and the
 // supported version, and no render is attempted.
 //
-// The literal moved from "2.0" to "3.0" when Story 7.3 raised
-// SupportedMajor to 2 — 2.0 is now a version this library LOADS. The
-// test's subject was always "higher than supported", never the literal
-// two, so the constant it must stay above is SupportedMajor and the case
-// is re-stated one MAJOR above the new ceiling.
+// Proportional tables raise the supported ceiling to 3.0. This fixture
+// stays one major above it and must name both versions in the refusal.
 func TestHigherMajorIsLoadError(t *testing.T) {
-	_, err := ParseDocument(withVersion("3.0"))
+	_, err := ParseDocument(withVersion("4.0"))
 	if err == nil {
 		t.Fatal("expected a load error for a higher MAJOR version")
 	}
-	if !strings.Contains(err.Error(), "3.0") || !strings.Contains(err.Error(), SupportedVersion) {
+	if !strings.Contains(err.Error(), "4.0") || !strings.Contains(err.Error(), SupportedVersion) {
 		t.Fatalf("error must name both the declared and supported version, got: %v", err)
 	}
 }
 
-// TestSupportedMajorIsLoadable is the other half of the move above, and
-// it is what keeps that test honest: 2.0 must now LOAD and round-trip
-// verbatim, or "3.0 is refused" would be satisfied by a library that
-// refuses everything above 1.
+// The supported ceiling itself must load and round-trip.
 func TestSupportedMajorIsLoadable(t *testing.T) {
-	d, err := ParseDocument(withVersion("2.0"))
+	d, err := ParseDocument(withVersion("3.0"))
 	if err != nil {
-		t.Fatalf("2.0 is this library's own ceiling and must load: %v", err)
+		t.Fatal(err)
 	}
-	if d.Version != "2.0" {
-		t.Fatalf("Version = %q, want 2.0", d.Version)
+	if d.Version != "3.0" {
+		t.Fatalf("Version=%q, want 3.0", d.Version)
 	}
 	out, err := SerializeDocument(d)
 	if err != nil {
-		t.Fatalf("serialize: %v", err)
+		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), `"version": "2.0"`) {
-		t.Fatalf("a 2.0 document must round-trip as 2.0:\n%s", out)
+	if !strings.Contains(string(out), `"version": "3.0"`) {
+		t.Fatalf("ceiling did not round-trip: %s", out)
 	}
 }
 

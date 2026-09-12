@@ -269,6 +269,8 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return applyTableColumnCommand(t, raw, moveTableColumn)
 	case "updateTableColumn":
 		return applyTableColumnCommand(t, raw, updateTableColumn)
+	case "setTableWidth":
+		return applyTableColumnCommand(t, raw, setTableWidth)
 	case "configureTableBinding":
 		return applyTableColumnCommand(t, raw, configureTableBinding)
 	case "bindTableCollection":
@@ -378,7 +380,7 @@ func addTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjecti
 	// atomic, including a later containment or canonical-validation refusal.
 	width, _ := projectedSize(*element)
 	newWidth := geom.Length(72000)
-	if newWidth > geom.Length(band.Width)-element.X-width {
+	if !element.Width.Set && newWidth > geom.Length(band.Width)-element.X-width {
 		widest := -1
 		for i, existing := range columns {
 			if existing.Width > 1 && (widest < 0 || existing.Width > columns[widest].Width) {
@@ -393,9 +395,16 @@ func addTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProjecti
 		columns[widest].Width -= newWidth
 	}
 	column := template.Column{ID: template.AllocateElementID(t.doc), Label: fmt.Sprintf("Column %d", len(columns)+1), Width: newWidth}
+	if element.Width.Set {
+		column.Width = 0
+		column.Proportion = template.Presence[int64]{Set: true, Value: template.ProportionUnit}
+	}
 	element.Table.Value.Columns = append(columns, template.Column{})
 	copy(element.Table.Value.Columns[index+1:], element.Table.Value.Columns[index:])
 	element.Table.Value.Columns[index] = column
+	if _, err := template.TableColumnWidths(*element); err != nil {
+		return CanvasProjection{}, wrapTableWidthError(err)
+	}
 	width, height := projectedSize(*element)
 	if err := containComponent(band, element.X, element.Y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "column.width", err.Error())
@@ -517,11 +526,29 @@ func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProje
 		}
 		column.Label = label
 	case "width":
-		width, err := propertyLength(value, "width")
+		if element.Width.Set {
+			return CanvasProjection{}, componentFailure(id, "column.width", "edit the proportion in proportional sizing")
+		}
+		width, err := authoredTableLength(value, "width")
 		if err != nil || width <= 0 {
 			return CanvasProjection{}, componentFailure(id, "column.width", "width must be a positive length")
 		}
 		column.Width = width
+	case "proportion":
+		if !element.Width.Set {
+			return CanvasProjection{}, componentFailure(id, "column.proportion", "this table uses point widths")
+		}
+		literal := string(value)
+		if len(value) > 0 && value[0] == '"' {
+			if err := json.Unmarshal(value, &literal); err != nil {
+				return CanvasProjection{}, componentFailure(id, "column.proportion", "proportion must be a decimal")
+			}
+		}
+		proportion, err := template.DecodeProportion(literal)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(columnID, "column.proportion", err.Error())
+		}
+		column.Proportion = template.Presence[int64]{Set: true, Value: proportion}
 	case "align":
 		align, err := commandString(map[string]json.RawMessage{"value": value}, "value")
 		if err != nil || (align != "left" && align != "center" && align != "right") {
@@ -531,9 +558,55 @@ func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProje
 	default:
 		return CanvasProjection{}, componentFailure(id, "column.field", "column field is not editable")
 	}
+	if _, err := template.TableColumnWidths(*element); err != nil {
+		return CanvasProjection{}, wrapTableWidthError(err)
+	}
 	width, height := projectedSize(*element)
 	if err := containComponent(band, element.X, element.Y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "column.width", err.Error())
+	}
+	return Canvas(t)
+}
+
+// Table controls send untouched text; Go owns both decimal validation and
+// geometry. Existing number-valued point-width callers remain supported.
+func authoredTableLength(raw json.RawMessage, field string) (geom.Length, error) {
+	if len(raw) > 0 && raw[0] == '"' {
+		var text string
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return 0, err
+		}
+		raw = json.RawMessage(text)
+	}
+	return propertyLength(raw, field)
+}
+
+func setTableWidth(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	_, band, _, element, err := findComponent(t, id)
+	if err != nil || element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if !element.Width.Set {
+		return CanvasProjection{}, componentFailure(id, "table.width", "total width requires proportional columns")
+	}
+	width, err := authoredTableLength(raw["value"], "width")
+	if err != nil || width <= 0 {
+		return CanvasProjection{}, componentFailure(id, "table.width", "total width must be a positive decimal with at most three decimal places")
+	}
+	element.Width.Value = width
+	if _, err := template.TableColumnWidths(*element); err != nil {
+		return CanvasProjection{}, wrapTableWidthError(err)
+	}
+	_, height := projectedSize(*element)
+	if err := containComponent(band, element.X, element.Y, width, height); err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.width", err.Error())
 	}
 	return Canvas(t)
 }
@@ -1878,11 +1951,12 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	if elementType == template.ElementTable {
 		x, width, height = 0, geom.Length(projected.Width), tableDropHeight
 		element.X = x
-		column := template.Column{ID: template.AllocateElementID(&ids), Width: width}
+		element.Width = template.Presence[geom.Length]{Set: true, Value: width}
+		column := template.Column{ID: template.AllocateElementID(&ids), Proportion: template.Presence[int64]{Set: true, Value: template.ProportionUnit}}
 		ids.NextID++
 		element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{Bind: "items[]", Columns: []template.Column{column}, HeaderHeight: height}}
-		// Tables intentionally ignore free-box dimensions. Their paint size is
-		// derived from the starter column, never independently stored.
+		// Tables retain their dedicated placement behavior; their starter
+		// proportion receives the band's available authored total.
 	} else {
 		if width <= 0 || height <= 0 {
 			return CanvasProjection{}, fmt.Errorf("folio: component.width and component.height must be positive")
@@ -2263,6 +2337,9 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 func projectedSize(element template.Element) (geom.Length, geom.Length) {
 	if element.Type != template.ElementTable {
 		return element.Width.Value, element.Height.Value
+	}
+	if element.Width.Set {
+		return element.Width.Value, element.Table.Value.HeaderHeight
 	}
 	var width geom.Length
 	for _, column := range element.Table.Value.Columns {

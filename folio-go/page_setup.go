@@ -1865,7 +1865,11 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, fmt.Errorf("folio: component table bind exceeds the projection bound")
 				}
 				component.TableBind = stringPointer(element.Table.Value.Bind)
-				component.Columns = canvasTableColumns(element)
+				var err error
+				component.Columns, err = canvasTableColumns(element)
+				if err != nil {
+					return nil, err
+				}
 			}
 			if element.Style.Set && !element.Style.Null {
 				if err := applyCanvasStyle(&component, element.Type, element.Style.Value); err != nil {
@@ -1922,27 +1926,31 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 // draws. Absence, not an empty slice, for a table with no columns: `omitempty`
 // drops the key, and the browser's guard admits its absence.
 //
-// It returns no error, and that is a property worth keeping: there is no
-// document shape that makes a column unprojectable.
-func canvasTableColumns(element template.Element) []CanvasTableColumn {
+// Proportional allocation can refuse a structural edit that leaves a column
+// with zero width. Preserve its located engine diagnostic at the Canvas seam.
+func canvasTableColumns(element template.Element) ([]CanvasTableColumn, error) {
 	declared := element.Table.Value.Columns
 	if len(declared) == 0 {
-		return nil
+		return nil, nil
 	}
 	header := resolveHeaderStyle(element)
 	body := resolveBodyStyle(element)
+	widths, err := template.TableColumnWidths(element)
+	if err != nil {
+		return nil, wrapTableWidthError(err)
+	}
 	columns := make([]CanvasTableColumn, 0, len(declared))
-	for _, column := range declared {
+	for i, column := range declared {
 		columns = append(columns, CanvasTableColumn{
 			ID:          string(column.ID),
 			Label:       clipCanvasPropertyString(column.Label),
-			Width:       int64(column.Width),
+			Width:       int64(widths[i]),
 			HeaderAlign: columnAlign(header.alignFallback, column),
 			CellAlign:   columnAlign(body.alignFallback, column),
 			Bind:        clipCanvasPropertyString(column.Bind),
 		})
 	}
-	return columns
+	return columns, nil
 }
 
 // clipCanvasPropertyString cuts value to at most maxCanvasPropertyString BYTES,

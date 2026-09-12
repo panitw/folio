@@ -26,13 +26,13 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure columns' }).click()
   await expect(page.getByRole('button', { name: 'Add column' })).toBeVisible()
   // Add splits the full-width starter without a preparatory width edit.
-  const starterWidth = page.getByRole('spinbutton', { name: 'Width for column 1 in points' })
-  await expect(starterWidth).toHaveValue('523.276')
+  const starterWidth = page.getByRole('textbox', { name: 'Proportion for column 1' })
+  await expect(starterWidth).toHaveValue('1')
   await expect(page.getByRole('textbox', { name: 'Header for column 1' })).toHaveValue('')
   await page.getByRole('button', { name: 'Add column' }).click()
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toBeVisible()
-  await expect(starterWidth).toHaveValue('261.638')
-  await expect(page.getByRole('spinbutton', { name: 'Width for column 2 in points' })).toHaveValue('261.638')
+  await expect(starterWidth).toHaveValue('1')
+  await expect(page.getByRole('textbox', { name: 'Proportion for column 2' })).toHaveValue('1')
   await expect(page.getByRole('combobox', { name: 'Binding for column 2' })).toBeEditable()
   await page.getByRole('button', { name: 'Remove column 2' }).click()
   await expect(page.getByRole('textbox', { name: 'Header for column 2' })).toHaveCount(0)
@@ -41,7 +41,7 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(grid).toHaveAttribute('aria-rowcount', '2')
 	await expect(grid).toHaveAttribute('aria-colcount', '6')
 	// The retired four are gone as COLUMNS and present as row affordances.
-	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BINDING', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
+	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BINDING', 'PROPORTION', 'ALIGN', 'FOOTER AGGREGATE'])
 	await expect(page.getByRole('button', { name: 'Add column after column 1' })).toHaveCount(0)
 	// The collection and the row alias are still edited here, and nowhere else.
 	await expect(page.getByRole('combobox', { name: 'Root collection' })).toBeVisible()
@@ -56,7 +56,7 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await page.keyboard.press('ArrowRight')
 	await expect(page.getByRole('combobox', { name: 'Binding for column 1' })).toBeFocused()
 	await page.keyboard.press('Alt+ArrowRight')
-	await expect(page.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toBeFocused()
+	await expect(page.getByRole('textbox', { name: 'Proportion for column 1' })).toBeFocused()
 	// THE ALIGNMENT CONTROL IS THREE REACHABLE SEGMENTS, not one select: each
 	// takes its own lattice position, so no segment becomes unreachable.
 	await page.keyboard.press('ArrowRight')

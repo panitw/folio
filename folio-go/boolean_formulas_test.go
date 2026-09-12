@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/panitw/folio/folio-go/internal/geom"
 	"reflect"
 	"strings"
 	"testing"
@@ -140,6 +141,7 @@ func TestBooleanFormulaVersionUsesAllExpressionContainers(t *testing.T) {
 				el.Value = template.Presence[string]{Set: true, Value: `{{true?"Yes":"No"}}`}
 			case "column":
 				el.Type = template.ElementTable
+				el.Width = template.Presence[geom.Length]{}
 				el.Value = template.Presence[string]{}
 				el.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{Columns: []template.Column{{Bind: `{{null}}`}}}}
 			}

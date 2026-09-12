@@ -556,8 +556,8 @@ func TestComponentCommandsRejectTableResizeAndPreserveTableGeometry(t *testing.T
 	}
 }
 
-// removeStarterColumn makes an intentionally empty authored-table fixture.
-// Creation itself now supplies a full-width blank column.
+// removeStarterColumn keeps existing point-table fixtures deliberately empty.
+// New proportional behavior is exercised by table_proportions_test.go.
 func removeStarterColumn(t *testing.T, tpl *Template, id string) {
 	t.Helper()
 	view, err := TableColumns(tpl, id)
@@ -567,6 +567,9 @@ func removeStarterColumn(t *testing.T, tpl *Template, id string) {
 	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"removeTableColumn","version":1,"id":"`+id+`","columnId":"`+view.Columns[0].ID+`"}`)); err != nil {
 		t.Fatal(err)
 	}
+	_, _, _, element, _ := findComponent(tpl, id)
+	element.Width = template.Presence[geom.Length]{} // point fixture
+
 }
 
 func TestTableColumnCommandsAreClosedCanonicalAndDerived(t *testing.T) {
@@ -3779,7 +3782,7 @@ func TestTablePlacementUsesFullBandWidthAndPreservesVerticalIntent(t *testing.T)
 						t.Fatalf("starter column must be full-width, blank and editable: %#v", column)
 					}
 					_, _, _, element, err := findComponent(tpl, table.ID)
-					if err != nil || element.Width.Set || element.Height.Set {
+					if err != nil || !element.Width.Set || int64(element.Width.Value) != content.Width || element.Height.Set || column.Proportion != "1" {
 						t.Fatalf("table stores free-box geometry: %#v, err=%v", element, err)
 					}
 					canonical, err := SerializeTemplate(tpl)
@@ -3884,7 +3887,7 @@ func TestTableDuplicateAllocatesIndependentColumnsAndReloads(t *testing.T) {
 				t.Fatal(err)
 			}
 			if count > 1 {
-				mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":96}`, source.ID, columns.Columns[0].ID))
+				mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"proportion","value":2}`, source.ID, columns.Columns[0].ID))
 				for index := 1; index < count; index++ {
 					mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":%d}`, source.ID, index))
 				}
@@ -3928,7 +3931,7 @@ func TestTableDuplicateAllocatesIndependentColumnsAndReloads(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(columns, unchanged) {
 				t.Fatalf("editing the duplicate changed the source: %v", err)
 			}
-			mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":24}`, source.ID, columns.Columns[0].ID))
+			mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"proportion","value":3}`, source.ID, columns.Columns[0].ID))
 			edited, err := TableColumns(tpl, duplicate.ID)
 			if err != nil || edited.Columns[0].Header != "Copy header" || edited.Columns[0].Width != copied.Columns[0].Width {
 				t.Fatalf("source edit changed the duplicate: %#v, err=%v", edited, err)
@@ -3950,7 +3953,7 @@ func TestTableDuplicatePreflightsEveryColumnIDWithoutMutation(t *testing.T) {
 	}
 	source := newProjectedComponent(t, before, created)
 	columns, _ := TableColumns(tpl, source.ID)
-	mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":96}`, source.ID, columns.Columns[0].ID))
+	mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"proportion","value":2}`, source.ID, columns.Columns[0].ID))
 	mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":1}`, source.ID))
 	command := []byte(fmt.Sprintf(`{"kind":"duplicateComponent","version":1,"id":%q,"snap":false}`, source.ID))
 	// This copy needs three IDs, so even two remaining slots must refuse.
@@ -4038,6 +4041,7 @@ func tableColumnAuthoringFixture(t *testing.T, widths []geom.Length, spare geom.
 	if err != nil {
 		t.Fatal(err)
 	}
+	element.Width = template.Presence[geom.Length]{} // absolute-width fixture
 	element.Table.Value.Columns = nil
 	for i, width := range widths {
 		element.Table.Value.Columns = append(element.Table.Value.Columns, template.Column{

@@ -51,7 +51,7 @@ async function openEditorOverOneColumn(page: import('@playwright/test').Page): P
   await page.getByRole('button', { name: /table component/ }).click()
   await page.getByRole('button', { name: 'Configure columns' }).click()
   const dialog = page.getByRole('dialog', { name: 'Table Editor' })
-  await expect(dialog.getByRole('spinbutton', { name: 'Width for column 1 in points' })).toHaveValue('523.276')
+  await expect(dialog.getByRole('spinbutton', { name: 'Total table width in points' })).toHaveValue('523.276')
   await expect(dialog.getByRole('grid', { name: 'Table columns' })).toBeVisible({ timeout: 12_000 })
   await expect(dialog.getByRole('combobox', { name: 'Binding for column 1' })).toBeEditable()
   return dialog
@@ -92,7 +92,7 @@ test('the six-track matrix fits the dialog and its labels sit over their cells',
   // 3 — THE BUDGET RENDERS, AND IT MOVES WITH THE NUMBER IT REPORTS.
   const budget = dialog.getByRole('status', { name: 'Width budget' })
   await expect(budget).toBeVisible()
-  const width = dialog.getByRole('spinbutton', { name: 'Width for column 1 in points' })
+  const width = dialog.getByRole('spinbutton', { name: 'Total table width in points' })
   await width.fill('120')
   await width.press('Tab')
   await expect(budget).toContainText('Σ 120.0', { timeout: 12_000 })

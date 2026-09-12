@@ -418,6 +418,20 @@ func TestDriftASTMatchesRuntimeEmission(t *testing.T) {
 		t.Fatalf("serialize maximalFixture: %v", err)
 	}
 	runtimeKeys, tokensExtracted := extractRuntimeKeys(t, out)
+	// The mutually exclusive proportional column representation exercises its
+	// own fixture; the maximal point fixture continues covering width emission.
+	proportional, err := ParseDocument(proportionalFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proportionalBytes, err := SerializeDocument(proportional)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proportionalKeys, _ := extractRuntimeKeys(t, proportionalBytes)
+	for key := range proportionalKeys {
+		runtimeKeys[key] = true
+	}
 	if tokensExtracted == 0 {
 		t.Fatal("coverage witness: zero keys extracted from the runtime emission")
 	}

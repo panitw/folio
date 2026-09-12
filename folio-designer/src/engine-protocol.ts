@@ -252,7 +252,7 @@ export type EngineDiagnostic = Readonly<{ severity: 'warning'; code: string; ele
 // that lost one field on the way is refused rather than displayed with a gap.
 export type PreviewEvidence = Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<EngineDiagnostic>; elapsedMs?: number; version?: string }>
 export type ParameterReferences = Readonly<{ revision: number; names: ReadonlyArray<string> }>
-export type TableColumn = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; binding: string; rowField: string; rowFieldEditable: boolean; footer: '' | 'sum' | 'avg' | 'count'; footerOf: string; footerFormat: string }>
+export type TableColumn = Readonly<{ id: string; header: string; width: number; proportion: string; align: 'left' | 'center' | 'right'; binding: string; rowField: string; rowFieldEditable: boolean; footer: '' | 'sum' | 'avg' | 'count'; footerOf: string; footerFormat: string }>
 // STORY 12.3 — the table's own header and row properties, beside its columns.
 //
 // TWO MEMBERS PER HEADER-STYLE FIELD, and the pair is the whole point. The bare
@@ -332,7 +332,7 @@ export type TableHeaderStyle = Readonly<{
 }>
 export type GroupMovePreview = Readonly<{ revision: number; dx: number; dy: number }>
 
-export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
+export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; sizing: 'points' | 'proportion'; totalWidth: number; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
 // boundary. These types describe transport, not the .folio file format.
@@ -605,9 +605,19 @@ const isAuthoredProperties = (value: unknown): value is AuthoredProperties => is
 
 const isGroupMove = (value: unknown): value is GroupMovePreview => isRecord(value) && hasExactKeys(value, ['revision', 'dx', 'dy']) && Number.isSafeInteger(value.revision) && (value.revision as number) >= 0 && Number.isSafeInteger(value.dx) && Number.isSafeInteger(value.dy)
 
+// Go sends canonical authored decimals as strings so even the largest exact
+// int64 weight survives transport without JavaScript rounding. This checks the
+// wire spelling and capacity, never allocates widths or validates author drafts.
+const isProportionString = (value: string): boolean => {
+  if (value.length > 20 || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{0,2}[1-9])?$/.test(value)) return false
+  const [whole, fraction = ''] = value.split('.')
+  const scaled = BigInt(whole! + fraction.padEnd(3, '0'))
+  return scaled > 0n && scaled <= 9223372036854775807n
+}
 const isTableColumns = (value: unknown): value is TableColumns => {
-  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'columns'])) return false
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'sizing', 'totalWidth', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'columns'])) return false
   const table = value.table
+  if (!['points', 'proportion'].includes(table.sizing as string) || typeof table.totalWidth !== 'number' || !Number.isSafeInteger(table.totalWidth) || table.totalWidth < 0 || table.sizing === 'proportion' && table.totalWidth === 0) return false
   // THE TYPED CLAUSES FOR STORY 12.3's SIXTEEN MEMBERS. Every one is REQUIRED
   // and never optional: hasExactKeys above already refuses a response that
   // omits one, and the Go side has no `omitempty` for exactly that reason
@@ -671,7 +681,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   // CANONICAL because Go joins in the format's own order; a re-ordered or
   // repeated list is a projection this engine does not produce.
   if (!(['headerBorder.edges', 'headerBorder.edgesResolved'] as const).every((key) => isCanonicalEdgeList(table[key]))) return false
-  return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
+  return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
   if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false

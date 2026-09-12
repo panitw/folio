@@ -64,7 +64,7 @@ async function expectAligned(page: Page, column: number): Promise<void> {
   const controls = [
     dialog(page).getByRole('textbox', { name: `Header for column ${column}`, exact: true }),
     dialog(page).getByLabel(`Binding for column ${column}`, { exact: true }),
-    dialog(page).getByRole('spinbutton', { name: `Width for column ${column} in points`, exact: true }),
+    dialog(page).getByRole('textbox', { name: `Proportion for column ${column}`, exact: true }),
     dialog(page).getByRole('combobox', { name: `Footer aggregate for column ${column}`, exact: true }),
   ]
   const boxes = await Promise.all(controls.map((control) => control.boundingBox()))
@@ -201,7 +201,7 @@ test('opening multiline binding text preserves its bytes and intentional multili
   await expectAligned(page, 1)
   await text().focus()
   await text().press('Shift+Tab')
-  await expect(dialog(page).getByRole('textbox', { name: 'Row alias', exact: true })).toBeFocused()
+  await expect(dialog(page).getByRole('spinbutton', { name: 'Total table width in points', exact: true })).toBeFocused()
   await text().focus()
   await dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true }).focus()
   await done(page)

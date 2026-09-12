@@ -877,6 +877,12 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .matrix-affordance { width: 28px; padding: 0; }
 .matrix-bound, .matrix-footer-cell { display: grid; gap: var(--space-1); min-width: 0; }
 .matrix-width { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-width: 0; }
+.matrix-resolved-width { grid-column: 1 / -1; color: var(--color-ink-low); font: var(--type-label); white-space: nowrap; }
+.matrix-width:has(.matrix-resolved-width) { grid-template-columns: minmax(0, 1fr); }
+.table-editor-sizing { display: flex; align-items: end; gap: var(--space-5); margin-bottom: var(--space-5); }
+.table-editor-sizing label { display: grid; gap: var(--space-2); }
+.table-editor-sizing input { max-width: 180px; }
+.table-editor-sizing p { margin: 0; }
 .matrix-binding-multiline { min-height: 28px; height: 28px; resize: vertical; padding: 2px; }
 .matrix-unit { color: var(--color-ink-low); font: var(--type-body); }
 .matrix-reveal { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--color-ink-low); font: var(--type-body); }

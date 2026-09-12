@@ -68,14 +68,18 @@ import (
 // believing it had rendered the document correctly. SupportedMajor and
 // SupportedVersion are UNMOVED by it: 2.0 already exceeds 1.2.
 //
+// Proportional tables require 3.0: a table width paired with column
+// proportions is a shape earlier readers reject. Only content using this
+// representation raises to 3.0.
+//
 // NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
 // using only `lineSpacing` or `color` still declares 1.1; one using
 // neither still declares 1.0; only one that actually carries
 // `align: "justify"` declares 2.0. All three coexist, and a brand-new
 // document declares the LOWEST version its content requires.
 const (
-	SupportedMajor   = 2
-	SupportedVersion = "2.0"
+	SupportedMajor   = 3
+	SupportedVersion = "3.0"
 )
 
 // baseVersion is the lowest version any document can declare, and the
@@ -106,10 +110,11 @@ const (
 // They are named rather than spelled inline so versionRequiredByContent
 // reads as the rule rather than as string handling.
 const (
-	baseVersion         = "1.0"
-	minorFeatureVersion = "1.1"
-	keepTogetherVersion = "1.2"
-	majorFeatureVersion = "2.0"
+	baseVersion              = "1.0"
+	minorFeatureVersion      = "1.1"
+	keepTogetherVersion      = "1.2"
+	majorFeatureVersion      = "2.0"
+	proportionalTableVersion = "3.0"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -283,6 +288,9 @@ func versionRequiredByContent(d *Document) string {
 	}
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
+			if el.Type == ElementTable && el.Width.Set {
+				highest = rankProportionalTable
+			}
 			// Story 7.7: Presence.Set, on `color`'s terms — an explicit
 			// `keepTogether: null` is still the key appearing in a file
 			// a 1.1 reader would not recognise.
@@ -323,6 +331,7 @@ const (
 	rankMinorFeature
 	rankKeepTogether
 	rankMajorFeature
+	rankProportionalTable
 )
 
 // versionForRank maps a rank back to the version string it names.
@@ -335,10 +344,11 @@ const (
 // directly by TestVersionForRankIsStrictlyAscending (version_test.go)
 // rather than left to the eye.
 var versionForRank = [...]string{
-	rankBase:         baseVersion,
-	rankMinorFeature: minorFeatureVersion,
-	rankKeepTogether: keepTogetherVersion,
-	rankMajorFeature: majorFeatureVersion,
+	rankBase:              baseVersion,
+	rankMinorFeature:      minorFeatureVersion,
+	rankKeepTogether:      keepTogetherVersion,
+	rankMajorFeature:      majorFeatureVersion,
+	rankProportionalTable: proportionalTableVersion,
 }
 
 // styleVersionRank is the lowest version that can express ONE style

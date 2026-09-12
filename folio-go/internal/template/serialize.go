@@ -29,6 +29,15 @@ func SerializeDocument(d *Document) ([]byte, error) {
 // SerializeDocumentWithMinimumVersion accepts requirements derived above this
 // package dependency rank, without changing the document or loaded version.
 func SerializeDocumentWithMinimumVersion(d *Document, minimum string) ([]byte, error) {
+	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
+		for _, el := range band.Elements {
+			if el.Type == ElementTable {
+				if _, err := TableColumnWidths(el); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	var buf []byte
 	buf = writeDocument(buf, d, minimum)
 	buf = append(buf, '\n') // AD-9's trailing newline (M-2: Encoder.Encode's behaviour, reproduced by hand here).
@@ -444,8 +453,12 @@ func writeColumn(dst []byte, depth int, c Column) []byte {
 	fields := []kv{
 		{"id", writeString(string(c.ID))},
 		{"label", writeString(c.Label)},
-		{"width", writePoints(c.Width)},
 		{"bind", writeString(c.Bind)},
+	}
+	if c.Proportion.Set {
+		fields = append(fields, kv{"proportion", writePoints(geom.Length(c.Proportion.Value))})
+	} else {
+		fields = append(fields, kv{"width", writePoints(c.Width)})
 	}
 	if c.Align.Set {
 		fields = append(fields, kv{"align", writeString(c.Align.Value)})

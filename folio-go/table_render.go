@@ -765,9 +765,9 @@ func collectBandTableRuns(
 		tableTop := layout.PlaceInBand(b.origin, el.Y)
 		tableBottom := tableTop + tbl.HeaderHeight
 
-		widths := make([]geom.Length, len(tbl.Columns))
-		for i, c := range tbl.Columns {
-			widths[i] = c.Width
+		widths, widthErr := template.TableColumnWidths(el)
+		if widthErr != nil {
+			return nil, nil, nil, wrapTableWidthError(widthErr)
 		}
 		geometry := layout.ColumnWidths(el.X, widths)
 

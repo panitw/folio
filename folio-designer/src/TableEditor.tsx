@@ -5,11 +5,11 @@ import { isHexColour, swatchColor } from './swatch-color'
 import type { TableHeaderStyleField } from './table-style-command'
 import { tableColumnBindingSuggestion } from './table-column-command'
 
-type Field = 'header' | 'width' | 'align'
+type Field = 'header' | 'width' | 'proportion' | 'align'
 type BindingControl = HTMLInputElement | HTMLTextAreaElement
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => Promise<boolean> | void; onTotalWidth: (value: string) => Promise<boolean> | void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
 
 // STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
@@ -74,9 +74,10 @@ const authored = (thousandths: number): string => String(thousandths / 1000)
 // is a third thing again.
 const resolvedNote = (value: string, whenEmpty: string): string => value === '' ? whenEmpty : `Using: ${value}`
 
-export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
+export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
   const table = projection.table
   const columns = table.columns
+  const proportional = table.sizing === 'proportion'
   // THE MATRIX OPENS ON THE FIRST EDITABLE CELL, NOT ON CELL ZERO. Cell zero is
   // now `Move column 1 earlier`, which is disabled on the first row — and the
   // fallback beside it is `Remove column 1`. Opening a dialog with focus parked
@@ -91,6 +92,9 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // cell they were on has just been removed" from "the author is typing in the
   // HEADER AND ROWS section and must be left alone".
   const cellHeldFocus = useRef(false)
+  const totalHeldFocus = useRef(false)
+  const totalInput = useRef<HTMLInputElement>(null)
+  const totalBlurTarget = useRef<HTMLElement | null>(null)
   const emptyAdd = useRef<HTMLButtonElement>(null)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
@@ -134,23 +138,42 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     }
     return undefined
   }
+  const pendingNumeric = () => Array.from(dialog.current?.querySelectorAll<HTMLInputElement>('[data-table-numeric]') ?? []).find((input) => input.value !== input.defaultValue)
+  const commitNumeric = (input: HTMLInputElement) => input.dataset.tableNumeric === 'total'
+    ? onTotalWidth(input.value)
+    : onUpdate(input.dataset.columnId!, input.dataset.tableNumeric as 'width' | 'proportion', input.value)
+  const actionPending = useRef(false)
+  const numericBlur = (event: FocusEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    if (actionPending.current) return
+    if (busy) { input.value = input.defaultValue; return }
+    if (input === totalInput.current && event.relatedTarget instanceof HTMLElement && dialog.current?.contains(event.relatedTarget)) totalBlurTarget.current = event.relatedTarget
+    if (input.value !== input.defaultValue) void commitNumeric(input)
+  }
   // Keep the focused field until the clicked action can read it. Otherwise its
   // blur starts a commit and disables Add/Cancel before the browser sends click.
   const keepPendingFieldForAction = (event: MouseEvent<HTMLButtonElement>) => {
-    if (event.button === 0 && pendingBinding()) event.preventDefault()
+    if (event.button === 0 && (pendingBinding() || pendingNumeric())) event.preventDefault()
   }
   const afterPendingField = async (action: 'add' | 'close') => {
     // Done and Escape remain available during a request. Closing revokes its
     // session, so a pending bind cannot follow up with an Add in a later editor.
     if (busy) { if (action === 'close') onClose(); return }
-    const pending = pendingBinding()
-    if (pending && !await onBinding(pending.id, pending.binding)) return
-    if (!mounted.current) return
-    if (action === 'add') onAdd(columns.length)
-    else onClose()
+    if (actionPending.current) return
+    actionPending.current = true
+    try {
+      const pending = pendingBinding()
+      if (pending && !await onBinding(pending.id, pending.binding)) return
+      if (!mounted.current) return
+      const numeric = pendingNumeric()
+      if (numeric && await commitNumeric(numeric) === false) return
+      if (!mounted.current) return
+      if (action === 'add') onAdd(columns.length)
+      else onClose()
+    } finally { actionPending.current = false }
   }
   const discardPendingField = () => {
-    for (const input of Array.from(dialog.current?.querySelectorAll<BindingControl>('[data-column-binding]') ?? [])) input.value = input.defaultValue
+    for (const input of Array.from(dialog.current?.querySelectorAll<BindingControl>('[data-column-binding], [data-table-numeric]') ?? [])) input.value = input.defaultValue
     onCancel()
   }
 
@@ -166,7 +189,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     // which shadows the DOM one. Only `event.target` is read.
     const record = (event: Event) => {
       const target = event.target
-      if (!(target instanceof Node) || dialog.current === null || !dialog.current.contains(target)) cellHeldFocus.current = false
+      if (!(target instanceof Node) || dialog.current === null || !dialog.current.contains(target)) { cellHeldFocus.current = false; totalHeldFocus.current = false; totalBlurTarget.current = null }
     }
     document.addEventListener('focusin', record, true)
     return () => document.removeEventListener('focusin', record, true)
@@ -225,6 +248,19 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     }
     if (!matrixFocused.current || stranded || (focused instanceof HTMLElement && focused.hasAttribute('data-matrix-cell'))) { focusCell(active); matrixFocused.current = true }
   }, [projection, error]) // eslint-disable-line react-hooks/exhaustive-deps
+  // A committed total can replace its keyed input while Add keeps focus on
+  // it. Reclaim only focus lost to that replacement/disable, after the command
+  // finishes. Blur records the native Tab/click destination before busy can
+  // disable it; any focus that actually settles elsewhere takes precedence.
+  useLayoutEffect(() => {
+    if (busy) return
+    if (totalHeldFocus.current && document.activeElement === document.body) {
+      const target = totalBlurTarget.current
+      if (target?.isConnected && !target.matches(':disabled')) target.focus()
+      else totalInput.current?.focus()
+    }
+    totalBlurTarget.current = null
+  }, [projection, error, busy])
   const moveFocus = (event: KeyboardEvent<HTMLElement>, row: number, column: number) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     if (column === CELL.bound && event.currentTarget instanceof HTMLTextAreaElement && ['ArrowUp', 'ArrowDown'].includes(event.key)) return
@@ -441,14 +477,9 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // `ColumnAlignTokens` has three members and a table cell would draw a
   // justified value at its start edge regardless.
   const columnAlignSegments = (index: number) => alignSegments.map((segment) => ({ ...segment, label: `${segment.label} for column ${index + 1}` }))
-  // THE WIDTH BUDGET, AND ITS AUTHORITY IS THE ENGINE'S OWN RULE RATHER THAN A
-  // second opinion invented here. `containComponent` refuses a component whose
-  // `width > band.Width - x`, and a table's projected width is Σ its column
-  // widths — so the space the columns have is the band's width less the table's
-  // own x, which is what `availableWidth` carries. Nothing is computed about
-  // the document; this states, before the render fails, the arithmetic the
-  // author would otherwise meet as a refusal afterwards.
-  const totalWidth = columns.reduce((sum, column) => sum + column.width, 0)
+  // The total and each resolved width are projected by Go. This readout only
+  // compares that total with the band's available space; it never allocates.
+  const totalWidth = table.totalWidth
   const exactFit = availableWidth !== undefined && availableWidth >= 0 && totalWidth === availableWidth
   // A DELTA THIS READ-OUT CANNOT PRINT IS SAID IN WORDS, NEVER ROUNDED TO
   // `0.0`. Widths are millipoints and this line shows one decimal, so a
@@ -549,7 +580,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
       'aria-describedby': 'table-editor-help', disabled: busy, defaultValue: column.binding,
       onBlur: (event: FocusEvent<BindingControl>) => {
         const input = event.currentTarget
-        if (pendingBindingInsertion.current?.id === column.id) return
+        if (actionPending.current || pendingBindingInsertion.current?.id === column.id) return
         if (busy) { input.value = input.defaultValue; return }
         if (bindingChanged(input)) void onBinding(column.id, input.value)
       },
@@ -567,15 +598,16 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const committedEdges: ReadonlyArray<string> = table['headerBorder.edges'] === '' ? [] : table['headerBorder.edges'].split(',')
   const borderPainted = table['headerBorder.edgesResolved'] !== ''
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
-  return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
+  return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { totalBlurTarget.current = null; totalHeldFocus.current = event.target === totalInput.current; if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
       <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Enter a full binding such as {`{{${table.alias}.date}}`} or a formula such as {`{{upper(${table.alias}.trn_code)}}`}. Use Alt+Left/Right to move between cells. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
       {/* Collection and alias configure the shared row scope. The labelled
           group remains accessible beside the per-column field controls. */}
       <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input key={boxKey(table.collection)} aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input key={boxKey(table.alias)} aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'Set the table’s collection and row alias here. Candidate collections come from the loaded sample; the engine validates every saved binding.' : 'Set the table’s collection and row alias here. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
+      {proportional && <div className="table-editor-sizing" role="group" aria-label="Proportion sizing"><label>Total width in points<input ref={totalInput} key={boxKey(table.totalWidth)} aria-label="Total table width in points" type="number" min="0.001" step="0.001" inputMode="decimal" data-table-numeric="total" disabled={busy} defaultValue={authored(table.totalWidth)} onBlur={numericBlur} /></label><p>Proportion sizing · Columns share this width according to their proportions. New columns start at 1.</p></div>}
       <datalist id="table-row-field-candidates">{(sampleAvailable ? candidates.filter((candidate) => candidate.collection === table.collection && tableColumnBindingSuggestion(table.alias, candidate.field) !== undefined) : []).map((candidate) => <option key={candidate.field} value={tableColumnBindingSuggestion(table.alias, candidate.field)} />)}</datalist>
       {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button ref={emptyAdd} type="button" className="file-button" disabled={busy} onMouseDown={keepPendingFieldForAction} onClick={() => void afterPendingField('add')}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={COLUMN_COUNT} className="table-matrix">
-        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BINDING</span><span role="columnheader">WIDTH</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
+        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BINDING</span><span role="columnheader">{proportional ? 'PROPORTION' : 'WIDTH'}</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
         {columns.map((column, index) => <div role="row" aria-rowindex={index + 2} aria-selected={active.row === index} className="matrix-row" key={column.id}>
           {/* THE ROW'S OWN AFFORDANCES, NOT FOUR MORE COLUMNS. Reorder and
               remove act on THIS ROW, so they live in the row's identity cell
@@ -593,7 +625,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               tool is ambiguous. It is `pt` and not `mm`: D-14.2.Q3 settled the
               display unit product-wide, and the mockup's millimetres are
               mockup fidelity against zero millimetres in the product. */}
-          <span role="gridcell" aria-colindex={4} className="matrix-width"><input key={boxKey(column.width)} {...matrixCell(index, CELL.width)} aria-label={`Width for column ${index + 1} in points`} disabled={busy} type="number" min="0.001" step="0.001" defaultValue={column.width / 1000} onBlur={(event) => { const value = Number(event.currentTarget.value); if (busy || !Number.isFinite(value) || value <= 0) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (value * 1000 !== column.width) onUpdate(column.id, 'width', value) }} /><span className="matrix-unit">pt</span></span>
+          <span role="gridcell" aria-colindex={4} className="matrix-width"><input key={boxKey(proportional ? column.proportion : column.width)} {...matrixCell(index, CELL.width)} aria-label={proportional ? `Proportion for column ${index + 1}` : `Width for column ${index + 1} in points`} disabled={busy} type={proportional ? 'text' : 'number'} inputMode="decimal" min={proportional ? undefined : '0.001'} step={proportional ? undefined : '0.001'} data-table-numeric={proportional ? 'proportion' : 'width'} data-column-id={column.id} defaultValue={proportional ? column.proportion : authored(column.width)} onBlur={numericBlur} />{proportional ? <output className="matrix-resolved-width" aria-live="off" aria-label={`Resolved width for column ${index + 1} in points`}>{authored(column.width)} pt</output> : <span className="matrix-unit">pt</span>}</span>
           <span role="gridcell" aria-colindex={5}><SegmentedControl label={`Cell alignment for column ${index + 1}`} segments={columnAlignSegments(index)} current={column.align} disabled={busy} onPick={(value) => { if (value !== column.align) dispatchOnce(() => onUpdate(column.id, 'align', value)) }} segmentProps={(segment) => matrixCell(index, CELL.align + segment)} /></span>
           {/* ONE CONTROL WHERE THERE WERE THREE. The source and the format are
               REVEALED by the aggregate that needs them rather than sitting
@@ -621,7 +653,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
           the author goes looking for them; the refusals in this dialog are
           `role="alert"` and still announce. */}
       <div className="table-matrix-foot">{columns.length > 0 && <button type="button" className="file-button" disabled={busy} onMouseDown={keepPendingFieldForAction} onClick={() => void afterPendingField('add')}>Add column</button>}<output className={`table-budget${exactFit ? ' table-budget-exact' : ''}`} aria-label="Width budget" aria-live="off">{budgetLine}{exactFit && <span className="table-budget-badge">exact</span>}</output></div>
-      <p className="honest-note">If another 72pt column will not fit, Add column splits the widest column. The new column is unbound and starts with a Column N label.</p>
+      <p className="honest-note">{proportional ? 'Add column starts with proportion 1 and redistributes the total width while keeping existing proportions.' : 'If another 72pt column will not fit, Add column splits the widest column.'} The new column is unbound and starts with a Column N label.</p>
       {/* THE HEADER SECTION SITS AFTER THE MATRIX, WHERE THE DESIGN PLACES IT,
           AND THAT DELIBERATELY CHANGES THE TAB ORDER — ruled and recorded as
           D-12.3.2. Story 14.7 moved `Close Table Editor` out of the heading and

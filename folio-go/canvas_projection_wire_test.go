@@ -507,7 +507,9 @@ var tableColumnsProjectionWireKeys = []string{
 	"headerLineSpacingResolved",
 	"headerValign",
 	"headerValignResolved",
+	"sizing",
 	"tableId",
+	"totalWidth",
 }
 
 // tableProjectionGuardKeyList extracts the key list engine-protocol.ts's

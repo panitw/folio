@@ -163,7 +163,12 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 	hRaw, hok := obj["height"]
 	if el.Type == ElementTable {
 		if wok {
-			return Element{}, newLoadError("width", string(id), string(wRaw), "a table declares x and y only — never width (AD-13, AC5)")
+			consumed["width"] = true
+			v, err := decodePointsRaw("width", string(id), wRaw)
+			if err != nil {
+				return Element{}, err
+			}
+			el.Width = present(v)
 		}
 		if hok {
 			return Element{}, newLoadError("height", string(id), string(hRaw), "a table declares x and y only — never height (AD-13, AC5)")
@@ -309,6 +314,9 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 			return Element{}, err
 		}
 		el.Table = present(tbl)
+		if _, err := TableColumnWidths(el); err != nil {
+			return Element{}, err
+		}
 		for _, k := range slices.Sorted(maps.Keys(tblConsumed)) {
 			consumed[k] = true
 		}
@@ -431,7 +439,7 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		return Column{}, err
 	}
 
-	consumed := map[string]bool{"id": true, "label": true, "width": true, "bind": true}
+	consumed := map[string]bool{"id": true, "label": true, "width": true, "proportion": true, "bind": true}
 	var col Column
 	col.ID = id
 
@@ -445,12 +453,21 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 	}
 
 	widthRaw, ok := obj["width"]
-	if !ok {
-		return Column{}, newLoadError("width", string(id), "", "missing required field")
+	proportionRaw, proportional := obj["proportion"]
+	if ok == proportional {
+		return Column{}, newLoadError("width", string(id), "", "exactly one of width or proportion is required")
 	}
-	col.Width, err = decodePointsRaw("width", string(id), widthRaw)
-	if err != nil {
-		return Column{}, err
+	if proportional {
+		v, err := DecodeProportionRaw(proportionRaw)
+		if err != nil {
+			return Column{}, newLoadError("proportion", string(id), string(proportionRaw), err.Error())
+		}
+		col.Proportion = present(v)
+	} else {
+		col.Width, err = decodePointsRaw("width", string(id), widthRaw)
+		if err != nil {
+			return Column{}, err
+		}
 	}
 
 	if alignRaw, ok := obj["align"]; ok {

@@ -118,6 +118,20 @@ func wrapTemplateError(err error) error {
 	return newRenderError(DiagCodeTemplateMalformed, "", "", err)
 }
 
+// Table allocation errors identify a table total or a particular column's
+// proportion, including failures reached through structural Canvas projection.
+func wrapTableWidthError(err error) error {
+	wrapped := wrapTemplateError(err)
+	if le, ok := err.(*template.LoadError); ok {
+		failure := wrapped.(*RenderError)
+		failure.Diagnostic.DataPath = "column." + le.Field
+		if le.Field == "width" {
+			failure.Diagnostic.DataPath = "table.width"
+		}
+	}
+	return wrapped
+}
+
 // wrapOverflowError is layout.Paginate's boundary for FR41's
 // "unlayoutable content" mode (AC4/AC8, R9): an element (a text line
 // or an image) taller than the content window it must fit inside

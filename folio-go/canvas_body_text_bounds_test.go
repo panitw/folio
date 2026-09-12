@@ -3,6 +3,7 @@ package folio
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/panitw/folio/folio-go/internal/geom"
 	"strings"
 	"testing"
 
@@ -363,6 +364,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 				tpl := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
 				element := &tpl.doc.Bands.Content.Elements[0]
 				element.Type = template.ElementTable
+				element.Width = template.Presence[geom.Length]{}
 				element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{Bind: long}}
 				return tpl
 			},
@@ -482,6 +484,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 	table := bodyTextDocument(t, "short", `{"fontFamily":"body","fontSize":12}`)
 	element := &table.doc.Bands.Content.Elements[0]
 	element.Type = template.ElementTable
+	element.Width = template.Presence[geom.Length]{}
 	element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{
 		Bind:    "rows[]",
 		Columns: []template.Column{{ID: "e9", Label: long, Width: 80000, Bind: long}},

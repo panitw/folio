@@ -12,7 +12,7 @@ import (
 // decoded through decodePoints/appendPoints); kind 2 is "plain integer"
 // (decimal, never scaled — only nextId); kind 3 is "ratio" (a
 // DIMENSIONLESS exact decimal carried as a whole number of thousandths —
-// only style.lineSpacing). Report-data numbers (AD-23's exact scaled
+// style.lineSpacing and column.proportion). Report-data numbers (AD-23's exact scaled
 // decimals) are still Story 1.6's and are not modelled here (D-1.4.3).
 //
 // THE THIRD KIND IS STORY 7.2'S, AND IT IS ADDED RATHER THAN BORROWED.
@@ -43,6 +43,7 @@ var numericFieldRegistry = map[string]int{
 	"height":       numericKindPoints, // element height, page.size.height, band height
 	"left":         numericKindPoints, // page.margin.left, style.padding.left
 	"nextId":       numericKindPlainInt,
+	"proportion":   numericKindRatio, // columns[].proportion
 	"right":        numericKindPoints,
 	"top":          numericKindPoints,
 	"width":        numericKindPoints, // element width, page.size.width, columns[].width, border.width

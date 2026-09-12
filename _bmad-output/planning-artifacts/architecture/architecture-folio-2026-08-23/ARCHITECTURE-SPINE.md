@@ -303,10 +303,16 @@ that did not exist while omitting thirteen that did.
 - **Binds:** `internal/layout`, `designer` · FR23, FR25
 - **Prevents:** the designer scaling columns to fit a stored table width while the engine
   clips them instead — the same template, two geometries, and no error anywhere.
-- **Rule:** column widths are absolute and authoritative. A table's width **is** the sum of its
-  column widths; it is never stored as an independent field. The content area's height is
-  likewise derived — page height minus margins minus page-header height minus page-footer
-  height — by one function in `internal/layout`.
+- **Rule:** new tables author one positive total width and positive column proportions, never
+  resolved column widths alongside them. `internal/template.TableColumnWidths` allocates exact
+  millipoints with overflow-safe arithmetic and largest remainders, ties by column order;
+  a zero-width allocation is refused. Commands, canvas, and PDF consume this shared result,
+  and `internal/layout` receives only absolute millipoints. Add/remove retains the total and
+  surviving weights; a new column has weight 1, including after removing the last column.
+  The total persists while empty. The existing no-total representation uses absolute columns
+  for fixtures; mixed representations are refused. React never allocates geometry, and table
+  drag/resize behavior does not expand. Table height stays derived from rows. The content
+  area's height is page height minus margins and capping-band heights, by one layout function.
 
 ### AD-14 — Errors and diagnostics are one type on one channel
 

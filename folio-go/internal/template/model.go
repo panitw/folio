@@ -415,14 +415,15 @@ const (
 type ElementID string
 
 // Element is one of the five element kinds, common fields plus the
-// kind-specific extension. A table's Width/Height are never set — a
-// table declares only X and Y (AC5, AD-13).
+// kind-specific extension. A table's Width is its authored proportional
+// total when set; an absent Width retains legacy point columns. Its Height
+// is always absent (AD-13).
 type Element struct {
 	ID   ElementID
 	Type ElementType
 
 	X, Y          geom.Length
-	Width, Height Presence[geom.Length] // absent for a table (AC5)
+	Width, Height Presence[geom.Length]
 
 	VisibleIf Presence[string]
 	Style     Presence[Style]
@@ -483,8 +484,11 @@ type Column struct {
 	ID    ElementID
 	Label string
 	Width geom.Length
-	Align Presence[string]
-	Bind  string
+	// Proportion carries exact thousandths of a dimensionless weight. When
+	// set, Width is absent on disk and zero in memory.
+	Proportion Presence[int64]
+	Align      Presence[string]
+	Bind       string
 
 	Footer       Presence[string]
 	FooterOf     Presence[string]

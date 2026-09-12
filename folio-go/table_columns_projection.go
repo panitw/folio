@@ -18,6 +18,8 @@ const maxTableColumns = 128
 // It never contains canonical bytes, sample data, parsed sample shape, or
 // aggregate values.
 type TableColumnsProjection struct {
+	Sizing     string `json:"sizing"`
+	TotalWidth int64  `json:"totalWidth"`
 	TableID    string `json:"tableId"`
 	Collection string `json:"collection"`
 	Alias      string `json:"alias"`
@@ -204,6 +206,7 @@ func committedStyleBool(value template.Presence[bool]) bool {
 }
 
 type TableColumnProjection struct {
+	Proportion       string `json:"proportion"`
 	ID               string `json:"id"`
 	Header           string `json:"header"`
 	Width            int64  `json:"width"`
@@ -248,7 +251,14 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 	// the engine's answer rather than the browser's guess.
 	resolved := resolveHeaderStyle(*element)
 	committed := committedHeaderStyle(element.Table.Value)
+	widths, err := template.TableColumnWidths(*element)
+	if err != nil {
+		return TableColumnsProjection{}, wrapTableWidthError(err)
+	}
+	total, _ := projectedSize(*element)
 	projection := TableColumnsProjection{
+		Sizing:                    "points",
+		TotalWidth:                int64(total),
 		TableID:                   tableID,
 		Collection:                collection,
 		Alias:                     alias,
@@ -280,8 +290,11 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		HeaderBorderEdgesResolved: resolvedHeaderBorderEdges(resolved),
 		Columns:                   make([]TableColumnProjection, 0, len(element.Table.Value.Columns)),
 	}
-	for _, column := range element.Table.Value.Columns {
-		if len(column.Label) > 256 || column.Width <= 0 || len(column.ID) == 0 || len(column.ID) > 128 {
+	if element.Width.Set {
+		projection.Sizing = "proportion"
+	}
+	for i, column := range element.Table.Value.Columns {
+		if len(column.Label) > 256 || widths[i] <= 0 || len(column.ID) == 0 || len(column.ID) > 128 {
 			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
 		}
 		align := "left"
@@ -315,7 +328,11 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 				return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
 			}
 		}
-		projection.Columns = append(projection.Columns, TableColumnProjection{ID: string(column.ID), Header: column.Label, Width: int64(column.Width), Align: align, Binding: column.Bind, RowField: row.Field, RowFieldEditable: row.Editable, Footer: footer, FooterOf: footerOf, FooterFormat: footerFormat})
+		proportion := ""
+		if column.Proportion.Set {
+			proportion = template.FormatProportion(column.Proportion.Value)
+		}
+		projection.Columns = append(projection.Columns, TableColumnProjection{ID: string(column.ID), Header: column.Label, Width: int64(widths[i]), Proportion: proportion, Align: align, Binding: column.Bind, RowField: row.Field, RowFieldEditable: row.Editable, Footer: footer, FooterOf: footerOf, FooterFormat: footerFormat})
 	}
 	return projection, nil
 }

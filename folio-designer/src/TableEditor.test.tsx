@@ -71,7 +71,7 @@ const mockRowBinding = (binding: string, alias: string) => {
 const projected = (columns: ReadonlyArray<ColumnFixture>, alias = 'row') => columns.map((column) => {
   const binding = column.binding ?? (column.rowField === '' ? '' : `{{${alias}.${column.rowField}}}`)
   return {
-    id: column.id, header: column.header, width: column.width, align: column.align,
+    id: column.id, header: column.header, width: column.width, proportion: '', align: column.align,
     binding, ...mockRowBinding(binding, alias),
     footer: column.footer, footerOf: column.footerOf, footerFormat: column.footerFormat,
   }
@@ -205,15 +205,15 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
       state.columns = state.columns.map((column) => {
         if (column.binding === undefined) return column
         const row = mockRowBinding(column.binding, state.alias)
-        return row.rowField ? { ...column, binding: `{{${alias}.${row.rowField}}}`, ...row } : column
+        return row.rowField ? { ...column, proportion: '', binding: `{{${alias}.${row.rowField}}}`, ...row } : column
       })
       state.collection = String(command.collection); state.alias = alias
     }
-    if (command.kind === 'updateTableColumnFooter') edit((column) => ({ ...column, footer: command.footer as Footer, footerOf: String(command.footerOf), footerFormat: String(command.footerFormat) }))
-    if (command.kind === 'updateTableColumnExpression') edit((column) => ({ ...column, binding: String(command.binding), ...mockRowBinding(String(command.binding), state.alias) }))
-    if (command.kind === 'updateTableColumn' && command.field === 'align') edit((column) => ({ ...column, align: command.value as ColumnFixture['align'] }))
-    if (command.kind === 'updateTableColumn' && command.field === 'header') edit((column) => ({ ...column, header: String(command.value) }))
-    if (command.kind === 'updateTableColumn' && command.field === 'width') edit((column) => ({ ...column, width: Number(command.value) * 1000 }))
+    if (command.kind === 'updateTableColumnFooter') edit((column) => ({ ...column, proportion: '', footer: command.footer as Footer, footerOf: String(command.footerOf), footerFormat: String(command.footerFormat) }))
+    if (command.kind === 'updateTableColumnExpression') edit((column) => ({ ...column, proportion: '', binding: String(command.binding), ...mockRowBinding(String(command.binding), state.alias) }))
+    if (command.kind === 'updateTableColumn' && command.field === 'align') edit((column) => ({ ...column, proportion: '', align: command.value as ColumnFixture['align'] }))
+    if (command.kind === 'updateTableColumn' && command.field === 'header') edit((column) => ({ ...column, proportion: '', header: String(command.value) }))
+    if (command.kind === 'updateTableColumn' && command.field === 'width') edit((column) => ({ ...column, proportion: '', width: Number(command.value) * 1000 }))
     if (command.kind === 'removeTableColumn') state.columns = state.columns.filter((column) => column.id !== columnId)
     if (command.kind === 'addTableColumn') {
       let width = 72000
@@ -222,7 +222,7 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
         const widest = state.columns.reduce((best, column, index) => column.width > 1 && (best < 0 || column.width > state.columns[best]!.width) ? index : best, -1)
         if (widest < 0) throw new Error('no splittable column')
         width = Math.floor(state.columns[widest]!.width / 2)
-        state.columns = state.columns.map((column, index) => index === widest ? { ...column, width: column.width - width } : column)
+        state.columns = state.columns.map((column, index) => index === widest ? { ...column, proportion: '', width: column.width - width } : column)
       }
       state.columns = [...state.columns.slice(0, Number(command.index)), { id: `n${state.columns.length + 1}`, header: `Column ${state.columns.length + 1}`, width, align: 'left', rowField: '', footer: '', footerOf: '', footerFormat: '' }, ...state.columns.slice(Number(command.index))]
     }
@@ -282,7 +282,7 @@ function tableEngine(initial: ReadonlyArray<ColumnFixture> = defaultColumns, ove
       state.revision++
       return { snapshot: snap() }
     }
-    if (operation === 'table-columns') return { snapshot: snap(), tableColumns: { revision: state.revision, table: { tableId: 'e7', collection: state.collection, alias: state.alias, ...state.header, columns: projected(state.columns, state.alias) } } }
+    if (operation === 'table-columns') return { snapshot: snap(), tableColumns: { revision: state.revision, table: { tableId: 'e7', sizing: 'points' as const, collection: state.collection, alias: state.alias, ...state.header, totalWidth: state.columns.reduce((sum, col) => sum + col.width, 0), columns: projected(state.columns, state.alias) } } }
     return { snapshot: snap() }
   })
   return { state, commands, request, canonical, releaseUndo, releaseCommand, engine: { request } as unknown as EngineClient, snapshot: snapshotOf(over) }
@@ -1287,7 +1287,7 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
   // FOOTER DOES WITH A COUNT, and reaching 101 committed edits through the real
   // gestures would spend a hundred round trips to set up a prop this dialog
   // simply receives. Everything else in this describe goes through App.
-  const directProjection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
+  const directProjection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
   // `busy`, `fileBusy` AND `discarding` ALL DEFAULT TO FALSE, so every call site
   // keeps exactly the meaning it had and each arm below passes only the one flag
   // it is about. `unmount` is returned so an arm can hold its own control — the
@@ -1296,7 +1296,7 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
   const renderFooter = (editCount: number, busy = false, fileBusy = false, discarding = false) => {
     const onCancel = vi.fn()
     const onClose = vi.fn()
-    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
+    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
     return { onCancel, onClose, unmount }
   }
 
@@ -1455,8 +1455,8 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
   const renderPanel = (header: Partial<typeof tableHeaderProjection> = {}) => {
     const onHeaderStyle = vi.fn()
     const panel = (over: Partial<typeof tableHeaderProjection>) => {
-      const projection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
-      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
+      const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
+      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
     }
     const { unmount, rerender } = render(panel(header))
     return { onHeaderStyle, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }
@@ -1989,8 +1989,8 @@ describe('table column field authoring', () => {
   })
 
   it('retains the next nonmatrix Tab stop when a commit or refusal reprojects the editor', () => {
-    const projection = { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
-    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn() }
+    const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn() }
     const { rerender } = render(<TableEditor {...props} />)
     const next = screen.getByRole('spinbutton', { name: 'Header font size (pt)' })
     next.focus()
@@ -2118,7 +2118,7 @@ describe('table editor actions with a pending formula', () => {
   })
 
   it('an invalid width restores only its input and leaves the actual next focus target connected', async () => {
-    const harness = tableEngine(oneColumn)
+    const harness = tableEngine(oneColumn, {}, { refuseCommand: (command) => command.kind === 'updateTableColumn' && command.field === 'width' && command.value === '' })
     await openEditor(harness)
     const width = screen.getByRole('spinbutton', { name: 'Width for column 1 in points' })
     width.focus()
@@ -2128,8 +2128,9 @@ describe('table editor actions with a pending formula', () => {
     expect(document.activeElement).toBe(next)
     expect(next.isConnected).toBe(true)
     expect(width.isConnected).toBe(true)
-    expect(width).toHaveValue(500)
-    expect(harness.commands).toEqual([])
+    await waitFor(() => expect(width).toHaveValue(500))
+    expect(harness.commands.map((command) => JSON.parse(command).value)).toEqual([''])
+    expect(screen.getByRole('alert')).toHaveTextContent(REFUSED_COMMAND)
   })
 
   it('leaves normal caret and selection keys to the formula input and uses Alt arrows for matrix navigation', async () => {
@@ -2259,5 +2260,88 @@ describe('creating multiline binding drafts', () => {
     expect(document.getElementById('table-editor-help')).toHaveTextContent('{{txn.date}}')
     expect(document.getElementById('table-editor-help')).toHaveTextContent('{{upper(txn.trn_code)}}')
     expect(document.getElementById('table-editor-help')).toHaveTextContent('In single-line bindings, Alt+Down')
+  })
+})
+
+describe('proportion controls and pending numeric actions', () => {
+  const setup = (accept = true) => {
+    const onUpdate = vi.fn(async () => accept)
+    const onTotalWidth = vi.fn(async () => accept)
+    const onAdd = vi.fn(); const onClose = vi.fn(); const onCancel = vi.fn()
+    const projection = { revision: 1, table: { tableId: 'e7', sizing: 'proportion' as const, totalWidth: 500000, collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns).map((column, index) => ({ ...column, proportion: index === 1 ? '2' : '1', width: index === 1 ? 250000 : 125000 })) } }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onUpdate, onTotalWidth, onAdd, onClose, onCancel, onRemove: vi.fn(), onMove: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn() }
+    const rendered = render(<TableEditor {...props} />)
+    return { ...rendered, props, onUpdate, onTotalWidth, onAdd, onClose, onCancel }
+  }
+  it('displays authored proportions and Go-resolved widths without a conversion selector', () => {
+    setup()
+    expect(screen.getByRole('group', { name: 'Proportion sizing' })).toBeVisible()
+    expect(screen.getByRole('spinbutton', { name: 'Total table width in points' })).toHaveValue(500)
+    expect(screen.getByRole('textbox', { name: 'Proportion for column 2' })).toHaveValue('2')
+    expect(screen.getByLabelText('Resolved width for column 2 in points')).toHaveTextContent('250 pt')
+    expect(screen.getByLabelText('Resolved width for column 2 in points')).toHaveAttribute('aria-live', 'off')
+    expect(screen.getByText(/Add column starts with proportion 1/)).toBeVisible()
+    expect(screen.queryByText(/another 72pt column/)).toBeNull()
+    expect(screen.queryByRole('combobox', { name: /sizing/i })).not.toBeInTheDocument()
+  })
+  it.each(['9007199254740.991', '9223372036854775.807'])('preserves the exact proportion %s without a native floating-point stepper', async (value) => {
+    const h = setup()
+    const input = screen.getByRole('textbox', { name: 'Proportion for column 1' }) as HTMLInputElement
+    expect(input).toHaveAttribute('inputmode', 'decimal')
+    input.focus(); fireEvent.change(input, { target: { value } })
+    expect(() => input.stepUp()).toThrow()
+    expect(input).toHaveValue(value)
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(screen.getByRole('textbox', { name: 'Proportion for column 2' })).toHaveFocus()
+    await waitFor(() => expect(h.onUpdate).toHaveBeenCalledWith(defaultColumns[0]!.id, 'proportion', value))
+  })
+  it('recovers a replaced total control but preserves deliberate focus elsewhere', () => {
+    const h = setup()
+    const total = () => screen.getByRole('spinbutton', { name: 'Total table width in points' })
+    total().focus()
+    const changed = { ...h.props, projection: { ...h.props.projection, table: { ...h.props.projection.table, totalWidth: 400000 } } }
+    h.rerender(<TableEditor {...changed} />)
+    expect(total()).toHaveFocus()
+    const alias = screen.getByRole('textbox', { name: 'Row alias' })
+    alias.focus()
+    h.rerender(<TableEditor {...h.props} />)
+    expect(alias).toHaveFocus()
+    total().focus()
+    h.rerender(<TableEditor {...h.props} error="e8: allocation gives this column zero width" />)
+    expect(total()).toHaveFocus()
+  })
+  it('preserves the native total-blur destination when busy interrupts that focus transfer', () => {
+    const h = setup()
+    const input = screen.getByRole('spinbutton', { name: 'Total table width in points' })
+    const header = screen.getByRole('textbox', { name: 'Header for column 1' })
+    input.focus()
+    fireEvent.change(input, { target: { value: '400' } })
+    fireEvent.blur(input, { relatedTarget: header })
+    h.rerender(<TableEditor {...h.props} busy />)
+    h.rerender(<TableEditor {...h.props} projection={{ ...h.props.projection, table: { ...h.props.projection.table, totalWidth: 400000 } }} />)
+    expect(header).toHaveFocus()
+  })
+  for (const field of ['total', 'proportion'] as const) for (const action of ['Add column', 'Done', 'Escape', 'Cancel'] as const) {
+    it(`${action} handles a pending ${field} draft`, async () => {
+      const h = setup()
+      const input = screen.getByRole(field === 'total' ? 'spinbutton' : 'textbox', { name: field === 'total' ? 'Total table width in points' : 'Proportion for column 1' })
+      input.focus(); fireEvent.change(input, { target: { value: field === 'total' ? '400' : '1.234' } })
+      if (action === 'Escape') fireEvent.keyDown(input, { key: 'Escape' })
+      else { const button = screen.getByRole('button', { name: action }); fireEvent.mouseDown(button, { button: 0 }); fireEvent.click(button) }
+      if (action === 'Cancel') { expect(h.onUpdate).not.toHaveBeenCalled(); expect(h.onTotalWidth).not.toHaveBeenCalled(); expect(h.onCancel).toHaveBeenCalledOnce(); return }
+      await waitFor(() => expect(action === 'Add column' ? h.onAdd : h.onClose).toHaveBeenCalledOnce())
+      if (field === 'total') expect(h.onTotalWidth).toHaveBeenCalledExactlyOnceWith('400')
+      else expect(h.onUpdate).toHaveBeenCalledExactlyOnceWith(defaultColumns[0]!.id, 'proportion', '1.234')
+    })
+  }
+  it('refuses pending invalid ratios without closing or adding, then restores committed input with its located error', async () => {
+    const h = setup(false)
+    const input = screen.getByRole('textbox', { name: 'Proportion for column 1' })
+    fireEvent.change(input, { target: { value: '0' } }); fireEvent.keyDown(input, { key: 'Escape' })
+    await waitFor(() => expect(h.onUpdate).toHaveBeenCalledWith(defaultColumns[0]!.id, 'proportion', '0'))
+    expect(h.onClose).not.toHaveBeenCalled(); expect(h.onAdd).not.toHaveBeenCalled()
+    h.rerender(<TableEditor {...h.props} error="e8: proportion must be positive" />)
+    expect(input).toHaveValue('1')
+    expect(screen.getByRole('alert')).toHaveTextContent('e8: proportion must be positive')
   })
 })

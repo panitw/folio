@@ -121,14 +121,14 @@ const tableValidDoc = `{
 // Log): delete the "if el.Type == ElementTable { if wok {...} }" branch
 // at parse_bands.go:158 — the document then loads cleanly and "width"
 // lands on Element.Width. This test reddens under that mutation.
-func TestTableDeclaringWidthIsRejected(t *testing.T) {
+func TestTableTotalWithAbsoluteColumnsIsRejected(t *testing.T) {
 	_, err := ParseDocument([]byte(tableWidthDoc))
 	if err == nil {
-		t.Fatal("a table declaring \"width\" must be a load error (AD-13, AC1); got nil error")
+		t.Fatal("a table total with absolute columns must be a load error; got nil error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "e1") {
-		t.Errorf("error must name the element id \"e1\": %v", err)
+	if !strings.Contains(msg, "e2") {
+		t.Errorf("error must name the column id \"e2\": %v", err)
 	}
 	if !strings.Contains(msg, "width") {
 		t.Errorf("error must name the field \"width\": %v", err)
@@ -181,7 +181,7 @@ var wantTableExtFields = map[string]bool{
 }
 
 var wantColumnFields = map[string]bool{
-	"ID": true, "Label": true, "Width": true, "Align": true, "Bind": true,
+	"ID": true, "Label": true, "Width": true, "Proportion": true, "Align": true, "Bind": true,
 	"Footer": true, "FooterOf": true, "FooterFormat": true,
 }
 

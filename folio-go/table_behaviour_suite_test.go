@@ -71,6 +71,7 @@ import (
 // diff to this list, made deliberately and reviewed, rather than a
 // silent deletion nothing notices.
 var declaredTableBehaviourSuite = []string{
+	"table_proportions_test.go",     // Proportional authoring — exact allocation, structure, refusals and PDF geometry
 	"table_render_test.go",          // Story 4.1 — cell rendering, header row, column geometry
 	"table_render_row_test.go",      // Story 4.2 — row scope, per-row binding, empty collections
 	"table_pagination_test.go",      // Story 4.3 — row-atomic pagination
