@@ -9172,6 +9172,8 @@ Engine refusals from the three new arms surface only in the single `role="alert"
 - source_spec: `_bmad-output/implementation-artifacts/12-5-a-band-boundary-is-dragged-on-the-canvas.md`
 - **Deferred by:** Story 12.5 (2026-09-06). **PRE-EXISTING in `nudgeSelection`; 12.5's `nudgeBoundary` inherits it by faithfully copying the shipped idiom, as its spec required.** **Severity:** MEDIUM. **Status:** OPEN
 
+**Component portion corrected (2026-09-12):** The user-reported element-nudging fix in `spec-fix-arrow-key-nudging.md` makes `nudgeSelection` send `snap: false`, preserving exact 1pt arrows and 10pt Shift+arrows while leaving pointer snapping enabled. Real-WASM browser tests cover returned coordinates and painted movement with Snap on and off. This entry remains open for band-boundary keyboard resizing, which is outside that fix.
+
 Both nudges step 1pt (`1_000`) unmodified and 10pt with Shift, and both send `snap: snapEnabled`, which defaults to `true`. `GridIncrement` is 6000mp. `SnapNearest` rounds to the nearest multiple, exact halves away from zero. So from any grid-aligned value a single arrow press sends 1pt away and the engine writes it straight back: the bytes do not move, `wasm/engine.go`'s byte-equality short circuit returns the same snapshot, and **nothing happens** — while a command round trip is still spent. Shift+Arrow moves **12pt, not the documented 10**. Once a value is grid-aligned — which any snapped drag guarantees — the unmodified arrow key is permanently inert.
 
 **Why this matters more than it looks.** UX-DR25 requires every interactive element to be keyboard *operable*, and Story 12.5's own AC calls the gesture "an affordance on top of the command, never the only way to reach the value". Under the default setting the keyboard route reaches nothing.
@@ -13739,3 +13741,11 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-boolean-formulas.md`
   summary: Return a located error when an aggregate expression is evaluated with a nil resolver.
   evidence: Blind/edge review found sum/count/avg still call the absent Resolver through budgetResolver; baseline ae6cd70530b6059d8e66db448fb432533dd0df94 also called the nil Resolver directly in internal/expr/aggregate.go. Production bindings supply a resolver, so this is a pre-existing internal caller edge case.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-arrow-key-nudging.md`
+  summary: Rapid arrow presses can lose movement when the prior move has not returned its projection.
+  evidence: The pre-existing nudgeSelection reads snapshotRef before issuing an asynchronous absolute move; two requests issued before its response reuse the same origin. The current fix changes only snap behavior; regression tests explicitly settle each response.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-arrow-key-nudging.md`
+  summary: Arrow navigation between inspector tabs can also nudge the selected canvas element.
+  evidence: The pre-existing tab handler calls preventDefault without stopPropagation, while the global shortcut listener ignores defaultPrevented and treats button targets as non-editable. This already mutates elements with Snap off; precise nudges make it visible with Snap on too.

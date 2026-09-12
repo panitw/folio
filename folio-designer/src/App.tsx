@@ -1521,7 +1521,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
-    if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, snapEnabled))
+    // Keyboard nudges are precise relative steps; grid snapping can erase a
+    // one-point move or shift the coordinate on the other axis.
+    if (component && selectedRef.current.length === 1) void commitComponent(moveComponentCommand(component.id, component.x + dx, component.y + dy, false))
   }
   // THE ONE PLACE A BOUNDARY GESTURE BECOMES A COMMAND, and it sends exactly
   // the command Story 12.1 shipped. `points()` spells the proposal in the same

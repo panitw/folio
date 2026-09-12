@@ -1444,10 +1444,10 @@ describe('application shell', () => {
     // THE NUDGE'S DIRECTION IS PART OF THE CONTROL. `moveComponent` alone would
     // pass for a handler that sent the same command for all four keys, and the
     // table sits at x = 0, y = 0 in this fixture, so one step is ±1 point.
-    ['ArrowLeft', { key: 'ArrowLeft' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":-1,') }],
-    ['ArrowRight', { key: 'ArrowRight' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":1,') }],
-    ['ArrowUp', { key: 'ArrowUp' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":0,"y":-1,') }],
-    ['ArrowDown', { key: 'ArrowDown' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request).join('')).toContain('"kind":"moveComponent","version":1,"id":"e7","x":0,"y":1,') }],
+    ['ArrowLeft', { key: 'ArrowLeft' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"moveComponent","version":1,"id":"e7","x":-1,"y":0,"snap":false}']) }],
+    ['ArrowRight', { key: 'ArrowRight' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"moveComponent","version":1,"id":"e7","x":1,"y":0,"snap":false}']) }],
+    ['ArrowUp', { key: 'ArrowUp' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"moveComponent","version":1,"id":"e7","x":0,"y":-1,"snap":false}']) }],
+    ['ArrowDown', { key: 'ArrowDown' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"moveComponent","version":1,"id":"e7","x":0,"y":1,"snap":false}']) }],
     // The two that reach no engine at all, so their controls are read off the
     // browser: Snap toggles its own pressed state, Alt+P swaps the whole main.
     ['Snap (Alt+S)', { key: 's', altKey: true }, () => { expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', 'false') }],
@@ -1661,8 +1661,34 @@ describe('application shell', () => {
     // listener. Only the second of those may act on it.
     fireEvent.keyDown(screen.getByLabelText('text component e9'), { key: 'ArrowRight' })
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-    expect(new TextDecoder().decode((request.mock.calls[1] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":37,"y":56,"snap":true}')
+    expect(new TextDecoder().decode((request.mock.calls[1] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":37,"y":56,"snap":false}')
     expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([true, false])('nudges fractional projected coordinates precisely and keeps Snap %s unchanged', async (snap) => {
+    const at = (revision: number, x: number, y: number) => ({
+      documentState: 'loaded' as const, revision, byteLength: 3,
+      canvas: { ...canvas, components: [{ id: 'e9', type: 'rect' as const, band: 'content' as const, x, y, width: 72_000, height: 24_000, resizable: true }] },
+    })
+    const request = vi.fn(async () => ({ snapshot: at(3, 13_375, 14_625) }))
+      .mockResolvedValueOnce({ snapshot: at(2, 13_375, 24_625) })
+    render(<App engine={engine(request)} initialSnapshot={at(1, 12_375, 24_625)} />)
+    if (!snap) fireEvent.click(screen.getByRole('button', { name: /^Snap on/ }))
+    const component = screen.getByLabelText('rect component e9')
+    fireEvent.click(component)
+
+    fireEvent.keyDown(component, { key: 'ArrowRight' })
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'X (pt)' })).toHaveValue('13.375'))
+    // The second proposal must use the engine's returned x, preserving its
+    // millipoint precision while Shift requests exactly ten points on y.
+    fireEvent.keyDown(component, { key: 'ArrowUp', shiftKey: true })
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toHaveValue('14.625'))
+    const sent = (request.mock.calls as unknown as Array<[string, ArrayBuffer]>).map(([, payload]) => new TextDecoder().decode(payload))
+    expect(sent).toEqual([
+      '{"kind":"moveComponent","version":1,"id":"e9","x":13.375,"y":24.625,"snap":false}',
+      '{"kind":"moveComponent","version":1,"id":"e9","x":13.375,"y":14.625,"snap":false}',
+    ])
+    expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', String(snap))
   })
 
   // AC2's ARITHMETIC, WHICH IS THE HALF JSDOM CAN HONESTLY SEE. It applies no
