@@ -19,7 +19,6 @@ package bind
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 )
@@ -41,25 +40,17 @@ func EvaluateCondition(src string, scope Scope, fc expr.FormatContext, elementID
 	if perr != nil {
 		return expr.Value{}, nil, perr
 	}
-	// D-3.5.1's own tripwire, applied here too (Story 3.5 finisher
-	// review, Finding 10 / Minor): "a third condition slot appearing
-	// that does not route through the hoisted predicate." EvaluateCondition
-	// IS a condition slot. Today the only caller is checkVisibleIfExpression
-	// (folio_expr_validate.go, at LOAD) followed by render_visibility.go
-	// (at RENDER, on a value that already passed the load check) — so
-	// this can never fire through the public API. It is enforced here
-	// as well, not only at load, so a FUTURE second caller (e.g. a
-	// programmatically-built *Template, or a designer-side evaluator)
-	// cannot silently bypass D-3.5.1 by reaching this function directly.
-	if expr.IsLiteralExpr(e) {
-		return expr.Value{}, nil, fmt.Errorf(
-			"bind: element %s: %q must not be a literal (expected a data path or a call) — "+
-				"the grammar has no boolean literal, so a bare literal can never be a boolean",
-			elementID, strings.TrimSpace(src),
-		)
+	if err := expr.CheckCondition(e); err != nil {
+		return expr.Value{}, nil, fmt.Errorf("bind: element %s: visibleIf: %w", elementID, err)
 	}
-	resolver := exprResolver{scope: scope, elementID: elementID}
-	return expr.Eval(e, resolver, fc, elementID)
+	budget := expr.NewBudget()
+	resolver := exprResolver{scope: scope, elementID: elementID, budget: budget}
+	value, caveats, err := expr.EvalWithBudget(e, resolver, fc, elementID, budget)
+	if err == nil {
+		_, err = expr.ConditionValue(value, "visibleIf", src, elementID)
+		err = expr.WithLocation(e, err)
+	}
+	return value, caveats, err
 }
 
 // parseAndCheck is the parse + static-check half every bare-expression
@@ -69,12 +60,12 @@ func parseAndCheck(src, elementID string) (expr.Expr, error) {
 	e, perr := expr.Parse(src)
 	if perr != nil {
 		return nil, fmt.Errorf(
-			"bind: element %s: %q is not a valid expression: %s",
-			elementID, strings.TrimSpace(src), perr,
+			"bind: element %s: invalid expression: %w",
+			elementID, perr,
 		)
 	}
 	if cerr := expr.Check(e); cerr != nil {
-		return nil, fmt.Errorf("bind: element %s: %s", elementID, cerr)
+		return nil, fmt.Errorf("bind: element %s: %w", elementID, cerr)
 	}
 	return e, nil
 }
@@ -87,11 +78,7 @@ func parseAndCheck(src, elementID string) (expr.Expr, error) {
 // EvaluateCondition already use, and returns the resolved expr.Value
 // uncoerced, plus any Caveat the walk produced.
 //
-// It deliberately does NOT carry EvaluateCondition's D-3.5.1
-// literal tripwire: that tripwire is a property of a CONDITION slot
-// ("the grammar has no boolean literal"), not of bare evaluation, and
-// applying it here would make this function a second condition slot —
-// exactly what that tripwire exists to prevent.
+// General value evaluation has no boolean consumer constraint.
 //
 // Its one caller today is Story 4.5's table footer (folio's
 // table_render.go, footerCellExprText): D-1.4.1 rules that a footer
@@ -107,6 +94,16 @@ func EvaluateValue(src string, scope Scope, fc expr.FormatContext, elementID str
 	if perr != nil {
 		return expr.Value{}, nil, perr
 	}
-	resolver := exprResolver{scope: scope, elementID: elementID}
-	return expr.Eval(e, resolver, fc, elementID)
+	budget := expr.NewBudget()
+	resolver := exprResolver{scope: scope, elementID: elementID, budget: budget}
+	return expr.EvalWithBudget(e, resolver, fc, elementID, budget)
 }
+
+// PathAbsentError distinguishes missing report data from formula failures.
+type PathAbsentError struct {
+	Path string
+	Err  error
+}
+
+func (e *PathAbsentError) Error() string { return e.Err.Error() }
+func (e *PathAbsentError) Unwrap() error { return e.Err }

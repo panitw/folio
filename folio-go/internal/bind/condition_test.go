@@ -25,7 +25,7 @@ func TestEvaluateConditionRejectsLiteral(t *testing.T) {
 		if err == nil {
 			t.Fatalf("EvaluateCondition(%q): expected a literal-rejection error, got nil", src)
 		}
-		if !strings.Contains(err.Error(), "must not be a literal") {
+		if !strings.Contains(err.Error(), "must be a boolean or null") {
 			t.Errorf("EvaluateCondition(%q): expected the literal-rejection wording, got: %v", src, err)
 		}
 	}

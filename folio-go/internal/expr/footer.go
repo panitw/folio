@@ -43,7 +43,19 @@ func RewriteRowBinding(bindText, oldAlias, newAlias string) (rewritten string, m
 		return "", false, false, err
 	}
 	if len(placeholders) != 1 || literal[0] != "" || trailing != "" || placeholders[0].Reserved {
-		return bindText, false, false, nil
+		for _, part := range placeholders {
+			if part.Reserved {
+				continue
+			}
+			node, parseErr := Parse(part.Inner)
+			if parseErr != nil {
+				return "", false, false, parseErr
+			}
+			if expressionUsesRoot(node, oldAlias) {
+				used = true
+			}
+		}
+		return bindText, false, used, nil
 	}
 	e, err := Parse(placeholders[0].Inner)
 	if err != nil {
@@ -68,14 +80,12 @@ func RewriteRowBinding(bindText, oldAlias, newAlias string) (rewritten string, m
 }
 
 func expressionUsesRoot(e Expr, root string) bool {
-	switch value := e.(type) {
-	case *PathExpr:
-		return len(value.Segments) > 0 && value.Segments[0] == root
-	case *CallExpr:
-		for _, arg := range value.Args {
-			if expressionUsesRoot(arg, root) {
-				return true
-			}
+	if path, ok := e.(*PathExpr); ok {
+		return len(path.Segments) > 0 && path.Segments[0] == root
+	}
+	for _, child := range Children(e) {
+		if expressionUsesRoot(child, root) {
+			return true
 		}
 	}
 	return false

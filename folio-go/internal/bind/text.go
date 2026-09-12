@@ -246,18 +246,19 @@ func Resolve(text string, scope Scope, fc expr.FormatContext, elementID string) 
 		astExpr, perr := expr.Parse(ph.Inner)
 		if perr != nil {
 			return "", nil, nil, fmt.Errorf(
-				"bind: element %s: %q is not a valid expression: %s",
-				elementID, trimmed, perr,
+				"bind: element %s: invalid value expression placeholder %d: %w",
+				elementID, i+1, perr,
 			)
 		}
-		if cerr := expr.Check(astExpr); cerr != nil {
-			return "", nil, nil, fmt.Errorf("bind: element %s: %s", elementID, cerr)
+		if cerr := expr.CheckText(astExpr); cerr != nil {
+			return "", nil, nil, fmt.Errorf("bind: element %s: placeholder %d: %w", elementID, i+1, cerr)
 		}
 
-		resolver := exprResolver{scope: scope, elementID: elementID}
-		val, valCaveats, everr := expr.Eval(astExpr, resolver, fc, elementID)
+		budget := expr.NewBudget()
+		resolver := exprResolver{scope: scope, elementID: elementID, budget: budget}
+		val, valCaveats, everr := expr.EvalWithBudget(astExpr, resolver, fc, elementID, budget)
 		if everr != nil {
-			return "", nil, nil, everr
+			return "", nil, nil, fmt.Errorf("bind: element %s: placeholder %d: %w", elementID, i+1, everr)
 		}
 		caveats = append(caveats, valCaveats...)
 
@@ -271,10 +272,8 @@ func Resolve(text string, scope Scope, fc expr.FormatContext, elementID string) 
 		case expr.KindString:
 			write(val.Str)
 		default:
-			return "", nil, nil, fmt.Errorf(
-				"bind: element %s: %q resolved to a %s, not a string — text bindings are never coerced",
-				elementID, trimmed, val.Kind,
-			)
+			return "", nil, nil, fmt.Errorf("bind: element %s: placeholder %d: %w", elementID, i+1,
+				expr.WithLocation(astExpr, fmt.Errorf("resolved to a %s, not a string — text bindings are never coerced", val.Kind)))
 		}
 		subs = append(subs, Substitution{Path: substitutionPathFor(astExpr, trimmed), Start: from, End: runesWritten})
 	}
@@ -302,11 +301,15 @@ func substitutionPathFor(e expr.Expr, trimmed string) string {
 // top-level path, which is why dispatch cannot be decided once before
 // calling into expr.Eval and must instead live inside Resolve itself.
 type exprResolver struct {
+	budget    *expr.Budget
 	scope     Scope
 	elementID string
 }
 
 func (r exprResolver) Resolve(path []string) (expr.Value, error) {
+	if err := r.budget.Charge(len(path)); err != nil {
+		return expr.Value{}, err
+	}
 	if len(path) == 0 {
 		return expr.Value{}, fmt.Errorf("bind: element %s: empty path", r.elementID)
 	}
@@ -323,9 +326,9 @@ func (r exprResolver) Resolve(path []string) (expr.Value, error) {
 			// value.
 			return expr.Value{}, fmt.Errorf("bind: element %s: %q is a namespace, not a value", r.elementID, path[0])
 		}
-		return lookupBound(root, path[1:], path, r.elementID, kind)
+		return lookupBound(root, path[1:], path, r.elementID, kind, r.budget)
 	}
-	return lookupBound(root, path, path, r.elementID, kind)
+	return lookupBound(root, path, path, r.elementID, kind, r.budget)
 }
 
 // selectRoot is D-3.1.1's ONE place a resolution root is chosen (Story
@@ -394,11 +397,15 @@ func selectRoot(scope Scope, first string, allowRow bool) (kind rootKind, root V
 // rootKind other than the three package-level declarations), which is
 // what makes "a root can only be introduced by declaration" a property
 // the compiler enforces rather than one an AST scan tries to observe.
-func lookupBound(root Value, subPath, fullPath []string, elementID string, kind rootKind) (expr.Value, error) {
+func lookupBound(root Value, subPath, fullPath []string, elementID string, kind rootKind, budgets ...*expr.Budget) (expr.Value, error) {
+	var budget *expr.Budget
+	if len(budgets) > 0 {
+		budget = budgets[0]
+	}
 	val, presence := root.Lookup(subPath)
 	switch presence {
 	case Absent:
-		return expr.Value{}, fmt.Errorf("bind: element %s: %s path %q is absent from %s", elementID, kind.name, strings.Join(fullPath, "."), kind.desc)
+		return expr.Value{}, &PathAbsentError{Path: strings.Join(fullPath, "."), Err: fmt.Errorf("bind: element %s: %s path %q is absent from %s", elementID, kind.name, strings.Join(fullPath, "."), kind.desc)}
 	case Null:
 		return expr.Value{Kind: expr.KindNull}, nil
 	case Present:
@@ -408,6 +415,9 @@ func lookupBound(root Value, subPath, fullPath []string, elementID string, kind 
 		case KindBool:
 			return expr.Value{Kind: expr.KindBool, Bool: val.Bool}, nil
 		case KindNumber:
+			if err := budget.Charge(len(val.Num)); err != nil {
+				return expr.Value{}, err
+			}
 			d, derr := val.AsDecimal()
 			if derr != nil {
 				return expr.Value{}, fmt.Errorf(
@@ -550,6 +560,9 @@ func collectionSubPath(scope Scope, path []string, elementID string) (subPath []
 // reject still counts (R5's "count is a property of the collection;
 // sum and avg are properties of a projection over it").
 func (r exprResolver) CollectionLength(path []string) (int, error) {
+	if err := r.budget.Charge(len(path)); err != nil {
+		return 0, err
+	}
 	if len(path) == 0 {
 		return 0, fmt.Errorf("bind: element %s: empty collection path", r.elementID)
 	}
@@ -561,7 +574,7 @@ func (r exprResolver) CollectionLength(path []string) (int, error) {
 	val, consumed, presence := splitCollectionPath(root, subPath)
 	switch presence {
 	case Absent:
-		return 0, fmt.Errorf("bind: element %s: %s collection path %q is absent from %s", r.elementID, kind.name, strings.Join(path, "."), kind.desc)
+		return 0, &PathAbsentError{Path: strings.Join(path, "."), Err: fmt.Errorf("bind: element %s: %s collection path %q is absent from %s", r.elementID, kind.name, strings.Join(path, "."), kind.desc)}
 	case Null:
 		// See the file-level comment above: a null collection path is
 		// one zero observation, not zero elements.
@@ -605,6 +618,9 @@ func (r exprResolver) CollectionLength(path []string) (int, error) {
 // what turns that into the additive identity; this function only
 // reports what the data actually held.
 func (r exprResolver) ProjectCollection(path []string) ([]expr.Value, error) {
+	if err := r.budget.Charge(len(path)); err != nil {
+		return nil, err
+	}
 	if len(path) == 0 {
 		return nil, fmt.Errorf("bind: element %s: empty collection path", r.elementID)
 	}
@@ -616,7 +632,7 @@ func (r exprResolver) ProjectCollection(path []string) ([]expr.Value, error) {
 	val, consumed, presence := splitCollectionPath(root, subPath)
 	switch presence {
 	case Absent:
-		return nil, fmt.Errorf("bind: element %s: %s collection path %q is absent from %s", r.elementID, kind.name, strings.Join(path, "."), kind.desc)
+		return nil, &PathAbsentError{Path: strings.Join(path, "."), Err: fmt.Errorf("bind: element %s: %s collection path %q is absent from %s", r.elementID, kind.name, strings.Join(path, "."), kind.desc)}
 	case Null:
 		// See the file-level comment above: a null collection path is
 		// one zero observation — represented here as a single KindNull
@@ -643,15 +659,23 @@ func (r exprResolver) ProjectCollection(path []string) ([]expr.Value, error) {
 	}
 
 	projSegs := subPath[consumed:]
+	// Charge before allocation or per-row traversal; divide before multiplying
+	// so a malicious collection size cannot wrap the work estimate.
+	if r.budget != nil && len(val.Arr) > 1_000_000/max(len(path), 1) {
+		return nil, fmt.Errorf("expression projection exceeds 1000000 work units")
+	}
+	if err := r.budget.Charge(len(val.Arr) * len(path)); err != nil {
+		return nil, err
+	}
 	out := make([]expr.Value, len(val.Arr))
 	for i, elem := range val.Arr {
 		fieldVal, fp := elem.Lookup(projSegs)
 		switch fp {
 		case Absent:
-			return nil, fmt.Errorf(
+			return nil, &PathAbsentError{Path: strings.Join(path, "."), Err: fmt.Errorf(
 				"bind: element %s: %s collection %q element %d: projected field %q is absent from the element",
 				r.elementID, kind.name, strings.Join(path[:len(path)-len(projSegs)], "."), i, strings.Join(projSegs, "."),
-			)
+			)}
 		case Null:
 			out[i] = expr.Value{Kind: expr.KindNull} // R7: a zero observation, resolved downstream.
 		case Present:
@@ -660,6 +684,9 @@ func (r exprResolver) ProjectCollection(path []string) ([]expr.Value, error) {
 					"bind: element %s: %s collection %q element %d: projected field %q is a %s, not a number (never coerced)",
 					r.elementID, kind.name, strings.Join(path[:len(path)-len(projSegs)], "."), i, strings.Join(projSegs, "."), fieldVal.Kind,
 				)
+			}
+			if err := r.budget.Charge(len(fieldVal.Num)); err != nil {
+				return nil, err
 			}
 			d, derr := fieldVal.AsDecimal()
 			if derr != nil {

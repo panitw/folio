@@ -264,7 +264,7 @@
     <p class="standfirst">
       Anything between double braces is an expression — <code>{{customer.name}}</code>. Folio evaluates
       it when the report renders and substitutes the result into the document. There are
-      <strong>eight functions and no more</strong>: no loops, no variables, no arithmetic operators.
+      <strong>eight functions and no more</strong>: no loops, assignment or general scripting. Comparisons, exact decimal arithmetic and nested conditionals compose with the same eight functions.
       If you want a ninth, the calculation probably belongs in your data rather than in the template.
     </p>
   </header>
@@ -340,6 +340,29 @@
 {{lower(customer.email)}}         <span class="out">somchai@example.com</span></pre></div>
   </section>
 
+
+  <section id="formulas">
+    <h2>Formulas and visibility</h2>
+    <p>Enter <code>loanAmount &gt; 20000</code> in Visibility, without <code>=</code> or braces. It shows the element for 25000 and hides it for 20000 or 19999. Empty Visibility, an absent field or JSON <code>"visibleIf": null</code> means always visible. The formula string <code>"visibleIf": "null"</code> hides it.</p>
+    <div class="sample"><pre>vip ? true : (blocked ? false : loanAmount &gt; 20000)
+{{true ? "Yes" : "No"}}
+{{formatNumber(loanAmount + fee, "#,##0.00")}}</pre></div>
+    <p>Conditions accept booleans and null. <code>true</code> selects the first branch; <code>false</code> and <code>null</code> select the other. Numbers and strings have no truthiness. Bold, Italic and other fixed boolean properties remain literal controls.</p>
+    <div class="tablewrap"><table><thead><tr><th>Highest precedence first</th><th>Association</th></tr></thead><tbody>
+    <tr><td>Grouping, paths, calls, strings, numbers, true, false, null</td><td>Atoms</td></tr>
+    <tr><td>Unary +, −</td><td>Right</td></tr><tr><td>*, /, %</td><td>Left</td></tr><tr><td>+, −</td><td>Left</td></tr>
+    <tr><td>&gt;, &lt;, &gt;=, &lt;=</td><td>No repeated unparenthesized comparisons</td></tr><tr><td>!=</td><td>No repeated unparenthesized comparisons</td></tr><tr><td>condition ? then : else</td><td>Right</td></tr>
+    </tbody></table></div>
+    <p><code>x ? y : a ? b : c</code> means <code>x ? y : (a ? b : c)</code>. Lowercase whole words <code>true</code>, <code>false</code>, <code>null</code> are literals and never read data. <code>trueFlag</code>, <code>True</code>, <code>record.true</code> and <code>params.null</code> remain paths. <code>true.field</code> and <code>true()</code> are invalid. Quoted words remain strings.</p>
+    <p>Ordering compares numbers. Inequality compares same-kind scalars; numeric scales do not affect comparison, strings compare exactly and booleans compare directly. Null differs from every non-null scalar. Missing paths remain errors. Collections and non-null mixed scalar kinds are invalid. There is no ==, ===, !==, &amp;&amp;, ||, !, assignment or scripting.</p>
+    <p>Arithmetic uses exact bounded Decimals. Addition, subtraction and remainder retain the smaller operand exponent; multiplication adds exponents; unary signs retain scale. Remainder truncates toward zero: <code>-5 % 2 = -1</code>, <code>5 % -2 = 1</code>.</p>
+    <p>Division chooses max(operand decimal scales, 0) + 4 fractional places and rounds half to even at each operator, retaining trailing zeros: <code>1 / 3 = 0.3333</code>, <code>1.00 / 3 = 0.333333</code>, <code>1 / 8 = 0.1250</code>, <code>12 / 3 / 2 = 2.00000000</code>. Ties: <code>1 / 32 = 0.0312</code>, <code>3 / 32 = 0.0938</code>. Tiny quotients can round to zero. Zero divisors, coefficient overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale; exponent magnitude is at most 100000. Trailing zeros cannot be removed to avoid bounds.</p>
+    <p>Both branches are statically checked, and each known result must satisfy its consumer. Only the selected branch evaluates. Text still requires string or null: <code>{{null}}</code> is empty and <code>{{true}}</code> is invalid. Numbers require formatNumber.</p>
+    <p>Limits: 64 KiB source, 4096 nodes, depth 64, and 1,000,000 shared evaluation work units for nodes, strings, projections and decimal shifts. Errors retain element, field and source-relative UTF-8 byte offset when available. Refused edits are atomic. The Visibility editor retains its separate 512-byte field limit; valid longer engine formulas are refused by that editor without changing the document.</p>
+    <p>Formula syntax and boolean/null literals in every expression container require the unreleased <code>2.0</code> format on save. The AST determines this requirement; quoted punctuation and ordinary paths do not raise it. Saving never lowers the loaded version. No migration or additional major version is introduced.</p>
+    <p>No-data preview needs no fabricated data for literals. Numeric paths default to zero, direct divisors to one, text to empty, collections to empty. Both branches contribute requirements. Conflicts and computed zero divisors refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters remain Preview inputs.</p>
+  </section>
+
   <section id="if">
     <h2>Choosing between two values</h2>
     <h3>if<span class="args">(condition, then, else)</span> <span class="pill live">Implemented</span></h3>
@@ -348,7 +371,7 @@
 {{if(hasDiscount, discount.amount, <span class="str">"N/A"</span>)}}</pre></div>
 
     <p>
-      <strong>The condition must be true or false</strong> — an actual boolean in your data. Folio
+      <strong>The condition must be a boolean or null</strong> — from a literal, path or formula. Folio
       does not treat <code>0</code>, <code>""</code>, or an empty list as false. A value of some other
       kind is an error naming the element, not a guess about what you meant.
     </p>
@@ -372,16 +395,7 @@
       it on those rows.
     </p>
 
-    <div class="caution">
-      <p>
-        <strong>The cost of that convenience:</strong> a mistake in the branch that is
-        <em>not</em> taken goes unnoticed. If
-        <code>{{if(hasDiscount, discount.amout, "N/A")}}</code> has a typo in the branch that only runs
-        for discounted rows, you will not hear about it until a discounted row renders. Validating the
-        template cannot catch it either — validation does not know which branch any given row will
-        take.
-      </p>
-    </div>
+    <p>Both branches are parsed and statically checked: <code>false ? upper(1) : "ok"</code> is invalid. Only the selected branch resolves data, so <code>true ? true : missingFlag</code> succeeds.</p>
   </section>
 
   <section id="totals">
@@ -403,13 +417,11 @@
 
     <div class="sample"><pre>{{sum(transactions.amount)}}    Error — a number is never coerced to text
 {{avg(transactions.amount)}}    Error — same rule
-{{count(transactions)}}         12    (an exception, see below)</pre></div>
+{{count(transactions)}}         Error — format the number first</pre></div>
 
     <p>
       A number-valued aggregate must be wrapped in <code>formatNumber(...)</code>
-      before it can appear in text — see <em>Dates and numbers</em>, below. <code>count</code> is the
-      one exception: it is already a plain non-negative whole number, and needs no formatting to
-      render as text.
+      before it can appear in text — see <em>Dates and numbers</em>, below. This includes <code>count</code>.
     </p>
     <div class="sample"><pre>{{formatNumber(sum(transactions.amount), <span class="str">"#,##0.00"</span>)}}     <span class="out">1,234.56</span></pre></div>
     <p>
@@ -446,8 +458,7 @@
     <p>
       <strong>On an empty collection</strong>, <code>sum</code> and <code>count</code> are
       legitimately zero. <code>avg</code> cannot divide by zero observations, so it is not a number —
-      but this is a <strong>caveat the render survives</strong>, not a failure: the total column
-      renders blank, and the render notes why, rather than refusing to produce the document at all.
+      but this is a <strong>caveat the render survives</strong>, not a failure: a raw null result renders empty in text. <code>avg(items.amount) != 0</code> yields true and <code>avg(items.amount) != null</code> yields false, each with one empty-average warning, even when Visibility hides the element. Formatters still require numeric operands.
       This is different from an all-null collection, whose average <strong>is</strong> a real number
       (zero, at the scale the rule above derives) — a collection with rows that happen to be blank and
       a collection with no rows at all are not the same subject, and render differently on purpose.

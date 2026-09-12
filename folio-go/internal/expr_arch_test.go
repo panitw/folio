@@ -289,7 +289,7 @@ func TestExprFunctionTableRedProofNinthEntry(t *testing.T) {
 		t.Fatalf("read %s: %v", path, err)
 	}
 
-	marker := `{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}},`
+	marker := `{name: "if", arity: 3, args: []argKind{argCondition, argAny, argAny}, ret: returnAny{}},`
 	if !strings.Contains(string(src), marker) {
 		t.Fatalf("presence precondition: table.go no longer contains the expected \"if\" entry line — this red-proof's injection point is stale")
 	}

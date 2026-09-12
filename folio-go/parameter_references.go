@@ -76,11 +76,10 @@ func collectParameterPaths(value expr.Expr, refs map[string]struct{}, elementID 
 			}
 			refs[expression.Segments[1]] = struct{}{}
 		}
-	case *expr.CallExpr:
-		for _, arg := range expression.Args {
-			if err := collectParameterPaths(arg, refs, elementID, field); err != nil {
-				return err
-			}
+	}
+	for _, child := range expr.Children(value) {
+		if err := collectParameterPaths(child, refs, elementID, field); err != nil {
+			return err
 		}
 	}
 	return nil

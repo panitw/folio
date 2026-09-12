@@ -378,7 +378,7 @@ func TestBothPaginationPassesAgreeOnRowPartition(t *testing.T) {
 		t.Fatalf("pageGeometryOf: %v", err)
 	}
 	fc := testFormatContext()
-	visible, err := computeVisibility(bands, data, params, fc)
+	visible, _, err := computeVisibility(bands, data, params, fc)
 	if err != nil {
 		t.Fatalf("computeVisibility: %v", err)
 	}

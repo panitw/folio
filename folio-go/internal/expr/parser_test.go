@@ -46,7 +46,7 @@ func TestParseRejectedForms(t *testing.T) {
 		{"unterminated_string", `upper("a`},
 		{"empty_expression", ``},
 		{"empty_expression_whitespace_only", `   `},
-		{"bare_operator", `a + b`},
+		{"unsupported_operator", `a == b`},
 		{"digit_leading_path_segment", `a.1b`},
 		{"interior_whitespace", `a b`},
 		{"array_index", `a[0]`},
@@ -87,7 +87,7 @@ func TestParseExcessiveCallNestingIsLocatedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Parse: expected a located depth-limit error, got none (process would otherwise be at risk of a stack overflow)")
 	}
-	if !strings.Contains(err.Error(), "nests function calls too deeply") {
+	if !strings.Contains(err.Error(), "source bytes") {
 		t.Errorf("Parse error = %q, want it to name the depth limit specifically", err.Error())
 	}
 	if !strings.Contains(err.Error(), "position") {

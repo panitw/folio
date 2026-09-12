@@ -4,8 +4,8 @@ Anything between double braces is an expression: `{{customer.name}}`. Folio eval
 report renders and substitutes the result into the document.
 
 Expressions are deliberately small. There are **eight functions and no more** — no loops, no
-variables, no arithmetic operators. If you find yourself wanting a ninth, the calculation probably
-belongs in the data you supply rather than in the template.
+assignment or general scripting. Comparisons, exact decimal arithmetic and nested conditionals compose
+with the same eight functions across existing expression inputs.
 
 > All eight functions are implemented. A function called with the wrong kind of argument, or with
 > data that cannot support what it asks for, still produces an error naming the element rather than
@@ -13,6 +13,42 @@ belongs in the data you supply rather than in the template.
 > a statement, and wrong totals are worse than errors.
 
 ---
+
+## Formulas and visibility
+
+Visibility takes a bare formula, without `=` or `{{ }}`: `loanAmount > 20000` shows the element for 25000 and hides it for 20000 or 19999. Empty Visibility, an absent field, or JSON `"visibleIf": null` means always visible. The expression string `"visibleIf": "null"` hides the element.
+
+Conditions accept booleans and null: `true` shows or selects the first branch; `false` and `null` select the other branch. Numbers and strings have no truthiness. Bold, Italic and all other fixed boolean properties remain literal controls.
+
+Highest precedence first:
+
+| Syntax | Association |
+|---|---|
+| `(expression)`, paths, calls, string/number literals, `true`, `false`, `null` | Grouping |
+| Unary `+`, `-` | Right |
+| `*`, `/`, `%` | Left |
+| `+`, `-` | Left |
+| `>`, `<`, `>=`, `<=` | No repeated unparenthesized comparisons |
+| `!=` | No repeated unparenthesized comparisons |
+| `condition ? then : else` | Right |
+
+`x ? y : a ? b : c` means `x ? y : (a ? b : c)`. For example, `vip ? true : (blocked ? false : loanAmount > 20000)` checks VIP, blocked status and the threshold. `2 + 3 * 4` is 14; `(2 + 3) * 4` is 20.
+
+Lowercase whole words `true`, `false` and `null` are literals and never look up data. `trueFlag`, `True`, `record.true` and `params.null` remain paths. `true.field` and `true()` are syntax errors. Quoted words stay strings. There is no `==`, `===`, `!==`, `&&`, `||`, `!`, assignment, or scripting.
+
+Ordering requires two numbers. `!=` accepts same-kind scalar values, comparing numbers by mathematical value, strings exactly and booleans directly. Null differs from every non-null scalar; `null != null` is false. Missing paths remain errors, including `customer.middleName != null` when the field is absent. Collections and non-null mixed scalar kinds are errors.
+
+Arithmetic accepts numbers only and uses exact bounded Decimals, never floating point. Addition, subtraction and remainder retain the smaller operand exponent; multiplication adds exponents; unary signs retain scale. Remainder uses truncation toward zero: `-5 % 2` is -1 and `5 % -2` is 1.
+
+Division uses `max(operand decimal scales, 0) + 4` fractional places, rounded half to even at each `/`, retaining all result trailing zeros: `1 / 3` is `0.3333`, `1.00 / 3` is `0.333333`, `1 / 8` is `0.1250`, and `12 / 3 / 2` is `2.00000000`. Half ties include `1 / 32 = 0.0312` and `3 / 32 = 0.0938`. Tiny results can round to zero: `1 / 100000 = 0.0000`. Zero divisors, overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale, and exponent magnitude is at most 100000; trailing zeros cannot be removed to avoid overflow. Thus `1000000000000000 / 1` fails.
+
+Both branches of `if()` and ternaries are parsed and statically checked. Unknown functions and provably wrong types such as `false ? upper(1) : "ok"` fail at load or commit. Only the selected branch resolves data or runs calculations: `true ? true : missingFlag` succeeds. Each statically known branch must satisfy the consuming field's kind. Text still requires a string or null: `{{true ? "Yes" : "No"}}` renders Yes, `{{null}}` renders empty, and `{{true}}` is an error. Numbers, including count results, require `formatNumber` in text.
+
+Expressions are bounded to 64 KiB, 4096 AST nodes, depth 64 and 1,000,000 evaluation work units shared across nodes, strings, collection projection and decimal shifts. Errors identify the field and element, with a source-relative UTF-8 byte offset when available. Refused edits leave document bytes and history unchanged. The Visibility editor retains its separate 512-byte field limit; a valid longer engine formula is refused by that editor without changing the document.
+
+Formula syntax and boolean/null literals in any expression container require the unreleased `2.0` format on save. The requirement is derived from the parsed AST; quoted punctuation and ordinary paths do not raise it. Saving never lowers a loaded version. There is no migration or additional major version.
+
+No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. Both branches contribute requirements. Conflicting requirements or a computed zero divisor refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters still come from Preview inputs.
 
 ## Reading values
 
@@ -87,7 +123,7 @@ it sits on. Using one is an error naming the element, raised **when the report r
 {{if(hasDiscount, discount.amount, "N/A")}}
 ```
 
-**The condition must be true or false** — an actual boolean in your data. Folio does not treat `0`,
+**The condition must be a boolean or null** — from a literal, a path, or a formula. Folio does not treat `0`,
 `""`, or an empty list as false. If the condition is some other kind of value, that is an error
 naming the element, not a guess about what you meant.
 
@@ -103,11 +139,7 @@ Only the branch actually taken is evaluated. That is what makes the second examp
 `discount.amount` does not exist on rows without a discount, and Folio never looks at it on those
 rows.
 
-The cost of that convenience is worth stating plainly: **a mistake in the branch that is not taken
-goes unnoticed.** If `{{if(hasDiscount, discount.amout, "N/A")}}` has a typo in the branch that only
-runs for discounted rows, you will not hear about it until a discounted row renders. Validating the
-template cannot catch it either, because validation does not know which branch any given row will
-take.
+A missing path in the unselected branch remains unresolved. Syntax, unknown functions and statically provable type errors in either branch are rejected before rendering.
 
 ---
 
@@ -126,12 +158,11 @@ makes a bare `{{transactions.amount}}` an error today):
 ```
 {{sum(transactions.amount)}}    Error — a number is never coerced to text
 {{avg(transactions.amount)}}    Error — same rule
-{{count(transactions)}}         12    (an exception, see below)
+{{count(transactions)}}         Error — format the number first
 ```
 
 A number-valued aggregate must be wrapped in `formatNumber(...)` before it can appear in text — see
-*Dates and numbers*, below. `count` is the one exception: it is already a plain non-negative whole
-number, and needs no formatting to render as text.
+*Dates and numbers*, below. This includes `count`.
 
 ```
 {{formatNumber(sum(transactions.amount), "#,##0.00")}}     1,234.56
@@ -161,8 +192,7 @@ is still an error.
 
 **On an empty collection**, `sum` and `count` are legitimately zero. `avg` cannot divide by zero
 observations, so it is not a number — but this is a **caveat the render survives**, not a failure:
-the total column renders blank, and the render notes why, rather than refusing to produce the
-document at all. This is different from an all-null collection, whose average **is** a real number
+a raw null result renders empty in text. Comparing `avg(items.amount) != 0` yields true and `avg(items.amount) != null` yields false, both with one empty-average warning, even when Visibility hides the element. A formatter still requires a numeric operand. This is different from an all-null collection, whose average **is** a real number
 (zero, at the scale the rule above derives) — a collection with rows that happen to be blank and a
 collection with no rows at all are not the same subject, and render differently on purpose.
 

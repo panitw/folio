@@ -18,6 +18,7 @@ type Expr interface {
 // preserving 1.6's grammar verbatim (D-1.6.5). Segments is the path
 // split on ".", in order.
 type PathExpr struct {
+	Offset   int // source-relative UTF-8 byte offset
 	Segments []string
 	Raw      string
 }
@@ -29,8 +30,9 @@ func (*PathExpr) exprNode()      {}
 // literal's content with the surrounding quotes removed; Raw is the
 // exact source text including the quotes.
 type StringLit struct {
-	Value string
-	Raw   string
+	Offset int // source-relative UTF-8 byte offset
+	Value  string
+	Raw    string
 }
 
 func (s *StringLit) Text() string { return s.Raw }
@@ -43,6 +45,7 @@ func (*StringLit) exprNode()      {}
 // written; Raw is identical to Literal (a number literal is never
 // wrapped in anything else).
 type NumberLit struct {
+	Offset  int // source-relative UTF-8 byte offset
 	Literal string
 	Raw     string
 }
@@ -58,13 +61,114 @@ func (*NumberLit) exprNode()      {}
 // has no notion of which names are legal, so the grammar and the
 // closed set stay two separably-testable properties (AC1 vs AC5-AC11).
 type CallExpr struct {
-	Name string
-	Args []Expr
-	Raw  string
+	Offset int // source-relative UTF-8 byte offset
+	Name   string
+	Args   []Expr
+	Raw    string
 }
 
 func (c *CallExpr) Text() string { return c.Raw }
 func (*CallExpr) exprNode()      {}
+
+// Formula nodes preserve grouping syntax for footer derivation and byte locations.
+type BoolLit struct {
+	Value  bool
+	Raw    string
+	Offset int
+}
+
+func (n *BoolLit) Text() string { return n.Raw }
+func (*BoolLit) exprNode()      {}
+
+type NullLit struct {
+	Raw    string
+	Offset int
+}
+
+func (n *NullLit) Text() string { return n.Raw }
+func (*NullLit) exprNode()      {}
+
+type GroupExpr struct {
+	Inner  Expr
+	Raw    string
+	Offset int
+}
+
+func (n *GroupExpr) Text() string { return n.Raw }
+func (*GroupExpr) exprNode()      {}
+
+type UnaryExpr struct {
+	Op      string
+	Operand Expr
+	Raw     string
+	Offset  int
+}
+
+func (n *UnaryExpr) Text() string { return n.Raw }
+func (*UnaryExpr) exprNode()      {}
+
+type BinaryExpr struct {
+	Op          string
+	Left, Right Expr
+	Raw         string
+	Offset      int
+}
+
+func (n *BinaryExpr) Text() string { return n.Raw }
+func (*BinaryExpr) exprNode()      {}
+
+type ConditionalExpr struct {
+	Condition, Then, Else Expr
+	Raw                   string
+	Offset                int
+}
+
+func (n *ConditionalExpr) Text() string { return n.Raw }
+func (*ConditionalExpr) exprNode()      {}
+
+// Children enumerates every child in authored order. Callers must preflight
+// caller-built trees with Check before recursively walking them.
+func Children(e Expr) []Expr {
+	switch n := e.(type) {
+	case *CallExpr:
+		return n.Args
+	case *GroupExpr:
+		return []Expr{n.Inner}
+	case *UnaryExpr:
+		return []Expr{n.Operand}
+	case *BinaryExpr:
+		return []Expr{n.Left, n.Right}
+	case *ConditionalExpr:
+		return []Expr{n.Condition, n.Then, n.Else}
+	default:
+		return nil
+	}
+}
+
+// Ungroup makes parentheses transparent to function argument constraints.
+func Ungroup(e Expr) Expr {
+	for {
+		n, ok := e.(*GroupExpr)
+		if !ok {
+			return e
+		}
+		e = n.Inner
+	}
+}
+
+// UsesFormulas reports the AST-derived unreleased 2.0 expression requirement.
+func UsesFormulas(e Expr) bool {
+	switch e.(type) {
+	case *BoolLit, *NullLit, *GroupExpr, *UnaryExpr, *BinaryExpr, *ConditionalExpr:
+		return true
+	}
+	for _, child := range Children(e) {
+		if UsesFormulas(child) {
+			return true
+		}
+	}
+	return false
+}
 
 // Kind is the discriminant of a resolved Value (evaluation-time
 // result), and separately of a Presence-carrying lookup outcome.

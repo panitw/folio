@@ -33,7 +33,7 @@ import "fmt"
 // and never a nested call — because a collection can only be named by
 // a path; nothing else in the grammar denotes one.
 func aggregateOperandPath(name string, call *CallExpr, elementID string) (*PathExpr, error) {
-	p, ok := call.Args[0].(*PathExpr)
+	p, ok := Ungroup(call.Args[0]).(*PathExpr)
 	if !ok {
 		return nil, fmt.Errorf(
 			"expr: element %s: %s() operand must be a data path naming a collection, got %s: %s",
@@ -109,6 +109,10 @@ func evalSum(call *CallExpr, resolver Resolver, elementID string) (Value, []Cave
 	if err != nil {
 		return Value{}, nil, err
 	}
+	preflightErr := preflightProjection(projected, expressionBudget(resolver))
+	if preflightErr != nil {
+		return Value{}, nil, preflightErr
+	}
 	decimals, err := decimalsFromProjection(projected, "sum", pathExpr.Raw, elementID)
 	if err != nil {
 		return Value{}, nil, err
@@ -163,6 +167,10 @@ func evalAvg(call *CallExpr, resolver Resolver, elementID string) (Value, []Cave
 	if err != nil {
 		return Value{}, nil, err
 	}
+	preflightErr := preflightProjection(projected, expressionBudget(resolver))
+	if preflightErr != nil {
+		return Value{}, nil, preflightErr
+	}
 	decimals, err := decimalsFromProjection(projected, "avg", pathExpr.Raw, elementID)
 	if err != nil {
 		return Value{}, nil, err
@@ -175,4 +183,39 @@ func evalAvg(call *CallExpr, resolver Resolver, elementID string) (Value, []Cave
 		return Value{}, nil, &KernelOverflowError{ElementID: elementID, Path: pathExpr.Raw, Operands: len(decimals), Err: err}
 	}
 	return Value{Kind: KindNumber, Num: avg}, nil, nil
+}
+
+// Preflight kernel alignment before allocating decimals or any powers of ten.
+func preflightProjection(values []Value, budget *Budget) error {
+	if err := budget.Charge(len(values)); err != nil {
+		return err
+	}
+	minExp := 0
+	found := false
+	for _, v := range values {
+		if v.Kind == KindNumber {
+			if err := validateDecimal(v.Num); err != nil {
+				return err
+			}
+			if !found || v.Num.Exponent < minExp {
+				minExp = v.Num.Exponent
+			}
+			found = true
+		} else if v.Kind == KindNull {
+			if !found || 0 < minExp {
+				minExp = 0
+			}
+			found = true
+		}
+	}
+	for _, v := range values {
+		e := 0
+		if v.Kind == KindNumber {
+			e = v.Num.Exponent
+		}
+		if err := budget.Charge(e - minExp); err != nil {
+			return err
+		}
+	}
+	return budget.Charge(avgExtraScale)
 }

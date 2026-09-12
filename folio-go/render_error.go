@@ -1,7 +1,9 @@
 package folio
 
 import (
+	"errors"
 	"fmt"
+	"github.com/panitw/folio/folio-go/internal/bind"
 
 	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/template"
@@ -136,4 +138,15 @@ func wrapOverflowError(err error) error {
 		elementID = oe.ElementID
 	}
 	return newRenderError(DiagCodeContentUnlayoutable, elementID, "", wrapped)
+}
+
+func expressionRuntimeError(elementID, field string, err error) error {
+	code := DiagCodeExpressionInvalid
+	var absent *bind.PathAbsentError
+	if errors.As(err, &absent) {
+		code = DiagCodeBindingPathAbsent
+		err = fmt.Errorf("%s: %w", field, err)
+		field = absent.Path
+	}
+	return newRenderError(code, elementID, field, err)
 }

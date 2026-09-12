@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/panitw/folio/folio-go/internal/bind"
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -67,6 +68,7 @@ const (
 	// (instantMsFromValue's KindNumber arm), which is what keeps a path
 	// used under BOTH from being a false refusal.
 	standInZero
+	standInOne
 	// standInNull is the one member a text binding and a visibility
 	// condition share: the text renders empty (AD-14) and the element
 	// hides, silently (D-3.2.3).
@@ -133,6 +135,8 @@ func (v standInValue) jsonValue() any {
 		return StandInInstant
 	case standInZero:
 		return 0
+	case standInOne:
+		return 1
 	case standInNull:
 		return nil
 	case standInEmptyCollection:
@@ -172,14 +176,14 @@ func demandStringOperand(name string) standInDemand {
 // demandNumberOperand is formatNumber(): evalFormatNumber rejects any
 // non-KindNumber operand, null and "" included.
 func demandNumberOperand(name string) standInDemand {
-	return standInDemand{standInSetOf(standInZero), name + "()'s operand"}
+	return standInDemand{standInSetOf(standInZero, standInOne), name + "()'s operand"}
 }
 
 // demandInstantOperand is formatDate(): instantMsFromValue accepts an
 // RFC 3339 string or an integral epoch-millisecond number, and nothing
 // else — there is no empty form.
 func demandInstantOperand(name string) standInDemand {
-	return standInDemand{standInSetOf(standInInstant, standInZero), name + "()'s operand"}
+	return standInDemand{standInSetOf(standInInstant, standInZero, standInOne), name + "()'s operand"}
 }
 
 // standInFunctionRule decides what one call demands of the paths beneath
@@ -194,13 +198,10 @@ type standInFunctionRule func(g *standInGenerator, call *expr.CallExpr, enclosin
 // names restated nowhere. Adding a ninth function to the engine's closed
 // table reds that test until a rule appears here.
 //
-// The rules live in package folio rather than in package expr because
-// funcEntry.args carries only SYNTACTIC constraints (argAny,
-// argNotLiteral, argStringLiteral) and says nothing about the runtime
-// value kind an argument needs — those rules live inside each evalX. So
-// LegalFunctionNames() is the only exported handle there is, and it is
-// sufficient: the generator derives the NAME set from the engine and
-// owns the VALUE-KIND rule itself.
+// These rules live in package folio because selecting suitable preview
+// values is a document concern. The engine owns function names and static
+// argument constraints; the generator derives the name set from the engine
+// and chooses compatible stand-ins for each operand context.
 //
 // It is assigned in init rather than at declaration because the rules
 // recurse back into the walk that dispatches through this very map, and
@@ -282,7 +283,7 @@ func aggregateOperand(call *expr.CallExpr) (*expr.PathExpr, bool) {
 	if len(call.Args) != 1 {
 		return nil, false
 	}
-	path, ok := call.Args[0].(*expr.PathExpr)
+	path, ok := expr.Ungroup(call.Args[0]).(*expr.PathExpr)
 	return path, ok
 }
 
@@ -351,8 +352,15 @@ type standInPath struct {
 	sites    []string
 }
 
+type standInExpression struct {
+	node expr.Expr
+	site standInSite
+}
 type standInGenerator struct {
-	paths map[string]*standInPath
+	divisors     []standInExpression
+	inequalities []*expr.BinaryExpr
+	checks       []standInExpression
+	paths        map[string]*standInPath
 	// order preserves first-seen order so a refusal reads in document
 	// order rather than in map order.
 	order []string
@@ -397,6 +405,36 @@ func StandInData(tpl *Template) ([]byte, error) {
 	if len(g.order) > MaxStandInDataPaths {
 		return nil, fmt.Errorf("folio: stand-in data: template references more than %d data paths", MaxStandInDataPaths)
 	}
+	// Reconcile only direct scalar candidates. Each pass removes candidates,
+	// so the finite path/value set bounds this intersection to a fixed point.
+	for changed := true; changed; {
+		changed = false
+		for _, pair := range g.inequalities {
+			left, lok := expr.Ungroup(pair.Left).(*expr.PathExpr)
+			right, rok := expr.Ungroup(pair.Right).(*expr.PathExpr)
+			if !lok || !rok {
+				continue
+			}
+			a, b := g.paths[strings.Join(left.Segments, ".")], g.paths[strings.Join(right.Segments, ".")]
+			if a == nil || b == nil {
+				continue
+			}
+			for _, candidate := range []*standInPath{a, b} {
+				if candidate.admits&standInSetOf(standInNull) != 0 && candidate.admits != standInSetOf(standInNull) {
+					candidate.admits = standInSetOf(standInNull)
+					changed = true
+				}
+			}
+			if (a.admits|b.admits)&standInSetOf(standInNull) != 0 {
+				continue
+			}
+			common := a.admits & b.admits
+			if common != 0 && (a.admits != common || b.admits != common) {
+				a.admits, b.admits = common, common
+				changed = true
+			}
+		}
+	}
 	document, err := g.document()
 	if err != nil {
 		return nil, err
@@ -407,6 +445,38 @@ func StandInData(tpl *Template) ([]byte, error) {
 	}
 	if len(out) > MaxStandInDataBytes {
 		return nil, fmt.Errorf("folio: stand-in data: document exceeds the %d-byte limit", MaxStandInDataBytes)
+	}
+	// Check each divisor, including those in unselected branches. Preview
+	// never claims to solve formulas or to make visibility conditions true.
+	if len(g.divisors) > 0 || len(g.checks) > 0 {
+		data, err := bind.DecodeData(out)
+		if err != nil {
+			return nil, err
+		}
+		scope := bind.NewScope(data, bind.Value{})
+		// Evaluate the original containing expression so discarded inequality
+		// branches stay lazy. Demand discovery still visited both branches.
+		for _, check := range g.checks {
+			if expressionReferencesParams(check.node) {
+				continue
+			}
+			if _, _, err := bind.EvaluateValue(check.node.Text(), scope, expr.NewFormatContext(tpl.doc.Locale, tpl.doc.UTCOffset), string(check.site.elementID)); err != nil {
+				return nil, fmt.Errorf("folio: stand-in data: %s: cannot satisfy formula; supply sample data: %w", check.site.located(), err)
+			}
+		}
+		// Divisor preflight remains deliberately conservative across both branches.
+		for _, divisor := range g.divisors {
+			if expressionReferencesParams(divisor.node) {
+				continue
+			}
+			value, _, err := bind.EvaluateValue(divisor.node.Text(), scope, expr.NewFormatContext(tpl.doc.Locale, tpl.doc.UTCOffset), string(divisor.site.elementID))
+			if err != nil {
+				return nil, fmt.Errorf("folio: stand-in data: %s: cannot provide a nonzero numeric divisor; supply sample data: %w", divisor.site.located(), err)
+			}
+			if value.Kind != expr.KindNumber || value.Num.Coefficient == 0 {
+				return nil, fmt.Errorf("folio: stand-in data: %s: cannot provide a nonzero numeric divisor for %q; supply sample data", divisor.site.located(), divisor.node.Text())
+			}
+		}
 	}
 	return out, nil
 }
@@ -424,7 +494,7 @@ func (g *standInGenerator) collectElement(tpl *Template, element template.Elemen
 		if err != nil {
 			return fmt.Errorf("folio: stand-in data: element %s visibleIf: %w", element.ID, err)
 		}
-		if err := g.walk(parsed, demandCondition, standInSite{element.ID, "visibleIf"}); err != nil {
+		if err := g.collectFormulaDemands(parsed, demandCondition, standInSite{element.ID, "visibleIf"}); err != nil {
 			return err
 		}
 	}
@@ -456,7 +526,7 @@ func (g *standInGenerator) collectTextValue(element template.Element) error {
 		if perr != nil {
 			return fmt.Errorf("folio: stand-in data: element %s value: %w", element.ID, perr)
 		}
-		if err := g.walk(parsed, demandText, standInSite{element.ID, "value"}); err != nil {
+		if err := g.collectFormulaDemands(parsed, demandText, standInSite{element.ID, "value"}); err != nil {
 			return err
 		}
 	}
@@ -539,7 +609,36 @@ func (g *standInGenerator) walk(node expr.Expr, demand standInDemand, site stand
 			return nil
 		}
 		return rule(g, value, demand, site)
-	case *expr.StringLit, *expr.NumberLit:
+	case *expr.GroupExpr:
+		return g.walk(value.Inner, demand, site)
+	case *expr.UnaryExpr:
+		return g.walk(value.Operand, demandNumberOperand(value.Op), site)
+	case *expr.ConditionalExpr:
+		if err := g.walk(value.Condition, demandCondition, site); err != nil {
+			return err
+		}
+		if err := g.walk(value.Then, demand, site); err != nil {
+			return err
+		}
+		return g.walk(value.Else, demand, site)
+	case *expr.BinaryExpr:
+		leftDemand, rightDemand := demandNumberOperand(value.Op), demandNumberOperand(value.Op)
+		if value.Op == "!=" {
+			g.inequalities = append(g.inequalities, value)
+			leftDemand = inequalityDemand(value.Right)
+			rightDemand = inequalityDemand(value.Left)
+		}
+		if value.Op == "/" || value.Op == "%" {
+			g.divisors = append(g.divisors, standInExpression{value.Right, site})
+			if _, ok := expr.Ungroup(value.Right).(*expr.PathExpr); ok {
+				rightDemand = standInDemand{standInSetOf(standInOne), "a nonzero divisor"}
+			}
+		}
+		if err := g.walk(value.Left, leftDemand, site); err != nil {
+			return err
+		}
+		return g.walk(value.Right, rightDemand, site)
+	case *expr.StringLit, *expr.NumberLit, *expr.BoolLit, *expr.NullLit:
 		// A literal references no path.
 		return nil
 	}
@@ -593,7 +692,7 @@ func (g *standInGenerator) demand(segments []string, demand standInDemand, site 
 	existing.admits &= demand.admits
 	if existing.admits == 0 {
 		return fmt.Errorf(
-			"folio: stand-in data: path %q is used as %s; those contexts share no legal value, so no stand-in can be supplied for this template",
+			"folio: stand-in data: path %q is used as %s; those contexts share no legal value, so no stand-in can be supplied for this template; supply sample data",
 			key, describeContexts(existing),
 		)
 	}
@@ -659,4 +758,58 @@ func (g *standInGenerator) document() (map[string]any, error) {
 		node[leaf] = value.jsonValue()
 	}
 	return root, nil
+}
+
+func inequalityDemand(other expr.Expr) standInDemand {
+	all := standInSetOf(standInEmptyString, standInInstant, standInZero, standInOne, standInTrue, standInNull)
+	kinds := expr.KnownKinds(other)
+	if len(kinds) == 0 {
+		return standInDemand{all, "an inequality scalar"}
+	}
+	admitted := all
+	for _, kind := range kinds {
+		compatible := standInSetOf(standInNull)
+		switch kind {
+		case expr.KindNull:
+			continue
+		case expr.KindString:
+			compatible |= standInSetOf(standInEmptyString, standInInstant)
+		case expr.KindNumber:
+			compatible |= standInSetOf(standInZero, standInOne)
+		case expr.KindBool:
+			compatible |= standInSetOf(standInTrue)
+		}
+		admitted &= compatible
+	}
+	return standInDemand{admitted, "an inequality scalar"}
+}
+
+func expressionReferencesParams(e expr.Expr) bool {
+	if path, ok := e.(*expr.PathExpr); ok && len(path.Segments) > 0 && path.Segments[0] == "params" {
+		return true
+	}
+	for _, child := range expr.Children(e) {
+		if expressionReferencesParams(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *standInGenerator) collectFormulaDemands(node expr.Expr, demand standInDemand, site standInSite) error {
+	if expressionHasInequality(node) {
+		g.checks = append(g.checks, standInExpression{node, site})
+	}
+	return g.walk(node, demand, site)
+}
+func expressionHasInequality(node expr.Expr) bool {
+	if binary, ok := node.(*expr.BinaryExpr); ok && binary.Op == "!=" {
+		return true
+	}
+	for _, child := range expr.Children(node) {
+		if expressionHasInequality(child) {
+			return true
+		}
+	}
+	return false
 }

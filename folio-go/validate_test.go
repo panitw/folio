@@ -152,7 +152,7 @@ func TestValidatePredictsRender(t *testing.T) {
 		if verr == nil {
 			t.Fatal("Validate() on a literal visibleIf: want error, got none")
 		}
-		if !strings.Contains(verr.Error(), "must not be a literal") {
+		if !strings.Contains(verr.Error(), "must be a boolean or null") {
 			t.Errorf("Validate() error does not name the literal-visibleIf defect: %v", verr)
 		}
 		if _, perr := folio.ParseTemplate(b); perr == nil {

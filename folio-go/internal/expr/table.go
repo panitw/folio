@@ -26,15 +26,12 @@ type argKind int
 const (
 	// argAny places no static constraint on this argument at all.
 	argAny argKind = iota
-	// argNotLiteral forbids a bare string/number literal in this
-	// argument position: sum/count/avg's single operand must name a
-	// collection, which no literal production in the grammar can be
-	// (AC10's `sum("hello")` example), and if()'s condition must be a
-	// JSON boolean, which — since this grammar has no boolean literal
-	// — no literal expression can ever be (F11/FLAG-3: absent and
-	// explicit null are AD-14's OWN distinct cases, decided at
-	// evaluation against real data, never here).
+	// argNotLiteral requires a collection path (possibly grouped).
 	argNotLiteral
+	argCondition
+	argNumber
+	argString
+	argInstant
 	// argStringLiteral requires this argument to be, syntactically, a
 	// string literal — never a path, a call, or a number literal.
 	// formatDate/formatNumber's pattern argument (D-1.4.1) is always a
@@ -92,11 +89,11 @@ var functionTable = [8]funcEntry{
 	{name: "sum", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
 	{name: "count", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
 	{name: "avg", arity: 1, args: []argKind{argNotLiteral}, ret: returnDecimal{}},
-	{name: "formatDate", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}},
-	{name: "formatNumber", arity: 2, args: []argKind{argAny, argStringLiteral}, ret: returnString{}},
-	{name: "upper", arity: 1, args: []argKind{argAny}, ret: returnString{}},
-	{name: "lower", arity: 1, args: []argKind{argAny}, ret: returnString{}},
-	{name: "if", arity: 3, args: []argKind{argNotLiteral, argAny, argAny}, ret: returnAny{}},
+	{name: "formatDate", arity: 2, args: []argKind{argInstant, argStringLiteral}, ret: returnString{}},
+	{name: "formatNumber", arity: 2, args: []argKind{argNumber, argStringLiteral}, ret: returnString{}},
+	{name: "upper", arity: 1, args: []argKind{argString}, ret: returnString{}},
+	{name: "lower", arity: 1, args: []argKind{argString}, ret: returnString{}},
+	{name: "if", arity: 3, args: []argKind{argCondition, argAny, argAny}, ret: returnAny{}},
 }
 
 // LegalFunctionNames returns the eight legal names, in table order —

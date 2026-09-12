@@ -34,7 +34,7 @@ func TestParameterReferencesIncludeNestedAndTableVisibleIfButNotTableBindings(t 
 	}
 	input = bytes.Replace(input, []byte(`"nextId": 2`), []byte(`"nextId": 4`), 1)
 	table := `,
-        {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 12, "visibleIf": "if(params.showTable, if(params.nestedGate, \"shown\", \"hidden\"), \"hidden\")", "columns": [{"id": "e3", "label": "Ignored", "width": 80, "bind": "{{params.columnOnly}}"}]}`
+        {"id": "e2", "type": "table", "x": 0, "y": 30, "bind": "transactions[]", "headerHeight": 12, "visibleIf": "if(params.showTable, if(params.nestedGate, true, false), false)", "columns": [{"id": "e3", "label": "Ignored", "width": 80, "bind": "{{params.columnOnly}}"}]}`
 	input = bytes.Replace(input, []byte("      ]\n    },"), []byte(table+"\n      ]\n    },"), 1)
 	tpl, err := ParseTemplate(input)
 	if err != nil {

@@ -185,8 +185,18 @@ func checkVersionLoadable(declared string) error {
 // this branch exists to prevent, and the same rule the format spec
 // states: saving raises the version only when content requiring it is
 // introduced.
-func versionForSave(loaded string, d *Document) string {
+func versionForSave(loaded string, d *Document, minimum ...string) string {
 	required := versionRequiredByContent(d)
+	for _, candidate := range minimum {
+		ma, mi, err := parseVersion(candidate)
+		if err != nil {
+			continue
+		}
+		ra, ri, _ := parseVersion(required)
+		if ma > ra || ma == ra && mi > ri {
+			required = candidate
+		}
+	}
 	if required == baseVersion {
 		return loaded
 	}

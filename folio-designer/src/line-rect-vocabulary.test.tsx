@@ -304,7 +304,7 @@ describe('a Line is authored as a thickness and a colour', () => {
     select('e1', 'line')
     const notes = Array.from(panel().querySelectorAll('.property-section-box .honest-note')).map((node) => node.textContent ?? '')
     expect(notes[0]).toContain('This line carries a border in the document')
-    expect(notes[1]).toContain('Visibility takes a boolean field or call')
+    expect(notes[1]).toContain('Visibility takes a boolean or null formula')
   })
 
   it('spells the fill Colour on a Line, and keeps the null action under the new name', () => {

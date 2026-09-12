@@ -538,8 +538,8 @@ func TestCellBindingAbsentNullWrongKind(t *testing.T) {
 		if !errors.As(rerr, &re) {
 			t.Fatalf("expected a *RenderError, got %T: %v", rerr, rerr)
 		}
-		if re.Diagnostic.Code != DiagCodeBindingPathAbsent {
-			t.Errorf("Code = %q, want %q (D-000.65: the SAME code the absent case uses — a wrong-kind value is never coerced into a different diagnostic spelling)", re.Diagnostic.Code, DiagCodeBindingPathAbsent)
+		if re.Diagnostic.Code != DiagCodeExpressionInvalid {
+			t.Errorf("Code = %q, want %q (wrong-kind formula values are distinct from missing paths)", re.Diagnostic.Code, DiagCodeExpressionInvalid)
 		}
 		if re.Diagnostic.ElementID != "e2" {
 			t.Errorf("ElementID = %q, want the COLUMN id %q", re.Diagnostic.ElementID, "e2")

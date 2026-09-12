@@ -3199,9 +3199,9 @@ describe('application shell', () => {
     // it must carry no cue at all.
     expect(marker(screen.getByRole('textbox', { name: 'X (pt)' }))).toBeNull()
     const visible = screen.getByRole('textbox', { name: 'Visible if' })
-    expect(visible).toHaveAttribute('aria-description', 'Accepts a boolean data path or call, written without {{ }} — the grammar has no comparisons')
+    expect(visible).toHaveAttribute('aria-description', 'Accepts a boolean or null formula, e.g. loanAmount > 20000, written without {{ }}')
     expect(marker(visible)).not.toHaveClass('property-fx-active')
-    fireEvent.change(visible, { target: { value: 'customer.isActive' } })
+    fireEvent.change(visible, { target: { value: 'loanAmount > 20000' } })
     expect(marker(visible)).toHaveClass('property-fx-active')
   })
 
@@ -7725,14 +7725,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
 // reintroduced either. These are those guards.
 describe('preview with no sample data', () => {
   const STAND_IN = '{"customer":{"name":""}}'
-  const CONDITIONAL_SENTENCE = /Conditional content may be present or absent/
-  // THREE FIXTURES, BECAUSE A FABRICATED CONDITION HAS TWO SHAPES (D-13.4.2).
-  //
-  // `plainCanvas` is the negative case and it CARRIES A REAL BOUND COMPONENT on
-  // purpose. The original negative fixture had zero components, so it could not
-  // tell an `if()`-only template from a condition-free one — it asserted the
-  // sentence was absent from a canvas that had nothing in it at all, which is
-  // true of every possible predicate.
+  const CONDITIONAL_SENTENCE = /If a formula uses conditions, literal conditions retain their authored meaning/
   const boundComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true, value: 'Hello, {{customer.name}}!' }
   const plainCanvas = { ...canvas, components: [boundComponent] }
   const conditionalCanvas = { ...canvas, components: [boundComponent, { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 0, y: 20_000, width: 72_000, height: 12_000, resizable: true, visibleIf: 'flags.vip' }] }
@@ -7823,35 +7816,21 @@ describe('preview with no sample data', () => {
     expect(screen.getByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
   })
 
-  it('names the fabricated condition only when the template declares one', async () => {
-    // SHAPE ONE: a visibleIf.
-    const withCondition = noDataEngine(conditionalCanvas)
-    const conditionView = render(<App key="conditional" engine={engine(withCondition.request)} initialSnapshot={withCondition.loaded} />)
+  it.each([
+    ['visibility', conditionalCanvas],
+    ['if text', inlineConditionCanvas],
+    ['ternary-only text', { ...canvas, components: [{ ...boundComponent, value: '{{flags.vip ? "member" : "guest"}}' }] }],
+    ['quoted question mark', { ...canvas, components: [{ ...boundComponent, value: '{{"Need help?"}}' }] }],
+    ['plain binding', plainCanvas],
+  ])('uses an accurate generic no-data notice for %s', async (_, projection) => {
+    const { request, loaded } = noDataEngine(projection)
+    render(<App engine={engine(request)} initialSnapshot={loaded} />)
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toHaveTextContent(CONDITIONAL_SENTENCE)
-    conditionView.unmount()
-
-    // SHAPE TWO (D-13.4.2): an if() condition in a text binding. The generator
-    // fabricates its first argument exactly as it fabricates a visibleIf, so a
-    // literal branch is chosen by no data and the disclosure is owed.
-    const withInline = noDataEngine(inlineConditionCanvas)
-    const inlineView = render(<App key="inline" engine={engine(withInline.request)} initialSnapshot={withInline.loaded} />)
-    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toHaveTextContent(CONDITIONAL_SENTENCE)
-    inlineView.unmount()
-
-    // THE NEGATIVE DIRECTION IS THE ONE THAT MATTERS, and its fixture carries a
-    // real bound component. A zero-component canvas would satisfy every
-    // possible predicate, which is what made the first version of this row
-    // vacuous: it passed against a widened predicate and against a broken one
-    // alike. Making the sentence unconditional reds this.
-    const plain = noDataEngine()
-    render(<App key="plain" engine={engine(plain.request)} initialSnapshot={plain.loaded} />)
-    fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
-    const plainNotice = await screen.findByRole('note', { name: 'No-data preview notice' })
-    expect(plainNotice).toHaveTextContent('No sample data is loaded')
-    expect(plainNotice).toHaveTextContent(/Parameters are excluded/)
-    expect(plainNotice).not.toHaveTextContent(CONDITIONAL_SENTENCE)
+    const notice = await screen.findByRole('note', { name: 'No-data preview notice' })
+    expect(notice).toHaveTextContent(CONDITIONAL_SENTENCE)
+    expect(notice).toHaveTextContent(/Parameters are excluded/)
+    expect(notice).not.toHaveTextContent('Conditional content may be present or absent')
+    expect(notice).not.toHaveTextContent('fabricates at least one condition')
   })
 
   it('marks the no-data preview stale when a sample is loaded, then re-renders on the exact-production path', async () => {

@@ -1856,7 +1856,7 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 			}
 			if element.VisibleIf.Set && !element.VisibleIf.Null {
 				if len(element.VisibleIf.Value) > maxCanvasPropertyString {
-					return nil, fmt.Errorf("folio: component visibleIf exceeds the projection bound")
+					return nil, componentFailure(string(element.ID), "component.visibleIf", fmt.Sprintf("visibleIf exceeds the %d-byte editor/projection limit", maxCanvasPropertyString))
 				}
 				component.VisibleIf = stringPointer(element.VisibleIf.Value)
 			}

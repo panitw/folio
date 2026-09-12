@@ -317,7 +317,7 @@ func TestMessageRewriteDoesNotAffectCodeRecovery(t *testing.T) {
 				return renderErr.Diagnostic.Code, renderErr.Diagnostic.Message
 			},
 			wantCode:          DiagCodeExpressionInvalid,
-			wantMessageSubstr: "is not a valid expression",
+			wantMessageSubstr: "value expression",
 		},
 		{
 			name: "unresolvable binding",

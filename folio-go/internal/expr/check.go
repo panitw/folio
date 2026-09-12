@@ -5,158 +5,260 @@ import (
 	"strings"
 )
 
-// Check walks e and reports every statically decidable defect: an
-// unknown function name (AC11), a wrong arity (AC10), or a literal
-// argument of the wrong kind (Decision 3's "literal-argument kind"
-// half — AC10's own examples, sum("hello") and formatNumber(x, 123)).
-// It never resolves a path against data and never asks what a PATH
-// argument would resolve to (Decision 3, FLAG-2: that half is
-// explicitly NOT this story's obligation, and is owed at evaluation by
-// each function's own implementing story).
-//
-// Check is meant to run once per parsed expression, at LOAD time (R3:
-// "syntax and arity at load; execution at evaluation") — folio.
-// ParseTemplate calls Parse then Check over every "{{ }}" binding in
-// the document (excluding AD-4's reserved page/pages tokens, which
-// never reach a parser at all). It is also safe, and cheap, to call
-// again before evaluation as a defence-in-depth measure.
-func Check(e Expr) error {
-	switch v := e.(type) {
-	case *CallExpr:
-		return checkCall(v)
-	case *NumberLit:
-		return checkNumberLit(v)
-	default:
-		// A bare path or string literal — at the top level, or nested
-		// one level deeper, reached via the recursion below — has
-		// nothing left to check: a path is checked at evaluation
-		// (AD-14, against real data), and a string literal is
-		// trivially well-formed once Parse accepted it.
-		return nil
-	}
-}
+type kindSet uint8
 
-// checkNumberLit is R3's own numeric-literal half (QA Finding 7,
-// Major): a number literal's bounds (maxDecimalCoefficientDigits,
-// maxDecimalExponentMagnitude — decimal.go) are decidable with NO
-// data at all, exactly like arity, so R3 ("syntax and arity at load;
-// execution at evaluation") puts them at Check, not evaluation. Before
-// this fix a template carrying an impossible literal —
-// "12345678901234567890123456789", or "1e999999999999999999999" —
-// loaded clean and died mid-render: the inverse of what F3 forced for
-// unimplemented FUNCTIONS, which must reach evaluation because the
-// canonical golden needs them to; a literal's own shape is not that
-// case, and NewDecimal is the one place that already knows how to
-// reject it, so Check calls the exact function eval.go calls, never a
-// re-derived rule.
-func checkNumberLit(n *NumberLit) error {
-	if _, err := NewDecimal(n.Literal); err != nil {
-		return fmt.Errorf("invalid number literal %s: %s", n.Raw, err)
+const (
+	nullKind    kindSet = 1 << KindNull
+	stringKind  kindSet = 1 << KindString
+	numberKind  kindSet = 1 << KindNumber
+	boolKind    kindSet = 1 << KindBool
+	unknownKind kindSet = 1 << 4
+)
+
+// Check validates both branches without reading data.
+func Check(e Expr) error {
+	if err := preflight(e); err != nil {
+		return err
+	}
+	return check(e)
+}
+func check(e Expr) error {
+	var err error
+	switch n := e.(type) {
+	case *PathExpr:
+		if len(n.Segments) == 0 {
+			err = fmt.Errorf("empty data path")
+		}
+	case *NumberLit:
+		p := parser{src: n.Literal}
+		var tok token
+		tok, err = p.lexNumber()
+		if err == nil && tok.end != len(n.Literal) {
+			err = fmt.Errorf("invalid number literal %q", n.Literal)
+		}
+		if err == nil {
+			_, err = NewDecimal(n.Literal)
+		}
+	case *StringLit, *BoolLit, *NullLit:
+	case *CallExpr:
+		return checkCall(n)
+	case *GroupExpr:
+		return check(n.Inner)
+	case *UnaryExpr:
+		if n.Op != "+" && n.Op != "-" {
+			err = fmt.Errorf("unknown unary operator %q", n.Op)
+		} else {
+			err = requireKind(n.Operand, numberKind, "unary "+n.Op+" operand must be a number")
+		}
+	case *BinaryExpr:
+		switch n.Op {
+		case "+", "-", "*", "/", "%", ">", "<", ">=", "<=":
+			if err = requireKind(n.Left, numberKind, n.Op+" operand must be a number"); err == nil {
+				err = requireKind(n.Right, numberKind, n.Op+" operand must be a number")
+			}
+		case "!=":
+			err = checkInequality(n.Left, n.Right)
+		default:
+			err = fmt.Errorf("unknown binary operator %q", n.Op)
+		}
+	case *ConditionalExpr:
+		err = requireKind(n.Condition, boolKind|nullKind, "conditional condition must be a boolean or null")
+	default:
+		err = fmt.Errorf("unrecognised expression node %T", e)
+	}
+	if err != nil {
+		return at(location(e), err)
+	}
+	for _, child := range Children(e) {
+		if err := check(child); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+// CheckCondition and CheckText preserve each consumer's strict output rules,
+// checking each statically known branch even if it would not be selected.
+func CheckCondition(e Expr) error {
+	if err := Check(e); err != nil {
+		return err
+	}
+	return requireKind(e, boolKind|nullKind, "condition must be a boolean or null (no truthiness)")
+}
+func CheckText(e Expr) error {
+	if err := Check(e); err != nil {
+		return err
+	}
+	return requireKind(e, stringKind|nullKind, "text expression must return a string or null (never coerced)")
+}
+func requireKind(e Expr, allowed kindSet, label string) error {
+	switch n := Ungroup(e).(type) {
+	case *ConditionalExpr:
+		if err := requireKind(n.Then, allowed, label); err != nil {
+			return err
+		}
+		return requireKind(n.Else, allowed, label)
+	case *CallExpr:
+		if n.Name == "if" && len(n.Args) == 3 {
+			if err := requireKind(n.Args[1], allowed, label); err != nil {
+				return err
+			}
+			return requireKind(n.Args[2], allowed, label)
+		}
+	}
+	kinds := possibleKinds(e)
+	if kinds&unknownKind == 0 && kinds&allowed == 0 {
+		return at(location(e), fmt.Errorf("%s: %s", label, e.Text()))
+	}
+	return nil
+}
+func possibleKinds(e Expr) kindSet {
+	switch n := e.(type) {
+	case *StringLit:
+		return stringKind
+	case *NumberLit, *UnaryExpr:
+		return numberKind
+	case *BoolLit:
+		return boolKind
+	case *NullLit:
+		return nullKind
+	case *GroupExpr:
+		return possibleKinds(n.Inner)
+	case *BinaryExpr:
+		if n.Op == "!=" || n.Op == ">" || n.Op == "<" || n.Op == ">=" || n.Op == "<=" {
+			return boolKind
+		}
+		return numberKind
+	case *ConditionalExpr:
+		return possibleKinds(n.Then) | possibleKinds(n.Else)
+	case *CallExpr:
+		if n.Name == "if" && len(n.Args) == 3 {
+			return possibleKinds(n.Args[1]) | possibleKinds(n.Args[2])
+		}
+		entry, ok := lookupFunc(n.Name)
+		if !ok {
+			return unknownKind
+		}
+		switch entry.ret.(type) {
+		case returnDecimal:
+			if n.Name == "avg" {
+				return numberKind | nullKind
+			}
+			return numberKind
+		case returnString:
+
+			return stringKind
+		}
+	}
+	return unknownKind
+}
+
+// KnownKinds returns conservative scalar possibilities; nil means data-dependent.
+func KnownKinds(e Expr) []Kind {
+	mask := possibleKinds(e)
+	if mask&unknownKind != 0 {
+		return nil
+	}
+	var out []Kind
+	for _, kind := range []Kind{KindNull, KindString, KindNumber, KindBool} {
+		if mask&(1<<kind) != 0 {
+			out = append(out, kind)
+		}
+	}
+	return out
+}
 func checkCall(call *CallExpr) error {
 	entry, ok := lookupFunc(call.Name)
 	if !ok {
-		return fmt.Errorf(
-			"unknown function %q — the eight legal names are %s: %s",
-			call.Name, strings.Join(LegalFunctionNames(), ", "), call.Raw,
-		)
+		return at(call.Offset, fmt.Errorf("unknown function %q — the eight legal names are %s: %s", call.Name, strings.Join(LegalFunctionNames(), ", "), call.Raw))
 	}
 	if len(call.Args) != entry.arity {
-		return fmt.Errorf(
-			"%s() takes %d argument(s), got %d: %s",
-			entry.name, entry.arity, len(call.Args), call.Raw,
-		)
+		return at(call.Offset, fmt.Errorf("%s() takes %d argument(s), got %d: %s", entry.name, entry.arity, len(call.Args), call.Raw))
 	}
 	for i, arg := range call.Args {
-		if err := checkArgKind(entry, i, arg, call.Raw); err != nil {
+		if err := check(arg); err != nil {
 			return err
 		}
-		// Recurse: a nested call (AC3's nesting case) is checked with
-		// the same rigour as a top-level one.
-		if err := Check(arg); err != nil {
-			return err
+		if err := checkArgKind(entry, i, arg, call.Raw); err != nil {
+			return at(location(arg), err)
 		}
 	}
-
-	// AC10/F3: a pattern literal's own grammar is decidable with NO
-	// data at all, exactly like arity and a number literal's bounds
-	// (checkNumberLit, *Do not re-open* item 9) — so it belongs here,
-	// at Check (load time), not at Eval. checkArgKind above has
-	// already confirmed call.Args[1] is a *StringLit for both
-	// functions (argStringLiteral); this is the SAME grammar
-	// parseDatePattern/validateNumberPattern apply at evaluation —
-	// one implementation, never two that could drift.
 	switch call.Name {
 	case "formatDate":
-		lit, ok := call.Args[1].(*StringLit)
-		if !ok {
-			return fmt.Errorf("expr: %s(): internal: pattern argument was not a string literal after checkArgKind: %s", call.Name, call.Raw)
-		}
+		lit := Ungroup(call.Args[1]).(*StringLit)
 		if _, err := parseDatePattern(lit.Value); err != nil {
-			return err
+			return at(location(call.Args[1]), err)
 		}
 	case "formatNumber":
-		lit, ok := call.Args[1].(*StringLit)
-		if !ok {
-			return fmt.Errorf("expr: %s(): internal: pattern argument was not a string literal after checkArgKind: %s", call.Name, call.Raw)
-		}
+		lit := Ungroup(call.Args[1]).(*StringLit)
 		if _, err := validateNumberPattern(lit.Value); err != nil {
-			return err
+			return at(location(call.Args[1]), err)
 		}
 	}
 	return nil
 }
-
-// IsLiteralExpr reports whether e is, at its own top level, a string or
-// number literal — the ONE predicate answering "is this expression
-// usable as a condition/non-literal argument slot?" (Story 3.5,
-// DECISION-2). The grammar has no boolean literal, so a bare literal
-// can never resolve to true/false/an array; that is decidable with NO
-// data at all, exactly like arity (checkNumberLit's own precedent).
-//
-// This is shared, not duplicated, between two call sites that both
-// need exactly this answer: checkArgKind's argNotLiteral case below
-// (if()'s condition slot, entry.args[0]) and folio's
-// checkVisibleIfExpression (visibility's bare-expression condition,
-// which is never a CallExpr argument, so argNotLiteral's own
-// enforcement — scoped to a call's arguments — never reaches it). A
-// second, independently-written literal check at the visibility call
-// site would be two predicates for one property (D-000.38) — exactly
-// the shape that lets the two drift apart over time.
 func IsLiteralExpr(e Expr) bool {
-	switch e.(type) {
-	case *StringLit, *NumberLit:
+	switch Ungroup(e).(type) {
+	case *StringLit, *NumberLit, *BoolLit, *NullLit:
 		return true
-	default:
-		return false
 	}
+	return false
 }
-
-func checkArgKind(entry funcEntry, index int, arg Expr, callRaw string) error {
-	kind := entry.args[index]
-	switch kind {
+func checkArgKind(entry funcEntry, index int, arg Expr, raw string) error {
+	switch entry.args[index] {
 	case argAny:
 		return nil
 	case argNotLiteral:
-		if IsLiteralExpr(arg) {
-			return fmt.Errorf(
-				"%s(): argument %d must not be a literal (expected a data path or a nested call), got %s: %s",
-				entry.name, index+1, arg.Text(), callRaw,
-			)
+		if _, ok := Ungroup(arg).(*PathExpr); !ok {
+			return fmt.Errorf("%s(): argument %d must be a data path naming a collection, got %s: %s", entry.name, index+1, arg.Text(), raw)
 		}
-		return nil
 	case argStringLiteral:
-		if _, ok := arg.(*StringLit); !ok {
-			return fmt.Errorf(
-				"%s(): argument %d must be a string literal pattern, got %s: %s",
-				entry.name, index+1, arg.Text(), callRaw,
-			)
+		if _, ok := Ungroup(arg).(*StringLit); !ok {
+			return fmt.Errorf("%s(): argument %d must be a string literal pattern, got %s: %s", entry.name, index+1, arg.Text(), raw)
 		}
-		return nil
-	default:
+	case argCondition:
+		return requireKind(arg, boolKind|nullKind, entry.name+"() condition must be a boolean or null")
+	case argNumber:
+		return requireKind(arg, numberKind, entry.name+"() operand must be a number")
+	case argString:
+		return requireKind(arg, stringKind, entry.name+"() operand must be a string")
+	case argInstant:
+		return requireKind(arg, stringKind|numberKind, entry.name+"() operand must be a string or number")
+	}
+	return nil
+}
+
+func checkInequality(a, b Expr) error {
+	branches := func(e Expr) []Expr {
+		switch n := Ungroup(e).(type) {
+		case *ConditionalExpr:
+			return []Expr{n.Then, n.Else}
+		case *CallExpr:
+			if n.Name == "if" && len(n.Args) == 3 {
+				return n.Args[1:]
+			}
+		}
 		return nil
 	}
+	if choices := branches(a); choices != nil {
+		for _, choice := range choices {
+			if err := checkInequality(choice, b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if choices := branches(b); choices != nil {
+		for _, choice := range choices {
+			if err := checkInequality(a, choice); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	x, y := possibleKinds(a), possibleKinds(b)
+	if x&unknownKind == 0 && y&unknownKind == 0 && x&nullKind == 0 && y&nullKind == 0 && x&y == 0 {
+		return at(location(a), fmt.Errorf("!= operands must have the same scalar kind, or null"))
+	}
+	return nil
 }

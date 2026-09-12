@@ -1,7 +1,9 @@
 package expr
 
 import (
+	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 )
 
@@ -15,33 +17,74 @@ import (
 // produces, matching AD-14's convention throughout the rest of the
 // codebase.
 //
-// Eval assumes e already passed Check (arity, unknown-function-name
-// and literal-argument-kind are NOT re-derived here — a defensive
-// unknown-function/arity mismatch is still handled below, cheaply, in
-// case a caller ever reaches Eval without calling Check first, but the
-// authoritative, located version of those errors is Check's).
+// Public entry validates the complete tree through Check. Recursive calls
+// share that validation and one evaluation budget, including the selected
+// branch's resolver and formatting work.
 // fc (Story 3.4, R1/AC1) is the document's formatting context — locale
 // tag plus fixed UTC offset — needed only by formatDate/formatNumber,
 // but threaded through every recursive Eval call so a nested call
 // (inside if()'s selected branch, for instance) can reach it too. It
 // is a plain value, never read from package state (AD-1).
-func Eval(e Expr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
+func Eval(e Expr, resolver Resolver, fc FormatContext, elementID string) (val Value, caveats []Caveat, err error) {
+	if _, ok := resolver.(*budgetResolver); !ok {
+		return EvalWithBudget(e, resolver, fc, elementID, NewBudget())
+	}
+	budget := expressionBudget(resolver)
+	defer func() {
+		if err == nil && val.Kind == KindNumber {
+			err = validateDecimal(val.Num)
+		}
+		if err == nil && val.Kind == KindString {
+			err = budget.Charge(len(val.Str))
+		}
+		if err != nil {
+			var located *LocatedError
+			if !errors.As(err, &located) {
+				err = at(location(e), fmt.Errorf("expr: element %s: %w", elementID, err))
+			}
+		}
+	}()
+	if err = budget.Charge(1); err != nil {
+		return
+	}
 	switch n := e.(type) {
 	case *PathExpr:
-		v, err := resolver.Resolve(n.Segments)
-		return v, nil, err
+		if resolver.(*budgetResolver).Resolver == nil {
+			return Value{}, nil, fmt.Errorf("data resolver is unavailable")
+		}
+		val, err = resolver.Resolve(n.Segments)
+		return
 	case *StringLit:
 		return Value{Kind: KindString, Str: n.Value}, nil, nil
 	case *NumberLit:
 		d, err := NewDecimal(n.Literal)
+		return Value{Kind: KindNumber, Num: d}, nil, err
+	case *BoolLit:
+		return Value{Kind: KindBool, Bool: n.Value}, nil, nil
+	case *NullLit:
+		return Value{Kind: KindNull}, nil, nil
+	case *GroupExpr:
+		return Eval(n.Inner, resolver, fc, elementID)
+	case *UnaryExpr:
+		v, c, err := Eval(n.Operand, resolver, fc, elementID)
 		if err != nil {
-			return Value{}, nil, fmt.Errorf("expr: element %s: invalid number literal %q: %w", elementID, n.Literal, err)
+			return Value{}, nil, err
 		}
-		return Value{Kind: KindNumber, Num: d}, nil, nil
+		if v.Kind != KindNumber {
+			return Value{}, nil, fmt.Errorf("unary %s operand must be a number, got %s", n.Op, v.Kind)
+		}
+		if n.Op == "-" {
+			v.Num, err = decimalResult(new(big.Int).Neg(big.NewInt(v.Num.Coefficient)), v.Num.Exponent)
+		}
+		return v, c, err
+	case *BinaryExpr:
+		return evalBinary(n, resolver, fc, elementID)
+	case *ConditionalExpr:
+		return evalConditional(n.Condition, n.Then, n.Else, n.Raw, resolver, fc, elementID)
 	case *CallExpr:
 		return evalCall(n, resolver, fc, elementID)
 	default:
-		return Value{}, nil, fmt.Errorf("expr: element %s: internal: unrecognised expression node %T", elementID, e)
+		return Value{}, nil, fmt.Errorf("unrecognised expression node %T", e)
 	}
 }
 
@@ -62,8 +105,7 @@ func evalCall(call *CallExpr, resolver Resolver, fc FormatContext, elementID str
 
 	switch entry.name {
 	case "upper", "lower":
-		v, err := evalUpperLower(entry.name, call, resolver, fc, elementID)
-		return v, nil, err
+		return evalUpperLower(entry.name, call, resolver, fc, elementID)
 	case "if":
 		return evalIf(call, resolver, fc, elementID)
 	case "sum":
@@ -91,16 +133,16 @@ func evalCall(call *CallExpr, resolver Resolver, fc FormatContext, elementID str
 // resolved from data of the wrong kind, a number literal, or a null —
 // is a located error, never a coerced stringification (AD-14's
 // wrong-kind case, never a coercion, AD-14 verbatim).
-func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, error) {
-	v, _, err := Eval(call.Args[0], resolver, fc, elementID)
+func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
+	v, caveats, err := Eval(call.Args[0], resolver, fc, elementID)
 	if err != nil {
-		return Value{}, err
+		return Value{}, nil, err
 	}
 	if v.Kind != KindString {
-		return Value{}, fmt.Errorf(
-			"expr: element %s: %s() operand must be a string, got %s (never coerced): %s",
-			elementID, name, v.Kind, call.Raw,
-		)
+		return Value{}, nil, fmt.Errorf("%s() operand must be a string, got %s (never coerced): %s", name, v.Kind, call.Raw)
+	}
+	if err := expressionBudget(resolver).Charge(len(v.Str)); err != nil {
+		return Value{}, nil, err
 	}
 	s := v.Str
 	if name == "upper" {
@@ -108,7 +150,7 @@ func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatCon
 	} else {
 		s = strings.ToLower(s)
 	}
-	return Value{Kind: KindString, Str: s}, nil
+	return Value{Kind: KindString, Str: s}, caveats, nil
 }
 
 // evalIf is AC13/AC14 and the owner's ruling on if(null, …): if(cond,
@@ -146,27 +188,23 @@ func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatCon
 // on its non-boolean kind) still propagates — evalIf never discards a
 // caveat it collected on the way to a result, selected branch or not.
 func evalIf(call *CallExpr, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
-	condVal, condCaveats, err := Eval(call.Args[0], resolver, fc, elementID)
+	return evalConditional(call.Args[0], call.Args[1], call.Args[2], call.Raw, resolver, fc, elementID)
+}
+func evalConditional(condition, then, otherwise Expr, raw string, resolver Resolver, fc FormatContext, elementID string) (Value, []Caveat, error) {
+	cond, caveats, err := Eval(condition, resolver, fc, elementID)
 	if err != nil {
 		return Value{}, nil, err
 	}
-
-	// D-3.2.3's true/false/null-is-false/no-truthiness axis lives in
-	// ConditionValue (below), shared verbatim with Story 3.5's
-	// visibility — this call site does not re-derive it.
-	isTrue, cerr := ConditionValue(condVal, "if() condition", call.Raw, elementID)
-	if cerr != nil {
-		return Value{}, nil, cerr
-	}
-	branch := call.Args[2]
-	if isTrue {
-		branch = call.Args[1]
-	}
-	branchVal, branchCaveats, err := Eval(branch, resolver, fc, elementID)
+	selected, err := ConditionValue(cond, "if()/ternary condition", raw, elementID)
 	if err != nil {
-		return Value{}, nil, err
+		return Value{}, nil, at(location(condition), err)
 	}
-	return branchVal, appendCaveats(condCaveats, branchCaveats), nil
+	branch := otherwise
+	if selected {
+		branch = then
+	}
+	value, branchCaveats, err := Eval(branch, resolver, fc, elementID)
+	return value, appendCaveats(caveats, branchCaveats), err
 }
 
 // ConditionValue applies D-3.2.3's owner-ruled axis for interpreting v

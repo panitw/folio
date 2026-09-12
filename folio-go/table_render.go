@@ -1053,7 +1053,7 @@ func collectBandTableRuns(
 					// binding (D-000.65: reuse, mint nothing).
 					boundText, subs, caveats, berr := bind.Resolve(col.Bind, scope, fc, string(col.ID))
 					if berr != nil {
-						return nil, nil, nil, newRenderError(DiagCodeBindingPathAbsent, string(col.ID), "", fmt.Errorf("folio: Render: %w", berr))
+						return nil, nil, nil, expressionRuntimeError(string(col.ID), "bind", fmt.Errorf("folio: Render: %w", berr))
 					}
 					for _, c := range caveats {
 						diags = append(diags, diagnosticFromCaveat(string(col.ID), c))

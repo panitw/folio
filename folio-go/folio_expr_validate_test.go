@@ -370,7 +370,7 @@ func TestParseTemplateRejectsExcessiveCallNestingAtLoad(t *testing.T) {
 	if !strings.Contains(err.Error(), "e1") {
 		t.Errorf("error must name the element id, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "nests function calls too deeply") {
+	if !strings.Contains(err.Error(), "source bytes") {
 		t.Errorf("error must name the depth limit specifically, got: %v", err)
 	}
 }
@@ -441,7 +441,7 @@ func TestParseTemplateRejectsLiteralVisibleIf(t *testing.T) {
 			if !strings.Contains(err.Error(), "e1") {
 				t.Errorf("error must name the element id, got: %v", err)
 			}
-			if !strings.Contains(err.Error(), "literal") {
+			if !strings.Contains(err.Error(), "boolean or null") {
 				t.Errorf("error must identify the literal as the defect, got: %v", err)
 			}
 		})
@@ -477,7 +477,7 @@ func TestIfConditionStillRejectsLiteralAfterVisibleIfSharesThePredicate(t *testi
 	if err == nil {
 		t.Fatal("expected a load error: if()'s condition slot must still reject a bare literal")
 	}
-	if !strings.Contains(err.Error(), "must not be a literal") {
+	if !strings.Contains(err.Error(), "must be a boolean or null") {
 		t.Errorf("error must carry if()'s own argNotLiteral wording, got: %v", err)
 	}
 }

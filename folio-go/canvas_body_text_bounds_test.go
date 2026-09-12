@@ -355,7 +355,7 @@ func TestCanvasIdentifierBoundsStillRefuseAtFiveHundredAndTwelve(t *testing.T) {
 				tpl.doc.Bands.Content.Elements[0].VisibleIf = template.Presence[string]{Set: true, Value: long}
 				return tpl
 			},
-			message: "folio: component visibleIf exceeds the projection bound",
+			message: "folio: visibleIf exceeds the 512-byte editor/projection limit",
 		},
 		{
 			name: "table.bind",

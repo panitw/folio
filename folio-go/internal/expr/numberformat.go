@@ -68,14 +68,17 @@ func groupDigits(digits, sep string, groupSize int) string {
 	if groupSize <= 0 || len(digits) <= groupSize {
 		return digits
 	}
-	var parts []string
-	for len(digits) > groupSize {
-		cut := len(digits) - groupSize
-		parts = append([]string{digits[cut:]}, parts...)
-		digits = digits[:cut]
+	var out strings.Builder
+	first := len(digits) % groupSize
+	if first == 0 {
+		first = groupSize
 	}
-	parts = append([]string{digits}, parts...)
-	return strings.Join(parts, sep)
+	out.WriteString(digits[:first])
+	for index := first; index < len(digits); index += groupSize {
+		out.WriteString(sep)
+		out.WriteString(digits[index : index+groupSize])
+	}
+	return out.String()
 }
 
 // translateDigits maps each ASCII digit '0'-'9' in s to entry's own
@@ -108,15 +111,15 @@ func renderNumberPattern(coeff *big.Int, spec numberPatternSpec, entry localeEnt
 	digits := new(big.Int).Abs(coeff).String()
 
 	fracDigits := spec.fracDigits
-	for len(digits) < fracDigits+1 {
-		digits = "0" + digits
+	if len(digits) < fracDigits+1 {
+		digits = strings.Repeat("0", fracDigits+1-len(digits)) + digits
 	}
 
 	intDigits := digits[:len(digits)-fracDigits]
 	fracPart := digits[len(digits)-fracDigits:]
 
-	for len(intDigits) < spec.minIntDigits {
-		intDigits = "0" + intDigits
+	if len(intDigits) < spec.minIntDigits {
+		intDigits = strings.Repeat("0", spec.minIntDigits-len(intDigits)) + intDigits
 	}
 
 	if spec.grouping {
@@ -153,15 +156,25 @@ func evalFormatNumber(call *CallExpr, resolver Resolver, fc FormatContext, eleme
 		)
 	}
 
-	patternLit, ok := call.Args[1].(*StringLit)
+	patternLit, ok := Ungroup(call.Args[1]).(*StringLit)
 	if !ok {
 		return Value{}, nil, fmt.Errorf("expr: element %s: formatNumber(): pattern argument must be a string literal: %s", elementID, call.Raw)
+	}
+	if err := expressionBudget(resolver).Charge(len(patternLit.Value)); err != nil {
+		return Value{}, nil, err
 	}
 	spec, perr := validateNumberPattern(patternLit.Value)
 	if perr != nil {
 		return Value{}, nil, fmt.Errorf("expr: element %s: formatNumber(): internal: %w", elementID, perr)
 	}
 
+	shift := operandVal.Num.Exponent + spec.fracDigits
+	if shift < 0 {
+		shift = -shift
+	}
+	if err := expressionBudget(resolver).Charge(shift + spec.minIntDigits); err != nil {
+		return Value{}, nil, err
+	}
 	scaled, serr := scaleToFractionDigits(operandVal.Num, spec.fracDigits)
 	if serr != nil {
 		return Value{}, nil, fmt.Errorf("expr: element %s: formatNumber(): %w: %s", elementID, serr, call.Raw)

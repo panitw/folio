@@ -93,7 +93,7 @@ func NewDecimal(literal string) (Decimal, error) {
 	exponent := exp - len(fracPart)
 	if exponent > maxDecimalExponentMagnitude || exponent < -maxDecimalExponentMagnitude {
 		return Decimal{}, fmt.Errorf(
-			"expr: value %q: exponent magnitude exceeds %d", literal, maxDecimalExponentMagnitude,
+			"expr: exponent magnitude exceeds %d (value %q)", maxDecimalExponentMagnitude, literal,
 		)
 	}
 
@@ -103,8 +103,8 @@ func NewDecimal(literal string) (Decimal, error) {
 
 	if len(sig) > maxDecimalCoefficientDigits {
 		return Decimal{}, fmt.Errorf(
-			"expr: value %q: coefficient has %d significant digits, exceeds %d (does not fit int64)",
-			literal, len(sig), maxDecimalCoefficientDigits,
+			"expr: coefficient has %d significant digits, exceeds %d (does not fit int64); value %q",
+			len(sig), maxDecimalCoefficientDigits, literal,
 		)
 	}
 

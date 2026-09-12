@@ -1248,7 +1248,7 @@ func TestBothPaginationPassesAgreeWithAKeepTogetherGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pageGeometryOf: %v", err)
 	}
-	visible, err := computeVisibility(bands, data, params, testFormatContext())
+	visible, _, err := computeVisibility(bands, data, params, testFormatContext())
 	if err != nil {
 		t.Fatalf("computeVisibility: %v", err)
 	}

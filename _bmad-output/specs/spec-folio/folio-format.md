@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is three closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -455,7 +455,7 @@ Common to all five types:
 | `id` | `e` + the counter in lowercase base 36 — `e1`, `ea`, `e1z`. Opaque: never derived from position or content, never reused, never renumbered on save (AD-10). Every diagnostic that concerns an element carries this. |
 | `type` | `text` · `image` · `table` · `line` · `rect`. The set is closed (FR4); a sixth type is a load error. |
 | `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x` and `y` only** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported, because no layout stage consults a text element's declared height. (`style.lineSpacing` does let an author set the leading, so a vertical bound is now something a template can be tuned towards by hand; it still is not something the engine checks the box against.) For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
-| `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. A bare literal (e.g. `"visibleIf": "42"`) can never resolve to a boolean and is rejected at **load**, naming the element (Story 3.5, closing the same-shaped rejection `if()`'s own condition slot already has). **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
+| `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. Boolean/null literals are valid conditions; numeric/string outcomes (e.g. `"visibleIf": "42"`) are rejected at **load**, including known outcomes in either conditional branch. `"visibleIf": "null"` hides the element. **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
 | `keepTogether` | *Optional.* A string naming a **keep-together group**, e.g. `"keepTogether": "signature"`. Every content-band element carrying the same tag paginates as **one indivisible unit** (FR51): the whole set stays within the window it started in, or the whole set moves to the next one — each member still at its own declared position, with no sibling moved, no gap invented and no page left empty. The members need not be adjacent in the element list, and a tag is scoped to the document. **Content band only** — rejected at load on a `pageHeader`/`pageFooter` element, which is repeated verbatim on every page and never paginated — and **not valid on a `table`**, whose rows already carry their own grouping, rejected at load naming the element and the field. An absent field and an explicit `null` both mean "no group declared". A group taller than a whole content window **only in aggregate** — every member fitting, the sum not — is *clipped*, not refused; a group holding an element that is by itself taller than a content window is **refused**, naming that element. The tag is what makes such an element unsatisfiable, so removing it is the author's fix. See *Pagination*, above. Declaring this key raises the document's `version` to `1.2`. |
 | `style` | *Optional.* See below. |
 
@@ -504,13 +504,39 @@ As of Story 4.2, a **data cell** (every row the table's `bind` produces) cascade
 
 ### Expressions
 
-A `{{ }}` binding holds one expression (Story 3.2, AD-9): a bare dotted path (`customer.name`), a
-function call over comma-separated arguments (`upper(customer.name)`), a double-quoted string
-literal, or a number literal — nesting to any depth
-(`formatNumber(sum(t.amount), "#,##0.00")`). The parser is hand-written recursive descent; there is
-no operator (`+`, `-`, `==`, `&&`, …) anywhere in the grammar, and none will be added without a
-direction change (AD-9, D-3.2.2 — every general-purpose expression library, including CEL, is
-rejected on its numeric model: no exact decimal type).
+Visibility takes a bare formula, without `=` or `{{ }}`: `loanAmount > 20000` shows the element for 25000 and hides it for 20000 or 19999. Empty Visibility, an absent field, or JSON `"visibleIf": null` means always visible. The expression string `"visibleIf": "null"` hides the element.
+
+Conditions accept booleans and null: `true` shows or selects the first branch; `false` and `null` select the other branch. Numbers and strings have no truthiness. Bold, Italic and all other fixed boolean properties remain literal controls.
+
+Highest precedence first:
+
+| Syntax | Association |
+|---|---|
+| (expression), paths, calls, string/number literals, true, false, null | Grouping |
+| Unary +, - | Right |
+| *, /, % | Left |
+| +, - | Left |
+| >, <, >=, <= | No repeated unparenthesized comparisons |
+| != | No repeated unparenthesized comparisons |
+| condition ? then : else | Right |
+
+`x ? y : a ? b : c` means `x ? y : (a ? b : c)`. For example, `vip ? true : (blocked ? false : loanAmount > 20000)` checks VIP, blocked status and the threshold. `2 + 3 * 4` is 14; `(2 + 3) * 4` is 20.
+
+Lowercase whole words `true`, `false` and `null` are literals and never look up data. `trueFlag`, `True`, `record.true` and `params.null` remain paths. `true.field` and `true()` are syntax errors. Quoted words stay strings. There is no `==`, `===`, `!==`, `&&`, `||`, `!`, assignment, or scripting.
+
+Ordering requires two numbers. `!=` accepts same-kind scalar values, comparing numbers by mathematical value, strings exactly and booleans directly. Null differs from every non-null scalar; `null != null` is false. Missing paths remain errors, including `customer.middleName != null` when the field is absent. Collections and non-null mixed scalar kinds are errors.
+
+Arithmetic accepts numbers only and uses exact bounded Decimals, never floating point. Addition, subtraction and remainder retain the smaller operand exponent; multiplication adds exponents; unary signs retain scale. Remainder uses truncation toward zero: `-5 % 2` is -1 and `5 % -2` is 1.
+
+Division uses `max(operand decimal scales, 0) + 4` fractional places, rounded half to even at each `/`, retaining all result trailing zeros: `1 / 3` is `0.3333`, `1.00 / 3` is `0.333333`, `1 / 8` is `0.1250`, and `12 / 3 / 2` is `2.00000000`. Half ties include `1 / 32 = 0.0312` and `3 / 32 = 0.0938`. Tiny results can round to zero: `1 / 100000 = 0.0000`. Zero divisors, overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale, and exponent magnitude is at most 100000; trailing zeros cannot be removed to avoid overflow. Thus `1000000000000000 / 1` fails.
+
+Both branches of `if()` and ternaries are parsed and statically checked. Unknown functions and provably wrong types such as `false ? upper(1) : "ok"` fail at load or commit. Only the selected branch resolves data or runs calculations: `true ? true : missingFlag` succeeds. Each statically known branch must satisfy the consuming field's kind. Text still requires a string or null: `{{true ? "Yes" : "No"}}` renders Yes, `{{null}}` renders empty, and `{{true}}` is an error. Numbers, including count results, require `formatNumber` in text.
+
+Expressions are bounded to 64 KiB, 4096 AST nodes, depth 64 and 1,000,000 evaluation work units shared across nodes, strings, collection projection and decimal shifts. Errors identify the field and element, with a source-relative UTF-8 byte offset when available. Refused edits leave document bytes and history unchanged.
+
+Formula syntax and boolean/null literals in any expression container require the unreleased `2.0` format on save. The requirement is derived from the parsed AST; quoted punctuation and ordinary paths do not raise it. Saving never lowers a loaded version. There is no migration or additional major version.
+
+No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. Both branches contribute requirements. Conflicting requirements or a computed zero divisor refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters still come from Preview inputs.
 
 There are, and will only ever be, **eight** named functions (FR18): `sum`, `count`, `avg`,
 `formatDate`, `formatNumber`, `upper`, `lower`, `if`. This count is mechanically pinned in the
@@ -524,8 +550,7 @@ kind (including an absent or null path) is a located error, never coerced. A scr
 distinction (Thai, CJK) is unchanged, byte for byte.
 
 **`if(condition, then, else)`** takes exactly three arguments and evaluates only the branch it
-selects (the other is never evaluated at all — an unimplemented function or a mistyped path in the
-branch NOT taken produces no error). `condition` must resolve to a JSON **boolean** — there is no
+selects. Both branches are statically checked; an absent path in the unselected branch is not resolved. `condition` must resolve to a **boolean or null** — there is no
 truthiness anywhere in this grammar: a JSON `0`, an empty string `""`, and an empty array `[]` are
 all the WRONG KIND for a condition, and each is a located error, exactly as any other wrong-kind
 value is (AD-14) — never treated as false.

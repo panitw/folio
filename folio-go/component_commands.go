@@ -328,7 +328,7 @@ func applyTableColumnCommand(t *Template, raw map[string]json.RawMessage, apply 
 	}
 	installed, err := ParseTemplate(canonical)
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", "table.columns", "table columns did not pass format validation")
+		return CanvasProjection{}, err
 	}
 	projection, err := Canvas(installed)
 	if err != nil {
@@ -822,7 +822,7 @@ func updateComponentProperties(t *Template, raw map[string]json.RawMessage) (Can
 	}
 	installed, err := ParseTemplate(canonical)
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", "component.changes", "component properties did not pass format validation")
+		return CanvasProjection{}, err
 	}
 	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
 	return projection, nil
@@ -1076,6 +1076,11 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 		if err := containComponent(band, element.X, element.Y, width, height); err != nil {
 			return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 		}
+	}
+	// Validate authored expressions before projection bounds can mask their
+	// located cause. The caller still installs this copy only after reparse.
+	if _, err := validateAndDeriveExpressions(t.doc); err != nil {
+		return CanvasProjection{}, err
 	}
 	return Canvas(t)
 }

@@ -23,8 +23,14 @@ import (
 // sorted, two-space indent, LF, no trailing whitespace, a trailing
 // newline, HTML escaping off, literal UTF-8, minimal escaping.
 func SerializeDocument(d *Document) ([]byte, error) {
+	return SerializeDocumentWithMinimumVersion(d, "")
+}
+
+// SerializeDocumentWithMinimumVersion accepts requirements derived above this
+// package dependency rank, without changing the document or loaded version.
+func SerializeDocumentWithMinimumVersion(d *Document, minimum string) ([]byte, error) {
 	var buf []byte
-	buf = writeDocument(buf, d)
+	buf = writeDocument(buf, d, minimum)
 	buf = append(buf, '\n') // AD-9's trailing newline (M-2: Encoder.Encode's behaviour, reproduced by hand here).
 	return buf, nil
 }
@@ -113,9 +119,9 @@ func extraKVs(fields []Field) []kv {
 	return out
 }
 
-func writeDocument(dst []byte, d *Document) []byte {
+func writeDocument(dst []byte, d *Document, minimum ...string) []byte {
 	fields := []kv{
-		{"version", writeString(versionForSave(d.Version, d))},
+		{"version", writeString(versionForSave(d.Version, d, minimum...))},
 		{"locale", writeString(d.Locale)},
 		{"utcOffset", writeString(d.UTCOffset)},
 		{"page", func(dst []byte, depth int) []byte { return writePage(dst, depth, d.Page) }},

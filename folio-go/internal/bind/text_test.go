@@ -120,7 +120,7 @@ func TestBindTextRejectsExcessiveCallNestingAtRender(t *testing.T) {
 	if !strings.Contains(err.Error(), "e1") {
 		t.Errorf("error must name the element id, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "nests function calls too deeply") {
+	if !strings.Contains(err.Error(), "source bytes") {
 		t.Errorf("error must name the depth limit specifically, got: %v", err)
 	}
 }

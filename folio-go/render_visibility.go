@@ -83,7 +83,8 @@ func isVisible(v visibilityVerdicts, id template.ElementID) bool {
 // located Error; a string or number (no truthiness) is a located
 // Error. expr.ConditionValue is the ONE place that axis lives — this
 // function does not re-derive it.
-func computeVisibility(bands []bandWithOrigin, data, params bind.Value, fc expr.FormatContext) (visibilityVerdicts, error) {
+func computeVisibility(bands []bandWithOrigin, data, params bind.Value, fc expr.FormatContext) (visibilityVerdicts, []Diagnostic, error) {
+	var diagnostics []Diagnostic
 	verdicts := make(visibilityVerdicts)
 	scope := bind.NewScope(data, params)
 	for _, b := range bands {
@@ -97,25 +98,19 @@ func computeVisibility(bands []bandWithOrigin, data, params bind.Value, fc expr.
 				verdicts[el.ID] = true
 				continue
 			}
-			// The []expr.Caveat return is discarded (Story 3.5 finisher
-			// review, Finding 12 / Nit): unreachable today rather than
-			// merely unused. Its only producer is avg()-on-empty, whose
-			// VALUE is a number, so any expression that could emit one
-			// already fails ConditionValue's "must be a boolean, no
-			// truthiness" check below before a caveat could matter — a
-			// boolean-returning caveat producer does not exist among
-			// the eight functions expr defines. If one is ever added,
-			// this comment is what should turn out to be wrong first.
-			val, _, everr := bind.EvaluateCondition(el.VisibleIf.Value, scope, fc, string(el.ID))
+			val, caveats, everr := bind.EvaluateCondition(el.VisibleIf.Value, scope, fc, string(el.ID))
 			if everr != nil {
-				return nil, everr
+				return nil, nil, expressionRuntimeError(string(el.ID), "visibleIf", everr)
 			}
 			visible, cerr := expr.ConditionValue(val, "visibleIf", el.VisibleIf.Value, string(el.ID))
 			if cerr != nil {
-				return nil, cerr
+				return nil, nil, expressionRuntimeError(string(el.ID), "visibleIf", cerr)
+			}
+			for _, caveat := range caveats {
+				diagnostics = append(diagnostics, diagnosticFromCaveat(string(el.ID), caveat))
 			}
 			verdicts[el.ID] = visible
 		}
 	}
-	return verdicts, nil
+	return verdicts, diagnostics, nil
 }

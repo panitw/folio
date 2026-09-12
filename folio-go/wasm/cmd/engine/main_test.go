@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -424,5 +425,44 @@ func TestWasmGroupMovePreviewAndCommitTransport(t *testing.T) {
 		if result := dispatch(engine, in); result.OK {
 			t.Fatal("invalid preview accepted")
 		}
+	}
+}
+
+func TestWasmFormulaLongSyntaxCauseSurvivesWireBound(t *testing.T) {
+	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := wasm.NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	command, _ := json.Marshal(map[string]any{"kind": "updateComponentProperties", "version": 1, "ids": []string{"e1"}, "changes": map[string]any{"visibleIf": map[string]any{"op": "set", "value": strings.Repeat(" ", 600) + "loanAmount >"}}})
+	got := dispatch(engine, request{Operation: "command", PayloadBase64: base64.StdEncoding.EncodeToString(command)})
+	if got.OK || got.DiagnosticCode != folio.DiagCodeExpressionInvalid || got.ElementID != "e1" || got.DataPath != "visibleIf" || !strings.Contains(got.Message, "unexpected end") || !strings.Contains(got.Message, "position 612") {
+		t.Fatalf("lost bounded wire cause: %+v", got)
+	}
+}
+
+func TestWasmFormulaMultiplePlaceholderCauseSurvivesWireBound(t *testing.T) {
+	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := wasm.NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	source := `{{"ok"}} {{` + strings.Repeat(" ", 600) + "loanAmount >}}"
+	var document map[string]any
+	if err := json.Unmarshal(input, &document); err != nil {
+		t.Fatal(err)
+	}
+	content := document["bands"].(map[string]any)["content"].(map[string]any)
+	content["elements"].([]any)[0].(map[string]any)["value"] = source
+	malformed, _ := json.Marshal(document)
+	got := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString(malformed)})
+	if got.OK || got.DiagnosticCode != folio.DiagCodeExpressionInvalid || got.ElementID != "e1" || got.DataPath != "value" || !strings.Contains(got.Message, "placeholder 2") || !strings.Contains(got.Message, "position 612") || !strings.Contains(got.Message, "unexpected end") {
+		t.Fatalf("lost placeholder wire cause: %+v", got)
 	}
 }

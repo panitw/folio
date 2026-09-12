@@ -746,7 +746,7 @@ func collectBandTextRuns(
 			// absent path (AD-14's own "an absent path is an Error
 			// carrying the path"); this is the one site R9 names for
 			// this mode.
-			return nil, nil, nil, newRenderError(DiagCodeBindingPathAbsent, string(el.ID), "", fmt.Errorf("folio: Render: %w", berr))
+			return nil, nil, nil, expressionRuntimeError(string(el.ID), "value", fmt.Errorf("folio: Render: %w", berr))
 		}
 		// Story 3.3/DECISION-5: a bind-stage Caveat (today, only
 		// avg()-on-empty) becomes a Diagnostic HERE, before this
@@ -2389,7 +2389,7 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// alone — see computeVisibility's own doc comment (render_visibility.go)
 	// for why this must happen here and not per-band or per-phase.
 	fc := expr.NewFormatContext(t.doc.Locale, t.doc.UTCOffset)
-	visible, verr := computeVisibility(bands, data, params, fc)
+	visible, conditionDiags, verr := computeVisibility(bands, data, params, fc)
 	if verr != nil {
 		return nil, nil, nil, nil, verr
 	}
@@ -2500,12 +2500,13 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// Each *Diags slice is already in element-declaration order within
 	// its own band (collectBandTextRuns' own doc comment on `diags`).
 	var diags []Diagnostic
-	diags = append(diags, headerDiags...)
-	diags = append(diags, headerTableDiags...)
-	diags = append(diags, contentDiags...)
-	diags = append(diags, contentTableDiags...)
-	diags = append(diags, footerDiags...)
-	diags = append(diags, footerTableDiags...)
+	textWarnings := [][]Diagnostic{headerDiags, contentDiags, footerDiags}
+	tableWarnings := [][]Diagnostic{headerTableDiags, contentTableDiags, footerTableDiags}
+	for i, band := range bands {
+		diags = append(diags, mergeConditionDiagnostics(band.band.Elements, conditionDiags, textWarnings[i])...)
+		// Keep the existing table-warning exception after this band's text warnings.
+		diags = append(diags, tableWarnings[i]...)
+	}
 
 	headerOffset := 0
 	contentOffset := len(headerRuns)
@@ -3491,4 +3492,31 @@ func buildShapedPDFRuns(
 	}
 
 	return pdfRuns, nil
+}
+
+// mergeConditionDiagnostics inserts conditions in declaration order, before
+// their own element's body warnings, without reordering existing body warnings.
+func mergeConditionDiagnostics(elements []template.Element, conditions, body []Diagnostic) []Diagnostic {
+	rank := make(map[string]int, len(elements))
+	for i, element := range elements {
+		rank[string(element.ID)] = i
+	}
+	var pending []Diagnostic
+	for _, condition := range conditions {
+		if _, belongs := rank[condition.ElementID]; belongs {
+			pending = append(pending, condition)
+		}
+	}
+	var out []Diagnostic
+	next := 0
+	for _, warning := range body {
+		if position, belongs := rank[warning.ElementID]; belongs {
+			for next < len(pending) && rank[pending[next].ElementID] <= position {
+				out = append(out, pending[next])
+				next++
+			}
+		}
+		out = append(out, warning)
+	}
+	return append(out, pending[next:]...)
 }

@@ -13735,3 +13735,7 @@ non-deterministic, it will produce a spurious dirty file on every run for every 
 name that attributes it to Story 6.7, and the audit trail for 6.7 quietly describes work it never did.
 
 **Related:** [D-14.10.6], [DW-391].
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-boolean-formulas.md`
+  summary: Return a located error when an aggregate expression is evaluated with a nil resolver.
+  evidence: Blind/edge review found sum/count/avg still call the absent Resolver through budgetResolver; baseline ae6cd70530b6059d8e66db448fb432533dd0df94 also called the nil Resolver directly in internal/expr/aggregate.go. Production bindings supply a resolver, so this is a pre-existing internal caller edge case.

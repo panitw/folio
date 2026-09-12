@@ -333,6 +333,16 @@ func evalFormatDate(call *CallExpr, resolver Resolver, fc FormatContext, element
 		return Value{}, nil, err
 	}
 
+	work := len(operandVal.Str)
+	if operandVal.Kind == KindNumber {
+		work = operandVal.Num.Exponent
+		if work < 0 {
+			work = -work
+		}
+	}
+	if err := expressionBudget(resolver).Charge(work); err != nil {
+		return Value{}, nil, err
+	}
 	instantMs, err := instantMsFromValue(operandVal, elementID, call.Raw)
 	if err != nil {
 		return Value{}, nil, err
@@ -357,9 +367,12 @@ func evalFormatDate(call *CallExpr, resolver Resolver, fc FormatContext, element
 	// not 2569).
 	civil.Year += int64(entry.eraOffset)
 
-	patternLit, ok := call.Args[1].(*StringLit)
+	patternLit, ok := Ungroup(call.Args[1]).(*StringLit)
 	if !ok {
 		return Value{}, nil, fmt.Errorf("expr: element %s: formatDate(): pattern argument must be a string literal: %s", elementID, call.Raw)
+	}
+	if err := expressionBudget(resolver).Charge(len(patternLit.Value)); err != nil {
+		return Value{}, nil, err
 	}
 	tokens, perr := parseDatePattern(patternLit.Value)
 	if perr != nil {

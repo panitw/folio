@@ -47,7 +47,7 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 					// expr.Parse/expr.Check machinery checkTextExpressions
 					// uses for a text value, so a failure here is the
 					// same failure MODE, coded the same way.
-					return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "", err)
+					return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "visibleIf", err)
 				}
 			}
 			// Story 3.5, AC4/DECISION-1 (ruled): conditional/data-driven
@@ -72,7 +72,7 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 					if err := checkTextExpressions(el.Value.Value, el.ID); err != nil {
 						// Story 3.6, AC4/AC8, R9: FR41's "invalid
 						// expression" mode.
-						return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "", err)
+						return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "value", err)
 					}
 				}
 			case template.ElementTable:
@@ -125,26 +125,25 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 // checkTextExpressions parses and statically checks every non-reserved
 // "{{ }}" occurrence in text (AC19, AC10, AC11): a syntax error, a
 // wrong arity, an unknown function name, or a wrong-kind literal
-// argument is a load error naming elementID and the offending
-// expression text, verbatim, as the author wrote it.
+// argument is a load error naming elementID and preserving the located
+// expression cause before any source excerpt.
 func checkTextExpressions(text string, elementID template.ElementID) error {
 	_, placeholders, _, serr := expr.ScanPlaceholders(text)
 	if serr != nil {
 		return fmt.Errorf("folio: ParseTemplate: element %s: %s", elementID, serr)
 	}
-	for _, ph := range placeholders {
+	for index, ph := range placeholders {
 		if ph.Reserved {
 			// AC4/AD-4: {{page}}/{{pages}} are short-circuited before
 			// any parse attempt, at load exactly as at render.
 			continue
 		}
-		trimmed := strings.TrimSpace(ph.Inner)
 		e, perr := expr.Parse(ph.Inner)
 		if perr != nil {
-			return fmt.Errorf("folio: ParseTemplate: element %s: %q is not a valid expression: %s", elementID, trimmed, perr)
+			return fmt.Errorf("folio: ParseTemplate: element %s: value expression placeholder %d: %w", elementID, index+1, perr)
 		}
-		if cerr := expr.Check(e); cerr != nil {
-			return fmt.Errorf("folio: ParseTemplate: element %s: %s", elementID, cerr)
+		if cerr := expr.CheckText(e); cerr != nil {
+			return fmt.Errorf("folio: ParseTemplate: element %s: value placeholder %d: %w", elementID, index+1, cerr)
 		}
 	}
 	return nil
@@ -161,29 +160,10 @@ func checkTextExpressions(text string, elementID template.ElementID) error {
 func checkVisibleIfExpression(raw string, elementID template.ElementID) error {
 	e, perr := expr.Parse(raw)
 	if perr != nil {
-		return fmt.Errorf("folio: ParseTemplate: element %s: visibleIf %q is not a valid expression: %s", elementID, raw, perr)
+		return fmt.Errorf("folio: ParseTemplate: element %s: visibleIf expression: %w", elementID, perr)
 	}
-	// Story 3.5, AC6/DECISION-2: a bare literal condition (a top-level
-	// StringLit or NumberLit) can NEVER resolve to a boolean — the
-	// grammar has no boolean literal — so it is decidable statically,
-	// exactly like if()'s own condition slot (argNotLiteral,
-	// internal/expr/check.go). expr.IsLiteralExpr is the SAME
-	// predicate if()'s checkArgKind calls, not a second, independently
-	// -written copy of "is this a literal" (D-000.38): the asymmetry
-	// this closes exists only because argNotLiteral is a property of a
-	// CallExpr's ARGUMENTS, and a top-level visibleIf is never a call
-	// argument, so that check never had a chance to reach it. Ruled in
-	// scope by the lead: closing the asymmetry at its source (one
-	// predicate, two call sites) rather than adding a parallel check.
-	if expr.IsLiteralExpr(e) {
-		return fmt.Errorf(
-			"folio: ParseTemplate: element %s: visibleIf %q must not be a literal (expected a data path or a call) — "+
-				"the grammar has no boolean literal, so a bare literal can never be a boolean",
-			elementID, raw,
-		)
-	}
-	if cerr := expr.Check(e); cerr != nil {
-		return fmt.Errorf("folio: ParseTemplate: element %s: visibleIf: %s", elementID, cerr)
+	if cerr := expr.CheckCondition(e); cerr != nil {
+		return fmt.Errorf("folio: ParseTemplate: element %s: visibleIf: %w", elementID, cerr)
 	}
 	return nil
 }
@@ -330,7 +310,7 @@ func validateTableColumns(tbl template.TableExt, derived map[template.ElementID]
 			// Story 3.6, AC4/AC8, R9: FR41's "invalid expression" mode
 			// — a column's bind uses the same static-check machinery a
 			// text element's value does.
-			return newRenderError(DiagCodeExpressionInvalid, string(col.ID), "", err)
+			return newRenderError(DiagCodeExpressionInvalid, string(col.ID), "bind", err)
 		}
 
 		if !col.Footer.Set || col.FooterOf.Set {
