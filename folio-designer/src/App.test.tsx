@@ -2350,6 +2350,58 @@ describe('application shell', () => {
     } finally { vi.useRealTimers() }
   })
 
+  // THE SETTLED STATUS GOES; THE BUSY ONE AND THE ALERT STAY.
+  //
+  // All three halves matter. Retiring a BUSY status would restore the original
+  // defect — disabled buttons with nothing saying why — and retiring an ALERT
+  // would throw away the only account of a failure the author gets.
+  it('retires a settled file status on a timer, and never the busy one or the alert', async () => {
+    vi.useFakeTimers()
+    try {
+      // One resolver per engine step, released in order: Open takes `load` and
+      // then `serialize`, and the status is busy until both have landed.
+      const pending: Array<(value: unknown) => void> = []
+      const request = vi.fn(() => new Promise((resolve) => { pending.push(resolve) }))
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'timed.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
+      const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0) }) }
+      const settle = async () => { await act(async () => { pending.shift()?.({ snapshot: { documentState: 'loaded', revision: 5, byteLength: 3 }, bytes }) }); await flush() }
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+      await flush()
+
+      // THE BUSY STATUS OUTLASTS THE WINDOW, because the buttons it explains
+      // are still disabled. This is the assertion that would catch a future
+      // simplification dropping the `fileBusy` gate from the effect.
+      await act(async () => { await vi.advanceTimersByTimeAsync(6_000) })
+      expect(screen.getByText('Opening local file…')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open local template' })).toBeDisabled()
+
+      await settle()
+      await settle()
+      expect(screen.getByText(/Opened local file timed\.folio/)).toBeInTheDocument()
+
+      // The settled status survives to the edge of the window and not past it.
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_999) })
+      expect(screen.getByText(/Opened local file timed\.folio/)).toBeInTheDocument()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(screen.queryByText(/Opened local file timed\.folio/)).not.toBeInTheDocument()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('leaves a reported failure on screen however long the author takes to read it', async () => {
+    vi.useFakeTimers()
+    try {
+      const files: FileAccess = { open: vi.fn(async () => { throw new FileAccessFailure('Could not open local file: NotAllowedError: permission lapsed') }), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      render(<App engine={engine()} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(screen.getByRole('alert')).toHaveTextContent('NotAllowedError: permission lapsed')
+      await act(async () => { await vi.advanceTimersByTimeAsync(600_000) })
+      expect(screen.getByRole('alert')).toHaveTextContent('NotAllowedError: permission lapsed')
+    } finally { vi.useRealTimers() }
+  })
+
   // A DESCRIBED BOUNDARY FAILURE REACHES THE AUTHOR INTACT.
   //
   // `fileFailureFor` builds "<what was being done>: <what the browser called

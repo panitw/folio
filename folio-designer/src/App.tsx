@@ -90,6 +90,24 @@ const CANVAS_GUTTER = 116
 // that really waits 20 seconds — which is to say, no witness at all. The timer
 // is cleared when the request settles, so a normal file action leaves nothing
 // pending behind it.
+// A SETTLED STATUS RETIRES ITSELF AFTER THIS LONG. THE ALERT NEVER DOES.
+//
+// The file messages hang under the buttons they explain, over the canvas, so a
+// finished outcome that stays forever is a sticker on the workspace: "Saved
+// locally as x.folio" is worth reading once and is then just something in the
+// way. An ERROR is the opposite — it is the only record of a failure the
+// author will get, it is the half a truncation must never take, and it already
+// clears itself the moment the next file action starts (`setFileError(undefined)`
+// at the head of open/save/startBlank/export). Nothing retires it on a timer.
+//
+// ⚠ A BUSY STATUS IS NOT A SETTLED ONE, and the effect below is gated on
+// `fileBusy` for that reason rather than for tidiness. "Opening local file…"
+// describes a control that is disabled RIGHT NOW; retiring it after six
+// seconds would restore the exact defect this bar was changed to fix — four
+// buttons wearing `cursor: not-allowed` with nothing on screen saying why —
+// and would do it only on the slow actions, which are the ones that need the
+// sentence most.
+const SETTLED_FILE_STATUS_MS = 6_000
 const ENGINE_FILE_STEP_TIMEOUT_MS = 20_000
 const engineFileStep = (run: (signal: AbortSignal) => Promise<EngineResult>): Promise<EngineResult> => {
   const deadline = new AbortController()
@@ -2400,6 +2418,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
+  // Retire a settled status. Re-armed on every change to either input, so a new
+  // outcome gets a full window rather than the tail of the previous one's, and
+  // a status that arrives while busy is left alone until the bar is released.
+  useEffect(() => {
+    if (!fileStatus || fileBusy) return
+    const handle = setTimeout(() => setFileStatus(undefined), SETTLED_FILE_STATUS_MS)
+    return () => clearTimeout(handle)
+  }, [fileStatus, fileBusy])
+
   // THE BOUNDARY'S OWN SENTENCE WINS OVER THIS FUNCTION'S FALLBACK.
   //
   // A `FileAccessFailure` already reads "<what was being done>: <what the
