@@ -133,14 +133,35 @@ for (const snap of [false, true]) {
     await table.click()
     await page.getByRole('button', { name: 'Configure columns' }).click()
     const dialog = page.getByRole('dialog', { name: 'Table Editor' })
-    const width = dialog.getByRole('spinbutton', { name: 'Width for column 1 in points' })
+    // A NEWLY PLACED TABLE IS PROPORTIONALLY SIZED, which is the engine's own
+    // ruling (`folio-go/table_proportions_test.go` fails a starter whose
+    // `Sizing` is anything else), so the editor offers a PROPORTION per column
+    // and one total width for the table — not a per-column width in points.
+    // This block asserted the points vocabulary and went red when proportion
+    // sizing shipped: the control it named no longer exists in this state.
+    //
+    // THE WIDTH CLAIM IS UNCHANGED AND IS STILL THE POINT OF THE TEST. A table
+    // dropped near the right edge fills its band, so the one starter column
+    // still resolves to the full 523.276, and driving the table to 120 still
+    // has to reach the canvas. Only the control that gets it there is new:
+    // with a single column at proportion 1 the column IS the total, so the
+    // total width box is where 120 is typed.
+    const proportion = dialog.getByRole('textbox', { name: 'Proportion for column 1' })
+    const resolved = dialog.getByRole('status', { name: 'Resolved width for column 1 in points' })
+    const total = dialog.getByRole('spinbutton', { name: 'Total table width in points' })
     const header = dialog.getByRole('textbox', { name: 'Header for column 1' })
-    await expect(width).toHaveValue('523.276')
+    await expect(proportion).toHaveValue('1')
+    await expect(resolved).toHaveText('523.276 pt')
+    await expect(total).toHaveValue('523.276')
     await expect(header).toHaveValue('')
     await expect(dialog.getByRole('grid', { name: 'Table columns' })).toHaveAttribute('aria-rowcount', '2')
-    await width.fill('120')
-    await width.press('Tab')
+    await total.fill('120')
+    await total.press('Tab')
     await expect(dialog.getByRole('status', { name: 'Width budget' })).toContainText('Σ 120.0')
+    // The proportion is untouched by a total change, and the resolved width is
+    // the engine's answer to both.
+    await expect(proportion).toHaveValue('1')
+    await expect(resolved).toHaveText('120 pt')
     await header.fill('Description')
     await header.press('Tab')
     await expect(header).toHaveValue('Description')
