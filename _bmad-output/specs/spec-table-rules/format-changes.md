@@ -15,6 +15,7 @@ before the data exists. Four capabilities are needed and one of them exists toda
 | An outer frame that is not a grid | `style.border` on a table is consumed as cell chrome — §1 |
 | Rules the author controls, separate from the frame | No field exists — §2 |
 | A ruled area taller than its rows | A table has no height at all (AD-13) — §3 |
+| Header labels of two lines, Thai over English | A label is shaped single-line; `\n` draws as a missing glyph — §4 |
 
 ---
 
@@ -112,6 +113,62 @@ Declaring this key raises the document's `version`.
 
 ---
 
+## 4. A column label may be more than one line
+
+**No new field.** `columns[].label` is already an unbounded Unicode string; what changes is how it
+is laid out.
+
+Today a label is shaped with `breaksAreDrawn` and positioned directly, never packed
+(`folio-go/table_render.go:842`), against a vertical model that is one line by construction —
+`textBlockHeight := vm.FirstBaseline + vm.LastDescent` (`:880`) — with every glyph placed at line
+index 0. So a `\n` in a label is handed to the shaper as a rune to draw, no font in the chain covers
+it, and the author gets a `TEXT_MISSING_GLYPH` warning and one line.
+
+A label is laid out **through the same packer a data cell already uses** — `breaksAreConsumed`, then
+`packLines` against the column's content width (`:1066`, `:1077`) — never a second implementation of
+the same rule. Consequences, all of them intended:
+
+| | Was | Becomes |
+|---|---|---|
+| `"label": "วันที่\nDATE"` | one line, `TEXT_MISSING_GLYPH` | two lines |
+| A label wider than its column | clipped to the padded box, **silently** | wrapped, like every other text in the document |
+| `headerHeight` | the header row's exact height | its **floor** — see below |
+
+### `headerHeight` becomes a floor
+
+The header row is `max(headerHeight, the packed label's height + padding)`. The field stays
+**required**, so no command can clear it, and it is still accounted for on **every** continuation
+page — the labels are static, so the packed height is settled at layout, before pagination, and is
+the same on every page a header repeats on.
+
+This narrows the field the same way `minHeight` narrows a table's extent (§3), and for the same
+reason: an author declaring a floor is declaring the form's proportions, not overriding what the
+text needs. The alternative — keeping `headerHeight` exact and clipping a second line — reproduces
+in the vertical the defect this section removes in the horizontal.
+
+### The silent clip is retired, not relocated
+
+A body cell that clips emits `DiagCodeTextClippedWidth` (`folio-go/table_render.go:1084`). The
+header's clip path appends no diagnostic at all (`:908-921`), so an author whose column heading was
+too narrow was told nothing, on screen or in the render. With a label that wraps and a header that
+grows to fit it, there is nothing left to clip and nothing left to fail to report.
+
+### What moves, and what must not
+
+A document whose labels hold no `\n` and whose every label fits its column must **hash identically**
+— that is the whole corpus standing as a witness. Two kinds of document do move, and both are
+repairs: one whose label held a `\n` (was a warning and one line, becomes two lines), and one whose
+label was too wide (was clipped in silence, now wraps and may grow the header row, which can change
+where the table paginates).
+
+### The designer must be able to type one
+
+The Table Editor's header cell is an `<input>`, which cannot hold a line feed, and the command
+bounds a label at 256 **bytes** (`folio-go/component_commands.go:523`) — about 85 Thai characters.
+Authoring a two-line Thai/English label needs a control that accepts a break and a bound expressed
+in characters rather than bytes. The canvas's `.canvas-table-heading` must paint the second line
+too, or the canvas resumes lying about the header the way it currently does about the border.
+
 ## Resolved — how far do the column rules run
 
 **To the bottom of the box.** Ruled by the owner: *"the bottom most row will get the bottom border
@@ -123,8 +180,6 @@ each have to be taught to ignore. A boundary-based `rules` block needs none of t
 
 ## Not in this change
 
-**Two-line header labels.** The target's headers are Thai over English in one cell. A column label
-is shaped single-line and positioned directly, never packed (`folio-go/table_render.go:842`), so a
-`\n` in a label is drawn as a rune no font covers — a `TEXT_MISSING_GLYPH` warning and no second
-line. A label wider than its column is clipped **silently**, with no diagnostic, unlike a body cell.
-Both are real gaps against the target and neither is a border. They want their own spec.
+**Soft wrapping is not opt-out.** A label now wraps rather than clipping, and there is no field to
+ask for the old behaviour. If a form needs a label held to one line whatever its width, that is a
+new field and wants its own argument — clipping in silence is not the precedent to preserve.
