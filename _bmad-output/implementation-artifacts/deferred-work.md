@@ -13751,3 +13751,11 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-arrow-key-nudging.md`
   summary: Arrow navigation between inspector tabs can also nudge the selected canvas element.
   evidence: The pre-existing tab handler calls preventDefault without stopPropagation, while the global shortcut listener ignores defaultPrevented and treats button targets as non-editable. This already mutates elements with Snap off; precise nudges make it visible with Snap on too.
+
+- source_spec: `spec-bind-table-from-data-panel.md`
+  summary: Make Data-panel pick highlighting follow the active binding and selection after undo, redo, or component changes.
+  evidence: DataPanel retains pickedState by sample identity alone; the existing scalar/column mechanism and the collection screenshot after undo/redo can keep the prior node accented despite selection or binding changes.
+
+- source_spec: `spec-bind-table-from-data-panel.md`
+  summary: Resolve duplicate sample JSON keys consistently with the renderer before offering binding candidates.
+  evidence: DiscoveryParser.object retains every duplicate property occurrence, so {"items":[{"id":1}],"items":42} exposes an array candidate although Go JSON decoding keeps the later scalar value; this predates collection picking.

@@ -15,6 +15,127 @@ import (
 	"github.com/panitw/folio/folio-go/fonts"
 )
 
+func TestEngineTableCollectionBindingOwnsOneHistoryStep(t *testing.T) {
+	input, err := os.ReadFile("../../fixtures/statement-1/input.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := engine.Serialize()
+	command := []byte(`{"kind":"bindTableCollection","version":1,"id":"e8","segments":["report","entries"]}`)
+	bound, err := engine.Apply(command)
+	if err != nil || bound.Revision != loaded.Revision+1 || !bound.CanUndo || bound.CanRedo {
+		t.Fatalf("collection bind history = %#v, %v", bound, err)
+	}
+	if got := canvasComponentByID(t, bound.Canvas, "e8").TableBind; got == nil || *got != "report.entries[]" {
+		t.Fatalf("collection paint = %v", got)
+	}
+	after, _, _ := engine.Serialize()
+	want := bytes.Replace(before, []byte(`"bind": "transactions[]"`), []byte(`"bind": "report.entries[]"`), 1)
+	if !bytes.Equal(after, want) {
+		t.Fatal("collection bind changed alias, column expressions, or other document state")
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"bindTableCollection","version":1,"id":"e8","segments":["a.b"]}`)); err == nil {
+		t.Fatal("ambiguous key succeeded")
+	}
+	stable, err := engine.Apply(command)
+	if err != nil || stable.Revision != bound.Revision || stable.CanUndo != bound.CanUndo || stable.CanRedo != bound.CanRedo {
+		t.Fatalf("repeated bind or refusal changed history = %#v, %v", stable, err)
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.CanUndo || !undone.CanRedo {
+		t.Fatalf("one undo = %#v, %v", undone, err)
+	}
+	restored, _, _ := engine.Serialize()
+	if !bytes.Equal(restored, before) {
+		t.Fatal("one undo did not restore the original bytes")
+	}
+	stable, err = engine.Apply([]byte(`{"kind":"bindTableCollection","version":1,"id":"e8","segments":["transactions"]}`))
+	if err != nil || stable.Revision != undone.Revision || !stable.CanRedo || stable.CanUndo {
+		t.Fatalf("same bind consumed redo = %#v, %v", stable, err)
+	}
+	redone, err := engine.Redo()
+	if err != nil || !redone.CanUndo || redone.CanRedo {
+		t.Fatalf("redo = %#v, %v", redone, err)
+	}
+	restored, _, _ = engine.Serialize()
+	if !bytes.Equal(restored, after) {
+		t.Fatal("redo did not restore the collection binding")
+	}
+}
+
+func TestEngineCollectionFooterRebaseIsOneHistoryStep(t *testing.T) {
+	input, err := os.ReadFile("../testdata/commands/table-collection-footers.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"bindTableCollection", "configureTableBinding"} {
+		t.Run(kind, func(t *testing.T) {
+			command := func(collection string) []byte {
+				payload := map[string]any{"kind": kind, "version": 1, "id": "e1"}
+				if kind == "bindTableCollection" {
+					payload["segments"] = strings.Split(strings.TrimSuffix(collection, "[]"), ".")
+				} else {
+					payload["collection"], payload["alias"] = collection, "txn"
+				}
+				encoded, _ := json.Marshal(payload)
+				return encoded
+			}
+			engine := NewEngine()
+			loaded, err := engine.Load(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _, _ := engine.Serialize()
+			bound, err := engine.Apply(command("report.entries[]"))
+			if err != nil || bound.Revision != loaded.Revision+1 || !bound.CanUndo || bound.CanRedo {
+				t.Fatalf("collection/footer command = %#v, %v", bound, err)
+			}
+			after, _, _ := engine.Serialize()
+			want := bytes.Replace(before, []byte(`"bind": "account.transactions[]"`), []byte(`"bind": "report.entries[]"`), 1)
+			want = bytes.ReplaceAll(want, []byte(`"footerOf": "account.transactions.`), []byte(`"footerOf": "report.entries.`))
+			if !bytes.Equal(after, want) {
+				t.Fatalf("collection/footer update changed unrelated canonical bytes: %s", after)
+			}
+			if _, err := engine.Apply(command(strings.Repeat("a", 246) + "[]")); err == nil {
+				t.Fatal("over-limit explicit footer source succeeded")
+			} else {
+				var failure *folio.ComponentCommandError
+				if !errors.As(err, &failure) || failure.ElementID != "e1" || failure.DataPath != "column.footerOf" {
+					t.Fatalf("footer overflow was not located: %v", err)
+				}
+			}
+			stable, err := engine.Apply(command("report.entries[]"))
+			if err != nil || stable.Revision != bound.Revision || stable.CanUndo != bound.CanUndo || stable.CanRedo != bound.CanRedo {
+				t.Fatalf("no-op or footer refusal changed history: %#v, %v", stable, err)
+			}
+			undone, err := engine.Undo()
+			if err != nil || undone.CanUndo || !undone.CanRedo {
+				t.Fatalf("one undo = %#v, %v", undone, err)
+			}
+			restored, _, _ := engine.Serialize()
+			if !bytes.Equal(restored, before) {
+				t.Fatal("one undo did not restore the collection and explicit footer prefixes")
+			}
+			stable, err = engine.Apply(command("account.transactions[]"))
+			if err != nil || stable.Revision != undone.Revision || stable.CanUndo || !stable.CanRedo {
+				t.Fatalf("same collection consumed redo: %#v, %v", stable, err)
+			}
+			if _, err := engine.Redo(); err != nil {
+				t.Fatal(err)
+			}
+			restored, _, _ = engine.Serialize()
+			if !bytes.Equal(restored, after) {
+				t.Fatal("redo did not restore the collection and explicit footer prefixes")
+			}
+		})
+	}
+}
+
 func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
 	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
 	if err != nil {

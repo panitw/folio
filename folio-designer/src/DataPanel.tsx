@@ -94,19 +94,11 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
   // and a panel that does not know the kind cannot know the engine will accept
   // it.
   const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES.includes(selectedComponentType)
-  // THE SELECTION CONTEXT BAR — what a pick would bind, stated BEFORE the pick.
-  // DW-352: a Line's refusal is read up front rather than after a round trip.
-  // DW-353: a Table is not told "unavailable"; a table legally binds a
-  // collection, just not here, so the bar names where.
-  // STORY 14.10 — A SELECTED COLUMN GETS ITS OWN SENTENCE, AHEAD OF THE
-  // COMPONENT ARMS. The owning table is still the component selection, so
-  // without this the bar would read "Table selected · a table binds its
-  // collection in the table editor" while the author is looking at a column
-  // they just clicked. That sentence stays TRUE and stays SHIPPED for a table
-  // with no column selected — [D-14.10.1] leaves the COLLECTION editable there,
-  // and only the per-column bound field moved.
+  // A whole table offers root collections; a selected column keeps its own
+  // row-field scope and never dispatches a collection pick.
+  const collectionMode = selectedComponentId !== undefined && selectedComponentType === 'table' && columnScope === undefined
   const columnBindable = columnScope !== undefined && columnScope.collection !== ''
-  const accented = columnScope ? columnBindable : bindableKind
+  const accented = columnScope ? columnBindable : bindableKind || collectionMode
   const context = columnScope
     ? columnBindable
       ? `Column ${columnScope.label} selected · binding to a row field of ${columnScope.collection}`
@@ -116,7 +108,7 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
     : selectedComponentType === undefined
       ? 'The selected component is not in the current projection · no path can be bound to it.'
       : selectedComponentType === 'table'
-        ? 'Table selected · a table binds its collection in the table editor, under Configure columns.'
+        ? 'Table selected · pick a root collection to bind its rows.'
         : bindableKind
           ? `${kindNoun[selectedComponentType]} selected · binding to string`
           : `${kindNoun[selectedComponentType]} selected · only text components can receive a scalar binding.`
@@ -145,7 +137,8 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
       return
     }
     if (!node.segments) return
-    if (!bindableKind || selectedComponentId === undefined || bindingBusy || onConnect === undefined) return
+    if ((!bindableKind && !collectionMode) || selectedComponentId === undefined || bindingBusy || onConnect === undefined) return
+    if (collectionMode !== (node.kind === 'collection')) return
     setPickedState({ sample, node })
     onConnect(node.segments)
   }
@@ -163,7 +156,7 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
       {selectedBinding && <p className="binding-status" role="status">Current engine binding: <code>{selectedBinding}</code></p>}
       {sample.truncated && <p className="data-message" role="status">Tree inspection is truncated to keep this local panel responsive.</p>}
       <p className="section-label">PATHS</p>
-      <DataTree key={treeIdentity(sample.tree)} root={sample.tree} picked={picked} scope={columnScope} onPick={bind} />
+      <DataTree key={treeIdentity(sample.tree)} root={sample.tree} picked={picked} scope={columnScope} collectionMode={collectionMode} onPick={bind} />
       <RuntimeParameterSection parameters={runtimeParameters} />
       {bindingBusy && <p className="binding-status" role="status">Asking the engine to bind the picked path…</p>}
       {currentBindingError && <p className="data-message" role="alert">{currentBindingError}</p>}
@@ -193,12 +186,18 @@ function RuntimeParameterSection({ parameters }: Readonly<{ parameters?: Runtime
   </section>
 }
 
-function DataTree({ root, picked, scope, onPick }: Readonly<{ root: SampleNode; picked?: SampleNode; scope?: ColumnBindScope; onPick: (node: SampleNode) => void }>) {
+function DataTree({ root, picked, scope, collectionMode, onPick }: Readonly<{ root: SampleNode; picked?: SampleNode; scope?: ColumnBindScope; collectionMode: boolean; onPick: (node: SampleNode) => void }>) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([keyFor(root, 0)]))
   const visible = useMemo(() => flatten(root, expanded), [root, expanded])
   const [active, setActive] = useState(() => keyFor(root, 0))
   const focus = (key: string) => { setActive(key); requestAnimationFrame(() => Array.from(document.querySelectorAll<HTMLElement>('[data-tree-key]')).find((element) => element.dataset.treeKey === key)?.focus()) }
   const toggle = (key: string) => setExpanded((value) => { const next = new Set(value); if (next.has(key)) next.delete(key); else next.add(key); return next })
+  // Activation binds an offered collection and toggles its disclosure. Arrow
+  // navigation remains browsing only, even on a bindable collection branch.
+  const activate = (entry: VisibleNode) => {
+    if (entry.node.children.length > 0) toggle(entry.key)
+    if (rowFor(entry, scope, collectionMode).pickable) onPick(entry.node)
+  }
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: VisibleNode) => {
     // Tree navigation is local interaction. Never let an arrow intended for a
     // focused discovery node become a canvas nudge shortcut.
@@ -212,34 +211,22 @@ function DataTree({ root, picked, scope, onPick }: Readonly<{ root: SampleNode; 
     if (event.key === 'End') return move(visible.length - 1)
     if (event.key === 'ArrowRight' && branch) { event.preventDefault(); if (!expanded.has(current.key)) setExpanded((value) => new Set(value).add(current.key)); else if (visible[index + 1]?.parent === current.key) focus(visible[index + 1]!.key); return }
     if (event.key === 'ArrowLeft') { event.preventDefault(); if (branch && expanded.has(current.key)) setExpanded((value) => { const next = new Set(value); next.delete(current.key); return next }); else if (current.parent) focus(current.parent); return }
-    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (branch) toggle(current.key); else if (rowFor(current, scope).pickable) onPick(current.node) }
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(current) }
   }
   return <ul className="data-tree" role="tree" aria-label="Sample data paths">{visible.map((entry) => {
-    const shape = rowFor(entry, scope)
+    const shape = rowFor(entry, scope, collectionMode)
     const branch = entry.node.children.length > 0
     // ⚠ EVERY BADGE AND EVERY REASON IS A PLAIN `<span>` INSIDE THE TREEITEM
     // BUTTON, never a control of its own: a badge must be announced as part of
     // the row it qualifies, and a second focusable thing on a tree row would
     // break the roving tab stop as well as lie about what is operable.
-    return <li className={`data-tree-node${picked === entry.node ? ' data-tree-picked' : ''}${shape.dimmed ? ' data-tree-dim' : ''}`} role="none" key={entry.key} style={{ '--tree-level': entry.level } as CSSProperties}><button className="tree-item" type="button" role="treeitem" data-tree-key={entry.key} aria-level={entry.level} aria-expanded={branch ? expanded.has(entry.key) : undefined} aria-selected={shape.pickable ? picked === entry.node : undefined} aria-disabled={!branch && !shape.pickable ? true : undefined} tabIndex={active === entry.key ? 0 : -1} onFocus={() => setActive(entry.key)} onClick={() => branch ? toggle(entry.key) : shape.pickable && onPick(entry.node)} onKeyDown={(event) => onKeyDown(event, entry)}><span className="tree-row">{shape.pickable && <span className="binding-dot" aria-hidden="true" />}<span className="tree-label">{entry.node.label}</span>{shape.marker && <span className="tree-marker">{shape.marker}</span>}{shape.value !== undefined && <span className="tree-value">{shape.value}</span>}{shape.badge && <span className="tree-badge">{shape.badge}</span>}</span>{shape.reason && <span className="tree-reason">{shape.reason}</span>}</button></li>
+    return <li className={`data-tree-node${picked === entry.node ? ' data-tree-picked' : ''}${shape.dimmed ? ' data-tree-dim' : ''}`} role="none" key={entry.key} style={{ '--tree-level': entry.level } as CSSProperties}><button className="tree-item" type="button" role="treeitem" data-tree-key={entry.key} aria-level={entry.level} aria-expanded={branch ? expanded.has(entry.key) : undefined} aria-selected={shape.pickable ? picked === entry.node : undefined} aria-disabled={!branch && !shape.pickable ? true : undefined} tabIndex={active === entry.key ? 0 : -1} onFocus={() => setActive(entry.key)} onClick={() => activate(entry)} onKeyDown={(event) => onKeyDown(event, entry)}><span className="tree-row">{shape.pickable && <span className="binding-dot" aria-hidden="true" />}<span className="tree-label">{entry.node.label}</span>{shape.marker && <span className="tree-marker">{shape.marker}</span>}{shape.value !== undefined && <span className="tree-value">{shape.value}</span>}{shape.badge && <span className="tree-badge">{shape.badge}</span>}</span>{shape.reason && <span className="tree-reason">{shape.reason}</span>}</button></li>
   })}</ul>
 }
 
-// THE ROW, DERIVED. Three refusals, each with the reason DESIGN.md:550 and :585
-// require next to anything dimmed — a bare grey-out is a violation, not a style.
-//
-// ⚠ THIS IS WHERE DW-350 IS CLOSED, AND IT IS THE ONLY PLACE. A collection DOES
-// carry a `segments` marker — `tableSampleCandidates` needs it for the Table
-// Editor's `Root collection` datalist, which is the ONE datalist still drawn
-// there: [D-14.10.1] took the per-column Row-field input and its
-// `table-field-candidates-N` list out of that dialog, so the plural in the
-// earlier spelling of this line named something that no longer exists — so
-// `pickable` refuses `collection` and `inCollection` by
-// KIND, never by the absence of the marker. An earlier spelling of this story
-// stripped the marker in `sample-data.ts` instead and emptied those datalists
-// for every template. Judging the kind here is a presentation choice about what
-// to offer; it leaves command legality exactly where D-6.2.1 put it.
-const rowFor = (entry: VisibleNode, scope?: ColumnBindScope): RowShape => {
+// Row offering is a presentation decision; Go still owns command admission.
+// Collection segments are retained for table discovery even in scalar mode.
+const rowFor = (entry: VisibleNode, scope: ColumnBindScope | undefined, collectionMode: boolean): RowShape => {
   const node = entry.node
   const collection = node.kind === 'collection'
   const runtime = entry.rootKey === 'params'
@@ -312,6 +299,26 @@ const rowFor = (entry: VisibleNode, scope?: ColumnBindScope): RowShape => {
                 : `Not a row field of ${scope.collection} · that is all a table column can bind.`,
     }
   }
+  if (collectionMode) {
+    const pickable = collection && !runtime && !scoped && node.segments !== undefined && node.segments.length > 0
+    return {
+      pickable,
+      dimmed: !pickable && node.children.length === 0,
+      marker: node.kind === 'object' ? '{ }' : undefined,
+      value: node.children.length === 0 ? valueText(node) : undefined,
+      reason: runtime
+        ? 'Runtime parameter · the engine refuses a params path as a data binding.'
+        : scoped
+          ? 'Inside a collection · a table requires a root collection.'
+          : collection
+            ? pickable
+              ? `Collection · ${node.count ?? 0} ${node.count === 1 ? 'item' : 'items'}. Pick to bind this table.`
+              : 'Collection · no complete root key path is available to bind this table.'
+            : node.children.length > 0
+              ? undefined
+              : 'A table binds a root collection, not a scalar or object.',
+    }
+  }
   return {
     pickable: node.segments !== undefined && !collection && !runtime && !scoped,
     // DESIGN.md:550 — a node that can be neither picked NOR expanded is
@@ -343,7 +350,7 @@ function flatten(root: SampleNode, expanded: ReadonlySet<string>): VisibleNode[]
   // have no way to say which namespace it belongs to.
   const visit = (node: SampleNode, level: number, parent: string | undefined, ordinal: number, rootKey: string | undefined, inCollection: boolean) => {
     const key = parent ? `${parent}/${keyFor(node, ordinal)}` : keyFor(node, ordinal); result.push({ node, level, key, parent, rootKey, inCollection })
-    if (node.children.length && expanded.has(key)) node.children.forEach((child, index) => visit(child, level + 1, key, index, rootKey ?? child.label, inCollection || node.kind === 'collection'))
+    if (node.children.length && expanded.has(key)) node.children.forEach((child, index) => visit(child, level + 1, key, index, rootKey ?? (child.kind === 'collection' ? child.label.slice(0, -2) : child.label), inCollection || node.kind === 'collection'))
   }
   visit(root, 1, undefined, 0, undefined, false); return result
 }

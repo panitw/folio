@@ -22,6 +22,214 @@ import (
 	"github.com/panitw/folio/folio-go/internal/template"
 )
 
+func TestBindTableCollectionPreservesEverythingElse(t *testing.T) {
+	input, err := os.ReadFile("../fixtures/statement-1/input.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, alias := range []string{"explicit", "absent"} {
+		t.Run(alias, func(t *testing.T) {
+			source := input
+			if alias == "absent" {
+				source = bytes.Replace(source, []byte(`, "as": "txn"`), nil, 1)
+				source = bytes.ReplaceAll(source, []byte("txn."), []byte("row."))
+			}
+			for _, segments := range [][]string{{"items"}, {"report", "transactions"}, {strings.Repeat("a", 65)}, {strings.Repeat("a", 120)}, {strings.Repeat("a", 254)}, strings.Split(strings.Repeat("a.", 126)+"a", "."), {strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64), strings.Repeat("d", 59)}} {
+				tpl, err := ParseTemplate(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, _ := SerializeTemplate(tpl)
+				keys, _ := json.Marshal(segments)
+				projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"bindTableCollection","version":1,"id":"e8","segments":`+string(keys)+`}`))
+				if err != nil {
+					t.Fatal(err)
+				}
+				collection := strings.Join(segments, ".") + "[]"
+				if got := canvasComponentByID(projection, "e8"); got == nil || got.TableBind == nil || *got.TableBind != collection {
+					t.Fatalf("collection projection = %#v, want %q", got, collection)
+				}
+				after, _ := SerializeTemplate(tpl)
+				want := bytes.Replace(before, []byte(`"bind": "transactions[]"`), []byte(`"bind": "`+collection+`"`), 1)
+				if !bytes.Equal(after, want) {
+					t.Fatalf("collection pick changed other document bytes: %s", after)
+				}
+				if _, err := TableColumns(tpl, "e8"); err != nil {
+					t.Fatalf("collection with derived/absent footer sources became uneditable: %v", err)
+				}
+				configured, _ := ParseTemplate(source)
+				aliasValue := "txn"
+				if alias == "absent" {
+					aliasValue = ""
+				}
+				if _, err := ApplyComponentCommand(configured, tableCollectionEditCommand("configureTableBinding", "e8", collection, aliasValue)); err != nil {
+					t.Fatalf("Configure columns rejected picker-admitted collection %q: %v", collection, err)
+				}
+				configuredBytes, _ := SerializeTemplate(configured)
+				if !bytes.Equal(after, configuredBytes) {
+					t.Fatal("picker and Configure columns produced different documents")
+				}
+			}
+		})
+	}
+}
+
+func TestBindTableCollectionRefusalsAreTransactional(t *testing.T) {
+	input, err := os.ReadFile("../fixtures/statement-1/input.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, id, segments string }{
+		{"missing", "e8", ""}, {"null", "e8", "null"}, {"empty", "e8", "[]"},
+		{"scalar", "e8", `"items"`}, {"typed", "e8", `[42]`}, {"null-key", "e8", `[null]`},
+		{"dot", "e8", `["a.b"]`}, {"empty-key", "e8", `[""]`},
+		{"unicode", "e8", `["สวัสดี"]`}, {"control", "e8", `["line\nbreak"]`},
+		{"array-index", "e8", `["items[0]","rows"]`}, {"array-marker", "e8", `["items[]"]`},
+		{"params", "e8", `["params"]`}, {"params-child", "e8", `["params","items"]`},
+		{"long-key", "e8", `["` + strings.Repeat("a", 255) + `"]`},
+		{"long-path", "e8", `["` + strings.Repeat("a", 64) + `","` + strings.Repeat("b", 64) + `","` + strings.Repeat("c", 64) + `","` + strings.Repeat("d", 60) + `"]`},
+		{"long-segmented-path", "e8", `["a"` + strings.Repeat(`,"a"`, 127) + `]`},
+		{"missing-table", "ez", `["items"]`}, {"text", "e5", `["items"]`}, {"image", "e1", `["items"]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tpl, err := ParseTemplate(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := SerializeTemplate(tpl)
+			command := `{"kind":"bindTableCollection","version":1,"id":"` + tc.id + `"`
+			if tc.segments != "" {
+				command += `,"segments":` + tc.segments
+			}
+			command += `}`
+			if _, err := ApplyComponentCommand(tpl, []byte(command)); err == nil {
+				t.Fatalf("unsupported collection succeeded: %s", command)
+			} else if tc.segments != "" {
+				var failure *ComponentCommandError
+				if !errors.As(err, &failure) || failure.ElementID != tc.id || (tc.id == "e8" && failure.DataPath != "table.collection") {
+					t.Fatalf("collection refusal was not located at its table and field: %v", err)
+				}
+			}
+			after, _ := SerializeTemplate(tpl)
+			if !bytes.Equal(before, after) {
+				t.Fatal("refusal changed canonical document")
+			}
+		})
+	}
+	for _, extra := range []string{`,"alias":"new"`, `,"collection":"other[]"`, `,"columnId":"e9"`} {
+		tpl, _ := ParseTemplate(input)
+		before, _ := SerializeTemplate(tpl)
+		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"bindTableCollection","version":1,"id":"e8","segments":["items"]`+extra+`}`)); err == nil {
+			t.Fatalf("extra collection command field succeeded: %s", extra)
+		}
+		after, _ := SerializeTemplate(tpl)
+		if !bytes.Equal(before, after) {
+			t.Fatal("extra-field refusal changed canonical document")
+		}
+	}
+}
+
+func tableCollectionEditCommand(kind, id, collection, alias string) []byte {
+	command := map[string]any{"kind": kind, "version": 1, "id": id}
+	if kind == "bindTableCollection" {
+		command["segments"] = strings.Split(strings.TrimSuffix(collection, "[]"), ".")
+	} else {
+		command["collection"], command["alias"] = collection, alias
+	}
+	encoded, _ := json.Marshal(command)
+	return encoded
+}
+
+func TestTableCollectionCommandsPreserveRelativeFooterSources(t *testing.T) {
+	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"bindTableCollection", "configureTableBinding"} {
+		for _, alias := range []string{"txn", ""} {
+			for _, collection := range []string{"items[]", "report.entries[]", "account.transactions[]"} {
+				t.Run(kind+"/"+alias+"/"+collection, func(t *testing.T) {
+					source := input
+					if alias == "" {
+						source = bytes.Replace(source, []byte(`, "as": "txn"`), nil, 1)
+						source = bytes.ReplaceAll(source, []byte("txn."), []byte("row."))
+					}
+					tpl, err := ParseTemplate(source)
+					if err != nil {
+						t.Fatal(err)
+					}
+					before, _ := SerializeTemplate(tpl)
+					if _, err := ApplyComponentCommand(tpl, tableCollectionEditCommand(kind, "e1", collection, alias)); err != nil {
+						t.Fatal(err)
+					}
+					after, _ := SerializeTemplate(tpl)
+					want := bytes.Replace(before, []byte(`"bind": "account.transactions[]"`), []byte(`"bind": "`+collection+`"`), 1)
+					want = bytes.ReplaceAll(want, []byte(`"footerOf": "account.transactions.`), []byte(`"footerOf": "`+strings.TrimSuffix(collection, "[]")+`.`))
+					if !bytes.Equal(after, want) {
+						t.Fatalf("collection change modified more than collection/footer prefixes: %s", after)
+					}
+					view, err := TableColumns(tpl, "e1")
+					if err != nil || view.Columns[0].Footer != "sum" || view.Columns[1].Footer != "avg" || view.Columns[2].FooterOf != "" || view.Columns[3].FooterOf != "" || view.Columns[4].FooterOf != "" {
+						t.Fatalf("footer sources lost their explicit/derived/absent forms: %#v, %v", view, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestTableCollectionFooterSourceBoundIsTransactional(t *testing.T) {
+	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"bindTableCollection", "configureTableBinding"} {
+		for _, tc := range []struct {
+			name       string
+			rootLength int
+			shortFirst bool
+			accept     bool
+		}{
+			{"exact-source-bound", 245, false, true},
+			{"source-overflow", 246, false, false},
+			{"later-source-overflow", 248, true, false},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				source := input
+				if tc.shortFirst {
+					source = bytes.Replace(source, []byte("account.transactions.totals.net"), []byte("account.transactions.net"), 1)
+				}
+				tpl, err := ParseTemplate(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, _ := SerializeTemplate(tpl)
+				collection := strings.Repeat("a", tc.rootLength) + "[]"
+				_, err = ApplyComponentCommand(tpl, tableCollectionEditCommand(kind, "e1", collection, "txn"))
+				if tc.accept {
+					if err != nil {
+						t.Fatal(err)
+					}
+					view, err := TableColumns(tpl, "e1")
+					if err != nil || len(view.Columns[0].FooterOf) != 256 {
+						t.Fatalf("exact source bound did not stay editable: %#v, %v", view, err)
+					}
+				} else {
+					var failure *ComponentCommandError
+					if !errors.As(err, &failure) || failure.ElementID != "e1" || failure.DataPath != "column.footerOf" {
+						t.Fatalf("over-limit source lacks a located refusal: %v", err)
+					}
+					after, _ := SerializeTemplate(tpl)
+					if !bytes.Equal(after, before) {
+						t.Fatal("source overflow changed the document")
+					}
+				}
+			})
+		}
+	}
+}
+
 func componentTemplate(t *testing.T) *Template {
 	t.Helper()
 	b, err := os.ReadFile("testdata/template/golden/worked-example.json")

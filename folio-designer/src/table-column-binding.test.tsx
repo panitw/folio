@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import App, { tableSampleCandidates } from './App'
 import { DataPanel } from './DataPanel'
 import { acceptSampleData } from './sample-data'
-import type { CanvasProjection, CanvasTableColumn } from './engine-protocol'
+import type { CanvasProjection, CanvasTableColumn, EngineSnapshot } from './engine-protocol'
 import type { EngineClient } from './engine-client'
 
 // STORY 14.10 — A TABLE COLUMN IS BOUND FROM THE MAIN WINDOW.
@@ -72,6 +72,126 @@ const openData = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA' })
 const treeRow = (label: string) => screen.getAllByRole('treeitem').find((node) => within(node).queryByText(label) !== null)
 const expand = (label: string) => { const row = treeRow(label); expect(row, `tree row ${label}`).toBeTruthy(); fireEvent.click(row!) }
 const openRowFields = () => { expand('transactions[]'); expand('item 1') }
+
+describe('a whole table is bound from the main window', () => {
+  const snapshotOf = (revision: number, collection = 'items[]'): EngineSnapshot => ({ documentState: 'loaded', revision, byteLength: 3, canvas: { ...canvas, components: [table([DATE, AMOUNT], collection), other] } })
+  const chooseTable = (container: Element) => { fireEvent.click(home(container).querySelector('.canvas-table-chip') as HTMLElement); openData() }
+
+  it('sends one collection command, paints the returned collection, and then offers only its column fields', async () => {
+    const sent: Sent = { commands: [] }
+    const engine = engineFor(sent)
+    const view = mount([table([DATE, AMOUNT], 'items[]'), other], engine)
+    chooseTable(view.container)
+    expect(screen.getByText('Current engine binding:')).toHaveTextContent('items[]')
+    fireEvent.click(treeRow('transactions[]')!)
+    await waitFor(() => expect(sent.commands).toHaveLength(1))
+    expect(sent.commands[0]).toBe('{"kind":"bindTableCollection","version":1,"id":"e7","segments":["transactions"]}')
+    await waitFor(() => expect(home(view.container).querySelector('.canvas-table-collection')).toHaveTextContent('transactions[]'))
+    expect(screen.getByText('Current engine binding:')).toHaveTextContent('transactions[]')
+    expect(columnSpans(view.container, 'e10').at(-1)).toHaveTextContent('{{row.date}}')
+    clickColumn(view.container, 'e11')
+    expect(screen.getByText('Column Amount selected · binding to a row field of transactions[]')).toBeInTheDocument()
+    expect(treeRow('transactions[]')).toHaveAttribute('aria-expanded', 'true')
+    expand('item 1')
+    fireEvent.click(treeRow('total')!)
+    expect(sent.commands).toHaveLength(1)
+    fireEvent.click(treeRow('debit')!)
+    await waitFor(() => expect(sent.commands).toHaveLength(2))
+    expect(sent.commands[1]).toBe('{"kind":"updateTableColumnBinding","version":1,"id":"e7","columnId":"e11","field":"debit"}')
+  })
+
+  it('shares the pending-binding latch with column and scalar picks and installs a committed result after reselection', async () => {
+    let resolve!: (value: { snapshot: EngineSnapshot }) => void
+    const commands: string[] = []
+    const request = vi.fn((operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command') {
+        commands.push(new TextDecoder().decode(payload))
+        return new Promise<{ snapshot: EngineSnapshot }>((done) => { resolve = done })
+      }
+      return Promise.resolve({ snapshot: snapshotOf(1, 'transactions[]') })
+    })
+    const view = mount([table(), other], { request })
+    chooseTable(view.container)
+    fireEvent.click(treeRow('transactions[]')!)
+    fireEvent.keyDown(treeRow('transactions[]')!, { key: ' ' })
+    expect(commands).toHaveLength(1)
+    clickColumn(view.container, 'e11')
+    fireEvent.keyDown(treeRow('transactions[]')!, { key: 'ArrowRight' })
+    expand('item 1')
+    expect(treeRow('debit')!.querySelector('.binding-dot')).not.toBeNull()
+    fireEvent.click(treeRow('debit')!)
+    fireEvent.click(homeOf(view.container, 'e2'))
+    fireEvent.click(treeRow('total')!)
+    expect(commands).toHaveLength(1)
+    resolve({ snapshot: snapshotOf(2, 'transactions[]') })
+    await waitFor(() => expect(home(view.container).querySelector('.canvas-table-collection')).toHaveTextContent('transactions[]'))
+    expect(homeOf(view.container, 'e2')).toHaveClass('canvas-component-selected')
+    expect(screen.queryByText('Asking the engine to bind the picked path…')).not.toBeInTheDocument()
+    fireEvent.click(treeRow('total')!)
+    expect(commands).toHaveLength(2)
+    expect(commands[1]).toBe('{"kind":"bindComponentScalar","version":1,"id":"e2","segments":["total"]}')
+    resolve({ snapshot: snapshotOf(3, 'transactions[]') })
+    await waitFor(() => expect(screen.queryByText('Asking the engine to bind the picked path…')).not.toBeInTheDocument())
+  })
+
+  it.each(['sample', 'selection', 'document'] as const)('drops a late collection refusal after %s replacement', async (replacement) => {
+    let reject!: (error: unknown) => void
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? new Promise<never>((_resolve, fail) => { reject = fail })
+      : Promise.resolve({ snapshot: snapshotOf(1) }))
+    const view = render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshotOf(1)} initialSampleData={sample()} blankBytes={new Uint8Array([7]).buffer} sampleFileAccess={{ openSample: async () => ({ name: 'replacement.json', bytes: new TextEncoder().encode(SAMPLE_JSON).buffer }) }} />)
+    chooseTable(view.container)
+    fireEvent.click(treeRow('transactions[]')!)
+    if (replacement === 'sample') {
+      fireEvent.click(screen.getByRole('button', { name: 'Replace sample JSON' }))
+      await screen.findByText('replacement.json')
+    } else if (replacement === 'selection') {
+      fireEvent.click(homeOf(view.container, 'e2'))
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      await screen.findByText('Started an unnamed local template')
+    }
+    reject({ elementId: 'e7', message: 'old collection refusal' })
+    await waitFor(() => expect(screen.queryByText('Asking the engine to bind the picked path…')).not.toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('does not install a late collection projection after document replacement', async () => {
+    let resolve!: (value: { snapshot: EngineSnapshot }) => void
+    const request = vi.fn((operation: string) => operation === 'command'
+      ? new Promise<{ snapshot: EngineSnapshot }>((done) => { resolve = done })
+      : Promise.resolve({ snapshot: snapshotOf(1) }))
+    const view = render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshotOf(1)} initialSampleData={sample()} blankBytes={new Uint8Array([7]).buffer} />)
+    chooseTable(view.container)
+    fireEvent.click(treeRow('transactions[]')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await screen.findByText('Started an unnamed local template')
+    resolve({ snapshot: snapshotOf(2, 'transactions[]') })
+    await Promise.resolve(); await Promise.resolve()
+    expect(home(view.container).querySelector('.canvas-table-collection')).toHaveTextContent('items[]')
+  })
+
+  it('does not discover row arrays or collections below truncated ancestor keys as root collections', () => {
+    const loaded = acceptSampleData('scopes.json', new TextEncoder().encode(JSON.stringify({ transactions: [{ ref: 1, nested: [{ forbidden: 2 }] }], ['x'.repeat(121)]: { nested: [{ hidden: 3 }] } })).buffer)
+    const scan = tableSampleCandidates(loaded.tree)
+    expect(scan.candidates).toEqual([{ collection: 'transactions[]', field: 'ref' }])
+    expect([...scan.byNode.values()]).toEqual(scan.candidates)
+  })
+
+  it('presents a collection-command refusal in DATA and retains the current engine binding', async () => {
+    const sent: Sent = { commands: [] }
+    const engine = engineFor(sent, 1, 'collection segments must be identifiers')
+    const sample = acceptSampleData('invalid-key.json', new TextEncoder().encode('{"a.b":[]}').buffer)
+    const view = render(<App engine={engine as unknown as EngineClient} initialSnapshot={snapshotOf(1)} initialSampleData={sample} />)
+    chooseTable(view.container)
+    fireEvent.click(treeRow('a.b[]')!)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('e7: collection segments must be identifiers')
+    expect(alert.closest('.data-panel')).not.toBeNull()
+    expect(sent.commands).toEqual(['{"kind":"bindTableCollection","version":1,"id":"e7","segments":["a.b"]}'])
+    expect(home(view.container).querySelector('.canvas-table-collection')).toHaveTextContent('items[]')
+  })
+})
 
 describe('a table column is bound from the main window', () => {
   it('makes a clicked column the column selection while the table stays the component selection', () => {
@@ -235,7 +355,7 @@ describe('a table column is bound from the main window', () => {
     // the table's own (unchanged) sentence.
     expect(screen.queryByText('Column Date selected · binding to a row field of transactions[]')).toBeNull()
     expect(screen.queryByText('Column')).toBeNull()
-    expect(screen.getByText('Table selected · a table binds its collection in the table editor, under Configure columns.')).toBeInTheDocument()
+    expect(screen.getByText('Table selected · pick a root collection to bind its rows.')).toBeInTheDocument()
   })
 
   it('says the table is bound to nothing rather than offering fields it cannot bind', () => {
@@ -283,8 +403,8 @@ describe('a table column is bound from the main window', () => {
   // SURVIVE INTO COLUMN MODE. It means "a table, not this text component, binds
   // a collection"; beside a sentence saying THIS TABLE's column cannot bind the
   // collection it contradicts its own row. The positive control is in the same
-  // row: drop the column selection and the badge comes straight back.
-  it('drops the TABLE ONLY badge in column mode and brings it back when the column selection goes', () => {
+  // row: select a text component and the badge comes straight back.
+  it('keeps TABLE ONLY out of column and whole-table modes and restores it for text', () => {
     const sent: Sent = { commands: [] }
     const view = mount([table(), other], engineFor(sent))
     clickColumn(view.container, 'e11')
@@ -293,8 +413,11 @@ describe('a table column is bound from the main window', () => {
     // The refusal itself is untouched — the badge left, the stated reason did not.
     expect(within(treeRow('transactions[]')!).getByText('Collection · a column binds one row field of transactions[], never a collection.')).toBeInTheDocument()
     // POSITIVE CONTROL: the same query finds the badge the moment the panel is
-    // back in scalar mode, so its absence above is a measurement.
+    // back in scalar mode, so its absence above is a measurement. Whole-table
+    // mode offers the collection and likewise has no TABLE ONLY badge.
     fireEvent.click(home(view.container).querySelector('.canvas-table-chip') as HTMLElement)
+    expect(within(treeRow('transactions[]')!).queryByText('TABLE ONLY')).not.toBeInTheDocument()
+    fireEvent.click(homeOf(view.container, 'e2'))
     expect(within(treeRow('transactions[]')!).getByText('TABLE ONLY')).toBeInTheDocument()
   })
 

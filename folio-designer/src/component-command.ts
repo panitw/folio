@@ -66,6 +66,10 @@ export function bindComponentScalarCommand(id: string, segments: ReadonlyArray<s
   return commandBytes('bindComponentScalar', [['id', jsonString(id)], ['segments', jsonArray(segments.map(jsonString))]])
 }
 
+export function bindTableCollectionCommand(id: string, segments: ReadonlyArray<string>): ArrayBuffer {
+  return commandBytes('bindTableCollection', [['id', jsonString(id)], ['segments', jsonArray(segments.map(jsonString))]])
+}
+
 // The query and final command use the same centrally encoded movement intent.
 export function moveComponentsCommand(ids: ReadonlyArray<string>, referenceId: string, dx: number, dy: number, snap: boolean, expectedRevision: number, constrainToWindow?: boolean): ArrayBuffer {
   return commandBytes('moveComponents', [['ids', jsonArray(ids.map(jsonString))], ['referenceId', jsonString(referenceId)], ['dx', millipoints(dx)], ['dy', millipoints(dy)], ['snap', jsonBoolean(snap)], ['expectedRevision', jsonNumber(expectedRevision)], ...(constrainToWindow === undefined ? [] : [['constrainToWindow', jsonBoolean(constrainToWindow)] as const])])

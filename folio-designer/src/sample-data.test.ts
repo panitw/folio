@@ -51,4 +51,19 @@ describe('bounded local sample discovery', () => {
     expect(acceptSampleData('deep.json', encode(deep)).truncated).toBe(true)
     expect(acceptSampleData('wide.json', encode(wide)).tree.children).toHaveLength(50)
   })
+
+  it('retains root collection segments for empty and populated arrays but never row arrays or truncated ancestor keys', () => {
+    const longKey = 'x'.repeat(121)
+    const accepted = acceptSampleData('collections.json', encode(JSON.stringify({ empty: [], report: { transactions: [{ amount: 1, children: [{ ref: 2 }] }] }, [longKey]: { hidden: [{ id: 3 }], empty: [] } })))
+    const [empty, report, truncated] = accepted.tree.children
+    expect(empty?.segments).toEqual(['empty'])
+    expect(report?.children[0]?.segments).toEqual(['report', 'transactions'])
+    const row = report?.children[0]?.children[0]
+    expect(row?.children.find((node) => node.label === 'amount')?.segments).toBeUndefined()
+    expect(row?.children.find((node) => node.kind === 'collection')?.segments).toBeUndefined()
+    expect(truncated?.children.map((node) => node.segments)).toEqual([undefined, undefined])
+    const rootArray = acceptSampleData('root.json', encode('[{"nested":[]}]')).tree
+    expect(rootArray.segments).toBeUndefined()
+    expect(rootArray.children[0]?.children[0]?.segments).toBeUndefined()
+  })
 })

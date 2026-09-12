@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindComponentScalarCommand, dropComponentCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
+import { bindComponentScalarCommand, bindTableCollectionCommand, dropComponentCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
 
 const text = (value: ArrayBuffer) => new TextDecoder().decode(value)
 
@@ -15,6 +15,11 @@ describe('opaque component commands', () => {
 
   it('encodes decoded picker segments with complete JSON escaping', () => {
     expect(text(bindComponentScalarCommand('e1', ['a.b', 'line\nbreak', '\u0000']))).toBe('{"kind":"bindComponentScalar","version":1,"id":"e1","segments":["a.b","line\\nbreak","\\u0000"]}')
+  })
+
+  it('transports collection keys verbatim, leaving grammar and alias ownership to Go', () => {
+    const segments = ['a.b', '', 'สวัสดี', 'line\nbreak', '\u0000', '"quoted"', '\\']
+    expect(JSON.parse(text(bindTableCollectionCommand('e"8', segments)))).toEqual({ kind: 'bindTableCollection', version: 1, id: 'e"8', segments })
   })
 })
 

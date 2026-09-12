@@ -271,6 +271,8 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return applyTableColumnCommand(t, raw, updateTableColumn)
 	case "configureTableBinding":
 		return applyTableColumnCommand(t, raw, configureTableBinding)
+	case "bindTableCollection":
+		return applyTableColumnCommand(t, raw, bindTableCollection)
 	case "updateTableColumnBinding":
 		return applyTableColumnCommand(t, raw, updateTableColumnBinding)
 	case "updateTableColumnFooter":
@@ -519,6 +521,71 @@ var rootCollectionPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z
 var boundedIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var rootValuePath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 
+// bindTableCollection accepts decoded sample keys without changing aliases or
+// column expressions. Explicit footer sources follow the collection while
+// retaining their row-relative fields.
+func bindTableCollection(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	var segments []string
+	if json.Unmarshal(raw["segments"], &segments) != nil || len(segments) == 0 {
+		return CanvasProjection{}, componentFailure(id, "table.collection", "collection segments must be a non-empty string array")
+	}
+	for _, segment := range segments {
+		// Check each decoded key before joining, so a key containing a dot can
+		// never be silently reinterpreted as multiple object keys.
+		if !boundedIdentifier.MatchString(segment) {
+			return CanvasProjection{}, componentFailure(id, "table.collection", "collection segments must be identifiers")
+		}
+	}
+	collection := strings.Join(segments, ".") + "[]"
+	if !validRootCollection(collection) {
+		return CanvasProjection{}, componentFailure(id, "table.collection", "collection must be a bounded root collection path ending in []")
+	}
+	_, _, _, element, err := findComponent(t, id)
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.id", "table was not found")
+	}
+	if element.Type != template.ElementTable || !element.Table.Set || element.Table.Null {
+		return CanvasProjection{}, componentFailure(id, "table.id", "component is not a table")
+	}
+	if err := setTableCollection(element, collection); err != nil {
+		return CanvasProjection{}, err
+	}
+	return Canvas(t)
+}
+
+func validRootCollection(collection string) bool {
+	return len(collection) <= maxCanvasBindingString && rootCollectionPath.MatchString(collection) && !strings.HasPrefix(collection, "params.") && collection != "params[]"
+}
+
+// Both collection-editing commands preserve explicit footer source fields.
+// Keep the resulting source within the TableColumns projection's bound so
+// an accepted edit cannot make Configure columns unavailable.
+func setTableCollection(element *template.Element, collection string) error {
+	table := &element.Table.Value
+	oldPrefix := strings.TrimSuffix(table.Bind, "[]") + "."
+	newPrefix := strings.TrimSuffix(collection, "[]") + "."
+	for index := range table.Columns {
+		source := &table.Columns[index].FooterOf
+		if !source.Set || source.Null {
+			continue
+		}
+		field, ok := strings.CutPrefix(source.Value, oldPrefix)
+		if !ok || len(newPrefix)+len(field) > maxCanvasBindingString {
+			return componentFailure(string(element.ID), "column.footerOf", "footer source must remain within the table collection and the 256-byte editor bound")
+		}
+		source.Value = newPrefix + field
+	}
+	table.Bind = collection
+	return nil
+}
+
 // configureTableBinding changes the two document-owned row-scope settings as
 // one candidate. An empty alias deliberately means the schema's absent `as`
 // form; render resolution supplies the established default alias, `row`.
@@ -531,7 +598,7 @@ func configureTableBinding(t *Template, raw map[string]json.RawMessage) (CanvasP
 		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
 	}
 	collection, err := commandString(raw, "collection")
-	if err != nil || len(collection) > 256 || !rootCollectionPath.MatchString(collection) || strings.HasPrefix(collection, "params.") || collection == "params[]" {
+	if err != nil || !validRootCollection(collection) {
 		return CanvasProjection{}, componentFailure(id, "table.collection", "collection must be a bounded root collection path ending in []")
 	}
 	aliasRaw, ok := raw["alias"]
@@ -565,7 +632,9 @@ func configureTableBinding(t *Template, raw map[string]json.RawMessage) (CanvasP
 			}
 		}
 	}
-	element.Table.Value.Bind = collection
+	if err := setTableCollection(element, collection); err != nil {
+		return CanvasProjection{}, err
+	}
 	if alias == "" {
 		element.Table.Value.As = template.Presence[string]{}
 	} else {

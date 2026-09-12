@@ -12,27 +12,9 @@ export type SampleNode = Readonly<{
   count?: number
   children: ReadonlyArray<SampleNode>
   truncated?: boolean
-  // JSON key segments are discovery data, not Folio expression text. They are
-  // supplied verbatim to the opaque engine command only for root scalar leaves.
-  //
-  // ⚠ A COLLECTION CARRIES `segments` AND MUST KEEP THEM. Story 14.6 briefly
-  // removed them here, reasoning that an EMPTY collection was reaching the data
-  // panel as an offered scalar candidate (DW-350) and that withholding the
-  // marker at the parser was the honest root fix. It is not: `segments` on a
-  // collection is CORRECT data with a second reader. `tableSampleCandidates`
-  // (`App.tsx`) is gated on `kind === 'collection' && segments?.length` and
-  // feeds the Table Editor's "Root collection" and "Row field" datalists, so
-  // removing them emptied that editor's discovery hints for every template —
-  // in the same story that started directing table authors into it. The rule
-  // "fix the source rather than each reader" holds only once you know who the
-  // readers are.
-  // DW-350 is closed one layer up instead, in `DataPanel.tsx`'s `rowFor`, which
-  // refuses any `kind === 'collection'` row INDEPENDENTLY of this marker. That
-  // is a presentation judgement about what to offer, not a claim about command
-  // legality: Go still ACCEPTS `segments:["items"]` by D-6.2.1, and
-  // `component_commands_test.go` anticipates exactly this panel when it calls
-  // the grammar legal "even though a picker would withhold an observed
-  // collection".
+  // Decoded keys are discovery data, never Folio syntax. Root-addressable
+  // scalar leaves and collections retain them; array rows and descendants of
+  // truncated keys do not. Go admits the exact keys sent by either picker.
   segments?: ReadonlyArray<string>
 }>
 export type SampleData = Readonly<{ bytes: ArrayBuffer; name: string; tree: SampleNode; truncated: boolean }>
@@ -110,11 +92,12 @@ class DiscoveryParser {
     return visible ? { kind: 'object', path, label, count, children, truncated: limited || undefined } : truncatedNode(path, label)
   }
 
-  private array(path: string, label: string, depth: number, visible: boolean, segments: ReadonlyArray<string>, _rootScoped: boolean): SampleNode {
+  private array(path: string, label: string, depth: number, visible: boolean, segments: ReadonlyArray<string>, rootScoped: boolean): SampleNode {
     this.expect('['); this.space()
     const collection = this.path(`${path} › []`)
     const children: SampleNode[] = []; let count = 0; let limited = collection.truncated; const collectionPath = collection.text
-    if (this.take(']')) return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, ...(segments.length ? { segments } : {}) } : truncatedNode(path, label)
+    const candidate = rootScoped && segments.length > 0 ? { segments } : {}
+    if (this.take(']')) return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, ...candidate } : truncatedNode(path, label)
     while (true) {
       count++
       const childVisible = visible && count <= SAMPLE_LIMITS.items
@@ -123,7 +106,7 @@ class DiscoveryParser {
       if (childVisible) children.push(child)
       this.space(); if (this.take(']')) break; this.expect(',')
     }
-    return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, truncated: limited || undefined, ...(segments.length ? { segments } : {}) } : truncatedNode(path, label)
+    return visible ? { kind: 'collection', path: collectionPath, label: `${label}[]`, count, children, truncated: limited || undefined, ...candidate } : truncatedNode(path, label)
   }
 
   // Validate and decode only a bounded prefix so a huge value/key does not

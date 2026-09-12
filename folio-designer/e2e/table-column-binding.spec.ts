@@ -35,7 +35,7 @@ const sample = readFileSync(path.join(fixtures, 'data.json'))
 // mis-binding is visible rather than plausible.
 const NOTE_COLUMN = 'ec'
 
-async function openFixture(page: Page): Promise<void> {
+async function openFixture(page: Page, sampleBytes = sample): Promise<void> {
   // THE FALLBACK FILE TIER, FORCED. Headless Chromium HAS the File System
   // Access API, so the app would call `showOpenFilePicker()` directly and emit
   // no `filechooser` event at all. Every passing spec that waits on one forces
@@ -50,7 +50,7 @@ async function openFixture(page: Page): Promise<void> {
   const sampleChooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
-  await (await sampleChooser).setFiles({ name: 'statement-data.json', mimeType: 'application/json', buffer: sample })
+  await (await sampleChooser).setFiles({ name: 'statement-data.json', mimeType: 'application/json', buffer: sampleBytes })
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
 }
 
@@ -72,6 +72,50 @@ const bodyCell = (page: Page, columnId: string) => page.locator(`.canvas-compone
 // on one proves nothing about the other.
 const unsetCell = (page: Page) => page.locator('.canvas-component:not(.canvas-component-echo) .canvas-table-grid .canvas-table-unset[data-column-id]')
 const markedColumns = (page: Page) => page.locator('.canvas-component:not(.canvas-component-echo) .canvas-table-column-selected')
+
+test('binds a whole table collection, preserves its columns, and binds a field from the new collection after one-step undo and redo', async ({ page }, testInfo) => {
+  test.setTimeout(180_000)
+  await openFixture(page, Buffer.from('{"transactions":[{"oldField":"old"}],"report":{"entries":[{"code":"next","amount":42}]}}'))
+  const table = page.getByRole('button', { name: /table component e8/ })
+  const collectionLabel = table.locator('.canvas-table-collection')
+  await expect(collectionLabel).toHaveText('transactions[]')
+  const originalBindings = await table.locator('.canvas-table-grid .canvas-table-cell').allTextContents()
+  const originalBox = await table.boundingBox()
+  expect(originalBox).not.toBeNull()
+  await clickCentre(page, table.locator('.canvas-table-chip'))
+  await expect(markedColumns(page)).toHaveCount(0)
+  await expect(page.locator('.data-context')).toHaveText('Table selected · pick a root collection to bind its rows.')
+  const tree = page.getByRole('tree', { name: 'Sample data paths' })
+  await tree.getByRole('treeitem').filter({ hasText: /^report/ }).click()
+  const entries = tree.getByRole('treeitem').filter({ hasText: /^entries\[\]/ })
+  const before = await revision(page)
+  await entries.click()
+  await expect(collectionLabel).toHaveText('report.entries[]')
+  await expect.poll(() => revision(page)).toBe(before + 1)
+  await expect(page.locator('.binding-status')).toContainText('Current engine binding: report.entries[]')
+  await expect(entries).toHaveAttribute('aria-expanded', 'true')
+  expect(await table.locator('.canvas-table-grid .canvas-table-cell').allTextContents()).toEqual(originalBindings)
+  expect(await table.boundingBox()).toEqual(originalBox)
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(collectionLabel).toHaveText('transactions[]')
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(collectionLabel).toHaveText('report.entries[]')
+  expect(await table.locator('.canvas-table-grid .canvas-table-cell').allTextContents()).toEqual(originalBindings)
+
+  await clickCentre(page, heading(page, NOTE_COLUMN))
+  await expect(page.locator('.data-context')).toHaveText('Column Note selected · binding to a row field of report.entries[]')
+  await tree.getByRole('treeitem').filter({ hasText: /^transactions\[\]/ }).click()
+  await tree.getByRole('treeitem').filter({ hasText: /^item 1/ }).first().click()
+  const oldField = tree.getByRole('treeitem').filter({ hasText: /^oldField/ })
+  await expect(oldField).toHaveAttribute('aria-disabled', 'true')
+  await tree.getByRole('treeitem').filter({ hasText: /^item 1/ }).last().click()
+  const code = tree.getByRole('treeitem').filter({ hasText: /^code/ })
+  await expect(code).not.toHaveAttribute('aria-disabled', 'true')
+  await code.click()
+  await expect(bodyCell(page, NOTE_COLUMN)).toHaveText('{{txn.code}}')
+  await expect(collectionLabel).toHaveText('report.entries[]')
+  await page.screenshot({ path: testInfo.outputPath('collection-and-column-binding.png'), fullPage: true })
+})
 
 test('binds a table column from the main window: click the column, pick its row field', async ({ page }) => {
   test.setTimeout(180_000)

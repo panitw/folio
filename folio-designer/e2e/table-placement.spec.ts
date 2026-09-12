@@ -1,4 +1,89 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function revision(page: Page): Promise<number> {
+  const text = await page.getByTestId('engine-snapshot').textContent()
+  const match = text?.match(/REVISION (\d+)/)
+  if (!match) throw new Error(`could not read engine revision from ${text}`)
+  return Number(match[1])
+}
+
+test('maps a freshly placed items table to the sample transactions array from DATA', async ({ page }, testInfo) => {
+  await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
+  await page.goto('/')
+  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  await page.getByRole('button', { name: 'Place Table' }).click()
+  await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 120, y: 96 } })
+  const table = page.getByRole('button', { name: /table component/ })
+  await expect(table).toHaveClass(/canvas-component-selected/)
+  const label = table.locator('.canvas-table-collection')
+  await expect(label).toHaveText('items[]')
+  const originalBox = await table.boundingBox()
+  const originalColumn = await table.locator('[data-column-id]').first().getAttribute('data-column-id')
+  await page.getByRole('tab', { name: 'DATA' }).click()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Load sample JSON' }).click()
+  await (await chooser).setFiles({ name: 'transactions.json', mimeType: 'application/json', buffer: Buffer.from('{"transactions":[{"ref":"A"}],"adjustments":[{"ref":"B"}],"refunds":[{"ref":"C"}]}') })
+  const transactions = page.getByRole('treeitem').filter({ hasText: /^transactions\[\]/ })
+  await transactions.click()
+  await expect(label).toHaveText('transactions[]')
+  expect(await table.boundingBox()).toEqual(originalBox)
+  await expect(table.locator('[data-column-id]').first()).toHaveAttribute('data-column-id', originalColumn!)
+  await expect(table.locator('.canvas-table-grid .canvas-table-unset')).toHaveText('Not set')
+  await page.screenshot({ path: testInfo.outputPath('fresh-table-collection-binding.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(label).toHaveText('items[]')
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(label).toHaveText('transactions[]')
+
+  // Real focus and native key events exercise the button defaults as well as
+  // the tree handler. History clears selection, so first select the whole table.
+  await table.focus()
+  await page.keyboard.press('Enter')
+  const root = page.getByRole('tree', { name: 'Sample data paths' }).getByRole('treeitem').first()
+  await root.focus()
+  await expect(root).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(transactions).toBeFocused()
+  await page.keyboard.press('ArrowLeft')
+  await expect(transactions).toHaveAttribute('aria-expanded', 'false')
+  await page.keyboard.press('ArrowDown')
+  const adjustments = page.getByRole('treeitem').filter({ hasText: /^adjustments\[\]/ })
+  await expect(adjustments).toBeFocused()
+  // Browse an array the table is not bound to, so an accidental bind cannot
+  // hide as a history-neutral repeat of the current collection.
+  const beforeBrowsing = await revision(page)
+  await page.keyboard.press('ArrowRight')
+  await expect(adjustments).toHaveAttribute('aria-expanded', 'true')
+  await page.keyboard.press('ArrowLeft')
+  await expect(adjustments).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByText('Asking the engine to bind the picked path…')).toHaveCount(0)
+  expect(await revision(page)).toBe(beforeBrowsing)
+  await expect(label).toHaveText('transactions[]')
+
+  for (const [key, collection, previous] of [['Enter', 'adjustments[]', 'transactions[]'], ['Space', 'refunds[]', 'adjustments[]']] as const) {
+    const before = await revision(page)
+    await page.keyboard.press(key)
+    await expect(label).toHaveText(collection)
+    await expect.poll(() => revision(page)).toBe(before + 1)
+    await expect(page.getByRole('treeitem').filter({ hasText: new RegExp(`^${collection.replace('[]', '\\[\\]')}`) })).toHaveAttribute('aria-expanded', 'true')
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(label).toHaveText(previous)
+    await page.getByRole('button', { name: 'Redo', exact: true }).click()
+    await expect(label).toHaveText(collection)
+    if (key === 'Enter') {
+      await table.focus()
+      await page.keyboard.press('Enter')
+      await root.focus()
+      await page.keyboard.press('ArrowDown')
+      await expect(transactions).toBeFocused()
+      await page.keyboard.press('ArrowDown')
+      await expect(adjustments).toBeFocused()
+      await page.keyboard.press('ArrowLeft')
+      await page.keyboard.press('ArrowDown')
+      await expect(page.getByRole('treeitem').filter({ hasText: /^refunds\[\]/ })).toBeFocused()
+    }
+  }
+})
 
 for (const snap of [false, true]) {
   test(`a pointer-placed table fills content with one blank editable column (snap=${snap})`, async ({ page }, testInfo) => {

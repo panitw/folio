@@ -37,6 +37,98 @@ const imageCanvas = { ...canvas, components: [{ id: 'e1', type: 'image' as const
 const openDataTab = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
 const settleFrames = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() }
 
+describe('whole-table collection picks', () => {
+  const row = (label: string) => screen.getAllByRole('treeitem').find((item) => item.querySelector('.tree-label')?.textContent === label)!
+  const collections = () => acceptSampleData('collections.json', new TextEncoder().encode('{"items":[],"report":{"transactions":[{"ref":"A","nested":[{"id":1}]}]},"value":12}').buffer)
+  const panel = (sample = collections(), props: Partial<React.ComponentProps<typeof DataPanel>> = {}) => <DataPanel sample={sample} busy={false} available selectedComponentId="e1" selectedComponentType="table" onLoad={() => undefined} {...props} />
+
+  it.each(['click', 'Enter', ' '] as const)('binds populated and empty root-addressable arrays with %s, and activation toggles disclosure', (gesture) => {
+    const onConnect = vi.fn()
+    render(panel(collections(), { onConnect }))
+    const activate = (node: HTMLElement) => gesture === 'click' ? fireEvent.click(node) : fireEvent.keyDown(node, { key: gesture })
+    expect(screen.getByText('Table selected · pick a root collection to bind its rows.')).toBeInTheDocument()
+    expect(screen.queryByText('TABLE ONLY')).not.toBeInTheDocument()
+    activate(row('items[]'))
+    expect(onConnect.mock.calls).toEqual([[['items']]])
+    fireEvent.click(row('report'))
+    const transaction = row('transactions[]')
+    expect(transaction).toHaveAttribute('aria-expanded', 'false')
+    activate(transaction)
+    expect(transaction).toHaveAttribute('aria-expanded', 'true')
+    expect(onConnect.mock.calls).toEqual([[['items']], [['report', 'transactions']]])
+    activate(transaction)
+    expect(transaction).toHaveAttribute('aria-expanded', 'false')
+    expect(onConnect).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps arrow navigation browsing-only and withholds scalars and row arrays', () => {
+    const onConnect = vi.fn()
+    render(panel(collections(), { onConnect }))
+    fireEvent.click(row('value'))
+    fireEvent.click(row('report'))
+    const transaction = row('transactions[]')
+    fireEvent.keyDown(transaction, { key: 'ArrowRight' })
+    expect(transaction).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.keyDown(row('item 1'), { key: 'ArrowRight' })
+    fireEvent.click(row('ref'))
+    const nested = row('nested[]')
+    expect(nested).toHaveTextContent('Inside a collection · a table requires a root collection.')
+    expect(nested.querySelector('.binding-dot')).toBeNull()
+    fireEvent.click(nested)
+    expect(nested).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.keyDown(transaction, { key: 'ArrowLeft' })
+    expect(transaction).toHaveAttribute('aria-expanded', 'false')
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['runtime array', '{"params":[{"nested":[]}]}', 'params[]', 'Runtime parameter'],
+    ['runtime descendant', '{"params":{"nested":[]}}', 'nested[]', 'Runtime parameter'],
+    ['root array', '[{"nested":[]}]', '$[]', 'no complete root key path'],
+    ['truncated ancestor', JSON.stringify({ ['x'.repeat(121)]: { nested: [] } }), 'nested[]', 'no complete root key path'],
+  ])('explains unavailable %s binding while keeping browsing possible', (_name, json, label, reason) => {
+    const onConnect = vi.fn()
+    render(panel(acceptSampleData('scope.json', new TextEncoder().encode(json).buffer), { onConnect }))
+    if (!screen.getAllByRole('treeitem').some((item) => within(item).queryByText(label))) fireEvent.click(screen.getAllByRole('treeitem')[1]!)
+    const target = row(label)
+    expect(target).toHaveTextContent(reason)
+    expect(target.querySelector('.binding-dot')).toBeNull()
+    fireEvent.click(target)
+    fireEvent.keyDown(target, { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { selectedComponentType: 'text' as const }, { selectedComponentType: 'image' as const },
+    { selectedComponentType: 'line' as const }, { selectedComponentType: 'rect' as const },
+    { selectedComponentType: undefined }, { selectedComponentId: undefined },
+    { bindingBusy: true }, { onConnect: undefined },
+  ])('never dispatches a collection without an available whole-table target: %j', (props) => {
+    const onConnect = vi.fn()
+    render(panel(collections(), { onConnect, ...props }))
+    fireEvent.click(row('items[]'))
+    fireEvent.click(row('report'))
+    fireEvent.keyDown(row('transactions[]'), { key: 'Enter' })
+    expect(onConnect).not.toHaveBeenCalled()
+  })
+
+  it.each(['a.b', '', 'สวัสดี', 'line\nbreak'])('keeps decoded key %j intact for Go and scopes the located refusal to that pick', (key) => {
+    const sample = acceptSampleData('keys.json', new TextEncoder().encode(JSON.stringify({ [key]: [], other: [] })).buffer)
+    const onConnect = vi.fn()
+    const bindingError = { sample, componentID: 'e1', segments: [key], message: 'e1: collection segments must be identifiers' }
+    const view = render(panel(sample, { onConnect, bindingError }))
+    fireEvent.click(row(`${key}[]`))
+    expect(onConnect).toHaveBeenCalledWith([key])
+    expect(screen.getByRole('alert').closest('.data-panel')).not.toBeNull()
+    view.rerender(panel(sample, { onConnect, bindingError, selectedComponentId: 'e2' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    view.rerender(panel(sample, { onConnect, bindingError }))
+    expect(screen.getByRole('alert')).toHaveTextContent('e1: collection segments')
+    fireEvent.click(row('other[]'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
 describe('docked sample data panel', () => {
   it('keeps authoring available when empty, loads a tree, keeps accepted bytes authoritative, and preserves a prior sample on cancel', async () => {
     const openSample = vi.fn<SampleFileAccess['openSample']>().mockResolvedValueOnce({ name: 'sample.json', bytes: sampleBytes }).mockRejectedValueOnce(new FileAccessCancelled()).mockResolvedValueOnce({ name: 'replacement.json', bytes: replacementBytes })
@@ -226,8 +318,8 @@ describe('docked sample data panel', () => {
 // WHAT IS NEW. The reason now appears in a context bar ABOVE the tree, so it is
 // read BEFORE any pick rather than after one (DW-352 — 14.4 still told every
 // author to "choose an offered root scalar path" first). And a Table is no
-// longer told the binding is unavailable: a table legally binds a collection,
-// just not here, so the bar names the table editor (DW-353).
+// longer told the binding is unavailable: a table legally binds a collection.
+// Whole-table collection picks now happen here in DATA as well.
 describe('the data panel states what a pick would bind before the pick', () => {
   const pickCustomerName = () => {
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.textContent?.startsWith('customer'))!)
@@ -259,10 +351,9 @@ describe('the data panel states what a pick would bind before the pick', () => {
     ['line', lineCanvas, 'Line selected · only text components can receive a scalar binding.'],
     ['rect', rectCanvas, 'Rectangle selected · only text components can receive a scalar binding.'],
     ['image', imageCanvas, 'Image selected · only text components can receive a scalar binding.'],
-    // DW-353. A table is NOT told "binding unavailable": it legally takes a
-    // collection through the table editor, and the bar says where.
-    ['table', tableCanvas, 'Table selected · a table binds its collection in the table editor, under Configure columns.'],
-  ])('states a selected %s\'s refusal before any pick, and dispatches nothing for the gesture', async (kind, fixture, message) => {
+    // A table invites a collection pick while continuing to refuse scalars.
+    ['table', tableCanvas, 'Table selected · pick a root collection to bind its rows.'],
+  ])('states a selected %s\'s binding context and dispatches nothing for a scalar gesture', async (kind, fixture, message) => {
     const request = openApp(fixture)
     fireEvent.click(screen.getByLabelText(new RegExp(`^${kind} component e1`)))
     // ⚠ DW-352, AND THE ORDER IS THE POINT. This assertion runs BEFORE any tree
@@ -447,11 +538,9 @@ describe('the data tab is the binding panel the design drew', () => {
     expect(onConnect).not.toHaveBeenCalled()
   })
 
-  // ⚠ DW-350 — THE ONE CASE GO ACCEPTS AND THE RENDER THEN FAILS. An empty
-  // collection has no children, so nothing about "it expands instead" saved it:
-  // the panel offered it as a scalar candidate, Go canonicalised the command,
-  // and `internal/bind/text.go` failed at render.
-  it('sends no bind command for an empty collection, by click or by Enter', () => {
+  // Empty collections remain unavailable to text, while whole-table mode
+  // offers the same retained collection segments.
+  it('sends no scalar bind command for an empty collection, by click or by Enter', () => {
     const onConnect = showTree(emptyCollectionSample())
     const items = rowFor('items[]')
     expect(items).toHaveTextContent('Collection · 0 items. Text cannot bind a collection.')
@@ -460,16 +549,13 @@ describe('the data tab is the binding panel the design drew', () => {
     fireEvent.keyDown(items, { key: 'Enter' })
     fireEvent.keyDown(items, { key: ' ' })
     expect(onConnect).not.toHaveBeenCalled()
-    // ⚠ AND THE REFUSAL IS THE PANEL'S ALONE, WHICH IS THE POINT. A collection
-    // still CARRIES its `segments` marker — `tableSampleCandidates` needs it for
-    // the Table Editor's datalists — so this row proves the panel refuses by
-    // KIND. An earlier spelling stripped the marker in `sample-data.ts` and
-    // emptied those datalists for every template while every test stayed green.
+    // Retain collection segments for whole-table picks and table discovery.
+    // The scalar-mode refusal depends on node kind, not absent segments.
     expect(emptyCollectionSample().tree.children[0]!.segments).toEqual(['items'])
     expect(collectionSample().tree.children[0]!.segments).toEqual(['transactions'])
   })
 
-  // FENCE — "the collection row is not pickable", with the marker ADDED BACK at
+  // FENCE — "the collection row is not pickable in scalar mode", with the marker ADDED BACK at
   // the source the story fixed. Reverting `sample-data.ts` alone must not
   // restore the offer, which is why `rowFor`'s rule names `collection`
   // explicitly rather than trusting the absence of `segments`.
