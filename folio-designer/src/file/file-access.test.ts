@@ -93,6 +93,30 @@ describe('local file access boundary', () => {
     expect(picker.showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({ suggestedName: 'old.folio' }))
   })
 
+  // THE BROWSER ALREADY NAMED THE PROBLEM; THE BOUNDARY MUST NOT UNNAME IT.
+  //
+  // Every throw here used to collapse to the bare sentence "Could not save
+  // local file", so a save that failed on alternate attempts looked identical
+  // to one that failed because permission had lapsed. `NoModificationAllowed`
+  // (the file is locked, usually by the previous writable or a sync client)
+  // and `NotAllowed` (the grant is gone) are different problems with different
+  // fixes, and an author photographing the bar could distinguish neither.
+  it('carries the browser\'s own name for a failed write into the reported sentence', async () => {
+    const locked: LocalFileHandle = { name: 'locked.folio', getFile: async () => file(), createWritable: async () => { throw new DOMException('The file is locked', 'NoModificationAllowedError') } }
+    const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn() })
+    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio', currentTarget: { kind: 'in-place', name: locked.name, handle: locked }, saveAs: false, format: folioFileFormat })
+    await expect(access.writeSave(target, { bytes })).rejects.toThrow('Could not save local file: NoModificationAllowedError: The file is locked')
+  })
+
+  // An abort is this boundary's own vocabulary, not an unanticipated throw, so
+  // it stays a cancellation and grows no cause.
+  it('still reports a native abort as a cancellation rather than a described failure', async () => {
+    const aborted: LocalFileHandle = { name: 'cancelled.folio', getFile: async () => file(), createWritable: async () => { throw new DOMException('cancel', 'AbortError') } }
+    const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn() })
+    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio', currentTarget: { kind: 'in-place', name: aborted.name, handle: aborted }, saveAs: false, format: folioFileFormat })
+    await expect(access.writeSave(target, { bytes })).rejects.toThrow('Local file selection was cancelled')
+  })
+
   it('keeps each denied, stale, write, and close failure as a failed local save', async () => {
     const failedHandles: LocalFileHandle[] = [
       { name: 'denied.folio', getFile: async () => file(), createWritable: async () => { throw new Error('denied') } },

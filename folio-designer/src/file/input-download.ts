@@ -1,4 +1,4 @@
-import { FileAccessCancelled, FileAccessFailure, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
+import { FileAccessCancelled, fileFailureFor, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
 
 export type DownloadUrl = Readonly<{
   createObjectURL(object: Blob): string
@@ -28,7 +28,7 @@ export class InputDownloadAccess implements FileAccess {
         const file = input.files?.item(0)
         cleanup()
         if (!file) { reject(new FileAccessCancelled()); return }
-        void file.arrayBuffer().then((bytes) => resolve({ bytes, name: file.name }), () => reject(new FileAccessFailure('Could not open local file')))
+        void file.arrayBuffer().then((bytes) => resolve({ bytes, name: file.name }), (thrown) => reject(fileFailureFor(thrown, 'Could not open local file')))
       }, { once: true })
       input.addEventListener('cancel', () => { cleanup(); reject(new FileAccessCancelled()) }, { once: true })
       this.document.body.append(input)
@@ -57,8 +57,8 @@ export class InputDownloadAccess implements FileAccess {
       this.document.body.append(anchor)
       anchor.click()
       return { name: target.name }
-    } catch {
-      throw new FileAccessFailure('Could not download local file')
+    } catch (thrown) {
+      throw fileFailureFor(thrown, 'Could not download local file')
     } finally {
       anchor?.remove()
       if (href) queueMicrotask(() => this.url.revokeObjectURL(href!))

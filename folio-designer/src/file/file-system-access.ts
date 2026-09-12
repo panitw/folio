@@ -1,4 +1,4 @@
-import { FileAccessCancelled, FileAccessFailure, folioFileFormat, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileFormat, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
+import { FileAccessCancelled, FileAccessFailure, fileFailureFor, folioFileFormat, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileFormat, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
 
 export type FileSystemPicker = Readonly<{
   showOpenFilePicker(options: OpenPickerOptions): Promise<ReadonlyArray<LocalFileHandle>>
@@ -61,5 +61,5 @@ export class FileSystemAccess implements FileAccess {
 function localFailure(error: unknown, fallback: string): Error {
   if (error instanceof FileAccessCancelled) return error
   if (error instanceof DOMException && error.name === 'AbortError') return new FileAccessCancelled()
-  return new FileAccessFailure(fallback)
+  return fileFailureFor(error, fallback)
 }

@@ -75,7 +75,18 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    `z-index: 10` sits above the workbench it overhangs and BELOW the two
    backdrops at 20, so a modal still covers it. */
 .bar-message { position: absolute; z-index: 10; top: calc(100% + var(--space-1)); left: 0; max-width: 100%; overflow: hidden; padding: 2px var(--space-2); border: var(--hairline) solid var(--color-line); border-radius: var(--radius-default); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); white-space: nowrap; text-overflow: ellipsis; }
-.bar-message-alert { border-color: var(--color-bind); color: var(--color-ink-high); }
+/* THE ALERT IS GIVEN MORE ROOM THAN THE STATUS, AND STILL ONE LINE.
+   An alert now carries the browser's own words for what stopped a write —
+   `NoModificationAllowedError` and `NotAllowedError` are different problems
+   with different fixes — so it is the message worth the width. It is NOT
+   allowed to wrap: `canvas-authority-contract.test.ts:46` bans
+   `white-space: normal` and `overflow-wrap: anywhere` across this file, because
+   text layout is the engine's authority and not the browser's, and that rule
+   carries no chrome exception. `white-space: nowrap` is outside the ban and is
+   what both messages use; the `title` on the node holds whatever the width
+   cannot, so nothing the browser said is actually lost.
+   Absolutely positioned, so the extra width costs the bar's layout nothing. */
+.bar-message-alert { max-width: min(64ch, 50vw); width: max-content; border-color: var(--color-bind); color: var(--color-ink-high); }
 .file-button { min-height: var(--status-bar-height); padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
 .file-button:disabled { color: var(--color-ink); cursor: not-allowed; }
 .later-control { margin-left: auto; color: var(--color-ink); }

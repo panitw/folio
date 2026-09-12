@@ -10,7 +10,7 @@ import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { BrandMark } from './BrandMark'
 import type { BindingErrorScope } from './DataPanel'
-import { folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
+import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
@@ -2400,6 +2400,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
+  // THE BOUNDARY'S OWN SENTENCE WINS OVER THIS FUNCTION'S FALLBACK.
+  //
+  // A `FileAccessFailure` already reads "<what was being done>: <what the
+  // browser called the throw>" (`fileFailureFor` in file/file-access.ts), so
+  // replacing it with the generic sentence here would re-erase, one layer up,
+  // exactly the evidence that layer was changed to keep. Anything else — an
+  // engine rejection, a serialize that produced no bytes, an abort deadline —
+  // is not a file-boundary failure and gets the plain sentence it always got.
+  const fileFailureSentence = (error: unknown, fallback: string) => error instanceof FileAccessFailure && error.message ? error.message : fallback
   const revokeSampleLoad = () => { sampleLoadGeneration.current++; setSampleBusy(false) }
   const clearSampleData = () => {
     revokeSampleLoad()
@@ -2454,7 +2463,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
-      else announceFailure('Could not open local file')
+      else announceFailure(fileFailureSentence(error, 'Could not open local file'))
     } finally { setFileBusy(false) }
   }
 
@@ -2478,7 +2487,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       setFileStatus(wroteCurrentRevision ? (saved.target ? `Saved locally as ${saved.name}` : `Downloaded local file ${saved.name}`) : `Saved revision ${serialized.snapshot.revision}; newer local changes need saving`)
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
-      else announceFailure('Could not save local file')
+      else announceFailure(fileFailureSentence(error, 'Could not save local file'))
     } finally { saveInFlight.current = false; setFileBusy(false) }
   }
 
@@ -2606,7 +2615,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       setFileStatus(saved.target ? `Saved PDF of ${revision} as ${saved.name}` : `Downloaded PDF of ${revision} as ${saved.name}`)
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
-      else announceFailure('Could not save the preview PDF')
+      else announceFailure(fileFailureSentence(error, 'Could not save the preview PDF'))
     } finally { exportInFlight.current = false; setFileBusy(false) }
   }
 

@@ -66,6 +66,36 @@ export function isFileAccessCancelled(error: unknown): error is FileAccessCancel
   return error instanceof FileAccessCancelled
 }
 
+// WHAT THREW, IN ONE BOUNDED PHRASE — the same ruling `engine.worker.ts` makes
+// at its own boundary, for the same reason, arrived at the same way.
+//
+// Every tier here used to collapse an unanticipated throw into one fixed
+// sentence: `new FileAccessFailure('Could not save local file')`, with the
+// DOMException's `name` and `message` dropped on the floor. That sentence is
+// the least useful in the product. It is never a refusal this code authored —
+// a cancel is already its own type — so it fires exactly when nobody
+// anticipated the failure, and it is exactly then that it erases the only
+// evidence there is. A save that fails on alternate attempts reads as "Could
+// not save local file" both times, and an author can photograph that screen
+// all day without anyone being able to say whether the file was locked, the
+// permission had lapsed, or the disk was full. `NoModificationAllowedError`
+// and `NotAllowedError` are different problems with different fixes, and the
+// browser had already named which one it was.
+//
+// The cause is bounded rather than trusted: it is a string this code did not
+// author — a DOM exception's, or V8's — so it is cut like every other foreign
+// string that crosses a boundary in this application.
+export function describeFileThrow(thrown: unknown): string {
+  if (thrown instanceof DOMException) return `${thrown.name}: ${thrown.message}`.slice(0, 200)
+  if (thrown instanceof Error) return `${thrown.name || 'Error'}: ${thrown.message}`.slice(0, 200)
+  if (typeof thrown === 'string') return thrown.slice(0, 200)
+  return Object.prototype.toString.call(thrown).slice(0, 200)
+}
+
+// The sentence an author reads: what this boundary was doing, then what the
+// browser called the thing that stopped it.
+export const fileFailureFor = (thrown: unknown, doing: string): FileAccessFailure => new FileAccessFailure(`${doing}: ${describeFileThrow(thrown)}`)
+
 // THE LOCAL FILE FORMAT, AND WHY IT IS ONE VALUE RATHER THAN THREE CONSTANTS.
 //
 // A save has exactly three format-shaped facts: the picker's own description,

@@ -9,7 +9,7 @@ import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
 import { shippedFamilyEntry } from './shipped-face-cuts'
-import { FileAccessCancelled, folioFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
+import { FileAccessCancelled, FileAccessFailure, folioFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
 import { FileSystemAccess } from './file/file-system-access'
 import { InputDownloadAccess } from './file/input-download'
 import type { EngineClient } from './engine-client'
@@ -2348,6 +2348,33 @@ describe('application shell', () => {
       // The wedge changed nothing about the session it failed to replace.
       expect(screen.getByText('Untitled template')).toBeInTheDocument()
     } finally { vi.useRealTimers() }
+  })
+
+  // A DESCRIBED BOUNDARY FAILURE REACHES THE AUTHOR INTACT.
+  //
+  // `fileFailureFor` builds "<what was being done>: <what the browser called
+  // the throw>" at the file boundary; the catch here must not overwrite that
+  // with its own generic sentence, or the evidence is erased one layer above
+  // where it was preserved. Anything that is NOT a file-boundary failure still
+  // gets the plain sentence — the second half of this test.
+  it('reports the file boundary\'s own sentence, and keeps the plain one for everything else', async () => {
+    const files: FileAccess = {
+      open: vi.fn(),
+      acquireSaveTarget: vi.fn(async () => ({ name: 'locked.folio', format: folioFileFormat })),
+      writeSave: vi.fn()
+        .mockRejectedValueOnce(new FileAccessFailure('Could not save local file: NoModificationAllowedError: The file is locked'))
+        .mockRejectedValueOnce(new Error('something else entirely')),
+    }
+    render(<App engine={engine()} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
+    const save = screen.getByRole('button', { name: 'Save local template' })
+
+    fireEvent.click(save)
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('NoModificationAllowedError: The file is locked'))
+
+    fireEvent.click(save)
+    await waitFor(() => expect(files.writeSave).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save local file')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('something else entirely')
   })
 
   // The sentence explaining a file action belongs with the buttons it explains.
