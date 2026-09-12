@@ -1250,7 +1250,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
    Its transparent layer cannot intercept body selection or armed placement. */
 .canvas-selection-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
 .canvas-selection-chrome { position: absolute; left: var(--component-x); top: var(--component-y); width: max(2px, var(--component-width)); height: max(2px, var(--chrome-visible-height)); pointer-events: none; color: var(--color-page-ink); font: var(--type-page-mono); }
-.canvas-selection-chrome::after { height: var(--chrome-visible-height); content: ''; position: absolute; inset: 0; border: var(--hairline) solid var(--color-select); pointer-events: none; }
+/* Include the border in the projected height so it aligns with the bottom grips. */
+.canvas-selection-chrome::after { box-sizing: border-box; height: var(--chrome-visible-height); content: ''; position: absolute; inset: 0; border: var(--hairline) solid var(--color-select); pointer-events: none; }
 .canvas-component-external-chrome::after { content: none; }
 .canvas-selection-chrome .selection-handle, .canvas-selection-chrome .resize-handle { pointer-events: auto; }
 .canvas-region-placing .canvas-selection-chrome .selection-handle, .canvas-region-placing .canvas-selection-chrome .resize-handle { pointer-events: none; }
