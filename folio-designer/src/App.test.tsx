@@ -472,21 +472,31 @@ describe('application shell', () => {
     // ENGINE sent it. The panel composes nothing — these strings are the
     // projection's `…Resolved` members, and a browser that worked them out
     // would be running a second copy of the engine's cascade.
-    expect(screen.getByLabelText('Resolved Header font family')).toHaveTextContent('Using: body')
-    expect(screen.getByLabelText('Resolved Header font size (pt)')).toHaveTextContent('Using: 12pt')
-    expect(screen.getByLabelText('Resolved Header line spacing')).toHaveTextContent('Using: 1')
-    expect(screen.getByLabelText('Resolved Header alignment')).toHaveTextContent('Using: left')
-    expect(screen.getByLabelText('Resolved Header vertical alignment')).toHaveTextContent('Using: top')
+    //
+    // AND IT IS CARRIED BY THE CONTROL ITSELF, not by a line beside it. The
+    // inspector's rule over `FieldSpec.empty` — the engine's answer for an
+    // uncommitted field "is shown as a placeholder, never as a value" — now
+    // holds here too, so each box stays EMPTY (asserted above) while showing
+    // what the cascade will use. The placeholder is what proves the two states
+    // are still distinct: a resolved value written in as `toHaveValue` would be
+    // a table that had frozen the cascade into the document.
+    expect(screen.getByRole('textbox', { name: 'Header font family' })).toHaveAttribute('placeholder', 'body')
+    expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveAttribute('placeholder', '12')
+    expect(screen.getByRole('spinbutton', { name: 'Header line spacing' })).toHaveAttribute('placeholder', '1')
+    // A select has no placeholder, so its empty option's own label carries the
+    // value — which is what this control's comment always claimed it did.
+    expect(screen.getByRole('combobox', { name: 'Header alignment' })).toHaveTextContent('Not set (left)')
+    expect(screen.getByRole('combobox', { name: 'Header vertical alignment' })).toHaveTextContent('Not set (top)')
     // An empty RESOLVED value is a real answer — the cascade found nothing to
     // resolve from — and is spelled as one rather than as a blank. It is not
-    // the SAME answer for every field, though, and one sentence for all of them
-    // was wrong for the ink: a header with no resolved background paints
+    // the SAME answer for every field, though, and one word for all of them
+    // is wrong for the ink: a header with no resolved background paints
     // nothing, but a header with no resolved COLOUR still draws, in the
-    // renderer's own default. "Using: nothing" claimed the one thing that
-    // cannot happen.
-    expect(screen.getByLabelText('Resolved Header background')).toHaveTextContent('Using: nothing — no fill is painted')
-    expect(screen.getByLabelText('Resolved Header text colour')).toHaveTextContent("Using: the renderer's default ink")
-    expect(screen.getByLabelText('Resolved Header text colour')).not.toHaveTextContent('Using: nothing')
+    // renderer's own default. A shared "nothing" claimed the one thing that
+    // cannot happen. The distinction survived the move into the placeholder.
+    expect(screen.getByRole('textbox', { name: 'Header background' })).toHaveAttribute('placeholder', 'none — no fill painted')
+    expect(screen.getByRole('textbox', { name: 'Header text colour' })).toHaveAttribute('placeholder', "renderer's default ink")
+    expect(screen.getByRole('textbox', { name: 'Header text colour' })).not.toHaveAttribute('placeholder', 'none — no fill painted')
     // And the section is a NAMED group. An aria-label on a bare div with no
     // role is dropped by the accessibility tree, so it named nothing at all.
     expect(screen.getByRole('group', { name: 'Table header and rows' })).toBeInTheDocument()
@@ -507,7 +517,7 @@ describe('application shell', () => {
     const { request, tableSnapshot } = headerStyledTable({ headerFontSize: 0, headerFontSizeResolved: 8000 })
     await openHeaderSection(request, tableSnapshot)
     expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveValue(null)
-    expect(screen.getByLabelText('Resolved Header font size (pt)')).toHaveTextContent('Using: 8pt')
+    expect(screen.getByRole('spinbutton', { name: 'Header font size (pt)' })).toHaveAttribute('placeholder', '8')
   })
 
   it('renders an unset colour as unset rather than as black', async () => {

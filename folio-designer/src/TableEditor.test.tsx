@@ -1543,9 +1543,9 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
       'headerBorder.edges': '', 'headerBorder.edgesResolved': 'bottom',
     })
     expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveValue(3)
-    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 1pt')
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveAttribute('placeholder', '1')
     expect(screen.getByRole('textbox', { name: 'Header border colour' })).toHaveValue('')
-    expect(screen.getByLabelText('Resolved Header border colour')).toHaveTextContent('Using: #000000')
+    expect(screen.getByRole('textbox', { name: 'Header border colour' })).toHaveAttribute('placeholder', '#000000')
     expect(screen.getByLabelText('Resolved Header border edges')).toHaveTextContent('Using: bottom')
     // The four edge boxes reflect what the DOCUMENT declares, not what resolves:
     // a checkbox showing the resolved set could never be unchecked back to absent.
@@ -1567,9 +1567,15 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     // its declared `edges` names no side, where the width resolves to a real
     // number and the emitter still strokes nothing.
     const nothing = renderPanel()
-    for (const label of ['Resolved Header border width (pt)', 'Resolved Header border colour', 'Resolved Header border edges']) {
-      expect(screen.getByLabelText(label), label).toHaveTextContent('Using: nothing — no border is painted')
-    }
+    // THE SAME CLAIM, READ OFF THE CONTROLS THE FACT NOW LIVES IN. Width and
+    // colour carry it as a placeholder inside their own boxes (the inspector's
+    // rule for an uncommitted field); the EDGE LIST cannot, because it is a set
+    // of checkboxes with no empty state to label, so it keeps the note beside
+    // it. Three controls, one fact, two spellings — and the spelling is decided
+    // by whether the control has anywhere to put it.
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveAttribute('placeholder', 'nothing — no border painted')
+    expect(screen.getByRole('textbox', { name: 'Header border colour' })).toHaveAttribute('placeholder', 'nothing — no border painted')
+    expect(screen.getByLabelText('Resolved Header border edges')).toHaveTextContent('Using: nothing — no border is painted')
     // ⚠ THE FIRST DIALOG IS UNMOUNTED BEFORE THE SECOND IS RENDERED. Two live
     // `role="dialog"` trees would leave every `getBy*` below ambiguous and force
     // the assertion onto an ARRAY POSITION — a query keyed on mount order rather
@@ -1580,7 +1586,7 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     // than reusing the nothing-painted sentence. This is the pair that makes the
     // assertions above a discrimination rather than a single reading.
     renderPanel({ 'headerBorder.widthResolved': '0', 'headerBorder.colorResolved': '#000000', 'headerBorder.edgesResolved': 'top,right,bottom,left' })
-    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 0pt')
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveAttribute('placeholder', '0')
     expect(screen.getByLabelText('Resolved Header border edges')).toHaveTextContent('Using: top,right,bottom,left')
   })
 
@@ -1656,7 +1662,7 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     expect(screen.queryByText(/no longer follows the table’s border/)).toBeNull()
     // What it DOES say: nothing is authored, and the notes are the engine's.
     expect(screen.getByText(/No header border attribute is authored here/)).toBeInTheDocument()
-    expect(screen.getByLabelText('Resolved Header border width (pt)')).toHaveTextContent('Using: 0.5pt')
+    expect(screen.getByRole('spinbutton', { name: 'Header border width (pt)' })).toHaveAttribute('placeholder', '0.5')
     emptyBlock.unmount()
     // (b) THE EMPTY EDGE LIST: `hasBorder` is true and nothing is painted, and
     // the branch still claims no provenance.

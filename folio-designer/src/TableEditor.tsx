@@ -62,17 +62,36 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 const authored = (thousandths: number): string => String(thousandths / 1000)
 
 // What the document WILL USE for a field the author has not set — the engine's
-// own answer, projected beside the committed one, never worked out here.
+// own answer, shown IN the box as a placeholder rather than beside it on a
+// line of its own.
+//
+// THIS IS THE INSPECTOR'S RULE, AND THIS PANEL WAS THE ONE PLACE NOT KEEPING
+// IT. App.tsx states it over `FieldSpec.empty`: the engine's behaviour for an
+// uncommitted field "is shown as a placeholder, never as a value: the field
+// stays empty and nothing is written to the document until the author types."
+// Every other property in the product reads that way — a grey word inside an
+// empty box. Only the header section put the same fact on a separate "Using: …"
+// line under the control, which asks the author to read two things to learn
+// one, and reads as though the box were simply blank and the value unknowable.
+//
+// ⚠ THE PLACEHOLDER IS NOT THE VALUE, AND THAT DISTINCTION IS THE WHOLE POINT
+// OF THE TWO STATES. A box showing grey `8` is a table that has committed NO
+// header font size and will follow the cascade wherever it moves; a box showing
+// black `8` is a table that has frozen 8 into the document. Writing the
+// resolved value in as real text would collapse those — every field would look
+// authored, and the next blur would commit an inherited value nobody chose.
+// Placeholders are not submitted, so the cascade stays live until the author
+// types, and `×` still clears a committed field back to it.
 //
 // AN EMPTY RESOLVED STRING DOES NOT MEAN THE SAME THING FOR EVERY FIELD, so
-// each caller says what its own empty means rather than sharing one sentence.
+// each caller still says what its own empty means rather than sharing one word.
 // For a BACKGROUND, empty is literally nothing: the cascade found no fill and
 // none is painted. For TEXT COLOUR it is not — the header still draws, in the
-// renderer's own default ink — and "Using: nothing" claimed the header would
+// renderer's own default ink — and a shared "nothing" claimed the header would
 // print with no colour at all, which is the one thing that cannot happen. For a
 // FONT FAMILY, empty means no chain is declared anywhere on this table, which
-// is a third thing again.
-const resolvedNote = (value: string, whenEmpty: string): string => value === '' ? whenEmpty : `Using: ${value}`
+// is a third thing again. Those three words are now the three placeholders.
+const resolvedHint = (resolved: string, whenEmpty: string): string => resolved === '' ? whenEmpty : resolved
 
 export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
   const table = projection.table
@@ -382,13 +401,19 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // A clearable SELECT spells absence as its own empty option rather than as a
   // separate button: the option's label carries the engine's resolved value, so
   // the one control answers both "what is set" and "what will be used".
+  //
+  // THAT SENTENCE HAS BEEN HERE SINCE THE CONTROL WAS WRITTEN AND THE CODE DID
+  // NOT DO IT. The option read a bare "Not set" and the resolved value went to
+  // a separate `Using: …` line, which is the arrangement the comment exists to
+  // rule out — the author read two things to learn one. A select has no
+  // placeholder, so the empty option's own label is where the value goes:
+  // "Not set (left)". Choosing it still clears; it is a label, not a value.
   const styleSelect = (field: TableHeaderStyleField, label: string, committed: string, resolved: string, options: ReadonlyArray<readonly [string, string]>) =>
     <label className="table-header-field">{label}
       <select aria-label={label} disabled={busy} value={committed} onChange={(event) => { const value = event.target.value; dispatchOnce(() => { if (value === '') onHeaderStyle(field, 'clear'); else onHeaderStyle(field, 'set', value) }) }}>
-        <option value="">Not set</option>
+        <option value="">{resolved === '' ? 'Not set' : `Not set (${resolved})`}</option>
         {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
       </select>
-      <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, 'Using: nothing')}</output>
     </label>
   // A clearable COLOUR is the inspector's shipped two-control row, re-implemented
   // rather than imported (PropertyDraft reads the canvas projection and commits
@@ -412,11 +437,10 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const styleColour = (field: TableHeaderStyleField, label: string, committed: string, resolved: string, whenUnresolved: string) =>
     <label className="table-header-field">{label}
       <span className="table-header-control">
-        <input key={boxKey(committed)} aria-label={label} disabled={busy} defaultValue={committed} onBlur={commitStyleText(field, committed)} />
+        <input key={boxKey(committed)} aria-label={label} placeholder={resolvedHint(resolved, whenUnresolved)} disabled={busy} defaultValue={committed} onBlur={commitStyleText(field, committed)} />
         <input type="color" className={`property-swatch${isHexColour(committed) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(committed)} disabled={busy} onChange={(event) => { const value = event.target.value; dispatchOnce(() => onHeaderStyle(field, 'set', value)) }} />
         <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onHeaderStyle(field, 'clear'))}>×</button>
       </span>
-      <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, whenUnresolved)}</output>
     </label>
   // `min` IS PER-CONTROL AND IT IS THE SMALLEST VALUE THE ENGINE ACCEPTS AT
   // THAT STEP. It used to be `min="0"` on every number in this section while
@@ -446,13 +470,12 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // So the branch is on the STRING, in `authoredBox` below, and `boxKey` is
   // handed the committed value UNCONVERTED so that `''` and `'0'` are two keys.
   const authoredBox = (committed: number | string): string => typeof committed === 'string' ? (committed === '' ? '' : authored(Number(committed))) : (committed === 0 ? '' : authored(committed))
-  const styleNumber = (field: TableHeaderStyleField, label: string, committed: number | string, resolved: string, step: string, min: string, whenUnresolved = 'Using: nothing') =>
+  const styleNumber = (field: TableHeaderStyleField, label: string, committed: number | string, resolved: string, step: string, min: string, whenUnresolved = 'nothing') =>
     <label className="table-header-field">{label}
       <span className="table-header-control">
-        <input key={boxKey(committed)} aria-label={label} type="number" min={min} step={step} disabled={busy} defaultValue={authoredBox(committed)} onBlur={commitStyleText(field, authoredBox(committed))} />
+        <input key={boxKey(committed)} aria-label={label} placeholder={resolvedHint(resolved, whenUnresolved)} type="number" min={min} step={step} disabled={busy} defaultValue={authoredBox(committed)} onBlur={commitStyleText(field, authoredBox(committed))} />
         <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onHeaderStyle(field, 'clear'))}>×</button>
       </span>
-      <output aria-label={`Resolved ${label}`}>{resolvedNote(resolved, whenUnresolved)}</output>
     </label>
   // A FACT THE ENGINE DERIVES, STATED AS ONE — never offered as a control and
   // never drawn as a disabled control either. `Row height` and `Repeat on
@@ -696,20 +719,19 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
         </label>
         <label className="table-header-field">Header font family
           <span className="table-header-control">
-            <input key={boxKey(table.headerFontFamily)} aria-label="Header font family" disabled={busy} defaultValue={table.headerFontFamily} onBlur={commitStyleText('fontFamily', table.headerFontFamily)} />
+            <input key={boxKey(table.headerFontFamily)} aria-label="Header font family" placeholder={resolvedHint(table.headerFontFamilyResolved, 'no font chain')} disabled={busy} defaultValue={table.headerFontFamily} onBlur={commitStyleText('fontFamily', table.headerFontFamily)} />
             <button type="button" className="property-inline-action" aria-label="Clear Header font family" title="Clear Header font family" disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onHeaderStyle('fontFamily', 'clear'))}>×</button>
           </span>
-          <output aria-label="Resolved Header font family">{resolvedNote(table.headerFontFamilyResolved, 'Using: nothing — this table names no font chain')}</output>
         </label>
-        {styleNumber('fontSize', 'Header font size (pt)', table.headerFontSize, `${authored(table.headerFontSizeResolved)}pt`, '0.5', '0.5')}
+        {styleNumber('fontSize', 'Header font size (pt)', table.headerFontSize, authored(table.headerFontSizeResolved), '0.5', '0.5')}
         {styleNumber('lineSpacing', 'Header line spacing', table.headerLineSpacing, authored(table.headerLineSpacingResolved), '0.1', '0.1')}
-        {styleColour('background', 'Header background', table.headerBackground, table.headerBackgroundResolved, 'Using: nothing — no fill is painted')}
-        {/* NOT "Using: nothing". An unresolved header COLOUR does not mean the
-            header prints with no colour — it prints in the renderer's own
-            default ink. The background above is the case where nothing really
-            is used; this one is not, and one sentence for both was wrong for
-            this one. */}
-        {styleColour('color', 'Header text colour', table.headerColor, table.headerColorResolved, "Using: the renderer's default ink")}
+        {styleColour('background', 'Header background', table.headerBackground, table.headerBackgroundResolved, 'none — no fill painted')}
+        {/* NOT "none". An unresolved header COLOUR does not mean the header
+            prints with no colour — it prints in the renderer's own default ink.
+            The background above is the case where nothing really is used; this
+            one is not, and one word for both was wrong for this one. The
+            placeholder carries the same distinction the note used to. */}
+        {styleColour('color', 'Header text colour', table.headerColor, table.headerColorResolved, "renderer's default ink")}
         {styleSelect('valign', 'Header vertical alignment', table.headerValign, table.headerValignResolved, [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']])}
         {styleSelect('align', 'Header alignment', table.headerAlign, table.headerAlignResolved, [['left', 'Left'], ['center', 'Center'], ['right', 'Right']])}
         {/* NOT A SETTING, AND SAID SO RATHER THAN DRAWN AS A DISABLED CHECKBOX.
@@ -773,8 +795,8 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
             `authoredBox`. The RESOLVED half is a different question and `Number()`
             is right there — absence on that half is `''`, which `borderPainted`
             has already answered before this expression is reached. */}
-        {styleNumber('border.width', 'Header border width (pt)', table['headerBorder.width'], borderPainted ? `${authored(Number(table['headerBorder.widthResolved']))}pt` : '', '0.001', '0', 'Using: nothing — no border is painted')}
-        {styleColour('border.color', 'Header border colour', table['headerBorder.color'], borderPainted ? table['headerBorder.colorResolved'] : '', 'Using: nothing — no border is painted')}
+        {styleNumber('border.width', 'Header border width (pt)', table['headerBorder.width'], borderPainted ? authored(Number(table['headerBorder.widthResolved'])) : '', '0.001', '0', 'nothing — no border painted')}
+        {styleColour('border.color', 'Header border colour', table['headerBorder.color'], borderPainted ? table['headerBorder.colorResolved'] : '', 'nothing — no border painted')}
         {/* ⚠ FOUR BARE CHECKBOXES, WITH NO `role="group"` AND NO `×` CLEAR, AND
             BOTH ABSENCES ARE DELIBERATE. The obvious move is to copy the
             inspector's `BorderEdgesProperty`, and copying it verbatim breaks two
@@ -798,7 +820,17 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               {edge}
             </label>)}
           </span>
-          <output aria-label="Resolved Header border edges">{resolvedNote(table['headerBorder.edgesResolved'], 'Using: nothing — no border is painted')}</output>
+          {/* THE ONE CONTROL IN THIS SECTION THAT KEEPS ITS "Using: …" LINE,
+              and it keeps it because it is a set of CHECKBOXES. Every other
+              field here moved its resolved value into the control itself — a
+              placeholder in a box, a label on a select's empty option — and a
+              checkbox group has neither. It has no empty state to label and no
+              text to grey out; four boxes that are merely unticked cannot say
+              which edges the cascade will paint. So this fact stays beside the
+              control rather than inside it, which is the arrangement the rest
+              of the section exists to avoid, taken here because the
+              alternative is not stating the fact at all. */}
+          <output aria-label="Resolved Header border edges">{table['headerBorder.edgesResolved'] === '' ? 'Using: nothing — no border is painted' : `Using: ${table['headerBorder.edgesResolved']}`}</output>
         </div>
         {/* THE TAKEOVER, IN WORDS, AND IT IS THIS STORY'S PRINCIPAL CORRECTNESS
             RISK RATHER THAN A COURTESY. The engine resolves the header's border
