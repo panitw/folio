@@ -195,13 +195,15 @@ test('resolves no column when hit testing is taken off the column spans', async 
   await page.addStyleTag({ content: '.canvas-table-heading, .canvas-table-grid .canvas-table-cell, .canvas-table-grid .canvas-table-unset { pointer-events: none !important; }' })
   const table = page.getByRole('button', { name: /table component e8/ })
   await expect(table).toBeVisible()
-  await clickCentre(page, heading(page, NOTE_COLUMN))
-  // The click still reaches the component — the table is selected — but it
-  // resolves NO column, which is exactly what the shipped stylesheet prevents.
+  await table.click()
   await expect(table).toHaveClass(/canvas-component-selected/)
+  await clickCentre(page, heading(page, NOTE_COLUMN))
+  // The grid begins below the table's header box. With its hit targets
+  // disabled, the click reaches the canvas and clears the prior selection.
+  await expect(table).not.toHaveClass(/canvas-component-selected/)
   await expect(markedColumns(page)).toHaveCount(0)
   await page.getByRole('tab', { name: 'DATA' }).click()
-  await expect(page.locator('.data-context')).toHaveText('Table selected · a table binds its collection in the table editor, under Configure columns.')
+  await expect(page.locator('.data-context')).toHaveText('No single component selected · select one component, then pick a path.')
 })
 
 async function revision(page: Page): Promise<number> {

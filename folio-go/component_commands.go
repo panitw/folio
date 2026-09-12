@@ -1649,7 +1649,7 @@ const imageDropWidth, imageDropHeight geom.Length = 96000, 48000
 // rule's thickness is not a position, and snapping applies to x/y alone.
 const lineDropHeight geom.Length = 1000
 
-const tableDropHeight geom.Length = 12000
+const tableDropHeight geom.Length = 24000
 
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 6); err != nil {

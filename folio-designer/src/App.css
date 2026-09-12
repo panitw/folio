@@ -414,8 +414,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    it lives under. */
 .canvas-display-paint { min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
 .canvas-table { position: absolute; inset: 0; overflow-x: clip; overflow-y: visible; pointer-events: none; color: var(--color-page-ink); }
-.canvas-table-chip { display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; padding: 3px 5px; background: var(--color-page-thead); border-bottom: var(--hairline) solid var(--color-page-thead-line); }
-.canvas-table-chip-icon { width: 10px; height: 10px; flex: none; color: var(--color-page-ink-muted); }
+/* The chip fills the engine's header box; its text must not size a second,
+   taller rectangle outside the component and selection outline. */
+.canvas-table-chip { --table-chip-content-height: max(0px, calc(var(--component-height) - var(--hairline))); display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; height: 100%; padding: 0 5px; overflow: hidden; background: var(--color-page-thead); border-bottom: var(--hairline) solid var(--color-page-thead-line); }
+.canvas-table-chip-icon { width: min(10px, var(--table-chip-content-height)); height: min(10px, var(--table-chip-content-height)); flex: none; color: var(--color-page-ink-muted); }
 /* Mono, in the bind accent: this is a data path a machine reads.
 
    ⚠ IT IS THE SHRINKING ELEMENT IN THE CHIP, AND THE COUNT IS NOT. A
@@ -431,6 +433,9 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    nothing, and a column pointed at nothing, both have no data to mark. */
 .canvas-table-unset { flex: 0 1 auto; color: var(--color-page-ink-muted); font: var(--type-page-mono); }
 .canvas-table-count { flex: none; margin-left: auto; color: var(--color-page-ink-muted); font: var(--type-page-mono); }
+/* Keep metadata inside short authored headers and zoomed-out bars. The
+   normal 8px/1.3 page-mono line is capped by the projected space, not measured. */
+.canvas-table-chip .canvas-table-collection, .canvas-table-chip .canvas-table-unset, .canvas-table-chip .canvas-table-count { font-size: min(8px, calc(var(--table-chip-content-height) / 1.3)); }
 .canvas-table-grid { display: grid; }
 /* THE 8px/600 SANS HEADER LABEL HAS NO PAGE-RAMP TOKEN: `--type-page-body` is a
    400 weight and `--type-page-eyebrow` carries tracking, so the weight is a

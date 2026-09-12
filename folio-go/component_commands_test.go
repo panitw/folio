@@ -73,7 +73,7 @@ func TestComponentCommandsCreateAllClosedKindsAndKeepOrder(t *testing.T) {
 		if component.Type != kind || component.Band != "content" || component.ID == "" {
 			t.Fatalf("create %s projection = %#v", kind, component)
 		}
-		if kind == "table" && (component.Resizable || component.X != 0 || component.Width != projectedBands(t, tpl)["content"].Width || component.Height != 12000) {
+		if kind == "table" && (component.Resizable || component.X != 0 || component.Width != projectedBands(t, tpl)["content"].Width || component.Height != 24000) {
 			t.Fatalf("table projection must be derived and non-resizable: %#v", component)
 		}
 	}
@@ -3539,7 +3539,7 @@ func TestTablePlacementUsesFullBandWidthAndPreservesVerticalIntent(t *testing.T)
 					command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":%t}`, pointLiteral(content.X+content.Width-1), pointLiteral(content.Y+y), snap)
 					if door == "createComponent" {
 						y += content.Height * 2
-						command = fmt.Sprintf(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":%s,"y":%s,"width":72,"height":24,"snap":%t}`, pointLiteral(content.Width-1), pointLiteral(y), snap)
+						command = fmt.Sprintf(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":%s,"y":%s,"width":72,"height":37,"snap":%t}`, pointLiteral(content.Width-1), pointLiteral(y), snap)
 					}
 					nextID := tpl.doc.NextID
 					after, err := ApplyComponentCommand(tpl, []byte(command))
@@ -3551,8 +3551,8 @@ func TestTablePlacementUsesFullBandWidthAndPreservesVerticalIntent(t *testing.T)
 						wantY = ((y + 3000) / 6000) * 6000
 					}
 					table := newProjectedComponent(t, before, after)
-					if table.Band != "content" || table.X != 0 || table.Y != wantY || table.Width != content.Width || table.Height != 12000 || table.Resizable {
-						t.Fatalf("placed table = %#v, want x=0 y=%d width=%d height=12000", table, wantY, content.Width)
+					if table.Band != "content" || table.X != 0 || table.Y != wantY || table.Width != content.Width || table.Height != 24000 || table.Resizable {
+						t.Fatalf("placed table = %#v, want x=0 y=%d width=%d height=24000", table, wantY, content.Width)
 					}
 					for _, existing := range before.Components {
 						if !reflect.DeepEqual(existing, componentByID(t, after, existing.ID)) {
@@ -3602,15 +3602,15 @@ func TestTableDropSnappingUsesActualHeaderHeight(t *testing.T) {
 			tpl := imageDropTemplate(t, 197123, 64000)
 			before, _ := Canvas(tpl)
 			band := projectedBands(t, tpl)[bandName]
-			// 51pt + the real 12pt header fits. Snapping to 54pt would not,
-			// so the existing edge rule must pull it back to 48pt.
-			command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":true}`, pointLiteral(band.X+band.Width-1), pointLiteral(band.Y+51000))
+			// 39pt + the real 24pt header fits. Snapping to 42pt would not,
+			// so the existing edge rule must pull it back to 36pt.
+			command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":true}`, pointLiteral(band.X+band.Width-1), pointLiteral(band.Y+39000))
 			after, err := ApplyComponentCommand(tpl, []byte(command))
 			if err != nil {
 				t.Fatal(err)
 			}
 			table := newProjectedComponent(t, before, after)
-			if table.X != 0 || table.Y != 48000 || table.Width != band.Width || table.Height != 12000 {
+			if table.X != 0 || table.Y != 36000 || table.Width != band.Width || table.Height != 24000 {
 				t.Fatalf("table edge snapping = %#v", table)
 			}
 		})
