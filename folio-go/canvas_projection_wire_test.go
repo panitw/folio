@@ -548,7 +548,6 @@ func projectedTableForWireKeys(t *testing.T) TableColumnsProjection {
 	}
 	table := newProjectedComponent(t, before, after)
 	for _, command := range []string{
-		`{"kind":"addTableColumn","version":1,"id":"` + table.ID + `","index":0}`,
 		`{"kind":"setTableHeaderHeight","version":1,"id":"` + table.ID + `","height":18}`,
 		`{"kind":"setTableAltRowBackground","version":1,"id":"` + table.ID + `","op":"set","value":"#DDEEFF"}`,
 		`{"kind":"updateTableHeaderStyle","version":1,"id":"` + table.ID + `","field":"fontFamily","op":"set","value":"body"}`,

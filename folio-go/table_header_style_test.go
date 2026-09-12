@@ -253,7 +253,6 @@ func TestAHeaderHeightThatOverflowsItsBandIsRefused(t *testing.T) {
 		t.Fatalf("create a table in the page header: %v", err)
 	}
 	table := newProjectedComponent(t, before, created)
-	mustApplyToTable(t, tpl, `{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)
 	// The page header is 60pt tall in this fixture, so 40pt fits and 100pt
 	// cannot. Both arms, so the refusal is not simply "every height is refused".
 	if err := applyToTable(t, tpl, `{"kind":"setTableHeaderHeight","version":1,"id":"`+table.ID+`","height":40}`); err != nil {

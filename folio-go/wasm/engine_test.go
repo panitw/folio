@@ -99,6 +99,14 @@ func TestEngineTableColumnsAreRevisionCorrelatedAndHistoryOwned(t *testing.T) {
 	if tableID == "" {
 		t.Fatal("table was not projected")
 	}
+	// This lifecycle starts with an explicitly emptied authored table.
+	starter, err := engine.TableColumns(tableID)
+	if err != nil || len(starter.Table.Columns) != 1 {
+		t.Fatalf("starter column = %#v, err=%v", starter, err)
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"removeTableColumn","version":1,"id":"` + tableID + `","columnId":"` + starter.Table.Columns[0].ID + `"}`)); err != nil {
+		t.Fatal(err)
+	}
 	before := engine.Snapshot()
 	after, err := engine.Apply([]byte(`{"kind":"addTableColumn","version":1,"id":"` + tableID + `","index":0}`))
 	if err != nil || after.Revision != before.Revision+1 || !after.CanUndo {
@@ -121,6 +129,67 @@ func TestEngineTableColumnsAreRevisionCorrelatedAndHistoryOwned(t *testing.T) {
 	}
 	if afterRejected := engine.Snapshot(); !reflect.DeepEqual(afterRejected, beforeRejected) {
 		t.Fatalf("rejection changed history/revision: %#v != %#v", afterRejected, beforeRejected)
+	}
+}
+
+func TestEngineTableCreationAndStarterColumnUndoRedoAtomically(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":500,"y":1500.123,"width":72,"height":24,"snap":true}`))
+	if err != nil || created.Revision != loaded.Revision+1 || !created.CanUndo || created.CanRedo {
+		t.Fatalf("creation history = %#v, err=%v", created, err)
+	}
+	known := map[string]bool{}
+	for _, component := range loaded.Canvas.Components {
+		known[component.ID] = true
+	}
+	var table folio.CanvasComponent
+	for _, component := range created.Canvas.Components {
+		if !known[component.ID] {
+			table = component
+		}
+	}
+	columns, err := engine.TableColumns(table.ID)
+	if err != nil || len(columns.Table.Columns) != 1 || columns.Revision != created.Revision || columns.Table.Columns[0].Width != table.Width || table.X != 0 || table.Y != 1500000 {
+		t.Fatalf("creation column and geometry = %#v/%#v, err=%v", table, columns, err)
+	}
+	canonical, _, err := engine.Serialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	undone, err := engine.Undo()
+	if err != nil || undone.CanUndo || !undone.CanRedo {
+		t.Fatalf("one undo must remove the entire creation: %#v, err=%v", undone, err)
+	}
+	undoBytes, _, err := engine.Serialize()
+	if err != nil || !bytes.Equal(before, undoBytes) {
+		t.Fatalf("undo did not restore the pre-creation bytes: %v", err)
+	}
+	if _, err := engine.TableColumns(table.ID); err == nil {
+		t.Fatal("undone table still has an editor projection")
+	}
+	redone, err := engine.Redo()
+	if err != nil || !redone.CanUndo || redone.CanRedo {
+		t.Fatalf("redo history = %#v, err=%v", redone, err)
+	}
+	redoBytes, _, err := engine.Serialize()
+	if err != nil || !bytes.Equal(canonical, redoBytes) {
+		t.Fatalf("redo changed canonical IDs or geometry: %v", err)
+	}
+	again, err := engine.TableColumns(table.ID)
+	if err != nil || !reflect.DeepEqual(columns.Table, again.Table) || !reflect.DeepEqual(created.Canvas, redone.Canvas) {
+		t.Fatalf("redo changed the table/column projection: %v", err)
 	}
 }
 
@@ -1022,5 +1091,84 @@ func TestEngineGroupMovePreviewAtomicHistoryAndRevisionFence(t *testing.T) {
 	}
 	if !reflect.DeepEqual(current, engine.Snapshot()) {
 		t.Fatal("invalid member changed snapshot/history")
+	}
+}
+
+func TestEngineFreshTableDuplicateHistoryPreservesIndependentColumnIDs(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":24,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := map[string]bool{}
+	for _, component := range loaded.Canvas.Components {
+		known[component.ID] = true
+	}
+	var sourceID string
+	for _, component := range created.Canvas.Components {
+		if !known[component.ID] {
+			sourceID = component.ID
+		}
+		known[component.ID] = true
+	}
+	source, err := engine.TableColumns(sourceID)
+	if err != nil || len(source.Table.Columns) != 1 {
+		t.Fatalf("source = %#v, err=%v", source, err)
+	}
+	before, _, _ := engine.Serialize()
+	duplicated, err := engine.Apply([]byte(fmt.Sprintf(`{"kind":"duplicateComponent","version":1,"id":%q,"snap":true}`, sourceID)))
+	if err != nil || duplicated.Revision != created.Revision+1 {
+		t.Fatalf("duplicate did not commit once: %#v, err=%v", duplicated, err)
+	}
+	var duplicateID string
+	for _, component := range duplicated.Canvas.Components {
+		if !known[component.ID] {
+			duplicateID = component.ID
+		}
+	}
+	copy, err := engine.TableColumns(duplicateID)
+	if err != nil || len(copy.Table.Columns) != 1 || copy.Table.Columns[0].ID == source.Table.Columns[0].ID || copy.Table.Columns[0].Width != source.Table.Columns[0].Width {
+		t.Fatalf("duplicate column = %#v, err=%v", copy, err)
+	}
+	canonical, _, _ := engine.Serialize()
+	reloaded := NewEngine()
+	if _, err := reloaded.Load(canonical); err != nil {
+		t.Fatalf("duplicated table did not reload: %v", err)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	undone, _, _ := engine.Serialize()
+	if !bytes.Equal(before, undone) {
+		t.Fatal("one undo did not remove the duplicate and its column")
+	}
+	if _, err := engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	redone, _, _ := engine.Serialize()
+	if !bytes.Equal(canonical, redone) {
+		t.Fatal("redo changed the allocated duplicate IDs")
+	}
+	if _, err := engine.Apply([]byte(fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"header","value":"Independent copy"}`, duplicateID, copy.Table.Columns[0].ID))); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := engine.TableColumns(sourceID)
+	if err != nil || !reflect.DeepEqual(source.Table, unchanged.Table) {
+		t.Fatalf("editing the duplicate changed the original: %v", err)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	editUndone, _, _ := engine.Serialize()
+	if !bytes.Equal(canonical, editUndone) {
+		t.Fatal("undoing the independent column edit changed duplication")
 	}
 }

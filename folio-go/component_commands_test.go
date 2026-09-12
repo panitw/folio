@@ -73,7 +73,7 @@ func TestComponentCommandsCreateAllClosedKindsAndKeepOrder(t *testing.T) {
 		if component.Type != kind || component.Band != "content" || component.ID == "" {
 			t.Fatalf("create %s projection = %#v", kind, component)
 		}
-		if kind == "table" && (component.Resizable || component.Width != 0 || component.Height != 12000) {
+		if kind == "table" && (component.Resizable || component.X != 0 || component.Width != projectedBands(t, tpl)["content"].Width || component.Height != 12000) {
 			t.Fatalf("table projection must be derived and non-resizable: %#v", component)
 		}
 	}
@@ -348,6 +348,19 @@ func TestComponentCommandsRejectTableResizeAndPreserveTableGeometry(t *testing.T
 	}
 }
 
+// removeStarterColumn makes an intentionally empty authored-table fixture.
+// Creation itself now supplies a full-width blank column.
+func removeStarterColumn(t *testing.T, tpl *Template, id string) {
+	t.Helper()
+	view, err := TableColumns(tpl, id)
+	if err != nil || len(view.Columns) != 1 {
+		t.Fatalf("starter column = %#v, err=%v", view, err)
+	}
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"removeTableColumn","version":1,"id":"`+id+`","columnId":"`+view.Columns[0].ID+`"}`)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTableColumnCommandsAreClosedCanonicalAndDerived(t *testing.T) {
 	tpl := componentTemplate(t)
 	before, err := Canvas(tpl)
@@ -359,6 +372,7 @@ func TestTableColumnCommandsAreClosedCanonicalAndDerived(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
 	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -406,6 +420,7 @@ func TestTableColumnRejectionsDoNotMutate(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
 	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -435,6 +450,10 @@ func TestTableColumnCommandsAreTransactionalAtThePublicSeam(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"moveComponent","version":1,"id":"`+table.ID+`","x":500,"y":0,"snap":false}`)); err != nil {
+		t.Fatal(err)
+	}
 	canonical, _ := SerializeTemplate(tpl)
 	// addTableColumn reaches containment only after adding the candidate column;
 	// direct callers must still retain their original canonical template.
@@ -458,6 +477,7 @@ func TestTableColumnProjectionCapRejectsThe129thCommandWithoutMutation(t *testin
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
 	for index := 0; index < maxTableColumns; index++ {
 		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":`+strconv.Itoa(index)+`}`)); err != nil {
 			t.Fatalf("add %d: %v", index+1, err)
@@ -492,6 +512,7 @@ func TestTableDataBindingAndFooterCommandsAreCanonicalAndTransactional(t *testin
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
 	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":0}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -546,6 +567,7 @@ func TestTableAliasMigrationReservedRootsAndStrictEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := newProjectedComponent(t, before, projection)
+	removeStarterColumn(t, tpl, table.ID)
 	for index := 0; index < 3; index++ {
 		if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"addTableColumn","version":1,"id":"`+table.ID+`","index":`+strconv.Itoa(index)+`}`)); err != nil {
 			t.Fatal(err)
@@ -3490,6 +3512,299 @@ func TestLineBoundsSnapAtBandEdgePreservesThickness(t *testing.T) {
 			}
 			if got.X+got.Width > band.Width || got.Y+got.Height > band.Height {
 				t.Fatalf("escaped band: %+v", got)
+			}
+		})
+	}
+}
+
+func TestTablePlacementUsesFullBandWidthAndPreservesVerticalIntent(t *testing.T) {
+	for _, landscape := range []bool{false, true} {
+		for _, door := range []string{"dropComponent", "createComponent"} {
+			for _, snap := range []bool{false, true} {
+				t.Run(fmt.Sprintf("landscape=%t/%s/snap=%t", landscape, door, snap), func(t *testing.T) {
+					tpl := componentTemplate(t)
+					if landscape {
+						tpl.doc.Page.Orientation = "landscape"
+						tpl.doc.Page.Margin = template.Margin{Top: 21000, Right: 27123, Bottom: 31000, Left: 43111}
+					}
+					before, err := Canvas(tpl)
+					if err != nil {
+						t.Fatal(err)
+					}
+					content := projectedBands(t, tpl)["content"]
+					if content.Width%6000 == 0 {
+						t.Fatal("fixture must exercise a non-grid-multiple width")
+					}
+					y := int64(15123)
+					command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":%t}`, pointLiteral(content.X+content.Width-1), pointLiteral(content.Y+y), snap)
+					if door == "createComponent" {
+						y += content.Height * 2
+						command = fmt.Sprintf(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":%s,"y":%s,"width":72,"height":24,"snap":%t}`, pointLiteral(content.Width-1), pointLiteral(y), snap)
+					}
+					nextID := tpl.doc.NextID
+					after, err := ApplyComponentCommand(tpl, []byte(command))
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantY := y
+					if snap {
+						wantY = ((y + 3000) / 6000) * 6000
+					}
+					table := newProjectedComponent(t, before, after)
+					if table.Band != "content" || table.X != 0 || table.Y != wantY || table.Width != content.Width || table.Height != 12000 || table.Resizable {
+						t.Fatalf("placed table = %#v, want x=0 y=%d width=%d height=12000", table, wantY, content.Width)
+					}
+					for _, existing := range before.Components {
+						if !reflect.DeepEqual(existing, componentByID(t, after, existing.ID)) {
+							t.Fatal("creation changed an existing authored component")
+						}
+					}
+					columns, err := TableColumns(tpl, table.ID)
+					if err != nil || len(columns.Columns) != 1 {
+						t.Fatalf("starter column projection = %#v, err=%v", columns, err)
+					}
+					column := columns.Columns[0]
+					if table.ID != "e"+strconv.FormatInt(nextID, 36) || column.ID != "e"+strconv.FormatInt(nextID+1, 36) || tpl.doc.NextID != nextID+2 {
+						t.Fatalf("creation IDs = %s/%s, nextId=%d", table.ID, column.ID, tpl.doc.NextID)
+					}
+					if column.Width != content.Width || column.Header != "" || column.Binding != "" || column.Footer != "" || !column.RowFieldEditable {
+						t.Fatalf("starter column must be full-width, blank and editable: %#v", column)
+					}
+					_, _, _, element, err := findComponent(tpl, table.ID)
+					if err != nil || element.Width.Set || element.Height.Set {
+						t.Fatalf("table stores free-box geometry: %#v, err=%v", element, err)
+					}
+					canonical, err := SerializeTemplate(tpl)
+					if err != nil {
+						t.Fatal(err)
+					}
+					reloaded, err := ParseTemplate(canonical)
+					if err != nil {
+						t.Fatal(err)
+					}
+					again, err := SerializeTemplate(reloaded)
+					if err != nil || !bytes.Equal(canonical, again) {
+						t.Fatalf("table creation did not round-trip canonically: %v", err)
+					}
+					reloadedCanvas, err := Canvas(reloaded)
+					if err != nil || !reflect.DeepEqual(table, componentByID(t, reloadedCanvas, table.ID)) {
+						t.Fatalf("table geometry or column ID changed on reload: %v", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestTableDropSnappingUsesActualHeaderHeight(t *testing.T) {
+	for _, bandName := range []string{"pageHeader", "pageFooter"} {
+		t.Run(bandName, func(t *testing.T) {
+			tpl := imageDropTemplate(t, 197123, 64000)
+			before, _ := Canvas(tpl)
+			band := projectedBands(t, tpl)[bandName]
+			// 51pt + the real 12pt header fits. Snapping to 54pt would not,
+			// so the existing edge rule must pull it back to 48pt.
+			command := fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":true}`, pointLiteral(band.X+band.Width-1), pointLiteral(band.Y+51000))
+			after, err := ApplyComponentCommand(tpl, []byte(command))
+			if err != nil {
+				t.Fatal(err)
+			}
+			table := newProjectedComponent(t, before, after)
+			if table.X != 0 || table.Y != 48000 || table.Width != band.Width || table.Height != 12000 {
+				t.Fatalf("table edge snapping = %#v", table)
+			}
+		})
+	}
+}
+
+func TestTableCreationRejectionsPreserveBytesAndBothIDs(t *testing.T) {
+	const maxID = int64(1<<63 - 1)
+	for _, tc := range []struct {
+		name    string
+		nextID  int64
+		command string
+	}{
+		{"only one ID left", maxID - 1, `{"kind":"createComponent","version":1,"type":"table","band":"content","x":12,"y":12,"width":72,"height":24,"snap":false}`},
+		{"one ID left via drop", maxID - 1, `{"kind":"dropComponent","version":1,"type":"table","x":72,"y":120,"snap":false}`},
+		{"negative y", 100, `{"kind":"createComponent","version":1,"type":"table","band":"content","x":12,"y":-1,"width":72,"height":24,"snap":false}`},
+		{"outside hit region", 100, `{"kind":"dropComponent","version":1,"type":"table","x":0,"y":120,"snap":true}`},
+		{"header overflow", 100, `{"kind":"createComponent","version":1,"type":"table","band":"pageHeader","x":12,"y":59,"width":72,"height":24,"snap":false}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tpl := componentTemplate(t)
+			tpl.doc.NextID = tc.nextID
+			before, err := SerializeTemplate(tpl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyComponentCommand(tpl, []byte(tc.command)); err == nil {
+				t.Fatal("invalid creation succeeded")
+			}
+			after, err := SerializeTemplate(tpl)
+			if err != nil || !bytes.Equal(before, after) || tpl.doc.NextID != tc.nextID {
+				t.Fatalf("refusal mutated bytes or consumed IDs: %v", err)
+			}
+		})
+	}
+	// The last pair of usable IDs succeeds and leaves a valid nextId.
+	tpl := componentTemplate(t)
+	tpl.doc.NextID = maxID - 2
+	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":12,"y":12,"width":72,"height":24,"snap":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := SerializeTemplate(tpl)
+	if err != nil || tpl.doc.NextID != 1<<63-1 {
+		t.Fatalf("last pair of IDs failed: nextId=%d, err=%v", tpl.doc.NextID, err)
+	}
+	if _, err := ParseTemplate(canonical); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTableDuplicateAllocatesIndependentColumnsAndReloads(t *testing.T) {
+	for _, count := range []int{1, 3} {
+		t.Run(fmt.Sprintf("%d columns", count), func(t *testing.T) {
+			tpl := componentTemplate(t)
+			before, _ := Canvas(tpl)
+			created, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":40,"y":20,"width":72,"height":24,"snap":false}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := newProjectedComponent(t, before, created)
+			columns, err := TableColumns(tpl, source.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count > 1 {
+				mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":96}`, source.ID, columns.Columns[0].ID))
+				for index := 1; index < count; index++ {
+					mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":%d}`, source.ID, index))
+				}
+			}
+			columns, err = TableColumns(tpl, source.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ = Canvas(tpl)
+			nextID := tpl.doc.NextID
+			duplicated, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"duplicateComponent","version":1,"id":%q,"snap":true}`, source.ID)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			duplicate := newProjectedComponent(t, before, duplicated)
+			copied, err := TableColumns(tpl, duplicate.ID)
+			if err != nil || len(copied.Columns) != count || duplicate.ID != "e"+strconv.FormatInt(nextID, 36) || tpl.doc.NextID != nextID+int64(count)+1 {
+				t.Fatalf("duplicate IDs/columns = %#v, nextId=%d, err=%v", copied, tpl.doc.NextID, err)
+			}
+			for index, column := range copied.Columns {
+				if column.ID != "e"+strconv.FormatInt(nextID+int64(index)+1, 36) {
+					t.Fatalf("column %d retained or skipped its ID: %#v", index, column)
+				}
+				column.ID = columns.Columns[index].ID
+				if !reflect.DeepEqual(column, columns.Columns[index]) {
+					t.Fatalf("column %d changed properties while duplicating", index)
+				}
+			}
+			unchanged, err := TableColumns(tpl, source.ID)
+			if err != nil || !reflect.DeepEqual(columns, unchanged) {
+				t.Fatalf("duplicate changed the source's column storage: %v", err)
+			}
+			canonical := canonicalBytes(t, tpl)
+			reloaded, err := ParseTemplate(canonical)
+			if err != nil || !bytes.Equal(canonical, canonicalBytes(t, reloaded)) {
+				t.Fatalf("duplicate did not reload canonically: %v", err)
+			}
+			// Editing either table leaves the other table's columns alone.
+			mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"header","value":"Copy header"}`, duplicate.ID, copied.Columns[0].ID))
+			unchanged, err = TableColumns(tpl, source.ID)
+			if err != nil || !reflect.DeepEqual(columns, unchanged) {
+				t.Fatalf("editing the duplicate changed the source: %v", err)
+			}
+			mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":24}`, source.ID, columns.Columns[0].ID))
+			edited, err := TableColumns(tpl, duplicate.ID)
+			if err != nil || edited.Columns[0].Header != "Copy header" || edited.Columns[0].Width != copied.Columns[0].Width {
+				t.Fatalf("source edit changed the duplicate: %#v, err=%v", edited, err)
+			}
+			if _, err := ParseTemplate(canonicalBytes(t, tpl)); err != nil {
+				t.Fatalf("independently edited tables did not reload: %v", err)
+			}
+		})
+	}
+}
+
+func TestTableDuplicatePreflightsEveryColumnIDWithoutMutation(t *testing.T) {
+	const maxID = int64(1<<63 - 1)
+	tpl := componentTemplate(t)
+	before, _ := Canvas(tpl)
+	created, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"table","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := newProjectedComponent(t, before, created)
+	columns, _ := TableColumns(tpl, source.ID)
+	mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"width","value":96}`, source.ID, columns.Columns[0].ID))
+	mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"addTableColumn","version":1,"id":%q,"index":1}`, source.ID))
+	command := []byte(fmt.Sprintf(`{"kind":"duplicateComponent","version":1,"id":%q,"snap":false}`, source.ID))
+	// This copy needs three IDs, so even two remaining slots must refuse.
+	tpl.doc.NextID = maxID - 2
+	canonical := canonicalBytes(t, tpl)
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := ApplyComponentCommand(tpl, command); err == nil {
+			t.Fatal("duplicate accepted too few IDs for all its columns")
+		}
+		if !bytes.Equal(canonical, canonicalBytes(t, tpl)) {
+			t.Fatal("duplicate refusal mutated source bytes or consumed an ID")
+		}
+	}
+	tpl.doc.NextID = maxID - 3
+	if _, err := ApplyComponentCommand(tpl, command); err != nil {
+		t.Fatal(err)
+	}
+	if tpl.doc.NextID != maxID {
+		t.Fatalf("last three ID slots ended at %d", tpl.doc.NextID)
+	}
+	if _, err := ParseTemplate(canonicalBytes(t, tpl)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTableCreationUsesDefaultFontAndRendersPopulatedItems(t *testing.T) {
+	for _, door := range []string{"createComponent", "dropComponent"} {
+		t.Run(door, func(t *testing.T) {
+			tpl := componentTemplate(t)
+			tpl.doc.Bands.PageHeader.Elements = nil
+			tpl.doc.Bands.Content.Elements = nil
+			tpl.doc.Bands.PageFooter.Elements = nil
+			before, _ := Canvas(tpl)
+			command := `{"kind":"createComponent","version":1,"type":"table","band":"content","x":50,"y":24,"width":72,"height":24,"snap":false}`
+			if door == "dropComponent" {
+				content := projectedBands(t, tpl)["content"]
+				command = fmt.Sprintf(`{"kind":"dropComponent","version":1,"type":"table","x":%s,"y":%s,"snap":false}`, pointLiteral(content.X+50000), pointLiteral(content.Y+24000))
+			}
+			created, err := ApplyComponentCommand(tpl, []byte(command))
+			if err != nil {
+				t.Fatal(err)
+			}
+			table := newProjectedComponent(t, before, created)
+			if table.FontFamily == nil || *table.FontFamily != defaultFontFamily(tpl) {
+				t.Fatalf("table did not inherit the declared default font: %#v", table.FontFamily)
+			}
+			columns, err := TableColumns(tpl, table.ID)
+			if err != nil || columns.Columns[0].Header != "" || columns.Columns[0].Binding != "" {
+				t.Fatalf("font default invented column content: %#v, err=%v", columns, err)
+			}
+			for _, editHeader := range []bool{false, true} {
+				if editHeader {
+					mustApplyToTable(t, tpl, fmt.Sprintf(`{"kind":"updateTableColumn","version":1,"id":%q,"columnId":%q,"field":"header","value":"Description"}`, table.ID, columns.Columns[0].ID))
+				}
+				reloaded, err := ParseTemplate(canonicalBytes(t, tpl))
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := Render(reloaded, Data(`{"items":[{},{}]}`), Params(`{}`), testShippedFontSet())
+				if err != nil || !bytes.HasPrefix(result.Bytes, []byte("%PDF-")) || len(result.Diagnostics) != 0 {
+					t.Fatalf("table render (edited header=%t) = %v, diagnostics=%#v", editHeader, err, result.Diagnostics)
+				}
 			}
 		})
 	}

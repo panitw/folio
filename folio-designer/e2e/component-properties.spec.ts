@@ -21,7 +21,7 @@ test('a selected component exposes committed properties and a mixed selection om
   await page.getByRole('textbox', { name: 'X (pt)' }).press('Enter')
 
   await page.getByRole('button', { name: 'Place Table' }).click()
-  await content.press('Enter')
+  await content.click({ position: { x: 24, y: 96 } })
   const table = content.getByRole('button', { name: /table component/ }).last()
   await text.click()
   await table.click({ modifiers: ['Shift'] })

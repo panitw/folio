@@ -24,6 +24,14 @@ func groupFixture(t *testing.T) (*Template, []string) {
 			t.Fatal(err)
 		}
 		ids = append(ids, newProjectedComponent(t, before, after).ID)
+		if kind == "table" {
+			// Preserve this fixture's empty authored table and movable origin.
+			id := ids[len(ids)-1]
+			removeStarterColumn(t, tpl, id)
+			if _, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"moveComponent","version":1,"id":%q,"x":%d.125,"y":%d.225,"snap":false}`, id, 13+index*40, 10+index*30))); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return tpl, ids
 }

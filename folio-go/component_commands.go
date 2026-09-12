@@ -1649,6 +1649,8 @@ const imageDropWidth, imageDropHeight geom.Length = 96000, 48000
 // rule's thickness is not a position, and snapping applies to x/y alone.
 const lineDropHeight geom.Length = 1000
 
+const tableDropHeight geom.Length = 12000
+
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 6); err != nil {
 		return CanvasProjection{}, err
@@ -1685,6 +1687,11 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		height = lineDropHeight
 	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
+	if elementType == template.ElementTable {
+		// Snap and containment must see the table's real column geometry,
+		// including drops near the right edge of a non-grid-width band.
+		x, width, height = 0, geom.Length(projected.Width), tableDropHeight
+	}
 	unsnappedX, unsnappedY := x, y
 	fitImage := elementType == template.ElementImage && slices.Contains(bandsCappingVertically, projected.Name)
 	if snap {
@@ -1722,15 +1729,26 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	if t.doc.NextID <= 0 || t.doc.NextID == 1<<63-1 {
+	idsNeeded := int64(1)
+	if elementType == template.ElementTable {
+		idsNeeded = 2
+	}
+	if t.doc.NextID <= 0 || t.doc.NextID > (1<<63-1)-idsNeeded {
 		return CanvasProjection{}, fmt.Errorf("folio: nextId cannot allocate another component")
 	}
-	element := template.Element{ID: template.AllocateElementID(t.doc), Type: elementType, X: x, Y: y}
+	// Allocate against a local cursor; a refusal consumes neither the table's
+	// id nor its starter column's id.
+	ids := template.Document{NextID: t.doc.NextID}
+	element := template.Element{ID: template.AllocateElementID(&ids), Type: elementType, X: x, Y: y}
+	ids.NextID++
 	if elementType == template.ElementTable {
-		element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{Bind: "items[]", Columns: []template.Column{}, HeaderHeight: 12000}}
+		x, width, height = 0, geom.Length(projected.Width), tableDropHeight
+		element.X = x
+		column := template.Column{ID: template.AllocateElementID(&ids), Width: width}
+		ids.NextID++
+		element.Table = template.Presence[template.TableExt]{Set: true, Value: template.TableExt{Bind: "items[]", Columns: []template.Column{column}, HeaderHeight: height}}
 		// Tables intentionally ignore free-box dimensions. Their paint size is
-		// derived from the newly-created table state, never stored.
-		width, height = 0, 12000
+		// derived from the starter column, never independently stored.
 	} else {
 		if width <= 0 || height <= 0 {
 			return CanvasProjection{}, fmt.Errorf("folio: component.width and component.height must be positive")
@@ -1739,13 +1757,6 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 		element.Height = template.Presence[geom.Length]{Set: true, Value: height}
 		if elementType == template.ElementText {
 			element.Value = template.Presence[string]{Set: true, Value: "Text"}
-			// The palette's text control is usable immediately, for the same
-			// reason the image control below embeds a default asset: Render
-			// resolves a face through style.fontFamily and refuses text without
-			// one, so a placed element that named no chain could never render.
-			if chain := defaultFontFamily(t); chain != "" {
-				styleFor(&element).FontFamily = template.Presence[string]{Set: true, Value: chain}
-			}
 		}
 		// Story 9.2: a line and a rect ARE their box — they carry no text
 		// and no asset — so a placed one with no style would render, and
@@ -1772,15 +1783,28 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 			element.Asset = template.Presence[string]{Set: true, Null: true}
 		}
 	}
+	// Text and tables need a declared font chain as soon as their text is
+	// rendered, including a new table's edited header or populated items.
+	if elementType == template.ElementText || elementType == template.ElementTable {
+		if chain := defaultFontFamily(t); chain != "" {
+			styleFor(&element).FontFamily = template.Presence[string]{Set: true, Value: chain}
+		}
+	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure("", "component.geometry", err.Error())
 	}
+	previousElements, previousID := band.Elements, t.doc.NextID
 	band.Elements = append(band.Elements, element)
-	t.doc.NextID++
-	return Canvas(t)
+	t.doc.NextID = ids.NextID
+	projection, err := Canvas(t)
+	if err != nil {
+		band.Elements, t.doc.NextID = previousElements, previousID
+		return CanvasProjection{}, err
+	}
+	return projection, nil
 }
 
-// defaultFontFamily names the chain a newly created text element adopts: the
+// defaultFontFamily names the chain a newly created text or table adopts: the
 // first declared non-empty chain in sorted key order. Sorted rather than
 // ranged (ScanMapRange), so a document's declared fonts pick the same chain on
 // every run. An empty result means the document declares no usable chain and
@@ -2043,11 +2067,26 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
-	if t.doc.NextID <= 0 || t.doc.NextID == 1<<63-1 {
+	idsNeeded := int64(1)
+	if element.Type == template.ElementTable {
+		idsNeeded += int64(len(element.Table.Value.Columns))
+	}
+	if t.doc.NextID <= 0 || t.doc.NextID > (1<<63-1)-idsNeeded {
 		return CanvasProjection{}, fmt.Errorf("folio: nextId cannot allocate another component")
 	}
 	clone := *element
-	clone.ID = template.AllocateElementID(t.doc)
+	ids := template.Document{NextID: t.doc.NextID}
+	clone.ID = template.AllocateElementID(&ids)
+	ids.NextID++
+	if clone.Type == template.ElementTable {
+		// Column IDs are document-wide identities. Copy their storage before
+		// replacing IDs so the source table remains independently editable.
+		clone.Table.Value.Columns = slices.Clone(element.Table.Value.Columns)
+		for index := range clone.Table.Value.Columns {
+			clone.Table.Value.Columns[index].ID = template.AllocateElementID(&ids)
+			ids.NextID++
+		}
+	}
 	// Story 7.9 / D-7.7.10: a duplicate joins NO keep-together group.
 	//
 	// `clone := *element` above is a whole-struct copy, so without this line
@@ -2076,9 +2115,15 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 		x, y = clone.X, clone.Y
 	}
 	clone.X, clone.Y = x, y
+	previousElements, previousID := band.Elements, t.doc.NextID
 	band.Elements = append(band.Elements, clone)
-	t.doc.NextID++
-	return Canvas(t)
+	t.doc.NextID = ids.NextID
+	projection, err := Canvas(t)
+	if err != nil {
+		band.Elements, t.doc.NextID = previousElements, previousID
+		return CanvasProjection{}, err
+	}
+	return projection, nil
 }
 
 func projectedSize(element template.Element) (geom.Length, geom.Length) {
