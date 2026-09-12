@@ -451,12 +451,10 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · a text element selected · Clear Font size (pt)',
   'design · a text element selected · Clear Line spacing',
   'design · a text element selected · Set Background null',
-  'design · a text element selected · Set Visible if null',
   'design · a text element selected · Show fonts',
   'design · a table element selected · Clear Font size (pt)',
   'design · a table element selected · Clear Line spacing',
   'design · a table element selected · Set Background null',
-  'design · a table element selected · Set Visible if null',
   'design · a table element selected · Show fonts',
   // STORY 14.2 — THE LINE AND THE RECTANGLE, DERIVED BY RUNNING THE SWEEP AND
   // READING WHAT IT REPORTED, never hand-written from the spec.
@@ -478,13 +476,11 @@ const V2_CENSUS: ReadonlyArray<string> = [
   // the reset beside the value it resets.
   'design · a line element selected · Clear Colour',
   'design · a line element selected · Set Colour null',
-  'design · a line element selected · Set Visible if null',
   'design · a rect element selected · Clear Border width (pt)',
   'design · a rect element selected · Clear Border colour',
   'design · a rect element selected · Clear Border edges',
   'design · a rect element selected · Clear Fill',
   'design · a rect element selected · Set Fill null',
-  'design · a rect element selected · Set Visible if null',
   // STORY 14.7 — THE TABLE EDITOR STATE, DERIVED BY RUNNING THE SWEEP AND
   // READING WHAT IT REPORTED, never hand-written from the story.
   //
@@ -510,7 +506,6 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · the table editor open · Clear Font size (pt)',
   'design · the table editor open · Clear Line spacing',
   'design · the table editor open · Set Background null',
-  'design · the table editor open · Set Visible if null',
   'design · the table editor open · Show fonts',
   'design · the table editor open · Move column 1 earlier',
   'design · the table editor open · Move column 1 later',

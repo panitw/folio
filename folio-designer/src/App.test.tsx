@@ -9986,7 +9986,7 @@ describe('common property selection scope', () => {
     expect(screen.getByRole('button', { name: 'Bold, mixed' })).toHaveAttribute('aria-pressed', 'mixed')
     expect(screen.getByLabelText('Pick Background')).toHaveClass('property-swatch-unset')
     expect(screen.getByRole('button', { name: 'Clear Visible if' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Set Visible if null' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set Visible if null' })).not.toBeInTheDocument()
   })
 
   it('keeps late blur and pending property results scoped to the captured selection', async () => {

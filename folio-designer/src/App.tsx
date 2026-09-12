@@ -3958,7 +3958,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // the same 12. `clear` itself is untouched: it still sends `op:"clear"`, and
   // Go still stores the zero Presence that omits the key from the file.
   const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression' && (!same || (live ?? draft) !== '' || components.some((component) => propertyPresent(component, field)))
-  const canNull = field === 'visibleIf' || field === 'background'
+  const canNull = field === 'background'
   const errorId = error ? `property-error-${field}` : undefined
   // The fx cue is a marker, not a control: it states, in the row itself, that
   // this field is read as an expression. The same sentence reaches a screen

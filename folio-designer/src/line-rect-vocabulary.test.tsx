@@ -691,7 +691,7 @@ describe('every renamed, added and withheld control keeps an unambiguous name', 
     select('e1', 'line')
     const panel = within(screen.getByLabelText('Properties panel'))
     for (const name of ['X (pt)', 'Y (pt)', 'Length (pt)', 'Thickness (pt)', 'Colour', 'Visible if']) expect(panel.getByRole('textbox', { name })).toBeInTheDocument()
-    for (const name of ['Horizontal orientation', 'Vertical orientation', 'Set Colour null', 'Set Visible if null']) expect(panel.getByRole('button', { name })).toBeInTheDocument()
+    for (const name of ['Horizontal orientation', 'Vertical orientation', 'Set Colour null']) expect(panel.getByRole('button', { name })).toBeInTheDocument()
     expect(panel.getByRole('group', { name: 'Orientation' })).toBeInTheDocument()
     expect(panel.getByLabelText('Pick Colour')).toBeInTheDocument()
     // Not one control in the panel is left unnamed — asserted over what the
