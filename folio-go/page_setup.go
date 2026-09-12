@@ -255,14 +255,15 @@ type CanvasBand struct {
 	Height int64  `json:"height"`
 }
 type CanvasComponent struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Band      string `json:"band"`
-	X         int64  `json:"x"`
-	Y         int64  `json:"y"`
-	Width     int64  `json:"width"`
-	Height    int64  `json:"height"`
-	Resizable bool   `json:"resizable"`
+	Authored  *CanvasAuthoredProperties `json:"authored,omitempty"`
+	ID        string                    `json:"id"`
+	Type      string                    `json:"type"`
+	Band      string                    `json:"band"`
+	X         int64                     `json:"x"`
+	Y         int64                     `json:"y"`
+	Width     int64                     `json:"width"`
+	Height    int64                     `json:"height"`
+	Resizable bool                      `json:"resizable"`
 	// The following explicitly named optional values are the minimum committed
 	// property-panel projection. This is not a generic style or document bag.
 	Value *string `json:"value,omitempty"`
@@ -1871,6 +1872,11 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, err
 				}
 			}
+			authored, err := canvasAuthoredProperties(element)
+			if err != nil {
+				return nil, err
+			}
+			component.Authored = authored
 			out = append(out, component)
 		}
 	}

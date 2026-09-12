@@ -206,7 +206,13 @@ const declaredOptions = () => {
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
 const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
-const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request }) as unknown as EngineClient
+const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request: (operation: string, payload?: ArrayBuffer, ...rest: unknown[]) => {
+  if (operation === 'group-move-preview') {
+    const intent = JSON.parse(new TextDecoder().decode(payload))
+    return Promise.resolve({ snapshot: { documentState: 'loaded', revision: intent.expectedRevision, byteLength: 3 }, groupMove: { revision: intent.expectedRevision, dx: intent.dx * 1000, dy: intent.dy * 1000 } })
+  }
+  return (request as (...args: unknown[]) => unknown)(operation, payload, ...rest)
+} }) as unknown as EngineClient
 
 describe('application shell', () => {
   it('hydrates engine-owned state when asynchronous startup replaces the loading shell', () => {
@@ -1967,7 +1973,7 @@ describe('application shell', () => {
       // POSITIVE CONTROL, on the same listener: a press on the band — which
       // stops nothing — does reach it, so the absence above is a measurement of
       // `stopPropagation` and not of a listener that never fires.
-      fireEvent.pointerDown(screen.getByLabelText('Content'), { pointerId: 4, clientX: 1, clientY: 1 })
+      fireEvent.pointerDown(screen.getByLabelText('Content'), { pointerId: 4, clientX: 1, clientY: 1, button: 2 })
       expect(above).toHaveBeenCalledOnce()
     }
     finally { document.removeEventListener('pointerdown', above) }
@@ -2005,7 +2011,64 @@ describe('application shell', () => {
     fireEvent.pointerMove(component, { pointerId: 2, clientX: 13, clientY: 12 })
     fireEvent.pointerUp(component, { pointerId: 2, clientX: 13, clientY: 12 })
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
-    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e9","x":3,"y":2,"snap":true}')
+    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponents","version":1,"ids":["e9"],"referenceId":"e9","dx":3,"dy":2,"snap":true,"expectedRevision":1,"constrainToWindow":true}')
+  })
+
+  it('renders selection chrome outside the band clip using projected sheet coordinates', async () => {
+    const placed = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }
+    const componentCanvas = { ...canvas, components: [placed] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const body = screen.getByLabelText('text component e9')
+    fireEvent.click(body)
+    const handle = screen.getByRole('button', { name: 'Resize e9' })
+    expect(body.closest('.band-window')).not.toBeNull()
+    expect(handle.closest('.band-window')).toBeNull()
+    const chrome = handle.closest('.canvas-selection-chrome') as HTMLElement
+    expect(chrome.closest('.page-band')).toBeNull()
+    expect(chrome.style.getPropertyValue('--component-x')).toBe(`${canvas.bands[1]!.x / 1000}px`)
+    expect(chrome.style.getPropertyValue('--component-y')).toBe(`${canvas.bands[1]!.y / 1000}px`)
+    expect(chrome.querySelector('.canvas-dimension')).toHaveTextContent('72 × 24')
+    expect(screen.getAllByLabelText('text component e9')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-component-id="e9"]')).toHaveLength(1)
+    const northwest = chrome.querySelector('.selection-handle-nw')!
+    fireEvent.pointerDown(northwest, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(northwest, { pointerId: 1, clientX: 14, clientY: 13 })
+    expect(screen.getByRole('textbox', { name: 'Width (pt)' })).toHaveValue('68')
+    expect(screen.getByRole('textbox', { name: 'Height (pt)' })).toHaveValue('21')
+    fireEvent.pointerUp(northwest, { pointerId: 1, clientX: 14, clientY: 13 })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(JSON.parse(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]))).toMatchObject({ kind: 'setComponentBounds', id: 'e9', x: 4, y: 3, width: 68, height: 21 })
+  })
+
+  it('keeps oversized content paint clipped and hides off-window resize endpoints', () => {
+    const placed = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 2400000, resizable: true }
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [placed] } }} />)
+    const body = screen.getByLabelText('text component e9')
+    fireEvent.click(body)
+    expect(body.closest('.band-window')).not.toHaveClass('band-window-open')
+    const chrome = document.querySelector('.canvas-selection-chrome') as HTMLElement
+    expect(chrome).toHaveClass('canvas-selection-chrome-overflow')
+    expect(chrome.style.getPropertyValue('--chrome-visible-height')).toBe(`${canvas.bands[1]!.height / 1000}px`)
+    expect(chrome.querySelector('.selection-handle-nw')).not.toBeNull()
+    expect(chrome.querySelector('.selection-handle-s')).toBeNull()
+    expect(chrome.querySelector('.selection-handle-e')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Resize e9' })).not.toBeInTheDocument()
+    expect(body.style.getPropertyValue('--component-height')).toBe(`${placed.height / 1000}px`)
+  })
+
+  it('focuses a pointer-selected body before keyboard deletion', async () => {
+    const componentCanvas = { ...canvas, components: [{ id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }] }
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [] } } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    screen.getByRole('button', { name: 'Zoom in' }).focus()
+    const component = screen.getByLabelText('text component e9')
+    fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(component, { pointerId: 1, clientX: 10, clientY: 10 })
+    expect(component).toHaveFocus()
+    fireEvent.keyDown(document.activeElement!, { key: 'Delete' })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(JSON.parse(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]))).toMatchObject({ kind: 'deleteComponent', id: 'e9' })
   })
 
   it('tracks a drag and a resize live in the geometry fields, then lands the accepted engine geometry', async () => {
@@ -2023,11 +2086,11 @@ describe('application shell', () => {
     fireEvent.pointerMove(component, { pointerId: 1, clientX: 13, clientY: 12 })
     // The transient proposal the canvas paints is the value the panel shows,
     // and it cannot be typed over while the pointer owns it.
-    expect(x).toHaveValue('3')
+    await waitFor(() => expect(x).toHaveValue('3'))
     expect(y).toHaveValue('2')
     expect(x).toHaveAttribute('readonly')
     fireEvent.pointerMove(component, { pointerId: 1, clientX: 19, clientY: 10 })
-    expect(x).toHaveValue('9')
+    await waitFor(() => expect(x).toHaveValue('9'))
     expect(y).toHaveValue('0')
     fireEvent.pointerUp(component, { pointerId: 1, clientX: 19, clientY: 10 })
     // Go's accepted geometry replaces the proposal; 9 was never committed.
@@ -2055,13 +2118,13 @@ describe('application shell', () => {
     const component = screen.getByLabelText('text component e9')
     fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(component, { pointerId: 1, clientX: 19, clientY: 10 })
-    expect(component.style.getPropertyValue('--component-x')).toBe('9px')
+    await waitFor(() => expect(component.style.getPropertyValue('--component-x')).toBe('9px'))
     fireEvent.pointerUp(component, { pointerId: 1, clientX: 19, clientY: 10 })
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
     // Red proof: dropping the proposal on pointer-up painted 0px here, so the
     // element visibly jumped back to where the drag started and stayed there
     // until Go answered. The proposal owns the paint until the answer lands.
-    expect(component.style.getPropertyValue('--component-x')).toBe('9px')
+    await waitFor(() => expect(component.style.getPropertyValue('--component-x')).toBe('9px'))
     answer!()
     await waitFor(() => expect(component.style.getPropertyValue('--component-x')).toBe('6px'))
     expect(screen.getByRole('textbox', { name: 'X (pt)' })).not.toHaveAttribute('readonly')
@@ -2108,6 +2171,7 @@ describe('application shell', () => {
   it('keeps a selected component selected when the click lands on the backdrop beside the page', () => {
     const request = renderSelectable()
     pointerSelect('text component e1', 1)
+    fireEvent.click(screen.getByLabelText('text component e1'))
     expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Canvas region'))
     expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
@@ -2131,6 +2195,7 @@ describe('application shell', () => {
   it('still clears a single selection when the click lands on the page surface itself', () => {
     const request = renderSelectable()
     pointerSelect('text component e1', 1)
+    fireEvent.click(screen.getByLabelText('text component e1'))
     expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Report page with Page Header, Content, and Page Footer'))
     expect(screen.queryByLabelText('Resize e1')).not.toBeInTheDocument()
@@ -2141,6 +2206,7 @@ describe('application shell', () => {
   it('still clears the selection on Escape in the canvas region, which is now the deliberate way to', () => {
     const request = renderSelectable()
     pointerSelect('text component e1', 1)
+    fireEvent.click(screen.getByLabelText('text component e1'))
     expect(screen.getByLabelText('Resize e1')).toBeInTheDocument()
     const region = screen.getByLabelText('Canvas region')
     region.focus()
@@ -2204,6 +2270,7 @@ describe('application shell', () => {
   it('does not swap the inspector to page setup on a backdrop click', () => {
     const request = renderSelectable()
     pointerSelect('text component e1', 1)
+    fireEvent.click(screen.getByLabelText('text component e1'))
     expect(screen.queryByRole('button', { name: 'Apply page setup' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Canvas region'))
     expect(screen.queryByRole('button', { name: 'Apply page setup' })).not.toBeInTheDocument()
@@ -4024,7 +4091,7 @@ describe('typography controls over the engine-projected closed sets', () => {
     fireEvent.click(screen.getByLabelText('table component e2'), { shiftKey: true })
     expect(alignNames()).toEqual(['Align left', 'Align center', 'Align right'])
 
-    fireEvent.click(screen.getByLabelText('text component e1'))
+    fireEvent.click(screen.getByLabelText('table component e2'), { shiftKey: true })
     fireEvent.click(screen.getByRole('button', { name: 'Align justify' }))
     await waitFor(() => expect(sent).toHaveLength(1))
     expect(new TextDecoder().decode(sent[0]!)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"align":{"op":"set","value":"justify"}}}')
@@ -4745,13 +4812,13 @@ describe('Story 17.4: arrow keys step a number field', () => {
     fireEvent.pointerMove(component, { pointerId: 1, clientX: 13, clientY: 12 })
     const x = screen.getByRole('textbox', { name: 'X (pt)' })
     expect(x).toHaveAttribute('readonly')
-    expect(x).toHaveValue('3')
+    await waitFor(() => expect(x).toHaveValue('3'))
     // Unhandled, and the live proposal is untouched: the pointer owns the
     // value, and no command is sent behind its back.
     expect(fireEvent.keyDown(x, { key: 'ArrowUp' })).toBe(true)
-    expect(x).toHaveValue('3')
+    await waitFor(() => expect(x).toHaveValue('3'))
     fireEvent.keyDown(x, { key: 'ArrowDown' })
-    expect(x).toHaveValue('3')
+    await waitFor(() => expect(x).toHaveValue('3'))
     await Promise.resolve()
     expect(sent).toHaveLength(0)
   })
@@ -5568,50 +5635,22 @@ describe('canvas sheet stack', () => {
     expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
   })
 
-  it('drags a component across a seam onto a later sheet and commits a column coordinate', async () => {
+  it('uses the engine accepted edge for a single drag and keeps its content clip', async () => {
     const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
-    render(<App engine={engine(request)} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0)] })} />)
+    const client = engine(request)
+    const ordinary = client.request.bind(client)
+    client.request = ((operation: string, payload?: ArrayBuffer) => operation === 'group-move-preview'
+      ? Promise.resolve({ snapshot: snapshotOf(threeWindows), groupMove: { revision: 1, dx: 0, dy: 676000 } })
+      : ordinary(operation as never, payload)) as EngineClient['request']
+    render(<App engine={client} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0)] })} />)
     const component = screen.getByLabelText('text component e1')
-    // One whole sheet-plus-gap down the stack: 841.890pt of page and the 24px
-    // gap the stack declares.
     fireEvent.pointerDown(component, { pointerId: 1, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(component, { pointerId: 1, clientX: 10, clientY: 875.89 })
-    // Tracking the hand means landing one WINDOW lower in the column — 700pt,
-    // the projected origin of window two — not 865.89pt, which is what the
-    // linear pixel delta this replaced would have proposed. The difference is
-    // exactly the page footer, the gap and the page header the pointer
-    // crossed.
-    expect(component.style.getPropertyValue('--component-y')).toBe('700px')
-    // The clip has to lift for the duration of the gesture, or the component
-    // is clipped out of view at the very seam it is being dragged across.
-    // jsdom applies no stylesheet, so the class is the only observable the
-    // suite has: pinning it to the constant `band-window` left every numeric
-    // assertion here green while the gesture was visually broken.
-    expect(document.querySelectorAll('.band-window-open').length).toBeGreaterThan(0)
+    await waitFor(() => expect(component.style.getPropertyValue('--component-y')).toBe('676px'))
+    expect(document.querySelectorAll('.band-window-open')).toHaveLength(0)
     fireEvent.pointerUp(component, { pointerId: 1, clientX: 10, clientY: 875.89 })
     await waitFor(() => expect(request).toHaveBeenCalledOnce())
-    // And it drops again once the gesture has settled, so the clip is back for
-    // every component that is not being dragged.
-    await waitFor(() => expect(document.querySelectorAll('.band-window-open')).toHaveLength(0))
-    expect(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1])).toBe('{"kind":"moveComponent","version":1,"id":"e1","x":0,"y":700,"snap":true}')
-  })
-
-  it('lets a drag leave the content band vertically while still capping the repeating bands', () => {
-    render(<App engine={engine()} initialSnapshot={snapshotOf({ ...threeWindows, components: [at('e1', 0), footer] })} />)
-    const content = screen.getByLabelText('text component e1')
-    fireEvent.pointerDown(content, { pointerId: 1, clientX: 0, clientY: 0 })
-    fireEvent.pointerMove(content, { pointerId: 1, clientX: 0, clientY: 800 })
-    // 800pt down a 729.89pt window. RED PROOF, run and recorded: restoring
-    // the clamp DW-36 lifted pins this at 705.89px — the band's own height
-    // less the component's — which is the whole of why the lifted column was
-    // reachable by command and not by hand.
-    expect(content.style.getPropertyValue('--component-y')).toBe('800px')
-    const repeated = screen.getByLabelText('text component f1')
-    fireEvent.pointerDown(repeated, { pointerId: 2, clientX: 0, clientY: 0 })
-    fireEvent.pointerMove(repeated, { pointerId: 2, clientX: 0, clientY: 400 })
-    // The page footer is 20pt tall and the component is 12pt tall, so the
-    // drag rests at the band foot exactly as it did before this story.
-    expect(repeated.style.getPropertyValue('--component-y')).toBe('8px')
+    expect(JSON.parse(new TextDecoder().decode((request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]))).toMatchObject({ kind: 'moveComponents', dy: 865.89, constrainToWindow: true })
   })
 
   it('states what the sheets claim, in accessible text, whenever there is more than one or the count is not exact', () => {
@@ -5670,7 +5709,7 @@ describe('canvas sheet stack', () => {
   // the same accessible names, the same command payload. The compile-only e2e
   // specs address these labels in Playwright STRICT MODE, where a duplicate
   // or a renamed label would be caught by nothing executable.
-  it('renders a genuinely single-page template exactly as it did before this story', async () => {
+  it('renders a single-page template with the stable selection stack', async () => {
     const request = vi.fn(async () => ({ snapshot: snapshot(2) }))
     render(<App engine={engine(request)} initialSnapshot={snapshotOf({ ...canvas, components: [at('e1', 0)] })} />)
     expect(sheetLabels()).toEqual(['Report page with Page Header, Content, and Page Footer'])
@@ -5678,10 +5717,10 @@ describe('canvas sheet stack', () => {
     expect(screen.getByLabelText('Content')).toBeInTheDocument()
     expect(screen.getByLabelText('Page Footer')).toBeInTheDocument()
     expect(screen.getByLabelText('text component e1')).toBeInTheDocument()
-    // No seam, no stack wrapper, no clipping window, no echo, no disclosure.
+    // The coordinate stack remains; no seam, clipping window, echo, or disclosure.
     expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
-    expect(document.querySelectorAll('.sheet-stack')).toHaveLength(0)
-    expect(document.querySelectorAll('.band-window')).toHaveLength(0)
+    expect(document.querySelectorAll('.sheet-stack')).toHaveLength(1)
+    expect(document.querySelectorAll('.band-window')).toHaveLength(1)
     expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(0)
     expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
     // And the payload, byte for byte.
@@ -9806,7 +9845,8 @@ describe('Story 17.1: the canvas follows the content field', () => {
     const spelled: Record<string, number> = { TEN: 10, ELEVEN: 11, TWELVE: 12, THIRTEEN: 13, FOURTEEN: 14, FIFTEEN: 15, SIXTEEN: 16, SEVENTEEN: 17, EIGHTEEN: 18, NINETEEN: 19, TWENTY: 20, 'TWENTY-ONE': 21, 'TWENTY-TWO': 22, 'TWENTY-THREE': 23 }
     const written = spelled[declared![1] as string]
     expect(written).toBeDefined()
-    expect(written).toBe((source.slice(start).match(/\n {2}it\(/g) ?? []).length)
+    const end = source.indexOf("\ndescribe('", start + 1)
+    expect(written).toBe((source.slice(start, end < 0 ? undefined : end).match(/\n {2}it\(/g) ?? []).length)
   })
 
   // A BLUR THAT SENDS NOTHING MUST STILL HAND THE DRAFT BACK.
@@ -9902,5 +9942,109 @@ describe('Story 17.1: the canvas follows the content field', () => {
     release()
     await settle()
     expect(screen.getByRole('textbox', { name: 'Text' })).not.toBeDisabled()
+  })
+})
+
+describe('common property selection scope', () => {
+  const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true, value: 'Sample' }
+  const absent = { state: 'absent' as const }
+  const authored = { visibleIf: absent, fontFamily: absent, fontSize: absent, lineSpacing: absent, bold: absent, italic: absent, align: absent, valign: absent, color: absent, background: absent, borderWidth: absent, borderColor: absent, borderEdges: absent }
+  const members = [
+    { ...textComponent, id: 'e1', authored },
+    { ...textComponent, id: 'e2', x: 100000, y: 50000, authored },
+    { ...textComponent, id: 'e3', x: 200000, y: 100000, authored },
+  ]
+  const selectPair = () => { fireEvent.click(screen.getByLabelText('text component e1')); fireEvent.click(screen.getByLabelText('text component e2'), { shiftKey: true }) }
+
+  it('reconciles clearing divergent sizes to the shared inherited value without a blur edit', async () => {
+    const components = members.slice(0, 2).map((component, i) => ({ ...component, authored: { ...authored, fontSize: { state: 'value' as const, value: (i + 1) * 10000 } } }))
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components } }
+    const request = vi.fn(async () => ({ snapshot: { ...snapshot, revision: 2, canvas: { ...canvas, components: members.slice(0, 2) } } }))
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot} />)
+    selectPair()
+    const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    expect(size).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Font size (pt)' }))
+    await waitFor(() => expect(size).toHaveValue('12'))
+    fireEvent.focus(size); fireEvent.blur(size)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the existing clear operation when the final border edge is unchecked', async () => {
+    const components = members.slice(0, 2).map((component) => ({ ...component, authored: { ...authored, borderEdges: { state: 'value' as const, value: ['bottom'] as const } } }))
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components } }
+    const request = vi.fn(async () => ({ snapshot: { ...snapshot, revision: 2, canvas: { ...canvas, components: members.slice(0, 2) } } }))
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot} />)
+    selectPair()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Border bottom' }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Border bottom' })).not.toBeChecked())
+    const calls = request.mock.calls as unknown as [string, ArrayBuffer][]
+    expect(JSON.parse(new TextDecoder().decode(calls[0]![1]))).toMatchObject({ ids: ['e1', 'e2'], changes: { borderEdges: { op: 'clear' } } })
+  })
+
+  it('keeps untouched shared, mixed and inherited fields inert in multi-selection', () => {
+    const sent: ArrayBuffer[] = []
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components: members } }
+    const request = vi.fn(async (_op: string, payload?: ArrayBuffer) => { if (payload) sent.push(payload); return { snapshot } })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot} />)
+    selectPair()
+    for (const name of ['X (pt)', 'Y (pt)', 'Width (pt)', 'Font size (pt)', 'Line spacing', 'Background', 'Visible if']) {
+      const field = screen.getByRole('textbox', { name })
+      fireEvent.focus(field); fireEvent.blur(field); fireEvent.keyDown(field, { key: 'Enter' })
+    }
+    const x = screen.getByRole('textbox', { name: 'X (pt)' })
+    fireEvent.change(x, { target: { value: '123' } }); fireEvent.change(x, { target: { value: '' } }); fireEvent.blur(x)
+    expect(sent).toEqual([])
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 1')
+  })
+
+  it('distinguishes absence, null and explicit false; hides an arbitrary mixed swatch and offers Clear for null', () => {
+    const components = [{ ...members[0]!, authored: { ...authored, background: { state: 'null' as const }, bold: { state: 'value' as const, value: false }, visibleIf: { state: 'null' as const } } }, { ...members[1]!, authored: { ...authored, visibleIf: { state: 'null' as const } } }]
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components } }
+    render(<App initialSnapshot={snapshot} />)
+    selectPair()
+    expect(screen.getByRole('textbox', { name: 'Background' })).toHaveAttribute('aria-description', 'Mixed value')
+    expect(screen.getByRole('button', { name: 'Bold, mixed' })).toHaveAttribute('aria-pressed', 'mixed')
+    expect(screen.getByLabelText('Pick Background')).toHaveClass('property-swatch-unset')
+    expect(screen.getByRole('button', { name: 'Clear Visible if' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set Visible if null' })).toBeInTheDocument()
+  })
+
+  it('keeps late blur and pending property results scoped to the captured selection', async () => {
+    const pending: ((result: { snapshot: typeof snapshot }) => void)[] = []
+    const sent: ArrayBuffer[] = []
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components: members } }
+    const request = vi.fn((_op: string, payload?: ArrayBuffer) => { if (payload) { sent.push(payload); return new Promise<{ snapshot: typeof snapshot }>((resolve) => pending.push(resolve)) }; return Promise.resolve({ snapshot }) })
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot} />)
+    selectPair()
+    const old = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    fireEvent.change(old, { target: { value: '18' } })
+    fireEvent.click(screen.getByLabelText('text component e3'))
+    fireEvent.blur(old)
+    expect(sent).toHaveLength(0)
+    selectPair()
+    const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    fireEvent.change(size, { target: { value: '18' } }); fireEvent.keyDown(size, { key: 'Enter' })
+    fireEvent.keyDown(size, { key: 'Enter' })
+    expect(sent).toHaveLength(1)
+    fireEvent.click(screen.getByLabelText('text component e3'))
+    await act(async () => pending[0]!({ snapshot: { ...snapshot, revision: 2 } }))
+    expect(screen.getByText('e3 · band: content')).toBeInTheDocument()
+    expect(JSON.parse(new TextDecoder().decode(sent[0]!))).toMatchObject({ ids: ['e1', 'e2'], changes: { fontSize: { op: 'set', value: 18 } } })
+  })
+
+  it('does not install a delayed bulk response over a replaced document, even with a newer revision', async () => {
+    const snapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 1, canvas: { ...canvas, components: members } }
+    let resolveCommit!: (result: { snapshot: typeof snapshot }) => void
+    const request = vi.fn((operation: string) => operation === 'command' ? new Promise<{ snapshot: typeof snapshot }>((resolve) => { resolveCommit = resolve }) : Promise.resolve({ snapshot: { ...snapshot, revision: 3, canvas: { ...canvas, components: [members[2]!] } } }))
+    render(<App engine={engine(request as never)} initialSnapshot={snapshot} blankBytes={new Uint8Array([1]).buffer} />)
+    selectPair()
+    const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
+    fireEvent.change(size, { target: { value: '18' } }); fireEvent.keyDown(size, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3'))
+    await act(async () => resolveCommit({ snapshot: { ...snapshot, revision: 99 } }))
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3')
+    expect(screen.queryByLabelText('text component e1')).not.toBeInTheDocument()
   })
 })

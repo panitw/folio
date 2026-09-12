@@ -3390,3 +3390,107 @@ func TestAMalformedTailIsReportedAsTheTailAndNotAsEntries(t *testing.T) {
 		t.Errorf("refusal = %q names the fallback tail, a key this command does not have", failure.Message)
 	}
 }
+
+func TestLineBoundsSnapLengthAndPositionWithoutSnappingThickness(t *testing.T) {
+	for _, tc := range []struct {
+		name                                         string
+		width, height, proposedWidth, proposedHeight string
+		wantWidth, wantHeight                        int64
+	}{
+		{"horizontal", "72", "1.25", "406.422", "1.25", 408000, 1250},
+		{"vertical", "1.25", "72", "1.25", "406.422", 1250, 408000},
+		{"square", "10", "10", "22.2", "10", 24000, 10000},
+		{"short horizontal", "72", "1.25", "1.25", "1.25", 1250, 1250},
+		{"short vertical", "1.25", "72", "1.25", "1.251", 1250, 1251},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, snap := range []bool{true, false} {
+				t.Run(fmt.Sprintf("snap=%t", snap), func(t *testing.T) {
+					tpl := componentTemplate(t)
+					before, _ := Canvas(tpl)
+					createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"line","band":"content","x":6,"y":12,"width":72,"height":1,"snap":false}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					created := newProjectedComponent(t, before, createdProjection)
+					// The inspector remains the author of Thickness, including
+					// fractional values that are smaller than a grid interval.
+					_, err = ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"updateComponentProperties","version":1,"ids":[%q],"changes":{"width":{"op":"set","value":%s},"height":{"op":"set","value":%s}}}`, created.ID, tc.width, tc.height)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					bounded, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"setComponentBounds","version":1,"id":%q,"x":7.3,"y":11.2,"width":%s,"height":%s,"snap":%t}`, created.ID, tc.proposedWidth, tc.proposedHeight, snap)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got := newProjectedComponent(t, before, bounded)
+					wantX, wantY, wantW, wantH := int64(6000), int64(12000), tc.wantWidth, tc.wantHeight
+					if !snap {
+						wantX, wantY = 7300, 11200
+						w, _ := lengthField(map[string]json.RawMessage{"width": json.RawMessage(tc.proposedWidth)}, "width")
+						h, _ := lengthField(map[string]json.RawMessage{"height": json.RawMessage(tc.proposedHeight)}, "height")
+						wantW, wantH = int64(w), int64(h)
+					}
+					if got.X != wantX || got.Y != wantY || got.Width != wantW || got.Height != wantH {
+						t.Fatalf("got (%d,%d,%d,%d), want (%d,%d,%d,%d)", got.X, got.Y, got.Width, got.Height, wantX, wantY, wantW, wantH)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestLineBoundsSnapAtBandEdgePreservesThickness(t *testing.T) {
+	for _, tc := range []struct{ vertical, short bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		vertical := tc.vertical
+		t.Run(fmt.Sprintf("vertical=%t/short=%t", vertical, tc.short), func(t *testing.T) {
+			tpl := componentTemplate(t)
+			before, _ := Canvas(tpl)
+			createdProjection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"createComponent","version":1,"type":"line","band":"pageHeader","x":0,"y":0,"width":12,"height":1,"snap":false}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			created := newProjectedComponent(t, before, createdProjection)
+			var band CanvasBand
+			for _, candidate := range before.Bands {
+				if candidate.Name == "pageHeader" {
+					band = candidate
+				}
+			}
+			w, h := int64(12000), int64(1250)
+			if vertical {
+				w, h = h, w
+			}
+			if tc.short {
+				// The snapped origin leaves less space than the thickness.
+				// Containment rounds length to zero, exercising the precise
+				// axis fallback after containment, not only before it.
+				w = band.Width%GridIncrement + 1250
+				h = w
+				if vertical {
+					h = band.Height%GridIncrement + 1251
+					w = h - 1
+				}
+			}
+			_, err = ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"updateComponentProperties","version":1,"ids":[%q],"changes":{"width":{"op":"set","value":%s},"height":{"op":"set","value":%s}}}`, created.ID, pointLiteral(w), pointLiteral(h))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			x, y := band.Width-w, band.Height-h
+			bounded, err := ApplyComponentCommand(tpl, []byte(fmt.Sprintf(`{"kind":"setComponentBounds","version":1,"id":%q,"x":%s,"y":%s,"width":%s,"height":%s,"snap":true}`, created.ID, pointLiteral(x), pointLiteral(y), pointLiteral(w), pointLiteral(h))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := newProjectedComponent(t, before, bounded)
+			if (!vertical && got.Height != h) || (vertical && got.Width != w) {
+				t.Fatalf("thickness changed: %+v", got)
+			}
+			if tc.short && (got.Width != w || got.Height != h) {
+				t.Fatalf("short line changed orientation or size: %+v, want %dx%d", got, w, h)
+			}
+			if got.X+got.Width > band.Width || got.Y+got.Height > band.Height {
+				t.Fatalf("escaped band: %+v", got)
+			}
+		})
+	}
+}

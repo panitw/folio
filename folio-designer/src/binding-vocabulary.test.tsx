@@ -131,12 +131,12 @@ describe('the BINDING section is offered only where the engine can honour it', (
 
   // The negative half, and it is not vacuous: this selection differs from the
   // four above ONLY in carrying more than one component.
-  it('keeps the multi-selection sentence exactly as it was', () => {
+  it('omits the single-component binding section for multi-selection', () => {
     open([text, { ...line, id: 'e2', y: 100_000 }])
     select('e1', 'text')
     fireEvent.click(screen.getByLabelText(/^line component e2/), { shiftKey: true })
-    expect(bindingSection()).not.toBeNull()
-    expect(screen.getByText('Binding is shown for one selected component.')).toBeInTheDocument()
+    expect(bindingSection()).toBeNull()
+    expect(screen.queryByText('Binding is shown for one selected component.')).not.toBeInTheDocument()
   })
 })
 

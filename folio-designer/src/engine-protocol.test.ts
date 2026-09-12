@@ -1054,3 +1054,28 @@ describe('the preview literal is rebuilt in full at both protocol hops', () => {
     }
   })
 })
+
+
+describe('authored common property evidence', () => {
+  const fields = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges']
+  const absent = Object.fromEntries(fields.map((key) => [key, { state: 'absent' }]))
+  const response = (authored: object) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'authored-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, authored }] } } })
+  it('admits absent/null/false/zero/empty independently of resolved paint', () => {
+    expect(parseInbound(response({ ...absent, visibleIf: { state: 'value', value: '' }, background: { state: 'null' }, bold: { state: 'value', value: false }, borderWidth: { state: 'value', value: 0 }, borderEdges: { state: 'value', value: [] } }))).toBeDefined()
+  })
+  it.each([
+    { ...absent, extra: { state: 'absent' } },
+    { ...absent, bold: { state: 'value', value: 'false' } },
+    { ...absent, color: { state: 'null', value: '#ffffff' } },
+    { ...absent, color: { state: 'value', value: 'x'.repeat(MAX_CANVAS_PROPERTY_STRING + 1) } },
+    { ...absent, borderWidth: { state: 'value', value: Number.MAX_SAFE_INTEGER + 1 } },
+    { ...absent, borderEdges: { state: 'value', value: ['middle'] } },
+  ])('rejects malformed, surplus, or unbounded authored evidence', (authored) => {
+    expect(parseInbound(response(authored))).toBeUndefined()
+  })
+  it('requires every field and the value on value states', () => {
+    const { color: _color, ...missing } = absent
+    expect(parseInbound(response(missing))).toBeUndefined()
+    expect(parseInbound(response({ ...absent, color: { state: 'value' } }))).toBeUndefined()
+  })
+})

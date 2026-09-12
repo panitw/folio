@@ -18,7 +18,7 @@ export type DragAnchor = ResizeAnchor | 'move'
 // a rejected drag lands the component back where it started, which reads as
 // the drag having been thrown away. The floor keeps a rectangle from
 // inverting under the pointer for the same reason.
-const minimumSize = 1000
+const defaultMinimumSize = 1000
 
 export type Bounds = Readonly<{ x: number; y: number; width: number; height: number }>
 export type DragOrigin = Readonly<{ originalX: number; originalY: number; originalWidth: number; originalHeight: number }>
@@ -40,7 +40,7 @@ export type DragLimit = Readonly<{ band: CanvasProjection['bands'][number]['name
 
 function clamp(value: number, low: number, high: number): number { return Math.min(Math.max(value, low), Math.max(low, high)) }
 
-export function proposedBounds(anchor: DragAnchor, origin: DragOrigin, dx: number, dy: number, limit?: DragLimit): Bounds {
+export function proposedBounds(anchor: DragAnchor, origin: DragOrigin, dx: number, dy: number, limit?: DragLimit, minimumSize = defaultMinimumSize): Bounds {
   const limitWidth = limit ? limit.width : Number.POSITIVE_INFINITY
   // ONE gate, consumed by both vertical clamps below — the move's `y` and the
   // south resize's `bottom`. The horizontal limit above is deliberately

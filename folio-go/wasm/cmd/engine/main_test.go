@@ -394,3 +394,35 @@ func TestWasmHostReportsThePageSetupDuplicateKeyRefusalAsPageSetupInvalid(t *tes
 		})
 	}
 }
+
+func TestWasmGroupMovePreviewAndCommitTransport(t *testing.T) {
+	input, err := os.ReadFile("../../../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := wasm.NewEngine()
+	loaded := dispatch(engine, request{Operation: "load", PayloadBase64: base64.StdEncoding.EncodeToString(input)})
+	if !loaded.OK {
+		t.Fatal(loaded.Message)
+	}
+	// The fixture's two text elements are legal references; zero preview is
+	// deliberately a no-op and must remain exactly revision-correlated.
+	command := []byte(`{"kind":"moveComponents","version":1,"ids":["e1"],"referenceId":"e1","dx":0,"dy":0,"snap":true,"expectedRevision":1}`)
+	query := dispatch(engine, request{Operation: "group-move-preview", PayloadBase64: base64.StdEncoding.EncodeToString(command)})
+	if !query.OK || query.GroupMove == nil || query.GroupMove.Revision != 1 || query.GroupMove.DX != 0 || query.GroupMove.DY != 0 {
+		t.Fatalf("preview: %+v", query)
+	}
+	committed := dispatch(engine, request{Operation: "command", PayloadBase64: base64.StdEncoding.EncodeToString(command)})
+	if !committed.OK || committed.Snapshot.Revision != 1 || committed.Snapshot.CanUndo {
+		t.Fatalf("zero commit: %+v", committed)
+	}
+	for _, in := range []request{
+		{Operation: "group-move-preview", PayloadBase64: base64.StdEncoding.EncodeToString(command), DataBase64: "e30="},
+		{Operation: "group-move-preview", PayloadBase64: base64.StdEncoding.EncodeToString(bytes.Replace(command, []byte(`"expectedRevision":1`), []byte(`"expectedRevision":2`), 1))},
+		{Operation: "group-move-preview", PayloadBase64: base64.StdEncoding.EncodeToString(bytes.Replace(command, []byte(`"e1"`), []byte(`"ezmissing"`), -1))},
+	} {
+		if result := dispatch(engine, in); result.OK {
+			t.Fatal("invalid preview accepted")
+		}
+	}
+}

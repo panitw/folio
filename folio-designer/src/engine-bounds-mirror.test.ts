@@ -784,7 +784,7 @@ describe('scalar binding legality mirror', () => {
     expect(panel).toMatch(/^import \{ SCALAR_BINDING_COMPONENT_TYPES, type CanvasComponentType \} from '\.\/engine-protocol'$/m)
     expect(panel).toMatch(/const bindableKind = selectedComponentType !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(selectedComponentType\)/)
     // 3. THE INSPECTOR'S BINDING SECTION, gated by the same array.
-    expect(app).toMatch(/const scalarBindable = single === undefined \|\| SCALAR_BINDING_COMPONENT_TYPES\.includes\(single\.type\)/)
+    expect(app).toMatch(/const scalarBindable = single !== undefined && SCALAR_BINDING_COMPONENT_TYPES\.includes\(single\.type\)/)
     // AND NO CONSUMER HOLDS A COPY OF ITS OWN. The drift this story invites is
     // a kind test re-spelled as a bare comparison against the literal, which
     // both declarations agreeing would hide completely.

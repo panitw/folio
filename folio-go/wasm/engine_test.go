@@ -948,3 +948,79 @@ func TestEngineApplyRefusesADuplicateKeyOnEitherRoutingBranch(t *testing.T) {
 		})
 	}
 }
+
+func TestEngineGroupMovePreviewAtomicHistoryAndRevisionFence(t *testing.T) {
+	input, err := os.ReadFile("../testdata/template/golden/worked-example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	for _, position := range []string{"12.125", "84.375"} {
+		before := engine.Snapshot()
+		added, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"rect","band":"content","x":` + position + `,"y":12.225,"width":24,"height":12,"snap":false}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		known := map[string]bool{}
+		for _, component := range before.Canvas.Components {
+			known[component.ID] = true
+		}
+		for _, component := range added.Canvas.Components {
+			if !known[component.ID] {
+				ids = append(ids, component.ID)
+			}
+		}
+	}
+	command := func(dx string, revision uint64) []byte {
+		return []byte(fmt.Sprintf(`{"kind":"moveComponents","version":1,"ids":[%q,%q],"referenceId":%q,"dx":%s,"dy":0,"snap":false,"expectedRevision":%d}`, ids[0], ids[1], ids[0], dx, revision))
+	}
+	original, before, _ := engine.Serialize()
+	preview, err := engine.GroupMovePreview(command("2.125", before.Revision))
+	if err != nil || preview.DX != 2125 || preview.Revision != before.Revision {
+		t.Fatalf("preview=%+v, %v", preview, err)
+	}
+	if !reflect.DeepEqual(engine.Snapshot(), before) {
+		t.Fatal("preview changed history or snapshot")
+	}
+	zero, err := engine.Apply(command("0", before.Revision))
+	if err != nil || !reflect.DeepEqual(zero, before) {
+		t.Fatal("zero changed revision/history")
+	}
+	moved, err := engine.Apply(command("2.125", before.Revision))
+	if err != nil || moved.Revision != before.Revision+1 {
+		t.Fatalf("move=%+v, %v", moved, err)
+	}
+	committed, _, _ := engine.Serialize()
+	if _, err = engine.Apply(command("3", before.Revision)); err == nil {
+		t.Fatal("stale revision accepted")
+	}
+	if _, err = engine.GroupMovePreview(command("3", before.Revision)); err == nil {
+		t.Fatal("stale preview accepted")
+	}
+	if _, err = engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	restored, _, _ := engine.Serialize()
+	if !bytes.Equal(restored, original) {
+		t.Fatal("one undo did not restore all members")
+	}
+	if _, err = engine.Redo(); err != nil {
+		t.Fatal(err)
+	}
+	redone, _, _ := engine.Serialize()
+	if !bytes.Equal(redone, committed) {
+		t.Fatal("redo did not replay whole group")
+	}
+	current := engine.Snapshot()
+	invalid := bytes.Replace(command("1", current.Revision), []byte(fmt.Sprintf("%q", ids[1])), []byte(`"ezmissing"`), 1)
+	if _, err = engine.Apply(invalid); err == nil {
+		t.Fatal("missing member accepted")
+	}
+	if !reflect.DeepEqual(current, engine.Snapshot()) {
+		t.Fatal("invalid member changed snapshot/history")
+	}
+}

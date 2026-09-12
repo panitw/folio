@@ -122,6 +122,42 @@ func (e *Engine) TableColumns(tableID string) (TableColumnsResult, error) {
 	return TableColumnsResult{Revision: e.revision, Table: table}, nil
 }
 
+// GroupMovePreview reports the same accepted translation used by Apply without
+// changing canonical bytes, revision, or either history branch.
+type GroupMoveResult struct {
+	Revision uint64 `json:"revision"`
+	DX       int64  `json:"dx"`
+	DY       int64  `json:"dy"`
+}
+
+func (e *Engine) GroupMovePreview(command []byte) (GroupMoveResult, error) {
+	if e.template == nil {
+		return GroupMoveResult{}, fmt.Errorf("folio wasm: no document is loaded")
+	}
+	if err := e.checkMoveRevision(command); err != nil {
+		return GroupMoveResult{}, err
+	}
+	move, err := folio.PreviewComponentMove(e.template, command, fonts.Shipped())
+	if err != nil {
+		return GroupMoveResult{}, err
+	}
+	return GroupMoveResult{Revision: e.revision, DX: move.DX, DY: move.DY}, nil
+}
+
+func (e *Engine) checkMoveRevision(command []byte) error {
+	var intent struct {
+		Kind             string  `json:"kind"`
+		ExpectedRevision *uint64 `json:"expectedRevision"`
+	}
+	if err := json.Unmarshal(command, &intent); err != nil {
+		return fmt.Errorf("folio wasm: command is malformed")
+	}
+	if intent.Kind == "moveComponents" && (intent.ExpectedRevision == nil || *intent.ExpectedRevision != e.revision) {
+		return fmt.Errorf("folio wasm: group move refers to an outdated revision")
+	}
+	return nil
+}
+
 // PreviewIdentity obtains evidence from the current engine-owned canonical
 // template and the two raw JSON channels without exposing or parsing the
 // template in the browser.
@@ -263,6 +299,9 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if e.template == nil {
 		return Snapshot{}, fmt.Errorf("folio wasm: no document is loaded")
 	}
+	if err := e.checkMoveRevision(command); err != nil {
+		return Snapshot{}, err
+	}
 	// Apply to a fresh canonical clone. This makes command validation,
 	// serialization and projection one transaction rather than relying on a
 	// rollback that can itself alter the revision.
@@ -280,7 +319,7 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 	if commandKind.Kind == "pageSetup" {
 		projection, err = folio.ApplyPageSetupCommand(candidate, command)
 	} else {
-		projection, err = folio.ApplyComponentCommand(candidate, command)
+		projection, err = folio.ApplyComponentCommand(candidate, command, fonts.Shipped())
 	}
 	if err != nil {
 		return Snapshot{}, err

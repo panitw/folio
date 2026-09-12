@@ -212,7 +212,9 @@ func drainValue(dec *json.Decoder, opening json.Delim) {
 // ApplyComponentCommand applies Story 5.7's small, versioned authoring
 // vocabulary. The command is intentionally decoded in Go: the browser sends
 // opaque bytes and never receives the template or its canonical JSON shape.
-func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error) {
+// Optional fonts give window-constrained movement the same pagination as
+// CanvasWithTextPaint. Other commands retain their existing behavior.
+func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (CanvasProjection, error) {
 	if t == nil {
 		return CanvasProjection{}, errNilTemplate
 	}
@@ -243,6 +245,8 @@ func ApplyComponentCommand(t *Template, command []byte) (CanvasProjection, error
 		return dropComponent(t, raw)
 	case "moveComponent":
 		return moveComponent(t, raw)
+	case "moveComponents":
+		return moveComponents(t, raw, fonts...)
 	case "resizeComponent":
 		return resizeComponent(t, raw)
 	case "setComponentBounds":
@@ -1447,7 +1451,9 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 			}
 			if clear {
 				st := styleFor(element)
-				if st.Border.Set && !st.Border.Null {
+				if st.Border.Null {
+					st.Border = template.Presence[template.Border]{}
+				} else if st.Border.Set {
 					st.Border.Value.Edges = template.Presence[[]string]{}
 				}
 				continue
@@ -1936,17 +1942,6 @@ func setComponentBounds(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	x, y, width, height := unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight
-	if snap {
-		for _, field := range [4]struct {
-			name  string
-			value *geom.Length
-		}{{"x", &x}, {"y", &y}, {"width", &width}, {"height", &height}} {
-			if *field.value, err = snapField(field.name, *field.value); err != nil {
-				return CanvasProjection{}, err
-			}
-		}
-	}
 	_, projected, _, element, err := findComponent(t, id)
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
@@ -1954,14 +1949,53 @@ func setComponentBounds(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if element.Type == template.ElementTable {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", "table has derived geometry and cannot be resized")
 	}
+	// A line's short axis is its authored thickness, not a grid dimension.
+	// Use the committed orientation so a short endpoint drag cannot swap axes.
+	originalWidth, originalHeight := projectedSize(*element)
+	horizontalLine := element.Type == template.ElementLine && originalWidth >= originalHeight
+	verticalLine := element.Type == template.ElementLine && originalWidth < originalHeight
+	x, y, width, height := unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight
+	if snap {
+		for _, field := range [4]struct {
+			name  string
+			value *geom.Length
+		}{{"x", &x}, {"y", &y}, {"width", &width}, {"height", &height}} {
+			if horizontalLine && field.name == "height" || verticalLine && field.name == "width" {
+				continue
+			}
+			if *field.value, err = snapField(field.name, *field.value); err != nil {
+				return CanvasProjection{}, err
+			}
+		}
+	}
+	// Near the minimum length there may be no grid point that keeps the
+	// orientation. Keep the precise proposed length rather than collapsing it.
+	if horizontalLine && width < height {
+		width = unsnappedWidth
+	}
+	if verticalLine && height <= width {
+		height = unsnappedHeight
+	}
 	if width <= 0 || height <= 0 {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", "component width and height must be positive")
 	}
 	if snap && containComponent(projected, unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight) == nil {
-		width = containEdge(width, geom.Length(projected.Width)-x)
-		height = containEdgeY(projected, height, geom.Length(projected.Height)-y)
+		if !verticalLine {
+			width = containEdge(width, geom.Length(projected.Width)-x)
+		}
+		if !horizontalLine {
+			height = containEdgeY(projected, height, geom.Length(projected.Height)-y)
+		}
 		x = containEdge(x, geom.Length(projected.Width)-width)
 		y = containEdgeY(projected, y, geom.Length(projected.Height)-height)
+	}
+	if snap && containComponent(projected, unsnappedX, unsnappedY, unsnappedWidth, unsnappedHeight) == nil {
+		if horizontalLine && width < height {
+			x, width = unsnappedX, unsnappedWidth
+		}
+		if verticalLine && height <= width {
+			y, height = unsnappedY, unsnappedHeight
+		}
 	}
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())

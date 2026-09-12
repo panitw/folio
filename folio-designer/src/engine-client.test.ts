@@ -242,3 +242,21 @@ describe('engine client protocol and lifecycle', () => {
     expect(terminated.onerror).toBeNull()
   })
 })
+
+describe('group move query transport', () => {
+  it('returns frozen revision-correlated accepted geometry', async () => {
+    const worker = new FakeWorker(); const client = new EngineClient(worker); worker.ready()
+    const pending = client.request('group-move-preview', new Uint8Array([1]).buffer)
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 3, byteLength: 10 }, groupMove: { revision: 3, dx: -1125, dy: 2227 } })
+    const result = await pending
+    expect(result.groupMove).toEqual({ revision: 3, dx: -1125, dy: 2227 })
+    expect(Object.isFrozen(result.groupMove)).toBe(true)
+  })
+  it.each(['missing', 'revision', 'unsafe', 'surplus', 'wrong-operation'])('refuses malformed group evidence: %s', async (kind) => {
+    const worker = new FakeWorker(); const client = new EngineClient(worker); worker.ready()
+    const pending = client.request(kind === 'wrong-operation' ? 'snapshot' : 'group-move-preview', kind === 'wrong-operation' ? undefined : new Uint8Array([1]).buffer)
+    const groupMove = { revision: kind === 'revision' ? 2 : 3, dx: kind === 'unsafe' ? Number.MAX_SAFE_INTEGER + 1 : 1, dy: 2, ...(kind === 'surplus' ? { arbitrary: true } : {}) }
+    worker.emit({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'request-1', ok: true, snapshot: { documentState: 'loaded', revision: 3, byteLength: 10 }, ...(kind === 'missing' ? {} : { groupMove }) })
+    await expect(pending).rejects.toMatchObject({ code: kind === 'missing' || kind === 'wrong-operation' ? 'PROTOCOL_OPERATION_MISMATCH' : 'PROTOCOL_INVALID' })
+  })
+})

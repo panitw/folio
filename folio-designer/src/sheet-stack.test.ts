@@ -93,7 +93,7 @@ describe('sheet stack model', () => {
     // past the foot of a 727_890 window, so an unclamped offset put it outside
     // the band — clipped out of sight by .band-window on a stacked canvas, i.e.
     // exactly the loss this test is named for, one layer further down.
-    expect(orphan.sheets[0]?.content[0]?.y).toBe(WINDOW)
+    expect(orphan.sheets[0]?.content[0]?.y).toBe(WINDOW - 24000)
   })
 
   it('draws the first budgeted sheets and says the value was larger', () => {

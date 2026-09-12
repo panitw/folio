@@ -152,7 +152,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    `calc(var(--space-10) + 40px)` = 74px keeps that allowance and adds the
    padding it was missing, leaving 9px of clearance below the bar's 65px foot —
    enough that a thin component's hit pad clears it too. */
-.canvas-region { display: grid; align-content: start; justify-items: center; gap: var(--space-5); overflow: auto; scroll-padding-top: calc(var(--space-10) + 40px); padding: var(--space-10) 116px; background: var(--color-ground); }
+.canvas-region { display: grid; align-content: start; justify-items: center; gap: var(--space-5); overflow: auto; scroll-padding-top: calc(var(--space-10) + 40px); padding: var(--space-10) 0; background: var(--color-ground); }
 .canvas-region:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 .canvas-region-placing, .canvas-region-placing * { cursor: copy; }
 .placement-ghost { position: fixed; left: var(--ghost-x); top: var(--ghost-y); z-index: 30; display: flex; align-items: center; gap: var(--space-2); padding: 3px 7px; transform: translate(14px, 14px); border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); white-space: nowrap; pointer-events: none; }
@@ -165,7 +165,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    geometry to keep a drag tracking the pointer across a seam — and reading a
    token back would be exactly the getComputedStyle measurement this canvas
    may not make. */
-.sheet-stack { display: grid; justify-items: center; gap: var(--sheet-stack-gap); }
+.sheet-stack { position: relative; display: grid; justify-items: center; gap: var(--sheet-stack-gap); }
 /* Each window's content, clipped to its own window. The clip CANNOT live on
    .page-band: ::before, ::after and > span all position themselves outside
    the band with negative offsets, and hiding the band's overflow would cut
@@ -174,6 +174,8 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    inside take their own events back. */
 .band-window { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .band-window-open { overflow: visible; }
+/* Opening a continuation's foot must not repaint its earlier-page prefix. */
+.band-window-open > .canvas-component-echo { clip-path: inset(var(--echo-clip-top, 0px) 0 0); }
 .band-window > .canvas-component { pointer-events: auto; }
 /* A component drawn on a window it merely crosses. Decoration only — the home
    occurrence owns the role, the tab stop and the name. Both selectors carry
@@ -192,7 +194,9 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-disclosure { max-width: 640px; margin: 0; padding: var(--space-2) var(--space-3); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-body); }
 .page-surface { width: var(--page-display-width); height: var(--page-display-height); min-width: 1px; position: relative; flex: none; background-color: var(--color-page); box-shadow: var(--shadow-page); color: var(--color-page-ink); }
 .page-surface::before { content: ''; position: absolute; left: var(--page-margin-left); right: var(--page-margin-right); top: 0; bottom: 0; border-left: var(--hairline) solid var(--color-page-guide); border-right: var(--hairline) solid var(--color-page-guide); pointer-events: none; }
-.page-grid { background-image: radial-gradient(var(--color-page-dot) 1px, transparent 1px); background-size: var(--grid-display-pitch) var(--grid-display-pitch); background-position: 0 0; }
+/* Grid coordinates share each band's authored origin with Go snapping. A
+   content continuation retains the document column phase across page seams. */
+.page-grid .page-band { background-image: radial-gradient(var(--color-page-dot) 1px, transparent 1px); background-size: var(--grid-display-pitch) var(--grid-display-pitch); background-position: calc(var(--grid-display-pitch) / -2) calc(var(--grid-display-pitch) / -2 + var(--band-grid-offset, 0px)); }
 /* STORY 14.3 — `isolation: isolate` IS THE ENABLING HALF OF THE HIT PAD'S
    ARBITRATION, AND IT IS LOAD BEARING. The pad below carries `z-index: -1` so
    that every component's own painted box outranks every neighbour's invisible
@@ -719,8 +723,8 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 /* Nothing committed is not black: an unset colour reads as an empty chip in a
    dashed outline, so the picker never claims a value the document lacks. */
 .property-swatch-unset { border-style: dashed; }
-.property-swatch-unset::-webkit-color-swatch { opacity: 0.15; }
-.property-swatch-unset::-moz-color-swatch { opacity: 0.15; }
+.property-swatch-unset::-webkit-color-swatch { opacity: 0; }
+.property-swatch-unset::-moz-color-swatch { opacity: 0; }
 .property-toggle-row { display: flex; align-items: center; gap: var(--space-1); }
 .property-toggle-group { display: flex; align-items: center; gap: var(--space-1); }
 .property-toggle { width: 28px; min-height: 26px; display: grid; place-items: center; padding: 0; border: var(--hairline) solid var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-low); font: var(--type-body-em); }
@@ -1225,3 +1229,36 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 
 /* Preview uses the same compact, centered toolbar as the design canvas. */
 .preview-region > .preview-nav { align-self: center; flex-wrap: wrap; justify-content: center; gap: var(--space-3); }
+
+.canvas-body { position: relative; box-sizing: border-box; }
+/* A fixed pseudo-element extends the stack's blank hit surface to the whole
+   canvas without adding scrollable size. Native local pointer coordinates
+   still belong to the stack, including negative positions outside it. The
+   region clips the hit surface, and pages/toolbar remain above it. */
+.canvas-region { clip-path: inset(0); }
+.sheet-stack { isolation: isolate; }
+.sheet-stack::before { content: ''; position: fixed; inset: 0; z-index: -1; }
+/* In a multi-selection, a pressed table cell belongs to the selected body.
+   This also keeps local pointer input relative to that body's declared box. */
+.canvas-region-multi .canvas-component-selected [data-column-id] { pointer-events: none; }
+.canvas-selection-rectangle { position: absolute; pointer-events: none; z-index: 30; border: 1px solid var(--color-select); background: var(--tint-select-fill-soft); }
+.page-band > span { pointer-events: none; }
+
+.canvas-region:not(.canvas-region-placing) .canvas-component-echo.canvas-component-selected { pointer-events: auto; }
+
+/* Selection chrome uses projected sheet coordinates outside band-window.
+   Its transparent layer cannot intercept body selection or armed placement. */
+.canvas-selection-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.canvas-selection-chrome { position: absolute; left: var(--component-x); top: var(--component-y); width: max(2px, var(--component-width)); height: max(2px, var(--chrome-visible-height)); pointer-events: none; color: var(--color-page-ink); font: var(--type-page-mono); }
+.canvas-selection-chrome::after { height: var(--chrome-visible-height); content: ''; position: absolute; inset: 0; border: var(--hairline) solid var(--color-select); pointer-events: none; }
+.canvas-component-external-chrome::after { content: none; }
+.canvas-selection-chrome .selection-handle, .canvas-selection-chrome .resize-handle { pointer-events: auto; }
+.canvas-region-placing .canvas-selection-chrome .selection-handle, .canvas-region-placing .canvas-selection-chrome .resize-handle { pointer-events: none; }
+
+.canvas-selection-chrome-overflow::after { bottom: auto; border-bottom: none; }
+
+/* Keep the layer's scroll extent within its home window. Visible midpoint
+   controls still use the authored box, as does a captured resizing endpoint. */
+.canvas-selection-chrome .selection-handle-w, .canvas-selection-chrome .selection-handle-e { top: calc(var(--component-height) / 2 - 6px); }
+.canvas-selection-chrome .selection-handle-sw, .canvas-selection-chrome .selection-handle-s { top: calc(var(--component-height) - 6px); bottom: auto; }
+.canvas-selection-chrome .resize-handle { top: calc(var(--component-height) - 15px); bottom: auto; }

@@ -1,4 +1,4 @@
-import { copyBytes, deepFreeze, ENGINE_PROTOCOL_VERSION, parseInbound, type EngineError, type EngineInbound, type EngineOperation, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns } from './engine-protocol'
+import { copyBytes, deepFreeze, ENGINE_PROTOCOL_VERSION, parseInbound, type EngineError, type EngineInbound, type EngineOperation, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns, type GroupMovePreview } from './engine-protocol'
 
 export interface WorkerPort {
   postMessage(message: EngineRequest, transfer?: Transferable[]): void
@@ -7,7 +7,7 @@ export interface WorkerPort {
   onerror: ((event: ErrorEvent) => void) | null
 }
 
-export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }>; elapsedMs?: number; version?: string }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }>; tableColumns?: TableColumns }>
+export type EngineResult = Readonly<{ snapshot: EngineSnapshot; bytes?: ArrayBuffer; preview?: Readonly<{ revision: number; identity: string; pdfSha256?: string; diagnostics?: ReadonlyArray<{ severity: 'warning'; code: string; elementId: string; dataPath: string; message: string }>; elapsedMs?: number; version?: string }>; parameterReferences?: Readonly<{ revision: number; names: ReadonlyArray<string> }>; tableColumns?: TableColumns; groupMove?: GroupMovePreview }>
 
 type Pending = { operation: EngineOperation; resolve: (result: EngineResult) => void; reject: (error: Error) => void }
 type ClientState = 'starting' | 'ready' | 'failed' | 'terminated'
@@ -131,7 +131,7 @@ export class EngineClient {
 		// result — but its member list is now the response's own, so the next
 		// story that widens the projection does not have to find this line.
 		const tableColumns = message.tableColumns ? deepFreeze({ revision: message.tableColumns.revision, table: { ...message.tableColumns.table, columns: message.tableColumns.table.columns.map((column) => ({ ...column })) } }) : undefined
-		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }))
+		pending.resolve(deepFreeze({ snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}), ...(message.groupMove ? { groupMove: { ...message.groupMove } } : {}) }))
   }
 
   #fail(code: string, message: string): void {
@@ -154,6 +154,7 @@ export class EngineClient {
 }
 
 function matchesOperationPayload(operation: EngineOperation, message: Extract<EngineInbound, { kind: 'response'; ok: true }>): boolean {
+  if (operation !== 'group-move-preview' && message.groupMove !== undefined) return false
   const none = message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
   switch (operation) {
     case 'render': return message.bytes !== undefined && message.preview?.pdfSha256 !== undefined && message.preview.diagnostics !== undefined && message.preview.elapsedMs !== undefined && message.preview.version !== undefined && message.parameterReferences === undefined && message.tableColumns === undefined
@@ -165,6 +166,7 @@ function matchesOperationPayload(operation: EngineOperation, message: Extract<En
     // change: a bytes-returning operation was already representable.
     case 'stand-in-data': return message.bytes !== undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns === undefined
     case 'parameter-references': return message.bytes === undefined && message.preview === undefined && message.parameterReferences !== undefined && message.tableColumns === undefined
+    case 'group-move-preview': return none && message.groupMove !== undefined
     case 'table-columns': return message.bytes === undefined && message.preview === undefined && message.parameterReferences === undefined && message.tableColumns !== undefined
     default: return none
   }

@@ -1,5 +1,6 @@
 import './App.css'
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { createContext, useContext, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { isProducerRenderFailure, type EngineClient } from './engine-client'
 import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CanvasTableColumn, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
@@ -28,7 +29,9 @@ import { openFontStore, storeWriteRefusal, storedFaceKey, type FontStore, type S
 import { previewFaceFamily } from './preview-face-family'
 import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
-import { columnEdgeAfterDrag, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
+import { columnEdgeAfterDrag, sheetPitch, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
+import { translatedCanvas } from './canvas-selection'
+import { useCanvasSelection, type GroupPreview } from './use-canvas-selection'
 import { addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnFooterCommand } from './table-column-command'
 import { TableEditor } from './TableEditor'
 import { alignSegments, justifySegment, SegmentedControl, type SegmentSpec } from './segmented-control'
@@ -51,6 +54,8 @@ import { embeddedFaceFamily, isCarriedFaceAssetKey } from './embedded-face-famil
 import { isShippedFaceName, shippedFaceFamily } from './shipped-face-family'
 import { registerCarriedFaces } from './embedded-face-registry'
 import type { ImageFileAccess } from './image-file'
+
+const CANVAS_GUTTER = 116
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 type InspectorTab = 'properties' | 'data'
@@ -1055,7 +1060,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     if (pages > 0 && current && current.token === token && token === previewToken.current && modeRef.current === 'preview' && canInstallPreview({ token, generation: current.generation, revision: current.revision, identity: current.identity }, { token: previewToken.current, generation: previewGeneration.current, revision: snapshotRef.current?.revision ?? -1, identity: current.identity, mode: modeRef.current })) { previewNeedsFreshRender.current = false; setPreviewIssue(undefined); setPreviewPages(pages); setPreviewStatus('current') }
   }, [])
   const changePreviewViewState = useCallback((next: PDFPreviewViewState) => setPreviewViewState((current) => samePDFPreviewViewState(current, next) ? current : next), [])
-  const clearInteraction = () => { setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined); abortBoundaryDrag() }
+  const clearInteraction = () => { canvasSelection.cancel(); setPlacing(undefined); setPlacingAt(undefined); setHoverBand(undefined); setDrag(undefined); abortBoundaryDrag() }
   // STORY 14.3 — THE COMMIT REPORTS WHICH COMPONENT IT MADE, AND IT REPORTS IT
   // BY DIFF.
   //
@@ -1075,17 +1080,48 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
     if (!engine || fileBusy) return
     setCommitError(undefined)
+    const generation = documentGeneration.current
     try {
       const priorRevision = snapshotRef.current?.revision
       const priorIds = new Set((snapshotRef.current?.canvas?.components ?? []).map((component) => component.id))
       const result = await engine.request('command', payload)
+      if (documentGeneration.current !== generation) return
       if (result.snapshot.revision !== priorRevision) invalidatePreview()
-      setCurrentSnapshot(result.snapshot)
+      if ((snapshotRef.current?.revision ?? -1) <= result.snapshot.revision) setCurrentSnapshot(result.snapshot)
       after?.()
       const added = (result.snapshot.canvas?.components ?? []).filter((component) => !priorIds.has(component.id))
       return added.length === 1 ? added[0]!.id : undefined
     }
-    catch (error) { setCommitError(componentDiagnostic(error)); clearInteraction() }
+    catch (error) { if (documentGeneration.current === generation) { setCommitError(componentDiagnostic(error)); clearInteraction() } }
+  }
+  const installSelection = (ids: ReadonlyArray<string>) => {
+    setBindingError(undefined); setPropertyError(undefined); setCommitError(undefined); revokeTableEditor(); setColumnSelection(undefined)
+    selectedRef.current = ids; setSelected(ids)
+  }
+  const canvasSelection = useCanvasSelection({ engine, canvas, revision: snapshot?.revision ?? 0, generation: documentGenerationValue, zoom, selection: selected, enabled: mode === 'design' && !placing && !fileBusy, snap: snapEnabled, documentDelta: canvasDisplay.documentDelta,
+    capture: (id) => canvasRegionRef.current?.setPointerCapture?.(id),
+    release: (id) => { const host = canvasRegionRef.current; if (host?.hasPointerCapture?.(id)) host.releasePointerCapture(id) },
+    onSelection: installSelection, onCommit: commitComponent, onError: (error) => setCommitError(componentDiagnostic(error)),
+  })
+  const beginRectangle = (event: PointerEvent, band?: CanvasProjection['bands'][number], pageIndex = 0, gutter = false) => {
+    if (!canvas || placing || event.button !== 0 || event.target !== event.currentTarget) return
+    event.preventDefault(); event.stopPropagation()
+    const point = placementPoint(event.nativeEvent, band ?? { name: 'content', x: 0, y: 0, width: canvas.width, height: canvas.height }, zoom)
+    canvasSelection.beginRectangle(event, { x: point.x * 1000 - (gutter ? canvasDisplay.documentDelta(CANVAS_GUTTER, zoom) * 1000 : 0), y: point.y * 1000 + pageIndex * sheetPitch(canvas, zoom) }, event.shiftKey, band !== undefined || event.currentTarget.classList.contains('page-surface'))
+  }
+  const beginSelectedGroup = (id: string, event: PointerEvent) => {
+    if (placing || event.button !== 0) return true
+    if (event.shiftKey) { select(id, true, event.target); return true }
+    event.preventDefault(); event.stopPropagation()
+    const focusTarget = event.currentTarget instanceof HTMLElement && event.currentTarget.tabIndex >= 0 ? event.currentTarget : canvasRegionRef.current
+    focusTarget?.focus({ preventScroll: true })
+    const ids = selectedRef.current.includes(id) ? selectedRef.current : [id]
+    if (!selectedRef.current.includes(id)) select(id, false, event.target)
+    else if (ids.length === 1) select(id, false, event.target)
+    setBindingError(undefined); setPropertyError(undefined); revokeTableEditor()
+    if (ids.length > 1) setColumnSelection(undefined)
+    canvasSelection.beginGroup(event, ids, id)
+    return true
   }
   const openTableEditor = async (id: string) => {
     if (!engine || fileBusy || selectedRef.current.length !== 1 || selectedRef.current[0] !== id) return
@@ -1386,20 +1422,23 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // built on: the canvas paints tables from the ENGINE's projection, never a
   // browser-side model of the columns.
   //
-  // ⚠ A COLUMN CLICK IS A PLAIN CLICK, shift or no shift. A mixed
-  // table-and-column selection is then unrepresentable by construction rather
-  // than by a guard somebody has to remember.
+  // A column is selected only by an unmodified click on a single table.
+  // Shift toggles component membership; selected multi-table bodies belong
+  // to the group gesture.
   //
   // ⚠ AND THE TARGET IS OPTIONAL BECAUSE THE KEYBOARD PATH HAS NONE. Enter and
   // Space on a canvas component pass nothing, so they select the component and
   // drop any column selection — 14.10 ships mouse-only by [D-14.10.3], and
   // DW-387 registers the unmet half of UX-DR25.
   const select = (id: string, extend: boolean, target?: EventTarget | null) => {
-    setBindingError(undefined); revokeTableEditor()
-    const host = target instanceof Element ? target.closest('[data-column-id]') : null
+    canvasSelection.cancel()
+    const current = selectedRef.current
+    const ids = extend ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : current.includes(id) ? current : [id]
+    const wanted = new Set(ids)
+    installSelection((snapshotRef.current?.canvas?.components ?? []).filter((component) => wanted.has(component.id)).map((component) => component.id))
+    const host = !extend && ids.length === 1 && target instanceof Element ? target.closest('[data-column-id]') : null
     const columnId = host?.getAttribute('data-column-id') ?? undefined
-    setColumnSelection(columnId ? { tableId: id, columnId } : undefined)
-    setSelected((current) => extend && !columnId ? (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) : [id])
+    if (columnId) setColumnSelection({ tableId: id, columnId })
   }
   // STORY 14.3 — PLACING IS SELECTING, AND SELECTING IS STILL ONE FUNCTION.
   //
@@ -1728,7 +1767,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     }
   }
   const applyProperties = async (ids: ReadonlyArray<string>, intent: PropertyIntent | PropertyIntents, responseGeneration: number, selectionKey: string): Promise<CanvasProjection | undefined> => {
-    if (!engine || fileBusy) return undefined
+    if (!engine || fileBusy || documentGeneration.current !== responseGeneration || selectedRef.current.join(',') !== selectionKey) return undefined
     setCommitError(undefined)
     setPropertyError(undefined)
     // Clears propertyError's sibling too: a refusal is about the edit that
@@ -1739,6 +1778,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     try {
       const priorRevision = snapshotRef.current?.revision
       const result = await engine.request('command', updateComponentPropertiesCommand(ids, intent))
+      if (documentGeneration.current !== responseGeneration) return undefined
       if (result.snapshot.revision !== priorRevision) invalidatePreview()
       setHistoryAvailability(result.snapshot)
       // A command result is authoritative only if it advances this snapshot;
@@ -2699,7 +2739,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // built in sheet-stack.ts, which is pure arithmetic over Go's numbers: the
   // window origins, the window height and the page geometry. Nothing here
   // measures the DOM and nothing multiplies a window height by an index.
-  const stack = canvas ? sheetStack(canvas) : undefined
+  const displayCanvas = canvas && canvasSelection.group ? translatedCanvas(canvas, canvasSelection.group.ids, canvasSelection.group.dx, canvasSelection.group.dy) : canvas
+  const stack = displayCanvas ? sheetStack(displayCanvas) : undefined
   const disclosure = stack ? sheetStackDisclosure(stack) : undefined
   const sheetSurface = (projection: CanvasProjection, model: SheetStack, sheet: Sheet) => {
     const sheets = model.sheets.length
@@ -2709,8 +2750,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // and RTL and Playwright both fail outright on a duplicate exact label.
     const many = sheets > 1
     const pageOf = many ? ` ${sheet.index + 1} of ${sheets}` : ''
-    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onClick={() => { revokeTableEditor(); setSelected([]); setColumnSelection(undefined) }}>
-      {projection.bands.map((band) => {
+    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onPointerDown={(event) => beginRectangle(event, undefined, sheet.index)} onClick={(event) => { if (!event.shiftKey) installSelection([]) }}>
+      <CanvasSelectionLayer>{projection.bands.map((band) => {
         const content = band.name === 'content'
         // The content band is one WINDOW of the column, so a component's
         // in-sheet position is its column position minus this window's
@@ -2729,15 +2770,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} origin={origin} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
-          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
-        // A band holding a drag in progress stops clipping for the duration.
-        // The dragged component's rendered position already tracks the
-        // pointer down the whole stack, so clipping it to one window would
-        // make it vanish at the very seam it is being dragged across. The
-        // element is NOT moved in the tree to achieve this — a reparented
-        // node loses its pointer capture mid-gesture — only the clip is
-        // lifted, on the one band that needs it.
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event)} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+        // Body previews stay inside their starting window. Only the existing
+        // resize path lifts the clip while its anchor tracks across sheets.
         const dragging = occurrences.some((occurrence) => drag?.id === occurrence.component.id)
         // ONE INTERACTIVE BOUNDARY PER DOCUMENT. The canvas draws 3N band
         // sections for an N-page stack and the document has ONE page-header
@@ -2765,8 +2801,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
-      })}
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+      })}</CanvasSelectionLayer>
     </section>
   }
   // STORY 13.2 — THE VIEWER'S NAVIGATION, IN THE APPLICATION'S STATUS BAR.
@@ -2923,10 +2959,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           defect class: an inert-until-needed pointer surface, so a click 4px
           from an existing rule is a PLACEMENT and not a selection of the
           neighbour. */}
-      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { clearInteraction(); revokeTableEditor(); setSelected([]); setColumnSelection(undefined) } }}>
+      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
         <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
         {disclosure && <p className="canvas-disclosure" role="status" aria-live="polite" aria-label="Canvas sheet disclosure">{disclosure}</p>}
-        {canvas && stack ? (stack.sheets.length === 1 ? sheetSurface(canvas, stack, stack.sheets[0] as Sheet) : <div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px` } as CSSProperties}>{stack.sheets.map((sheet) => sheetSurface(canvas, stack, sheet))}</div>) : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
+        {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
+
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}{/* STORY 14.7b — WHAT A COMPLETED CANCEL DISCARDED, in this region and in
             its OWN state. Not folded into `fileStatus`: that line is for local
@@ -2963,7 +3000,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
             itself belongs to the DATA panel.
             "Configure columns" stays live throughout: the TABLE is still the
             component selection, so `openTableEditor`'s
-            `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+            `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} groupPreview={canvasSelection.group} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} columnScope={columnBindScope} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} onConnectColumn={(field) => void bindPickedColumn(field)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
@@ -3230,12 +3267,12 @@ const sizeFields: ReadonlyArray<FieldSpec> = [{ field: 'width', label: 'Width (p
 // engine's implementation terms — `H`, `W`, `Background` — so drawing a
 // hairline required knowing it is a filled box.
 //
-// ⚠ THIS IS A RELABEL AND NOTHING ELSE. `field` is untouched in every spec
+// The inspector vocabulary below is a relabel. `field` is untouched in every spec
 // below, so every one of these controls writes exactly the key it wrote
 // before, through the same `updateComponentProperties`. `affix` is the visible
 // word; `label` is the accessible name and is never rendered. No new
 // `PropertyField`, no new command kind, no new serialized key — and the wire
-// bytes for every pre-existing gesture are byte-identical, which
+// bytes for the existing inspector edits are byte-identical, which
 // `line-rect-vocabulary.test.tsx` asserts against literal JSON rather than
 // claiming here.
 type LineOrientation = 'horizontal' | 'vertical'
@@ -3401,7 +3438,7 @@ const valignSegments: ReadonlyArray<SegmentSpec> = [{ value: 'top', label: 'Vert
 function PropertySection({ title, tone, children }: { title: string; tone?: 'bind'; children: ReactNode }) {
   return <section className={`property-section property-section-${title.toLowerCase()}${tone === 'bind' ? ' property-section-bind' : ''}`}><p className="section-label">{title}</p>{children}</section>
 }
-function ComponentProperties({ components, fontFamilies, fontChains, carriedFaces, specimenBytes, defaultFontSize, defaultLineSpacing, onCommit, onUseFamily, onDeclareFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; defaultFontSize: number; defaultLineSpacing: number; onCommit: CommitProperties; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onDeclareFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
+function ComponentProperties({ components, fontFamilies, fontChains, carriedFaces, specimenBytes, defaultFontSize, defaultLineSpacing, onCommit, onUseFamily, onDeclareFamily, onOpenFontBrowser, browserOpen, storedFaces, fontChainError, fontChainBusy, documentGeneration, propertyError, drag, groupPreview, onEditTable, onPickImage, imageAvailable, assetBusy, assetError }: { components: ReadonlyArray<PanelComponent>; fontFamilies: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; defaultFontSize: number; defaultLineSpacing: number; onCommit: CommitProperties; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onDeclareFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; fontChainError?: FontChainCommitError; fontChainBusy: boolean; documentGeneration: number; propertyError?: PropertyCommitError; drag?: DragState; groupPreview?: GroupPreview; onEditTable: (id: string) => void; onPickImage: (id: string) => void; imageAvailable: boolean; assetBusy: boolean; assetError?: Readonly<{ id: string; message: string }> }) {
   const ids = components.map((component) => component.id)
   const types = new Set(components.map((component) => component.type))
   const all = (predicate: (type: PanelComponent['type']) => boolean) => [...types].every(predicate)
@@ -3425,7 +3462,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   // its existing 'shown for one selected component' sentence is unchanged.
   // The kind test reads the mirrored constant rather than a fourth spelling
   // of `=== 'text'`.
-  const scalarBindable = single === undefined || SCALAR_BINDING_COMPONENT_TYPES.includes(single.type)
+  const scalarBindable = single !== undefined && SCALAR_BINDING_COMPONENT_TYPES.includes(single.type)
   const typographic = all((type) => type === 'text' || type === 'table')
   // FOUR segments for an all-text selection, THREE for anything carrying a
   // table. SegmentedProperty never sees component.type — the widening is a
@@ -3436,7 +3473,11 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
   // pointer release sends the one command and Go's accepted geometry then
   // replaces it through the committed value below.
   const dragging = single && drag?.id === single.id ? drag : undefined
-  const live = (field: PropertyField): string | undefined => dragging && (field === 'x' || field === 'y' || field === 'width' || field === 'height') ? points(dragging[field]) : undefined
+  const live = (field: PropertyField): string | undefined => {
+    if (field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height') return undefined
+    if (groupPreview) { const values = components.map((component) => component[field] + (field === 'x' ? groupPreview.dx : field === 'y' ? groupPreview.dy : 0)); return values.every((value) => value === values[0]) ? points(values[0]!) : '' }
+    return dragging ? points(dragging[field]) : undefined
+  }
   // The CONTENT field sends `value` or `expression` depending on the typed
   // text, so it owns the rejection of either command.
   // STORY 14.2 turned the equality into a MEMBERSHIP, and nothing else moved.
@@ -3460,7 +3501,7 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
     {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onDeclareFamily={onDeclareFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={errorFor('fontFamily')} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('bold')} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('italic')} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('align')} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('valign')} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
-    <PropertySection title="BOX">{!line && borderFields.map(draftFor)}{!line && <BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('borderEdges')} />}{line && borderProjected(line) && <p className="honest-note">This line carries a border in the document — the panel does not offer one, because a line is authored as a thickness and a colour. The stored border is unchanged and still paints. This note reports what the engine projects, not what the PDF draws.</p>}{draftFor(boxFillFieldFor(single?.type))}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
+    <PropertySection title="BOX">{!types.has('line') && borderFields.map(draftFor)}{!types.has('line') && <BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('borderEdges')} />}{line && borderProjected(line) && <p className="honest-note">This line carries a border in the document — the panel does not offer one, because a line is authored as a thickness and a colour. The stored border is unchanged and still paints. This note reports what the engine projects, not what the PDF draws.</p>}{draftFor(boxFillFieldFor(single?.type))}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean field or call — {'e.g. customer.isActive'}. Empty is always visible.</p></PropertySection>
     {table && <PropertySection title="TABLE"><button type="button" className="file-button" onClick={() => onEditTable(table.id)}>Configure columns</button></PropertySection>}
     {scalarBindable && <PropertySection title="BINDING" tone="bind">{single?.binding ? <p className="binding-chip"><span className="binding-dot" aria-hidden="true" />Bound to <code>{single.binding}</code></p> : <p className="honest-note">{single ? 'No engine binding on this component. Pick a root scalar in the Data tab.' : 'Binding is shown for one selected component.'}</p>}</PropertySection>}
     {/* STORY 14.4 / AC3 (D-14.4.Q2(a)). A Table's binding used to be stated
@@ -3504,8 +3545,26 @@ function ImageSection({ component, onPick, available, busy, error }: { component
   </PropertySection>
 }
 
+function propertyEvidence(component: PanelComponent | undefined, field: PropertyField) {
+  if (!component) return undefined
+  const key = field === 'expression' ? 'value' : field
+  return component.authored && key in component.authored ? component.authored[key as keyof NonNullable<PanelComponent['authored']>] : component[key as keyof PanelComponent]
+}
+function propertyPresent(component: PanelComponent, field: PropertyField): boolean {
+  const evidence = propertyEvidence(component, field)
+  return evidence !== undefined && !(evidence && typeof evidence === 'object' && 'state' in evidence && evidence.state === 'absent')
+}
+function authoredValue(component: PanelComponent, field: PropertyField): unknown {
+  const evidence = propertyEvidence(component, field)
+  if (evidence && typeof evidence === 'object' && 'state' in evidence) return evidence.state === 'value' ? evidence.value : undefined
+  return evidence
+}
+function sameProperty(components: ReadonlyArray<PanelComponent>, field: PropertyField): boolean {
+  const first = JSON.stringify(propertyEvidence(components[0]!, field))
+  return components.every((component) => JSON.stringify(propertyEvidence(component, field)) === first)
+}
 function committedValue(component: PanelComponent, field: PropertyField): string | undefined {
-  const value = component[field === 'expression' ? 'value' : field as keyof PanelComponent]
+  const value = authoredValue(component, field)
   if (typeof value === 'number') return points(value)
   return typeof value === 'string' ? value : undefined
 }
@@ -3542,7 +3601,7 @@ function draftThousandths(text: string): number | undefined {
 function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, live, error }: { spec: FieldSpec; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; live?: string; error?: PropertyCommitError }) {
   const { field, label, affix, unit, swatch, prose, empty, shown, fx } = spec
   const values = components.map((component) => committedValue(component, field))
-  const same = values.every((value) => value === values[0])
+  const same = sameProperty(components, field)
   // `committed` IS THE DOCUMENT'S OWN VALUE AND MUST STAY SO — `''` when the
   // key is absent. Story 17.3 puts the engine's default in the BOX, never in
   // here: `commit()` below is `if (draft !== committed)`, so folding the
@@ -3565,6 +3624,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // story rests on — opening a document may never mutate it.
   const inherited = (text: string): string => text === '' && same && shown === true && empty !== undefined ? empty : text
   const [draft, setDraft] = useState(inherited(committed))
+  const touched = useRef(false)
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
   // STORY 17.1. THE DRAFT NOW HAS A READER THAT IS NOT A RENDER.
@@ -3669,7 +3729,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const [lastCommitted, setLastCommitted] = useState(committed)
   if (lastCommitted !== committed) { setLastCommitted(committed); if (!unsentEdit) setDraft(inherited(committed)) }
   const selectionKey = ids.join(',')
-  const revert = () => { holdDraft(false); writeDraft(inherited(committed)) }
+  const revert = () => { touched.current = false; holdDraft(false); writeDraft(inherited(committed)) }
   // `disable` is the ONE thing the arrow step varies, and it is not a second
   // commit path: the intent, the encoder, the reconciliation and the
   // single-flight `pendingRef` guard are all shared verbatim. `shared` carries
@@ -3690,7 +3750,8 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // out of this story's scope — it also bears on undo, since each step is its
   // own revision and its own undo entry.
   const submit = async (intent: PropertyIntent, reconcileDraft: boolean, disable = true) => {
-    if (pendingRef.current) return
+    if (!mounted.current || pendingRef.current || live !== undefined) return
+    touched.current = false
     pendingRef.current = true
     if (disable) setPending(true)
     // The engine has now been told what the author is holding, so the author
@@ -3711,7 +3772,12 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     // `!unsentEditRef.current` is STORY 17.1's: the answer describes text the
     // author may already have typed past, and a canonical spelling is worth
     // nothing if the price is a lost character.
-    if (accepted && reconcileDraft && !unsentEditRef.current) writeDraft(inherited(canonicalValue(accepted, ids, field) ?? draftRef.current))
+    if (accepted && reconcileDraft && !unsentEditRef.current) {
+      const acceptedComponents = accepted.components.filter((component) => ids.includes(component.id))
+      const value = canonicalValue(accepted, ids, field)
+      const acceptedDefault = field === 'fontSize' ? points(accepted.defaultFontSize) : field === 'lineSpacing' ? points(accepted.defaultLineSpacing) : empty
+      writeDraft(value === '' && shown && sameProperty(acceptedComponents, field) && acceptedDefault !== undefined ? acceptedDefault : value ?? draftRef.current)
+    }
     // THE DRAIN. A debounced commit that arrived while this one was in flight
     // parked itself here rather than being dropped; it goes now, carrying
     // whatever the author is holding at this instant. Not after unmount: the
@@ -3788,7 +3854,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // changes is what the author is left looking at. The row must come back to
   // the value it inherits, the same one it opened on, instead of sitting blank
   // beside a canvas that is still painting 12.
-  const commit = async () => { if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true); else writeDraft(inherited(committed)) }
+  const commit = async () => { if (!mounted.current || live !== undefined || (!touched.current && ids.length > 1)) return; if (draft !== committed) await submit({ field: contentCommand(field, draft), operation: draft === '' && field !== 'value' && field !== 'expression' ? 'clear' : 'set', value: draft }, true); else writeDraft(inherited(committed)) }
   // BLUR STILL COMMITS, AND IT COMMITS EXACTLY ONCE. It cancels the debounce
   // first, so a timer that was about to fire for this same text does not
   // become a second command.
@@ -3909,7 +3975,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // row offers to reset it, and clearing an already-absent key lands back on
   // the same 12. `clear` itself is untouched: it still sends `op:"clear"`, and
   // Go still stores the zero Presence that omits the key from the file.
-  const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression' && (!same || (live ?? draft) !== '')
+  const canClear = field !== 'x' && field !== 'y' && field !== 'width' && field !== 'height' && field !== 'value' && field !== 'expression' && (!same || (live ?? draft) !== '' || components.some((component) => propertyPresent(component, field)))
   const canNull = field === 'visibleIf' || field === 'background'
   const errorId = error ? `property-error-${field}` : undefined
   // The fx cue is a marker, not a control: it states, in the row itself, that
@@ -3985,6 +4051,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
     const tail = field.selectionEnd ?? field.value.length
     // A paste is a typed edit by another name: it changes the draft, so it
     // takes the author's ownership of it and it starts the same debounce.
+    touched.current = true
     holdDraft(true)
     writeDraft(`${field.value.slice(0, head)}${plain}${field.value.slice(tail)}`)
     scheduleProseCommit()
@@ -4088,8 +4155,8 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const endProseResize = (event: PointerEvent<HTMLSpanElement>) => { if (proseResize.current?.pointerId === event.pointerId) proseResize.current = undefined }
   const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: blur, onKeyDown: keyDown }
   return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
-    ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} style={proseHeight === undefined ? undefined : { height: `${proseHeight}px` }} {...shared} onChange={(event) => { holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
-    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => writeDraft(event.target.value)} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} onBlur={() => void commit()} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
+    ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} style={proseHeight === undefined ? undefined : { height: `${proseHeight}px` }} {...shared} onChange={(event) => { touched.current = true; holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
+    : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => { touched.current = true; writeDraft(event.target.value) }} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} aria-description={same ? undefined : 'Mixed value; choose a colour'} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 // D-14.2.Q2b, AS AMENDED. THE RULE IS *NEVER PRINT A FIELD NAME THAT MAY BE
 // WRONG* — NOT *NEVER PRINT ANYTHING*.
@@ -4237,8 +4304,8 @@ function cutAbsenceSentence(cut: StyleCut): string {
 const cutAbsenceId = (cut: StyleCut) => `cut-absent-${cut}`
 
 function BooleanProperty({ label, field, components, ids, onCommit, documentGeneration, error, absentCutId }: { label: string; field: 'bold' | 'italic'; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError; absentCutId?: string }) {
-  const values = components.map((component) => component[field])
-  const uniform = values.every((value) => value === values[0])
+  const values = components.map((component) => authoredValue(component, field))
+  const uniform = sameProperty(components, field)
   const active = uniform && values[0] === true
   const [pending, setPending] = useState(false); const pendingRef = useRef(false); const commit = async (intent: PropertyIntent) => { if (pendingRef.current) return; pendingRef.current = true; setPending(true); await onCommit(ids, intent, documentGeneration, ids.join(',')); pendingRef.current = false; setPending(false) }
   // A TOGGLE CARRIES ITS OWN CLEAR: pressing a pressed B or I unsets the
@@ -4272,7 +4339,7 @@ function BooleanProperty({ label, field, components, ids, onCommit, documentGene
   // announced it twice, in a third wording, which is P9's bug and would have
   // been a quadruple in the combined case.
   const name = uniform ? label : `${label}, mixed`
-  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className={`property-toggle${absentCutId === undefined ? '' : ' property-toggle-unavailable'}`} disabled={pending} aria-pressed={active} aria-describedby={absentCutId} aria-label={name} title={active ? `${name}, press again to clear` : name} onClick={() => void commit(active ? { field, operation: 'clear' } : { field, operation: 'set', value: true })}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  return <div className="property-editor"><div className="property-toggle-group"><button type="button" className={`property-toggle${absentCutId === undefined ? '' : ' property-toggle-unavailable'}`} disabled={pending} aria-pressed={uniform ? active : 'mixed'} aria-describedby={absentCutId} aria-label={name} title={active ? `${name}, press again to clear` : name} onClick={() => void commit(active ? { field, operation: 'clear' } : { field, operation: 'set', value: true })}>{label.slice(0, 1)}</button>{!uniform && <span className="property-toggle-mixed" aria-hidden="true">Mixed</span>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
 // The font family is a closed set too, but a per-DOCUMENT one: style.fontFamily
 // must name a declared, non-empty font chain, and Go now projects exactly those
@@ -4395,7 +4462,7 @@ function scriptsForFamilyName(family: string): ReadonlyArray<string> {
 
 function FontFamilyProperty({ families, fontChains, carriedFaces, specimenBytes, components, ids, onCommit, onUseFamily, onDeclareFamily, onOpenFontBrowser, browserOpen, storedFaces, pickBusy, pickError, documentGeneration, error }: { families: ReadonlyArray<string>; fontChains: CanvasProjection['fontChains']; carriedFaces: ReadonlySet<string>; specimenBytes: PreviewFaceBytes; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; onUseFamily: (source: FamilySource) => Promise<string | undefined>; onDeclareFamily: (source: FamilySource) => Promise<string | undefined>; onOpenFontBrowser: () => void; browserOpen: boolean; storedFaces: ReadonlyArray<StoredFace>; pickBusy: boolean; pickError?: FontChainCommitError; documentGeneration: number; error?: PropertyCommitError }) {
   const values = components.map((component) => committedValue(component, 'fontFamily'))
-  const uniform = values.every((value) => value === values[0])
+  const uniform = sameProperty(components, 'fontFamily')
   const committed = uniform ? values[0] ?? '' : ''
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -4479,8 +4546,8 @@ function FontFamilyProperty({ families, fontChains, carriedFaces, specimenBytes,
   // `FontBrowser.tsx`'s own key is: family names contain spaces. EMPTY
   // WHENEVER THE DROPDOWN IS CLOSED, so a stale key from the last time it was
   // open cannot re-open the registry's `show`.
-  const installedFamilyKey = open ? onThisMachine.map((source) => source.family).join(' ') : ''
-  useEffect(() => { registry?.show(installedFamilyKey === '' ? [] : installedFamilyKey.split(' ')) }, [registry, installedFamilyKey])
+  const installedFamilyKey = open ? onThisMachine.map((source) => source.family).join('\0') : ''
+  useEffect(() => { registry?.show(installedFamilyKey === '' ? [] : installedFamilyKey.split('\0')) }, [registry, installedFamilyKey])
   // THE SCRIPT COVERAGE FOR EVERY `AVAILABLE LOCALLY` ROW, FROM THE SAME
   // DERIVATION THE FONT BROWSER'S OWN ROWS USE, so the two surfaces cannot
   // describe one family's coverage two different ways.
@@ -4784,7 +4851,7 @@ function FontFamilyProperty({ families, fontChains, carriedFaces, specimenBytes,
 // "no segment pressed".
 function SegmentedProperty({ label, field, segments, components, ids, onCommit, documentGeneration, error }: { label: string; field: 'align' | 'valign'; segments: ReadonlyArray<SegmentSpec>; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
   const values = components.map((component) => committedValue(component, field))
-  const uniform = values.every((value) => value === values[0])
+  const uniform = sameProperty(components, field)
   const current = uniform ? values[0] : undefined
   const [pending, setPending] = useState(false)
   const pendingRef = useRef(false)
@@ -4796,7 +4863,7 @@ function SegmentedProperty({ label, field, segments, components, ids, onCommit, 
     pendingRef.current = false
     setPending(false)
   }
-  return <div className="property-editor"><SegmentedControl label={uniform ? label : `${label}, mixed`} segments={segments} current={current} disabled={pending} titleFor={(segment) => current === segment.value ? `${segment.label}, press again to clear` : segment.label} onPick={(value) => void commit(value)} trailing={!uniform && <span className="property-toggle-mixed" aria-hidden="true">·</span>} />{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+  return <div className="property-editor"><SegmentedControl label={uniform ? label : `${label}, mixed`} segments={segments} current={current} disabled={pending} titleFor={(segment) => current === segment.value ? `${segment.label}, press again to clear` : segment.label} onPick={(value) => void commit(value)} trailing={!uniform && <span className="property-toggle-mixed" aria-hidden="true">Mixed</span>} />{error && <p role="alert" className="property-error">{error.message}</p>}</div>
 }
 // STORY 14.2 — THE ORIENTATION CONTROL, AND WHY IT IS A SIBLING OF
 // `SegmentedProperty` RATHER THAN A WIDENING OF IT.
@@ -4886,7 +4953,21 @@ function OrientationProperty({ component, ids, onCommit, documentGeneration, err
   const reasonId = square ? 'property-orientation-square' : undefined
   return <div className="property-editor"><div className="property-segmented" role="group" aria-label="Orientation">{orientationSegments.map((segment) => <button key={segment.value} type="button" className="property-segment" disabled={square && segment.value !== current} aria-pressed={current === segment.value} aria-label={segment.label} aria-describedby={segment.value === current ? undefined : reasonId} aria-invalid={error ? 'true' : undefined} aria-errormessage={errorId} title={segment.label} onClick={() => void swap(segment.value)}><OrientationIcon variant={segment.value} /></button>)}</div>{square && <p id={reasonId} className="property-unavailable">{squareRuleReason}</p>}{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
-function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) { const values = components.map((component) => (component.borderEdges ?? []).join(',')); const same = values.every((value) => value === values[0]); const [edges, setEdges] = useState<string[]>(same && values[0] ? values[0].split(',') : []); const pending = useRef(false); const update = async (next: string[]) => { if (pending.current) return; pending.current = true; setEdges(next); await onCommit(ids, { field: 'borderEdges', operation: next.length ? 'set' : 'clear', ...(next.length ? { value: next } : {}) }, documentGeneration, ids.join(',')); pending.current = false }; return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}{(edges.length > 0 || !same) && <button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" onClick={() => void update([])}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div> }
+function BorderEdgesProperty({ components, ids, onCommit, documentGeneration, error }: { components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; error?: PropertyCommitError }) {
+  const same = sameProperty(components, 'borderEdges')
+  const value = authoredValue(components[0]!, 'borderEdges')
+  const edges: ReadonlyArray<string> = same && Array.isArray(value) ? value : []
+  const [pending, setPending] = useState(false)
+  const pendingRef = useRef(false)
+  const update = async (next: ReadonlyArray<string>, clear = false) => {
+    if (pendingRef.current) return
+    pendingRef.current = true; setPending(true)
+    await onCommit(ids, clear || next.length === 0 ? { field: 'borderEdges', operation: 'clear' } : { field: 'borderEdges', operation: 'set', value: next }, documentGeneration, ids.join(','))
+    pendingRef.current = false; setPending(false)
+  }
+  return <div className="property-editor"><div className="property-edges" role="group" aria-label="Border edges"><span className="property-affix">Edges</span>{['top', 'right', 'bottom', 'left'].map((edge) => <label key={edge}><input type="checkbox" aria-label={`Border ${edge}`} aria-checked={same ? edges.includes(edge) : 'mixed'} ref={(node) => { if (node) node.indeterminate = !same }} disabled={pending} checked={edges.includes(edge)} onChange={() => void update(edges.includes(edge) ? edges.filter((value) => value !== edge) : [...edges, edge])} />{edge}</label>)}{!same && <span aria-label="Border edges mixed">Mixed</span>}{(edges.length > 0 || !same || components.some((component) => propertyPresent(component, 'borderEdges'))) && <button type="button" className="property-inline-action" aria-label="Clear Border edges" title="Clear Border edges" disabled={pending} onClick={() => void update([], true)}>×</button>}</div>{error && <p role="alert" className="property-error">{error.message}</p>}</div>
+}
+
 
 // STORY 12.1 adds `pageHeader` and `pageFooter`, and they are DELIBERATELY
 // named for the bands themselves rather than for their position in the panel:
@@ -4962,7 +5043,7 @@ export function placementPoint(event: Pick<MouseEvent, 'offsetX' | 'offsetY'>, b
   return { x: band.x / 1000 + canvasDisplay.documentDelta(event.offsetX, zoom), y: band.y / 1000 + canvasDisplay.documentDelta(event.offsetY, zoom) }
 }
 function pageStyle(canvas: CanvasProjection, zoom: number): CSSProperties { return { '--page-display-width': canvasDisplay.css(canvas.width, zoom), '--page-display-height': canvasDisplay.css(canvas.height, zoom), '--grid-display-pitch': canvasDisplay.css(canvas.gridIncrement, zoom), '--page-margin-left': canvasDisplay.css(canvas.marginLeft, zoom), '--page-margin-right': canvasDisplay.css(canvas.marginRight, zoom) } as CSSProperties }
-function bandStyle(band: CanvasProjection['bands'][number], zoom: number): CSSProperties { return { '--band-x': canvasDisplay.css(band.x, zoom), '--band-y': canvasDisplay.css(band.y, zoom), '--band-width': canvasDisplay.css(band.width, zoom), '--band-height': canvasDisplay.css(band.height, zoom) } as CSSProperties }
+function bandStyle(band: CanvasProjection['bands'][number], zoom: number, origin = 0, grid = 6000): CSSProperties { return { '--band-grid-offset': canvasDisplay.css(-(origin % grid), zoom), '--band-x': canvasDisplay.css(band.x, zoom), '--band-y': canvasDisplay.css(band.y, zoom), '--band-width': canvasDisplay.css(band.width, zoom), '--band-height': canvasDisplay.css(band.height, zoom) } as CSSProperties }
 function pageSetupDiagnostic(error: unknown): string { const received = error as { code?: string; dataPath?: string; message?: string }; if (received.code === 'PAGE_SETUP_INVALID') return received.dataPath ? `${received.dataPath}: ${received.message ?? 'invalid value'}` : received.message ?? 'Page setup is invalid.'; return 'Page setup is invalid. Check the selected size and margins.' }
 function componentDiagnosticDetail(error: unknown): Readonly<{ elementId?: string; dataPath?: string; message: string }> { const received = error as { elementId?: string; dataPath?: string; message?: string }; return { ...(received.elementId ? { elementId: received.elementId } : {}), ...(received.dataPath ? { dataPath: received.dataPath } : {}), message: received.message ?? 'Component change was rejected.' } }
 function componentDiagnostic(error: unknown): string { const received = componentDiagnosticDetail(error); const prefix = received.elementId ?? received.dataPath; return prefix ? `${prefix}: ${received.message}` : received.message }
@@ -4973,7 +5054,15 @@ function componentDiagnostic(error: unknown): string { const received = componen
 // the author's hand. `proposed` is the only field a move rewrites.
 type BoundaryDrag = Readonly<{ band: CappingBand; pointerId: number; startClientY: number; original: number; limit: number; proposed: number; changed: boolean }>
 type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
-function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, selected, selectedColumnId, preview, engine, generation, trackColumn, onSelect, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; selectedColumnId?: string; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean, target?: EventTarget | null) => void; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+// The layer belongs to the sheet, outside every band clip and stacking
+// context. Only resize controls receive pointers; empty space still hits bands.
+const CanvasSelectionLayerContext = createContext<HTMLDivElement | null>(null)
+function CanvasSelectionLayer({ children }: { children: ReactNode }) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null)
+  return <CanvasSelectionLayerContext value={host}>{children}<div className="canvas-selection-layer" ref={setHost} /></CanvasSelectionLayerContext>
+}
+function CanvasComponent({ component, carriedFaces, chromeOffset, origin, note, limit, zoom, selected, selectedColumnId, preview, engine, generation, trackColumn, onSelect, onBodyPress, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; chromeOffset: Readonly<{ x: number; y: number }>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; selectedColumnId?: string; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean, target?: EventTarget | null) => void; onBodyPress: (id: string, event: PointerEvent) => boolean; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+  const chromeHost = useContext(CanvasSelectionLayerContext)
   const selectedByPointer = useRef(false)
   const proposal = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
   // Component geometry is COLUMN geometry, in every band; this sheet shows one
@@ -4981,7 +5070,19 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   // repeating bands and 0 for the first window, which is why a single-sheet
   // document paints at exactly the coordinates it painted at before.
   const active = { ...proposal, y: proposal.y - origin }
-  const begin = (event: PointerEvent, mode: DragAnchor) => { event.stopPropagation(); selectedByPointer.current = true; onSelect(component.id, event.shiftKey, event.target); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
+  // A line is resized along its length; its cross-axis belongs to Thickness.
+  // The engine snaps length and position while preserving the short axis.
+  const lineAxis = component.type === 'line' ? lineOrientation(preview ? { ...component, width: preview.originalWidth, height: preview.originalHeight } : component) : undefined
+  const anchors = lineAxis ? resizeAnchors.filter((anchor) => lineAxis === 'horizontal' ? anchor === 'w' || anchor === 'e' : anchor === 'n' || anchor === 's') : resizeAnchors
+  // Long content keeps its authored box, but endpoints beyond the home
+  // window must not become invisible controls over another page or footer.
+  const chromeVisibleHeight = Math.min(active.height, Math.max(0, limit.height - active.y))
+  const chromeOverflows = chromeVisibleHeight < active.height
+  const visibleAnchors = anchors.filter((anchor) => {
+    const offset = anchor === 'sw' || anchor === 's' || anchor === 'se' ? active.height : anchor === 'w' || anchor === 'e' ? active.height / 2 : 0
+    return offset <= chromeVisibleHeight || preview?.mode === anchor
+  })
+  const begin = (event: PointerEvent, mode: DragAnchor) => { if (event.button !== 0) return; event.stopPropagation(); selectedByPointer.current = true; if (mode === 'move' && onBodyPress(component.id, event)) return; onSelect(component.id, event.shiftKey, event.target); if (event.shiftKey) return; event.currentTarget.setPointerCapture?.(event.pointerId); onDragStart({ id: component.id, mode, startClientX: event.clientX, startClientY: event.clientY, x: component.x, y: component.y, width: component.width, height: component.height, originalX: component.x, originalY: component.y, originalWidth: component.width, originalHeight: component.height, changed: false }) }
   // Ruling I. A linear pixel delta knows nothing about the page footer, the
   // gap and the page header standing between one window's foot and the next
   // window's head, so across a seam the component drifts from the hand by
@@ -4990,12 +5091,13 @@ function CanvasComponent({ component, carriedFaces, origin, note, limit, zoom, s
   // travelled down the COLUMN, applied to the edge this anchor actually
   // moves. What Go receives is still one opaque command carrying a column
   // coordinate.
-  const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2; const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit) }) }
+  const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || (preview.mode !== 'move' && lineAxis ? Math.abs(lineAxis === 'horizontal' ? rawDX : rawDY) >= 2 : Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2); const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit, lineAxis === 'horizontal' ? Math.max(1000, preview.originalHeight) : lineAxis === 'vertical' ? Math.max(1000, preview.originalWidth + 1) : undefined) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey, event.target); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} selectedColumnId={selectedColumnId} /> : ''}{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && resizeAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected canvas-component-external-chrome' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey, event.target); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} selectedColumnId={selectedColumnId} /> : ''}{chromeHost && selected ? createPortal(<div className={`canvas-selection-chrome${chromeOverflows ? ' canvas-selection-chrome-overflow' : ''}`} style={{ ...componentStyle({ ...active, x: active.x + chromeOffset.x, y: active.y + chromeOffset.y }, zoom), '--chrome-visible-height': canvasDisplay.css(chromeVisibleHeight, zoom) } as CSSProperties}>{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && visibleAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
-      : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>
+      : lineAxis ? <button key={anchor} type="button" className={`selection-handle selection-handle-${anchor}`} aria-label={`Resize ${component.id} ${anchor === 'w' || anchor === 'n' ? 'start' : 'end'}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
+      : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>, chromeHost) : undefined}</div>
 }
 // ImagePaint is Story 5.13's canvas producer: it paints ONLY inside the
 // fit-and-centre draw rectangle Go already computed (component.image), never
@@ -5280,12 +5382,12 @@ function componentAccessibleName(component: CanvasProjection['components'][numbe
 // A component whose extent crosses a window boundary is drawn on every window
 // it intersects, because leaving the later sheets empty would make the
 // drawing a lie in a second way. Only the HOME occurrence carries the role,
-// the tab stop and the name; these echoes are decoration — aria-hidden, no
-// handlers, no handles — so one component never presents two identical
+// the tab stop and the name; selected echoes accept body drags and Shift
+// toggles but have no handles, so one component never presents two identical
 // accessible names (Ruling G).
-function ComponentEcho({ component, carriedFaces, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; y: number; zoom: number; engine?: EngineClient; generation: number }) {
+function ComponentEcho({ component, carriedFaces, selected, onSelect, onBodyPress, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; selected?: boolean; onSelect?: (id: string, extend: boolean) => void; onBodyPress?: (event: PointerEvent) => void; y: number; zoom: number; engine?: EngineClient; generation: number }) {
   const paint = component.textPaint
-  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}`} aria-hidden="true" style={componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom)}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : ''}</span>
+  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}${selected ? ' canvas-component-selected' : ''}`} aria-hidden="true" onPointerDown={selected ? (event) => { if (event.button !== 0) return; event.stopPropagation(); if (event.shiftKey) onSelect?.(component.id, true); else onBodyPress?.(event) } : undefined} onClick={selected ? (event) => event.stopPropagation() : undefined} style={{ ...componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom), '--echo-clip-top': canvasDisplay.css(Math.max(0, -y), zoom) } as CSSProperties}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : ''}</span>
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

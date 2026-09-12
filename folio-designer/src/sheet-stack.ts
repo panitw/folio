@@ -96,9 +96,9 @@ function homeWindow(origins: ReadonlyArray<number>, y: number): number {
 // begins at its top and it can sit in the region between one window's foot and
 // the next window's origin. The spec draws no such region ("the skipped column
 // region is not drawn"), so a point there has no drawn position of its own; it
-// is shown, and dragged, against the foot of the sheet that owns it.
+// is shown with its selectable box inside the foot of its owning sheet.
 //
-// The DRAWING and the DRAG must read this through the same function. When they
+// The point mapping used by resize remains separate from box fallback. When they
 // disagreed, a zero-delta drag on such a component committed a column offset
 // nine windows away: the drawing put it past its sheet, and the inverse then
 // floored it onto a later sheet and added that sheet's origin.
@@ -130,7 +130,7 @@ export function sheetStack(canvas: CanvasProjection): SheetStack {
       // offset; only the home of a component that intersects NO window is
       // pulled onto its sheet, which is the sole case where the two differ.
       if (intersects) content.push({ component, y: component.y - origin, home })
-      else if (home) content.push({ component, y: offsetWithinWindow(component.y, origin, windowHeight), home })
+      else if (home) content.push({ component, y: offsetWithinWindow(component.y, origin, Math.max(0, windowHeight - component.height)), home })
     }
     sheets.push({ index, origin, ...(next !== undefined && next - origin <= windowHeight ? { seam: next - origin } : {}), content })
   }

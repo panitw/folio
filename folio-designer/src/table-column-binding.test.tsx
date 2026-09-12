@@ -113,15 +113,15 @@ describe('a table column is bound from the main window', () => {
     expect(screen.queryByText('Column')).toBeNull()
   })
 
-  it('treats a shift-click on a column as a plain click, so a mixed selection is unrepresentable', () => {
+  it('adds the table to a mixed selection when Shift-clicking a column', () => {
     const sent: Sent = { commands: [] }
     const view = mount([table(), other], engineFor(sent))
     fireEvent.click(screen.getByRole('button', { name: /text component e2/ }))
     fireEvent.click(columnSpans(view.container, 'e11')[0]!, { shiftKey: true })
-    expect(selectedColumnIds(view.container)).toEqual(['e11', 'e11'])
+    expect(selectedColumnIds(view.container)).toEqual([])
     // Exactly one component is selected — the owning table — so every
     // `selected.length === 1` gate keeps its current meaning.
-    expect(view.container.querySelectorAll('.canvas-component-selected:not(.canvas-component-echo)')).toHaveLength(1)
+    expect(view.container.querySelectorAll('.canvas-component-selected:not(.canvas-component-echo)')).toHaveLength(2)
     expect(home(view.container).className).toContain('canvas-component-selected')
   })
 

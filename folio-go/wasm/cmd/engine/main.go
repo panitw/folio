@@ -27,6 +27,7 @@ type request struct {
 }
 
 type response struct {
+	GroupMove                  *wasm.GroupMoveResult         `json:"groupMove,omitempty"`
 	OK                         bool                          `json:"ok"`
 	Snapshot                   wasm.Snapshot                 `json:"snapshot,omitempty"`
 	BytesBase64                string                        `json:"bytesBase64,omitempty"`
@@ -123,6 +124,19 @@ func dispatch(engine *wasm.Engine, in request) response {
 			return engineFailure(err)
 		}
 		return response{OK: true, Snapshot: engine.Snapshot(), BytesBase64: base64.StdEncoding.EncodeToString(data)}
+	case "group-move-preview":
+		if in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
+			return failure("WASM_INPUT_INVALID", errors.New("group move preview requires only a movement payload"))
+		}
+		payload, err := decode()
+		if err != nil {
+			return failure("WASM_INPUT_INVALID", err)
+		}
+		result, err := engine.GroupMovePreview(payload)
+		if err != nil {
+			return engineFailure(err)
+		}
+		return response{OK: true, Snapshot: engine.Snapshot(), GroupMove: &result}
 	case "table-columns":
 		if in.TemplateBase64 != "" || in.DataBase64 != "" || in.ParamsBase64 != "" {
 			return failure("WASM_INPUT_INVALID", errors.New("table columns require exactly one selected table id"))

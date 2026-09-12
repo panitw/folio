@@ -662,6 +662,7 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 // set is pinned exactly, so the new member cannot silently stop being sent.
 var canvasComponentWireKeys = []string{
 	"align",
+	"authored",
 	"background",
 	"band",
 	"binding",
@@ -711,7 +712,7 @@ var canvasComponentColumnWireKeys = []string{"bind", "cellAlign", "headerAlign",
 // column marshals, recorded so the new member cannot quietly stop being sent.
 // The subset check below cannot see that: a component that emits FEWER keys
 // than the record is still a subset of it.
-var canvasTableComponentEmittedKeys = []string{"band", "columns", "fontFamily", "fontSize", "height", "id", "resizable", "tableBind", "type", "width", "x", "y"}
+var canvasTableComponentEmittedKeys = []string{"authored", "band", "columns", "fontFamily", "fontSize", "height", "id", "resizable", "tableBind", "type", "width", "x", "y"}
 
 // componentsFromProjectionBytes reads the projected components as raw objects,
 // by the same rule every helper in this file uses: from the marshalled bytes,

@@ -1,6 +1,6 @@
 export const ENGINE_PROTOCOL_VERSION = 1 as const
 
-export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'stand-in-data' | 'table-columns' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render' | 'asset'
+export type EngineOperation = 'initialize' | 'load' | 'snapshot' | 'parameter-references' | 'stand-in-data' | 'group-move-preview' | 'table-columns' | 'validate' | 'serialize' | 'command' | 'undo' | 'redo' | 'identity' | 'render' | 'asset'
 
 export const MAX_ENGINE_REQUEST_ID_LENGTH = 128
 export const MAX_ENGINE_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -330,6 +330,8 @@ export type TableHeaderStyle = Readonly<{
   'headerBorder.color': string; 'headerBorder.colorResolved': string
   'headerBorder.edges': string; 'headerBorder.edgesResolved': string
 }>
+export type GroupMovePreview = Readonly<{ revision: number; dx: number; dy: number }>
+
 export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
@@ -353,6 +355,22 @@ export type EngineSnapshot = Readonly<{
 
 // This is paint-only output from Go, not a .folio page model. Values are
 // millipoints and are never used to derive a browser document layout.
+export type AuthoredProperty<T> = Readonly<{ state: 'absent' | 'null' }> | Readonly<{ state: 'value'; value: T }>
+export type AuthoredProperties = Readonly<Record<'fontFamily', AuthoredProperty<string>> & {
+  visibleIf: AuthoredProperty<string>
+  fontSize: AuthoredProperty<number>
+  lineSpacing: AuthoredProperty<number>
+  bold: AuthoredProperty<boolean>
+  italic: AuthoredProperty<boolean>
+  align: AuthoredProperty<string>
+  valign: AuthoredProperty<string>
+  color: AuthoredProperty<string>
+  background: AuthoredProperty<string>
+  borderWidth: AuthoredProperty<number>
+  borderColor: AuthoredProperty<string>
+  borderEdges: AuthoredProperty<ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>>
+}>
+
 export type CanvasProjection = Readonly<{
 	width: number; height: number; orientation: 'portrait' | 'landscape'; preset: 'A4' | 'Letter' | 'custom'
 	// The DOCUMENT's two declared formatting authorities (Story 12.2). `locale`
@@ -416,7 +434,7 @@ export type CanvasProjection = Readonly<{
 	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -429,6 +447,7 @@ export type EngineSuccess = Readonly<{
 	preview?: PreviewEvidence
 	parameterReferences?: ParameterReferences
 	tableColumns?: TableColumns
+	groupMove?: GroupMovePreview
 }>
 
 export type EngineFailure = Readonly<{
@@ -570,6 +589,22 @@ const isCanonicalEdgeList = (value: unknown): boolean => {
 // loaded document. This is deliberately the same spirit as `isCanonicalEdgeList`
 // beside it, which also refuses non-canonical spellings of a legal value.
 const isThousandthsLengthString = (value: unknown): boolean => typeof value === 'string' && (value === '' || (/^(?:0|[1-9][0-9]*)$/.test(value) && Number.isSafeInteger(Number(value))))
+const authoredKeys = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges'] as const
+const isAuthoredProperties = (value: unknown): value is AuthoredProperties => isRecord(value) && hasExactKeys(value, [...authoredKeys]) && authoredKeys.every((key) => {
+  const field = value[key]
+  if (!isRecord(field)) return false
+  if (field.state === 'absent' || field.state === 'null') return hasExactKeys(field, ['state'])
+  if (field.state !== 'value' || !hasExactKeys(field, ['state', 'value'])) return false
+  if (key === 'bold' || key === 'italic') return typeof field.value === 'boolean'
+  if (key === 'fontSize' || key === 'borderWidth' || key === 'lineSpacing') return Number.isSafeInteger(field.value)
+  if (key === 'borderEdges') return Array.isArray(field.value) && field.value.length <= 4 && new Set(field.value).size === field.value.length && field.value.every((edge) => ['top', 'right', 'bottom', 'left'].includes(edge))
+  if (key === 'align') return ['left', 'center', 'right', 'justify'].includes(field.value as string)
+  if (key === 'valign') return ['top', 'middle', 'bottom'].includes(field.value as string)
+  return typeof field.value === 'string' && field.value.length <= MAX_CANVAS_PROPERTY_STRING
+})
+
+const isGroupMove = (value: unknown): value is GroupMovePreview => isRecord(value) && hasExactKeys(value, ['revision', 'dx', 'dy']) && Number.isSafeInteger(value.revision) && (value.revision as number) >= 0 && Number.isSafeInteger(value.dx) && Number.isSafeInteger(value.dy)
+
 const isTableColumns = (value: unknown): value is TableColumns => {
   if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'columns'])) return false
   const table = value.table
@@ -712,7 +747,8 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+    if (component.authored !== undefined && !isAuthoredProperties(component.authored)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
     if (bandIndex < priorBand) return false
@@ -905,9 +941,9 @@ export function requestCorrelationId(value: unknown): string | undefined {
 
 export function parseRequest(value: unknown): EngineRequest | undefined {
   if (!isRecord(value) || !hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'operation', 'payload']) || value.protocolVersion !== ENGINE_PROTOCOL_VERSION || value.kind !== 'request' || !isEngineRequestId(value.requestId)) return undefined
-	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'stand-in-data', 'table-columns', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render', 'asset'].includes(value.operation as string)) return undefined
+	if (!['initialize', 'load', 'snapshot', 'parameter-references', 'stand-in-data', 'group-move-preview', 'table-columns', 'validate', 'serialize', 'command', 'undo', 'redo', 'identity', 'render', 'asset'].includes(value.operation as string)) return undefined
   if (value.payload !== undefined && (!isArrayBuffer(value.payload) || value.payload.byteLength > MAX_ENGINE_PAYLOAD_BYTES) && !(value.operation === 'render' && isRenderPayload(value.payload)) && !(value.operation === 'identity' && isIdentityPayload(value.payload))) return undefined
-	const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command' || value.operation === 'table-columns' || value.operation === 'asset'
+	const needsPayload = value.operation === 'initialize' || value.operation === 'load' || value.operation === 'command' || value.operation === 'table-columns' || value.operation === 'group-move-preview' || value.operation === 'asset'
   if (value.operation === 'render' ? !isRenderPayload(value.payload) : value.operation === 'identity' ? !isIdentityPayload(value.payload) : needsPayload !== (value.payload !== undefined)) return undefined
   return value as EngineRequest
 }
@@ -919,7 +955,7 @@ export function parseInbound(value: unknown): EngineInbound | undefined {
     return undefined
   }
   if (value.kind !== 'response' || !isEngineRequestId(value.requestId) || typeof value.ok !== 'boolean') return undefined
-	if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview', 'parameterReferences', 'tableColumns']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.parameterReferences === undefined || isParameterReferences(value.parameterReferences)) && (value.tableColumns === undefined || isTableColumns(value.tableColumns)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.parameterReferences === undefined || value.parameterReferences.revision === value.snapshot.revision) && (value.tableColumns === undefined || value.tableColumns.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
+	if (value.ok && hasOnly(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'snapshot', 'bytes', 'preview', 'parameterReferences', 'tableColumns', 'groupMove']) && isSnapshot(value.snapshot) && (value.bytes === undefined || isArrayBuffer(value.bytes) && value.bytes.byteLength <= MAX_ENGINE_RENDER_PDF_BYTES) && (value.preview === undefined || isPreview(value.preview)) && (value.parameterReferences === undefined || isParameterReferences(value.parameterReferences)) && (value.tableColumns === undefined || isTableColumns(value.tableColumns)) && (value.preview === undefined || value.preview.revision === value.snapshot.revision) && (value.parameterReferences === undefined || value.parameterReferences.revision === value.snapshot.revision) && (value.tableColumns === undefined || value.tableColumns.revision === value.snapshot.revision) && (value.groupMove === undefined || isGroupMove(value.groupMove) && value.groupMove.revision === value.snapshot.revision) && (value.preview?.pdfSha256 === undefined || value.bytes !== undefined)) return value as EngineSuccess
   if (!value.ok && hasExactKeys(value, ['protocolVersion', 'kind', 'requestId', 'ok', 'error']) && isError(value.error)) return value as EngineFailure
   return undefined
 }

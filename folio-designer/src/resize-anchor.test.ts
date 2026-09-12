@@ -95,3 +95,13 @@ describe('resize anchors', () => {
     expect(proposedBounds('nw', thin, 900, 900)).toEqual({ x: 0, y: 0, width: 400, height: 400 })
   })
 })
+
+
+it('keeps a line length at its orientation-preserving floor', () => {
+  const origin = { originalX: 20000, originalY: 20000, originalWidth: 72000, originalHeight: 2000 }
+  expect(proposedBounds('e', origin, -100000, 30000, undefined, 2000)).toEqual({ x: 20000, y: 20000, width: 2000, height: 2000 })
+  expect(proposedBounds('w', origin, 100000, 30000, undefined, 2000)).toEqual({ x: 90000, y: 20000, width: 2000, height: 2000 })
+  const vertical = { ...origin, originalWidth: 2000, originalHeight: 72000 }
+  expect(proposedBounds('n', vertical, 30000, 100000, undefined, 2001)).toEqual({ x: 20000, y: 89999, width: 2000, height: 2001 })
+  expect(proposedBounds('s', vertical, 30000, -100000, undefined, 2001)).toEqual({ x: 20000, y: 20000, width: 2000, height: 2001 })
+})

@@ -12,7 +12,8 @@ import type { EngineClient } from './engine-client'
 // more hits. So the suite's greenness on this surface was worth nothing — not
 // because the tests were weak, but because nothing was watching it at all.
 //
-// WHAT THIS STORY CHANGES IS THE WORDS, NOT THE DRAWING. A Line is drawn as a
+// Story 14.2 changes the inspector words. The follow-up tests at the end
+// also cover canvas endpoint resizing while preserving Thickness. A Line is drawn as a
 // very short, very wide filled box; that is how the engine models it and this
 // story does not move it. Every control below writes exactly the field it wrote
 // when it was called `H`, `W` or `Background`, through the same
@@ -338,15 +339,15 @@ describe('a Rectangle is a fill and a border', () => {
 })
 
 describe('the kind-specific vocabulary is gated on a single selection', () => {
-  it('keeps the generic words, and the border controls, on a multi-selection carrying a Line', () => {
+  it('keeps generic dimensions and withholds borders on a multi-selection carrying a Line', () => {
     open([text, { ...horizontalLine, id: 'e2', y: 100_000 }])
     select('e1', 'text')
     fireEvent.click(screen.getByLabelText('line component e2'), { shiftKey: true })
     expect(box('Width (pt)')).toBeInTheDocument()
     expect(box('Height (pt)')).toBeInTheDocument()
     expect(box('Background')).toBeInTheDocument()
-    expect(box('Border width (pt)')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'Border top' })).toBeInTheDocument()
+    missing('Border width (pt)')
+    expect(screen.queryByRole('checkbox', { name: 'Border top' })).not.toBeInTheDocument()
     missing('Length (pt)')
     missing('Thickness (pt)')
     expect(screen.queryByRole('group', { name: 'Orientation' })).not.toBeInTheDocument()
@@ -707,5 +708,81 @@ describe('every renamed, added and withheld control keeps an unambiguous name', 
     expect(panel.getByRole('button', { name: 'Set Fill null' })).toBeInTheDocument()
     expect(panel.getByLabelText('Pick Fill')).toBeInTheDocument()
     for (const control of Array.from(screen.getByLabelText('Properties panel').querySelectorAll('.property-editor button, .property-editor input'))) expect(control).toHaveAccessibleName()
+  })
+})
+
+
+describe('line canvas resizing preserves Thickness', () => {
+  it.each([
+    ['horizontal', horizontalLine, ['w', 'e']],
+    ['vertical', verticalLine, ['n', 's']],
+    ['square', squareLine, ['w', 'e']],
+  ] as const)('offers only length handles for a %s line', (_name, line, anchors) => {
+    open([line])
+    select('e1', 'line')
+    const chrome = document.querySelector('.canvas-selection-chrome')!
+    expect(Array.from(chrome.querySelectorAll('.selection-handle')).map((handle) => handle.className)).toEqual(anchors.map((anchor) => `selection-handle selection-handle-${anchor}`))
+    expect(screen.queryByRole('button', { name: 'Resize e1' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['e', horizontalLine, 8, 30, 80, 1, 0, 0],
+    ['w', { ...horizontalLine, x: 20000 }, 8, 30, 64, 1, 28, 0],
+    ['s', verticalLine, 30, 8, 1, 80, 0, 0],
+    ['n', { ...verticalLine, y: 20000 }, 30, 8, 1, 64, 0, 28],
+    ['e', horizontalLine, -100, 30, 1, 1, 0, 0],
+    ['s', verticalLine, 30, -100, 1, 1.001, 0, 0],
+  ] as const)('keeps thickness in the preview and committed %s drag, even diagonally', async (anchor, line, dx, dy, width, height, x, y) => {
+    const snapshot: EngineSnapshot = { documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [line] } }
+    const request = vi.fn(async (_operation: string, payload: ArrayBuffer) => {
+      const bounds = JSON.parse(wire(payload)) as { x: number; y: number; width: number; height: number }
+      return { snapshot: { ...snapshot, revision: 2, canvas: { ...canvas, components: [{ ...line, x: Math.round(bounds.x * 1000), y: Math.round(bounds.y * 1000), width: Math.round(bounds.width * 1000), height: Math.round(bounds.height * 1000) }] } } }
+    })
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} />)
+    select('e1', 'line')
+    const handle = document.querySelector(`.canvas-selection-chrome .selection-handle-${anchor}`)!
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: dx, clientY: dy })
+    expect(box('Thickness (pt)')).toHaveValue('1')
+    expect(box('Length (pt)')).toHaveValue(String(Math.max(width, height)))
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: dx, clientY: dy })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    const payload = (request.mock.calls[0] as unknown as [string, ArrayBuffer])[1]
+    // Snap stays enabled on the wire. Go preserves the line's short axis;
+    // this UI fake deliberately only checks transport and geometry handoff.
+    expect(JSON.parse(wire(payload))).toEqual({ kind: 'setComponentBounds', version: 1, id: 'e1', x, y, width, height, snap: true })
+    await waitFor(() => expect(box('Length (pt)')).not.toHaveAttribute('readonly'))
+    expect(box('Length (pt)')).toHaveValue(String(Math.max(width, height)))
+    expect(box('Thickness (pt)')).toHaveValue('1')
+  })
+
+  it('honours Snap off for line endpoint resizing', async () => {
+    const snapshot: EngineSnapshot = { documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [horizontalLine] } }
+    const request = vi.fn(async (_operation: string, _payload: ArrayBuffer) => ({ snapshot }))
+    render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Snap on' }))
+    select('e1', 'line')
+    const handle = screen.getByRole('button', { name: 'Resize e1 end' })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 8.422, clientY: 30 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 8.422, clientY: 30 })
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    expect(JSON.parse(wire(request.mock.calls[0][1]))).toEqual({ kind: 'setComponentBounds', version: 1, id: 'e1', x: 0, y: 0, width: 80.422, height: 1, snap: false })
+  })
+
+  it('does not commit a cross-axis-only drag', () => {
+    const { request } = open([horizontalLine])
+    select('e1', 'line')
+    const handle = document.querySelector('.canvas-selection-chrome .selection-handle-e')!
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 0, clientY: 30 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 0, clientY: 30 })
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('keeps all eight resize handles on rectangles', () => {
+    open([rect])
+    select('e1', 'rect')
+    expect(document.querySelectorAll('.canvas-selection-chrome .selection-handle, .canvas-selection-chrome .resize-handle')).toHaveLength(8)
   })
 })

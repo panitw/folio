@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_RENDER_PDF_BYTES, type EngineDiagnostic, type EngineError, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_ENGINE_RENDER_PDF_BYTES, type EngineDiagnostic, type EngineError, type EngineRequest, type EngineSnapshot, type IdentityPayload, type RenderPayload, type TableColumns, type GroupMovePreview } from './engine-protocol'
 import { EngineRequestAdmission } from './engine-worker-admission'
 import { EngineWorkerQueue } from './engine-worker-queue'
 import { runtimeAssetUrls } from './generated/offline-assets'
@@ -14,7 +14,7 @@ type WasmHost = { handle(request: string): string }
 // struct, the guard's key list, engine-client's settle path — missed it, and it
 // went stale silently because nothing here is checked against anything (Story
 // 12.3). Naming the shared type is what makes it impossible to miss again.
-type WasmResponse = { ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; elapsedMs?: number; version?: string; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: TableColumns['table']; tableColumnsRevision?: number }
+type WasmResponse = { groupMove?: GroupMovePreview; ok: boolean; snapshot?: EngineSnapshot; bytesBase64?: string; diagnosticCode?: string; message?: string; elementId?: string; dataPath?: string; pdfSha256?: string; previewIdentity?: string; renderRevision?: number; diagnostics?: EngineDiagnostic[]; elapsedMs?: number; version?: string; parameterReferences?: string[]; parameterReferenceRevision?: number; tableColumns?: TableColumns['table']; tableColumnsRevision?: number }
 
 const worker = self as unknown as DedicatedWorkerGlobalScope
 let host: WasmHost | undefined
@@ -139,7 +139,7 @@ async function execute(request: EngineRequest): Promise<void> {
     const preview = request.operation === 'render' ? { revision: result.renderRevision, identity: result.previewIdentity, pdfSha256: result.pdfSha256, diagnostics: result.diagnostics, elapsedMs: result.elapsedMs, version: result.version } : request.operation === 'identity' ? { revision: result.renderRevision, identity: result.previewIdentity } : undefined
     const parameterReferences = request.operation === 'parameter-references' ? { revision: result.parameterReferenceRevision, names: result.parameterReferences } : undefined
     const tableColumns = request.operation === 'table-columns' ? { revision: result.tableColumnsRevision, table: result.tableColumns } : undefined
-    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}) }, bytes ? [bytes] : [])
+    worker.postMessage({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: request.requestId, ok: true, snapshot: result.snapshot, ...(bytes ? { bytes } : {}), ...(preview ? { preview } : {}), ...(parameterReferences ? { parameterReferences } : {}), ...(tableColumns ? { tableColumns } : {}), ...(request.operation === 'group-move-preview' ? { groupMove: result.groupMove } : {}) }, bytes ? [bytes] : [])
   } catch (thrown) {
     // REPORT THE CAUSE, DO NOT MERELY NAME THE STAGE. The sentence says what
     // this boundary was doing; the phrase after it is the thrown value's own,
