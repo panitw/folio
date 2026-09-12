@@ -60,7 +60,22 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .status-dot { width: var(--space-1); height: var(--space-1); border-radius: var(--radius-dot); background: var(--color-bind); }
 .status-dot.status-clean { background: var(--color-select); }
 .status-copy { color: var(--color-ink); font: var(--type-body); }
-.document-actions { display: flex; gap: var(--space-1); }
+/* `position: relative` is here ONLY to anchor `.bar-message` below the bar.
+   The group's own box is unchanged — an absolutely positioned child
+   contributes nothing to it — which is what keeps `document-bar-fit.spec.ts`
+   measuring the same bar it always measured. */
+.document-actions { position: relative; display: flex; gap: var(--space-1); }
+/* THE FILE ACTIONS' OWN SENTENCE, HUNG UNDER THE BUTTONS IT EXPLAINS.
+   Out of the bar's flex row on purpose (see App.tsx's note at the group): in
+   the row it would eat the measured slack the bar is required to keep.
+   `max-width` is read off the group rather than the viewport so the message
+   can never reach past the family it belongs to, and `white-space: nowrap`
+   with an ellipsis keeps it to the one line the bar's edge can carry — the
+   `title` on the node holds the untruncated sentence.
+   `z-index: 10` sits above the workbench it overhangs and BELOW the two
+   backdrops at 20, so a modal still covers it. */
+.bar-message { position: absolute; z-index: 10; top: calc(100% + var(--space-1)); left: 0; max-width: 100%; overflow: hidden; padding: 2px var(--space-2); border: var(--hairline) solid var(--color-line); border-radius: var(--radius-default); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); white-space: nowrap; text-overflow: ellipsis; }
+.bar-message-alert { border-color: var(--color-bind); color: var(--color-ink-high); }
 .file-button { min-height: var(--status-bar-height); padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
 .file-button:disabled { color: var(--color-ink); cursor: not-allowed; }
 .later-control { margin-left: auto; color: var(--color-ink); }

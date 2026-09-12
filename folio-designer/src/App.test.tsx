@@ -2302,6 +2302,68 @@ describe('application shell', () => {
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
   })
 
+  // AN ENGINE THAT NEVER REPLIES MUST NOT TAKE THE FILE BAR WITH IT.
+  //
+  // `fileBusy` is the sole condition that disables Open, Save, Save As and
+  // Start blank, and it is held across the engine round-trip. EngineClient
+  // rejects every pending request when the worker raises or is terminated, so a
+  // worker that DIES releases the bar; a worker that merely stops replying —
+  // a wedged wasm call — raises nothing, so before the deadline its request
+  // settled never and all four buttons stayed disabled for the life of the tab,
+  // wearing `cursor: not-allowed` with no sentence anywhere saying why. The
+  // reported symptom was "clicking Open does nothing".
+  //
+  // The double below is the wedge, not an approximation of one: it honours the
+  // abort exactly as EngineClient does and is otherwise silent forever.
+  it('releases the file bar and reports the failure when an engine step never replies', async () => {
+    vi.useFakeTimers()
+    try {
+      const request = vi.fn((_operation: string, _payload?: ArrayBuffer, signal?: AbortSignal) => new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(Object.assign(new Error('Engine request was abandoned'), { code: 'REQUEST_ABORTED' })), { once: true })
+      }))
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'wedged.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
+
+      const open = screen.getByRole('button', { name: 'Open local template' })
+      fireEvent.click(open)
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(request).toHaveBeenCalledWith('load', bytes, expect.any(AbortSignal))
+
+      // THE LATCH IS REAL WHILE THE STEP IS OUTSTANDING. Without this the
+      // release below could pass on a bar that was never disabled.
+      expect(open).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save local template' })).toBeDisabled()
+      expect(screen.getByText('Opening local file…')).toBeInTheDocument()
+
+      // One millisecond short of the deadline the bar is still held: the
+      // release is the deadline's doing and not the passage of any time at all.
+      await act(async () => { await vi.advanceTimersByTimeAsync(19_999) })
+      expect(open).toBeDisabled()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(open).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Save local template' })).toBeEnabled()
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not open local file')
+      expect(screen.queryByText('Opening local file…')).not.toBeInTheDocument()
+      // The wedge changed nothing about the session it failed to replace.
+      expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    } finally { vi.useRealTimers() }
+  })
+
+  // The sentence explaining a file action belongs with the buttons it explains.
+  // Both copies used to render at the tail of the design and preview mains,
+  // which scroll, so the reason a file button was disabled was routinely off
+  // the bottom of the window while the deny cursor was up in the bar.
+  it('renders the local file message inside the document bar, with the actions it explains', async () => {
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'placed.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    render(<App engine={engine()} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+    await waitFor(() => expect(screen.getByText(/Opened local file placed\.folio/)).toBeInTheDocument())
+    const actions = screen.getByRole('group', { name: 'Local file actions' })
+    expect(actions).toContainElement(screen.getByText(/Opened local file placed\.folio/))
+    expect(screen.getByRole('banner', { name: 'Document bar' })).toContainElement(actions)
+  })
+
   it('clears temporary busy wording after save cancellation without changing the session', async () => {
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => { throw new FileAccessCancelled() }), writeSave: vi.fn() }
     render(<App engine={engine()} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
@@ -2336,7 +2398,10 @@ describe('application shell', () => {
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 9, byteLength: 3 }, bytes }))
     render(<App engine={engine(request)} fileAccess={{ open: vi.fn(), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }} blankBytes={bytes} initialSnapshot={{ documentState: 'loaded', revision: 4, byteLength: 3 }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
-    await waitFor(() => expect(request).toHaveBeenCalledWith('load', bytes))
+    // The third argument is the file bar's abort deadline: Start blank holds
+    // `fileBusy` across this request, so an engine that never replies would
+    // otherwise latch every file button off for the life of the tab.
+    await waitFor(() => expect(request).toHaveBeenCalledWith('load', bytes, expect.any(AbortSignal)))
     expect(screen.getByText('Untitled template')).toBeInTheDocument()
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
   })

@@ -1,7 +1,7 @@
 import './App.css'
 import { createPortal } from 'react-dom'
 import { createContext, useContext, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { isProducerRenderFailure, type EngineClient } from './engine-client'
+import { isProducerRenderFailure, type EngineClient, type EngineResult } from './engine-client'
 import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CanvasTableColumn, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
@@ -56,6 +56,46 @@ import { registerCarriedFaces } from './embedded-face-registry'
 import type { ImageFileAccess } from './image-file'
 
 const CANVAS_GUTTER = 116
+
+// THE FILE BAR'S ENGINE STEPS ARE BOUNDED, AND THIS IS WHY THAT IS NOT
+// PARANOIA.
+//
+// Open, Save, Save As and Start blank each hold `fileBusy` across their engine
+// round-trip, and `fileBusy` is the sole condition that disables all four
+// buttons. EngineClient rejects every pending request when the worker reports
+// an error or is terminated (engine-client.ts's `#fail`/`terminate`), so a
+// worker that DIES releases the bar. A worker that does not die — a wasm call
+// that spins, or a Go instance that stops replying without raising — posts no
+// response and raises no error, so its request settles never. Before this
+// bound, that latched Open/Save/Save As/Start blank off for the life of the
+// tab, with `cursor: not-allowed` and no sentence anywhere saying why; the only
+// recovery was a reload nobody could know to perform.
+//
+// 20s is a CEILING ON A WEDGE, not a performance budget. Load and serialize are
+// millisecond operations on every fixture in this repository, so a request that
+// is still outstanding at 20s is not slow, it is stuck. It is deliberately not
+// tighter: the bound must never fire on a large template on a loaded machine,
+// because a false trip reports a failure that did not happen.
+//
+// ⚠ ABORTING RELEASES THE BAR; IT DOES NOT UNWEDGE THE WORKER. The abort drops
+// the pending entry on THIS side (engine-client.ts's `abort`), and the worker
+// thread stays exactly as stuck as it was. That is the honest division: the
+// author gets their buttons and a stated failure instead of a dead bar, and the
+// next action fails the same way rather than silently doing nothing.
+//
+// BUILT FROM `AbortController` AND `setTimeout`, NOT FROM `AbortSignal.timeout`.
+// The one-liner reads better and cannot be tested: `AbortSignal.timeout` is
+// implemented by the runtime and does not go through the global `setTimeout`
+// that fake timers replace, so the only witness for this bound would be a test
+// that really waits 20 seconds — which is to say, no witness at all. The timer
+// is cleared when the request settles, so a normal file action leaves nothing
+// pending behind it.
+const ENGINE_FILE_STEP_TIMEOUT_MS = 20_000
+const engineFileStep = (run: (signal: AbortSignal) => Promise<EngineResult>): Promise<EngineResult> => {
+  const deadline = new AbortController()
+  const handle = setTimeout(() => deadline.abort(), ENGINE_FILE_STEP_TIMEOUT_MS)
+  return run(deadline.signal).finally(() => clearTimeout(handle))
+}
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect']]
 type InspectorTab = 'properties' | 'data'
@@ -2401,8 +2441,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
     try {
       const opened = await fileAccess.open()
-      const loaded = await engine.request('load', opened.bytes)
-      const canonical = await engine.request('serialize')
+      const loaded = await engineFileStep((signal) => engine.request('load', opened.bytes, signal))
+      const canonical = await engineFileStep((signal) => engine.request('serialize', undefined, signal))
       if (!canonical.bytes) throw new Error('Local file could not be serialized')
       const inputWasCanonical = equalBytes(opened.bytes, canonical.bytes)
       setCurrentSnapshot(loaded.snapshot, false, true)
@@ -2426,7 +2466,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // picker is activation-gated. Cancellation leaves every session field as-is.
       const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, currentTarget: target, saveAs, format: folioFileFormat })
       setFileStatus('Saving local file…')
-      const serialized = await engine.request('serialize')
+      const serialized = await engineFileStep((signal) => engine.request('serialize', undefined, signal))
       if (!serialized.bytes) throw new Error('Local file could not be serialized')
       const saved = await fileAccess.writeSave(acquired, { bytes: serialized.bytes })
       setTitle(saved.name)
@@ -2449,7 +2489,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     clearPreviewParameters(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Starting blank local template…')
     try {
-      const loaded = await engine.request('load', blankBytes)
+      const loaded = await engineFileStep((signal) => engine.request('load', blankBytes, signal))
       setCurrentSnapshot(loaded.snapshot, false, true)
       clearSampleData()
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
@@ -2889,7 +2929,38 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           another", and the four siblings the mockup does not draw already carry
           `.file-button`, so the family's existing spelling is what the two new
           words join. The drawing loses on the one point where it is silent. */}
-      <div className="document-actions" role="group" aria-label="Local file actions"><button className="file-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template">Open</button><button className="file-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}>Save</button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button></div>
+      {/* THE LOCAL-FILE MESSAGES NOW SIT WITH THE BUTTONS THEY ARE ABOUT.
+          They were rendered at the tail of the design and preview mains, which
+          are scrollable regions, so the sentence explaining a busy or failed
+          file action was routinely below the fold while the four buttons it
+          explains sat up here wearing `cursor: not-allowed`. A disabled control
+          whose reason is off-screen reads as a BROKEN control: the reported
+          symptom was "clicking Open does nothing", when Open was disabled by
+          `fileBusy` and "Opening local file…" was on the page the whole time.
+
+          ⚠ ABSOLUTELY POSITIONED, INSIDE THIS GROUP, AND THAT IS A LAYOUT
+          RULING RATHER THAN A STYLE ONE. `.document-bar` is a single flex row
+          with no wrap, and `e2e/document-bar-fit.spec.ts` measures the spare
+          room between this group and `.later-control` at the shell's declared
+          1024px minimum, requiring it to stay above zero. A message rendered as
+          a SEVENTH FLEX ITEM would consume exactly that slack — "Opened local
+          file statement.folio; canonical local changes need saving" is wider
+          than the whole measured gap — so the bar would overfill on the very
+          sentence this change exists to show. Out of the row, the instrument
+          measures what it always did and the message cannot overfill anything.
+
+          ONE NODE, NOT TWO. `fileError` WINS over `fileStatus` rather than
+          rendering alongside it. `announceFailure` already clears the status
+          when it sets the error, so the two are never both set today — the
+          ternary is here so a future writer who sets one without clearing the
+          other cannot produce two competing sentences in one slot. The alert is
+          the half that must never be the one lost.
+
+          NOT FOLDED INTO `.status-copy` next door, which is its own
+          `role="status"`: that line says what the DOCUMENT is (saved, dirty)
+          and this one says what the last file ACTION did. One line with two
+          writers means either can erase the other's sentence. */}
+      <div className="document-actions" role="group" aria-label="Local file actions"><button className="file-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template">Open</button><button className="file-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}>Save</button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button>{fileError ? <span role="alert" className="bar-message bar-message-alert" title={fileError}>{fileError}</span> : fileStatus ? <span role="status" aria-live="polite" className="bar-message" title={fileStatus}>{fileStatus}</span> : undefined}</div>
       {/* STORY 13.5 — THE SLOT SAYS SOMETHING ABOUT WHAT IS ON SCREEN.
           In Design that is the page setup; in Preview the page setup is a fact
           about a template nobody is looking at, and the render's own freshness
@@ -2950,7 +3021,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
 
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
-        {commitError && <p role="alert" className="file-message">{commitError}</p>}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}{/* STORY 14.7b — WHAT A COMPLETED CANCEL DISCARDED, in this region and in
+        {commitError && <p role="alert" className="file-message">{commitError}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}{/* STORY 14.7b — WHAT A COMPLETED CANCEL DISCARDED, in this region and in
             its OWN state. Not folded into `fileStatus`: that line is for local
             file outcomes, and two writers on one line means either can erase the
             other's sentence. */}{tableEditorDiscarded && <p role="status" aria-live="polite" className="file-message">{tableEditorDiscarded}</p>}
@@ -2958,18 +3029,26 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         A grey footnote nobody can read a hash off is not evidence, and two
         copies of one digest on one screen is two things that can disagree.
         `Stand-in local digest` / `Historical producer digest` and the retained
-        diagnostic count all survive, in `PreviewEvidenceRail`. */}{/* THE LOCAL-FILE MESSAGES, IN PREVIEW (Story 13.1). The pair below the
-        canvas lives inside the DESIGN main, which Preview replaces wholesale, so
-        before Save PDF existed nothing in Preview could announce a local file
-        outcome and a failed save here would have failed silently. The two mains
-        are mutually exclusive, so a failure is still exactly one alert.
+        diagnostic count all survive, in `PreviewEvidenceRail`. */}{/* THE LOCAL-FILE MESSAGES USED TO BE RENDERED HERE, AND IN THE DESIGN MAIN,
+        AND THEY ARE NOW IN THE DOCUMENT BAR INSTEAD (see the bar's own note).
 
-        ⚠ IN THE MAIN, NOT IN THE INSPECTOR PANEL, and that is the whole point of
-        where they sit. They were first put beside the control that produces
-        them — inside `<div role="tabpanel" … hidden={inspectorTab !== 'properties'}>`
-        — so switching to the DATA tab while a save was in flight took the
+        Story 13.1 put a copy in each main because the two are mutually
+        exclusive, so a failure was still exactly one alert — which was true,
+        and was not the problem. The problem was WHERE: both copies sat at the
+        tail of a scrollable region, far from the four buttons whose state they
+        explain, so a latched file bar showed `cursor: not-allowed` and its
+        explanation below the fold. Moving the pair to the bar keeps Story
+        13.1's rule intact (one alert, never inside a hideable container) and
+        satisfies the rule it was missing: the sentence belongs beside the
+        controls it is about.
+
+        ⚠ NOT IN THE INSPECTOR PANEL — the original ruling, still binding. They
+        were first put beside the control that produces them, inside
+        `<div role="tabpanel" … hidden={inspectorTab !== 'properties'}>`, so
+        switching to the DATA tab while a save was in flight took the
         `role="alert"` straight out of the accessibility tree. An alert that
-        tests as present and behaves as absent is worse than no alert. */}{fileError && <p role="alert" className="file-message">{fileError}</p>}{fileStatus && <p role="status" aria-live="polite" className="file-message">{fileStatus}</p>}</main>}
+        tests as present and behaves as absent is worse than no alert. The
+        document bar is rendered in both modes and is hidden by nothing. */}</main>}
       <aside className={`inspector-panel${mode === 'preview' ? ' inspector-panel-preview' : ''}`} aria-label="Inspector">
         <div className="panel-tabs" role="tablist" aria-label="Inspector tabs">{inspectorTabs.map(([tab, designLabel, previewLabel]) => <button key={tab} type="button" role="tab" id={`inspector-tab-${tab}`} aria-controls={`inspector-panel-${tab}`} aria-selected={inspectorTab === tab} tabIndex={inspectorTab === tab ? 0 : -1} className={`panel-tab panel-tab-${tab}${inspectorTab === tab ? ' panel-tab-active' : ''}`} onClick={() => setInspectorTab(tab)} onKeyDown={(event) => { const next = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0; if (!next) return; event.preventDefault(); const order = inspectorTabs.map(([name]) => name); const target = order[(order.indexOf(tab) + next + order.length) % order.length]!; setInspectorTab(target); requestAnimationFrame(() => document.getElementById(`inspector-tab-${target}`)?.focus()) }}>{mode === 'preview' ? previewLabel : designLabel}</button>)}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-properties" aria-label={mode === 'preview' ? 'Preview inputs' : 'Properties panel'} hidden={inspectorTab !== 'properties'}>{mode !== 'preview' && selectedTableColumn && <p className="column-identity" role="status">{/* STORY 14.10 / Q3(a) — AN IDENTITY STRIP, AND IT IS THE WHOLE OF WHAT AC1
