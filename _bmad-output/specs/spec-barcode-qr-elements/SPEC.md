@@ -62,4 +62,4 @@ Thai invoices and utility bills carry a Code 128 bill-payment barcode and a QR c
 
 - The QR version and mask are chosen automatically per ISO/IEC 18004.
 - Content that resolves to `null` hides the element silently, matching `visibleIf` null semantics. A path absent from the data is a located Error.
-- The Thai bill-payment payload layout in `symbologies.md` is recalled from convention and has not been checked against the Thai Bankers' Association document.
+- The Thai bill-payment payload layout in `symbologies.md` is recalled from convention and has not been checked against the Thai Bankers' Association document. Codes built with it scanned successfully in Thai mobile banking apps (owner field test, 2026-09-13).

@@ -386,7 +386,7 @@ func TestStaticQRCodeCanvasMatchesRenderAndStaysExact(t *testing.T) {
 		t.Fatalf("canvas: %v", err)
 	}
 	e1 := findCanvasComponent(t, canvas, "e1")
-	if e1.Value == nil || *e1.Value != `A\r1234` {
+	if e1.Value == nil || *e1.Value != "A\n1234" {
 		t.Fatalf("the canvas must show the escaped value, got %v", e1.Value)
 	}
 	pages, _ := barcodePages(t, tpl, `{}`)

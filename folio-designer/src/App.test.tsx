@@ -5849,6 +5849,30 @@ describe('spec-barcode-element: barcode canvas paint and inspector', () => {
     // Positive control: visibility still sits in the BOX section.
     expect(screen.getByRole('textbox', { name: 'Visible if' })).toBeInTheDocument()
   })
+
+  it('shows Content over five rows, lets Enter make a new line and commits it after a pause without leaving the field', async () => {
+    vi.useFakeTimers()
+    try {
+      const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [barcodeComponent] } } }))
+      const sent = () => (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+      render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [barcodeComponent] } }} />)
+      fireEvent.click(screen.getByLabelText('barcode component e1'))
+      const box = screen.getByRole('textbox', { name: 'Content' }) as HTMLTextAreaElement
+      expect(box.tagName).toBe('TEXTAREA')
+      expect(box).toHaveAttribute('rows', '5')
+      box.focus()
+      // Enter is left to the textarea (not prevented, nothing committed): it
+      // inserts the new line that jsdom does not type itself, so the change does.
+      expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true)
+      expect(sent()).toHaveLength(0)
+      fireEvent.change(box, { target: { value: '1234\n567890' } })
+      expect(sent()).toHaveLength(0)
+      await act(async () => { await vi.advanceTimersByTimeAsync(PROSE_COMMIT_DEBOUNCE_MS) })
+      // The line feed goes to Go, which stores it as a carriage return.
+      expect(sent().at(-1)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"value":{"op":"set","value":"1234\\n567890"}}}')
+      expect(document.activeElement).toBe(box)
+    } finally { vi.useRealTimers() }
+  })
 })
 
 describe('spec-qrcode-element: QR code canvas paint and inspector', () => {
@@ -5878,6 +5902,7 @@ describe('spec-qrcode-element: QR code canvas paint and inspector', () => {
     render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [qrcodeComponent] } }} />)
     fireEvent.click(screen.getByLabelText('qrcode component e1'))
     expect(screen.getByRole('textbox', { name: 'Content' })).toHaveValue('Folio')
+    expect(screen.getByRole('textbox', { name: 'Content' })).toHaveAttribute('rows', '5')
     expect(screen.queryByRole('textbox', { name: /^(Fill|Background|Border)/ })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Visible if' })).toBeInTheDocument()
     // The authored level is the pressed segment; pressing another sets it.

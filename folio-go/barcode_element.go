@@ -6,11 +6,13 @@
 //
 // ESCAPES LIVE HERE, NOT IN THE ENGINE. A `.folio` file stores the real
 // characters (a carriage return is the JSON escape "\r"), and the engine
-// never interprets a backslash. The designer's single-line content field
-// cannot hold a control character, so the canvas projects the value with
-// `\r`, `\n` and `\\` spelled out, and the property command turns them back
-// into the characters they name. Both conversions touch only the text
-// OUTSIDE {{ }}: expression string literals stay escape-free.
+// never interprets a backslash. The designer's content box is a textarea,
+// which holds a line feed but turns a typed carriage return into one, so the
+// canvas projects a carriage return as a NEW LINE and a line feed and a
+// backslash as `\n` and `\\`; the property command turns them back into the
+// characters they name. A new line is the payment payload's field separator,
+// so Enter in the box is what an author types for it. Both conversions touch
+// only the text OUTSIDE {{ }}: expression string literals stay escape-free.
 package folio
 
 import (
@@ -78,8 +80,8 @@ func checkCodeValue(element template.Element) error {
 }
 
 // encodeBarcodeEscapes is the designer's view of a code element's value:
-// outside {{ }}, a backslash becomes `\\`, a carriage return `\r` and a line
-// feed `\n`. Placeholders are copied verbatim.
+// outside {{ }}, a backslash becomes `\\`, a carriage return a new line and a
+// line feed `\n`. Placeholders are copied verbatim.
 func encodeBarcodeEscapes(value string) string {
 	literal, placeholders, trailing, err := expr.ScanPlaceholders(value)
 	if err != nil {
@@ -105,7 +107,7 @@ func escapeBarcodeLiteral(s string) string {
 		case '\\':
 			b.WriteString(`\\`)
 		case '\r':
-			b.WriteString(`\r`)
+			b.WriteByte('\n')
 		case '\n':
 			b.WriteString(`\n`)
 		default:
@@ -116,8 +118,10 @@ func escapeBarcodeLiteral(s string) string {
 }
 
 // decodeBarcodeEscapes is encodeBarcodeEscapes' inverse, applied by the
-// property command. Any other backslash sequence, or a trailing backslash, is
-// refused: an escape encodes exactly the byte it names, never a guess.
+// property command. A new line — a line feed, or a CRLF pair — is one carriage
+// return, and the typed escape `\r` still names one too. Any other backslash
+// sequence, or a trailing backslash, is refused: an escape encodes exactly the
+// byte it names, never a guess.
 func decodeBarcodeEscapes(text string) (string, error) {
 	literal, placeholders, trailing, err := expr.ScanPlaceholders(text)
 	if err != nil {
@@ -145,6 +149,13 @@ func decodeBarcodeEscapes(text string) (string, error) {
 func unescapeBarcodeLiteral(s string) (string, error) {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
+		if s[i] == '\r' && i+1 < len(s) && s[i+1] == '\n' {
+			continue
+		}
+		if s[i] == '\n' {
+			b.WriteByte('\r')
+			continue
+		}
 		if s[i] != '\\' {
 			b.WriteByte(s[i])
 			continue

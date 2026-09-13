@@ -3425,7 +3425,7 @@ type FieldExpression = 'placeholder' | 'condition'
 // it as real text the author can read, step and commit. Only `fontSize` and
 // `lineSpacing` set it, and both take their string from the projection — never
 // from a literal in this file.
-type FieldSpec = Readonly<{ field: PropertyField; label: string; affix?: string; unit?: string; swatch?: true; prose?: true; empty?: string; shown?: true; fx?: FieldExpression }>
+type FieldSpec = Readonly<{ field: PropertyField; label: string; affix?: string; unit?: string; swatch?: true; prose?: true; lines?: number; empty?: string; shown?: true; fx?: FieldExpression }>
 const fxHint: Readonly<Record<FieldExpression, string>> = { placeholder: 'Accepts literal text, or {{ }} expressions', condition: 'Accepts a boolean or null formula, e.g. loanAmount > 20000, written without {{ }}' }
 // A condition field IS the expression, so any text in it is one; a text field
 // holds an expression only where a placeholder is spelled.
@@ -3485,10 +3485,11 @@ function lineSizeFields(orientation: LineOrientation): ReadonlyArray<FieldSpec> 
 // The flag was declared on FieldSpec long before anything set it; this is the
 // field it was anticipated for, and it stays the only one that sets it.
 const contentField: FieldSpec = { field: 'value', label: 'Text', affix: 'Text', prose: true, fx: 'placeholder' }
-// spec-barcode-qr-elements CAP-5. A barcode's content is ONE LINE, so Enter
-// commits rather than inserting a line feed; control characters are typed as
-// the escapes `\r`, `\n` and `\\`, which Go projects and decodes.
-const barcodeContentField: FieldSpec = { field: 'value', label: 'Content', affix: 'Content', fx: 'placeholder' }
+// spec-barcode-qr-elements CAP-5. A barcode's or QR code's content is shown
+// wrapped over five rows and commits as the Text field does, after a pause.
+// A new line (Enter) is a carriage return, the payment payload's field
+// separator; `\n` and `\\` are escapes. Go projects and decodes both.
+const barcodeContentField: FieldSpec = { field: 'value', label: 'Content', affix: 'Content', lines: 5, fx: 'placeholder' }
 // A QR code's content is the same one-line field with the same escapes; its one
 // option is the error-correction level, a closed set Go validates. Pressing the
 // current level again clears the key, which is the default M.
@@ -3686,8 +3687,8 @@ function ComponentProperties({ components, fontFamilies, fontChains, carriedFace
     <div className="component-identity">{single ? <PaletteIcon kind={single.type} /> : undefined}<span className="component-identity-name">{single ? single.type : `${components.length} selected`}</span><span className="component-identity-meta">{single ? `${single.id} · band: ${single.band}` : [...types].join(' · ')}</span></div>
     <PropertySection title="POSITION"><div className="property-grid">{positionFields.map(draftFor)}{all((type) => type !== 'table') && (line ? lineSizeFields(lineOrientation(line)) : sizeFields).map(draftFor)}</div>{line && <OrientationProperty component={line} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('width') && errorFor('height') ? scopedError : undefined} />}</PropertySection>
     {single && types.has('text') && <PropertySection title="CONTENT">{draftFor(contentField)}<p className="honest-note">Literal text, or {'{{ }}'} placeholders for data.</p></PropertySection>}
-    {single && types.has('qrcode') && <PropertySection title="CONTENT">{draftFor(barcodeContentField)}<p className="honest-note">Any text, UTF-8. Literal text or {'{{ }}'} placeholders; type \r for a carriage return, \n for a line feed, \\ for a backslash.</p><SegmentedProperty label="Error correction" field="errorCorrection" segments={errorCorrectionSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('errorCorrection')} /><p className="honest-note">Higher levels survive more damage and need more modules in the same box. None selected is M.</p></PropertySection>}
-    {single && types.has('barcode') && <PropertySection title="CONTENT">{draftFor(barcodeContentField)}<p className="honest-note">Code 128, ASCII only. Literal text or {'{{ }}'} placeholders; type \r for a carriage return, \n for a line feed, \\ for a backslash.</p></PropertySection>}
+    {single && types.has('qrcode') && <PropertySection title="CONTENT">{draftFor(barcodeContentField)}<p className="honest-note">Any text, UTF-8. Literal text or {'{{ }}'} placeholders; a new line (Enter) is a carriage return; type \n for a line feed, \\ for a backslash.</p><SegmentedProperty label="Error correction" field="errorCorrection" segments={errorCorrectionSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('errorCorrection')} /><p className="honest-note">Higher levels survive more damage and need more modules in the same box. None selected is M.</p></PropertySection>}
+    {single && types.has('barcode') && <PropertySection title="CONTENT">{draftFor(barcodeContentField)}<p className="honest-note">Code 128, ASCII only. Literal text or {'{{ }}'} placeholders; a new line (Enter) is a carriage return; type \n for a line feed, \\ for a backslash.</p></PropertySection>}
     {typographic && <PropertySection title="TYPOGRAPHY"><FontFamilyProperty families={fontFamilies} fontChains={fontChains} carriedFaces={carriedFaces} specimenBytes={specimenBytes} components={components} ids={ids} onCommit={onCommit} onUseFamily={onUseFamily} onDeclareFamily={onDeclareFamily} onOpenFontBrowser={onOpenFontBrowser} browserOpen={browserOpen} storedFaces={storedFaces} pickBusy={fontChainBusy} pickError={scopedChainError?.control.action === 'embed' ? scopedChainError : undefined} documentGeneration={documentGeneration} error={errorFor('fontFamily')} /><div className="property-size-row">{draftFor({ ...fontSizeField, empty: points(defaultFontSize), shown: true })}<div className="property-toggles"><div className="property-toggle-row"><BooleanProperty label="Bold" field="bold" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('bold')} absentCutId={missingBoldCut && cutAbsenceId(missingBoldCut)} /><BooleanProperty label="Italic" field="italic" components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('italic')} absentCutId={missingItalicCut && cutAbsenceId(missingItalicCut)} /></div>{absentCuts.map((cut) => <p key={cut} id={cutAbsenceId(cut)} className="property-unavailable">{cutAbsenceSentence(cut)}</p>)}</div></div>{draftFor({ ...lineSpacingField, empty: points(defaultLineSpacing), shown: true })}{draftFor(colorField)}<div className="property-grid"><SegmentedProperty label="Align" field="align" segments={alignChoices} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('align')} /><SegmentedProperty label="Vertical align" field="valign" segments={valignSegments} components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('valign')} /></div></PropertySection>}
     {image && <ImageSection component={image} onPick={onPickImage} available={imageAvailable} busy={assetBusy} error={assetError?.id === image.id ? assetError.message : undefined} />}
     <PropertySection title="BOX">{!types.has('line') && !types.has('barcode') && !types.has('qrcode') && borderFields.map(draftFor)}{!types.has('line') && !types.has('barcode') && !types.has('qrcode') && <BorderEdgesProperty components={components} ids={ids} onCommit={onCommit} documentGeneration={documentGeneration} error={errorFor('borderEdges')} />}{line && borderProjected(line) && <p className="honest-note">This line carries a border in the document — the panel does not offer one, because a line is authored as a thickness and a colour. The stored border is unchanged and still paints. This note reports what the engine projects, not what the PDF draws.</p>}{!types.has('barcode') && !types.has('qrcode') && draftFor(boxFillFieldFor(single?.type))}{draftFor(visibilityField)}<p className="honest-note">Visibility takes a boolean or null formula — {'e.g. loanAmount > 20000'}. Use true, false, arithmetic, or nested conditions. Empty is always visible.</p></PropertySection>
@@ -3788,7 +3789,7 @@ function draftThousandths(text: string): number | undefined {
   return parts[1] === '-' ? -magnitude : magnitude
 }
 function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, live, error }: { spec: FieldSpec; components: ReadonlyArray<PanelComponent>; ids: ReadonlyArray<string>; onCommit: CommitProperties; documentGeneration: number; live?: string; error?: PropertyCommitError }) {
-  const { field, label, affix, unit, swatch, prose, empty, shown, fx } = spec
+  const { field, label, affix, unit, swatch, prose, lines, empty, shown, fx } = spec
   const values = components.map((component) => committedValue(component, field))
   const same = sameProperty(components, field)
   // `committed` IS THE DOCUMENT'S OWN VALUE AND MUST STAY SO — `''` when the
@@ -4068,7 +4069,7 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   const blur = () => {
     cancelProseCommit()
     if (reverting.current) return
-    if (prose && pendingRef.current) { queuedProse.current = true; return }
+    if ((prose || lines !== undefined) && pendingRef.current) { queuedProse.current = true; return }
     // Leaving the field ends the author's hold on it: whatever is in the box is
     // being committed on the next line, and if it already IS the committed text
     // then nothing was ever unsent. Without this, a draft typed and then
@@ -4177,7 +4178,10 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // still reverts and blurs, blur still commits, and the single-flight submit
   // and canonicalValue reconciliation are shared verbatim.
   const keyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !prose) { event.preventDefault(); void commit() }
+    // A `lines` field (barcode and QR code content) inserts a line feed as
+    // prose does; Go stores each one as the carriage return a payment payload
+    // separates fields with (barcode_element.go).
+    if (event.key === 'Enter' && !prose && lines === undefined) { event.preventDefault(); void commit() }
     // STORY 17.1 REPAIRED THIS ARM, WHICH DID NOT DO WHAT IT SAYS.
     //
     // MEASURED AT c13864c: focus a prose field, type, press Escape — ONE
@@ -4343,8 +4347,11 @@ function PropertyDraft({ spec, components, ids, onCommit, documentGeneration, li
   // — and neither lets an unrelated pointer end someone else's drag.
   const endProseResize = (event: PointerEvent<HTMLSpanElement>) => { if (proseResize.current?.pointerId === event.pointerId) proseResize.current = undefined }
   const shared = { 'aria-label': label, 'aria-description': description, 'aria-invalid': error ? ('true' as const) : undefined, 'aria-errormessage': errorId, readOnly: live !== undefined, value: live ?? draft, placeholder: same ? empty : 'Mixed', disabled: pending, onBlur: blur, onKeyDown: keyDown }
-  return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
+  return <div className="property-editor"><div className={`property-field${prose ? ' property-field-prose' : lines ? ' property-field-lines' : ''}${live === undefined ? '' : ' property-field-live'}`}>{affix && <span className="property-affix">{affix}</span>}{prose
     ? <textarea ref={proseField} className="property-value property-value-prose" rows={4} style={proseHeight === undefined ? undefined : { height: `${proseHeight}px` }} {...shared} onChange={(event) => { touched.current = true; holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} onPaste={pasteProse} />
+    // A `lines` field commits as prose does — debounced while typing, queued on
+    // blur — over that many rows; each new line is stored as `\r` (see keyDown).
+    : lines ? <textarea ref={proseField} className="property-value property-value-lines" rows={lines} {...shared} onChange={(event) => { touched.current = true; holdDraft(true); writeDraft(event.target.value); scheduleProseCommit() }} />
     : <input className="property-value" {...shared} inputMode={numeric ? 'decimal' : undefined} onChange={(event) => { touched.current = true; writeDraft(event.target.value) }} />}{fx && <span className={`property-fx${holdsExpression(fx, live ?? draft) ? ' property-fx-active' : ''}`} title={fxHint[fx]} aria-hidden="true">fx</span>}{swatch && <input type="color" className={`property-swatch${isHexColour(live ?? draft) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} aria-description={same ? undefined : 'Mixed value; choose a colour'} value={swatchColor(live ?? draft)} disabled={pending || live !== undefined} onChange={(event) => { writeDraft(event.target.value); void submit({ field, operation: 'set', value: event.target.value }, true) }} />}{unit && <span className="property-unit">{unit}</span>}{canClear && <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'clear' }, true)}>×</button>}{canNull && <button type="button" className="property-inline-action" aria-label={`Set ${label} null`} title={`Set ${label} null`} disabled={pending} onMouseDown={(event) => event.preventDefault()} onClick={() => void submit({ field, operation: 'null' }, true)}>∅</button>}{prose && <span className="property-prose-resize" aria-hidden="true" onPointerDown={beginProseResize} onPointerMove={moveProseResize} onPointerUp={endProseResize} onPointerCancel={endProseResize} />}</div>{error && <p id={errorId} role="alert" className="property-error">{error.elementId ? `${error.elementId}: ` : ''}{printsDataPath(error) ? `${error.dataPath}: ` : ''}{error.message}</p>}</div>
 }
 // D-14.2.Q2b, AS AMENDED. THE RULE IS *NEVER PRINT A FIELD NAME THAT MAY BE

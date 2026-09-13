@@ -677,6 +677,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    replaces the grip is `.property-prose-resize` below, drawn the way every
    other handle in this file is drawn. */
 textarea.property-value-prose { min-height: 72px; resize: none; }
+/* A barcode or QR code's content: one value shown wrapped over its `rows`
+   (five), not the global textarea minimum. */
+.property-field-lines { align-items: start; padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3); }
+textarea.property-value-lines { min-height: 0; resize: none; font: var(--type-body-em); }
 /* THE HANDLE IS THE BOX'S OWN BOTTOM EDGE, not a new visual element: a
    transparent hit strip straddling the border of `.property-field-prose` —
    the line the eye actually reads as the edge — across its full width. It

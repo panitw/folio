@@ -475,8 +475,9 @@ modulo-103 check character added automatically. It is drawn as black filled bars
 box's full height, centred horizontally, with a quiet zone of at least 10 modules on each side
 inside the box; every module is the same whole number of millipoints, the largest that fits the
 box width. No human-readable text is printed. Control characters are stored as the characters
-themselves, so a carriage return is the ordinary JSON escape `"\r"` (the designer's content field
-shows and accepts `\r`, `\n` and `\\`). `value: null`, or a value that resolves empty, draws
+themselves, so a carriage return is the ordinary JSON escape `"\r"` (the designer's content box
+shows a carriage return as a new line, so Enter types one, and shows and accepts `\n` and `\\`;
+a typed `\r` is accepted too). `value: null`, or a value that resolves empty, draws
 nothing. A path absent from the data is a located Error, as for text. Refused at load: any `style`
 key (a barcode has no colour, border, font or alignment), a non-ASCII character in the text outside
 `{{ }}`, and `{{page}}`/`{{pages}}`. At render, and never stopping the render: data that resolves to

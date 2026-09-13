@@ -247,9 +247,9 @@ func TestHiddenBarcodeDrawsAndWarnsNothing(t *testing.T) {
 
 func TestBarcodeEscapesRoundTrip(t *testing.T) {
 	for _, c := range []struct{ stored, shown string }{
-		{"|0994000123456{{suffix}}\r{{ref1}}", `|0994000123456{{suffix}}\r{{ref1}}`},
+		{"|0994000123456{{suffix}}\r{{ref1}}", "|0994000123456{{suffix}}\n{{ref1}}"},
 		{"a\\b\nc", `a\\b\nc`},
-		{`{{"x\y"}}` + "\r", `{{"x\y"}}\r`},
+		{`{{"x\y"}}` + "\r", `{{"x\y"}}` + "\n"},
 	} {
 		if got := encodeBarcodeEscapes(c.stored); got != c.shown {
 			t.Errorf("encode(%q) = %q, want %q", c.stored, got, c.shown)
@@ -257,6 +257,12 @@ func TestBarcodeEscapesRoundTrip(t *testing.T) {
 		back, err := decodeBarcodeEscapes(c.shown)
 		if err != nil || back != c.stored {
 			t.Errorf("decode(%q) = %q, %v; want %q", c.shown, back, err, c.stored)
+		}
+	}
+	// A typed `\r` and a CRLF pair each still decode to ONE carriage return.
+	for _, shown := range []string{`a\rb`, "a\r\nb"} {
+		if back, err := decodeBarcodeEscapes(shown); err != nil || back != "a\rb" {
+			t.Errorf("decode(%q) = %q, %v; want %q", shown, back, err, "a\rb")
 		}
 	}
 	for _, bad := range []string{`a\tb`, `trailing\`} {
@@ -310,7 +316,7 @@ func TestBarcodeCommandsAndCanvas(t *testing.T) {
 		t.Fatalf("canvas: %v", err)
 	}
 	e1 := findCanvasComponent(t, canvas, "e1")
-	if e1.Value == nil || *e1.Value != `|0994000123456{{suffix}}\r{{ref1}}` {
+	if e1.Value == nil || *e1.Value != "|0994000123456{{suffix}}\n{{ref1}}" {
 		t.Fatalf("the canvas must show the escaped value, got %v", e1.Value)
 	}
 
