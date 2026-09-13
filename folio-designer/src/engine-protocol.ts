@@ -227,7 +227,7 @@ export const BAND_CONTENT_WINDOW_MARGIN = 1
 // binding through `configureTableBinding` / `updateTableColumnBinding`. What
 // this array closes is SCALAR binding, and nothing else.
 export type CanvasComponentType = CanvasProjection['components'][number]['type']
-export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text']
+export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text', 'barcode']
 
 // STORY 14.9 — ONE TABLE COLUMN AS THE CANVAS PROJECTION CARRIES IT, derived
 // from the projection type rather than restated, so the painter and the guard
@@ -473,7 +473,7 @@ export type CanvasProjection = Readonly<{
 	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; labelLines: ReadonlyArray<string>; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect' | 'barcode'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; labelLines: ReadonlyArray<string>; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable'; barcode?: Readonly<{ moduleWidth: number; bars: ReadonlyArray<Readonly<{ x: number; width: number }>> }>; barcodeUnavailable?: 'unencodable' | 'doesNotFit' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -805,13 +805,13 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     }
     return true
   })
-  const componentTypes = ['text', 'image', 'table', 'line', 'rect']
+  const componentTypes = ['text', 'image', 'table', 'line', 'rect', 'barcode']
   const bandNames = ['pageHeader', 'content', 'pageFooter']
   if (!bandsValid) return false
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable', 'barcode', 'barcodeUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     if (component.authored !== undefined && !isAuthoredProperties(component.authored)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
@@ -855,11 +855,12 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     // MaxLineSpacingThousandths, D-7.2.3). Admitting the value is not
     // adjudicating it — a value Go committed is a value Go already ruled on.
     if (component.lineSpacing !== undefined && (typeof component.lineSpacing !== 'number' || !Number.isSafeInteger(component.lineSpacing) || component.lineSpacing < MIN_LINE_SPACING_THOUSANDTHS || component.lineSpacing > MAX_LINE_SPACING_THOUSANDTHS)) return false
-	if (component.type !== 'text' && component.value !== undefined) return false
+	if (component.type !== 'text' && component.type !== 'barcode' && component.value !== undefined) return false
 	// STORY 14.4: the same array the panel's pre-flight reads, so a Go-side
 	// change to the scalar-binding gate cannot leave this guard and that gate
-	// spelling two different rules. A HOIST, NOT A CHANGE — `['text']` is
-	// byte-for-byte the set the inline literal admitted.
+	// spelling two different rules. A HOIST, NOT A CHANGE — `['text']` was
+	// byte-for-byte the set the inline literal admitted; `barcode` joined it when
+	// the barcode element shipped, in Go and here together.
 	if (!SCALAR_BINDING_COMPONENT_TYPES.includes(component.type as CanvasComponentType) && component.binding !== undefined) return false
 	if (component.type !== 'table' && component.tableBind !== undefined) return false
 	// STORY 14.9 — THE PER-COLUMN CLAUSE, in the shape isTableColumns' own
@@ -912,7 +913,31 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
 	// two are the same "one Go-side signal", D-5.13.2), never alongside a
 	// present paint and never for a non-image component.
 	if (component.imageUnavailable !== undefined && (component.type !== 'image' || component.image !== undefined || !['missing', 'undecodable'].includes(component.imageUnavailable as string))) return false
+	// spec-barcode-qr-elements CAP-5: a barcode's bars are Go-computed geometry
+	// (AD-17), legal only on a barcode, and its bounded unavailable reason only
+	// alongside an absent paint — the image pair's rule, restated for its kind.
+	if (!isBarcodePaint(component.barcode, box)) return false
+	if (component.type !== 'barcode' && component.barcode !== undefined) return false
+	if (component.barcodeUnavailable !== undefined && (component.type !== 'barcode' || component.barcode !== undefined || !['unencodable', 'doesNotFit'].includes(component.barcodeUnavailable as string))) return false
 	return true
+  })
+}
+
+// isBarcodePaint admits a barcode's bars as Go projects them: one positive
+// module width, and bars ordered left to right, each a whole number of modules
+// wide, inside the component's own width. X is relative to the component.
+const isBarcodePaint = (value: unknown, box: Record<string, number>): boolean => {
+  if (value === undefined) return true
+  if (!isRecord(value) || !hasExactKeys(value, ['moduleWidth', 'bars'])) return false
+  const module = value.moduleWidth
+  if (typeof module !== 'number' || !Number.isSafeInteger(module) || module <= 0 || !Array.isArray(value.bars) || value.bars.length === 0) return false
+  let right = 0
+  return value.bars.every((bar) => {
+    if (!isRecord(bar) || !hasExactKeys(bar, ['x', 'width'])) return false
+    const { x, width } = bar
+    if (typeof x !== 'number' || typeof width !== 'number' || !Number.isSafeInteger(x) || !Number.isSafeInteger(width) || x < right || width <= 0 || width % module !== 0) return false
+    right = x + width
+    return right <= box.width
   })
 }
 

@@ -547,6 +547,25 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...text, type: 'image' })).toBeUndefined()
   })
 
+  it('admits a barcode with Go-computed bars, a value and a binding, and refuses malformed barcode paint', () => {
+    const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
+    // Inside this fixture's 1000 mp band, so the geometry guard admits the box
+    // and every refusal below is the barcode rule's doing.
+    const barcode = { id: 'e1', type: 'barcode', band: 'content', x: 0, y: 0, width: 900, height: 500, resizable: true }
+    const barcodePaint = { moduleWidth: 10, bars: [{ x: 100, width: 20 }, { x: 130, width: 10 }] }
+    expect(response(barcode)).toBeDefined()
+    expect(response({ ...barcode, value: '|0994000123456{{suffix}}\\r{{ref1}}', binding: 'ref1', barcode: barcodePaint })).toBeDefined()
+    expect(response({ ...barcode, barcodeUnavailable: 'unencodable' })).toBeDefined()
+    // A bar that is not a whole number of modules, bars out of order, a bar past
+    // the box, paint on another kind, and a reason beside a present paint.
+    expect(response({ ...barcode, barcode: { moduleWidth: 10, bars: [{ x: 0, width: 15 }] } })).toBeUndefined()
+    expect(response({ ...barcode, barcode: { moduleWidth: 10, bars: [{ x: 500, width: 10 }, { x: 0, width: 10 }] } })).toBeUndefined()
+    expect(response({ ...barcode, barcode: { moduleWidth: 10, bars: [{ x: 895, width: 10 }] } })).toBeUndefined()
+    expect(response({ ...barcode, type: 'rect', barcode: barcodePaint })).toBeUndefined()
+    expect(response({ ...barcode, barcode: barcodePaint, barcodeUnavailable: 'doesNotFit' })).toBeUndefined()
+    expect(response({ ...barcode, barcodeUnavailable: 'something-else' })).toBeUndefined()
+  })
+
   // STORY 14.4 / P3. THE SCALAR-BINDING KIND GATE, TESTED AS BEHAVIOUR.
   //
   // ⚠ WHY THE ROW ABOVE DOES NOT COVER IT. `response({ ...text, type: 'image' })`
@@ -561,7 +580,7 @@ describe('canvas projection protocol guard', () => {
   // So each case below differs from an ADMITTED sibling in the `binding` key
   // and nothing else. That is what makes the rejection attributable to this
   // rule rather than to any of the dozen others in `isCanvas`.
-  it('refuses a projected binding on every kind but text, and admits the bare component otherwise', () => {
+  it('refuses a projected binding on every kind but text and barcode, and admits the bare component otherwise', () => {
     const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
     // A TABLE IS THE ONE KIND THAT MUST NOT BE `resizable` — `isCanvas` refuses
     // a resizable table outright (its geometry is derived from its columns), so
@@ -575,9 +594,9 @@ describe('canvas projection protocol guard', () => {
       expect(response(box(type)), `a bare ${type} component must be admitted`).toBeDefined()
       expect(response({ ...box(type), binding: 'customer.name' }), `a ${type} component carrying a binding must be refused`).toBeUndefined()
     }
-    // AND THE SYMMETRIC HALF. `text` is the one member of
+    // AND THE SYMMETRIC HALF. `text` and `barcode` are the members of
     // SCALAR_BINDING_COMPONENT_TYPES, so the identical addition must be
-    // ADMITTED there — otherwise a guard that refused every binding outright
+    // ADMITTED on text (the barcode case is admitted in the test above) — otherwise a guard that refused every binding outright
     // would pass every assertion above.
     const textPaint = { overflow: false, truncated: false, lines: [] }
     expect(response({ ...box('text'), textPaint })).toBeDefined()

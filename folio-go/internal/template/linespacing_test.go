@@ -385,6 +385,13 @@ func TestContentVersionNeverExceedsTheLibraryCeiling(t *testing.T) {
 		{"no font asset, no embedded entry", embeddedFontVersionDoc(false, false), baseVersion},
 		{"a font ASSET the chain does not name", embeddedFontVersionDoc(true, false), baseVersion},
 		{"an embedded-face ENTRY", embeddedFontVersionDoc(true, true), majorFeatureVersion},
+		// spec-barcode-qr-elements: the ELEMENT TYPE is the trigger, so its
+		// builder swaps the element's type rather than adding a key. The
+		// text twin is the control that keeps the corpus where it is.
+		{"a text element (barcode control)", barcodeVersionDoc("text"), baseVersion},
+		{"a barcode element", barcodeVersionDoc("barcode"), barcodeVersion},
+		// A LATER proportional table must not lower the barcode's rank.
+		{"a barcode then a proportional table", barcodeThenProportionalTableDoc, barcodeVersion},
 	} {
 		d, perr := ParseDocument([]byte(tc.doc))
 		if perr != nil {
@@ -486,6 +493,54 @@ func lineSpacingRoundTripDocWithStyle(style string) string {
 // ELEMENT-LEVEL twin (Story 7.7): the attribute goes on the element
 // itself, beside `id`/`type`, because `keepTogether` is not a style key
 // and no style builder can express it.
+// barcodeVersionDoc is a one-element document whose element is of kind,
+// carrying a value and no style (a barcode refuses one).
+func barcodeVersionDoc(kind string) string {
+	return `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "` + kind + `", "x": 0, "y": 0, "width": 200, "height": 40, "value": "1234"}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+}
+
+// barcodeThenProportionalTableDoc walks a barcode FIRST and a proportional
+// table (an authored width with proportion columns) after it.
+const barcodeThenProportionalTableDoc = `{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "barcode", "x": 0, "y": 0, "width": 200, "height": 40, "value": "1234"},
+        {"id": "e2", "type": "table", "x": 0, "y": 60, "width": 200, "bind": "items[]", "headerHeight": 10,
+          "columns": [{"id": "e3", "label": "A", "proportion": 1, "bind": "{{row.a}}"}, {"id": "e4", "label": "B", "proportion": 1, "bind": "{{row.b}}"}]}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`
+
 func keepTogetherRoundTripDocWithAttr(attr string) string {
 	return `{
   "assets": {},

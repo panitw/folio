@@ -100,9 +100,14 @@ import (
 // neither still declares 1.0; only one that actually carries
 // `align: "justify"` declares 2.0. All three coexist, and a brand-new
 // document declares the LOWEST version its content requires.
+//
+// A SECOND MAJOR, 4.0, was added by spec-barcode-qr-elements: the `barcode`
+// element type. Extending the closed element-type set is a MAJOR change
+// (D-1.4.12): a 3.x reader refuses the unknown type rather than silently
+// dropping the code. Only a document that carries a barcode declares it.
 const (
-	SupportedMajor   = 3
-	SupportedVersion = "3.3"
+	SupportedMajor   = 4
+	SupportedVersion = "4.0"
 )
 
 // TextNumberExpressionVersion is the version a document requires when a
@@ -164,6 +169,9 @@ const (
 	// `columns[].headerAlign`. Presence.Set, on `color`'s terms: any value
 	// of the key is a key a 3.1 reader does not know.
 	columnHeaderAlignVersion = "3.2"
+	// barcodeVersion is the version introduced by the `barcode` element
+	// type — a closed-set extension, so a MAJOR.
+	barcodeVersion = "4.0"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -337,8 +345,11 @@ func versionRequiredByContent(d *Document) string {
 	}
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
-			if el.Type == ElementTable && el.Width.Set {
+			if el.Type == ElementTable && el.Width.Set && rankProportionalTable > highest {
 				highest = rankProportionalTable
+			}
+			if el.Type == ElementBarcode && rankBarcode > highest {
+				highest = rankBarcode
 			}
 			// Story 7.7: Presence.Set, on `color`'s terms — an explicit
 			// `keepTogether: null` is still the key appearing in a file
@@ -398,6 +409,7 @@ const (
 	rankProportionalTable
 	rankTableRules
 	rankColumnHeaderAlign
+	rankBarcode
 )
 
 // versionForRank maps a rank back to the version string it names.
@@ -417,6 +429,7 @@ var versionForRank = [...]string{
 	rankProportionalTable: proportionalTableVersion,
 	rankTableRules:        tableRulesVersion,
 	rankColumnHeaderAlign: columnHeaderAlignVersion,
+	rankBarcode:           barcodeVersion,
 }
 
 // styleVersionRank is the lowest version that can express ONE style

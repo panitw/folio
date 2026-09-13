@@ -307,6 +307,11 @@ type CanvasComponent struct {
 	// the projection's authority: it is still Go stating which of two
 	// bounded, enumerated reasons applies, never bytes or a path.
 	ImageUnavailable *string `json:"imageUnavailable,omitempty"`
+	// Barcode is a barcode component's Go-computed bars (barcode_element.go).
+	// BarcodeUnavailable is set instead, to "unencodable" or "doesNotFit", when
+	// a barcode with a value cannot be painted.
+	Barcode            *CanvasBarcodePaint `json:"barcode,omitempty"`
+	BarcodeUnavailable *string             `json:"barcodeUnavailable,omitempty"`
 	// Columns is Story 14.9's per-column paint data for a TABLE, and it is
 	// absent — never an empty array — for a table that declares none, and for
 	// every non-table component. See CanvasTableColumn below.
@@ -962,6 +967,9 @@ func CanvasWithTextPaint(t *Template, fs FontSet) (CanvasProjection, error) {
 	if err := addCanvasImagePaint(t, &projection); err != nil {
 		return CanvasProjection{}, err
 	}
+	if err := addCanvasBarcodePaint(t, &projection); err != nil {
+		return CanvasProjection{}, err
+	}
 	if err := addCanvasWindowCount(t, &projection, column); err != nil {
 		return CanvasProjection{}, err
 	}
@@ -1081,6 +1089,8 @@ func canvasElementIsPlaced(element template.Element) bool {
 		return tableDrawsColumns(element)
 	case template.ElementImage:
 		return imageDrawsItsAsset(element) || elementDeclaresBox(element)
+	case template.ElementBarcode:
+		return canvasBarcodeIsPlaced(element)
 	default:
 		return elementDeclaresBox(element)
 	}
@@ -1190,6 +1200,7 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 	// field this replaced: `exact` is true only when NONE of them applies.
 	exact := !(column.FontChainDegraded ||
 		canvasContentBandHasBoundTable(t) ||
+		canvasContentBandHasBoundBarcode(t) ||
 		canvasContentBandHasConditionalVisibility(t))
 	// Story 7.9 (FR51): the same index addCanvasTextPaint tagged its line
 	// items with, from the same one authority. Grouping is a pure property
@@ -1861,6 +1872,18 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					return nil, fmt.Errorf("folio: component value exceeds the projection bound")
 				}
 				component.Value = stringPointer(element.Value.Value)
+				if binding := directCanvasBinding(element.Value.Value); binding != "" {
+					component.Binding = stringPointer(binding)
+				}
+			}
+			if element.Type == template.ElementBarcode && element.Value.Set && !element.Value.Null {
+				// The designer's single-line field shows control characters
+				// as escapes; the command layer decodes them back.
+				escaped := encodeBarcodeEscapes(element.Value.Value)
+				if len(escaped) > maxCanvasBodyText {
+					return nil, fmt.Errorf("folio: component value exceeds the projection bound")
+				}
+				component.Value = stringPointer(escaped)
 				if binding := directCanvasBinding(element.Value.Value); binding != "" {
 					component.Binding = stringPointer(binding)
 				}

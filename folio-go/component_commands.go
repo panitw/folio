@@ -1010,8 +1010,8 @@ func bindComponentScalar(t *Template, raw map[string]json.RawMessage) (CanvasPro
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
-	if element.Type != template.ElementText {
-		return CanvasProjection{}, componentFailure(id, "component.id", "only text components can receive a scalar binding")
+	if element.Type != template.ElementText && element.Type != template.ElementBarcode {
+		return CanvasProjection{}, componentFailure(id, "component.id", "only text and barcode components can receive a scalar binding")
 	}
 	// The generated expression is canonical and then independently reparsed by
 	// wasm.Engine before installation. No sample bytes or local tree metadata
@@ -1383,7 +1383,7 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 	if element.Type != template.ElementTable {
 		allowed["width"], allowed["height"] = true, true
 	}
-	if element.Type == template.ElementText {
+	if element.Type == template.ElementText || element.Type == template.ElementBarcode {
 		allowed["value"] = true
 		allowed["expression"] = true
 	}
@@ -1500,6 +1500,15 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 				text, err = propertyString(value)
 				if err != nil {
 					return fmt.Errorf("%s: %w", key, err)
+				}
+				if element.Type == template.ElementBarcode && (key == "value" || key == "expression") {
+					// The designer spells control characters as \r, \n and
+					// \\ outside {{ }}; the document stores the characters.
+					decoded, derr := decodeBarcodeEscapes(text)
+					if derr != nil {
+						return fmt.Errorf("%s: %w", key, derr)
+					}
+					text = decoded
 				}
 				if key != "value" && key != "expression" && stringsContainsPlaceholder(text) {
 					return fmt.Errorf("%s must not contain a placeholder", key)
@@ -1836,8 +1845,8 @@ func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 		return CanvasProjection{}, err
 	}
 	elementType := template.ElementType(kind)
-	if elementType != template.ElementText && elementType != template.ElementImage && elementType != template.ElementTable && elementType != template.ElementLine && elementType != template.ElementRect {
-		return CanvasProjection{}, fmt.Errorf("folio: component.type must be text, image, table, line, or rect")
+	if !paletteElementType(elementType) {
+		return CanvasProjection{}, fmt.Errorf("folio: component.type must be text, image, table, line, rect, or barcode")
 	}
 	bandName, _, err := commandBand(raw)
 	if err != nil {
@@ -1885,6 +1894,25 @@ const lineDropHeight geom.Length = 1000
 
 const tableDropHeight geom.Length = 24000
 
+// A barcode drops wide enough for its starter value to print at a scannable
+// module width (216 pt / 110 modules = 1,963 mp, above 0.25 mm), and tall
+// enough to scan. Both sit on the 6pt grid.
+const barcodeDropWidth, barcodeDropHeight geom.Length = 216000, 48000
+
+// barcodeStarterValue is what a newly placed barcode encodes until the author
+// edits or binds it: ten digits, a compact set-C symbol.
+const barcodeStarterValue = "1234567890"
+
+// paletteElementType is the closed set of kinds a create or drop command may
+// place: every element type the format declares.
+func paletteElementType(elementType template.ElementType) bool {
+	switch elementType {
+	case template.ElementText, template.ElementImage, template.ElementTable, template.ElementLine, template.ElementRect, template.ElementBarcode:
+		return true
+	}
+	return false
+}
+
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 6); err != nil {
 		return CanvasProjection{}, err
@@ -1894,8 +1922,8 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		return CanvasProjection{}, err
 	}
 	elementType := template.ElementType(kind)
-	if elementType != template.ElementText && elementType != template.ElementImage && elementType != template.ElementTable && elementType != template.ElementLine && elementType != template.ElementRect {
-		return CanvasProjection{}, componentFailure("", "component.type", "component type must be text, image, table, line, or rect")
+	if !paletteElementType(elementType) {
+		return CanvasProjection{}, componentFailure("", "component.type", "component type must be text, image, table, line, rect, or barcode")
 	}
 	snap, err := commandBool(raw, "snap")
 	if err != nil {
@@ -1919,6 +1947,9 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	}
 	if elementType == template.ElementLine {
 		height = lineDropHeight
+	}
+	if elementType == template.ElementBarcode {
+		width, height = barcodeDropWidth, barcodeDropHeight
 	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
 	if elementType == template.ElementTable {
@@ -1992,6 +2023,9 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 		element.Height = template.Presence[geom.Length]{Set: true, Value: height}
 		if elementType == template.ElementText {
 			element.Value = template.Presence[string]{Set: true, Value: "Text"}
+		}
+		if elementType == template.ElementBarcode {
+			element.Value = template.Presence[string]{Set: true, Value: barcodeStarterValue}
 		}
 		// Story 9.2: a line and a rect ARE their box — they carry no text
 		// and no asset — so a placed one with no style would render, and

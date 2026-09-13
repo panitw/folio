@@ -365,6 +365,25 @@ const (
 	// a breaking change and that is free exactly once. It is
 	// deliberately NOT this story's work.
 	CodeTemplateFieldInvalid Code = "TEMPLATE_FIELD_INVALID"
+
+	// CodeBarcodeUnencodable names a barcode whose value, resolved from
+	// DATA at render, carries a character Code 128 cannot encode (above
+	// ASCII 127, including Thai script). The barcode is omitted and the
+	// render completes (owner decision: one bad record never stops a print
+	// run). A STATIC unencodable value is refused at load instead, under
+	// the general load code.
+	CodeBarcodeUnencodable Code = "BARCODE_UNENCODABLE"
+
+	// CodeBarcodeModuleTooSmall names a barcode that fits its box only with
+	// modules narrower than 0.25 mm (709 mp). The bars ARE drawn; this is
+	// the record that a scanner may not read them.
+	CodeBarcodeModuleTooSmall Code = "BARCODE_MODULE_TOO_SMALL"
+
+	// CodeBarcodeDoesNotFit names a barcode whose symbol plus quiet zones
+	// cannot fit its box even at 1 mp per module. The barcode is omitted
+	// and the render completes. Distinct from CodeBarcodeModuleTooSmall on
+	// D-4.5.1's discriminator: that one DRAWS, this one draws nothing.
+	CodeBarcodeDoesNotFit Code = "BARCODE_DOES_NOT_FIT"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -392,6 +411,9 @@ var allCodes = []Code{
 	CodeTableMinHeightUnplaceable,
 	CodeStyleLineSpacingInvalid,
 	CodeTemplateFieldInvalid,
+	CodeBarcodeUnencodable,
+	CodeBarcodeModuleTooSmall,
+	CodeBarcodeDoesNotFit,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -429,6 +451,9 @@ var dispositions = map[Code]Disposition{
 	CodeTableMinHeightUnplaceable:   DispositionError,
 	CodeStyleLineSpacingInvalid:     DispositionError,
 	CodeTemplateFieldInvalid:        DispositionError,
+	CodeBarcodeUnencodable:          DispositionWarning,
+	CodeBarcodeModuleTooSmall:       DispositionWarning,
+	CodeBarcodeDoesNotFit:           DispositionWarning,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

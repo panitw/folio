@@ -64,7 +64,7 @@ export type RuntimeParameters = Readonly<{ status: 'pending' | 'ready' | 'failed
 // The capitalised noun the selection context bar leads with. Kept total over the
 // projection's kinds so a kind added there cannot reach the bar without a word,
 // and spelled `Rectangle` for `rect` because the abbreviation is not a word.
-const kindNoun: Readonly<Record<CanvasComponentType, string>> = { text: 'Text', image: 'Image', table: 'Table', line: 'Line', rect: 'Rectangle' }
+const kindNoun: Readonly<Record<CanvasComponentType, string>> = { text: 'Text', image: 'Image', table: 'Table', line: 'Line', rect: 'Rectangle', barcode: 'Barcode' }
 
 export function DataPanel({ sample, error, busy, available, selectedComponentId, selectedComponentType, selectedBinding, bindingError, bindingBusy, runtimeParameters, columnScope, onLoad, onConnect, onConnectColumn }: Readonly<{ sample?: SampleData; error?: string; busy: boolean; available: boolean; selectedComponentId?: string; selectedComponentType?: CanvasComponentType; selectedBinding?: string; bindingError?: BindingErrorScope; bindingBusy?: boolean; runtimeParameters?: RuntimeParameters; columnScope?: ColumnBindScope; onLoad: () => void; onConnect?: (segments: ReadonlyArray<string>) => void; onConnectColumn?: (field: string) => void }>) {
   const action = sample ? 'Replace sample JSON' : 'Load sample JSON'
@@ -111,7 +111,7 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
         ? 'Table selected · pick a root collection to bind its rows.'
         : bindableKind
           ? `${kindNoun[selectedComponentType]} selected · binding to string`
-          : `${kindNoun[selectedComponentType]} selected · only text components can receive a scalar binding.`
+          : `${kindNoun[selectedComponentType]} selected · only text and barcode components can receive a scalar binding.`
   // A PICK BINDS IMMEDIATELY (owner ruling, 2026-09-09). There is no
   // intermediate "connect" control; the mockup's omission of one is a design
   // decision. The bind is undoable like any other edit, and the engine still

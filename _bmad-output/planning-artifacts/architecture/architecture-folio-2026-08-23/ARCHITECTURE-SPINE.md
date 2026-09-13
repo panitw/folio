@@ -80,6 +80,7 @@ the table is right and the test is red.
 | `internal/geom` | 0 |
 | `internal/diag` | 1 |
 | `internal/pagemodel` | 1 |
+| `internal/barcode` | 1 |
 | `internal/template` | 2 |
 | `internal/expr` | 3 |
 | `internal/bind` | 4 |

@@ -46,6 +46,9 @@ var codePins = []struct {
 	{"CodeTableMinHeightUnplaceable", CodeTableMinHeightUnplaceable, "TABLE_MIN_HEIGHT_UNPLACEABLE"},
 	{"CodeStyleLineSpacingInvalid", CodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
 	{"CodeTemplateFieldInvalid", CodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
+	{"CodeBarcodeUnencodable", CodeBarcodeUnencodable, "BARCODE_UNENCODABLE"},
+	{"CodeBarcodeModuleTooSmall", CodeBarcodeModuleTooSmall, "BARCODE_MODULE_TOO_SMALL"},
+	{"CodeBarcodeDoesNotFit", CodeBarcodeDoesNotFit, "BARCODE_DOES_NOT_FIT"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

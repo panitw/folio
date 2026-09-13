@@ -13773,3 +13773,7 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-table-ruled-form.md`
   summary: A hand-edited document with a column label over 256 code points loads and renders, but the Table Editor refuses to open with a generic "table column cannot be projected" error that names no field.
   evidence: The loader has no label bound while TableColumns refuses labels over the bound; the bound predates this change, which only moved its unit from bytes to code points.
+
+- source_spec: none
+  summary: Build the QR Code element (CAP-2 of _bmad-output/specs/spec-barcode-qr-elements) on top of the barcode element's shared plumbing.
+  evidence: Split from "Build the spec" at the bmad-build multi-goal check; barcode and QR are independently shippable, barcode chosen first. Ship both before the next release so documents see one major version bump.

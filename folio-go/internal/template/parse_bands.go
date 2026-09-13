@@ -138,7 +138,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		return Element{}, newLoadError("type", string(id), string(typeRaw), "must be a string: "+err.Error())
 	}
 	if !closedElementTypes[typeStr] {
-		return Element{}, newLoadError("type", string(id), typeStr, "not one of the closed set text, image, table, line, rect (FR4)")
+		return Element{}, newLoadError("type", string(id), typeStr, "not one of the closed set text, image, table, line, rect, barcode (FR4)")
 	}
 	el := Element{ID: id, Type: ElementType(typeStr)}
 
@@ -208,6 +208,13 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 	}
 
 	if styRaw, ok := obj["style"]; ok {
+		// A barcode is black modules on the page background, sized by its
+		// box: no colour, no border, no font and no alignment reaches it, so
+		// a style block on one would be a declaration that looks honoured
+		// and is not. Refused as a KEY, null included.
+		if el.Type == ElementBarcode {
+			return Element{}, newLoadError("style", string(id), string(styRaw), "a barcode carries no style — its modules are always black on the page background, and colours, borders and fonts are not supported")
+		}
 		consumed["style"] = true
 		if rawIsNull(styRaw) {
 			el.Style = presentNull[Style]()
@@ -274,10 +281,13 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 	}
 
 	switch el.Type {
-	case ElementText:
+	case ElementText, ElementBarcode:
+		// A barcode's content binds exactly as a text value does: one
+		// string that may carry {{ }} expressions, or null for "nothing to
+		// draw".
 		vRaw, ok := obj["value"]
 		if !ok {
-			return Element{}, newLoadError("value", string(id), "", "missing required field for a text element")
+			return Element{}, newLoadError("value", string(id), "", "missing required field for a "+string(el.Type)+" element")
 		}
 		consumed["value"] = true
 		if rawIsNull(vRaw) {

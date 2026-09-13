@@ -734,6 +734,22 @@ func captureDeclaredVariantsRender(t *testing.T, target matrixTarget, binPath st
 	return runOnTarget(t, target, binPath, map[string]string{subprocessDeclaredVariantsEnvVar: "1"})
 }
 
+// captureBarcodeThaiBillPaymentRender renders fixtures/barcode-thai-bill-payment/
+// in a FRESH process.
+func captureBarcodeThaiBillPaymentRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessBarcodeThaiBillPaymentEnvVar: "1"})
+}
+
+// requireBarcodeBars is the barcode document's per-leg feature guard: one
+// filled rectangle per encoded bar, on every target.
+func requireBarcodeBars(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	barcodeThaiBillPaymentAssertBars(raw, func(format string, args ...any) {
+		t.Fatalf("%s: barcode-thai-bill-payment leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // requireDeclaredVariantsUsesFourCuts is Story 11.5's per-leg feature
 // guard, and it is why registering these legs is not a formality.
 //
@@ -1978,6 +1994,20 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "declared-variants", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireDeclaredVariantsUsesFourCuts,
+		wantPages:        1,
+	},
+	{
+		// spec-barcode-qr-elements CAP-1: the first cross-target artifact
+		// carrying a barcode, and the first declaring format version 4.0. It
+		// draws no text, so every byte that can differ is integer bar
+		// geometry — module width, centring and bar positions — which is
+		// exactly what the four legs exist to hold to one answer.
+		label:            "barcode-thai-bill-payment (a Code 128 bill-payment barcode)",
+		slug:             "barcode-thai-bill-payment",
+		capture:          captureBarcodeThaiBillPaymentRender,
+		fixtureRelPath:   []string{"fixtures", "barcode-thai-bill-payment", "expected.json"},
+		requireFontFile2: false,
+		extraGuard:       requireBarcodeBars,
 		wantPages:        1,
 	},
 	{

@@ -19,7 +19,7 @@ import (
 // of the tag literals.
 
 var closedElementTypes = map[string]bool{
-	"text": true, "image": true, "table": true, "line": true, "rect": true,
+	"text": true, "image": true, "table": true, "line": true, "rect": true, "barcode": true,
 }
 
 var closedPageOrientations = map[string]bool{

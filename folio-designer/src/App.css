@@ -406,6 +406,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-text-line { top: var(--text-line-baseline); left: 0; height: var(--text-line-advance); line-height: 1; transform: translateY(calc(-1 * var(--text-font-size))); }
 .canvas-text-fragment { left: var(--text-fragment-x); top: 0; font-family: 'Noto Sans', 'Noto Sans Thai', 'Noto Sans SC', sans-serif; }
 .canvas-text-expression { color: var(--color-bind-on-page); }
+/* A barcode's bars are the engine's geometry and always print black on the page
+   background, whatever the page-ink token says, so the fill is not themed. */
+.canvas-barcode-paint { position: absolute; inset: 0; pointer-events: none; }
+.canvas-barcode-bar { position: absolute; top: 0; bottom: 0; background-color: black; }
 .canvas-image-paint { position: absolute; display: block; pointer-events: none; -webkit-user-drag: none; user-drag: none; }
 .canvas-image-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; pointer-events: none; -webkit-user-drag: none; user-drag: none; color: var(--color-page-placeholder); font: var(--type-page-mono); line-height: 1; text-align: center; }
 .canvas-placeholder-icon { width: 14px; height: 14px; flex: none; }

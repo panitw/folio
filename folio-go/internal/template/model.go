@@ -408,6 +408,10 @@ const (
 	ElementTable ElementType = "table"
 	ElementLine  ElementType = "line"
 	ElementRect  ElementType = "rect"
+	// ElementBarcode is a Code 128 symbol whose bindable `value` is its
+	// content (spec-barcode-qr-elements). Extending this closed set is a
+	// MAJOR change: a document carrying one declares 4.0.
+	ElementBarcode ElementType = "barcode"
 )
 
 // ElementID is the canonical spelling of an element/column id: "e" plus

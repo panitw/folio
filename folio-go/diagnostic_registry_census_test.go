@@ -248,6 +248,17 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 		diag.CodeTableFooterOrphanSuppressed: func(t *testing.T) Result {
 			return renderFooterFixture(t, footerFixtureDocUnsatisfiableTie(), footerFixtureDataUnsatisfiableTie())
 		},
+		// spec-barcode-qr-elements CAP-4: real renders whose data or box
+		// defeats the barcode, completing with the Warning.
+		diag.CodeBarcodeUnencodable: func(t *testing.T) Result {
+			return renderBarcodeWitness(t, "{{ref}}", "300", `{"ref":"ก"}`)
+		},
+		diag.CodeBarcodeModuleTooSmall: func(t *testing.T) Result {
+			return renderBarcodeWitness(t, "1234567890", "60", `{}`)
+		},
+		diag.CodeBarcodeDoesNotFit: func(t *testing.T) Result {
+			return renderBarcodeWitness(t, "1234567890", "0.1", `{}`)
+		},
 		diag.CodeTableRowClippedHeight: func(t *testing.T) Result {
 			tpl, err := ParseTemplate([]byte(overTallRowDoc()))
 			if err != nil {

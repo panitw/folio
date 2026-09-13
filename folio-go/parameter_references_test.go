@@ -85,3 +85,14 @@ func TestParameterReferencesRejectsNameLongerThanProtocolBound(t *testing.T) {
 		t.Fatalf("long parameter name error = %v", err)
 	}
 }
+
+func TestParameterReferencesIncludeBarcodeValues(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(barcodeTestTemplate(t, "|0994000123456{{params.x}}\r{{ref}}", "300", "50", "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ParameterReferences(tpl)
+	if err != nil || !reflect.DeepEqual(got, []string{"x"}) {
+		t.Fatalf("references = %#v, err=%v; want [x] from the barcode value", got, err)
+	}
+}

@@ -1944,10 +1944,10 @@ describe('application shell', () => {
   const ruleLines = (predicate: (selector: string) => boolean) => sheetWithoutComments().split('\n')
     .filter((line) => line.includes('{') && predicate(line.slice(0, line.indexOf('{'))))
 
-  it('offers only the five fixed palette components and sends an opaque Go placement command', async () => {
+  it('offers only the six fixed palette components and sends an opaque Go placement command', async () => {
     const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
-    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode'])
     // THE POSITIVE CONTROL for the absence asserted further down: this is what
     // an empty selection puts in the inspector, and it is what placing used to
     // leave standing.
@@ -5821,6 +5821,36 @@ describe('Story 17.3: size and leading show the value they use', () => {
   })
 })
 
+describe('spec-barcode-element: barcode canvas paint and inspector', () => {
+  const barcodeComponent = { id: 'e1', type: 'barcode' as const, band: 'content' as const, x: 0, y: 0, width: 216_000, height: 48_000, resizable: true, value: '1234567890', barcode: { moduleWidth: 1_000, bars: [{ x: 10_000, width: 2_000 }, { x: 13_000, width: 1_000 }] } }
+
+  it('draws one bar per Go-computed bar, placed and sized through the zoom rule', async () => {
+    const view = render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [barcodeComponent] } }} />)
+    const bars = () => Array.from(view.container.querySelectorAll<HTMLElement>('[data-component-id="e1"] .canvas-barcode-bar'))
+    expect(bars()).toHaveLength(2)
+    expect(bars().map((bar) => [bar.style.left, bar.style.width])).toEqual([['10px', '2px'], ['13px', '1px']])
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('110%'))
+    expect(bars().map((bar) => [bar.style.left, bar.style.width])).toEqual([['11px', '2.2px'], ['14.3px', '1.1px']])
+  })
+
+  it('echoes the engine reason when a barcode cannot be painted', () => {
+    const { barcode: _paint, ...unpainted } = barcodeComponent
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [{ ...unpainted, barcodeUnavailable: 'doesNotFit' as const }] } }} />)
+    expect(screen.getByText('Barcode not drawn — it does not fit its box')).toBeInTheDocument()
+    expect(document.querySelector('.canvas-barcode-bar')).toBeNull()
+  })
+
+  it('offers a Content field and no Fill or Border controls for a selected barcode', () => {
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [barcodeComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('barcode component e1'))
+    expect(screen.getByRole('textbox', { name: 'Content' })).toHaveValue('1234567890')
+    expect(screen.queryByRole('textbox', { name: /^(Fill|Background|Border)/ })).not.toBeInTheDocument()
+    // Positive control: visibility still sits in the BOX section.
+    expect(screen.getByRole('textbox', { name: 'Visible if' })).toBeInTheDocument()
+  })
+})
+
 describe('Story 5.13: image asset selection', () => {
   const imageComponent = { id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 48_000, resizable: true, image: { mediaType: 'image/png', assetKey: 'a'.repeat(64), width: 300, height: 200, drawX: 6_000, drawY: 8_000, drawWidth: 60_000, drawHeight: 40_000 } }
   const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true, imageUnavailable: 'undecodable' as const }
@@ -8900,7 +8930,7 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.getByLabelText('Component palette')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle'])
+    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode'])
     expect(screen.queryByLabelText('Page thumbnails')).toBeNull()
     expect(screen.queryByText('PAGES')).toBeNull()
   })

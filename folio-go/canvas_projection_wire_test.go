@@ -652,7 +652,7 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 // was added. Story 14.9 is the first story to add a component key and therefore
 // the first that can break it.
 //
-// THE RECORD PINS THE WHOLE ACCEPTED SET, ALL THIRTY-TWO KEYS, AND THAT IS THE
+// THE RECORD PINS THE WHOLE ACCEPTED SET, ALL THIRTY-FOUR KEYS, AND THAT IS THE
 // POINT RATHER THAN A SIDE EFFECT. A record naming only the new key would be a
 // DENYLIST: it would go green on the next field someone adds, which is the
 // shape this project refuses. A key-set record is a key SET.
@@ -666,9 +666,9 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 //
 // THE GUARD IS `hasOnly`, A SUBSET CHECK, so what is recorded here is the
 // ACCEPTED set, exactly as the fragment record is — not an emitted one. A
-// component NEVER marshals all thirty-two keys: almost every member is a
+// component NEVER marshals all thirty-four keys: almost every member is a
 // pointer or a slice with `omitempty`, and `value`, `tableBind`, `columns`,
-// `textPaint`, `image` and `imageUnavailable` belong to mutually exclusive
+// `textPaint`, `image`, `imageUnavailable`, `barcode` and `barcodeUnavailable` belong to mutually exclusive
 // populations. So the Go side is pinned two ways: every key any component
 // actually emits must be IN the record (a key Go sends that the guard does not
 // list is what terminates the worker), and the TABLE component's own emission
@@ -678,6 +678,8 @@ var canvasComponentWireKeys = []string{
 	"authored",
 	"background",
 	"band",
+	"barcode",
+	"barcodeUnavailable",
 	"binding",
 	"bold",
 	"borderColor",

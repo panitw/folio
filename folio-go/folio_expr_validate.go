@@ -75,6 +75,12 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 						return nil, newRenderError(DiagCodeExpressionInvalid, string(el.ID), "value", err)
 					}
 				}
+			case template.ElementBarcode:
+				if el.Value.Set && !el.Value.Null {
+					if err := checkBarcodeValue(el.Value.Value, el.ID); err != nil {
+						return nil, err
+					}
+				}
 			case template.ElementTable:
 				if el.Table.Set {
 					// Story 3.5 finisher review, Finding 4 (Major):

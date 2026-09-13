@@ -880,6 +880,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessBarcodeThaiBillPaymentEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(barcodeThaiBillPaymentTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(barcodeThaiBillPaymentDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessDeclaredVariantsEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(declaredVariantsTemplateJSON))
 		if err != nil {
@@ -1053,6 +1066,11 @@ const subprocessEmbeddedFontEnvVar = "FOLIO_SUBPROCESS_RENDER_EMBEDDEDFONT"
 // different font program, subset differently and hash differently, with
 // nothing in the corpus before this document able to say so.
 const subprocessDeclaredVariantsEnvVar = "FOLIO_SUBPROCESS_RENDER_DECLAREDVARIANTS"
+
+// subprocessBarcodeThaiBillPaymentEnvVar renders
+// fixtures/barcode-thai-bill-payment/ — the first document carrying a barcode —
+// in a fresh process, from the committed template const.
+const subprocessBarcodeThaiBillPaymentEnvVar = "FOLIO_SUBPROCESS_RENDER_BARCODETHAIBILLPAYMENT"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

@@ -48,6 +48,9 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeTableMinHeightUnplaceable", DiagCodeTableMinHeightUnplaceable, "TABLE_MIN_HEIGHT_UNPLACEABLE"},
 	{"DiagCodeStyleLineSpacingInvalid", DiagCodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
 	{"DiagCodeTemplateFieldInvalid", DiagCodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
+	{"DiagCodeBarcodeUnencodable", DiagCodeBarcodeUnencodable, "BARCODE_UNENCODABLE"},
+	{"DiagCodeBarcodeModuleTooSmall", DiagCodeBarcodeModuleTooSmall, "BARCODE_MODULE_TOO_SMALL"},
+	{"DiagCodeBarcodeDoesNotFit", DiagCodeBarcodeDoesNotFit, "BARCODE_DOES_NOT_FIT"},
 }
 
 // declaredDiagCodeConstants enumerates every exported DiagCode* CONSTANT

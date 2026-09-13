@@ -58,6 +58,7 @@ var stageRankTable = []stageRank{
 	{"geom", 0},
 	{"diag", 1}, // Epic 3; ranked ahead of arrival so its first commit is already guarded
 	{"pagemodel", 1},
+	{"barcode", 1}, // spec-barcode-qr-elements: a pure encoder over geom only; the module root consumes it
 	{"template", 2},
 	{"expr", 3}, // Epic 3; D-1.6.1's expr -/-> bind pre-commitment lives in this number
 	{"bind", 4},

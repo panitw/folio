@@ -27,7 +27,7 @@ Thai invoices and utility bills carry a Code 128 bill-payment barcode and a QR c
   - **success:** Every module is a whole number of millipoints wide and all modules share one width. A QR code stays square and centred. The symbol plus quiet zone never exceeds the box. All of this is asserted against the page model.
 - **CAP-4**
   - **intent:** The author is told, and no wrong code is drawn, when content cannot be encoded, is too long for the symbology, or cannot fit the box. The author is warned when the code fits only below the scannable minimum module size.
-  - **success:** Unencodable, too-long and cannot-fit content each produce a registered Error naming the element id, and nothing is drawn. A module narrower than 0.25 mm (barcode) or 0.5 mm (QR) still draws and produces a registered Warning naming the element id, which `-strict` turns into a failure.
+  - **success:** Unencodable or too-long static content is a registered load Error naming the element id. When data at render time is unencodable, too long or cannot fit, that code is omitted with a registered Warning naming the element id, the render completes, and `-strict` fails. A module narrower than 0.25 mm (barcode) or 0.5 mm (QR) still draws and produces a registered Warning naming the element id, which `-strict` turns into a failure.
 - **CAP-5**
   - **intent:** A designer user can add both elements from the palette, edit their content and options in the properties panel, and see the real code on the canvas.
   - **success:** Dragging each element onto a band, binding its content to a data field and previewing shows a code that matches the rendered PDF.

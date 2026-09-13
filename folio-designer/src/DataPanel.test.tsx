@@ -348,9 +348,9 @@ describe('the data panel states what a pick would bind before the pick', () => {
   // exercised. The kind whose wording is awkward is the kind most likely to go
   // untested, so every kind keeps a row here.
   it.each([
-    ['line', lineCanvas, 'Line selected · only text components can receive a scalar binding.'],
-    ['rect', rectCanvas, 'Rectangle selected · only text components can receive a scalar binding.'],
-    ['image', imageCanvas, 'Image selected · only text components can receive a scalar binding.'],
+    ['line', lineCanvas, 'Line selected · only text and barcode components can receive a scalar binding.'],
+    ['rect', rectCanvas, 'Rectangle selected · only text and barcode components can receive a scalar binding.'],
+    ['image', imageCanvas, 'Image selected · only text and barcode components can receive a scalar binding.'],
     // A table invites a collection pick while continuing to refuse scalars.
     ['table', tableCanvas, 'Table selected · pick a root collection to bind its rows.'],
   ])('states a selected %s\'s binding context and dispatches nothing for a scalar gesture', async (kind, fixture, message) => {

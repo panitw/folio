@@ -314,6 +314,14 @@ const DiagCodeStyleLineSpacingInvalid = string(diag.CodeStyleLineSpacingInvalid)
 // permanent.
 const DiagCodeTemplateFieldInvalid = string(diag.CodeTemplateFieldInvalid)
 
+// DiagCodeBarcodeUnencodable, DiagCodeBarcodeModuleTooSmall and
+// DiagCodeBarcodeDoesNotFit name the barcode element's three render-time
+// Warnings (spec-barcode-qr-elements CAP-4). Each carries the element id; the
+// first and third omit that barcode, the second still draws it.
+const DiagCodeBarcodeUnencodable = string(diag.CodeBarcodeUnencodable)
+const DiagCodeBarcodeModuleTooSmall = string(diag.CodeBarcodeModuleTooSmall)
+const DiagCodeBarcodeDoesNotFit = string(diag.CodeBarcodeDoesNotFit)
+
 // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
 // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
 // header could not be honoured on one continuation page because the next

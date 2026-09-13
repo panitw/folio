@@ -2432,8 +2432,15 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	if eberr != nil {
 		return nil, nil, nil, nil, eberr
 	}
+	// spec-barcode-qr-elements: barcode bars follow element boxes and precede
+	// table chrome. A document with no barcode contributes nothing here.
+	barcodeRects, barcodeDiags, bcerr := collectBarcodeRects(t, bands, data, params, visible)
+	if bcerr != nil {
+		return nil, nil, nil, nil, bcerr
+	}
 	var tableRects []tableRectSource
 	tableRects = append(tableRects, elementBoxes...)
+	tableRects = append(tableRects, barcodeRects...)
 	tableRects = append(tableRects, headerTableRects...)
 	tableRects = append(tableRects, contentTableRects...)
 	tableRects = append(tableRects, footerTableRects...)
@@ -2506,6 +2513,7 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 		diags = append(diags, mergeConditionDiagnostics(band.band.Elements, conditionDiags, textWarnings[i])...)
 		// Keep the existing table-warning exception after this band's text warnings.
 		diags = append(diags, tableWarnings[i]...)
+		diags = append(diags, barcodeDiags[i]...)
 	}
 
 	headerOffset := 0

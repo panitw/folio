@@ -316,6 +316,11 @@ func init() {
 			return g.collectTextValue(element)
 		},
 		template.ElementTable: (*standInGenerator).collectTable,
+		// A barcode's value binds exactly as a text value does, through
+		// the same resolver, so its paths are collected the same way.
+		template.ElementBarcode: func(g *standInGenerator, _ *Template, element template.Element) error {
+			return g.collectTextValue(element)
+		},
 		// Element.Asset is a literal `assets` map key and is never
 		// bound; line and rect carry no kind-specific field at all.
 		// Style.*, altRowBackground and headerStyle.* are negative
