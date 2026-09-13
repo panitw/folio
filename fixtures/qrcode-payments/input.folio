@@ -1,0 +1,21 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "qrcode", "x": 0, "y": 0, "width": 120, "height": 120, "value": "{{payload}}"},
+        {"id": "e2", "type": "qrcode", "x": 160, "y": 0, "width": 120, "height": 120, "errorCorrection": "H", "value": "{{payload}}"},
+        {"id": "e3", "type": "qrcode", "x": 320, "y": 0, "width": 120, "height": 120, "errorCorrection": "Q", "value": "ชำระเงิน {{ref}}"},
+        {"id": "e4", "type": "qrcode", "x": 0, "y": 160, "width": 200, "height": 80, "errorCorrection": "L", "value": "INV-2026-000001"}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "th",
+  "nextId": 5,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "4.0"
+}

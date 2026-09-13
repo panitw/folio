@@ -36,12 +36,14 @@ Authored as `|0994000123456{{suffix}}\r{{ref1}}\r{{ref2}}\r{{amount}}`, where `\
 | Quiet zone | 4 modules on each side, inside the element box. |
 | Geometry | Square. The module width is the largest whole-millipoint size such that the symbol plus quiet zone fits min(width, height). The symbol is centred. |
 
+As built (spec-qrcode-element), the encoder uses byte mode only: numeric and alphanumeric segmentation are permitted by the rule above but not used, which keeps segmentation trivially deterministic at the cost of at most a version or two for digit-heavy payloads. The level is the element's optional `errorCorrection` key.
+
 ## Module-size diagnostics (CAP-4)
 
 | Case | Barcode | QR | Severity | Drawn? |
 |---|---|---|---|---|
 | Module fits but below minimum | < 0.25 mm (709 millipoints) | < 0.5 mm (1418 millipoints) | Warning (`-strict` fails) | Yes |
-| Symbol plus quiet zone cannot fit at 1 millipoint per module | — | — | Error | No |
+| Symbol plus quiet zone cannot fit at 1 millipoint per module | — | — | Warning (`-strict` fails) | No |
 
 Millipoint values round 0.25 mm and 0.5 mm up to the nearest whole millipoint.
 

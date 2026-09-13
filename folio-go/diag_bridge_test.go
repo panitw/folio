@@ -51,6 +51,9 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeBarcodeUnencodable", DiagCodeBarcodeUnencodable, "BARCODE_UNENCODABLE"},
 	{"DiagCodeBarcodeModuleTooSmall", DiagCodeBarcodeModuleTooSmall, "BARCODE_MODULE_TOO_SMALL"},
 	{"DiagCodeBarcodeDoesNotFit", DiagCodeBarcodeDoesNotFit, "BARCODE_DOES_NOT_FIT"},
+	{"DiagCodeQRCodeTooLong", DiagCodeQRCodeTooLong, "QRCODE_TOO_LONG"},
+	{"DiagCodeQRCodeModuleTooSmall", DiagCodeQRCodeModuleTooSmall, "QRCODE_MODULE_TOO_SMALL"},
+	{"DiagCodeQRCodeDoesNotFit", DiagCodeQRCodeDoesNotFit, "QRCODE_DOES_NOT_FIT"},
 }
 
 // declaredDiagCodeConstants enumerates every exported DiagCode* CONSTANT

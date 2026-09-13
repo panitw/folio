@@ -443,6 +443,16 @@ func TestAFullyExercisedDocumentIsNotVersionINFLATED(t *testing.T) {
 	// own version assertions in version_test.go. The precondition above
 	// still proves the fixture is the maximal one.
 	for _, band := range []*Band{&d.Bands.PageHeader, &d.Bands.Content, &d.Bands.PageFooter} {
+		// spec-barcode-qr-elements added a qrcode (and its `errorCorrection`)
+		// to the maximal fixture; the element type requires 4.0, the ceiling,
+		// so it is removed here for the same reason as the table keys below.
+		kept := band.Elements[:0]
+		for _, el := range band.Elements {
+			if el.Type != ElementQRCode {
+				kept = append(kept, el)
+			}
+		}
+		band.Elements = kept
 		for i := range band.Elements {
 			if !band.Elements[i].Table.Set {
 				continue

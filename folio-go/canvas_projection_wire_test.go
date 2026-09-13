@@ -652,7 +652,7 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 // was added. Story 14.9 is the first story to add a component key and therefore
 // the first that can break it.
 //
-// THE RECORD PINS THE WHOLE ACCEPTED SET, ALL THIRTY-FOUR KEYS, AND THAT IS THE
+// THE RECORD PINS THE WHOLE ACCEPTED SET, ALL THIRTY-SIX KEYS, AND THAT IS THE
 // POINT RATHER THAN A SIDE EFFECT. A record naming only the new key would be a
 // DENYLIST: it would go green on the next field someone adds, which is the
 // shape this project refuses. A key-set record is a key SET.
@@ -666,9 +666,9 @@ func TestTableColumnsProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T
 //
 // THE GUARD IS `hasOnly`, A SUBSET CHECK, so what is recorded here is the
 // ACCEPTED set, exactly as the fragment record is — not an emitted one. A
-// component NEVER marshals all thirty-four keys: almost every member is a
+// component NEVER marshals all thirty-six keys: almost every member is a
 // pointer or a slice with `omitempty`, and `value`, `tableBind`, `columns`,
-// `textPaint`, `image`, `imageUnavailable`, `barcode` and `barcodeUnavailable` belong to mutually exclusive
+// `textPaint`, `image`, `imageUnavailable`, `barcode`, `barcodeUnavailable`, `qrcode` and `qrcodeUnavailable` belong to mutually exclusive
 // populations. So the Go side is pinned two ways: every key any component
 // actually emits must be IN the record (a key Go sends that the guard does not
 // list is what terminates the worker), and the TABLE component's own emission
@@ -699,6 +699,8 @@ var canvasComponentWireKeys = []string{
 	"paddingLeft",
 	"paddingRight",
 	"paddingTop",
+	"qrcode",
+	"qrcodeUnavailable",
 	"resizable",
 	"tableBind",
 	"textPaint",
@@ -821,6 +823,75 @@ func TestCanvasComponentWireKeysAreTheRecordedSet(t *testing.T) {
 	zeroColumn := marshalledObjectKeys(t, mustMarshal(t, CanvasTableColumn{}))
 	if !reflect.DeepEqual(zeroColumn, canvasComponentColumnWireKeys) {
 		t.Errorf("a zero CanvasTableColumn marshals\n\t%v\nand the recorded protocol set is\n\t%v — an omitempty here drops a key for exactly the documents that leave that column's label or bind empty, and those are the documents this story exists to draw honestly", zeroColumn, canvasComponentColumnWireKeys)
+	}
+}
+
+// TestCanvasQRCodeWireKeysAreTheRecordedSet is the component record's qrcode
+// half: the JSON Go actually emits for a painted qrcode and for one that
+// cannot fit, read from the marshalled bytes. A renamed `qrcode`,
+// `qrcodeUnavailable`, `moduleWidth`, `rects` or rect tag reds here, where
+// the designer's guard would otherwise reject the snapshot.
+func TestCanvasQRCodeWireKeysAreTheRecordedSet(t *testing.T) {
+	tpl, err := ParseTemplate([]byte(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "qrcode", "x": 0, "y": 0, "width": 72, "height": 72, "errorCorrection": "Q", "value": "Folio"},
+      {"id": "e2", "type": "qrcode", "x": 0, "y": 100, "width": 0.02, "height": 0.02, "value": "Folio"}
+    ]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "4.0"
+}
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	painted, unavailable := 0, 0
+	for _, raw := range componentsFromProjectionBytes(t, projectWithPaint(t, tpl)) {
+		for _, key := range marshalledObjectKeys(t, raw) {
+			if !slices.Contains(canvasComponentWireKeys, key) {
+				t.Errorf("a projected qrcode marshals the key %q, which the recorded component key set does not name", key)
+			}
+		}
+		var component map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &component); err != nil {
+			t.Fatalf("unmarshal a component: %v", err)
+		}
+		if _, ok := component["qrcodeUnavailable"]; ok {
+			unavailable++
+		}
+		rawPaint, ok := component["qrcode"]
+		if !ok {
+			continue
+		}
+		painted++
+		if keys := marshalledObjectKeys(t, rawPaint); !reflect.DeepEqual(keys, []string{"moduleWidth", "rects"}) {
+			t.Errorf("a qrcode paint marshals the keys %v, want exactly [moduleWidth rects] — the designer checks it with hasExactKeys", keys)
+		}
+		var paint map[string]json.RawMessage
+		if err := json.Unmarshal(rawPaint, &paint); err != nil {
+			t.Fatalf("unmarshal qrcode paint: %v", err)
+		}
+		var rects []json.RawMessage
+		if err := json.Unmarshal(paint["rects"], &rects); err != nil || len(rects) == 0 {
+			t.Fatalf("qrcode paint carries no rects: %s", rawPaint)
+		}
+		if keys := marshalledObjectKeys(t, rects[0]); !reflect.DeepEqual(keys, []string{"height", "width", "x", "y"}) {
+			t.Errorf("a qrcode rect marshals the keys %v, want exactly [height width x y] — the designer checks it with hasExactKeys", keys)
+		}
+	}
+	if painted == 0 {
+		t.Fatal("fixture precondition: no component emitted a `qrcode` key, so the paint record is unmeasured")
+	}
+	if unavailable == 0 {
+		t.Fatal("fixture precondition: no component emitted a `qrcodeUnavailable` key, so the reason record is unmeasured")
 	}
 }
 

@@ -402,6 +402,16 @@ var maximalFixture = []byte(`{
           "width": 500,
           "x": 0,
           "y": 300
+        },
+        {
+          "errorCorrection": "Q",
+          "height": 72,
+          "id": "e8",
+          "type": "qrcode",
+          "value": "INV-{{customer.name}}",
+          "width": 72,
+          "x": 400,
+          "y": 200
         }
       ]
     },
@@ -455,7 +465,7 @@ var maximalFixture = []byte(`{
     ]
   },
   "locale": "th",
-  "nextId": 8,
+  "nextId": 9,
   "page": {
     "margin": {
       "bottom": 36,
@@ -470,7 +480,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "3.2"
+  "version": "4.0"
 }
 `)
 

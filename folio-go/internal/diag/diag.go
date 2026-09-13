@@ -384,6 +384,22 @@ const (
 	// and the render completes. Distinct from CodeBarcodeModuleTooSmall on
 	// D-4.5.1's discriminator: that one DRAWS, this one draws nothing.
 	CodeBarcodeDoesNotFit Code = "BARCODE_DOES_NOT_FIT"
+
+	// CodeQRCodeTooLong names a qrcode whose value, resolved from DATA at
+	// render, is longer than a version-40 symbol holds at its
+	// error-correction level. The QR code is omitted and the render
+	// completes (the barcode's owner decision). A STATIC value that long is
+	// refused at load instead, under the general load code.
+	CodeQRCodeTooLong Code = "QRCODE_TOO_LONG"
+
+	// CodeQRCodeModuleTooSmall names a qrcode that fits its box only with
+	// modules narrower than 0.5 mm (1418 mp). The modules ARE drawn.
+	CodeQRCodeModuleTooSmall Code = "QRCODE_MODULE_TOO_SMALL"
+
+	// CodeQRCodeDoesNotFit names a qrcode whose symbol plus its 4-module
+	// quiet zone cannot fit the smaller side of its box even at 1 mp per
+	// module. The QR code is omitted and the render completes.
+	CodeQRCodeDoesNotFit Code = "QRCODE_DOES_NOT_FIT"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -414,6 +430,9 @@ var allCodes = []Code{
 	CodeBarcodeUnencodable,
 	CodeBarcodeModuleTooSmall,
 	CodeBarcodeDoesNotFit,
+	CodeQRCodeTooLong,
+	CodeQRCodeModuleTooSmall,
+	CodeQRCodeDoesNotFit,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -454,6 +473,9 @@ var dispositions = map[Code]Disposition{
 	CodeBarcodeUnencodable:          DispositionWarning,
 	CodeBarcodeModuleTooSmall:       DispositionWarning,
 	CodeBarcodeDoesNotFit:           DispositionWarning,
+	CodeQRCodeTooLong:               DispositionWarning,
+	CodeQRCodeModuleTooSmall:        DispositionWarning,
+	CodeQRCodeDoesNotFit:            DispositionWarning,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

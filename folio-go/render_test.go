@@ -893,6 +893,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessQRCodePaymentsEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(qrcodePaymentsTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(qrcodePaymentsDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessDeclaredVariantsEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(declaredVariantsTemplateJSON))
 		if err != nil {
@@ -1071,6 +1084,11 @@ const subprocessDeclaredVariantsEnvVar = "FOLIO_SUBPROCESS_RENDER_DECLAREDVARIAN
 // fixtures/barcode-thai-bill-payment/ — the first document carrying a barcode —
 // in a fresh process, from the committed template const.
 const subprocessBarcodeThaiBillPaymentEnvVar = "FOLIO_SUBPROCESS_RENDER_BARCODETHAIBILLPAYMENT"
+
+// subprocessQRCodePaymentsEnvVar renders fixtures/qrcode-payments/ — the
+// first document carrying a qrcode — in a fresh process, from the committed
+// template const.
+const subprocessQRCodePaymentsEnvVar = "FOLIO_SUBPROCESS_RENDER_QRCODEPAYMENTS"
 
 // subprocessPageCount20EnvVar is Story 2.7's NINTH selector, rendering
 // fixtures/page-count-20/ — the {{page}}/{{pages}} matrix document — in

@@ -2432,8 +2432,9 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	if eberr != nil {
 		return nil, nil, nil, nil, eberr
 	}
-	// spec-barcode-qr-elements: barcode bars follow element boxes and precede
-	// table chrome. A document with no barcode contributes nothing here.
+	// spec-barcode-qr-elements: the code elements' rects (barcode bars and
+	// qrcode module runs) follow element boxes and precede table chrome. A
+	// document with no barcode or qrcode contributes nothing here.
 	barcodeRects, barcodeDiags, bcerr := collectBarcodeRects(t, bands, data, params, visible)
 	if bcerr != nil {
 		return nil, nil, nil, nil, bcerr

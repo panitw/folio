@@ -27,6 +27,9 @@ type CanvasAuthoredProperties struct {
 	BorderWidth AuthoredProperty[geom.Length] `json:"borderWidth"`
 	BorderColor AuthoredProperty[string]      `json:"borderColor"`
 	BorderEdges AuthoredProperty[[]string]    `json:"borderEdges"`
+	// ErrorCorrection is a qrcode's authored level (absent means the default
+	// M); always absent on every other kind.
+	ErrorCorrection AuthoredProperty[string] `json:"errorCorrection"`
 }
 
 func authoredProperty[T any](value template.Presence[T], parentNull bool) AuthoredProperty[T] {
@@ -62,6 +65,9 @@ func canvasAuthoredProperties(element template.Element) (*CanvasAuthoredProperti
 		BorderWidth: authoredProperty(border.Width, borderNull),
 		BorderColor: authoredProperty(border.Color, borderNull),
 		BorderEdges: authoredProperty(border.Edges, borderNull),
+		// The loader admits the key on a qrcode only, so every other kind
+		// projects absent here.
+		ErrorCorrection: authoredProperty(element.ErrorCorrection, false),
 	}
 	if element.Type != template.ElementText && element.Type != template.ElementTable {
 		result.FontFamily = AuthoredProperty[string]{State: "absent"}
@@ -73,7 +79,7 @@ func canvasAuthoredProperties(element template.Element) (*CanvasAuthoredProperti
 		result.Valign = AuthoredProperty[string]{State: "absent"}
 		result.Color = AuthoredProperty[string]{State: "absent"}
 	}
-	for _, field := range []AuthoredProperty[string]{result.VisibleIf, result.FontFamily, result.Align, result.Valign, result.Color, result.Background, result.BorderColor} {
+	for _, field := range []AuthoredProperty[string]{result.VisibleIf, result.FontFamily, result.Align, result.Valign, result.Color, result.Background, result.BorderColor, result.ErrorCorrection} {
 		if field.Value != nil && len(*field.Value) > maxCanvasPropertyString {
 			return nil, fmt.Errorf("folio: authored property exceeds projection bound")
 		}

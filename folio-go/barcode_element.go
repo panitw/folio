@@ -1,6 +1,8 @@
-// This file holds the barcode element's load-time checks, the designer's
-// escape projection for its value, and its canvas paint
-// (spec-barcode-qr-elements CAP-4, CAP-5).
+// This file holds the code elements' load-time checks, the designer's escape
+// projection for their value, and their canvas paint
+// (spec-barcode-qr-elements CAP-4, CAP-5). Both code elements — `barcode`
+// (Code 128) and `qrcode` (QR Code) — share every step here; only the
+// static encodability check and the paint shape differ by kind.
 //
 // ESCAPES LIVE HERE, NOT IN THE ENGINE. A `.folio` file stores the real
 // characters (a carriage return is the JSON escape "\r"), and the engine
@@ -21,12 +23,19 @@ import (
 	"github.com/panitw/folio/folio-go/internal/template"
 )
 
-// checkBarcodeValue is a barcode value's load-time check: every expression
+// checkCodeValue is a code element's load-time value check: every expression
 // parses and checks as a text expression does, the reserved page tokens are
-// refused (a barcode's content must be known before layout), and the static
-// text outside {{ }} must be encodable — a non-ASCII character there could
-// never draw for any record, so it is a load Error rather than a Warning.
-func checkBarcodeValue(value string, id template.ElementID) error {
+// refused (a code's content must be known before layout), and the static
+// text outside {{ }} must be encodable. For a barcode that means ASCII only;
+// for a qrcode, that the static text alone fits a version-40 symbol at the
+// element's level. Either failure could never draw for any record, so it is
+// a load Error rather than a Warning.
+func checkCodeValue(element template.Element) error {
+	value, id := element.Value.Value, element.ID
+	kind := "barcode"
+	if element.Type == template.ElementQRCode {
+		kind = "QR code"
+	}
 	literal, placeholders, trailing, serr := expr.ScanPlaceholders(value)
 	if serr != nil {
 		return newRenderError(DiagCodeExpressionInvalid, string(id), "value", fmt.Errorf("folio: ParseTemplate: element %s: %s", id, serr))
@@ -34,8 +43,8 @@ func checkBarcodeValue(value string, id template.ElementID) error {
 	for _, ph := range placeholders {
 		if ph.Reserved {
 			return newRenderError(DiagCodeTemplateFieldInvalid, string(id), "value", fmt.Errorf(
-				"folio: ParseTemplate: element %s: a barcode value cannot use {{%s}} — page numbers are resolved after layout, and a barcode's content must be known before it",
-				id, strings.TrimSpace(ph.Inner)))
+				"folio: ParseTemplate: element %s: a %s value cannot use {{%s}} — page numbers are resolved after layout, and a %s's content must be known before it",
+				id, kind, strings.TrimSpace(ph.Inner), kind))
 		}
 	}
 	if err := checkTextExpressions(value, id); err != nil {
@@ -44,6 +53,19 @@ func checkBarcodeValue(value string, id template.ElementID) error {
 	parts := make([]string, 0, len(literal)+1)
 	parts = append(parts, literal...)
 	parts = append(parts, trailing)
+	if element.Type == template.ElementQRCode {
+		static := 0
+		for _, part := range parts {
+			static += len(part)
+		}
+		level := qrLevelOf(element)
+		if max := barcode.QRMaxBytes(barcode.QRMaxVersion, level); static > max {
+			return newRenderError(DiagCodeTemplateFieldInvalid, string(id), "value", fmt.Errorf(
+				"folio: ParseTemplate: element %s: the QR code value's static text is %d bytes, more than the %d a version-40 QR Code holds at error-correction level %s — shorten it or lower the level",
+				id, static, max, level))
+		}
+		return nil
+	}
 	for _, part := range parts {
 		if off, bad := barcode.FirstUnencodable(part); bad {
 			r, _ := utf8.DecodeRuneInString(part[off:])
@@ -55,9 +77,9 @@ func checkBarcodeValue(value string, id template.ElementID) error {
 	return nil
 }
 
-// encodeBarcodeEscapes is the designer's view of a barcode value: outside
-// {{ }}, a backslash becomes `\\`, a carriage return `\r` and a line feed
-// `\n`. Placeholders are copied verbatim.
+// encodeBarcodeEscapes is the designer's view of a code element's value:
+// outside {{ }}, a backslash becomes `\\`, a carriage return `\r` and a line
+// feed `\n`. Placeholders are copied verbatim.
 func encodeBarcodeEscapes(value string) string {
 	literal, placeholders, trailing, err := expr.ScanPlaceholders(value)
 	if err != nil {
@@ -159,11 +181,35 @@ type CanvasBarcodePaint struct {
 	Bars        []CanvasBarcodeBar `json:"bars"`
 }
 
+// CanvasQRCodeRect is one horizontal run of dark modules, in millipoints,
+// relative to the component's top-left corner.
+type CanvasQRCodeRect struct {
+	X      int64 `json:"x"`
+	Y      int64 `json:"y"`
+	Width  int64 `json:"width"`
+	Height int64 `json:"height"`
+}
+
+// CanvasQRCodePaint is the Go-computed geometry the canvas draws for a
+// qrcode: the same rects layoutQRCode gives the render path, rows top to
+// bottom and left to right within a row.
+type CanvasQRCodePaint struct {
+	ModuleWidth int64              `json:"moduleWidth"`
+	Rects       []CanvasQRCodeRect `json:"rects"`
+}
+
 // BarcodeUnavailable's bounded values, set only when Barcode is absent for a
 // barcode with a non-empty value.
 const (
 	barcodeUnavailableUnencodable = "unencodable"
 	barcodeUnavailableDoesNotFit  = "doesNotFit"
+)
+
+// QRCodeUnavailable's bounded values, set only when QRCode is absent for a
+// qrcode with a non-empty value.
+const (
+	qrcodeUnavailableTooLong    = "tooLong"
+	qrcodeUnavailableDoesNotFit = "doesNotFit"
 )
 
 // illustrativeBarcodePlaceholder stands in for every {{ }} placeholder on the
@@ -172,7 +218,7 @@ const illustrativeBarcodePlaceholder = "0123456789"
 
 // illustrativeBarcodeContent is what the canvas encodes: the value with each
 // placeholder replaced by illustrativeBarcodePlaceholder. A static value is
-// returned unchanged, so its canvas bars are the PDF's bars.
+// returned unchanged, so its canvas geometry is the PDF's.
 func illustrativeBarcodeContent(value string) string {
 	literal, placeholders, trailing, err := expr.ScanPlaceholders(value)
 	if err != nil || len(placeholders) == 0 {
@@ -187,11 +233,11 @@ func illustrativeBarcodeContent(value string) string {
 	return b.String()
 }
 
-// addCanvasBarcodePaint is the barcode's paint producer, beside
+// addCanvasBarcodePaint is the code elements' paint producer, beside
 // addCanvasImagePaint. A static value is encoded as written; a bound value
-// draws illustrative bars (illustrativeBarcodeContent) — the preview shows the
-// real code. A barcode that cannot be painted degrades to a bounded reason and
-// never fails the projection.
+// draws illustrative geometry (illustrativeBarcodeContent) — the preview
+// shows the real code. A code that cannot be painted degrades to a bounded
+// reason and never fails the projection.
 func addCanvasBarcodePaint(t *Template, projection *CanvasProjection) error {
 	components := make(map[string]*CanvasComponent, len(projection.Components))
 	for i := range projection.Components {
@@ -207,17 +253,36 @@ func addCanvasBarcodePaint(t *Template, projection *CanvasProjection) error {
 		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
-			if element.Type != template.ElementBarcode {
+			if !isCodeElement(element.Type) {
 				continue
 			}
 			component := components[string(element.ID)]
 			if component == nil || component.Band != band.name {
-				return fmt.Errorf("folio: canvas barcode component %q is missing from geometry projection", element.ID)
+				return fmt.Errorf("folio: canvas %s component %q is missing from geometry projection", element.Type, element.ID)
 			}
 			if !element.Value.Set || element.Value.Null || element.Value.Value == "" {
 				continue
 			}
 			content := illustrativeBarcodeContent(element.Value.Value)
+			if element.Type == template.ElementQRCode {
+				lay, warning := layoutQRCode(string(element.ID), content, qrLevelOf(element), element.Width.Value, element.Height.Value)
+				if len(lay.rects) == 0 {
+					if warning != nil {
+						reason := qrcodeUnavailableDoesNotFit
+						if warning.Code == DiagCodeQRCodeTooLong {
+							reason = qrcodeUnavailableTooLong
+						}
+						component.QRCodeUnavailable = &reason
+					}
+					continue
+				}
+				paint := &CanvasQRCodePaint{ModuleWidth: int64(lay.moduleWidth), Rects: make([]CanvasQRCodeRect, 0, len(lay.rects))}
+				for _, r := range lay.rects {
+					paint.Rects = append(paint.Rects, CanvasQRCodeRect{X: int64(r.X), Y: int64(r.Y), Width: int64(r.W), Height: int64(r.H)})
+				}
+				component.QRCode = paint
+				continue
+			}
 			lay, warning := layoutBarcode(string(element.ID), content, element.Width.Value, element.Height.Value)
 			if len(lay.bars) == 0 {
 				if warning != nil {
@@ -239,10 +304,11 @@ func addCanvasBarcodePaint(t *Template, projection *CanvasProjection) error {
 	return nil
 }
 
-// canvasBarcodeIsPlaced answers canvasElementIsPlaced's question for a
-// barcode: the render path places a column item exactly when bars are drawn.
-// A static value is decided here; a bound one is assumed placed, and
-// canvasContentBandHasBoundBarcode registers that as a cause of inexactness.
+// canvasBarcodeIsPlaced answers canvasElementIsPlaced's question for a code
+// element (barcode or qrcode): the render path places a column item exactly
+// when rects are drawn. A static value is decided here; a bound one is
+// assumed placed, and canvasContentBandHasBoundBarcode registers that as a
+// cause of inexactness.
 func canvasBarcodeIsPlaced(element template.Element) bool {
 	if !element.Value.Set || element.Value.Null || element.Value.Value == "" {
 		return false
@@ -250,15 +316,16 @@ func canvasBarcodeIsPlaced(element template.Element) bool {
 	if stringsContainsPlaceholder(element.Value.Value) {
 		return true
 	}
-	lay, _ := layoutBarcode(string(element.ID), element.Value.Value, element.Width.Value, element.Height.Value)
-	return len(lay.bars) > 0
+	lay, _ := layoutCode(element, element.Value.Value, element.Width.Value, element.Height.Value)
+	return len(lay.rects) > 0
 }
 
 // canvasContentBandHasBoundBarcode is a cause of window-count inexactness:
-// whether a bound barcode draws depends on data the canvas does not have.
+// whether a bound code element draws depends on data the canvas does not
+// have.
 func canvasContentBandHasBoundBarcode(t *Template) bool {
 	for _, element := range t.doc.Bands.Content.Elements {
-		if element.Type == template.ElementBarcode && element.Value.Set && !element.Value.Null && stringsContainsPlaceholder(element.Value.Value) {
+		if isCodeElement(element.Type) && element.Value.Set && !element.Value.Null && stringsContainsPlaceholder(element.Value.Value) {
 			return true
 		}
 	}

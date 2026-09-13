@@ -398,6 +398,11 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 			fields = append(fields, kv{"value", writeString(e.Value.Value)})
 		}
 	}
+	// spec-barcode-qr-elements: a qrcode's level. The loader refuses null,
+	// so a set value is always a string; absent stays absent (default M).
+	if e.ErrorCorrection.Set && !e.ErrorCorrection.Null {
+		fields = append(fields, kv{"errorCorrection", writeString(e.ErrorCorrection.Value)})
+	}
 	if e.Asset.Set {
 		if e.Asset.Null {
 			fields = append(fields, kv{"asset", writeNull()})

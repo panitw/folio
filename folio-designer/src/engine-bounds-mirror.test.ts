@@ -697,7 +697,7 @@ function goElementTypes(model: string): ReadonlyMap<string, string> {
 // site — so a reformat, a moved gate or a reworded refusal produces a RED here
 // rather than a vacuous pass. That is what the non-vacuity `it` below is for.
 function goScalarBindingTypes(commands: string, model: string): ReadonlyArray<string> {
-  const gate = commands.match(/^\tif ((?:element\.Type != template\.Element[A-Za-z]+(?: && )?)+) \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only [a-z ]+ components can receive a scalar binding"\)$/m)?.[1]
+  const gate = commands.match(/^\tif ((?:element\.Type != template\.Element[A-Za-z]+(?: && )?)+) \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only [a-z, ]+ components can receive a scalar binding"\)$/m)?.[1]
   if (gate === undefined) return []
   const types = goElementTypes(model)
   const resolved = [...gate.matchAll(/template\.(Element[A-Za-z]+)/g)].map((match) => types.get(match[1] as string))
@@ -751,9 +751,9 @@ describe('scalar binding legality mirror', () => {
     // in both cases. `toMatchObject` admits extra kinds and ignores order;
     // what it still refuses is a RENAMED or missing `ElementText`, which is
     // the only change that can silently unmake this tie.
-    expect(Object.fromEntries(goElementTypes(model)), 'internal/template/model.go no longer declares the ElementType constants this tie reads — ElementText above all — in a spelling this extractor understands; RE-DERIVE the extraction rather than deleting the tie. A REORDERED block or a NEW seventh element kind is not a failure of this row; only a changed SPELLING is.').toMatchObject({ ElementText: 'text', ElementImage: 'image', ElementTable: 'table', ElementLine: 'line', ElementRect: 'rect', ElementBarcode: 'barcode' })
-    expect(goScalarBindingTypes(go, model), 'component_commands.go no longer spells bindComponentScalar\'s type gate — or its refusal text — where this test can read it; RE-DERIVE the extraction rather than deleting the tie, because the pre-flight in DataPanel.tsx is only legal while this tie holds').toEqual(['text', 'barcode'])
-    expect(tsScalarBindingTypes(ts), 'engine-protocol.ts no longer declares SCALAR_BINDING_COMPONENT_TYPES on one line in the spelling this extractor reads').toEqual(['text', 'barcode'])
+    expect(Object.fromEntries(goElementTypes(model)), 'internal/template/model.go no longer declares the ElementType constants this tie reads — ElementText above all — in a spelling this extractor understands; RE-DERIVE the extraction rather than deleting the tie. A REORDERED block or a NEW eighth element kind is not a failure of this row; only a changed SPELLING is.').toMatchObject({ ElementText: 'text', ElementImage: 'image', ElementTable: 'table', ElementLine: 'line', ElementRect: 'rect', ElementBarcode: 'barcode', ElementQRCode: 'qrcode' })
+    expect(goScalarBindingTypes(go, model), 'component_commands.go no longer spells bindComponentScalar\'s type gate — or its refusal text — where this test can read it; RE-DERIVE the extraction rather than deleting the tie, because the pre-flight in DataPanel.tsx is only legal while this tie holds').toEqual(['text', 'barcode', 'qrcode'])
+    expect(tsScalarBindingTypes(ts), 'engine-protocol.ts no longer declares SCALAR_BINDING_COMPONENT_TYPES on one line in the spelling this extractor reads').toEqual(['text', 'barcode', 'qrcode'])
     // And the RUNTIME array, not only its source text: the projection guard,
     // the inspector and the data panel all read this object.
     expect([...SCALAR_BINDING_COMPONENT_TYPES]).toEqual(tsScalarBindingTypes(ts))
@@ -800,13 +800,13 @@ describe('scalar binding legality mirror', () => {
   it('turns a one-sided edit of the gate red', () => {
     // FROM GO, by widening it — the edit that would make the panel refuse a
     // pick the engine has started accepting.
-    const widenedGo = go.replace(/^\tif element\.Type != template\.ElementText && element\.Type != template\.ElementBarcode \{$/m, '\tif element.Type != template.ElementText && element.Type != template.ElementImage {')
+    const widenedGo = go.replace(/^\tif element\.Type != template\.ElementText && element\.Type != template\.ElementBarcode && element\.Type != template\.ElementQRCode \{$/m, '\tif element.Type != template.ElementText && element.Type != template.ElementBarcode && element.Type != template.ElementImage {')
     expect(widenedGo).not.toBe(go)
     expect(goScalarBindingTypes(widenedGo, model)).not.toEqual(tsScalarBindingTypes(ts))
     // FROM GO, by deleting it — which must red the NON-VACUITY row, not the
     // agreement one, so the maintainer is told the extraction stopped reading
     // rather than that the two sides disagree.
-    const deletedGo = go.replace(/^\tif element\.Type != template\.ElementText && element\.Type != template\.ElementBarcode \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only text and barcode components can receive a scalar binding"\)\n\t\}\n/m, '')
+    const deletedGo = go.replace(/^\tif element\.Type != template\.ElementText && element\.Type != template\.ElementBarcode && element\.Type != template\.ElementQRCode \{\n\t\treturn CanvasProjection\{\}, componentFailure\(id, "component\.id", "only text, barcode and qrcode components can receive a scalar binding"\)\n\t\}\n/m, '')
     expect(deletedGo).not.toBe(go)
     expect(goScalarBindingTypes(deletedGo, model)).toEqual([])
     // FROM GO, by renaming the kind constant out from under the gate: the

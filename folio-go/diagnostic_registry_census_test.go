@@ -256,6 +256,16 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 		diag.CodeBarcodeModuleTooSmall: func(t *testing.T) Result {
 			return renderBarcodeWitness(t, "1234567890", "60", `{}`)
 		},
+		// The qrcode's three, on the same terms.
+		diag.CodeQRCodeTooLong: func(t *testing.T) Result {
+			return renderQRCodeWitness(t, "{{ref}}", "H", "300", `{"ref":"`+strings.Repeat("x", 1274)+`"}`)
+		},
+		diag.CodeQRCodeModuleTooSmall: func(t *testing.T) Result {
+			return renderQRCodeWitness(t, "Folio", "M", "30", `{}`)
+		},
+		diag.CodeQRCodeDoesNotFit: func(t *testing.T) Result {
+			return renderQRCodeWitness(t, "Folio", "M", "0.02", `{}`)
+		},
 		diag.CodeBarcodeDoesNotFit: func(t *testing.T) Result {
 			return renderBarcodeWitness(t, "1234567890", "0.1", `{}`)
 		},

@@ -750,6 +750,22 @@ func requireBarcodeBars(t *testing.T, target matrixTarget, raw []byte) {
 	})
 }
 
+// captureQRCodePaymentsRender renders fixtures/qrcode-payments/ in a FRESH
+// process.
+func captureQRCodePaymentsRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessQRCodePaymentsEnvVar: "1"})
+}
+
+// requireQRCodeRects is the qrcode document's per-leg feature guard: one
+// filled rectangle per module run of its four symbols, on every target.
+func requireQRCodeRects(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	qrcodePaymentsAssertRects(raw, func(format string, args ...any) {
+		t.Fatalf("%s: qrcode-payments leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // requireDeclaredVariantsUsesFourCuts is Story 11.5's per-leg feature
 // guard, and it is why registering these legs is not a formality.
 //
@@ -2008,6 +2024,20 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "barcode-thai-bill-payment", "expected.json"},
 		requireFontFile2: false,
 		extraGuard:       requireBarcodeBars,
+		wantPages:        1,
+	},
+	{
+		// spec-barcode-qr-elements CAP-2: the first cross-target artifact
+		// carrying a qrcode — four symbols, one per error-correction level,
+		// including a Thai UTF-8 value and an EMVCo payload. It draws no
+		// text, so every byte that can differ is integer module geometry:
+		// version, mask choice, module width and centring.
+		label:            "qrcode-payments (QR codes at L, M, Q and H)",
+		slug:             "qrcode-payments",
+		capture:          captureQRCodePaymentsRender,
+		fixtureRelPath:   []string{"fixtures", "qrcode-payments", "expected.json"},
+		requireFontFile2: false,
+		extraGuard:       requireQRCodeRects,
 		wantPages:        1,
 	},
 	{

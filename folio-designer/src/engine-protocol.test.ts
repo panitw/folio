@@ -566,6 +566,29 @@ describe('canvas projection protocol guard', () => {
     expect(response({ ...barcode, barcodeUnavailable: 'something-else' })).toBeUndefined()
   })
 
+  it('admits a qrcode with Go-computed module runs, a value, a binding and a level, and refuses malformed qrcode paint', () => {
+    const response = (component: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [component] } } })
+    // Inside this fixture's 1000 mp band, so every refusal below is the qrcode rule's doing.
+    const qrcode = { id: 'e1', type: 'qrcode', band: 'content', x: 0, y: 0, width: 500, height: 500, resizable: true }
+    const qrcodePaint = { moduleWidth: 10, rects: [{ x: 40, y: 40, width: 70, height: 10 }, { x: 130, y: 40, width: 10, height: 10 }, { x: 40, y: 50, width: 10, height: 10 }] }
+    expect(response(qrcode)).toBeDefined()
+    expect(response({ ...qrcode, value: 'ชำระเงิน {{ref}}\\r', binding: 'ref', qrcode: qrcodePaint })).toBeDefined()
+    expect(response({ ...qrcode, qrcodeUnavailable: 'tooLong' })).toBeDefined()
+    // A non-square module, a width that is not whole modules, a run before the
+    // previous one in its row, a row out of order, a rect past the box, a
+    // non-integer, a surplus key, paint on another kind, and a reason beside paint.
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 0, y: 0, width: 10, height: 20 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 0, y: 0, width: 15, height: 10 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 100, y: 0, width: 10, height: 10 }, { x: 50, y: 0, width: 10, height: 10 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 0, y: 20, width: 10, height: 10 }, { x: 0, y: 10, width: 10, height: 10 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 495, y: 0, width: 10, height: 10 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 0.5, y: 0, width: 10, height: 10 }] } })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: { moduleWidth: 10, rects: [{ x: 0, y: 0, width: 10, height: 10, dark: true }] } })).toBeUndefined()
+    expect(response({ ...qrcode, type: 'rect', qrcode: qrcodePaint })).toBeUndefined()
+    expect(response({ ...qrcode, qrcode: qrcodePaint, qrcodeUnavailable: 'doesNotFit' })).toBeUndefined()
+    expect(response({ ...qrcode, qrcodeUnavailable: 'unencodable' })).toBeUndefined()
+  })
+
   // STORY 14.4 / P3. THE SCALAR-BINDING KIND GATE, TESTED AS BEHAVIOUR.
   //
   // ⚠ WHY THE ROW ABOVE DOES NOT COVER IT. `response({ ...text, type: 'image' })`
@@ -1107,7 +1130,7 @@ describe('the preview literal is rebuilt in full at both protocol hops', () => {
 
 
 describe('authored common property evidence', () => {
-  const fields = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges']
+  const fields = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'errorCorrection']
   const absent = Object.fromEntries(fields.map((key) => [key, { state: 'absent' }]))
   const response = (authored: object) => ({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'authored-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components: [{ id: 'e1', type: 'rect', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, authored }] } } })
   it('admits absent/null/false/zero/empty independently of resolved paint', () => {
@@ -1120,6 +1143,7 @@ describe('authored common property evidence', () => {
     { ...absent, color: { state: 'value', value: 'x'.repeat(MAX_CANVAS_PROPERTY_STRING + 1) } },
     { ...absent, borderWidth: { state: 'value', value: Number.MAX_SAFE_INTEGER + 1 } },
     { ...absent, borderEdges: { state: 'value', value: ['middle'] } },
+    { ...absent, errorCorrection: { state: 'value', value: 'X' } },
   ])('rejects malformed, surplus, or unbounded authored evidence', (authored) => {
     expect(parseInbound(response(authored))).toBeUndefined()
   })

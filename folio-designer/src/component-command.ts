@@ -22,7 +22,7 @@
 // hand-roll. Open a data file, click a node, press Connect — no typing.
 import { commandBytes, jsonArray, jsonBoolean, jsonNumber, jsonString } from './command-json'
 
-export type PaletteKind = 'text' | 'image' | 'table' | 'line' | 'rect' | 'barcode'
+export type PaletteKind = 'text' | 'image' | 'table' | 'line' | 'rect' | 'barcode' | 'qrcode'
 
 const point = (value: number): string => jsonNumber(Math.round(value * 1000) / 1000)
 

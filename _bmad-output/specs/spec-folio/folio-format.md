@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.0` if any element is a `barcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.0` if any element is a `barcode` or a `qrcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -441,7 +441,7 @@ page ends. Where the pages fall is derived from the four rules above and from no
 
 ## Elements
 
-Common to all six types:
+Common to all seven types:
 
 ```json
 {
@@ -457,7 +457,7 @@ Common to all six types:
 | Field | Meaning |
 |---|---|
 | `id` | `e` + the counter in lowercase base 36 — `e1`, `ea`, `e1z`. Opaque: never derived from position or content, never reused, never renumbered on save (AD-10). Every diagnostic that concerns an element carries this. |
-| `type` | `text` · `image` · `table` · `line` · `rect` · `barcode`. The set is closed (FR4); a seventh type is a load error. `barcode` extends the set, so a document carrying one declares `4.0` and a `3.x` reader refuses it. |
+| `type` | `text` · `image` · `table` · `line` · `rect` · `barcode` · `qrcode`. The set is closed (FR4); an eighth type is a load error. `barcode` and `qrcode` extend the set, so a document carrying either declares `4.0` and a `3.x` reader refuses it. |
 | `x`, `y`, `width`, `height` | Band-relative position and size, in points. **A `table` declares `x`, `y`, and an authored total `width` for proportional columns; it never declares `height`** — see below. For a **text** element, `width` bounds the laid-out content: content wider than the declared `width` is clipped at the box's left/right edges, never reflowed and never dropped, and a diagnostic names the element (FR44, Story 2.8). `height` on a **text** element is **not** a clip bound — content taller than the declared `height` renders in full and no diagnostic is reported, because no layout stage consults a text element's declared height. (`style.lineSpacing` does let an author set the leading, so a vertical bound is now something a template can be tuned towards by hand; it still is not something the engine checks the box against.) For an **image** element, `height` (together with `width`) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched (AD-24), and is reserved for `valign` should a future story add one. |
 | `visibleIf` | *Optional.* A bare expression (no `{{ }}` wrapping — see Expressions, below); the element is absent from the page model when it evaluates false, and its siblings do not move (FR20, AD-24; Story 3.5). Evaluated during bind, before pagination — it can never depend on the page an element lands on (AD-4). Condition semantics are `if()`'s own, unchanged: `true`/`false` decide visibility directly; an explicit `null` result is silently `false` (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A **field that is absent, or present with the JSON value `null`** (`"visibleIf": null`) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a *different* null from the condition **resolving** to `null` at evaluation, which is what hides the element. Boolean/null literals are valid conditions; numeric/string outcomes (e.g. `"visibleIf": "42"`) are rejected at **load**, including known outcomes in either conditional branch. `"visibleIf": "null"` hides the element. **Not valid on a table column — rejected at load, naming the column id** (Story 3.5; row-level visibility would make pagination a function of data, which FR25 does not define). |
 | `keepTogether` | *Optional.* A string naming a **keep-together group**, e.g. `"keepTogether": "signature"`. Every content-band element carrying the same tag paginates as **one indivisible unit** (FR51): the whole set stays within the window it started in, or the whole set moves to the next one — each member still at its own declared position, with no sibling moved, no gap invented and no page left empty. The members need not be adjacent in the element list, and a tag is scoped to the document. **Content band only** — rejected at load on a `pageHeader`/`pageFooter` element, which is repeated verbatim on every page and never paginated — and **not valid on a `table`**, whose rows already carry their own grouping, rejected at load naming the element and the field. An absent field and an explicit `null` both mean "no group declared". A group taller than a whole content window **only in aggregate** — every member fitting, the sum not — is *clipped*, not refused; a group holding an element that is by itself taller than a content window is **refused**, naming that element. The tag is what makes such an element unsatisfiable, so removing it is the author's fix. See *Pagination*, above. Declaring this key raises the document's `version` to `1.2`. |
@@ -483,6 +483,23 @@ key (a barcode has no colour, border, font or alignment), a non-ASCII character 
 a character above ASCII 127 omits that barcode with Warning `BARCODE_UNENCODABLE`; a symbol that
 cannot fit at 1 millipoint per module omits it with Warning `BARCODE_DOES_NOT_FIT`; a module
 narrower than 0.25 mm (709 millipoints) still draws, with Warning `BARCODE_MODULE_TOO_SMALL`.
+`-strict` turns each into a failure.
+**`qrcode`** — adds `"value"`, the content, bound exactly as a barcode's `value` (the same evaluator,
+the same stored control characters and designer escapes, the same `null`/empty and absent-path
+rules, and the same refusal of any `style` key and of `{{page}}`/`{{pages}}`), and
+adds `"errorCorrection"`, optional, one of the closed set `L` · `M` · `Q` · `H` (about 7, 15, 25 and 30% damage
+recovered). An absent `errorCorrection` means `M` and is saved absent; `null`, any other value, or the
+key on any other element type is a load error. The resolved string is encoded as a **QR Code**
+(ISO/IEC 18004 Model 2) in byte mode over its UTF-8 bytes, with no ECI, at the smallest version
+(1–40) that holds it at that level; the mask is the one with the lowest penalty score, ties to the
+lowest mask number. It is drawn as black filled rectangles — each row's dark modules merged into
+horizontal runs — in a square symbol with a 4-module quiet zone inside the box. The module is the
+largest whole number of millipoints for which the symbol plus quiet zone fits the smaller of the
+box's width and height, and the symbol is centred on both axes. Refused at load: static text outside
+`{{ }}` already longer than a version-40 symbol holds at the element's level. At render, and never
+stopping the render: data too long for version 40 omits that QR code with Warning `QRCODE_TOO_LONG`;
+a symbol that cannot fit at 1 millipoint per module omits it with Warning `QRCODE_DOES_NOT_FIT`; a
+module narrower than 0.5 mm (1418 millipoints) still draws, with Warning `QRCODE_MODULE_TOO_SMALL`.
 `-strict` turns each into a failure.
 
 ### `table`
@@ -555,7 +572,7 @@ the frame strokes an edge, no header or cell edge is stroked on that same line. 
 > stroked twice and whose frame grew heavier as rows were added. A document that relied on that
 > meaning now loses its grid. This was chosen over a load-time migration: a legacy arm in the loader
 > would outlive everyone who remembers why it is there, and the two meanings cannot both be the
-> default. `SupportedVersion` rose to `3.1` for this change, and `SupportedMajor` stays `3`. `SupportedVersion` has since risen to `3.2` for `columns[].headerAlign`, to `3.3` for numbers in text, and to `4.0` (`SupportedMajor` `4`) for the `barcode` element type. An existing document still
+> default. `SupportedVersion` rose to `3.1` for this change, and `SupportedMajor` stays `3`. `SupportedVersion` has since risen to `3.2` for `columns[].headerAlign`, to `3.3` for numbers in text, and to `4.0` (`SupportedMajor` `4`) for the `barcode` element type, which the `qrcode` element type later joined without a further change. An existing document still
 > loads and renders with the new meaning; there is no version-gated second behaviour. An author who wants
 > the grid back declares `rules: {"between": ["columns", "rows"]}`, which is not quite what
 > `style.border` used to mean, because the perimeter is now the frame's and each interior line is

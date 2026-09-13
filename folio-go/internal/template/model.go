@@ -412,6 +412,10 @@ const (
 	// content (spec-barcode-qr-elements). Extending this closed set is a
 	// MAJOR change: a document carrying one declares 4.0.
 	ElementBarcode ElementType = "barcode"
+	// ElementQRCode is a QR Code symbol whose bindable `value` is its
+	// content, encoded at the optional `errorCorrection` level
+	// (spec-barcode-qr-elements). It joins the barcode's 4.0 rank.
+	ElementQRCode ElementType = "qrcode"
 )
 
 // ElementID is the canonical spelling of an element/column id: "e" plus
@@ -452,8 +456,13 @@ type Element struct {
 	// model).
 	KeepTogether Presence[string]
 
-	// text
+	// text, barcode, qrcode
 	Value Presence[string]
+
+	// ErrorCorrection is a qrcode's error-correction level, one of
+	// QRErrorCorrectionTokens. Absent means M. Never null, and never on any
+	// other element type: both are refused at load.
+	ErrorCorrection Presence[string]
 
 	// image
 	Asset Presence[string]

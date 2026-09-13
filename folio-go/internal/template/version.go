@@ -105,6 +105,8 @@ import (
 // element type. Extending the closed element-type set is a MAJOR change
 // (D-1.4.12): a 3.x reader refuses the unknown type rather than silently
 // dropping the code. Only a document that carries a barcode declares it.
+// The `qrcode` element type later joined the same 4.0 rank with no new
+// major: a document carrying either code element declares 4.0.
 const (
 	SupportedMajor   = 4
 	SupportedVersion = "4.0"
@@ -348,7 +350,9 @@ func versionRequiredByContent(d *Document) string {
 			if el.Type == ElementTable && el.Width.Set && rankProportionalTable > highest {
 				highest = rankProportionalTable
 			}
-			if el.Type == ElementBarcode && rankBarcode > highest {
+			// A qrcode joins the barcode's rank: both extend the closed
+			// element-type set in the same 4.0 major.
+			if (el.Type == ElementBarcode || el.Type == ElementQRCode) && rankBarcode > highest {
 				highest = rankBarcode
 			}
 			// Story 7.7: Presence.Set, on `color`'s terms — an explicit

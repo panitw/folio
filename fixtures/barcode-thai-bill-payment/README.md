@@ -31,7 +31,8 @@ separators — comes from the template; the suffix, references and amount come f
 
 ## Manual check (not automated)
 
-Scan the barcode in `expected.pdf` with a phone scanner or ZXing. The decoded text must equal the
+Run `uv run --with zxing-cpp --with pillow python3 tools/codescan/scan.py fixtures/barcode-thai-bill-payment/expected.pdf`
+from the repository root (or scan `expected.pdf` with a phone scanner). The decoded text must equal the
 string above. This repository has no Code 128 decoder outside its own test code, so this scan is the
 only check against an independent reader.
 

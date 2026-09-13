@@ -312,6 +312,11 @@ type CanvasComponent struct {
 	// a barcode with a value cannot be painted.
 	Barcode            *CanvasBarcodePaint `json:"barcode,omitempty"`
 	BarcodeUnavailable *string             `json:"barcodeUnavailable,omitempty"`
+	// QRCode is a qrcode component's Go-computed module runs
+	// (barcode_element.go). QRCodeUnavailable is set instead, to "tooLong" or
+	// "doesNotFit", when a qrcode with a value cannot be painted.
+	QRCode            *CanvasQRCodePaint `json:"qrcode,omitempty"`
+	QRCodeUnavailable *string            `json:"qrcodeUnavailable,omitempty"`
 	// Columns is Story 14.9's per-column paint data for a TABLE, and it is
 	// absent — never an empty array — for a table that declares none, and for
 	// every non-table component. See CanvasTableColumn below.
@@ -1089,7 +1094,7 @@ func canvasElementIsPlaced(element template.Element) bool {
 		return tableDrawsColumns(element)
 	case template.ElementImage:
 		return imageDrawsItsAsset(element) || elementDeclaresBox(element)
-	case template.ElementBarcode:
+	case template.ElementBarcode, template.ElementQRCode:
 		return canvasBarcodeIsPlaced(element)
 	default:
 		return elementDeclaresBox(element)
@@ -1876,7 +1881,7 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 					component.Binding = stringPointer(binding)
 				}
 			}
-			if element.Type == template.ElementBarcode && element.Value.Set && !element.Value.Null {
+			if isCodeElement(element.Type) && element.Value.Set && !element.Value.Null {
 				// The designer's single-line field shows control characters
 				// as escapes; the command layer decodes them back.
 				escaped := encodeBarcodeEscapes(element.Value.Value)

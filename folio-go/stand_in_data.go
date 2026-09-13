@@ -321,6 +321,9 @@ func init() {
 		template.ElementBarcode: func(g *standInGenerator, _ *Template, element template.Element) error {
 			return g.collectTextValue(element)
 		},
+		template.ElementQRCode: func(g *standInGenerator, _ *Template, element template.Element) error {
+			return g.collectTextValue(element)
+		},
 		// Element.Asset is a literal `assets` map key and is never
 		// bound; line and rect carry no kind-specific field at all.
 		// Style.*, altRowBackground and headerStyle.* are negative

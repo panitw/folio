@@ -49,6 +49,9 @@ var codePins = []struct {
 	{"CodeBarcodeUnencodable", CodeBarcodeUnencodable, "BARCODE_UNENCODABLE"},
 	{"CodeBarcodeModuleTooSmall", CodeBarcodeModuleTooSmall, "BARCODE_MODULE_TOO_SMALL"},
 	{"CodeBarcodeDoesNotFit", CodeBarcodeDoesNotFit, "BARCODE_DOES_NOT_FIT"},
+	{"CodeQRCodeTooLong", CodeQRCodeTooLong, "QRCODE_TOO_LONG"},
+	{"CodeQRCodeModuleTooSmall", CodeQRCodeModuleTooSmall, "QRCODE_MODULE_TOO_SMALL"},
+	{"CodeQRCodeDoesNotFit", CodeQRCodeDoesNotFit, "QRCODE_DOES_NOT_FIT"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

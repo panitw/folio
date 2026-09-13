@@ -19,7 +19,28 @@ import (
 // of the tag literals.
 
 var closedElementTypes = map[string]bool{
-	"text": true, "image": true, "table": true, "line": true, "rect": true, "barcode": true,
+	"text": true, "image": true, "table": true, "line": true, "rect": true, "barcode": true, "qrcode": true,
+}
+
+// QRErrorCorrectionTokens is the closed set a qrcode's `errorCorrection`
+// admits, in the order a refusal names them. A slice, looked up by
+// IsQRErrorCorrection, so the refusal message is derived from the set that
+// is enforced and no map is ranged.
+var QRErrorCorrectionTokens = []string{"L", "M", "Q", "H"}
+
+// QRErrorCorrectionDefault is the level a qrcode without the key encodes at.
+const QRErrorCorrectionDefault = "M"
+
+// IsQRErrorCorrection reports whether s is a member of the error-correction
+// set. Exported for the property command, so the command door and the file
+// door admit exactly the same values.
+func IsQRErrorCorrection(s string) bool {
+	for _, token := range QRErrorCorrectionTokens {
+		if s == token {
+			return true
+		}
+	}
+	return false
 }
 
 var closedPageOrientations = map[string]bool{

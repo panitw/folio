@@ -1944,10 +1944,10 @@ describe('application shell', () => {
   const ruleLines = (predicate: (selector: string) => boolean) => sheetWithoutComments().split('\n')
     .filter((line) => line.includes('{') && predicate(line.slice(0, line.indexOf('{'))))
 
-  it('offers only the six fixed palette components and sends an opaque Go placement command', async () => {
+  it('offers only the seven fixed palette components and sends an opaque Go placement command', async () => {
     const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
-    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode'])
+    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code'])
     // THE POSITIVE CONTROL for the absence asserted further down: this is what
     // an empty selection puts in the inspector, and it is what placing used to
     // leave standing.
@@ -5851,6 +5851,44 @@ describe('spec-barcode-element: barcode canvas paint and inspector', () => {
   })
 })
 
+describe('spec-qrcode-element: QR code canvas paint and inspector', () => {
+  const absent = { state: 'absent' as const }
+  const authored = { visibleIf: absent, fontFamily: absent, fontSize: absent, lineSpacing: absent, bold: absent, italic: absent, align: absent, valign: absent, color: absent, background: absent, borderWidth: absent, borderColor: absent, borderEdges: absent, errorCorrection: { state: 'value' as const, value: 'H' as const } }
+  const qrcodeComponent = { id: 'e1', type: 'qrcode' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 72_000, resizable: true, value: 'Folio', authored, qrcode: { moduleWidth: 2_000, rects: [{ x: 8_000, y: 8_000, width: 14_000, height: 2_000 }, { x: 8_000, y: 10_000, width: 2_000, height: 2_000 }] } }
+
+  it('draws one rect per Go-computed module run, placed and sized through the zoom rule', async () => {
+    const view = render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [qrcodeComponent] } }} />)
+    const rects = () => Array.from(view.container.querySelectorAll<HTMLElement>('[data-component-id="e1"] .canvas-qrcode-rect'))
+    expect(rects()).toHaveLength(2)
+    expect(rects().map((rect) => [rect.style.left, rect.style.top, rect.style.width, rect.style.height])).toEqual([['8px', '8px', '14px', '2px'], ['8px', '10px', '2px', '2px']])
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    await waitFor(() => expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('110%'))
+    expect(rects().map((rect) => [rect.style.left, rect.style.width])).toEqual([['8.8px', '15.4px'], ['8.8px', '2.2px']])
+  })
+
+  it('echoes the engine reason when a QR code cannot be painted', () => {
+    const { qrcode: _paint, ...unpainted } = qrcodeComponent
+    render(<App engine={engine()} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [{ ...unpainted, qrcodeUnavailable: 'tooLong' as const }] } }} />)
+    expect(screen.getByText('QR code not drawn — its value is too long for a QR Code at this level')).toBeInTheDocument()
+    expect(document.querySelector('.canvas-qrcode-rect')).toBeNull()
+  })
+
+  it('offers Content and an error-correction control, no Fill or Border, and sends the level as an engine property', async () => {
+    const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: { ...canvas, components: [qrcodeComponent] } } }))
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: { ...canvas, components: [qrcodeComponent] } }} />)
+    fireEvent.click(screen.getByLabelText('qrcode component e1'))
+    expect(screen.getByRole('textbox', { name: 'Content' })).toHaveValue('Folio')
+    expect(screen.queryByRole('textbox', { name: /^(Fill|Background|Border)/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Visible if' })).toBeInTheDocument()
+    // The authored level is the pressed segment; pressing another sets it.
+    expect(screen.getByRole('button', { name: /Error correction H/ })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /Error correction Q/ }))
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    const sent = (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+    expect(sent.at(-1)).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e1"],"changes":{"errorCorrection":{"op":"set","value":"Q"}}}')
+  })
+})
+
 describe('Story 5.13: image asset selection', () => {
   const imageComponent = { id: 'e1', type: 'image' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 48_000, resizable: true, image: { mediaType: 'image/png', assetKey: 'a'.repeat(64), width: 300, height: 200, drawX: 6_000, drawY: 8_000, drawWidth: 60_000, drawHeight: 40_000 } }
   const undecodableImageComponent = { id: 'e2', type: 'image' as const, band: 'content' as const, x: 0, y: 60_000, width: 72_000, height: 48_000, resizable: true, imageUnavailable: 'undecodable' as const }
@@ -8930,7 +8968,7 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.getByLabelText('Component palette')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode'])
+    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code'])
     expect(screen.queryByLabelText('Page thumbnails')).toBeNull()
     expect(screen.queryByText('PAGES')).toBeNull()
   })
@@ -10514,7 +10552,7 @@ describe('Story 17.1: the canvas follows the content field', () => {
 describe('common property selection scope', () => {
   const textComponent = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true, value: 'Sample' }
   const absent = { state: 'absent' as const }
-  const authored = { visibleIf: absent, fontFamily: absent, fontSize: absent, lineSpacing: absent, bold: absent, italic: absent, align: absent, valign: absent, color: absent, background: absent, borderWidth: absent, borderColor: absent, borderEdges: absent }
+  const authored = { visibleIf: absent, fontFamily: absent, fontSize: absent, lineSpacing: absent, bold: absent, italic: absent, align: absent, valign: absent, color: absent, background: absent, borderWidth: absent, borderColor: absent, borderEdges: absent, errorCorrection: absent }
   const members = [
     { ...textComponent, id: 'e1', authored },
     { ...textComponent, id: 'e2', x: 100000, y: 50000, authored },

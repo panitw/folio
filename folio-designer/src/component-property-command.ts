@@ -28,7 +28,7 @@ import { commandBytes, jsonArray, jsonBoolean, jsonNumber, jsonObject, jsonStrin
 // rather than merely unlikely. The order is Go's `propertyOrder`
 // (`component_commands.go`), member for member, which is where it always came
 // from.
-export const PROPERTY_FIELDS = ['x', 'y', 'width', 'height', 'value', 'expression', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const
+export const PROPERTY_FIELDS = ['x', 'y', 'width', 'height', 'value', 'expression', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'errorCorrection'] as const
 export type PropertyField = typeof PROPERTY_FIELDS[number]
 export const isPropertyField = (value: string): value is PropertyField => (PROPERTY_FIELDS as ReadonlyArray<string>).includes(value)
 

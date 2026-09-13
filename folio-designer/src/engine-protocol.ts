@@ -227,7 +227,7 @@ export const BAND_CONTENT_WINDOW_MARGIN = 1
 // binding through `configureTableBinding` / `updateTableColumnBinding`. What
 // this array closes is SCALAR binding, and nothing else.
 export type CanvasComponentType = CanvasProjection['components'][number]['type']
-export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text', 'barcode']
+export const SCALAR_BINDING_COMPONENT_TYPES: ReadonlyArray<CanvasComponentType> = ['text', 'barcode', 'qrcode']
 
 // STORY 14.9 — ONE TABLE COLUMN AS THE CANVAS PROJECTION CARRIES IT, derived
 // from the projection type rather than restated, so the painter and the guard
@@ -408,6 +408,8 @@ export type AuthoredProperties = Readonly<Record<'fontFamily', AuthoredProperty<
   borderWidth: AuthoredProperty<number>
   borderColor: AuthoredProperty<string>
   borderEdges: AuthoredProperty<ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>>
+  // spec-barcode-qr-elements: a qrcode's level; absent (the default M) on every other kind.
+  errorCorrection: AuthoredProperty<'L' | 'M' | 'Q' | 'H'>
 }>
 
 export type CanvasProjection = Readonly<{
@@ -473,7 +475,7 @@ export type CanvasProjection = Readonly<{
 	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect' | 'barcode'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; labelLines: ReadonlyArray<string>; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable'; barcode?: Readonly<{ moduleWidth: number; bars: ReadonlyArray<Readonly<{ x: number; width: number }>> }>; barcodeUnavailable?: 'unencodable' | 'doesNotFit' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect' | 'barcode' | 'qrcode'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; labelLines: ReadonlyArray<string>; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable'; barcode?: Readonly<{ moduleWidth: number; bars: ReadonlyArray<Readonly<{ x: number; width: number }>> }>; barcodeUnavailable?: 'unencodable' | 'doesNotFit'; qrcode?: Readonly<{ moduleWidth: number; rects: ReadonlyArray<Readonly<{ x: number; y: number; width: number; height: number }>> }>; qrcodeUnavailable?: 'tooLong' | 'doesNotFit' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -628,7 +630,7 @@ const isCanonicalEdgeList = (value: unknown): boolean => {
 // loaded document. This is deliberately the same spirit as `isCanonicalEdgeList`
 // beside it, which also refuses non-canonical spellings of a legal value.
 const isThousandthsLengthString = (value: unknown): boolean => typeof value === 'string' && (value === '' || (/^(?:0|[1-9][0-9]*)$/.test(value) && Number.isSafeInteger(Number(value))))
-const authoredKeys = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges'] as const
+const authoredKeys = ['visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'errorCorrection'] as const
 const isAuthoredProperties = (value: unknown): value is AuthoredProperties => isRecord(value) && hasExactKeys(value, [...authoredKeys]) && authoredKeys.every((key) => {
   const field = value[key]
   if (!isRecord(field)) return false
@@ -639,6 +641,7 @@ const isAuthoredProperties = (value: unknown): value is AuthoredProperties => is
   if (key === 'borderEdges') return Array.isArray(field.value) && field.value.length <= 4 && new Set(field.value).size === field.value.length && field.value.every((edge) => ['top', 'right', 'bottom', 'left'].includes(edge))
   if (key === 'align') return ['left', 'center', 'right', 'justify'].includes(field.value as string)
   if (key === 'valign') return ['top', 'middle', 'bottom'].includes(field.value as string)
+  if (key === 'errorCorrection') return ['L', 'M', 'Q', 'H'].includes(field.value as string)
   return typeof field.value === 'string' && field.value.length <= MAX_CANVAS_PROPERTY_STRING
 })
 
@@ -805,13 +808,13 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     }
     return true
   })
-  const componentTypes = ['text', 'image', 'table', 'line', 'rect', 'barcode']
+  const componentTypes = ['text', 'image', 'table', 'line', 'rect', 'barcode', 'qrcode']
   const bandNames = ['pageHeader', 'content', 'pageFooter']
   if (!bandsValid) return false
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
-	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable', 'barcode', 'barcodeUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
+	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable', 'barcode', 'barcodeUnavailable', 'qrcode', 'qrcodeUnavailable']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     if (component.authored !== undefined && !isAuthoredProperties(component.authored)) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
@@ -855,7 +858,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
     // MaxLineSpacingThousandths, D-7.2.3). Admitting the value is not
     // adjudicating it — a value Go committed is a value Go already ruled on.
     if (component.lineSpacing !== undefined && (typeof component.lineSpacing !== 'number' || !Number.isSafeInteger(component.lineSpacing) || component.lineSpacing < MIN_LINE_SPACING_THOUSANDTHS || component.lineSpacing > MAX_LINE_SPACING_THOUSANDTHS)) return false
-	if (component.type !== 'text' && component.type !== 'barcode' && component.value !== undefined) return false
+	if (component.type !== 'text' && component.type !== 'barcode' && component.type !== 'qrcode' && component.value !== undefined) return false
 	// STORY 14.4: the same array the panel's pre-flight reads, so a Go-side
 	// change to the scalar-binding gate cannot leave this guard and that gate
 	// spelling two different rules. A HOIST, NOT A CHANGE — `['text']` was
@@ -919,6 +922,11 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
 	if (!isBarcodePaint(component.barcode, box)) return false
 	if (component.type !== 'barcode' && component.barcode !== undefined) return false
 	if (component.barcodeUnavailable !== undefined && (component.type !== 'barcode' || component.barcode !== undefined || !['unencodable', 'doesNotFit'].includes(component.barcodeUnavailable as string))) return false
+	// The qrcode pair, on the barcode pair's terms: Go-computed module runs,
+	// legal only on a qrcode, with a bounded reason only beside an absent paint.
+	if (!isQRCodePaint(component.qrcode, box)) return false
+	if (component.type !== 'qrcode' && component.qrcode !== undefined) return false
+	if (component.qrcodeUnavailable !== undefined && (component.type !== 'qrcode' || component.qrcode !== undefined || !['tooLong', 'doesNotFit'].includes(component.qrcodeUnavailable as string))) return false
 	return true
   })
 }
@@ -938,6 +946,32 @@ const isBarcodePaint = (value: unknown, box: Record<string, number>): boolean =>
     if (typeof x !== 'number' || typeof width !== 'number' || !Number.isSafeInteger(x) || !Number.isSafeInteger(width) || x < right || width <= 0 || width % module !== 0) return false
     right = x + width
     return right <= box.width
+  })
+}
+
+// isQRCodePaint admits a qrcode's module runs as Go projects them: one positive
+// module width, and rects with exactly x, y, width and height, all integers,
+// each one module tall (square modules) and a whole number of modules wide,
+// ordered top to bottom and left to right within a row with no two touching,
+// and inside the component's own box. Coordinates are component-relative.
+const isQRCodePaint = (value: unknown, box: Record<string, number>): boolean => {
+  if (value === undefined) return true
+  if (!isRecord(value) || !hasExactKeys(value, ['moduleWidth', 'rects'])) return false
+  const module = value.moduleWidth
+  if (typeof module !== 'number' || !Number.isSafeInteger(module) || module <= 0 || !Array.isArray(value.rects) || value.rects.length === 0) return false
+  let rowY = -1
+  let right = 0
+  return value.rects.every((rect) => {
+    if (!isRecord(rect) || !hasExactKeys(rect, ['x', 'y', 'width', 'height'])) return false
+    const { x, y, width, height } = rect
+    if (![x, y, width, height].every((n) => typeof n === 'number' && Number.isSafeInteger(n))) return false
+    const [rx, ry, rw, rh] = [x, y, width, height] as number[]
+    if (rx < 0 || ry < 0 || rh !== module || rw <= 0 || rw % module !== 0) return false
+    if (ry < rowY || (ry === rowY && rx <= right)) return false
+    if (ry > rowY && rowY >= 0 && (ry - rowY) % module !== 0) return false
+    rowY = ry
+    right = rx + rw
+    return right <= (box.width as number) && ry + rh <= (box.height as number)
   })
 }
 

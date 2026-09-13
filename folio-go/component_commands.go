@@ -1010,8 +1010,8 @@ func bindComponentScalar(t *Template, raw map[string]json.RawMessage) (CanvasPro
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
-	if element.Type != template.ElementText && element.Type != template.ElementBarcode {
-		return CanvasProjection{}, componentFailure(id, "component.id", "only text and barcode components can receive a scalar binding")
+	if element.Type != template.ElementText && element.Type != template.ElementBarcode && element.Type != template.ElementQRCode {
+		return CanvasProjection{}, componentFailure(id, "component.id", "only text, barcode and qrcode components can receive a scalar binding")
 	}
 	// The generated expression is canonical and then independently reparsed by
 	// wasm.Engine before installation. No sample bytes or local tree metadata
@@ -1322,7 +1322,7 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 func propertyPath(changes map[string]json.RawMessage) string {
 	// This is a fixed command vocabulary, so use its canonical order rather
 	// than ranging a map (diagnostic location must be repeatable too).
-	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"} {
+	for _, key := range []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "errorCorrection"} {
 		if _, ok := changes[key]; ok {
 			return key
 		}
@@ -1379,13 +1379,17 @@ func styleFor(element *template.Element) *template.Style {
 
 func applyPropertyChanges(t *Template, element *template.Element, changes map[string]json.RawMessage) error {
 	allowed := map[string]bool{"x": true, "y": true, "visibleIf": true}
-	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"}
+	propertyOrder := []string{"x", "y", "width", "height", "value", "expression", "visibleIf", "fontFamily", "fontSize", "lineSpacing", "bold", "italic", "align", "valign", "color", "background", "borderWidth", "borderColor", "borderEdges", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "errorCorrection"}
 	if element.Type != template.ElementTable {
 		allowed["width"], allowed["height"] = true, true
 	}
-	if element.Type == template.ElementText || element.Type == template.ElementBarcode {
+	if element.Type == template.ElementText || isCodeElement(element.Type) {
 		allowed["value"] = true
 		allowed["expression"] = true
+	}
+	if element.Type == template.ElementQRCode {
+		// spec-barcode-qr-elements: the one option a QR code carries.
+		allowed["errorCorrection"] = true
 	}
 	if element.Type == template.ElementText || element.Type == template.ElementImage || element.Type == template.ElementTable || element.Type == template.ElementLine || element.Type == template.ElementRect {
 		for _, key := range []string{"background", "borderWidth", "borderColor", "borderEdges"} {
@@ -1494,14 +1498,14 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 					*target = template.Presence[geom.Length]{Set: true, Value: length}
 				}
 			}
-		case "value", "expression", "visibleIf", "fontFamily", "align", "valign", "color", "background", "borderColor":
+		case "value", "expression", "visibleIf", "fontFamily", "align", "valign", "color", "background", "borderColor", "errorCorrection":
 			var text string
 			if !clear && !setNull {
 				text, err = propertyString(value)
 				if err != nil {
 					return fmt.Errorf("%s: %w", key, err)
 				}
-				if element.Type == template.ElementBarcode && (key == "value" || key == "expression") {
+				if isCodeElement(element.Type) && (key == "value" || key == "expression") {
 					// The designer spells control characters as \r, \n and
 					// \\ outside {{ }}; the document stores the characters.
 					decoded, derr := decodeBarcodeEscapes(text)
@@ -1598,6 +1602,22 @@ func applyPropertyChanges(t *Template, element *template.Element, changes map[st
 						return fmt.Errorf("align must be one of %s", strings.Join(tokens, ", "))
 					}
 					st.Align = template.Presence[string]{Set: true, Value: text}
+				}
+			case "errorCorrection":
+				// Modelled on align: set validates against the loader's own
+				// closed set (template.IsQRErrorCorrection), clear removes the
+				// key (the default M), and null is refused because the loader
+				// refuses it.
+				if setNull {
+					return fmt.Errorf("errorCorrection does not support null")
+				}
+				if clear {
+					element.ErrorCorrection = template.Presence[string]{}
+				} else {
+					if !template.IsQRErrorCorrection(text) {
+						return fmt.Errorf("errorCorrection must be one of %s", strings.Join(template.QRErrorCorrectionTokens, ", "))
+					}
+					element.ErrorCorrection = template.Presence[string]{Set: true, Value: text}
 				}
 			case "valign":
 				if setNull {
@@ -1846,7 +1866,7 @@ func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 	}
 	elementType := template.ElementType(kind)
 	if !paletteElementType(elementType) {
-		return CanvasProjection{}, fmt.Errorf("folio: component.type must be text, image, table, line, rect, or barcode")
+		return CanvasProjection{}, fmt.Errorf("folio: component.type must be text, image, table, line, rect, barcode, or qrcode")
 	}
 	bandName, _, err := commandBand(raw)
 	if err != nil {
@@ -1903,11 +1923,20 @@ const barcodeDropWidth, barcodeDropHeight geom.Length = 216000, 48000
 // edits or binds it: ten digits, a compact set-C symbol.
 const barcodeStarterValue = "1234567890"
 
+// A QR code drops as a 72 pt square: its starter value is a version-1 symbol
+// (21 modules plus an 8-module quiet zone), so modules are 2,482 mp, well
+// above 0.5 mm. Both sides sit on the 6pt grid.
+const qrcodeDropSide geom.Length = 72000
+
+// qrcodeStarterValue is what a newly placed QR code encodes until the author
+// edits or binds it.
+const qrcodeStarterValue = "Folio"
+
 // paletteElementType is the closed set of kinds a create or drop command may
 // place: every element type the format declares.
 func paletteElementType(elementType template.ElementType) bool {
 	switch elementType {
-	case template.ElementText, template.ElementImage, template.ElementTable, template.ElementLine, template.ElementRect, template.ElementBarcode:
+	case template.ElementText, template.ElementImage, template.ElementTable, template.ElementLine, template.ElementRect, template.ElementBarcode, template.ElementQRCode:
 		return true
 	}
 	return false
@@ -1923,7 +1952,7 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	}
 	elementType := template.ElementType(kind)
 	if !paletteElementType(elementType) {
-		return CanvasProjection{}, componentFailure("", "component.type", "component type must be text, image, table, line, rect, or barcode")
+		return CanvasProjection{}, componentFailure("", "component.type", "component type must be text, image, table, line, rect, barcode, or qrcode")
 	}
 	snap, err := commandBool(raw, "snap")
 	if err != nil {
@@ -1950,6 +1979,9 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	}
 	if elementType == template.ElementBarcode {
 		width, height = barcodeDropWidth, barcodeDropHeight
+	}
+	if elementType == template.ElementQRCode {
+		width, height = qrcodeDropSide, qrcodeDropSide
 	}
 	x, y := pageX-geom.Length(projected.X), pageY-geom.Length(projected.Y)
 	if elementType == template.ElementTable {
@@ -2026,6 +2058,9 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 		}
 		if elementType == template.ElementBarcode {
 			element.Value = template.Presence[string]{Set: true, Value: barcodeStarterValue}
+		}
+		if elementType == template.ElementQRCode {
+			element.Value = template.Presence[string]{Set: true, Value: qrcodeStarterValue}
 		}
 		// Story 9.2: a line and a rect ARE their box — they carry no text
 		// and no asset — so a placed one with no style would render, and

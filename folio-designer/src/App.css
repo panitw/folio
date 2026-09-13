@@ -410,6 +410,9 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    background, whatever the page-ink token says, so the fill is not themed. */
 .canvas-barcode-paint { position: absolute; inset: 0; pointer-events: none; }
 .canvas-barcode-bar { position: absolute; top: 0; bottom: 0; background-color: black; }
+/* A QR code's module runs, likewise engine geometry printed black. */
+.canvas-qrcode-paint { position: absolute; inset: 0; pointer-events: none; }
+.canvas-qrcode-rect { position: absolute; background-color: black; }
 .canvas-image-paint { position: absolute; display: block; pointer-events: none; -webkit-user-drag: none; user-drag: none; }
 .canvas-image-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; pointer-events: none; -webkit-user-drag: none; user-drag: none; color: var(--color-page-placeholder); font: var(--type-page-mono); line-height: 1; text-align: center; }
 .canvas-placeholder-icon { width: 14px; height: 14px; flex: none; }

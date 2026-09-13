@@ -18,7 +18,7 @@ describe('rectangle selection geometry (AC-1, AC-2, AC-4, AC-5)', () => {
     expect(enclosedComponents(canvas, 1, selectionRectangle({ x: x1, y: y1 }, { x: x2, y: y2 }))).toEqual(['e1', 'e2'])
   })
   it.each([0.5, 1, 1.5])('includes every overlapping kind at zoom %s without text-ink authority', (zoom) => {
-    const components = (['text', 'rect', 'image', 'line', 'table', 'barcode'] as const).map((kind, i) => box(`e${i}`, 1000, 1000, kind, kind === 'line' ? 1000 : 20000))
+    const components = (['text', 'rect', 'image', 'line', 'table', 'barcode', 'qrcode'] as const).map((kind, i) => box(`e${i}`, 1000, 1000, kind, kind === 'line' ? 1000 : 20000))
     expect(enclosedComponents({ ...base, components }, zoom, { left: 41000, top: 91000, right: 71000, bottom: 111000 })).toEqual(components.map((c) => c.id))
     expect(enclosedComponents({ ...base, components: [components[0]!] }, zoom, { left: 45000, top: 95000, right: 65000, bottom: 100000 })).toEqual([])
   })

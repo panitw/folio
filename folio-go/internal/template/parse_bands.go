@@ -138,7 +138,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		return Element{}, newLoadError("type", string(id), string(typeRaw), "must be a string: "+err.Error())
 	}
 	if !closedElementTypes[typeStr] {
-		return Element{}, newLoadError("type", string(id), typeStr, "not one of the closed set text, image, table, line, rect, barcode (FR4)")
+		return Element{}, newLoadError("type", string(id), typeStr, "not one of the closed set text, image, table, line, rect, barcode, qrcode (FR4)")
 	}
 	el := Element{ID: id, Type: ElementType(typeStr)}
 
@@ -212,8 +212,8 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		// box: no colour, no border, no font and no alignment reaches it, so
 		// a style block on one would be a declaration that looks honoured
 		// and is not. Refused as a KEY, null included.
-		if el.Type == ElementBarcode {
-			return Element{}, newLoadError("style", string(id), string(styRaw), "a barcode carries no style — its modules are always black on the page background, and colours, borders and fonts are not supported")
+		if el.Type == ElementBarcode || el.Type == ElementQRCode {
+			return Element{}, newLoadError("style", string(id), string(styRaw), "a "+string(el.Type)+" carries no style — its modules are always black on the page background, and colours, borders and fonts are not supported")
 		}
 		consumed["style"] = true
 		if rawIsNull(styRaw) {
@@ -281,8 +281,8 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 	}
 
 	switch el.Type {
-	case ElementText, ElementBarcode:
-		// A barcode's content binds exactly as a text value does: one
+	case ElementText, ElementBarcode, ElementQRCode:
+		// A barcode's or QR code's content binds exactly as a text value does: one
 		// string that may carry {{ }} expressions, or null for "nothing to
 		// draw".
 		vRaw, ok := obj["value"]
@@ -332,6 +332,28 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 		}
 	case ElementLine, ElementRect:
 		// no extra fields
+	}
+
+	// spec-barcode-qr-elements: a qrcode's error-correction level. The KEY
+	// is refused on every other type (it would look honoured and not be),
+	// and null is refused too: absence already means the default M, so a
+	// null would be a second spelling of nothing.
+	if ecRaw, ok := obj["errorCorrection"]; ok {
+		if el.Type != ElementQRCode {
+			return Element{}, newLoadError("errorCorrection", string(id), string(ecRaw), "valid only on a qrcode element")
+		}
+		consumed["errorCorrection"] = true
+		if rawIsNull(ecRaw) {
+			return Element{}, newLoadError("errorCorrection", string(id), "null", "must not be null — omit the key for the default level "+QRErrorCorrectionDefault+"; "+closedSetMessage(QRErrorCorrectionTokens))
+		}
+		s, err := decodeStringRaw(ecRaw)
+		if err != nil {
+			return Element{}, newLoadError("errorCorrection", string(id), string(ecRaw), "must be a string: "+err.Error())
+		}
+		if !IsQRErrorCorrection(s) {
+			return Element{}, newLoadError("errorCorrection", string(id), s, closedSetMessage(QRErrorCorrectionTokens))
+		}
+		el.ErrorCorrection = present(s)
 	}
 
 	extra, err := extraFields(obj, consumed)

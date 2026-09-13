@@ -42,7 +42,7 @@ func ParameterReferences(tpl *Template) ([]string, error) {
 					return nil, err
 				}
 			}
-			if (element.Type != template.ElementText && element.Type != template.ElementBarcode) || !element.Value.Set || element.Value.Null {
+			if (element.Type != template.ElementText && !isCodeElement(element.Type)) || !element.Value.Set || element.Value.Null {
 				continue
 			}
 			_, placeholders, _, err := expr.ScanPlaceholders(element.Value.Value)
