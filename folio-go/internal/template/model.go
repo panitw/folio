@@ -396,7 +396,13 @@ type Bands struct {
 type Band struct {
 	Elements []Element
 	Height   Presence[geom.Length]
-	Extra    []Field
+	// SectionBreak is the content band's optional `sectionBreak`
+	// (spec-section-break): an offset in points from the band's top. The
+	// elements declared at or below it form one section that lands after
+	// the content above it. Never set on the page header or page footer —
+	// parse_bands.go refuses the key there.
+	SectionBreak Presence[geom.Length]
+	Extra        []Field
 }
 
 // ElementType is the closed set of element kinds (FR4).

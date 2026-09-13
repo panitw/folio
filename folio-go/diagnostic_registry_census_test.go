@@ -115,6 +115,17 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			_, err := ParseTemplate([]byte(source))
 			return err
 		},
+		// spec-section-break CAP-5: both LOAD-time, decidable from the
+		// document and its page geometry alone.
+		diag.CodeSectionBreakInvalid: func(t *testing.T) error {
+			_, err := ParseTemplate([]byte(sectionBreakTestDoc(`, "sectionBreak": 0`, "")))
+			return err
+		},
+		diag.CodeSectionBreakStraddled: func(t *testing.T) error {
+			// The legend's box is 80..92pt; a break at 85 runs through it.
+			_, err := ParseTemplate([]byte(sectionBreakTestDoc(`, "sectionBreak": 85`, "")))
+			return err
+		},
 		diag.CodeTableFooterSourceForbidden: func(t *testing.T) error {
 			source := roundTripGoldenSource(t)
 			source = strings.Replace(source, `"footer": "sum",`, "\"footer\": \"count\",\n              \"footerOf\": \"transactions.amount\",", 1)
@@ -268,6 +279,12 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 		},
 		diag.CodeBarcodeDoesNotFit: func(t *testing.T) Result {
 			return renderBarcodeWitness(t, "1234567890", "0.1", `{}`)
+		},
+		diag.CodeSectionBreakSplitsKeepTogether: func(t *testing.T) Result {
+			signature := `,
+      {"id": "e6", "type": "text", "x": 0, "y": 60, "width": 180, "height": 10, "value": "Signed", "keepTogether": "sig", "style": {"fontFamily": "latin", "fontSize": 8}}`
+			doc := strings.Replace(sectionBreakTestDoc(sectionBreakAt75, signature), `"value": "Legend",`, `"value": "Legend", "keepTogether": "sig",`, 1)
+			return sectionBreakRender(t, doc, 1)
 		},
 		diag.CodeTableRowClippedHeight: func(t *testing.T) Result {
 			tpl, err := ParseTemplate([]byte(overTallRowDoc()))

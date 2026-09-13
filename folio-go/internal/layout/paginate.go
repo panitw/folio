@@ -662,6 +662,24 @@ type PageAssignment struct {
 // page-footer with an empty content band is a legitimate document, and a
 // zero-page PDF is not.
 func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
+	return paginate(g, items, nil)
+}
+
+// PaginateWithItemPages is Paginate, and it also reports the page each item
+// landed on, indexed like items (spec-section-break). It is an OPT-IN: the
+// pagination it returns is exactly Paginate's, and Paginate itself is
+// unchanged. A caller that places content after the last page of this
+// pagination needs to know which items reached that last page. The slice is
+// empty when items is.
+func PaginateWithItemPages(g PageGeometry, items []ColumnItem) (Pagination, []int, error) {
+	var itemPages []int
+	plan, err := paginate(g, items, &itemPages)
+	return plan, itemPages, err
+}
+
+// paginate is Paginate's body. itemPagesOut, when non-nil, receives the page
+// of every item on success.
+func paginate(g PageGeometry, items []ColumnItem, itemPagesOut *[]int) (Pagination, error) {
 	contentTop := Origins(g).Content
 	height := ContentHeight(g)
 
@@ -1315,6 +1333,9 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	}
 
 	slicer.finish(pages)
+	if itemPagesOut != nil {
+		*itemPagesOut = pageOf
+	}
 	return Pagination{Pages: pages, Suppressed: suppressed, Clipped: clipped}, nil
 }
 

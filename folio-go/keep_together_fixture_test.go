@@ -1027,7 +1027,7 @@ func TestKeepTogetherOverTallElementBoxIsRefusedTaggedOrNot(t *testing.T) {
 // prefix into a plain identifier, every one of those paths reopens
 // silently, and this is the test that says so.
 func TestKeepTogetherGroupKeyIsNotAValidElementID(t *testing.T) {
-	key := keepTogetherIndex{"e1": "signature"}.keepTogetherGroup("e1").Key
+	key := keepTogetherIndex{"e1": {tag: "signature"}}.keepTogetherGroup("e1").Key
 	if key.IsHeader {
 		t.Error("a keep-together group must never be a header group — IsHeader gates the FR26 repeat paths")
 	}
@@ -1066,7 +1066,7 @@ func TestKeepTogetherReachesNoTablePath(t *testing.T) {
 		MarginLeft: 36_000, MarginRight: 36_000,
 		PageHeaderHeight: 20_000, PageFooterHeight: 20_000,
 	}
-	idx := keepTogetherIndex{"e1": "signature", "e2": "signature"}
+	idx := keepTogetherIndex{"e1": {tag: "signature"}, "e2": {tag: "signature"}}
 	g := idx.keepTogetherGroup("e1")
 	items := []layout.ColumnItem{
 		{ElementID: "e1", Top: 20_000, Bottom: 34_443, Runs: []layout.TextRunRef{0}, Group: g},
@@ -1107,7 +1107,7 @@ func TestKeepTogetherReachesNoTablePath(t *testing.T) {
 // substitution fills ONLY the ungrouped case, so a table row's own key
 // survives it and an untagged element gets the zero value it always had.
 func TestKeepTogetherLeavesEveryTableRowUntouched(t *testing.T) {
-	idx := keepTogetherIndex{"e9": "signature"}
+	idx := keepTogetherIndex{"e9": {tag: "signature"}}
 	row := layout.ItemGroup{Present: true, Key: layout.ItemGroupKey{ElementID: "e9", Index: 3}}
 	if got := idx.orKeepTogether(row, "e9"); got != row {
 		t.Fatalf("a table row's own group must survive the substitution even when its element carries a tag, got %+v", got)

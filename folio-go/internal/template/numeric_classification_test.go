@@ -39,6 +39,7 @@ var numericFieldRegistry = map[string]int{
 	"bottom":       numericKindPoints, // page.margin.bottom, style.padding.bottom
 	"fontSize":     numericKindPoints,
 	"headerHeight": numericKindPoints,
+	"sectionBreak": numericKindPoints, // bands.content.sectionBreak (spec-section-break)
 	"lineSpacing":  numericKindRatio,  // style.lineSpacing, headerStyle.lineSpacing
 	"height":       numericKindPoints, // element height, page.size.height, band height
 	"left":         numericKindPoints, // page.margin.left, style.padding.left

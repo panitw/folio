@@ -413,7 +413,8 @@ var maximalFixture = []byte(`{
           "x": 400,
           "y": 200
         }
-      ]
+      ],
+      "sectionBreak": 600
     },
     "pageFooter": {
       "elements": [
@@ -480,7 +481,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "4.0"
+  "version": "4.1"
 }
 `)
 

@@ -206,12 +206,22 @@ func anyTieWasClipped(plan layout.Pagination, targets []footerOrphanTarget) bool
 // itself does, plus any DiagCodeTableFooterOrphanSuppressed Warnings
 // DECISION-2(b) requires when even the merged group does not fit.
 func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnItem, targets []footerOrphanTarget) (layout.Pagination, []Diagnostic, error) {
-	plan, err := layout.Paginate(g, items)
+	plan, _, diags, err := paginateWithFooterOrphanFixPages(g, items, targets)
+	return plan, diags, err
+}
+
+// paginateWithFooterOrphanFixPages is paginateWithFooterOrphanFix, and it also
+// returns the page each item landed on in the pagination it chose (indexed
+// like items — applyFooterMerge re-keys items but never reorders them). The
+// section break (section_break.go) reads it to find where the content above
+// the break ends.
+func paginateWithFooterOrphanFixPages(g layout.PageGeometry, items []layout.ColumnItem, targets []footerOrphanTarget) (layout.Pagination, []int, []Diagnostic, error) {
+	plan, planPages, err := layout.PaginateWithItemPages(g, items)
 	if err != nil {
-		return layout.Pagination{}, nil, err
+		return layout.Pagination{}, nil, nil, err
 	}
 	if len(targets) == 0 {
-		return plan, nil, nil
+		return plan, planPages, nil, nil
 	}
 
 	rectPage := map[layout.RectRef]int{}
@@ -254,17 +264,17 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 		}
 	}
 	if len(toMerge) == 0 {
-		return plan, nil, nil
+		return plan, planPages, nil, nil
 	}
 
-	plan2, err2 := layout.Paginate(g, applyFooterMerge(items, toMerge))
+	plan2, plan2Pages, err2 := layout.PaginateWithItemPages(g, applyFooterMerge(items, toMerge))
 	if err2 == nil && !anyTieWasClipped(plan2, toMerge) {
-		return plan2, nil, nil
+		return plan2, plan2Pages, nil, nil
 	}
 
 	var of *layout.OverflowError
 	if err2 != nil && !errors.As(err2, &of) {
-		return layout.Pagination{}, nil, err2
+		return layout.Pagination{}, nil, nil, err2
 	}
 
 	// DECISION-2(b), as ruled: SOME merged group's preceding row and
@@ -295,13 +305,13 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 	// extra Paginate call), and `toMerge` is a SLICE walked in
 	// first-appearance order, so its outcome is deterministic (R5).
 	var accepted, suppressed []footerOrphanTarget
-	best := plan
+	best, bestPages := plan, planPages
 	for _, c := range toMerge {
 		trial := append(append([]footerOrphanTarget(nil), accepted...), c)
-		p, err := layout.Paginate(g, applyFooterMerge(items, trial))
+		p, pPages, err := layout.PaginateWithItemPages(g, applyFooterMerge(items, trial))
 		switch {
 		case err == nil && !groupWasClipped(p.Clipped, c.precedingKey):
-			accepted, best = trial, p
+			accepted, best, bestPages = trial, p, pPages
 		case err == nil:
 			// Story 4.6: the tie fit no window and was clipped. Same
 			// verdict as the OverflowError below — revert and record.
@@ -309,7 +319,7 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 		case errors.As(err, &of):
 			suppressed = append(suppressed, c)
 		default:
-			return layout.Pagination{}, nil, err
+			return layout.Pagination{}, nil, nil, err
 		}
 	}
 
@@ -323,7 +333,7 @@ func paginateWithFooterOrphanFix(g layout.PageGeometry, items []layout.ColumnIte
 				": the footer row and the data row immediately preceding it do not fit together in the content window, so the orphan rule (FR25) could not be honoured — the footer is placed alone on its page instead. Reduce the table's row height (font size or cell padding), or increase the page's content height (smaller margins, or a smaller page-header/page-footer)",
 		})
 	}
-	return best, diags, nil
+	return best, bestPages, diags, nil
 }
 
 // applyFooterMerge returns a copy of items in which exactly the FOOTER

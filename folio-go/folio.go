@@ -99,5 +99,11 @@ func ParseTemplate(b []byte) (*Template, error) {
 	if err := validateTableMinHeights(t); err != nil {
 		return nil, err
 	}
+	// spec-section-break CAP-5: the break's range against the derived
+	// content height, and no element on both sides of it — refused here for
+	// the same layering reason.
+	if err := validateSectionBreak(t); err != nil {
+		return nil, err
+	}
 	return t, nil
 }

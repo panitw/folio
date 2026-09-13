@@ -107,9 +107,14 @@ import (
 // dropping the code. Only a document that carries a barcode declares it.
 // The `qrcode` element type later joined the same 4.0 rank with no new
 // major: a document carrying either code element declares 4.0.
+//
+// A MINOR on 4, 4.1, was added by spec-section-break: the content band's
+// optional `sectionBreak` key. Additive and extending no closed set, so a
+// MINOR; a 4.0 reader would ignore the key and draw a growing table over
+// the section below it. Only a document carrying a break declares it.
 const (
 	SupportedMajor   = 4
-	SupportedVersion = "4.0"
+	SupportedVersion = "4.1"
 )
 
 // TextNumberExpressionVersion is the version a document requires when a
@@ -174,6 +179,9 @@ const (
 	// barcodeVersion is the version introduced by the `barcode` element
 	// type — a closed-set extension, so a MAJOR.
 	barcodeVersion = "4.0"
+	// sectionBreakVersion is the version introduced by the content band's
+	// `sectionBreak` key — an additive key, so a MINOR on 4.
+	sectionBreakVersion = "4.1"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -345,6 +353,12 @@ func versionRequiredByContent(d *Document) string {
 	if fontsRequireMajor(d.Fonts) && rankMajorFeature > highest {
 		highest = rankMajorFeature
 	}
+	// spec-section-break: a band-level key, probed beside the fonts probe
+	// for the same reason — it hangs off no element, so a break over an
+	// empty content band still requires 4.1.
+	if d.Bands.Content.SectionBreak.Set && rankSectionBreak > highest {
+		highest = rankSectionBreak
+	}
 	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
 		for _, el := range band.Elements {
 			if el.Type == ElementTable && el.Width.Set && rankProportionalTable > highest {
@@ -414,6 +428,7 @@ const (
 	rankTableRules
 	rankColumnHeaderAlign
 	rankBarcode
+	rankSectionBreak
 )
 
 // versionForRank maps a rank back to the version string it names.
@@ -434,6 +449,7 @@ var versionForRank = [...]string{
 	rankTableRules:        tableRulesVersion,
 	rankColumnHeaderAlign: columnHeaderAlignVersion,
 	rankBarcode:           barcodeVersion,
+	rankSectionBreak:      sectionBreakVersion,
 }
 
 // styleVersionRank is the lowest version that can express ONE style

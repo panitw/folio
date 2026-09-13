@@ -492,6 +492,19 @@ var goldenDigestRecord = []struct {
 		},
 	},
 	{
+		// RECORDED by spec-section-break (CAP-2): the first committed document
+		// carrying a section break, and the first declaring 4.1. Forty
+		// synthetic rows cross the break, so the legend lands on an added
+		// page 2. Its README quotes the digest.
+		dir:    "section-break-statement",
+		sha256: "4f10e8b62fc4bbdb1abc807c9ec7c8d9600b1d04571f5bc904a7bb3cc86f0dae",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/section-break-statement/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/section-break-statement/README.md"},
+		},
+	},
+	{
 		// RECORDED by spec-barcode-qr-elements (CAP-1): the first committed
 		// document carrying a barcode, and the first declaring 4.0. It draws no
 		// text, so the digest pins integer bar geometry alone. Its README
@@ -1058,6 +1071,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: embedded-font",             // Story 8.3 (FR53/FR56), inverted by Story 8.4 (FR54) — THE FIRST cross-target artifact that CARRIES a font face rather than naming one, and the first declaring format version 2.0 for a reason other than align: "justify". Story 8.3 registered it for a NEGATIVE property (the carried face reached the loader on every target and the page on none of them) and shipped no expected.pdf, correctly: an expected.pdf is a human-attested artifact (AD-21/D-4.7.1) and 8.3 could not produce the page that mattered. Story 8.4 renders FROM the carried face, so the property inverted: the document's text is pure Thai now, the shipped Latin face its chain names first covers not one codepoint of it, and what the four legs certify is that a font program decoded out of the document's own base64, subset and embedded, produces identical bytes on darwin/arm64, linux/amd64, linux/arm64 and js/wasm. The per-leg guard asserts WHICH face reached the page by identity (requireEmbeddedFaceDrawsThePage), never by counting programs — the count is 1 on both implementations. It ships an expected.pdf from Story 8.4 onwards. The obligation itself is UNCHANGED: this line is the same one Story 8.3 declared, re-described, not a new obligation added without a ruling
 	"matrix-document: declared-variants",         // Story 11.5 (DW-237) — the first cross-target artifact that declares bold or italic at all, and therefore the first whose recorded bytes depend on a chain entry's DECLARED cuts being read (Story 11.2's chainFaceNames). Measured at 11.5's baseline, twice and by two independent mechanisms, no committed fixture contained the string "bold" or "italic" anywhere — so a resolver that silently answered every declared variant with the entry's base face would have moved no golden, reddened no test and raised no diagnostic. THE AUTHORISING RULING IS THIS STORY'S OWN ACCEPTANCE CRITERION (D-11.5.1, Q2): "Given the fixture rendered on all four targets, when TestCrossTargetByteIdentity runs, then all four legs agree with each other and with expected.pdf." Four cuts also mean four subset operations and four embedded programs per leg, which is four times the surface AD-21's four targets exist to hold to one answer. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: barcode-thai-bill-payment", // spec-barcode-qr-elements CAP-1 — the first cross-target artifact carrying a barcode and declaring 4.0; its bytes are integer bar geometry alone. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
+	"matrix-document: section-break-statement",   // spec-section-break CAP-2 — the first cross-target artifact carrying a section break and declaring 4.1; forty rows cross the break, so the legend lands on an added page. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: qrcode-payments",           // spec-barcode-qr-elements CAP-2 — the first cross-target artifact carrying a qrcode (one per error-correction level); its bytes are integer module geometry alone. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: alignment-rounding",        // Story 7.3, CLOSING DW-24 — the first cross-target artifact declaring align center or valign at all, and therefore the first that takes a half-to-even tie in the alignment feature. DW-24's own closure conditions require the fixture be "added to matrixDocuments so all four targets render it", which is the ruling authorising this entry. Legs wired in matrix.yml and run in-story alongside justified-text
 }
@@ -1680,6 +1694,10 @@ func repoRootForByteNeutrality(t *testing.T) string {
 // derive-from-a-declarative-spec move goldenDigestRecord itself makes.
 var textRiseExemptGoldens = map[string]string{
 	"thai-stacked-marks": "Story 8.0 (DW-28) — the document the Ts operator exists for; its own fixture test asserts the rises are present AND restored",
+	// Recorded after Story 8.0: its bilingual legend and descriptions carry
+	// Thai tone marks over upper vowels (ดอกเบี้ย, ค่าธรรมเนียม), whose
+	// shaped glyphs have a non-zero YOffset.
+	"section-break-statement": "spec-section-break CAP-2 — recorded after Story 8.0; its Thai text stacks tone marks over upper vowels, which the shaper raises",
 }
 
 // TestNoPreStory80GoldenCarriesATextRise is Story 8.0's byte-identity

@@ -13777,3 +13777,6 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: none
   summary: Build the QR Code element (CAP-2 of _bmad-output/specs/spec-barcode-qr-elements) on top of the barcode element's shared plumbing.
   evidence: Split from "Build the spec" at the bmad-build multi-goal check; barcode and QR are independently shippable, barcode chosen first. Ship both before the next release so documents see one major version bump.
+- source_spec: `_bmad-output/implementation-artifacts/spec-section-break-engine.md`
+  summary: Test that warnings raised inside a section-break section (TABLE_HEADER_REPEAT_SUPPRESSED, clipped rows, footer-orphan diagnostics from diagsS) report the document page number after `paginateWithSectionBreak` re-bases them.
+  evidence: The verification-gap review found that removing `s.Page += offset`, `c.Page += offset`, or the `diagsS` append in `folio-go/section_break.go` passes every test. A section table suppressed on page 3 would report page 2.

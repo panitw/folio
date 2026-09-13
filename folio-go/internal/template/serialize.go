@@ -328,6 +328,9 @@ func writeBand(dst []byte, depth int, band Band) []byte {
 	if band.Height.Set {
 		fields = append(fields, kv{"height", writePoints(band.Height.Value)})
 	}
+	if band.SectionBreak.Set {
+		fields = append(fields, kv{"sectionBreak", writePoints(band.SectionBreak.Value)})
+	}
 	fields = append(fields, extraKVs(band.Extra)...)
 	return writeObject(dst, depth, fields)
 }

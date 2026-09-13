@@ -2473,8 +2473,12 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// only one of them would make the page COUNT disagree with the
 	// render.
 	keepTogether := keepTogetherTags(t)
+	// spec-section-break: both passes paginate through the same
+	// section-aware wrapper, so a page added for the section is counted by
+	// {{pages}} exactly as it is rendered.
+	sectionBreak := sectionBreakOf(t, geometry)
 	contentItems := contentColumnItems(contentRuns, imageRuns, tableRects, visible, keepTogether)
-	contentPlan, _, plerr := paginateWithFooterOrphanFix(geometry, contentItems, footerOrphanTargetsFrom(contentItems))
+	contentPlan, _, plerr := paginateWithSectionBreak(geometry, contentItems, sectionBreak)
 	if plerr != nil {
 		return nil, nil, nil, nil, wrapOverflowError(plerr)
 	}
@@ -2516,6 +2520,9 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 		diags = append(diags, tableWarnings[i]...)
 		diags = append(diags, barcodeDiags[i]...)
 	}
+	// spec-section-break: a keepTogether group split by the break, on every
+	// render. Empty for a document without a break.
+	diags = append(diags, sectionBreakSplitDiagnostics(t)...)
 
 	headerOffset := 0
 	contentOffset := len(headerRuns)
@@ -2745,7 +2752,7 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible, keepTogether)
+	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible, keepTogether, sectionBreak)
 	if perr != nil {
 		return nil, nil, nil, nil, perr
 	}
@@ -2822,16 +2829,37 @@ const keepTogetherGroupIndex = -2
 // in which items are built, and therefore the emitted byte order. It is
 // built by walking the content band's own element slice, which is the
 // authored order.
-type keepTogetherIndex map[string]string
+type keepTogetherIndex map[string]keepTogetherMember
+
+// keepTogetherMember is one tagged element's entry: its tag, and whether it
+// is the below-line side of a group the section break splits
+// (spec-section-break). The two sides of a split group carry the same tag but
+// different group keys, so each side is kept together on its own.
+type keepTogetherMember struct {
+	tag        string
+	belowBreak bool
+}
+
+// keepTogetherBelowBreakGroupIndex is the layout.ItemGroupKey.Index of the
+// below-line side of a keepTogether group the section break splits. Distinct
+// from keepTogetherGroupIndex, so the two sides never share a key whatever
+// the tag, while keepTogetherTagOf still reads the one tag off either.
+const keepTogetherBelowBreakGroupIndex = -3
 
 // keepTogetherTags reads the document's keep-together declarations.
 // Elements outside the content band, and tables, cannot carry the key at
 // all (parse_bands.go refuses both at load), so this walks the content
 // band alone.
+//
+// spec-section-break: a group with members on both sides of the section
+// break is split at the line HERE, so pass A, pass B and the canvas all see
+// the same two groups. A group wholly on one side keeps its one key.
 func keepTogetherTags(t *Template) keepTogetherIndex {
 	if t == nil || t.doc == nil {
 		return nil
 	}
+	split, _ := sectionBreakSplitTags(t)
+	offset, _ := declaredSectionBreak(t)
 	var idx keepTogetherIndex
 	for _, el := range t.doc.Bands.Content.Elements {
 		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
@@ -2840,7 +2868,11 @@ func keepTogetherTags(t *Template) keepTogetherIndex {
 		if idx == nil {
 			idx = keepTogetherIndex{}
 		}
-		idx[string(el.ID)] = el.KeepTogether.Value
+		member := keepTogetherMember{tag: el.KeepTogether.Value}
+		if el.Y >= offset && slices.Contains(split, member.tag) {
+			member.belowBreak = true
+		}
+		idx[string(el.ID)] = member
 	}
 	return idx
 }
@@ -2870,14 +2902,18 @@ func keepTogetherTags(t *Template) keepTogetherIndex {
 // clipping it — never the tag itself, which stays this package's word
 // (see keepTogetherKeyPrefix's doc comment).
 func (idx keepTogetherIndex) keepTogetherGroup(elementID string) layout.ItemGroup {
-	tag, ok := idx[elementID]
+	member, ok := idx[elementID]
 	if !ok {
 		return layout.ItemGroup{}
 	}
+	index := keepTogetherGroupIndex
+	if member.belowBreak {
+		index = keepTogetherBelowBreakGroupIndex
+	}
 	return layout.ItemGroup{Present: true, AuthorDeclared: true, Key: layout.ItemGroupKey{
-		ElementID: keepTogetherKeyPrefix + tag,
+		ElementID: keepTogetherKeyPrefix + member.tag,
 		IsHeader:  false,
-		Index:     keepTogetherGroupIndex,
+		Index:     index,
 	}}
 }
 
@@ -2949,6 +2985,7 @@ func paginateDocument(
 	pdfPlacements []pagemodel.ImagePlacement,
 	visible visibilityVerdicts,
 	keepTogether keepTogetherIndex,
+	section sectionBreakSplit,
 ) ([]pagemodel.Page, []Diagnostic, error) {
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
@@ -3151,7 +3188,7 @@ func paginateDocument(
 		}
 	}
 
-	plan, footerOrphanDiags, err := paginateWithFooterOrphanFix(geometry, items, footerOrphanTargetsFrom(items))
+	plan, footerOrphanDiags, err := paginateWithSectionBreak(geometry, items, section)
 	if err != nil {
 		return nil, nil, wrapOverflowError(err)
 	}
@@ -3218,7 +3255,9 @@ func paginateDocument(
 			// so no item can be displaced relative to another — the column
 			// itself is never mutated.
 			run := pdfRuns[ref]
-			run.Y -= assigned.Shift
+			// spec-section-break: a section element on the page it
+			// shares with the above-line content has its own shift.
+			run.Y -= plan.shiftFor(pageIdx, runs[ref].elementID)
 			// Story 4.4: a repeating table's OWN rows are displaced
 			// further down, beyond Shift, to make room for the repeat
 			// above them — scoped to that table's ElementID alone
@@ -3243,7 +3282,7 @@ func paginateDocument(
 		}
 		for _, ref := range assigned.ContentImages {
 			img := pdfPlacements[ref]
-			img.Y -= assigned.Shift
+			img.Y -= plan.shiftFor(pageIdx, imageRuns[ref].elementID)
 			img.Y += elementPushFor(assigned.ElementPush, imageRuns[ref].elementID)
 			pageImages = append(pageImages, img)
 		}
@@ -3283,7 +3322,7 @@ func paginateDocument(
 			if bottom, clip := rectClipBottomFor(assigned.ClippedRects, ref); clip && r.Y+r.H > bottom {
 				r.H = bottom - r.Y
 			}
-			r.Y -= assigned.Shift
+			r.Y -= plan.shiftFor(pageIdx, rectElementID[ref])
 			if rectIsDataRow[ref] {
 				r.Y += rowDisplacementFor(assigned.RowDisplacement, rectElementID[ref])
 			}

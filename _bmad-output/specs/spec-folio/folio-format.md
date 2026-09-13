@@ -44,7 +44,7 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.0` if any element is a `barcode` or a `qrcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.1` if the content band declares `sectionBreak` (see *Pagination*), else `4.0` if any element is a `barcode` or a `qrcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
@@ -342,6 +342,10 @@ Exactly these three keys (FR6). `pageHeader` and `pageFooter` declare a `height`
 not** — its height is derived as page height minus margins minus header minus footer, by one
 function (AD-13's sibling rule). Storing it would be a second source of truth.
 
+| Band key | Meaning |
+|---|---|
+| `sectionBreak` | *Optional, `content` only.* One offset in points from the content band's top. Every element whose `y` is at or below it forms the **below-line section**, whatever its `x`; see *Pagination* for where that section lands. It must be greater than 0 and less than the content height, it may appear once, and it is refused on `pageHeader` and `pageFooter` — each a load error (`SECTION_BREAK_INVALID`) naming the band. No element's declared box may lie on both sides of it (for a table the box is `y` to `y + headerHeight`; its rows and its `minHeight` floor may run past the line): that is a load error (`SECTION_BREAK_STRADDLED`) naming the element. The break is never drawn in the PDF. A document carrying it declares `4.1`. |
+
 Every element's `x` and `y` are relative to **its band's** top-left corner, never to the page
 (AD-24).
 
@@ -368,12 +372,35 @@ statement cannot ship a half-line, and there is no setting that trades this away
 
 **Nothing moves sideways and nothing reflows to close a gap.** Every element keeps exactly the
 position its author gave it within the column, so no element is ever displaced because a neighbour
-grew (AD-24). One consequence follows directly and an author should know it before designing a
-report rather than finding it in a diff:
+grew (AD-24) — **with one exception, the below-line section of a `sectionBreak`, described below.**
+One consequence follows directly and an author should know it before designing a report rather
+than finding it in a diff:
 
 > **Across a window boundary, declared vertical gaps collapse.** An element that begins a window is
 > drawn at the top of its page, whatever gap was declared above it. That is the price of never
-> splitting a line and never reflowing a sibling.
+> splitting a line and never reflowing a sibling. The one exception is the first page of a
+> below-line section, which begins at the section's declared offset rather than at the top of the
+> page.
+
+**A section break moves the content below it as one rigid block, by whole pages only.** When the
+content band declares `sectionBreak`, the elements declared at or below it (the *section*) are
+paginated after the elements above it (the *above-line content*):
+
+| | rule |
+|---|---|
+| 1 | **Where the above-line content ends.** It is the lowest bottom, in page space, of any above-line item on the last page that content reaches — counting a table's row displacement and its `minHeight` floor. |
+| 2 | **Where the section lands.** If that bottom is at or above the break, the section is drawn on that same page. Otherwise it is drawn on a new page added after it. |
+| 3 | **Where on the page.** Either way, each section element sits at its declared `y` in the content band, and nothing above the break is drawn on an added page. |
+| 4 | **What the section does next.** A section taller than the room left on its landing page continues onto later pages under the four window rules at the start of *Pagination*, starting from its declared offset. |
+
+The line reserves space only on the page where the section lands: rows of above-line content use the
+full page on every other page. An added page is a full page of the document — it carries the page
+header and page footer, and `{{pages}}` and `{{page}}` count it. A document whose above-line
+content fits on the first page and ends at or above the break renders exactly as it would without
+the key — unless a `keepTogether` group has members on both sides of the break, since that group is split on every render and so can paginate differently. Such a group is split at the line; each
+side is kept together on its own, and every render returns the Warning
+`SECTION_BREAK_SPLITS_KEEP_TOGETHER` naming the group. There is at most one break, and it is never
+drawn.
 
 **No page is ever blank.** Because a window begins at the first item that did not fit rather than at
 a fixed multiple of the content height, an element declared far below the preceding content starts

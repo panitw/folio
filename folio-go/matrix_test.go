@@ -734,6 +734,22 @@ func captureDeclaredVariantsRender(t *testing.T, target matrixTarget, binPath st
 	return runOnTarget(t, target, binPath, map[string]string{subprocessDeclaredVariantsEnvVar: "1"})
 }
 
+// captureSectionBreakStatementRender renders fixtures/section-break-statement/
+// in a FRESH process.
+func captureSectionBreakStatementRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessSectionBreakStatementEnvVar: "1"})
+}
+
+// requireSectionBreakLegend is the section-break document's per-leg feature
+// guard: two pages, the legend once and on the last page, "Page X of 2".
+func requireSectionBreakLegend(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	sectionBreakStatementAssertLegend(t, raw, func(format string, args ...any) {
+		t.Fatalf("%s: section-break-statement leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureBarcodeThaiBillPaymentRender renders fixtures/barcode-thai-bill-payment/
 // in a FRESH process.
 func captureBarcodeThaiBillPaymentRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -2011,6 +2027,20 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireDeclaredVariantsUsesFourCuts,
 		wantPages:        1,
+	},
+	{
+		// spec-section-break CAP-2: the first cross-target artifact carrying
+		// a section break, and the first declaring format version 4.1. Forty
+		// synthetic bilingual rows cross the break on page 1, so the legend
+		// lands on an added page 2 — a page assignment, a per-element shift
+		// and a page count that the four legs must agree on.
+		label:            "section-break-statement (a legend moved below a growing table)",
+		slug:             "section-break-statement",
+		capture:          captureSectionBreakStatementRender,
+		fixtureRelPath:   []string{"fixtures", "section-break-statement", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireSectionBreakLegend,
+		wantPages:        2,
 	},
 	{
 		// spec-barcode-qr-elements CAP-1: the first cross-target artifact

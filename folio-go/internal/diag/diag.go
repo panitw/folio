@@ -400,6 +400,27 @@ const (
 	// quiet zone cannot fit the smaller side of its box even at 1 mp per
 	// module. The QR code is omitted and the render completes.
 	CodeQRCodeDoesNotFit Code = "QRCODE_DOES_NOT_FIT"
+
+	// CodeSectionBreakInvalid names a content band whose `sectionBreak`
+	// cannot be honoured (spec-section-break CAP-5): an offset at or above
+	// the band's top or at or below its derived content height, the key
+	// declared twice, or the key on the page header or page footer. A LOAD
+	// error located at the band, because a template author causes and fixes
+	// it, and an uncoded refusal would become TEMPLATE_MALFORMED and never
+	// reach them.
+	CodeSectionBreakInvalid Code = "SECTION_BREAK_INVALID"
+
+	// CodeSectionBreakStraddled names an element whose declared box lies on
+	// both sides of the content band's `sectionBreak` — a LOAD error located
+	// at the element. Every element must be unambiguously above or below the
+	// line, because only the content below it moves.
+	CodeSectionBreakStraddled Code = "SECTION_BREAK_STRADDLED"
+
+	// CodeSectionBreakSplitsKeepTogether names a keepTogether group with
+	// members on both sides of the section break. The break wins: the group
+	// is split at the line and each side is kept together on its own. A
+	// Warning, emitted on every render of such a document.
+	CodeSectionBreakSplitsKeepTogether Code = "SECTION_BREAK_SPLITS_KEEP_TOGETHER"
 )
 
 // allCodes is the registry's own enumeration, in the order the codes
@@ -433,6 +454,9 @@ var allCodes = []Code{
 	CodeQRCodeTooLong,
 	CodeQRCodeModuleTooSmall,
 	CodeQRCodeDoesNotFit,
+	CodeSectionBreakInvalid,
+	CodeSectionBreakStraddled,
+	CodeSectionBreakSplitsKeepTogether,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -451,31 +475,34 @@ const (
 )
 
 var dispositions = map[Code]Disposition{
-	CodeTextClippedWidth:            DispositionWarning,
-	CodeEmptyAverage:                DispositionWarning,
-	CodeTableFooterSourceUnresolved: DispositionError,
-	CodeTableFooterSourceForbidden:  DispositionError,
-	CodeTemplateMalformed:           DispositionError,
-	CodeBindingPathAbsent:           DispositionError,
-	CodeExpressionInvalid:           DispositionError,
-	CodeContentUnlayoutable:         DispositionError,
-	CodeTextMissingGlyph:            DispositionWarning,
-	CodeTextStyleFaceUndeclared:     DispositionWarning,
-	CodeInternalUnhandledCaveat:     DispositionWarning,
-	CodeDocumentDateInvalid:         DispositionError,
-	CodeStyleColorInvalid:           DispositionError,
-	CodeTableHeaderRepeatSuppressed: DispositionWarning,
-	CodeTableFooterOrphanSuppressed: DispositionWarning,
-	CodeTableRowClippedHeight:       DispositionWarning,
-	CodeTableMinHeightUnplaceable:   DispositionError,
-	CodeStyleLineSpacingInvalid:     DispositionError,
-	CodeTemplateFieldInvalid:        DispositionError,
-	CodeBarcodeUnencodable:          DispositionWarning,
-	CodeBarcodeModuleTooSmall:       DispositionWarning,
-	CodeBarcodeDoesNotFit:           DispositionWarning,
-	CodeQRCodeTooLong:               DispositionWarning,
-	CodeQRCodeModuleTooSmall:        DispositionWarning,
-	CodeQRCodeDoesNotFit:            DispositionWarning,
+	CodeTextClippedWidth:               DispositionWarning,
+	CodeEmptyAverage:                   DispositionWarning,
+	CodeTableFooterSourceUnresolved:    DispositionError,
+	CodeTableFooterSourceForbidden:     DispositionError,
+	CodeTemplateMalformed:              DispositionError,
+	CodeBindingPathAbsent:              DispositionError,
+	CodeExpressionInvalid:              DispositionError,
+	CodeContentUnlayoutable:            DispositionError,
+	CodeTextMissingGlyph:               DispositionWarning,
+	CodeTextStyleFaceUndeclared:        DispositionWarning,
+	CodeInternalUnhandledCaveat:        DispositionWarning,
+	CodeDocumentDateInvalid:            DispositionError,
+	CodeStyleColorInvalid:              DispositionError,
+	CodeTableHeaderRepeatSuppressed:    DispositionWarning,
+	CodeTableFooterOrphanSuppressed:    DispositionWarning,
+	CodeTableRowClippedHeight:          DispositionWarning,
+	CodeTableMinHeightUnplaceable:      DispositionError,
+	CodeStyleLineSpacingInvalid:        DispositionError,
+	CodeTemplateFieldInvalid:           DispositionError,
+	CodeBarcodeUnencodable:             DispositionWarning,
+	CodeBarcodeModuleTooSmall:          DispositionWarning,
+	CodeBarcodeDoesNotFit:              DispositionWarning,
+	CodeQRCodeTooLong:                  DispositionWarning,
+	CodeQRCodeModuleTooSmall:           DispositionWarning,
+	CodeQRCodeDoesNotFit:               DispositionWarning,
+	CodeSectionBreakInvalid:            DispositionError,
+	CodeSectionBreakStraddled:          DispositionError,
+	CodeSectionBreakSplitsKeepTogether: DispositionWarning,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

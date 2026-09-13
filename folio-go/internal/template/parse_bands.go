@@ -100,12 +100,69 @@ func decodeBand(ctx *parseCtx, field string, raw json.RawMessage, hasHeight bool
 		return Band{}, newLoadError(field+".height", "", "", "missing required field")
 	}
 
+	// spec-section-break CAP-5: the content band's optional `sectionBreak`.
+	// It is consumed here whatever the band, so it can never fall into
+	// Extra: on the page header or page footer it is refused rather than
+	// carried as opaque passthrough, because a break there could never be
+	// honoured. Its RANGE is checked in package folio (validateSectionBreak),
+	// because the content height is derived by internal/layout, which this
+	// package may not import.
+	var sectionBreak Presence[geom.Length]
+	if sbRaw, ok := obj[sectionBreakKey]; ok {
+		consumed[sectionBreakKey] = true
+		sbField := field + "." + sectionBreakKey
+		if hasHeight {
+			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "a section break is valid only on the content band — the page header and page footer are repeated on every page and are never paginated", diag.CodeSectionBreakInvalid)
+		}
+		if n := countTopLevelKey(raw, sectionBreakKey); n > 1 {
+			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "declared more than once — a content band has at most one section break", diag.CodeSectionBreakInvalid)
+		}
+		if rawIsNull(sbRaw) {
+			return Band{}, newLoadErrorCoded(sbField, "", "null", "must be a number of points from the content band's top — remove the key to have no section break", diag.CodeSectionBreakInvalid)
+		}
+		v, err := decodePointsRaw(sbField, "", sbRaw)
+		if err != nil {
+			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "must be a number of points from the content band's top, with at most three decimal places", diag.CodeSectionBreakInvalid)
+		}
+		sectionBreak = present(v)
+	}
+
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
 		return Band{}, fmt.Errorf("template: %s: %w", field, err)
 	}
 
-	return Band{Elements: elems, Height: height, Extra: extra}, nil
+	return Band{Elements: elems, Height: height, SectionBreak: sectionBreak, Extra: extra}, nil
+}
+
+// sectionBreakKey is the content band's section-break key.
+const sectionBreakKey = "sectionBreak"
+
+// countTopLevelKey counts how many times key appears as a member name of the
+// JSON object raw, at its top level only. encoding/json keeps the last of a
+// duplicated key silently, so a duplicate is detected on the raw bytes.
+// raw has already decoded as an object, so a token error cannot occur; one
+// is treated as "no further keys".
+func countTopLevelKey(raw json.RawMessage, key string) int {
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return 0
+	}
+	count := 0
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return count
+		}
+		if name, ok := tok.(string); ok && name == key {
+			count++
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return count
+		}
+	}
+	return count
 }
 
 func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Element, error) {

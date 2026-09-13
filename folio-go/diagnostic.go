@@ -330,6 +330,15 @@ const DiagCodeQRCodeTooLong = string(diag.CodeQRCodeTooLong)
 const DiagCodeQRCodeModuleTooSmall = string(diag.CodeQRCodeModuleTooSmall)
 const DiagCodeQRCodeDoesNotFit = string(diag.CodeQRCodeDoesNotFit)
 
+// DiagCodeSectionBreakInvalid and DiagCodeSectionBreakStraddled name the
+// section break's two load errors (spec-section-break CAP-5): a break the
+// content band cannot honour, located at the band, and an element on both
+// sides of the break, located at the element. DiagCodeSectionBreakSplitsKeepTogether
+// is the Warning for a keepTogether group the break splits.
+const DiagCodeSectionBreakInvalid = string(diag.CodeSectionBreakInvalid)
+const DiagCodeSectionBreakStraddled = string(diag.CodeSectionBreakStraddled)
+const DiagCodeSectionBreakSplitsKeepTogether = string(diag.CodeSectionBreakSplitsKeepTogether)
+
 // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
 // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
 // header could not be honoured on one continuation page because the next
