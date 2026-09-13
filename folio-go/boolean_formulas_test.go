@@ -347,7 +347,8 @@ func TestBooleanFormulaReviewConsumerLocationsAndPlaceholderIdentity(t *testing.
 		}
 	}
 	for _, source := range []string{"  flag", "  true ? flag : null"} {
-		for _, value := range []string{"true", "1"} {
+		// Booleans stay wrong-kind in text; a number now prints (2026-09-13).
+		for _, value := range []string{"true", "false"} {
 			tpl := formulaTemplate(t, "true")
 			tpl.doc.Bands.Content.Elements[0].Value.Value = `{{"ok"}} {{` + source + `}}`
 			_, err := Render(tpl, Data(`{"flag":`+value+`}`), nil, testFontSet())

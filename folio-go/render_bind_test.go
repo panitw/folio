@@ -157,16 +157,23 @@ func TestRenderNullPathRendersEmpty(t *testing.T) {
 }
 
 // TestRenderWrongKindIsLocatedError is AC10 through the public Render
-// API: a JSON number bound into a text element is an Error, never
-// coerced.
+// API, as revised on 2026-09-13: a JSON number bound into a text element
+// renders (as its exact decimal), while a JSON boolean is still an Error,
+// never coerced.
 func TestRenderWrongKindIsLocatedError(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(minimalTemplateJSONWithText))
 	if err != nil {
 		t.Fatalf("ParseTemplate: %v", err)
 	}
-	_, err = Render(tpl, Data(`{"customer": {"name": 123}}`), nil, testFontSet())
+	if _, err = Render(tpl, Data(`{"customer": {"name": 123}}`), nil, testFontSet()); err != nil {
+		t.Fatalf("a JSON number bound into a text element must render: %v", err)
+	}
+	_, err = Render(tpl, Data(`{"customer": {"name": true}}`), nil, testFontSet())
 	if err == nil {
-		t.Fatal("expected an Error for a JSON number bound into a text element")
+		t.Fatal("expected an Error for a JSON boolean bound into a text element")
+	}
+	if !strings.Contains(err.Error(), "e1") || !strings.Contains(err.Error(), "bool") {
+		t.Fatalf("the boolean refusal must name the element and the kind, got: %v", err)
 	}
 }
 

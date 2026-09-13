@@ -135,9 +135,10 @@ var declaredResolutionRootNames = []string{kindData.name, kindParams.name, kindR
 //
 // AD-14's three cases (AC12/AC13, Story 3.2's if() ruling): an absent
 // path is an error naming both the data path and elementID; an
-// explicit JSON null renders as empty and is not an error; a value of
-// the wrong kind for a text binding (anything but a string) is an
-// error, never coerced.
+// explicit JSON null renders as empty and is not an error; a number
+// prints as its exact decimal (expr.Decimal.Text — owner decision
+// 2026-09-13, revising AD-14 for numbers in text only); a boolean, array
+// or object is an error, never coerced.
 //
 // "params" is a SECOND resolution root, not a reserved token (Story
 // 1.7, D-1.7.4, verbatim): "params is a namespace — a second
@@ -271,9 +272,22 @@ func Resolve(text string, scope Scope, fc expr.FormatContext, elementID string) 
 			// particular empty is worth a Warning.
 		case expr.KindString:
 			write(val.Str)
+		case expr.KindNumber:
+			// Owner decision 2026-09-13: a number in text prints as its
+			// exact decimal — data values and computed numbers alike, no
+			// grouping, locale, rounding or float. formatNumber stays the
+			// way to get styled output. A positive exponent expands into
+			// that many printed zeros, so it is charged to this
+			// placeholder's budget before anything is written.
+			if val.Num.Exponent > 0 {
+				if cerr := budget.Charge(val.Num.Exponent); cerr != nil {
+					return "", nil, nil, fmt.Errorf("bind: element %s: placeholder %d: %w", elementID, i+1, expr.WithLocation(astExpr, cerr))
+				}
+			}
+			write(val.Num.Text())
 		default:
 			return "", nil, nil, fmt.Errorf("bind: element %s: placeholder %d: %w", elementID, i+1,
-				expr.WithLocation(astExpr, fmt.Errorf("resolved to a %s, not a string — text bindings are never coerced", val.Kind)))
+				expr.WithLocation(astExpr, fmt.Errorf("resolved to a %s, not a string or number — a %s is never coerced to text", val.Kind, val.Kind)))
 		}
 		subs = append(subs, Substitution{Path: substitutionPathFor(astExpr, trimmed), Start: from, End: runesWritten})
 	}

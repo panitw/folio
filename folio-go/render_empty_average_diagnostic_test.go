@@ -6,14 +6,11 @@ package folio
 // it (diagnostic.go), following DiagCodeTextClippedWidth's own
 // precedent (render_clip_diagnostic_test.go).
 //
-// A bare "{{avg(...)}}" is the only shape this story can exercise
-// end-to-end through Render: a NON-empty average is a real Decimal,
-// and FLAG-2/bind's own "text bindings are never coerced" rule (Story
-// 3.2) makes a bare number-valued placeholder an ERROR — formatting a
-// Decimal into text is Story 3.4's formatNumber(). An EMPTY average
-// resolves to expr.KindNull, which text bindings DO render (as
-// empty), so this is the one avg() shape reachable through Render
-// today.
+// A bare "{{avg(...)}}" is the shape exercised here: an EMPTY average
+// resolves to expr.KindNull, which text bindings render as empty. A
+// NON-empty average is a real Decimal, which (since the number-in-text-
+// binding spec, 2026-09-13) prints as its exact decimal rather than
+// failing; formatNumber() remains the way to style it.
 
 import (
 	"fmt"
@@ -79,17 +76,23 @@ func TestAvgOverEmptyCollectionRendersSuccessfullyWithWarning(t *testing.T) {
 
 // TestAvgOverNonEmptyCollectionProducesNoCaveat is the negative
 // control (D-000.34/D-000.36): a REAL average (over a non-empty
-// collection) is a number, which a bare text placeholder cannot
-// render at all (FLAG-2) — so it must fail as an ordinary located
-// Error, never silently produce the empty-average Warning.
+// collection) is a number, which a bare text placeholder prints as its
+// exact decimal (2026-09-13) — so it renders with NO diagnostic, never
+// silently producing the empty-average Warning.
 func TestAvgOverNonEmptyCollectionProducesNoCaveat(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(emptyAverageTemplateJSON("")))
 	if err != nil {
 		t.Fatalf("presence precondition: %v", err)
 	}
-	_, err = Render(tpl, Data(`{"t":[{"a":1},{"a":2}]}`), nil, testShippedFontSet())
-	if err == nil {
-		t.Fatal("presence precondition: a bare {{avg(...)}} over a NON-empty collection resolves to a real number, which text bindings never coerce (FLAG-2) — this must be a located Error, not a successful render")
+	res, err := Render(tpl, Data(`{"t":[{"a":1},{"a":2}]}`), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatalf("a bare {{avg(...)}} over a NON-empty collection must print its exact decimal: %v", err)
+	}
+	if len(res.Diagnostics) != 0 {
+		t.Fatalf("a real average must produce no empty-average Warning, got: %+v", res.Diagnostics)
+	}
+	if _, ok := anyPageContains(pageTextsOf(t, res.Bytes), "1.5000"); !ok {
+		t.Fatalf("the average must print as 1.5000; drawn: %v", pageTextsOf(t, res.Bytes))
 	}
 }
 

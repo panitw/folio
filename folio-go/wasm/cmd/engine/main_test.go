@@ -260,11 +260,23 @@ func TestWasmHostReportsEngineAuthoredRenderMessages(t *testing.T) {
 	data := encode([]byte(`{"amount":10000}`))
 	params := encode([]byte(`{}`))
 
-	// A wrong-kind binding carries its own diagnostic code; the message must
-	// name the element and the reason rather than a fixed placeholder.
-	boundEngine, bound := place(`{"expression":{"op":"set","value":"{{amount}}"}}`)
-	got := dispatch(boundEngine, request{Operation: "render", TemplateBase64: encode(bound), DataBase64: data, ParamsBase64: params})
-	if got.OK || got.DiagnosticCode == "" || !strings.Contains(got.Message, "not a string") || got.ElementID != "e1" {
+	// A number bound into text renders as its exact decimal (2026-09-13).
+	numberEngine, numbered := place(`{"expression":{"op":"set","value":"{{amount}}"}}`)
+	got := dispatch(numberEngine, request{Operation: "render", TemplateBase64: encode(numbered), DataBase64: data, ParamsBase64: params})
+	if !got.OK {
+		t.Fatalf("number render = %#v", got)
+	}
+	// A statically number-kind text value commits and saves at 3.3.
+	if _, literal := place(`{"expression":{"op":"set","value":"{{1}}"}}`); !strings.Contains(string(literal), `"version": "3.3"`) {
+		t.Fatalf("a {{1}} text value must save at 3.3:\n%s", literal)
+	}
+
+	// A wrong-kind (boolean) binding carries its own diagnostic code; the
+	// message must name the element and the reason rather than a fixed
+	// placeholder.
+	boundEngine, bound := place(`{"expression":{"op":"set","value":"{{flag}}"}}`)
+	got = dispatch(boundEngine, request{Operation: "render", TemplateBase64: encode(bound), DataBase64: encode([]byte(`{"flag":true}`)), ParamsBase64: params})
+	if got.OK || got.DiagnosticCode == "" || !strings.Contains(got.Message, "bool") || got.ElementID != "e1" {
 		t.Fatalf("bind render = %#v", got)
 	}
 

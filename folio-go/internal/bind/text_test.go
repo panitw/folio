@@ -51,16 +51,63 @@ func TestAD14Triple(t *testing.T) {
 		}
 	})
 
-	t.Run("row3_wrong_kind_is_error_no_coercion", func(t *testing.T) {
+	// Owner decision 2026-09-13 (revising AD-14 for numbers in text only):
+	// a number prints as its exact decimal; a boolean stays a wrong-kind
+	// Error, never coerced.
+	t.Run("row3_number_prints_exact_decimal", func(t *testing.T) {
 		data := mustDecode(t, `{"customer": {"name": 123}}`)
-		_, err := BindText(text, data, noParams, testFormatContext(), elementID)
-		if err == nil {
-			t.Fatal("AC10: a JSON number bound into a text element must be an Error, never coerced")
+		got, err := BindText(text, data, noParams, testFormatContext(), elementID)
+		if err != nil {
+			t.Fatalf("a JSON number bound into text must print, got: %v", err)
 		}
-		if strings.Contains(err.Error(), "123") == false && strings.Contains(err.Error(), "number") == false {
-			t.Errorf("error should indicate the wrong-kind value, got: %v", err)
+		if got != "Statement for 123" {
+			t.Errorf("got %q, want %q", got, "Statement for 123")
 		}
 	})
+
+	t.Run("row4_boolean_is_error_no_coercion", func(t *testing.T) {
+		data := mustDecode(t, `{"customer": {"name": true}}`)
+		_, err := BindText(text, data, noParams, testFormatContext(), elementID)
+		if err == nil {
+			t.Fatal("AC10: a JSON boolean bound into a text element must be an Error, never coerced")
+		}
+		if !strings.Contains(err.Error(), "bool") || !strings.Contains(err.Error(), elementID) {
+			t.Errorf("error should name the boolean kind and the element, got: %v", err)
+		}
+	})
+}
+
+// TestBindTextPrintsNumbersAsExactDecimals is the spec's I/O matrix at the
+// bind layer: data numbers and computed numbers share one printer.
+func TestBindTextPrintsNumbersAsExactDecimals(t *testing.T) {
+	data := mustDecode(t, `{"v": 1234.50, "i": 2067071865, "n": -3.5, "e": 1e3, "z": -0, "zs": 0.000,
+		"a": 1.5, "b": 2, "items": [{"x": 1}, {"x": 2}, {"x": 3}], "ten": 10}`)
+	for _, tc := range []struct{ text, want string }{
+		{"{{v}}", "1234.50"},
+		{"{{i}}", "2067071865"},
+		{"{{n}}", "-3.5"},
+		{"{{e}}", "1000"},
+		{"{{z}}", "0"},
+		{"{{zs}}", "0.000"},
+		{"{{count(items)}}", "3"},
+		{"{{sum(items.x)}}", "6"},
+		{"{{a + b}}", "3.5"},
+		{"{{1}}", "1"},
+		{"Total: {{ten}} THB", "Total: 10 THB"},
+	} {
+		got, err := BindText(tc.text, data, noParams, testFormatContext(), "e1")
+		if err != nil {
+			t.Fatalf("%s: %v", tc.text, err)
+		}
+		if got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.text, got, tc.want)
+		}
+	}
+	for _, text := range []string{"{{a / 0}}", "{{true}}"} {
+		if _, err := BindText(text, data, noParams, testFormatContext(), "e1"); err == nil {
+			t.Errorf("%s must stay a located Error", text)
+		}
+	}
 }
 
 // TestBindTextAcceptsBareDottedPath is AC15.
@@ -273,19 +320,37 @@ func TestBindTextNumberCoefficientOverflowIsLocatedError(t *testing.T) {
 	}
 }
 
-// TestBindTextWellFormedNumberIsStillWrongKind pins AC10 alongside
-// Finding 2's fix: a well-formed number (one Decimal accepts) bound
-// into a text element is still an Error, never coerced — validating via
-// AsDecimal must not become a backdoor that lets a legal number render
-// as text.
-func TestBindTextWellFormedNumberIsStillWrongKind(t *testing.T) {
-	data := mustDecode(t, `{"transaction": {"amount": 1.50}}`)
-	_, err := BindText("Amount: {{transaction.amount}}", data, noParams, testFormatContext(), "e7")
-	if err == nil {
-		t.Fatal("AC10: a JSON number bound into a text element must be an Error, never coerced, even when it is a well-formed Decimal")
+// TestBindTextChargesPrintedExponentZeros: printing a positive exponent
+// expands into that many zeros, so it is charged to the placeholder's
+// budget. 1e100000 fits alone; after a 950,000-byte string resolve in the
+// same placeholder the 100,000 printed zeros exceed the budget.
+func TestBindTextChargesPrintedExponentZeros(t *testing.T) {
+	data := mustDecode(t, `{"v": 1e100000, "s": "`+strings.Repeat("x", 950_000)+`"}`)
+	got, err := BindText("{{v}}", data, noParams, testFormatContext(), "e1")
+	if err != nil {
+		t.Fatalf("1e100000 alone must print within budget: %v", err)
 	}
-	if !strings.Contains(err.Error(), "not a string") {
-		t.Errorf("error should still read as a wrong-kind rejection, got: %v", err)
+	if len(got) != 100_001 || got[0] != '1' || strings.Trim(got[1:], "0") != "" {
+		t.Fatalf("1e100000 printed %d bytes, want 1 followed by 100000 zeros", len(got))
+	}
+	_, err = BindText(`{{s != "" ? v : v}}`, data, noParams, testFormatContext(), "e1")
+	if err == nil || !strings.Contains(err.Error(), "work units") {
+		t.Fatalf("printing past an exhausted budget must be refused, got: %v", err)
+	}
+}
+
+// TestBindTextWellFormedNumberPrintsItsScale pins the number-in-text rule
+// alongside Finding 2's fix: a well-formed number (one Decimal accepts)
+// prints as its exact decimal, keeping the scale the data wrote ("1.50",
+// never "1.5"), while a malformed one stays the coefficient Error above.
+func TestBindTextWellFormedNumberPrintsItsScale(t *testing.T) {
+	data := mustDecode(t, `{"transaction": {"amount": 1.50}}`)
+	got, err := BindText("Amount: {{transaction.amount}}", data, noParams, testFormatContext(), "e7")
+	if err != nil {
+		t.Fatalf("a well-formed number must print, got: %v", err)
+	}
+	if got != "Amount: 1.50" {
+		t.Errorf("got %q, want %q", got, "Amount: 1.50")
 	}
 }
 

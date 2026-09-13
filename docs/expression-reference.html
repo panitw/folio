@@ -357,10 +357,10 @@
     <p>Ordering compares numbers. Inequality compares same-kind scalars; numeric scales do not affect comparison, strings compare exactly and booleans compare directly. Null differs from every non-null scalar. Missing paths remain errors. Collections and non-null mixed scalar kinds are invalid. There is no ==, ===, !==, &amp;&amp;, ||, !, assignment or scripting.</p>
     <p>Arithmetic uses exact bounded Decimals. Addition, subtraction and remainder retain the smaller operand exponent; multiplication adds exponents; unary signs retain scale. Remainder truncates toward zero: <code>-5 % 2 = -1</code>, <code>5 % -2 = 1</code>.</p>
     <p>Division chooses max(operand decimal scales, 0) + 4 fractional places and rounds half to even at each operator, retaining trailing zeros: <code>1 / 3 = 0.3333</code>, <code>1.00 / 3 = 0.333333</code>, <code>1 / 8 = 0.1250</code>, <code>12 / 3 / 2 = 2.00000000</code>. Ties: <code>1 / 32 = 0.0312</code>, <code>3 / 32 = 0.0938</code>. Tiny quotients can round to zero. Zero divisors, coefficient overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale; exponent magnitude is at most 100000. Trailing zeros cannot be removed to avoid bounds.</p>
-    <p>Both branches are statically checked, and each known result must satisfy its consumer. Only the selected branch evaluates. Text still requires string or null: <code>{{null}}</code> is empty and <code>{{true}}</code> is invalid. Numbers require formatNumber.</p>
+    <p>Both branches are statically checked, and each known result must satisfy its consumer. Only the selected branch evaluates. Text accepts a string, a number or null: <code>{{true ? "Yes" : "No"}}</code> renders Yes, <code>{{null}}</code> renders empty, <code>{{1}}</code> renders 1, and <code>{{true}}</code> is an error. A number in text — from data or computed, including count results — prints as its exact decimal; use <code>formatNumber</code> for grouping, fixed decimals or locale styling. The printer never rounds, but division and <code>avg</code> results carry their rounded division scale: <code>{{1 / 3}}</code> prints <code>0.3333</code>, and <code>{{avg(...)}}</code> over 1 and 2 prints <code>1.5000</code>.</p>
     <p>Limits: 64 KiB source, 4096 nodes, depth 64, and 1,000,000 shared evaluation work units for nodes, strings, projections and decimal shifts. Errors retain element, field and source-relative UTF-8 byte offset when available. Refused edits are atomic. The Visibility editor retains its separate 512-byte field limit; valid longer engine formulas are refused by that editor without changing the document.</p>
     <p>Formula syntax and boolean/null literals in every expression container require the unreleased <code>2.0</code> format on save. The AST determines this requirement; quoted punctuation and ordinary paths do not raise it. Saving never lowers the loaded version. No migration or additional major version is introduced.</p>
-    <p>No-data preview needs no fabricated data for literals. Numeric paths default to zero, direct divisors to one, text to empty, collections to empty. Both branches contribute requirements. Conflicts and computed zero divisors refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters remain Preview inputs.</p>
+    <p>No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. A path used bare in text may take the zero (or divisor one) stand-in, so a path shared by text and <code>formatNumber</code> previews. Both branches contribute requirements. Conflicts and computed zero divisors refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters remain Preview inputs.</p>
   </section>
 
   <section id="if">
@@ -409,21 +409,25 @@
       field <code>sum</code>/<code>avg</code> would need still counts.
     </p>
     <p>
-      <strong>An aggregate is a number, and a number must be formatted before it can appear in
-      text.</strong> A bare <code>{{sum(transactions.amount)}}</code> is an <strong>error</strong> —
-      text bindings are never coerced (the same rule that makes a bare
-      <code>{{transactions.amount}}</code> an error today):
+      <strong>An aggregate is a number, and a number in text prints as its exact decimal.</strong> A
+      bare aggregate prints the engine's exact value — its digits with the scale kept, never grouped,
+      localised, rounded or written with an exponent — exactly as a bare
+      <code>{{transactions.amount}}</code> does:
     </p>
 
-    <div class="sample"><pre>{{sum(transactions.amount)}}    Error — a number is never coerced to text
-{{avg(transactions.amount)}}    Error — same rule
-{{count(transactions)}}         Error — format the number first</pre></div>
+    <div class="sample"><pre>{{sum(transactions.amount)}}    <span class="out">1234.56</span>
+{{avg(transactions.amount)}}    <span class="out">411.520000</span>
+{{count(transactions)}}         <span class="out">3</span></pre></div>
 
     <p>
-      A number-valued aggregate must be wrapped in <code>formatNumber(...)</code>
-      before it can appear in text — see <em>Dates and numbers</em>, below. This includes <code>count</code>.
+      For styled output — grouping, a fixed number of decimals, locale digits — wrap the number in
+      <code>formatNumber(...)</code>; see <em>Dates and numbers</em>, below.
     </p>
     <div class="sample"><pre>{{formatNumber(sum(transactions.amount), <span class="str">"#,##0.00"</span>)}}     <span class="out">1,234.56</span></pre></div>
+    <p>
+      A number in text is the one kind rule that changed: booleans, lists and objects in text are
+      still errors naming the element.
+    </p>
     <p>
       <strong>Totals are exact.</strong> Folio adds money as decimal digits, never as binary floating
       point, so a statement total is correct to the last satang no matter how many rows it covers.

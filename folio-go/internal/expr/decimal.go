@@ -10,6 +10,7 @@ package expr
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/panitw/folio/folio-go/internal/template"
@@ -120,4 +121,49 @@ func NewDecimal(literal string) (Decimal, error) {
 	}
 
 	return Decimal{Coefficient: coeff.Int64(), Exponent: exponent}, nil
+}
+
+// Text is the exact decimal a number prints as when it is bound into text
+// (owner decision 2026-09-13, revising AD-14 for numbers in text only): the
+// coefficient's digits with a '.' placed by Exponent, keeping the scale.
+// There is no exponent notation, grouping, locale or rounding, and no float
+// on the path: {123450,-2} is "1234.50", {1,3} is "1000", {-35,-1} is
+// "-3.5", {0,-3} is "0.000". A zero coefficient never prints a sign, so -0
+// is "0". formatNumber stays the way to get styled output.
+//
+// The absolute value is taken in uint64, so math.MinInt64's coefficient
+// prints its digits rather than overflowing back to a negative value.
+//
+// A positive Exponent appends that many zeros. It is bounded by
+// maxDecimalExponentMagnitude on every decoded or computed Decimal.
+func (d Decimal) Text() string {
+	neg := d.Coefficient < 0
+	mag := uint64(d.Coefficient)
+	if neg {
+		mag = -mag
+	}
+	digits := strconv.FormatUint(mag, 10)
+	var b strings.Builder
+	if neg {
+		b.WriteByte('-')
+	}
+	switch {
+	case d.Exponent >= 0:
+		b.WriteString(digits)
+		if mag != 0 {
+			b.WriteString(strings.Repeat("0", d.Exponent))
+		}
+	default:
+		scale := -d.Exponent
+		if len(digits) <= scale {
+			b.WriteString("0.")
+			b.WriteString(strings.Repeat("0", scale-len(digits)))
+			b.WriteString(digits)
+		} else {
+			b.WriteString(digits[:len(digits)-scale])
+			b.WriteByte('.')
+			b.WriteString(digits[len(digits)-scale:])
+		}
+	}
+	return b.String()
 }

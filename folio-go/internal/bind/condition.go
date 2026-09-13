@@ -4,9 +4,10 @@
 // to — never coerced to a string — rather than a bound TEXT result.
 //
 // Every OTHER bind.* entry point (BindText, BindTextSpans, Resolve) is
-// text-span shaped: it scans for "{{ }}" placeholders and coerces
-// whatever each one resolves to into a string (text.go's Resolve,
-// `case default: … not a string — text bindings are never coerced`).
+// text-span shaped: it scans for "{{ }}" placeholders and writes
+// whatever each one resolves to as text (text.go's Resolve: a string
+// verbatim, a number as its exact decimal, null as empty, and anything
+// else a wrong-kind Error).
 // A visibility condition is a BARE expression with no "{{ }}" wrapping
 // (folio_expr_validate.go's checkVisibleIfExpression exists separately
 // for exactly this reason: routing it through the text path "would

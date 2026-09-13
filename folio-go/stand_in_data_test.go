@@ -115,9 +115,9 @@ func TestStandInRulesCoverTheEngineFunctionRegistry(t *testing.T) {
 // ninth function reds here too rather than being silently unexercised.
 func TestStandInDocumentIsAcceptedByEveryFunction(t *testing.T) {
 	// Each entry is one text-element value that uses the named function
-	// on a path the generator must supply. sum/count return numbers,
-	// which a text binding never coerces, so both are wrapped in the
-	// formatNumber the engine itself requires.
+	// on a path the generator must supply. sum/count return numbers; a
+	// bare number would print as its exact decimal, but both stay wrapped
+	// in formatNumber so that function's operand path is exercised too.
 	fixtures := map[string]string{
 		"sum":          `Total {{formatNumber(sum(ledger.amount), "0.00")}}`,
 		"count":        `Rows {{formatNumber(count(ledger), "0")}}`,
@@ -275,15 +275,42 @@ func TestStandInSharedContextsIntersect(t *testing.T) {
 		}
 	})
 
-	t.Run("text and formatNumber share nothing", func(t *testing.T) {
+	// A number in text prints as its exact decimal (2026-09-13), so text
+	// and formatNumber now share the zero stand-in and preview renders.
+	t.Run("text and formatNumber share zero", func(t *testing.T) {
 		elements := standInTextElement("e1", `Raw {{invoice.total}} formatted {{formatNumber(invoice.total, "0.00")}}`)
+		tpl := standInTemplate(t, elements)
+		got := standInBytes(t, tpl)
+		if string(got) != `{"invoice":{"total":0}}` {
+			t.Fatalf("stand-in document = %s, want {\"invoice\":{\"total\":0}}", got)
+		}
+		if _, err := Render(tpl, Data(got), nil, testShippedFontSet()); err != nil {
+			t.Fatalf("the shared-zero render failed: %v", err)
+		}
+	})
+
+	t.Run("text and a direct divisor share one", func(t *testing.T) {
+		elements := standInTextElement("e1", `{{d}} {{10 / d}}`)
+		tpl := standInTemplate(t, elements)
+		got := standInBytes(t, tpl)
+		if string(got) != `{"d":1}` {
+			t.Fatalf("stand-in document = %s, want {\"d\":1}", got)
+		}
+		if _, err := Render(tpl, Data(got), nil, testShippedFontSet()); err != nil {
+			t.Fatalf("the shared-one render failed: %v", err)
+		}
+	})
+
+	t.Run("text and visibleIf and formatNumber share nothing", func(t *testing.T) {
+		elements := standInTextElement("e1", `Raw {{invoice.total}} formatted {{formatNumber(invoice.total, "0.00")}}`) +
+			`, {"id": "e2", "type": "rect", "x": 0, "y": 40, "width": 100, "height": 10, "visibleIf": "invoice.total"}`
 		tpl := standInTemplate(t, elements)
 		_, err := StandInData(tpl)
 		if err == nil {
 			t.Fatal("StandInData produced a document for a path whose contexts share no legal value — it must refuse, never mangle")
 		}
 		message := err.Error()
-		for _, want := range []string{`"invoice.total"`, "a text binding", "formatNumber()'s operand"} {
+		for _, want := range []string{`"invoice.total"`, "a text binding", "formatNumber()'s operand", "a visibility condition"} {
 			if !strings.Contains(message, want) {
 				t.Fatalf("the refusal does not name %q: %s", want, message)
 			}

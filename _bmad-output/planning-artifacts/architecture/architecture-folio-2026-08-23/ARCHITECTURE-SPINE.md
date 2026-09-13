@@ -334,6 +334,14 @@ that did not exist while omitting thirteen that did.
   breaking change. Three data cases that would otherwise each be decided twice: an **absent**
   path is an `Error` carrying the path; an explicit JSON **`null`** renders as empty and is not
   an error; a value of the **wrong kind** for its element is an `Error`, never a coercion.
+  **Revised 2026-09-13 (owner), for numbers in text only:** a number that resolves in a TEXT
+  binding — a data value or a computed number, in a text element or table data cell (footer cells
+  are always formatted by `formatNumber`, unchanged) — prints as its exact decimal (the engine Decimal's digits with the scale kept: `1234.50`,
+  `1000` for `1e3`, `0` for `-0`; no grouping, locale, rounding, float or exponent notation), and
+  `formatNumber` stays the way to get styled output. Booleans, arrays and objects in text remain
+  wrong-kind `Error`s, and every other consumer's kind rule (conditions, function operands,
+  footer sources) is unchanged. Format `3.3` marks statically number-typed text expressions; a
+  plain path whose kind depends on data cannot be detected, which is disclosed in folio-format.md.
 
 ### AD-15 — In the designer, the engine owns the document
 

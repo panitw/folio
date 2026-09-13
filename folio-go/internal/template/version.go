@@ -83,6 +83,18 @@ import (
 // its data. Additive — its own closed set rather than a widened one — so a
 // MINOR; a 3.1 reader would silently align that header with the data.
 //
+// A SIXTH MINOR, 3.3, was added by the number-in-text-binding spec (owner
+// decision 2026-09-13, revising AD-14 for numbers in text only): a number
+// resolving in a text binding prints as its exact decimal instead of
+// failing the render. The trigger is not a key but an expression, so it
+// is derived in package folio (serialize_template.go), where expressions
+// are parsed: a text expression whose static kinds include number raises
+// the document to TextNumberExpressionVersion. A plain path whose kind
+// depends on data cannot be detected; that case is DISCLOSED in
+// folio-format.md rather than mechanised — an older reader loads such a
+// document and fails at render with a located error, never a silent wrong
+// output.
+//
 // NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
 // using only `lineSpacing` or `color` still declares 1.1; one using
 // neither still declares 1.0; only one that actually carries
@@ -90,8 +102,15 @@ import (
 // document declares the LOWEST version its content requires.
 const (
 	SupportedMajor   = 3
-	SupportedVersion = "3.2"
+	SupportedVersion = "3.3"
 )
+
+// TextNumberExpressionVersion is the version a document requires when a
+// text expression (a text element's value or a table column's bind) is
+// statically known to be able to return a number. It is exported because
+// the rule is expression-derived and applied by package folio through
+// SerializeDocumentWithMinimumVersion, not by versionRequiredByContent.
+const TextNumberExpressionVersion = "3.3"
 
 // baseVersion is the lowest version any document can declare, and the
 // version a document whose content requires nothing newer keeps.

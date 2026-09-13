@@ -69,12 +69,11 @@ func effectiveFooterFormat(doc *Template, col template.Column) (string, bool) {
 // STRUCTURAL fact (it is literally the same parser/evaluator entry
 // point) rather than an argued one.
 //
-// formatNumber is ALWAYS applied — never a bare {{sum(...)}} — because
-// bind.Resolve's own text-substitution rule rejects a non-string
-// result outright ("resolved to a number, not a string — text
-// bindings are never coerced", this story's own creation-probe Finding
-// 0): there is no bare numeral-to-text path in this codebase, for a
-// footer or for any other cell.
+// formatNumber is ALWAYS applied — never a bare {{sum(...)}}. When this
+// was written bind.Resolve rejected a number in text outright; since the
+// number-in-text-binding spec (2026-09-13) a bare number prints as its
+// exact decimal, but the footer keeps formatNumber so footerFormat and
+// the unformatted-scale pattern below stay the one styling route.
 //
 // THE "ABSENT AND UNDERIVED" CASE, CORRECTED (this story's review,
 // Blocker 1). D-1.4.1 rules it verbatim: "Absent and underived, the
@@ -1224,7 +1223,9 @@ func collectBandTableRuns(
 					// `params.` still resolves to the parameters,
 					// shadowed by nothing (AD-11). AC4's own three AD-14
 					// cases (absent -> Error, explicit null -> empty and
-					// not an error, wrong kind -> Error never coerced)
+					// not an error, wrong kind -> Error never coerced;
+					// since 2026-09-13 a number prints as its exact
+					// decimal and only other wrong kinds stay Errors)
 					// are ALL already implemented inside bind.Resolve
 					// itself — nothing here re-implements any of them.
 					//
@@ -1483,6 +1484,10 @@ func collectBandTableRuns(
 						// exactly as any other expression type error
 						// does — a plain wrapped error, never a new
 						// diagnostic code, never a panic, never coerced.
+						// (A footer value always passes through
+						// formatNumber, so the number-in-text rule that
+						// prints a bare number as its exact decimal never
+						// reaches a footer cell.)
 						return nil, nil, nil, fmt.Errorf("folio: Render: column %s: footer: %w", col.ID, berr)
 					}
 					for _, c := range caveats {

@@ -156,13 +156,17 @@ type standInDemand struct {
 // asserted (see the story's per-context requirement table):
 //
 //   - a bare text binding: internal/bind/text.go's write switch accepts
-//     KindNull or KindString and nothing else ("never coerced").
+//     KindNull, KindString or KindNumber (printed as its exact decimal,
+//     owner decision 2026-09-13) and never a boolean. The empty string
+//     stays preferred, so a path used only in text still renders nothing;
+//     zero and one are admitted so a path shared with formatNumber() or a
+//     direct divisor takes that operand's stand-in rather than refusing.
 //   - a visibility condition: expr.ConditionValue accepts KindBool or
 //     KindNull and nothing else (no truthiness, AD-14).
 //   - a bound collection: render.go's checkTableBindings refuses absent,
 //     null and non-array — an EMPTY array is explicitly not an error.
 var (
-	demandText       = standInDemand{standInSetOf(standInEmptyString, standInInstant, standInNull), "a text binding"}
+	demandText       = standInDemand{standInSetOf(standInEmptyString, standInInstant, standInZero, standInOne, standInNull), "a text binding"}
 	demandCondition  = standInDemand{standInSetOf(standInTrue, standInNull), "a visibility condition"}
 	demandCollection = standInDemand{standInSetOf(standInEmptyCollection), "a bound collection"}
 )

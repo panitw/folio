@@ -98,10 +98,10 @@ func TestFormulaStaticBothBranchesAndConsumerKinds(t *testing.T) {
 			t.Fatalf("CheckCondition(%s)=%v", src, err)
 		}
 	}
-	for _, src := range []string{`true ? "Yes" : "No"`, `null`, `true`, `false`, `1`} {
+	for _, src := range []string{`true ? "Yes" : "No"`, `null`, `true`, `false`, `1`, `count(items)`, `a + b`, `flag ? 1 : "x"`, `flag ? 1 : false`} {
 		e, _ := Parse(src)
 		err := CheckText(e)
-		valid := src == `null` || src == `true ? "Yes" : "No"`
+		valid := src != `true` && src != `false` && src != `flag ? 1 : false`
 		if (err == nil) != valid {
 			t.Fatalf("CheckText(%s)=%v", src, err)
 		}

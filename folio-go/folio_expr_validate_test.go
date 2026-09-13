@@ -162,7 +162,7 @@ func TestParseTemplateRejectsSyntaxErrorInTextValue(t *testing.T) {
   "bands": {
     "content": {
       "elements": [
-        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "{{a + b}}", "style": {"fontFamily": "body", "fontSize": 14}}
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "{{nosuch(a + b)}}", "style": {"fontFamily": "body", "fontSize": 14}}
       ]
     },
     "pageFooter": {"elements": [], "height": 20},
@@ -187,8 +187,38 @@ func TestParseTemplateRejectsSyntaxErrorInTextValue(t *testing.T) {
 	// text VERBATIM, not merely "an error occurred somewhere in e1" —
 	// this is the half of the epic's third Given that makes the
 	// diagnostic useful to a template author.
-	if !strings.Contains(err.Error(), "a + b") {
-		t.Errorf("error must carry the offending expression text %q, got: %v", "a + b", err)
+	if !strings.Contains(err.Error(), "nosuch(a + b)") {
+		t.Errorf("error must carry the offending expression text %q, got: %v", "nosuch(a + b)", err)
+	}
+}
+
+// TestParseTemplateAcceptsNumberKindTextValue: since the number-in-text
+// spec (2026-09-13) a number-kind text expression loads; a boolean one
+// stays a load error.
+func TestParseTemplateAcceptsNumberKindTextValue(t *testing.T) {
+	doc := func(value string) []byte {
+		return []byte(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [{"id": "e1", "type": "text", "x": 0, "y": 0, "width": 400, "height": 20, "value": "` + value + `", "style": {"fontFamily": "body", "fontSize": 14}}]},
+    "pageFooter": {"elements": [], "height": 20},
+    "pageHeader": {"elements": [], "height": 20}
+  },
+  "fonts": {"body": ["Roboto-Regular"]},
+  "locale": "en",
+  "nextId": 2,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "3.3"
+}`)
+	}
+	for _, value := range []string{"{{a + b}}", "{{1}}", "{{count(items)}}"} {
+		if _, err := ParseTemplate(doc(value)); err != nil {
+			t.Errorf("%s must load: %v", value, err)
+		}
+	}
+	if _, err := ParseTemplate(doc("{{true}}")); err == nil {
+		t.Error("{{true}} must stay a load error")
 	}
 }
 

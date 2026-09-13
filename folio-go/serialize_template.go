@@ -1,6 +1,8 @@
 package folio
 
 import (
+	"slices"
+
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
@@ -19,36 +21,62 @@ func SerializeTemplate(t *Template) ([]byte, error) {
 
 // Parse the actual expressions, so quoted operator punctuation and ordinary
 // paths never accidentally raise the saved format requirement.
+//
+// Two expression-derived requirements exist, highest first:
+//
+//   - 3.3 (template.TextNumberExpressionVersion): a text expression — a text
+//     element's value or a table column's bind — whose static kinds include
+//     number ({{1}}, {{count(items)}}, {{a + b}}). A number in text prints as
+//     its exact decimal from 3.3 on. A plain path whose kind depends on data
+//     ({{row.amount}}) cannot be detected and raises nothing (disclosed in
+//     folio-format.md).
+//   - 2.0: formula syntax or boolean/null literals in any expression container.
 func expressionMinimumVersion(doc *template.Document) string {
 	formula := func(raw string) bool { e, err := expr.Parse(raw); return err == nil && expr.UsesFormulas(e) }
-	textFormula := func(raw string) bool {
+	number := func(raw string) bool {
+		e, err := expr.Parse(raw)
+		return err == nil && slices.Contains(expr.KnownKinds(e), expr.KindNumber)
+	}
+	textPlaceholders := func(raw string, test func(string) bool) bool {
 		_, parts, _, err := expr.ScanPlaceholders(raw)
 		if err != nil {
 			return false
 		}
 		for _, part := range parts {
-			if !part.Reserved && formula(part.Inner) {
+			if !part.Reserved && test(part.Inner) {
 				return true
 			}
 		}
 		return false
 	}
+	usesFormula := false
 	for _, band := range []template.Band{doc.Bands.PageHeader, doc.Bands.Content, doc.Bands.PageFooter} {
 		for _, el := range band.Elements {
 			if el.VisibleIf.Set && !el.VisibleIf.Null && formula(el.VisibleIf.Value) {
-				return "2.0"
+				usesFormula = true
 			}
-			if el.Value.Set && !el.Value.Null && textFormula(el.Value.Value) {
-				return "2.0"
+			if el.Value.Set && !el.Value.Null {
+				if textPlaceholders(el.Value.Value, number) {
+					return template.TextNumberExpressionVersion
+				}
+				if textPlaceholders(el.Value.Value, formula) {
+					usesFormula = true
+				}
 			}
 			if el.Table.Set && !el.Table.Null {
 				for _, col := range el.Table.Value.Columns {
-					if textFormula(col.Bind) {
-						return "2.0"
+					if textPlaceholders(col.Bind, number) {
+						return template.TextNumberExpressionVersion
+					}
+					if textPlaceholders(col.Bind, formula) {
+						usesFormula = true
 					}
 				}
 			}
 		}
+	}
+	if usesFormula {
+		return "2.0"
 	}
 	return ""
 }

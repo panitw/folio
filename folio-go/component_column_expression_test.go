@@ -67,7 +67,10 @@ func TestTableColumnExpressionRefusesMalformedEnvelopeAndLocatedExpressionsAtomi
 			t.Fatalf("refusal changed document: %s", command)
 		}
 	}
-	for _, binding := range []string{`{{upper(}}`, `{{unknown(row.date)}}`, `{{upper(7)}}`, `{{row.amount * 1.07}}`} {
+	// {{row.amount > 1.07}} is boolean-kind: still refused in text. (A
+	// number-kind bind such as {{row.amount * 1.07}} is legal since the
+	// number-in-text spec, 2026-09-13.)
+	for _, binding := range []string{`{{upper(}}`, `{{unknown(row.date)}}`, `{{upper(7)}}`, `{{row.amount > 1.07}}`} {
 		_, err := ApplyComponentCommand(tpl, expressionCommand(id, columnID, binding))
 		var diagnosed *RenderError
 		var located *expr.LocatedError

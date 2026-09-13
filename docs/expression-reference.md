@@ -42,13 +42,13 @@ Arithmetic accepts numbers only and uses exact bounded Decimals, never floating 
 
 Division uses `max(operand decimal scales, 0) + 4` fractional places, rounded half to even at each `/`, retaining all result trailing zeros: `1 / 3` is `0.3333`, `1.00 / 3` is `0.333333`, `1 / 8` is `0.1250`, and `12 / 3 / 2` is `2.00000000`. Half ties include `1 / 32 = 0.0312` and `3 / 32 = 0.0938`. Tiny results can round to zero: `1 / 100000 = 0.0000`. Zero divisors, overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale, and exponent magnitude is at most 100000; trailing zeros cannot be removed to avoid overflow. Thus `1000000000000000 / 1` fails.
 
-Both branches of `if()` and ternaries are parsed and statically checked. Unknown functions and provably wrong types such as `false ? upper(1) : "ok"` fail at load or commit. Only the selected branch resolves data or runs calculations: `true ? true : missingFlag` succeeds. Each statically known branch must satisfy the consuming field's kind. Text still requires a string or null: `{{true ? "Yes" : "No"}}` renders Yes, `{{null}}` renders empty, and `{{true}}` is an error. Numbers, including count results, require `formatNumber` in text.
+Both branches of `if()` and ternaries are parsed and statically checked. Unknown functions and provably wrong types such as `false ? upper(1) : "ok"` fail at load or commit. Only the selected branch resolves data or runs calculations: `true ? true : missingFlag` succeeds. Each statically known branch must satisfy the consuming field's kind. Text accepts a string, a number or null: `{{true ? "Yes" : "No"}}` renders Yes, `{{null}}` renders empty, `{{1}}` renders 1, and `{{true}}` is an error. A number in text — from data or computed, including count results — prints as its exact decimal; use `formatNumber` for grouping, fixed decimals or locale styling. The printer never rounds, but division and `avg` results carry their rounded division scale: `{{1 / 3}}` prints `0.3333`, and `{{avg(...)}}` over 1 and 2 prints `1.5000`.
 
 Expressions are bounded to 64 KiB, 4096 AST nodes, depth 64 and 1,000,000 evaluation work units shared across nodes, strings, collection projection and decimal shifts. Errors identify the field and element, with a source-relative UTF-8 byte offset when available. Refused edits leave document bytes and history unchanged. The Visibility editor retains its separate 512-byte field limit; a valid longer engine formula is refused by that editor without changing the document.
 
 Formula syntax and boolean/null literals in any expression container require the unreleased `2.0` format on save. The requirement is derived from the parsed AST; quoted punctuation and ordinary paths do not raise it. Saving never lowers a loaded version. There is no migration or additional major version.
 
-No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. Both branches contribute requirements. Conflicting requirements or a computed zero divisor refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters still come from Preview inputs.
+No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. A path used bare in text may take the zero (or divisor one) stand-in, so a path shared by text and `formatNumber` previews. Both branches contribute requirements. Conflicting requirements or a computed zero divisor refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters still come from Preview inputs.
 
 ## Reading values
 
@@ -151,22 +151,25 @@ A missing path in the unselected branch remains unresolved. Syntax, unknown func
 average across every element. `count` takes the **collection path alone** — it never looks at any
 field, so an element missing the field `sum`/`avg` would need still counts.
 
-**An aggregate is a number, and a number must be formatted before it can appear in text.** A bare
-`{{sum(transactions.amount)}}` is an **error** — text bindings are never coerced (the same rule that
-makes a bare `{{transactions.amount}}` an error today):
+**An aggregate is a number, and a number in text prints as its exact decimal.** A bare
+aggregate prints the engine's exact value — its digits with the scale kept, never grouped,
+localised, rounded or written with an exponent — exactly as a bare `{{transactions.amount}}` does:
 
 ```
-{{sum(transactions.amount)}}    Error — a number is never coerced to text
-{{avg(transactions.amount)}}    Error — same rule
-{{count(transactions)}}         Error — format the number first
+{{sum(transactions.amount)}}    1234.56
+{{avg(transactions.amount)}}    411.520000
+{{count(transactions)}}         3
 ```
 
-A number-valued aggregate must be wrapped in `formatNumber(...)` before it can appear in text — see
-*Dates and numbers*, below. This includes `count`.
+For styled output — grouping, a fixed number of decimals, locale digits — wrap the number in
+`formatNumber(...)`; see *Dates and numbers*, below.
 
 ```
 {{formatNumber(sum(transactions.amount), "#,##0.00")}}     1,234.56
 ```
+
+A number in text is the one kind rule that changed: booleans, lists and objects in text are still
+errors naming the element.
 
 **Totals are exact.** Folio adds money as decimal digits, never as binary floating point, so a
 statement total is correct to the last satang no matter how many rows it covers. `avg` divides at

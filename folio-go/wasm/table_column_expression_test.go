@@ -73,7 +73,7 @@ func TestEngineColumnExpressionExactBytesHistoryAndRefusals(t *testing.T) {
 				t.Fatalf("unchanged text changed revision: %v", err)
 			}
 			invalid := [][]byte{
-				command(`{{upper(}}`), command(`{{unknown(row.date)}}`), command(`{{upper(7)}}`), command(`{{row.amount * 1.07}}`), command(strings.Repeat("é", 129)),
+				command(`{{upper(}}`), command(`{{unknown(row.date)}}`), command(`{{upper(7)}}`), command(`{{row.amount > 1.07}}`), command(strings.Repeat("é", 129)),
 				[]byte(fmt.Sprintf(`{"kind":"updateTableColumnExpression","version":1,"id":%q,"columnId":%q}`, id, columnID)),
 			}
 			for _, raw := range []string{"null", "true", "9", "[]", "{}"} {

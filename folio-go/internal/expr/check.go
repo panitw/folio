@@ -79,6 +79,8 @@ func check(e Expr) error {
 
 // CheckCondition and CheckText preserve each consumer's strict output rules,
 // checking each statically known branch even if it would not be selected.
+// Text admits a number (owner decision 2026-09-13): it prints as its exact
+// decimal (Decimal.Text). Booleans stay refused in text.
 func CheckCondition(e Expr) error {
 	if err := Check(e); err != nil {
 		return err
@@ -89,7 +91,7 @@ func CheckText(e Expr) error {
 	if err := Check(e); err != nil {
 		return err
 	}
-	return requireKind(e, stringKind|nullKind, "text expression must return a string or null (never coerced)")
+	return requireKind(e, stringKind|numberKind|nullKind, "text expression must return a string, a number or null (a boolean is never coerced)")
 }
 func requireKind(e Expr, allowed kindSet, label string) error {
 	switch n := Ungroup(e).(type) {
