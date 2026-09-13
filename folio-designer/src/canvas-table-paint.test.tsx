@@ -107,6 +107,40 @@ describe('the canvas draws the table it will print', () => {
     expect(alignsOf(paint, '.canvas-table-heading')).not.toEqual(alignsOf(paint, '.canvas-table-cell'))
   })
 
+  it('insets headings and cells by the table\'s declared left/right padding, and keeps the stylesheet inset when none is declared', () => {
+    const view = mount([table({ paddingLeft: 4_000, paddingRight: 2_000 })])
+    const paint = home(view.container)
+    const heading = paint.querySelector('.canvas-table-heading') as HTMLElement
+    const cell = paint.querySelector('.canvas-table-cell') as HTMLElement
+    // Exact values through the one zoom mapping, each edge to its own side, so a
+    // left/right swap reds this.
+    for (const each of [heading, cell]) {
+      expect(each.style.paddingLeft).toBe(canvasDisplay.css(4_000, 1))
+      expect(each.style.paddingRight).toBe(canvasDisplay.css(2_000, 1))
+    }
+    view.unmount()
+    const plain = mount([table()])
+    const plainCell = home(plain.container).querySelector('.canvas-table-cell') as HTMLElement
+    expect(plainCell.style.paddingLeft).toBe('')
+    expect(plainCell.style.paddingRight).toBe('')
+  })
+
+  it('maps the declared cell padding through the zoom rule, at a zoom that is not 1', () => {
+    const view = mount([table({ paddingLeft: 4_000, paddingRight: 2_000 })])
+    const paint = () => view.container.querySelector('.canvas-component:not(.canvas-component-echo)[data-component-id="e7"]') as HTMLElement
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    return waitFor(() => expect(screen.getByLabelText('Canvas zoom')).toHaveTextContent('110%')).then(() => {
+      const heading = paint().querySelector('.canvas-table-heading') as HTMLElement
+      const cell = paint().querySelector('.canvas-table-cell') as HTMLElement
+      for (const each of [heading, cell]) {
+        expect(each.style.paddingLeft).toBe(canvasDisplay.css(4_000, 1.1))
+        expect(each.style.paddingRight).toBe(canvasDisplay.css(2_000, 1.1))
+      }
+      // The positive control: a painter ignoring zoom would still print the zoom-1 string.
+      expect(canvasDisplay.css(4_000, 1.1)).not.toBe(canvasDisplay.css(4_000, 1))
+    })
+  })
+
   it('says the table is bound to nothing in the muted ink, not in the bind accent', () => {
     const view = mount([table({ tableBind: '' })])
     const paint = home(view.container)

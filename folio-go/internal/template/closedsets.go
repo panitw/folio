@@ -135,6 +135,22 @@ var closedColumnAligns = map[string]bool{
 	AlignLeft: true, AlignCenter: true, AlignRight: true,
 }
 
+// ColumnHeaderAlignTokens is the closed set `columns[].headerAlign` admits.
+// The same three values as the column set, and the same consumer (a table
+// cell), but a SEPARATE declaration, as the three align sets above are: it is
+// separately documented in the format, and extending one must never legalise
+// another by accident.
+var ColumnHeaderAlignTokens = []string{AlignLeft, AlignCenter, AlignRight}
+
+var closedColumnHeaderAligns = map[string]bool{
+	AlignLeft: true, AlignCenter: true, AlignRight: true,
+}
+
+// IsColumnHeaderAlign reports whether s is a member of the column header
+// alignment set. Exported for the updateTableColumn command, so the command
+// door and the file door admit exactly the same values.
+func IsColumnHeaderAlign(s string) bool { return closedColumnHeaderAligns[s] }
+
 // IsStyleAlign reports whether s is a member of a NON-TABLE element's
 // style alignment set. Exported for the property-command path
 // (component_commands.go), which sets style.align from a command and

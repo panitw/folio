@@ -572,6 +572,16 @@ func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProje
 			return CanvasProjection{}, componentFailure(id, "column.align", "alignment must be left, center, or right")
 		}
 		column.Align = template.Presence[string]{Set: true, Value: align}
+	case "headerAlign":
+		// SET-ONLY, by the owner's ruling (2026-09-13): the header control is
+		// always explicit, so there is no clear and no "follow cell" value. The
+		// closed set is the loader's own (template.IsColumnHeaderAlign), so the
+		// command door and the file door cannot admit different values.
+		headerAlign, err := commandString(map[string]json.RawMessage{"value": value}, "value")
+		if err != nil || !template.IsColumnHeaderAlign(headerAlign) {
+			return CanvasProjection{}, componentFailure(id, "column.headerAlign", "header alignment must be left, center, or right")
+		}
+		column.HeaderAlign = template.Presence[string]{Set: true, Value: headerAlign}
 	default:
 		return CanvasProjection{}, componentFailure(id, "column.field", "column field is not editable")
 	}
@@ -2976,8 +2986,11 @@ func setDocumentUTCOffset(t *Template, raw map[string]json.RawMessage) (CanvasPr
 // author, in the order a refusal names them.
 //
 // TWELVE, AND THE ONE ABSENTEE IS A RULING (D-8.1.2's map, stated in full in
-// Story 8.1's Design Notes). `padding` is forbidden outright by D-12.4.1: the
-// panel never authors padding, on a table or anywhere else.
+// Story 8.1's Design Notes). `padding` stays out of THIS closed set: D-12.4.1,
+// as revised by the owner on 2026-09-13, lets the Table Editor author a TABLE's
+// own `style.padding.left/right` — through updateComponentProperties'
+// `paddingLeft`/`paddingRight`, not here — and `headerStyle.padding` authoring
+// remains out of scope. The inspector still offers no padding rows.
 //
 // ⚠ IT WAS NINE UNTIL STORY 14.8, AND THIS PARAGRAPH IS THE RULING IT
 // RETIRED — EDITED, NOT DELETED, so the history reads. It said: "`border` is
@@ -3630,8 +3643,10 @@ func headerStyleFor(element *template.Element) *template.Style {
 // ⚠ IT MIRRORS cleanupEmptyStyle's Border HALF AND NOT ITS Padding HALF, and
 // that asymmetry is DELIBERATE rather than an omission. `cleanupEmptyStyle`
 // collapses an empty Border AND an empty Padding because element `style.padding`
-// is authorable; `headerStyle.padding` is NOT and never will be (D-12.4.1 struck
-// padding from the panel), so no command can ever empty it and a padding
+// is authorable; `headerStyle.padding` is NOT (D-12.4.1, revised 2026-09-13,
+// admits only a table's own `style.padding.left/right`, from the Table Editor;
+// header-row padding authoring stays out of scope), so no command can ever
+// empty it and a padding
 // collapse here would have no clear to run on. The consequence is worth stating
 // plainly rather than leaving implied: a HAND-AUTHORED `headerStyle:
 // {"padding": {}}` still pins `headerStyle` alive in the file forever, because

@@ -204,7 +204,9 @@ test('opening multiline binding text preserves its bytes and intentional multili
   // Shift+Tab walks back through the row's own fields before leaving the matrix.
   await expect(dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true })).toBeFocused()
   await dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true }).press('Shift+Tab')
-  await expect(dialog(page).getByRole('spinbutton', { name: 'Total table width in points', exact: true })).toBeFocused()
+  // Leaving the matrix backwards reaches the column headers' (i) explanation
+  // buttons, which sit between the sizing/padding rows and the matrix cells.
+  await expect(dialog(page).getByRole('button', { name: 'About proportion sizing', exact: true })).toBeFocused()
   await text().focus()
   await dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true }).focus()
   await done(page)

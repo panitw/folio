@@ -1957,7 +1957,7 @@ func canvasTableColumns(element template.Element) ([]CanvasTableColumn, error) {
 			Label:       clipCanvasPropertyString(column.Label),
 			LabelLines:  canvasLabelLinesAtBreaks(column.Label),
 			Width:       int64(widths[i]),
-			HeaderAlign: columnAlign(header.alignFallback, column),
+			HeaderAlign: columnHeaderAlign(header.alignFallback, column),
 			CellAlign:   columnAlign(body.alignFallback, column),
 			Bind:        clipCanvasPropertyString(column.Bind),
 		})

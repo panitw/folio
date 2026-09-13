@@ -201,6 +201,22 @@ type TableColumnsProjection struct {
 	RulesColorResolved string `json:"rules.colorResolved"`
 	RulesBetween       string `json:"rules.between"`
 
+	// THE TABLE'S CELL PADDING, left and right, AS THE DOCUMENT DECLARES IT
+	// (`style.padding.left/right`) — committed only, because nothing cascades
+	// into a table's own style. Thousandths of a point spelled as STRINGS, on
+	// the header-border width's grounds: "" is absent and "0" is a declared
+	// zero, which a numeric member could not tell apart. The loader admits a
+	// negative length here, so a leading '-' is a legal spelling.
+	//
+	// PaddingHeaderOverride reports that `headerStyle.padding` exists, which
+	// takes the header row's padding WHOLE (resolveHeaderStyle), so these two
+	// no longer reach the header. It is deliberately NOT spelled `header…`:
+	// every `header*` key on this struct must be a committed/resolved pair
+	// (table_header_style_test.go), and this is a flag, not a pair.
+	PaddingLeft           string `json:"paddingLeft"`
+	PaddingRight          string `json:"paddingRight"`
+	PaddingHeaderOverride bool   `json:"paddingHeaderOverride"`
+
 	Columns []TableColumnProjection `json:"columns"`
 }
 
@@ -243,17 +259,26 @@ func committedStyleBool(value template.Presence[bool]) bool {
 }
 
 type TableColumnProjection struct {
-	Proportion       string `json:"proportion"`
-	ID               string `json:"id"`
-	Header           string `json:"header"`
-	Width            int64  `json:"width"`
-	Align            string `json:"align"`
-	Binding          string `json:"binding"`
-	RowField         string `json:"rowField"`
-	RowFieldEditable bool   `json:"rowFieldEditable"`
-	Footer           string `json:"footer"`
-	FooterOf         string `json:"footerOf"`
-	FooterFormat     string `json:"footerFormat"`
+	Proportion string `json:"proportion"`
+	ID         string `json:"id"`
+	Header     string `json:"header"`
+	Width      int64  `json:"width"`
+	Align      string `json:"align"`
+	// HeaderAlign is the COMMITTED `columns[].headerAlign`, "" when absent.
+	HeaderAlign string `json:"headerAlign"`
+	// HeaderAlignResolved is the alignment this column's header cell PRINTS
+	// with: columnHeaderAlign over resolveHeaderStyle's fallback, the renderer's
+	// own helper, so the cascade `headerAlign` → `align` → `headerStyle.align` →
+	// `style.align` → `left` is asked in Go and never re-derived in the browser.
+	// Never "". The editor presses it while HeaderAlign is unset (owner,
+	// 2026-09-13: press what actually prints).
+	HeaderAlignResolved string `json:"headerAlignResolved"`
+	Binding             string `json:"binding"`
+	RowField            string `json:"rowField"`
+	RowFieldEditable    bool   `json:"rowFieldEditable"`
+	Footer              string `json:"footer"`
+	FooterOf            string `json:"footerOf"`
+	FooterFormat        string `json:"footerFormat"`
 }
 
 // TableColumns returns only the selected table's structural column paint
@@ -333,6 +358,12 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		RulesBetween:              canonicalBoundaryList(committedTableRules(element.Table.Value).Between),
 		Columns:                   make([]TableColumnProjection, 0, len(element.Table.Value.Columns)),
 	}
+	if element.Style.Set && !element.Style.Null && element.Style.Value.Padding.Set && !element.Style.Value.Padding.Null {
+		padding := element.Style.Value.Padding.Value
+		projection.PaddingLeft = committedBorderWidth(padding.Left)
+		projection.PaddingRight = committedBorderWidth(padding.Right)
+	}
+	projection.PaddingHeaderOverride = committed.Padding.Set && !committed.Padding.Null
 	if element.Width.Set {
 		projection.Sizing = "proportion"
 	}
@@ -347,6 +378,10 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 			align = column.Align.Value
 		}
 		if align != "left" && align != "center" && align != "right" {
+			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
+		}
+		headerAlign := committedStyleString(column.HeaderAlign)
+		if headerAlign != "" && !template.IsColumnHeaderAlign(headerAlign) {
 			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
 		}
 		footer, footerOf, footerFormat := "", "", ""
@@ -377,7 +412,7 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		if column.Proportion.Set {
 			proportion = template.FormatProportion(column.Proportion.Value)
 		}
-		projection.Columns = append(projection.Columns, TableColumnProjection{ID: string(column.ID), Header: column.Label, Width: int64(widths[i]), Proportion: proportion, Align: align, Binding: column.Bind, RowField: row.Field, RowFieldEditable: row.Editable, Footer: footer, FooterOf: footerOf, FooterFormat: footerFormat})
+		projection.Columns = append(projection.Columns, TableColumnProjection{ID: string(column.ID), Header: column.Label, Width: int64(widths[i]), Proportion: proportion, Align: align, HeaderAlign: headerAlign, HeaderAlignResolved: columnHeaderAlign(resolved.alignFallback, column), Binding: column.Bind, RowField: row.Field, RowFieldEditable: row.Editable, Footer: footer, FooterOf: footerOf, FooterFormat: footerFormat})
 	}
 	return projection, nil
 }

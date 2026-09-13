@@ -71,17 +71,18 @@ import (
 // diff to this list, made deliberately and reviewed, rather than a
 // silent deletion nothing notices.
 var declaredTableBehaviourSuite = []string{
-	"table_proportions_test.go",     // Proportional authoring — exact allocation, structure, refusals and PDF geometry
-	"table_render_test.go",          // Story 4.1 — cell rendering, header row, column geometry
-	"table_render_row_test.go",      // Story 4.2 — row scope, per-row binding, empty collections
-	"table_pagination_test.go",      // Story 4.3 — row-atomic pagination
-	"table_header_repeat_test.go",   // Story 4.4 — the header repeats on continuation pages
-	"table_footer_test.go",          // Story 4.5 — footer aggregates, orphan avoidance
-	"table_row_clip_test.go",        // Story 4.6 — a row taller than the page
-	"table_alternating_row_test.go", // Story 4.8 — odd collection-index alternate fills
-	"table_header_style_test.go",    // Story 12.3 — the header/alt-row authoring commands and the headerStyle writer census
-	"table_ruled_form_test.go",      // SPEC-table-rules — the per-page frame and rules, the per-page floor and its push, perimeter ownership, the two table commands and the packed label projection
-	"table_rules_test.go",           // SPEC-table-rules — the table's own box, the boundary-addressed interior rules, the ruled area's floor and the packed column label
+	"table_proportions_test.go",          // Proportional authoring — exact allocation, structure, refusals and PDF geometry
+	"table_render_test.go",               // Story 4.1 — cell rendering, header row, column geometry
+	"table_render_row_test.go",           // Story 4.2 — row scope, per-row binding, empty collections
+	"table_pagination_test.go",           // Story 4.3 — row-atomic pagination
+	"table_header_repeat_test.go",        // Story 4.4 — the header repeats on continuation pages
+	"table_footer_test.go",               // Story 4.5 — footer aggregates, orphan avoidance
+	"table_row_clip_test.go",             // Story 4.6 — a row taller than the page
+	"table_alternating_row_test.go",      // Story 4.8 — odd collection-index alternate fills
+	"table_header_style_test.go",         // Story 12.3 — the header/alt-row authoring commands and the headerStyle writer census
+	"table_ruled_form_test.go",           // SPEC-table-rules — the per-page frame and rules, the per-page floor and its push, perimeter ownership, the two table commands and the packed label projection
+	"table_rules_test.go",                // SPEC-table-rules — the table's own box, the boundary-addressed interior rules, the ruled area's floor and the packed column label
+	"table_header_align_padding_test.go", // spec-table-cell-padding-header-align-info — per-column header alignment and the table's own cell padding
 }
 
 // TestTableBehaviourSuiteIsNotSupersededByTheGolden asserts every

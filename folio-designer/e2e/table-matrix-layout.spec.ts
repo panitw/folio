@@ -5,7 +5,7 @@ import { expect, test, type Locator } from '@playwright/test'
 // story's claims are unprovable there and every one of them is a claim about
 // the thing an author actually looks at:
 //
-//   1. the six-track grid needs no horizontal scrolling at any ordinary width,
+//   1. the seven-track grid needs no horizontal scrolling at any ordinary width,
 //      and the column labels sit over the columns they name;
 //   2. when the window really is too narrow, the MATRIX scrolls and the sheet
 //      does not — the failure the retired `overflow-x: auto` used to prevent;
@@ -57,7 +57,7 @@ async function openEditorOverOneColumn(page: import('@playwright/test').Page): P
   return dialog
 }
 
-test('the six-track matrix fits the dialog and its labels sit over their cells', async ({ page }) => {
+test('the seven-track matrix fits the dialog and its labels sit over their cells', async ({ page }) => {
   const dialog = await openEditorOverOneColumn(page)
   const grid = dialog.getByRole('grid', { name: 'Table columns' })
 
@@ -79,10 +79,10 @@ test('the six-track matrix fits the dialog and its labels sit over their cells',
   // cannot see that at all; comparing a header cell's x against its row cell's
   // x is exactly the drift it produces.
   const headers = grid.getByRole('columnheader')
-  await expect(headers).toHaveCount(6)
+  await expect(headers).toHaveCount(7)
   const cells = grid.getByRole('row').nth(1).getByRole('gridcell')
-  await expect(cells).toHaveCount(6)
-  for (let column = 0; column < 6; column++) {
+  await expect(cells).toHaveCount(7)
+  for (let column = 0; column < 7; column++) {
     const label = await box(headers.nth(column), `columnheader ${column + 1}`)
     const cell = await box(cells.nth(column), `gridcell ${column + 1}`)
     expect(Math.abs(label.x - cell.x), `column ${column + 1}: the label must start where its cell starts`).toBeLessThan(1)
@@ -159,7 +159,7 @@ test('the ALIGN cell is the inspector\'s own segmented control, measured against
 
 // ⚠ THIS CASE IS UNREACHABLE AT THE SUITE'S DEFAULT SIZE. `playwright.config.ts`
 // declares no viewport, so every other test in this repository runs at
-// 1280x720, where the six tracks fit with room to spare and the failure below
+// 1280x720, where the seven tracks fit with room to spare and the failure below
 // simply cannot occur. It is set explicitly here.
 test('at a narrow window the matrix scrolls and the sheet does not', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 })
@@ -168,7 +168,8 @@ test('at a narrow window the matrix scrolls and the sheet does not', async ({ pa
   const sheetLocator = dialog.locator('.table-editor')
   const heading = dialog.locator('.table-editor-heading')
 
-  // The six tracks demand ~886px once gaps and row padding count; the sheet is
+  // The seven tracks (HEADER ALIGN beside CELL ALIGN) demand more than the
+  // sheet has once gaps and row padding count; the sheet is
   // `min(1440px, 100vw - 80px)` less its own padding, so at 900px the matrix
   // genuinely overflows. That is the precondition for anything below to mean
   // something.

@@ -532,7 +532,12 @@ type Column struct {
 	// set, Width is absent on disk and zero in memory.
 	Proportion Presence[int64]
 	Align      Presence[string]
-	Bind       string
+	// HeaderAlign aligns this column's HEADER cell only. Absent means the
+	// header follows Align (and then the header row's own fallback), so a
+	// document that never declares it renders exactly as before. Its own
+	// closed set, ColumnHeaderAlignTokens; declaring it requires 3.2.
+	HeaderAlign Presence[string]
+	Bind        string
 
 	Footer       Presence[string]
 	FooterOf     Presence[string]

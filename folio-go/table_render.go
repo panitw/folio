@@ -549,6 +549,18 @@ func columnAlign(fallback string, col template.Column) string {
 	return fallback
 }
 
+// columnHeaderAlign is columnAlign for a HEADER cell, and only a header cell:
+// `columns[].headerAlign` wins, then the column's own `align`, then the header
+// row's fallback. Data and footer cells never consult it. The renderer's header
+// row and the canvas projection's HeaderAlign both call it, so the canvas
+// cannot align a heading differently from the PDF.
+func columnHeaderAlign(fallback string, col template.Column) string {
+	if col.HeaderAlign.Set && !col.HeaderAlign.Null {
+		return col.HeaderAlign.Value
+	}
+	return columnAlign(fallback, col)
+}
+
 // paddingEdges returns the four padding insets, each independently
 // defaulting to zero when its own field is absent (AC3, R6).
 func paddingEdges(p template.Padding) (top, right, bottom, left geom.Length) {
@@ -935,7 +947,7 @@ func collectBandTableRuns(
 				headerLines = len(lines)
 			}
 			headerCells[i] = headerCell{
-				lines: lines, segs: segs, align: columnAlign(hs.alignFallback, col),
+				lines: lines, segs: segs, align: columnHeaderAlign(hs.alignFallback, col),
 				clip: overflows, clipX: cg.X + padLeft, clipWidth: contentW,
 			}
 		}

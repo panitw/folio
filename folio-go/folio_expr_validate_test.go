@@ -733,6 +733,8 @@ var styleStringFieldExclusions = map[string]string{
 		"styling is not supported\" would be the wrong message for the wrong reason",
 	"Column.Align": "governed by its own closed-set check (parse_bands.go: must be one of " +
 		"left/center/right) — a placeholder value is already rejected, just not under this message",
+	"Column.HeaderAlign": "governed by its own closed-set check (parse_bands.go: ColumnHeaderAlignTokens, " +
+		"left/center/right) — a placeholder value is already rejected, just not under this message",
 	"Column.Footer":   "a closed enum (\"count\"/\"sum\"/\"avg\"), not a colour or appearance value",
 	"Column.FooterOf": "a column-id reference, not an appearance property",
 	"Column.FooterFormat": "a number/date format pattern (Story 3.4), not a colour — \"conditional " +

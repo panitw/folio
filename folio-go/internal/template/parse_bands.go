@@ -608,6 +608,20 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 		col.Align = present(s)
 	}
 
+	if headerAlignRaw, ok := obj["headerAlign"]; ok {
+		consumed["headerAlign"] = true
+		s, err := decodeStringRaw(headerAlignRaw)
+		if err != nil {
+			return Column{}, newLoadError("headerAlign", string(id), string(headerAlignRaw), "must be a string: "+err.Error())
+		}
+		// Its own closed set (ColumnHeaderAlignTokens), with the message
+		// derived from it, exactly as `align` above.
+		if !closedColumnHeaderAligns[s] {
+			return Column{}, newLoadError("headerAlign", string(id), s, closedSetMessage(ColumnHeaderAlignTokens))
+		}
+		col.HeaderAlign = present(s)
+	}
+
 	bindRaw, ok := obj["bind"]
 	if !ok {
 		return Column{}, newLoadError("bind", string(id), "", "missing required field")

@@ -57,7 +57,14 @@ export const justifySegment: SegmentSpec = { value: 'justify', label: 'Align jus
 // `segmentProps` is how the table editor threads its roving-tabindex cell onto
 // each segment: three segments are three reachable controls, so each one takes
 // its own lattice position rather than the group taking one between them.
-export function SegmentedControl({ label, segments, current, disabled, titleFor, onPick, trailing, segmentProps }: {
+//
+// `role` IS `group` UNLESS A CALLER HAS A REASON, and the Table Editor's HEADER
+// ALIGN control has one: the spec forbids a new `role="group"` in that dialog,
+// because `control-vocabulary-contract.test.tsx` pins the shrunk sweep's group
+// count under its floor. `toolbar` keeps the set named for assistive
+// technology without adding a counted group instance.
+export function SegmentedControl({ label, segments, current, disabled, titleFor, onPick, trailing, segmentProps, role = 'group' }: {
+  role?: 'group' | 'toolbar'
   label: string
   segments: ReadonlyArray<SegmentSpec>
   current?: string
@@ -67,7 +74,7 @@ export function SegmentedControl({ label, segments, current, disabled, titleFor,
   trailing?: ReactNode
   segmentProps?: (index: number) => Record<string, unknown>
 }) {
-  return <div className="property-segmented" role="group" aria-label={label}>
+  return <div className="property-segmented" role={role} aria-label={label}>
     {segments.map((segment, index) => <button
       key={segment.value}
       type="button"

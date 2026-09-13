@@ -450,6 +450,11 @@ func TestAFullyExercisedDocumentIsNotVersionINFLATED(t *testing.T) {
 			tbl := band.Elements[i].Table.Value
 			tbl.Rules = Presence[TableRules]{}
 			tbl.MinHeight = Presence[geom.Length]{}
+			// `columns[].headerAlign` requires 3.2, the ceiling since that
+			// key landed — cleared for the same reason as the two above.
+			for c := range tbl.Columns {
+				tbl.Columns[c].HeaderAlign = Presence[string]{}
+			}
 			band.Elements[i].Table = present(tbl)
 		}
 	}

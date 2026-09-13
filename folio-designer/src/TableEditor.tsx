@@ -5,21 +5,23 @@ import { isHexColour, swatchColor } from './swatch-color'
 import type { TableHeaderStyleField, TableRulesField } from './table-style-command'
 import { tableColumnBindingSuggestion } from './table-column-command'
 
-type Field = 'header' | 'width' | 'proportion' | 'align'
+type Field = 'header' | 'width' | 'proportion' | 'align' | 'headerAlign'
+type PaddingField = 'paddingLeft' | 'paddingRight'
+type InfoTopic = 'sizing' | 'binding'
 type BindingControl = HTMLInputElement | HTMLTextAreaElement
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => Promise<boolean> | void; onTotalWidth: (value: string) => Promise<boolean> | void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void; onMinHeight: (operation: 'set' | 'clear', value?: string) => void; onRules: (field: TableRulesField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => Promise<boolean> | void; onTotalWidth: (value: string) => Promise<boolean> | void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void; onMinHeight: (operation: 'set' | 'clear', value?: string) => void; onRules: (field: TableRulesField, operation: 'set' | 'clear', value?: string) => void; onCellPadding: (field: PaddingField, operation: 'set' | 'clear', value?: string) => void }>
 
-// STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
+// STORY 14.7 — SEVEN LABELLED COLUMNS ON SCREEN, FIFTEEN LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
 //
-// `aria-colcount` counts what the DESIGN draws: `#`, HEADER LABEL, BOUND
-// FIELD · row scope, WIDTH, ALIGN, FOOTER AGGREGATE. `cellCount` counts what a
-// KEYBOARD must reach, which is every control inside those six cells — the
+// `aria-colcount` counts what the DESIGN draws: `#`, HEADER LABEL, BINDING,
+// WIDTH, HEADER ALIGN, CELL ALIGN, FOOTER AGGREGATE. `cellCount` counts what a
+// KEYBOARD must reach, which is every control inside those seven cells — the
 // three reorder/remove affordances that used to wear column headers of their
-// own, the three segments of the alignment control, and the two footer fields
-// the aggregate reveals.
+// own, the three segments of each of the two alignment controls, and the two
+// footer fields the aggregate reveals.
 //
 // THE LATTICE COVERS THE MAXIMAL ROW SHAPE and a smaller row simply has holes
 // in it. That is free rather than clever: `moveFocus`'s `enabled()` already
@@ -36,10 +38,21 @@ type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boole
 // unique so the property is checked rather than merely intended.
 //
 // Full binding text occupies CELL.bound, including formulas and literals.
-const ALIGN_CELL = 6
-const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, width: 5, align: ALIGN_CELL, aggregate: ALIGN_CELL + alignSegments.length, footerOf: ALIGN_CELL + alignSegments.length + 1, footerFormat: ALIGN_CELL + alignSegments.length + 2 }
+//
+// SEVEN COLUMNS SINCE THE HEADER-ALIGN SPEC: HEADER ALIGN sits before CELL
+// ALIGN, and both controls own a run of `alignSegments.length` cells, so every
+// later address is still derived rather than written down.
+const HEADER_ALIGN_CELL = 6
+const ALIGN_CELL = HEADER_ALIGN_CELL + alignSegments.length
+const CELL = { moveEarlier: 0, moveLater: 1, remove: 2, header: 3, bound: 4, width: 5, headerAlign: HEADER_ALIGN_CELL, align: ALIGN_CELL, aggregate: ALIGN_CELL + alignSegments.length, footerOf: ALIGN_CELL + alignSegments.length + 1, footerFormat: ALIGN_CELL + alignSegments.length + 2 }
 const cellCount = CELL.footerFormat + 1
-const COLUMN_COUNT = 6
+const COLUMN_COUNT = 7
+// The header alignment the matrix SHOWS for a column: the committed
+// `headerAlign` when set, else the alignment the header actually PRINTS, which
+// Go resolves through the renderer's own header cascade and projects as
+// `headerAlignResolved` (owner, 2026-09-13). Never a browser-side guess. The
+// control only ever sets an explicit value.
+const shownHeaderAlign = (column: TableColumns['table']['columns'][number]): string => column.headerAlign === '' ? column.headerAlignResolved : column.headerAlign
 
 // THE FOUR BORDER EDGES, IN THE FORMAT'S OWN ORDER, which is the order the
 // checkboxes are drawn in AND the order the engine's projection joins them in.
@@ -106,7 +119,11 @@ const labelRows = (label: string): number => Math.min(MAX_LABEL_ROWS, label.spli
 // is a third thing again. Those three words are now the three placeholders.
 const resolvedHint = (resolved: string, whenEmpty: string): string => resolved === '' ? whenEmpty : resolved
 
-export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle, onMinHeight, onRules }: Props) {
+export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle, onMinHeight, onRules, onCellPadding }: Props) {
+  // THE ONE OPEN EXPLANATION, if any. A disclosure rather than a hover tip: it
+  // opens on click, Enter or Space, and closes on a second press, on Escape
+  // (before Escape closes the dialog) and when focus leaves its button.
+  const [info, setInfo] = useState<InfoTopic | undefined>(undefined)
   const table = projection.table
   const columns = table.columns
   const proportional = table.sizing === 'proportion'
@@ -297,7 +314,8 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // TAB WALKS A ROW'S FIELDS, THEN THE NEXT ROW'S. The lattice keeps a single
   // tab stop for its arrow keys, so native Tab left the grid from whichever cell
   // held focus. Tab now visits header → binding → width/proportion → the pressed
-  // alignment segment → footer aggregate (and its revealed source and format) →
+  // header-alignment segment → the pressed cell-alignment segment → footer
+  // aggregate (and its revealed source and format) →
   // the next row's header; Shift+Tab walks back. The row's reorder/remove
   // affordances stay arrow-key only. Past either end of the matrix nothing is
   // intercepted and Tab continues in the dialog's own order.
@@ -305,11 +323,12 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     const address = event.target instanceof HTMLElement ? event.target.dataset.matrixCell : undefined
     if (address === undefined) return false
     const [row, column] = address.split(':').map(Number) as [number, number]
-    // Rail affordances sit just before the header; the three segments share one stop.
-    const rank = (cell: number) => cell < CELL.header ? CELL.header - 0.5 : cell >= CELL.align && cell < CELL.aggregate ? CELL.align : cell
+    // Rail affordances sit just before the header; each control's three segments share one stop.
+    const rank = (cell: number) => cell < CELL.header ? CELL.header - 0.5 : cell >= CELL.headerAlign && cell < CELL.align ? CELL.headerAlign : cell >= CELL.align && cell < CELL.aggregate ? CELL.align : cell
     const order = (stop: ActiveCell) => stop.row * cellCount + rank(stop.column)
     const here = order({ row, column })
-    const stops = columns.flatMap((entry, stopRow) => [CELL.header, CELL.bound, CELL.width, CELL.align + Math.max(0, alignSegments.findIndex((segment) => segment.value === entry.align)), CELL.aggregate, CELL.footerOf, CELL.footerFormat]
+    const segmentOf = (value: string) => Math.max(0, alignSegments.findIndex((segment) => segment.value === value))
+    const stops = columns.flatMap((entry, stopRow) => [CELL.header, CELL.bound, CELL.width, CELL.headerAlign + segmentOf(shownHeaderAlign(entry)), CELL.align + segmentOf(entry.align), CELL.aggregate, CELL.footerOf, CELL.footerFormat]
       .filter((stop) => cellEnabled(stopRow, stop)).map((stop) => ({ row: stopRow, column: stop })))
     const next = event.shiftKey ? stops.filter((stop) => order(stop) < here).pop() : stops.find((stop) => order(stop) > here)
     if (!next) return false
@@ -372,6 +391,9 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     // all — a worse defect than the one being fixed. `discarding` is the
     // compensating sequence's own in-flight flag and nothing else's; an
     // ordinary blur commit leaves Escape working exactly as it did.
+    // An open explanation is the nearer thing to dismiss, so it takes Escape
+    // first; the next Escape is the dialog's.
+    if (event.key === 'Escape' && info !== undefined) { event.preventDefault(); event.stopPropagation(); setInfo(undefined); return }
     if (event.key === 'Escape') { event.preventDefault(); if (discarding) return; void afterPendingField('close'); return }
     if (event.key !== 'Tab') return
     if (tabThroughMatrix(event)) return
@@ -583,6 +605,34 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   // `ColumnAlignTokens` has three members and a table cell would draw a
   // justified value at its start edge regardless.
   const columnAlignSegments = (index: number) => alignSegments.map((segment) => ({ ...segment, label: `${segment.label} for column ${index + 1}` }))
+  // THE HEADER control reuses the same segments under names that cannot be
+  // mistaken for the cell control's: `Header align left for column 1`.
+  const headerAlignSegments = (index: number) => alignSegments.map((segment) => ({ ...segment, label: `Header ${segment.label.toLowerCase()} for column ${index + 1}` }))
+  // AN EXPLANATION BUTTON: a named glyph with a keyboard toggle, and the
+  // explanation itself rendered in the column header only while open.
+  const infoButton = (topic: InfoTopic, label: string, text: string) => <>
+    <button type="button" className="tool-hint matrix-info" aria-label={label} title={label} aria-expanded={info === topic} aria-controls={info === topic ? `table-editor-info-${topic}` : undefined} onClick={() => setInfo((open) => open === topic ? undefined : topic)} onBlur={() => setInfo((open) => open === topic ? undefined : open)}>
+      <svg aria-hidden="true" className="tool-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2"><circle cx="8" cy="8" r="6.5" /><path d="M8 7v4.5M8 4.5v1" /></svg>
+    </button>
+    {/* The panel is not focusable, so a mousedown in it would blur the button
+        and close it mid-click or mid-selection; keep focus where it is. */}
+    {info === topic && <span id={`table-editor-info-${topic}`} role="note" className="matrix-info-panel" onMouseDown={(event) => event.preventDefault()}>{text}</span>}
+  </>
+  const sizingInfo = proportional
+    ? 'Proportion sizing · Columns share the table’s total width according to their proportions: a column with proportion 2 is twice as wide as one with 1. The resolved width in points shows under each box. New columns start at 1.'
+    : 'Point widths · Each column is exactly as wide as its width in points, and the table is as wide as its columns together. The budget below the matrix says whether they fit the band.'
+  const bindingInfo = `Enter a full binding such as {{${table.alias}.date}}, or a formula such as {{upper(${table.alias}.trn_code)}}. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically.`
+  // THE TABLE'S CELL PADDING, committed on blur like every other box here: an
+  // emptied box clears the edge, an untouched one sends nothing, and the text is
+  // sent as typed so the engine — not this panel — refuses a non-number.
+  const paddingBox = (committed: string): string => committed === '' ? '' : authored(Number(committed))
+  const commitPadding = (field: PaddingField, committed: string) => (event: FocusEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    if (busy) { setRestore((count) => count + 1); return }
+    if (input.value === committed) return
+    if (input.value === '') onCellPadding(field, 'clear')
+    else onCellPadding(field, 'set', input.value)
+  }
   // The total and each resolved width are projected by Go. This readout only
   // compares that total with the band's available space; it never allocates.
   const totalWidth = table.totalWidth
@@ -711,14 +761,23 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { totalBlurTarget.current = null; totalHeldFocus.current = event.target === totalInput.current; if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
-      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Enter a full binding such as {`{{${table.alias}.date}}`} or a formula such as {`{{upper(${table.alias}.trn_code)}}`}. Tab moves through a column's fields and on to the next column; Alt+Left/Right moves between cells. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
+      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Tab moves through a column's fields and on to the next column; Alt+Left/Right moves between cells. The (i) beside BINDING explains binding syntax. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
       {/* Collection and alias configure the shared row scope. The labelled
           group remains accessible beside the per-column field controls. */}
       <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input key={boxKey(table.collection)} aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input key={boxKey(table.alias)} aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'Set the table’s collection and row alias here. Candidate collections come from the loaded sample; the engine validates every saved binding.' : 'Set the table’s collection and row alias here. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
-      {proportional && <div className="table-editor-sizing" role="group" aria-label="Proportion sizing"><label>Total width in points<input ref={totalInput} key={boxKey(table.totalWidth)} aria-label="Total table width in points" type="number" min="0.001" step="0.001" inputMode="decimal" data-table-numeric="total" disabled={busy} defaultValue={authored(table.totalWidth)} onBlur={numericBlur} /></label><p>Proportion sizing · Columns share this width according to their proportions. New columns start at 1.</p></div>}
+      {proportional && <div className="table-editor-sizing" role="group" aria-label="Proportion sizing"><label>Total width in points<input ref={totalInput} key={boxKey(table.totalWidth)} aria-label="Total table width in points" type="number" min="0.001" step="0.001" inputMode="decimal" data-table-numeric="total" disabled={busy} defaultValue={authored(table.totalWidth)} onBlur={numericBlur} /></label></div>}
+      {/* CELL PADDING, beside the sizing row. A plain div and NOT a
+          `role="group"`: the spec forbids a new group in this dialog. */}
+      <div className="table-editor-sizing table-editor-padding">
+        <label>Cell padding left (pt)<input key={boxKey(`left:${table.paddingLeft}`)} aria-label="Cell padding left in points" type="text" inputMode="decimal" placeholder="0" disabled={busy} defaultValue={paddingBox(table.paddingLeft)} onBlur={commitPadding('paddingLeft', paddingBox(table.paddingLeft))} /></label>
+        <label>Cell padding right (pt)<input key={boxKey(`right:${table.paddingRight}`)} aria-label="Cell padding right in points" type="text" inputMode="decimal" placeholder="0" disabled={busy} defaultValue={paddingBox(table.paddingRight)} onBlur={commitPadding('paddingRight', paddingBox(table.paddingRight))} /></label>
+        <p className="table-editor-padding-note">{table.paddingHeaderOverride
+          ? 'These edit the data and footer rows. The header row uses its own padding (headerStyle.padding), so it is not moved by these.'
+          : 'Insets cell text from the column edges on the header, data and footer rows. An empty box means no padding on that side.'}</p>
+      </div>
       <datalist id="table-row-field-candidates">{(sampleAvailable ? candidates.filter((candidate) => candidate.collection === table.collection && tableColumnBindingSuggestion(table.alias, candidate.field) !== undefined) : []).map((candidate) => <option key={candidate.field} value={tableColumnBindingSuggestion(table.alias, candidate.field)} />)}</datalist>
       {columns.length === 0 ? <div className="table-editor-empty"><p>No columns yet. Add a column to start the matrix.</p><button ref={emptyAdd} type="button" className="file-button" disabled={busy} onMouseDown={keepPendingFieldForAction} onClick={() => void afterPendingField('add')}>Add column</button></div> : <div role="grid" aria-label="Table columns" aria-describedby="table-editor-help" aria-rowcount={columns.length + 1} aria-colcount={COLUMN_COUNT} className="table-matrix">
-        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader">BINDING</span><span role="columnheader">{proportional ? 'PROPORTION' : 'WIDTH'}</span><span role="columnheader">ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
+        <div role="row" aria-rowindex={1} className="matrix-header"><span role="columnheader">#</span><span role="columnheader">HEADER LABEL</span><span role="columnheader" className="matrix-info-header">BINDING{infoButton('binding', 'About bindings', bindingInfo)}</span><span role="columnheader" className="matrix-info-header">{proportional ? 'PROPORTION' : 'WIDTH'}{infoButton('sizing', proportional ? 'About proportion sizing' : 'About column widths', sizingInfo)}</span><span role="columnheader">HEADER ALIGN</span><span role="columnheader">CELL ALIGN</span><span role="columnheader">FOOTER AGGREGATE</span></div>
         {columns.map((column, index) => <div role="row" aria-rowindex={index + 2} aria-selected={active.row === index} className="matrix-row" key={column.id}>
           {/* THE ROW'S OWN AFFORDANCES, NOT FOUR MORE COLUMNS. Reorder and
               remove act on THIS ROW, so they live in the row's identity cell
@@ -755,12 +814,18 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               display unit product-wide, and the mockup's millimetres are
               mockup fidelity against zero millimetres in the product. */}
           <span role="gridcell" aria-colindex={4} className="matrix-width"><input key={boxKey(proportional ? column.proportion : column.width)} {...matrixCell(index, CELL.width)} aria-label={proportional ? `Proportion for column ${index + 1}` : `Width for column ${index + 1} in points`} disabled={busy} type={proportional ? 'text' : 'number'} inputMode="decimal" min={proportional ? undefined : '0.001'} step={proportional ? undefined : '0.001'} data-table-numeric={proportional ? 'proportion' : 'width'} data-column-id={column.id} defaultValue={proportional ? column.proportion : authored(column.width)} onBlur={numericBlur} />{proportional ? <output className="matrix-resolved-width" aria-live="off" aria-label={`Resolved width for column ${index + 1} in points`}>{authored(column.width)} pt</output> : <span className="matrix-unit">pt</span>}</span>
-          <span role="gridcell" aria-colindex={5}><SegmentedControl label={`Cell alignment for column ${index + 1}`} segments={columnAlignSegments(index)} current={column.align} disabled={busy} onPick={(value) => { if (value !== column.align) dispatchOnce(() => onUpdate(column.id, 'align', value)) }} segmentProps={(segment) => matrixCell(index, CELL.align + segment)} /></span>
+          {/* HEADER ALIGN — always explicit (owner, 2026-09-13): a segment only
+              ever SETS `columns[].headerAlign`. While it is unset, the segment
+              the header actually prints with (`headerAlignResolved`) is
+              pressed, and clicking it writes that value. `toolbar`, not
+              `group`: see SegmentedControl's `role`. */}
+          <span role="gridcell" aria-colindex={5}><SegmentedControl role="toolbar" label={`Header label alignment for column ${index + 1}`} segments={headerAlignSegments(index)} current={shownHeaderAlign(column)} disabled={busy} titleFor={(segment) => column.headerAlign === '' && segment.value === column.headerAlignResolved ? `${segment.label} (what the header prints until set)` : segment.label} onPick={(value) => { if (value !== column.headerAlign) dispatchOnce(() => onUpdate(column.id, 'headerAlign', value)) }} segmentProps={(segment) => matrixCell(index, CELL.headerAlign + segment)} /></span>
+          <span role="gridcell" aria-colindex={6}><SegmentedControl label={`Cell alignment for column ${index + 1}`} segments={columnAlignSegments(index)} current={column.align} disabled={busy} onPick={(value) => { if (value !== column.align) dispatchOnce(() => onUpdate(column.id, 'align', value)) }} segmentProps={(segment) => matrixCell(index, CELL.align + segment)} /></span>
           {/* ONE CONTROL WHERE THERE WERE THREE. The source and the format are
               REVEALED by the aggregate that needs them rather than sitting
               there greyed out: a control that can never hold a value for this
               aggregate is absent, not disabled-and-mysterious. */}
-          <span role="gridcell" aria-colindex={6} className="matrix-footer-cell"><select {...matrixCell(index, CELL.aggregate)} aria-label={`Footer aggregate for column ${index + 1}`} disabled={busy} value={column.footer} onChange={(event) => { if (!busy) { const footer = event.target.value; onFooter(column.id, footer, showsFooterOf(footer) ? column.footerOf : '', showsFooterFormat(footer) ? column.footerFormat : '') } }}><option value="">none</option><option value="sum">sum</option><option value="avg">avg</option><option value="count">count</option></select>{showsFooterOf(column.footer) && <label className="matrix-reveal">source<input key={boxKey(column.footerOf)} {...matrixCell(index, CELL.footerOf)} aria-label={`Footer source for column ${index + 1}`} defaultValue={column.footerOf} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.footerOf) onFooter(column.id, column.footer, event.currentTarget.value, column.footerFormat) }} /></label>}{showsFooterFormat(column.footer) && <label className="matrix-reveal">format<input key={boxKey(column.footerFormat)} {...matrixCell(index, CELL.footerFormat)} aria-label={`Footer format for column ${index + 1}`} defaultValue={column.footerFormat} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.footerFormat) onFooter(column.id, column.footer, column.footerOf, event.currentTarget.value) }} /></label>}</span>
+          <span role="gridcell" aria-colindex={7} className="matrix-footer-cell"><select {...matrixCell(index, CELL.aggregate)} aria-label={`Footer aggregate for column ${index + 1}`} disabled={busy} value={column.footer} onChange={(event) => { if (!busy) { const footer = event.target.value; onFooter(column.id, footer, showsFooterOf(footer) ? column.footerOf : '', showsFooterFormat(footer) ? column.footerFormat : '') } }}><option value="">none</option><option value="sum">sum</option><option value="avg">avg</option><option value="count">count</option></select>{showsFooterOf(column.footer) && <label className="matrix-reveal">source<input key={boxKey(column.footerOf)} {...matrixCell(index, CELL.footerOf)} aria-label={`Footer source for column ${index + 1}`} defaultValue={column.footerOf} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.footerOf) onFooter(column.id, column.footer, event.currentTarget.value, column.footerFormat) }} /></label>}{showsFooterFormat(column.footer) && <label className="matrix-reveal">format<input key={boxKey(column.footerFormat)} {...matrixCell(index, CELL.footerFormat)} aria-label={`Footer format for column ${index + 1}`} defaultValue={column.footerFormat} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.footerFormat) onFooter(column.id, column.footer, column.footerOf, event.currentTarget.value) }} /></label>}</span>
         </div>)}
       </div>}
       {/* ADD-AFTER LEFT THE ROW AND BECAME ONE CONTROL BELOW THE GRID. A

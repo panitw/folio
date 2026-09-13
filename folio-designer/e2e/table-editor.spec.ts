@@ -11,10 +11,10 @@ import { expect, test } from '@playwright/test'
 // pass "remains Epic 6 boundary evidence under D-000.4", which stopped being
 // true when the browser job was added.
 //
-// STORY 14.7 REWROTE THE ROVING WALK FOR THE SIX-COLUMN LATTICE. The matrix
-// draws six columns — `#`, HEADER LABEL, BINDING, WIDTH, ALIGN,
-// FOOTER AGGREGATE — while the KEYBOARD lattice behind them is wider than six,
-// because the alignment control is three segments and the row's reorder/remove
+// STORY 14.7 REWROTE THE ROVING WALK FOR THE MATRIX LATTICE. The matrix now
+// draws seven columns — `#`, HEADER LABEL, BINDING, WIDTH, HEADER ALIGN,
+// CELL ALIGN, FOOTER AGGREGATE — while the KEYBOARD lattice behind them is wider
+// than seven, because each alignment control is three segments and the row's reorder/remove
 // affordances are three more controls inside the `#` cell. Every control the
 // eleven-column matrix could reach by arrow keys is still reachable by arrow
 // keys (UX-DR25); what changed is which cell each one sits in.
@@ -39,9 +39,9 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
   const grid = page.getByRole('grid', { name: 'Table columns' })
   await expect(grid).toBeVisible()
 	await expect(grid).toHaveAttribute('aria-rowcount', '2')
-	await expect(grid).toHaveAttribute('aria-colcount', '6')
+	await expect(grid).toHaveAttribute('aria-colcount', '7')
 	// The retired four are gone as COLUMNS and present as row affordances.
-	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BINDING', 'PROPORTION', 'ALIGN', 'FOOTER AGGREGATE'])
+	await expect(page.getByRole('columnheader')).toHaveText(['#', 'HEADER LABEL', 'BINDING', 'PROPORTION', 'HEADER ALIGN', 'CELL ALIGN', 'FOOTER AGGREGATE'])
 	await expect(page.getByRole('button', { name: 'Add column after column 1' })).toHaveCount(0)
 	// The collection and the row alias are still edited here, and nowhere else.
 	await expect(page.getByRole('combobox', { name: 'Root collection' })).toBeVisible()
@@ -59,12 +59,13 @@ test('table editor is a named keyboard-operable matrix', async ({ page }) => {
 	await expect(page.getByRole('textbox', { name: 'Proportion for column 1' })).toBeFocused()
 	// THE ALIGNMENT CONTROL IS THREE REACHABLE SEGMENTS, not one select: each
 	// takes its own lattice position, so no segment becomes unreachable.
-	await page.keyboard.press('ArrowRight')
-	await expect(page.getByRole('button', { name: 'Align left for column 1' })).toBeFocused()
-	await page.keyboard.press('ArrowRight')
-	await expect(page.getByRole('button', { name: 'Align center for column 1' })).toBeFocused()
-	await page.keyboard.press('ArrowRight')
-	await expect(page.getByRole('button', { name: 'Align right for column 1' })).toBeFocused()
+	// HEADER ALIGN comes first, then CELL ALIGN — both three-segment runs. Names
+	// are matched EXACTLY: `Header align left for column 1` contains
+	// `align left for column 1`, and Playwright's default match is a substring.
+	for (const name of ['Header align left for column 1', 'Header align center for column 1', 'Header align right for column 1', 'Align left for column 1', 'Align center for column 1', 'Align right for column 1']) {
+		await page.keyboard.press('ArrowRight')
+		await expect(page.getByRole('button', { name, exact: true })).toBeFocused()
+	}
 	// End reaches the row's LAST ENABLED control. This column aggregates
 	// nothing, so its source and its format do not exist and End stops at the
 	// aggregate rather than landing on either hole.

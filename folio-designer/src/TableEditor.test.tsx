@@ -38,10 +38,10 @@ const canvas = {
   ],
   components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 23276, y: 0, width: 300000, height: 12000, resizable: false }],
 }
-const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '', paddingLeft: '', paddingRight: '', paddingHeaderOverride: false }
 
 type Footer = '' | 'sum' | 'avg' | 'count'
-type ColumnFixture = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; rowField: string; binding?: string; rowFieldEditable?: boolean; footer: Footer; footerOf: string; footerFormat: string }>
+type ColumnFixture = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; headerAlign?: '' | 'left' | 'center' | 'right'; headerAlignResolved?: 'left' | 'center' | 'right'; rowField: string; binding?: string; rowFieldEditable?: boolean; footer: Footer; footerOf: string; footerFormat: string }>
 
 // THREE COLUMNS, WITH THREE DIFFERENT FOOTER SHAPES, and each difference is
 // load-bearing rather than decoration:
@@ -71,7 +71,7 @@ const mockRowBinding = (binding: string, alias: string) => {
 const projected = (columns: ReadonlyArray<ColumnFixture>, alias = 'row') => columns.map((column) => {
   const binding = column.binding ?? (column.rowField === '' ? '' : `{{${alias}.${column.rowField}}}`)
   return {
-    id: column.id, header: column.header, width: column.width, proportion: '', align: column.align,
+    id: column.id, header: column.header, width: column.width, proportion: '', align: column.align, headerAlign: column.headerAlign ?? '', headerAlignResolved: column.headerAlignResolved ?? (column.headerAlign || column.align),
     binding, ...mockRowBinding(binding, alias),
     footer: column.footer, footerOf: column.footerOf, footerFormat: column.footerFormat,
   }
@@ -533,13 +533,13 @@ const plantedEverywhere = (offender: string, markup: (id: string) => string): Re
   ]
 }
 
-describe('the six columns the design draws, and the four that left', () => {
-  it('carries exactly six columnheaders, spelled as the design spells them', async () => {
+describe('the seven columns the design draws, and the four that left', () => {
+  it('carries exactly seven columnheaders, spelled as the design spells them', async () => {
     await openEditor(tableEngine())
     const grid = screen.getByRole('grid', { name: 'Table columns' })
-    expect(columnHeaderNames(grid)).toEqual(['#', 'HEADER LABEL', 'BINDING', 'WIDTH', 'ALIGN', 'FOOTER AGGREGATE'])
+    expect(columnHeaderNames(grid)).toEqual(['#', 'HEADER LABEL', 'BINDING', 'WIDTH', 'HEADER ALIGN', 'CELL ALIGN', 'FOOTER AGGREGATE'])
     expect(retiredColumnHeaders(grid)).toEqual([])
-    expect(grid).toHaveAttribute('aria-colcount', '6')
+    expect(grid).toHaveAttribute('aria-colcount', '7')
   })
 
   it('reds when any of the four retired columnheaders is put back, at every position it could occupy', () => {
@@ -671,7 +671,7 @@ describe('the collapsed FOOTER AGGREGATE and what it reveals', () => {
     await openEditor(tableEngine())
     const source = screen.getByRole('textbox', { name: 'Footer source for column 1' })
     source.focus()
-    expect(activeCell()).toBe('0:10')
+    expect(activeCell()).toBe('0:13')
     fireEvent.change(screen.getByRole('combobox', { name: 'Footer aggregate for column 1' }), { target: { value: '' } })
     await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Footer source for column 1' })).toBeNull())
     expect(document.activeElement).not.toBe(document.body)
@@ -1338,7 +1338,7 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
   const renderFooter = (editCount: number, busy = false, fileBusy = false, discarding = false) => {
     const onCancel = vi.fn()
     const onClose = vi.fn()
-    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} />)
+    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} onCellPadding={vi.fn()} />)
     return { onCancel, onClose, unmount }
   }
 
@@ -1500,7 +1500,7 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     const onRules = vi.fn()
     const panel = (over: Partial<typeof tableHeaderProjection>) => {
       const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
-      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} onMinHeight={onMinHeight} onRules={onRules} />
+      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} onMinHeight={onMinHeight} onRules={onRules} onCellPadding={vi.fn()} />
     }
     const { unmount, rerender } = render(panel(header))
     return { onHeaderStyle, onMinHeight, onRules, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }
@@ -2042,7 +2042,7 @@ describe('table column field authoring', () => {
 
   it('retains the next nonmatrix Tab stop when a commit or refusal reprojects the editor', () => {
     const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
-    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn() }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn(), onCellPadding: vi.fn() }
     const { rerender } = render(<TableEditor {...props} />)
     const next = screen.getByRole('spinbutton', { name: 'Header font size (pt)' })
     next.focus()
@@ -2309,9 +2309,175 @@ describe('creating multiline binding drafts', () => {
     fireEvent.blur(screen.getByRole('textbox', { name: 'Row alias' }), { target: { value: 'txn' } })
     await idle()
     expect(screen.getByRole('combobox', { name: 'Binding for column 1' })).toHaveValue('{{txn.customer.name}}')
-    expect(document.getElementById('table-editor-help')).toHaveTextContent('{{txn.date}}')
-    expect(document.getElementById('table-editor-help')).toHaveTextContent('{{upper(txn.trn_code)}}')
-    expect(document.getElementById('table-editor-help')).toHaveTextContent('In single-line bindings, Alt+Down')
+    // The binding syntax lives in the BINDING (i) explanation now, and it
+    // follows the migrated alias exactly as the help line used to.
+    fireEvent.click(screen.getByRole('button', { name: 'About bindings' }))
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('{{txn.date}}')
+    expect(note).toHaveTextContent('{{upper(txn.trn_code)}}')
+    expect(note).toHaveTextContent('In single-line bindings, Alt+Down')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// spec-table-cell-padding-header-align-info — HEADER ALIGN, CELL PADDING and the
+// two (i) explanations, one test per I/O row the panel owns.
+// ---------------------------------------------------------------------------
+describe('header alignment, cell padding and the (i) explanations', () => {
+  const setup = (patch: Partial<typeof tableHeaderProjection> = {}, columns: ReadonlyArray<ColumnFixture> = defaultColumns, sizing: 'points' | 'proportion' = 'points') => {
+    const projection = { revision: 1, table: { tableId: 'e7', sizing, totalWidth: 174000, collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...patch, columns: projected(columns).map((column) => sizing === 'proportion' ? { ...column, proportion: '1' } : column) } }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn(), onCellPadding: vi.fn() }
+    const view = render(<TableEditor {...props} />)
+    return { ...view, props }
+  }
+
+  it('presses the resolved header alignment in HEADER ALIGN while unset, and a segment only ever sets headerAlign', () => {
+    const { props } = setup()
+    expect(screen.getByRole('toolbar', { name: 'Header label alignment for column 1' })).toBeInTheDocument()
+    // NO NEW GROUP: the control is a toolbar, so the contract's group floor holds.
+    expect(screen.queryByRole('group', { name: /Header label alignment/ })).toBeNull()
+    const followed = screen.getByRole('button', { name: 'Header align right for column 1' })
+    expect(followed).toHaveAttribute('aria-pressed', 'true')
+    expect(followed.getAttribute('title')).toContain('what the header prints until set')
+    fireEvent.click(screen.getByRole('button', { name: 'Header align center for column 1' }))
+    expect(props.onUpdate).toHaveBeenLastCalledWith('c1', 'headerAlign', 'center')
+    // Pressing the followed segment makes the value explicit; there is no clear.
+    fireEvent.click(followed)
+    expect(props.onUpdate).toHaveBeenLastCalledWith('c1', 'headerAlign', 'right')
+    expect(props.onUpdate.mock.calls.every(([, field]) => field === 'headerAlign')).toBe(true)
+  })
+
+  it('presses headerAlignResolved, not the cell alignment, when a table-wide header alignment differs from the column\'s', () => {
+    // Go resolved the header to center (a table-wide header alignment the column
+    // does not override), while the column's cell alignment is left.
+    const { props } = setup({ headerAlign: 'center', headerAlignResolved: 'center' }, [{ ...defaultColumns[0]!, align: 'left', headerAlignResolved: 'center' }])
+    const printed = screen.getByRole('button', { name: 'Header align center for column 1' })
+    expect(printed).toHaveAttribute('aria-pressed', 'true')
+    expect(printed.getAttribute('title')).toContain('what the header prints until set')
+    expect(screen.getByRole('button', { name: 'Header align left for column 1' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Align left for column 1' })).toHaveAttribute('aria-pressed', 'true')
+    // Its Tab stop is the pressed segment.
+    screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }).focus()
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+    expect(document.activeElement).toBe(printed)
+    // Clicking the pressed segment of an unset header writes that value.
+    fireEvent.click(printed)
+    expect(props.onUpdate).toHaveBeenLastCalledWith('c1', 'headerAlign', 'center')
+  })
+
+  it('shows a committed headerAlign apart from the column\'s cell alignment', () => {
+    const { props } = setup({}, [{ ...defaultColumns[0]!, headerAlign: 'center' }])
+    expect(screen.getByRole('button', { name: 'Header align center for column 1' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Header align right for column 1' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Align right for column 1' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Header align center for column 1' }))
+    expect(props.onUpdate).not.toHaveBeenCalled()
+  })
+
+  it('tabs header label → binding → width → header align → cell align → footer aggregate', () => {
+    setup()
+    const header = screen.getByRole('textbox', { name: 'Header for column 1' })
+    header.focus()
+    for (const next of [
+      screen.getByRole('combobox', { name: 'Binding for column 1' }),
+      screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }),
+      screen.getByRole('button', { name: 'Header align right for column 1' }),
+      screen.getByRole('button', { name: 'Align right for column 1' }),
+      screen.getByRole('combobox', { name: 'Footer aggregate for column 1' }),
+    ]) {
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+      expect(document.activeElement).toBe(next)
+    }
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Align right for column 1' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Header align right for column 1' }))
+  })
+
+  it('commits cell padding left and right on blur, clears an emptied box and sends a non-number as typed', () => {
+    const { props } = setup({ paddingLeft: '3000' })
+    const left = screen.getByRole('textbox', { name: 'Cell padding left in points' })
+    const right = screen.getByRole('textbox', { name: 'Cell padding right in points' })
+    expect(left).toHaveValue('3')
+    expect(right).toHaveValue('')
+    fireEvent.blur(left)
+    expect(props.onCellPadding).not.toHaveBeenCalled()
+    fireEvent.blur(right, { target: { value: '4' } })
+    expect(props.onCellPadding).toHaveBeenLastCalledWith('paddingRight', 'set', '4')
+    fireEvent.blur(left, { target: { value: '' } })
+    expect(props.onCellPadding).toHaveBeenLastCalledWith('paddingLeft', 'clear')
+    fireEvent.blur(right, { target: { value: 'wide' } })
+    expect(props.onCellPadding).toHaveBeenLastCalledWith('paddingRight', 'set', 'wide')
+  })
+
+  it('restores a refused padding box to the committed value', () => {
+    const { props, rerender } = setup({ paddingLeft: '3000' })
+    const left = screen.getByRole('textbox', { name: 'Cell padding left in points' })
+    fireEvent.change(left, { target: { value: 'wide' } })
+    rerender(<TableEditor {...props} error="e7: paddingLeft: must be a number" />)
+    expect(screen.getByRole('textbox', { name: 'Cell padding left in points' })).toHaveValue('3')
+    expect(screen.getByRole('alert')).toHaveTextContent('paddingLeft')
+  })
+
+  it('says the header row keeps its own padding when headerStyle.padding exists', () => {
+    const { unmount } = setup()
+    expect(screen.getByText(/on the header, data and footer rows/)).toBeInTheDocument()
+    unmount()
+    setup({ paddingHeaderOverride: true })
+    expect(screen.getByText(/The header row uses its own padding/)).toBeInTheDocument()
+  })
+
+  it('opens each (i) explanation by its named button and closes it on a second press, on blur and on Escape before the dialog', () => {
+    const { props } = setup()
+    const bindings = screen.getByRole('button', { name: 'About bindings' })
+    expect(bindings).toHaveAttribute('aria-expanded', 'false')
+    // aria-controls names the panel only while it exists.
+    expect(bindings).not.toHaveAttribute('aria-controls')
+    fireEvent.click(bindings)
+    expect(bindings).toHaveAttribute('aria-expanded', 'true')
+    const note = screen.getByRole('note')
+    expect(bindings).toHaveAttribute('aria-controls', note.id)
+    expect(document.getElementById(note.id)).toBe(note)
+    for (const fact of ['{{row.date}}', '{{upper(row.trn_code)}}', 'Shift+Enter', 'Alt+Down']) expect(note).toHaveTextContent(fact)
+    fireEvent.click(bindings)
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(bindings).not.toHaveAttribute('aria-controls')
+
+    const widths = screen.getByRole('button', { name: 'About column widths' })
+    fireEvent.click(widths)
+    expect(screen.getByRole('note')).toHaveTextContent('Point widths')
+    fireEvent.blur(widths)
+    expect(screen.queryByRole('note')).toBeNull()
+
+    fireEvent.click(widths)
+    const dialog = screen.getByRole('dialog', { name: 'Table Editor' })
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(props.onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(props.onClose).toHaveBeenCalledOnce()
+  })
+
+  it('keeps an open explanation open on a mousedown inside its panel', () => {
+    setup()
+    const bindings = screen.getByRole('button', { name: 'About bindings' })
+    bindings.focus()
+    fireEvent.click(bindings)
+    const note = screen.getByRole('note')
+    // The mousedown's default (moving focus off the button) is prevented, so the
+    // button keeps focus and its blur never closes the panel.
+    expect(fireEvent.mouseDown(note)).toBe(false)
+    expect(document.activeElement).toBe(bindings)
+    expect(screen.getByRole('note')).toBe(note)
+    expect(bindings).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('moves the proportion sentence into the PROPORTION explanation', () => {
+    setup({}, defaultColumns, 'proportion')
+    expect(screen.queryByText(/Proportion sizing ·/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'About proportion sizing' }))
+    expect(screen.getByRole('note')).toHaveTextContent('Proportion sizing · Columns share the table’s total width according to their proportions')
+    expect(screen.getByRole('note')).toHaveTextContent('New columns start at 1')
   })
 })
 
@@ -2321,7 +2487,7 @@ describe('proportion controls and pending numeric actions', () => {
     const onTotalWidth = vi.fn(async () => accept)
     const onAdd = vi.fn(); const onClose = vi.fn(); const onCancel = vi.fn()
     const projection = { revision: 1, table: { tableId: 'e7', sizing: 'proportion' as const, totalWidth: 500000, collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns).map((column, index) => ({ ...column, proportion: index === 1 ? '2' : '1', width: index === 1 ? 250000 : 125000 })) } }
-    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onUpdate, onTotalWidth, onAdd, onClose, onCancel, onRemove: vi.fn(), onMove: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn() }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onUpdate, onTotalWidth, onAdd, onClose, onCancel, onRemove: vi.fn(), onMove: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn(), onCellPadding: vi.fn() }
     const rendered = render(<TableEditor {...props} />)
     return { ...rendered, props, onUpdate, onTotalWidth, onAdd, onClose, onCancel }
   }
@@ -2408,7 +2574,7 @@ describe('the ruled area section', () => {
   const mount = (over: Partial<typeof tableHeaderProjection> = {}) => {
     const onMinHeight = vi.fn()
     const onRules = vi.fn()
-    render(<TableEditor projection={projectionWith(over)} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={onMinHeight} onRules={onRules} />)
+    render(<TableEditor projection={projectionWith(over)} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={onMinHeight} onRules={onRules} onCellPadding={vi.fn()} />)
     return { onMinHeight, onRules }
   }
 
@@ -2551,7 +2717,7 @@ describe('a column label may be more than one line', () => {
   it('authors the header label in a control that accepts a line feed', () => {
     const onUpdate = vi.fn()
     const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: 72_000, collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
-    render(<TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={onUpdate} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} />)
+    render(<TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={onUpdate} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} onCellPadding={vi.fn()} />)
     const label = screen.getByLabelText('Header for column 1')
     expect(label.tagName).toBe('TEXTAREA')
     fireEvent.change(label, { target: { value: '\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\nDATE' } })

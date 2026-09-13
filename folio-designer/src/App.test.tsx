@@ -61,7 +61,7 @@ const carried = (assetKey: string, variants: Partial<Readonly<{ bold: string; it
 // every committed member is absent while every resolved one carries the
 // cascade's answer — which is the shape that makes "the panel shows the
 // resolved value" observable at all.
-const tableHeaderProjection = { sizing: 'points' as const, totalWidth: 72000, headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
+const tableHeaderProjection = { sizing: 'points' as const, totalWidth: 72000, headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '', paddingLeft: '', paddingRight: '', paddingHeaderOverride: false }
 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
@@ -274,7 +274,7 @@ describe('application shell', () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const request = vi.fn(async (operation: string) => {
-      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, binding: '', rowField: '', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, headerAlign: '' as const, headerAlignResolved: 'right' as const, binding: '', rowField: '', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
       return { snapshot: tableSnapshot }
     })
     const sample = acceptSampleData('c.json', new TextEncoder().encode('{"transactions":[{"date":"01 Jul","debit":12}]}').buffer)
@@ -293,19 +293,20 @@ describe('application shell', () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const request = vi.fn(async (operation: string) => {
-      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+      if (operation === 'table-columns') return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, headerAlign: '' as const, headerAlignResolved: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
       return { snapshot: tableSnapshot }
     })
     render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
     const grid = await screen.findByRole('grid', { name: 'Table columns' })
-    // STORY 14.7 — SIX COLUMNS, WHICH IS WHAT THE DESIGN DRAWS. The eleven
-    // included four row ACTIONS wearing column headers (`Move earlier`, `Move
-    // later`, `Remove`, `Add after`) and three fields for the one footer
-    // concept. `aria-colcount` counts the columns; the keyboard lattice behind
-    // them is wider than six and is `TableEditor.test.tsx`'s subject.
-    expect(grid).toHaveAttribute('aria-colcount', '6')
+    // STORY 14.7 — SEVEN COLUMNS, WHICH IS WHAT THE DESIGN DRAWS (HEADER ALIGN
+    // joined CELL ALIGN). The eleven included four row ACTIONS wearing column
+    // headers (`Move earlier`, `Move later`, `Remove`, `Add after`) and three
+    // fields for the one footer concept. `aria-colcount` counts the columns; the
+    // keyboard lattice behind them is fifteen cells wide and is
+    // `TableEditor.test.tsx`'s subject.
+    expect(grid).toHaveAttribute('aria-colcount', '7')
 		expect(grid).toHaveAttribute('aria-rowcount', '2')
     // The exact walk includes the restored row-field control.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
@@ -321,7 +322,7 @@ describe('application shell', () => {
   it('traps the focused matrix, closes on Escape, and restores its invoking control', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
-    render(<App engine={engine(vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot }))} initialSnapshot={tableSnapshot} />)
+    render(<App engine={engine(vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, headerAlign: '' as const, headerAlignResolved: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot }))} initialSnapshot={tableSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     const invoker = screen.getByRole('button', { name: 'Configure columns' })
     invoker.focus(); fireEvent.click(invoker)
@@ -355,12 +356,12 @@ describe('application shell', () => {
     // TAB FIRST WALKS THE ROW'S FIELDS (`tabThroughMatrix`): header → binding →
     // width → the pressed alignment segment → footer aggregate, and Shift+Tab
     // walks back. Only from the last field does the handoff below apply.
-    const walk = [screen.getByRole('combobox', { name: 'Binding for column 1' }), screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }), screen.getByRole('button', { name: 'Align left for column 1' }), screen.getByRole('combobox', { name: 'Footer aggregate for column 1' })]
+    const walk = [screen.getByRole('combobox', { name: 'Binding for column 1' }), screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }), screen.getByRole('button', { name: 'Header align left for column 1' }), screen.getByRole('button', { name: 'Align left for column 1' }), screen.getByRole('combobox', { name: 'Footer aggregate for column 1' })]
     for (const next of walk) { fireEvent.keyDown(document.activeElement!, { key: 'Tab' }); expect(document.activeElement).toBe(next) }
     fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
-    expect(document.activeElement).toBe(walk[2])
+    expect(document.activeElement).toBe(walk[3])
     fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
-    const lastCell = walk[3]!
+    const lastCell = walk[4]!
     fireEvent.keyDown(lastCell, { key: 'Tab' })
     expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(lastCell)
     const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
@@ -415,10 +416,10 @@ describe('application shell', () => {
     const first = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
     const second = { documentState: 'loaded' as const, revision: 2, byteLength: 4, canvas: { ...tableCanvas, components: [{ ...tableCanvas.components[0]!, width: 144000 }] } }
     let releaseProjection!: () => void
-    const delayedProjection = new Promise<{ snapshot: typeof second; tableColumns: { revision: number; table: typeof tableHeaderProjection & { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; proportion: string; align: 'left'; binding: string; rowField: string; rowFieldEditable: boolean; footer: ''; footerOf: string; footerFormat: string }[] } } }>((resolve) => { releaseProjection = () => resolve({ snapshot: second, tableColumns: { revision: 2, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left', binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } }) })
+    const delayedProjection = new Promise<{ snapshot: typeof second; tableColumns: { revision: number; table: typeof tableHeaderProjection & { tableId: string; collection: string; alias: string; columns: { id: string; header: string; width: number; proportion: string; align: 'left'; headerAlign: ''; headerAlignResolved: 'left'; binding: string; rowField: string; rowFieldEditable: boolean; footer: ''; footerOf: string; footerFormat: string }[] } } }>((resolve) => { releaseProjection = () => resolve({ snapshot: second, tableColumns: { revision: 2, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left', headerAlign: '' as const, headerAlignResolved: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '', footerOf: '', footerFormat: '' }] } } }) })
     let queries = 0
     const request = vi.fn((operation: string) => {
-      if (operation === 'table-columns') { queries++; return queries === 1 ? Promise.resolve({ snapshot: first, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }) : delayedProjection }
+      if (operation === 'table-columns') { queries++; return queries === 1 ? Promise.resolve({ snapshot: first, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, headerAlign: '' as const, headerAlignResolved: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }) : delayedProjection }
       if (operation === 'command') return Promise.resolve({ snapshot: second })
       return Promise.resolve({ snapshot: first })
     })
@@ -459,7 +460,7 @@ describe('application shell', () => {
       if (operation !== 'table-columns') return { snapshot: tableSnapshot }
       queries++
       const table = { ...tableHeaderProjection, ...over, ...(queries > 1 ? after ?? {} : {}) }
-      return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...table, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+      return { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...table, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, headerAlign: '' as const, headerAlignResolved: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
     })
     return { request, tableSnapshot }
   }
@@ -731,7 +732,7 @@ describe('application shell', () => {
   it('restores the committed value when a blur lands while a command is in flight', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
-    const projection = { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, headerFontFamily: 'body', headerFontFamilyResolved: 'body', columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+    const projection = { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, headerFontFamily: 'body', headerFontFamilyResolved: 'body', columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'right' as const, headerAlign: '' as const, headerAlignResolved: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
     let releaseCommand!: () => void
     const request = vi.fn((operation: string) => {
       if (operation === 'table-columns') return Promise.resolve(projection)
@@ -799,11 +800,25 @@ describe('application shell', () => {
     expect(commandsSent(request)[0]).toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"between","op":"set","value":["rows"]}')
   })
 
-  it('leaves the matrix untouched: six columns and its arrow navigation still work with the new section present', async () => {
+  it('commits Table Editor cell padding to the table through updateComponentProperties: set 4, then clear', async () => {
+    // The second and later projections carry the committed 4pt, so the emptied
+    // box differs from what the document declares and sends a clear.
+    const { request, tableSnapshot } = headerStyledTable({}, { paddingLeft: '4000' })
+    await openHeaderSection(request, tableSnapshot)
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Cell padding left in points' }), { target: { value: '4' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e7"],"changes":{"paddingLeft":{"op":"set","value":4}}}')
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Cell padding left in points' })).toHaveValue('4'))
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Cell padding left in points' }), { target: { value: '' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(2))
+    expect(commandsSent(request)[1]).toBe('{"kind":"updateComponentProperties","version":1,"ids":["e7"],"changes":{"paddingLeft":{"op":"clear"}}}')
+  })
+
+  it('leaves the matrix untouched: seven columns and its arrow navigation still work with the new section present', async () => {
     const { request, tableSnapshot } = headerStyledTable()
     await openHeaderSection(request, tableSnapshot)
     const grid = screen.getByRole('grid', { name: 'Table columns' })
-    expect(grid).toHaveAttribute('aria-colcount', '6')
+    expect(grid).toHaveAttribute('aria-colcount', '7')
     // Row-field authoring is one stop between the label and width.
     const header = screen.getByRole('textbox', { name: 'Header for column 1' })
     header.focus(); fireEvent.keyDown(header, { key: 'ArrowRight' })
@@ -1403,7 +1418,7 @@ describe('application shell', () => {
   // history would make these assertions pass against a guard that does nothing.
   const modalTableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: modalTableCanvas, canUndo: true, canRedo: true }
   const modalTableRequest = () => vi.fn(async (operation: string) => operation === 'table-columns'
-    ? { snapshot: modalTableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
+    ? { snapshot: modalTableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, headerAlign: '' as const, headerAlignResolved: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } }
     : { snapshot: modalTableSnapshot, ...(operation === 'serialize' ? { bytes } : {}) })
   const openTableEditorOver = async (fileAccess?: FileAccess) => {
     const request = modalTableRequest()
@@ -2670,7 +2685,7 @@ describe('application shell', () => {
   it('leaves an open table editor open when the backdrop is clicked', async () => {
     const tableCanvas = { ...canvas, components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 12000, resizable: false }] }
     const tableSnapshot = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas: tableCanvas }
-    const request = vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot })
+    const request = vi.fn(async (operation: string) => operation === 'table-columns' ? { snapshot: tableSnapshot, tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72000, proportion: '', align: 'left' as const, headerAlign: '' as const, headerAlignResolved: 'left' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: '' as const, footerOf: '', footerFormat: '' }] } } } : { snapshot: tableSnapshot })
     render(<App engine={engine(request)} initialSnapshot={tableSnapshot} />)
     fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
     fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))

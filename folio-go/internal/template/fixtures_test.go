@@ -304,6 +304,7 @@ var maximalFixture = []byte(`{
             {
               "align": "left",
               "bind": "{{transaction.date}}",
+              "headerAlign": "center",
               "id": "e3",
               "label": "Date",
               "width": 80
@@ -469,7 +470,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "3.1"
+  "version": "3.2"
 }
 `)
 

@@ -509,6 +509,11 @@ var tableColumnsProjectionWireKeys = []string{
 	"headerValignResolved",
 	// SPEC-table-rules: the interior lines and the ruled area's floor.
 	"minHeight",
+	// The table's own cell padding (left/right) and whether headerStyle.padding
+	// takes the header row over — the Table Editor's CELL PADDING boxes.
+	"paddingHeaderOverride",
+	"paddingLeft",
+	"paddingRight",
 	"rules.between",
 	"rules.color",
 	"rules.colorResolved",

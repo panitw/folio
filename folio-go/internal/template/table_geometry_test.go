@@ -191,6 +191,9 @@ var wantTableExtFields = map[string]bool{
 var wantColumnFields = map[string]bool{
 	"ID": true, "Label": true, "Width": true, "Proportion": true, "Align": true, "Bind": true,
 	"Footer": true, "FooterOf": true, "FooterFormat": true,
+	// Added by the table-cell-padding/header-align spec (2026-09-13): an
+	// optional per-column header alignment, its own closed set, raising 3.2.
+	"HeaderAlign": true,
 }
 
 // fieldNameSet reflects over typ's exported field names, explicitly

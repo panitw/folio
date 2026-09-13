@@ -78,6 +78,11 @@ import (
 // this library can load, and the library can now load documents carrying
 // those keys.
 //
+// A FIFTH MINOR, 3.2, was added by the table-cell-padding/header-align spec:
+// `columns[].headerAlign`, which aligns one column's header cell apart from
+// its data. Additive — its own closed set rather than a widened one — so a
+// MINOR; a 3.1 reader would silently align that header with the data.
+//
 // NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
 // using only `lineSpacing` or `color` still declares 1.1; one using
 // neither still declares 1.0; only one that actually carries
@@ -85,7 +90,7 @@ import (
 // document declares the LOWEST version its content requires.
 const (
 	SupportedMajor   = 3
-	SupportedVersion = "3.1"
+	SupportedVersion = "3.2"
 )
 
 // baseVersion is the lowest version any document can declare, and the
@@ -136,6 +141,10 @@ const (
 	// document), so the divergence is DISCLOSED here and in
 	// folio-format.md rather than mechanised.
 	tableRulesVersion = "3.1"
+	// columnHeaderAlignVersion is the version introduced by
+	// `columns[].headerAlign`. Presence.Set, on `color`'s terms: any value
+	// of the key is a key a 3.1 reader does not know.
+	columnHeaderAlignVersion = "3.2"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -334,6 +343,11 @@ func versionRequiredByContent(d *Document) string {
 				if el.Table.Value.MinHeight.Set && rankTableRules > highest {
 					highest = rankTableRules
 				}
+				for _, col := range el.Table.Value.Columns {
+					if col.HeaderAlign.Set && rankColumnHeaderAlign > highest {
+						highest = rankColumnHeaderAlign
+					}
+				}
 				hs := el.Table.Value.HeaderStyle
 				if hs.Set && !hs.Null {
 					if r := styleVersionRank(hs.Value); r > highest {
@@ -364,6 +378,7 @@ const (
 	rankMajorFeature
 	rankProportionalTable
 	rankTableRules
+	rankColumnHeaderAlign
 )
 
 // versionForRank maps a rank back to the version string it names.
@@ -382,6 +397,7 @@ var versionForRank = [...]string{
 	rankMajorFeature:      majorFeatureVersion,
 	rankProportionalTable: proportionalTableVersion,
 	rankTableRules:        tableRulesVersion,
+	rankColumnHeaderAlign: columnHeaderAlignVersion,
 }
 
 // styleVersionRank is the lowest version that can express ONE style

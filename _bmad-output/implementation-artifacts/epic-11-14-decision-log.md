@@ -1000,6 +1000,18 @@ document, so the refusal must live where the document is written.
 will not round-trip it. That would mean padding-as-inset had real demand, and the answer would be to
 implement it properly in the engine's layout path rather than to relax the guard.
 
+**REVISED 2026-09-13 (owner), for spec-table-cell-padding-header-align-info.** The designer **may** author
+`style.padding.left` and `style.padding.right` on a **table**, from the **Table Editor only**, through the
+existing `paddingLeft`/`paddingRight` property command (points, `set`/`clear`; no new Go command). What does not
+move: padding is still refused off a table, the inspector still has no padding rows, top/bottom padding and
+`headerStyle.padding` are not authored, and no default padding is introduced for new or existing tables. The
+header row takes the table's padding unless `headerStyle.padding` exists, and the editor says so when it does.
+The same spec adds the optional `columns[].headerAlign` (its own closed set, raising the document to `3.2`);
+the Table Editor's HEADER ALIGN control only ever sets it, and while it is unset the segment pressed is the
+alignment the header actually prints — the engine's resolved header cascade (`columns[].align` →
+`headerStyle.align` → `style.align` → `left`), projected per column as `headerAlignResolved` — never a
+browser-side guess (owner, 2026-09-13, from review).
+
 ---
 
 ### D-000.11 — A build tag is a place where regressions go to hide, so the epic gate must name it

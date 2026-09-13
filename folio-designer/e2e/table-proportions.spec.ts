@@ -136,7 +136,8 @@ test('exact extreme proportions remain editable through keyboard navigation and 
   // Total commits must leave deliberate Tab and click destinations alone.
   await total(page).fill('400'); await total(page).press('Tab')
   await expect(total(page)).toBeEnabled()
-  await expect(dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true })).toBeFocused()
+  // The next Tab stop after the total is the table's cell padding, beside it.
+  await expect(dialog(page).getByRole('textbox', { name: 'Cell padding left in points', exact: true })).toBeFocused()
   await expect(total(page)).toHaveValue('400')
   await total(page).fill('500'); await dialog(page).getByRole('textbox', { name: 'Row alias', exact: true }).click()
   await expect(total(page)).toHaveValue('500')

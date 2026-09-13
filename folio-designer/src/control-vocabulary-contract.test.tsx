@@ -314,10 +314,10 @@ const rectComponent = { id: 'e3', type: 'rect' as const, band: 'content' as cons
 // projection this panel can render. Twenty-six is `headerHeight` and
 // `altRowBackground` plus twelve committed/resolved pairs — Story 14.8 took it
 // from twenty by adding the border trio's three pairs.
-const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
+const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '', paddingLeft: '', paddingRight: '', paddingHeaderOverride: false }
 const tableColumnsReply = {
   snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 },
-  tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72_000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum' as const, footerOf: 'items.amount', footerFormat: '#,##0.00' }] } },
+  tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72_000, align: 'right' as const, headerAlign: '' as const, headerAlignResolved: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum' as const, footerOf: 'items.amount', footerFormat: '#,##0.00' }] } },
 }
 const engine = () => ({ request: vi.fn(async (operation: string) => operation === 'table-columns' ? tableColumnsReply : { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3 } }) }) as unknown as EngineClient
 
@@ -541,6 +541,18 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · the table editor open · Clear Minimum height',
   'design · the table editor open · Clear Rule width (pt)',
   'design · the table editor open · Clear Rule colour',
+  // spec-table-cell-padding-header-align-info. The two (i) explanation buttons
+  // are glyphs outside any segmented control. The HEADER ALIGN segments are
+  // too, and deliberately: the spec forbids a new `role="group"` in the Table
+  // Editor (it would clear GROUP_INSTANCE_FLOOR), so that control is a named
+  // `toolbar`, which this sweep does not count as a group — and so its three
+  // segments are recorded here rather than derived as a segmented control.
+  // MEASURED by executing the sweep and reading the five names it reported.
+  'design · the table editor open · About bindings',
+  'design · the table editor open · About column widths',
+  'design · the table editor open · Header align left for column 1',
+  'design · the table editor open · Header align center for column 1',
+  'design · the table editor open · Header align right for column 1',
   // The PDF navigation group — uniform within its group, so R2 is green.
   'preview · Previous PDF page',
   'preview · Next PDF page',

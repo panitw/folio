@@ -483,6 +483,9 @@ func writeColumn(dst []byte, depth int, c Column) []byte {
 	if c.Align.Set {
 		fields = append(fields, kv{"align", writeString(c.Align.Value)})
 	}
+	if c.HeaderAlign.Set {
+		fields = append(fields, kv{"headerAlign", writeString(c.HeaderAlign.Value)})
+	}
 	if c.Footer.Set {
 		fields = append(fields, kv{"footer", writeString(c.Footer.Value)})
 	}
