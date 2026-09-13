@@ -89,6 +89,18 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .bar-message-alert { max-width: min(64ch, 50vw); width: max-content; border-color: var(--color-bind); color: var(--color-ink-high); }
 .file-button { min-height: var(--status-bar-height); padding: 0 var(--space-3); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-body); }
 .file-button:disabled { color: var(--color-ink); cursor: not-allowed; }
+/* GLYPH TOOL BUTTONS — the document bar's file actions and the canvas toolbar.
+   A 24px square (the same `--status-bar-height` `.file-button` stands on) holding
+   one 16px stroked glyph. The hover guide is `data-tip`, painted under the
+   control on hover or keyboard focus; `white-space: nowrap` keeps it one line
+   and is outside `canvas-authority-contract`'s wrap ban. `z-index: 40` clears
+   `.bar-message` (10); a modal backdrop (20) already covers every trigger. */
+.tool-button, .tool-hint { position: relative; display: inline-grid; place-items: center; flex: none; width: var(--status-bar-height); height: var(--status-bar-height); padding: 0; border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); }
+.tool-hint { border-color: transparent; background: transparent; color: var(--color-ink); cursor: help; }
+.tool-button:disabled { color: var(--color-ink); opacity: 0.5; cursor: not-allowed; }
+.tool-button[aria-pressed="true"] { border-color: var(--color-select); background: var(--color-active); color: var(--color-select); }
+.tool-icon { width: var(--icon-size); height: var(--icon-size); }
+.tool-button[data-tip]:hover::after, .tool-button[data-tip]:focus-visible::after, .tool-hint[data-tip]:hover::after { content: attr(data-tip); position: absolute; z-index: 40; top: calc(100% + var(--space-1)); left: 50%; transform: translateX(-50%); padding: 2px var(--space-2); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-body); white-space: nowrap; pointer-events: none; }
 .later-control { margin-left: auto; color: var(--color-ink); }
 .mode-switch { display: flex; border: var(--hairline) solid var(--color-edge); }
 .mode-switch button { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); border: 0; background: transparent; color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }
@@ -183,7 +195,7 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .canvas-region-placing, .canvas-region-placing * { cursor: copy; }
 .placement-ghost { position: fixed; left: var(--ghost-x); top: var(--ghost-y); z-index: 30; display: flex; align-items: center; gap: var(--space-2); padding: 3px 7px; transform: translate(14px, 14px); border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); white-space: nowrap; pointer-events: none; }
 .placement-ghost .palette-icon { width: 12px; height: 12px; }
-.canvas-tools { position: sticky; top: 0; z-index: 1; display: flex; gap: var(--space-2); padding: var(--space-2); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-mono); }
+.canvas-tools { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); font: var(--type-mono); }
 .canvas-tools button { border: var(--hairline) solid var(--color-edge); background: var(--color-raised); color: var(--color-ink-high); }
 /* Story 7.6: the run of sheets, one per projected window. The gap is written
    in from sheet-stack.ts's own SHEET_STACK_GAP rather than taken from a

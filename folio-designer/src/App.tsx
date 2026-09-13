@@ -35,6 +35,10 @@ import { useCanvasSelection, type GroupPreview } from './use-canvas-selection'
 import { tableWidthCommand, addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnExpressionCommand, updateTableColumnFooterCommand } from './table-column-command'
 import { TableEditor } from './TableEditor'
 import { alignSegments, justifySegment, SegmentedControl, type SegmentSpec } from './segmented-control'
+import { ToolIcon } from './toolbar-icons'
+
+// A glyph tool button's hover guide: its name, then its shortcut when it has one.
+const toolTip = (name: string, shortcut: string) => `${name} (${shortcut})`
 import { isHexColour, swatchColor } from './swatch-color'
 import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand, tableMinHeightCommand, tableRulesCommand } from './table-style-command'
 import { initialPDFPreviewViewState, PDFPreviewViewer, samePDFPreviewViewState, type PDFPreviewViewState } from './preview/pdf-viewer'
@@ -2943,28 +2947,18 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           lockup; only the wrapper is new. 18px here, 22px on the load screen,
           and nowhere else. */}
       <span className="brand-lockup"><BrandMark size={18} /><span className="brand">FOLIO</span></span><span className="document-name">{title}</span><span className={`status-dot${dirty ? '' : ' status-clean'}`} aria-hidden="true" /><span className="status-copy" role="status">{saveLabel}</span>
-      {/* STORY 14.1 / AC2 — SIX WORDS IN ONE NAMED GROUP, AND A STATED DEPARTURE
-          FROM THE DRAWING.
-          `.document-actions` was a roleless `<div>`: the accessibility tree
-          takes no name from one, so this `aria-label` was dropped and the six
-          controls were six loose buttons rather than a family. `role="group"`
-          is the whole fix. Open and Save were also the only two icon-only
-          controls in that family, which is rule V3 in the story spec —
-          every control inside one named control group is spelled the same way.
-          Their `aria-label`s are UNCHANGED, so every accessible name is
-          byte-identical and the visible word is contained in the name (WCAG
-          label-in-name). Save keeps its `title`; neither grows a `<kbd>` — the
-          bar's three-way shortcut disclosure is DW-326's, not this story's.
-
-          ⚠ THE DEPARTURE, STATED RATHER THAN TAKEN QUIETLY. `Main.dc.html:38-41`
-          draws Open and Save as BARE WORDS — `padding: 4px 8px`, no border, no
-          background — and draws no other member of this family at all. Spelled
-          that way here they would be two plain words beside four bordered
-          chips, which is the same V3 violation in a different currency. AC2's
-          words are "no member of the family is spelled differently from
-          another", and the four siblings the mockup does not draw already carry
-          `.file-button`, so the family's existing spelling is what the two new
-          words join. The drawing loses on the one point where it is silent. */}
+      {/* SIX GLYPHS IN ONE NAMED GROUP, BY OWNER RULING.
+          Story 14.1 spelled this family as six words; the owner has since ruled
+          the document bar and the canvas toolbar are glyph controls with a hover
+          guide. The family is still uniform (V3): all six are `.tool-button`
+          glyphs, and `role="group"` keeps `Local file actions` in the
+          accessibility tree. Every `aria-label` carries the name the control
+          answered to as a word, byte-identical, so no query moved. The hover
+          guide — name plus shortcut — is `data-tip`, painted by CSS; there is no
+          `title`, so the browser does not draw a second, slower tooltip over it.
+          `.file-button` stays the words' class (TABLE's `Configure columns`,
+          the image picker): sharing it with glyphs would split one class across
+          two treatments. */}
       {/* THE LOCAL-FILE MESSAGES NOW SIT WITH THE BUTTONS THEY ARE ABOUT.
           They were rendered at the tail of the design and preview mains, which
           are scrollable regions, so the sentence explaining a busy or failed
@@ -2996,7 +2990,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           `role="status"`: that line says what the DOCUMENT is (saved, dirty)
           and this one says what the last file ACTION did. One line with two
           writers means either can erase the other's sentence. */}
-      <div className="document-actions" role="group" aria-label="Local file actions"><button className="file-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template">Open</button><button className="file-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" title={`Save (${shortcuts.save})`}>Save</button><button className="file-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy}>Save As</button><button className="file-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy}>Start blank</button><button className="file-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy}>Undo <kbd aria-hidden="true">{shortcuts.undo}</kbd></button><button className="file-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy}>Redo <kbd aria-hidden="true">{shortcuts.redo}</kbd></button>{fileError ? <span role="alert" className="bar-message bar-message-alert" title={fileError}>{fileError}</span> : fileStatus ? <span role="status" aria-live="polite" className="bar-message" title={fileStatus}>{fileStatus}</span> : undefined}</div>
+      <div className="document-actions" role="group" aria-label="Local file actions"><button className="tool-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template" data-tip="Open"><ToolIcon glyph="open" /></button><button className="tool-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" data-tip={toolTip('Save', shortcuts.save)}><ToolIcon glyph="save" /></button><button className="tool-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save As" data-tip="Save As"><ToolIcon glyph="save-as" /></button><button className="tool-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy} aria-label="Start blank" data-tip="Start blank"><ToolIcon glyph="blank" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy} aria-label="Undo" data-tip={toolTip('Undo', shortcuts.undo)}><ToolIcon glyph="undo" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy} aria-label="Redo" data-tip={toolTip('Redo', shortcuts.redo)}><ToolIcon glyph="redo" /></button>{fileError ? <span role="alert" className="bar-message bar-message-alert" title={fileError}>{fileError}</span> : fileStatus ? <span role="status" aria-live="polite" className="bar-message" title={fileStatus}>{fileStatus}</span> : undefined}</div>
       {/* STORY 13.5 — THE SLOT SAYS SOMETHING ABOUT WHAT IS ON SCREEN.
           In Design that is the page setup; in Preview the page setup is a fact
           about a template nobody is looking at, and the render's own freshness
@@ -3053,7 +3047,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           from an existing rule is a PLACEMENT and not a selection of the
           neighbour. */}
       {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
-        <div className="canvas-tools" aria-label="Canvas controls"><button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out">−</button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in">+</button><button type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible}>Grid {gridVisible ? 'on' : 'off'}</button><button type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled}>Snap {snapEnabled ? 'on' : 'off'} <kbd aria-hidden="true">{shortcuts.snap}</kbd></button><button type="button" onClick={duplicateSelection} disabled={selected.length !== 1}>Duplicate <kbd aria-hidden="true">{shortcuts.duplicate}</kbd></button><button type="button" onClick={deleteSelection} disabled={selected.length !== 1}>Delete <kbd aria-hidden="true">{shortcuts.delete}</kbd></button><span>Nudge <kbd aria-hidden="true">{shortcuts.nudge}</kbd></span></div>
+        <div className="canvas-tools" aria-label="Canvas controls"><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out" data-tip="Zoom out"><ToolIcon glyph="zoom-out" /></button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in" data-tip="Zoom in"><ToolIcon glyph="zoom-in" /></button><button className="tool-button" type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible} aria-label={`Grid ${gridVisible ? 'on' : 'off'}`} data-tip={`Grid ${gridVisible ? 'on' : 'off'}`}><ToolIcon glyph="grid" /></button><button className="tool-button" type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled} aria-label={`Snap ${snapEnabled ? 'on' : 'off'}`} data-tip={toolTip(`Snap ${snapEnabled ? 'on' : 'off'}`, shortcuts.snap)}><ToolIcon glyph="snap" /></button><button className="tool-button" type="button" onClick={duplicateSelection} disabled={selected.length !== 1} aria-label="Duplicate" data-tip={toolTip('Duplicate', shortcuts.duplicate)}><ToolIcon glyph="duplicate" /></button><button className="tool-button" type="button" onClick={deleteSelection} disabled={selected.length !== 1} aria-label="Delete" data-tip={toolTip('Delete', `${shortcuts.delete} key`)}><ToolIcon glyph="delete" /></button><span className="tool-hint" role="img" aria-label={toolTip('Nudge', shortcuts.nudge)} data-tip={toolTip('Nudge', shortcuts.nudge)}><ToolIcon glyph="nudge" /></span></div>
         {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
 
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}

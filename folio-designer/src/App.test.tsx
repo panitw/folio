@@ -1144,42 +1144,56 @@ describe('application shell', () => {
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline cache unavailable')
   })
 
-  // STORY 14.1 / AC2 + AC4 — THE DOCUMENT BAR SPEAKS ONE VOCABULARY.
+  // THE DOCUMENT BAR AND THE CANVAS TOOLBAR ARE GLYPH CONTROLS WITH A HOVER GUIDE.
   //
-  // Open and Save were the only two icon-only controls in a family of six, and
-  // `.document-actions` was a roleless `<div>` whose `aria-label` the
-  // accessibility tree dropped, so the family had no name to be a family under.
-  // Both are fixed. `control-vocabulary-contract.test.tsx` enforces the RULE
-  // over the whole rendered population — no control named — which is exactly why
-  // it cannot make the claims below: "no member disagrees with another" is not
-  // "this one says Open, under the name it already had".
+  // Story 14.1 spelled the document bar as words; the owner has since ruled both
+  // toolbars glyphs. `control-vocabulary-contract.test.tsx` holds the family to
+  // one treatment — it cannot say "this one still answers to its old name, and
+  // its hover guide names its shortcut", which is what this row asserts.
   //
-  // ⚠ THE TWO `aria-label`s ARE UNCHANGED, and they are asserted here beside the
-  // new visible text for that reason: the name a screen reader announces is
-  // byte-identical to the one it announced before, and the visible word is
-  // contained in it, so WCAG label-in-name holds. Measured: `Open local template`
-  // / `Save local template` appeared on 10 lines of this file at the story's
-  // baseline `dbe058bf` and on 15 lines across ten `e2e/*.spec.ts` files. Not one
-  // of them had to move. (This file now holds 17 such lines — the seven this
-  // comment and the test below add. The e2e count is untouched by this story.)
-  it('spells all six local-file controls as words in one named group, keeping every accessible name', () => {
+  // ⚠ EVERY ACCESSIBLE NAME IS THE ONE THE CONTROL HAD AS A WORD, so no unit or
+  // e2e query moved. The guide is `data-tip`, painted by CSS, and there is no
+  // `title` — the browser's own tooltip would draw a second one over it.
+  it('draws all six local-file controls as glyphs in one named group, keeping every accessible name', () => {
     render(<App />)
+    const shortcuts = shortcutHintsFor()
     const group = screen.getByRole('group', { name: 'Local file actions' })
     const buttons = within(group).getAllByRole('button')
-    expect(buttons).toHaveLength(6)
-    for (const [index, name] of ['Open local template', 'Save local template', 'Save As', 'Start blank', 'Undo', 'Redo'].entries()) {
-      expect(buttons[index]).toHaveAccessibleName(name)
+    expect(buttons.map((button) => [button.getAttribute('aria-label'), button.getAttribute('data-tip')])).toEqual([
+      ['Open local template', 'Open'],
+      ['Save local template', `Save (${shortcuts.save})`],
+      ['Save As', 'Save As'],
+      ['Start blank', 'Start blank'],
+      ['Undo', `Undo (${shortcuts.undo})`],
+      ['Redo', `Redo (${shortcuts.redo})`],
+    ])
+    for (const button of buttons) {
+      expect(button).toHaveAccessibleName(button.getAttribute('aria-label')!)
+      expect(button.querySelector('svg.tool-icon[aria-hidden="true"]')).not.toBeNull()
+      expect(button).toHaveTextContent(/^$/)
+      expect(button).not.toHaveAttribute('title')
     }
-    // Open and Save now SAY what they do, in the same words as every sibling.
-    expect(screen.getByRole('button', { name: 'Open local template' })).toHaveTextContent('Open')
-    expect(screen.getByRole('button', { name: 'Save local template' })).toHaveTextContent('Save')
-    // And no member of the family is drawn as a picture any more.
-    expect(buttons.filter((button) => button.querySelector('svg') !== null)).toEqual([])
-    // Save keeps its shortcut in the tooltip, and neither control grows a
-    // visible `<kbd>`: the document bar's three-way shortcut disclosure is a
-    // registered finding (DW-326), not this story's work to settle.
-    expect(screen.getByRole('button', { name: 'Save local template' })).toHaveAttribute('title', `Save (${shortcutHintsFor().save})`)
-    expect(screen.getByRole('button', { name: 'Open local template' })).not.toHaveAttribute('title')
+  })
+
+  it('draws the canvas toolbar as glyphs whose hover guide names each shortcut', () => {
+    render(<App />)
+    const shortcuts = shortcutHintsFor()
+    const tools = screen.getByLabelText('Canvas controls')
+    expect(within(tools).getAllByRole('button').map((button) => [button.getAttribute('aria-label'), button.getAttribute('data-tip')])).toEqual([
+      ['Zoom out', 'Zoom out'],
+      ['Zoom in', 'Zoom in'],
+      ['Grid on', 'Grid on'],
+      ['Snap on', `Snap on (${shortcuts.snap})`],
+      ['Duplicate', `Duplicate (${shortcuts.duplicate})`],
+      ['Delete', `Delete (${shortcuts.delete} key)`],
+    ])
+    for (const button of within(tools).getAllByRole('button')) {
+      expect(button.querySelector('svg.tool-icon[aria-hidden="true"]')).not.toBeNull()
+      expect(button).toHaveTextContent(/^$/)
+    }
+    expect(within(tools).getByRole('img', { name: `Nudge (${shortcuts.nudge})` })).toHaveAttribute('data-tip', `Nudge (${shortcuts.nudge})`)
+    fireEvent.click(within(tools).getByRole('button', { name: 'Grid on' }))
+    expect(within(tools).getByRole('button', { name: 'Grid off' })).toHaveAttribute('data-tip', 'Grid off')
   })
 
   // STORY 14.5 / AC1 + AC4 — THE MARK IS SEEN AND NEVER HEARD.

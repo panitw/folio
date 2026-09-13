@@ -546,6 +546,16 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'preview · Next PDF page',
   'preview · Zoom out PDF',
   'preview · Zoom in PDF',
+  // OWNER RULING AFTER 14.1 — THE DOCUMENT BAR AND THE CANVAS TOOLBAR ARE GLYPH
+  // CONTROLS WITH A HOVER GUIDE. Both families are uniform (`.tool-button`, and
+  // `Local file actions` is all glyphs), so R1 and R2 stay green; they are
+  // outside any segmented control, so V2 records them here. MEASURED by running
+  // the sweep: the six file actions render in every state, and the four canvas
+  // toggles/actions beside the zoom steppers in every design state.
+  ...states.flatMap((state) => [
+    ...['Open local template', 'Save local template', 'Save As', 'Start blank', 'Undo', 'Redo'],
+    ...(state.name === 'preview' ? [] : ['Grid on', 'Snap on', 'Duplicate', 'Delete']),
+  ].map((name) => `${state.name} · ${name}`)),
 ]
 
 // R0 — COVERAGE HONESTY, and it is a CLAUSE like the other four rather than a
@@ -953,18 +963,20 @@ describe('control vocabulary contract', () => {
   // says Open".
   // -------------------------------------------------------------------------
 
-  it('spells all six local-file controls as words inside one named group', async () => {
+  // OWNER RULING after 14.1: the document bar is six GLYPHS, still one family in
+  // one named group, still answering to every name it had as words.
+  it('draws all six local-file controls as glyphs inside one named group', async () => {
     const root = await states[0]!.open()
     const group = screen.getByRole('group', { name: 'Local file actions' })
     expect(root.contains(group)).toBe(true)
     const members = controlsIn(group).map((element) => ({ name: accessibleName(element), treatment: treatmentOf(element), text: visibleText(element) }))
     expect(members).toEqual([
-      { name: 'Open local template', treatment: 'word', text: 'Open' },
-      { name: 'Save local template', treatment: 'word', text: 'Save' },
-      { name: 'Save As', treatment: 'word', text: 'Save As' },
-      { name: 'Start blank', treatment: 'word', text: 'Start blank' },
-      { name: 'Undo', treatment: 'word', text: 'Undo' },
-      { name: 'Redo', treatment: 'word', text: 'Redo' },
+      { name: 'Open local template', treatment: 'glyph', text: '' },
+      { name: 'Save local template', treatment: 'glyph', text: '' },
+      { name: 'Save As', treatment: 'glyph', text: '' },
+      { name: 'Start blank', treatment: 'glyph', text: '' },
+      { name: 'Undo', treatment: 'glyph', text: '' },
+      { name: 'Redo', treatment: 'glyph', text: '' },
     ])
   })
 
