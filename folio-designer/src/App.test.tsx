@@ -61,7 +61,7 @@ const carried = (assetKey: string, variants: Partial<Readonly<{ bold: string; it
 // every committed member is absent while every resolved one carries the
 // cascade's answer — which is the shape that makes "the panel shows the
 // resolved value" observable at all.
-const tableHeaderProjection = { sizing: 'points' as const, totalWidth: 72000, headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
+const tableHeaderProjection = { sizing: 'points' as const, totalWidth: 72000, headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
 
 // installStubFontSet installs the page font set jsdom does not implement and
 // returns its own removal. `Object.defineProperty` because neither the face
@@ -354,7 +354,12 @@ describe('application shell', () => {
     fireEvent.keyDown(header, { key: 'Tab' })
     expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(header)
     const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
-    const tabbable = Array.from(dialogElement.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
+    // `textarea` IS IN THIS SELECTOR BECAUSE IT IS IN THE TRAP'S (TableEditor's
+    // own `focusable` query). SPEC-table-rules made the header-label cell a
+    // `<textarea>` — a label may hold a line feed and an `<input>` cannot — and
+    // a selector here that omitted the element the trap includes would measure a
+    // different list from the one the product walks.
+    const tabbable = Array.from(dialogElement.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])')).filter((element) => element.tabIndex >= 0)
     // STORY 14.7 RE-ORDERED THIS LIST A SECOND TIME AND STORY 14.7b HAS NOW
     // RE-ORDERED IT A THIRD, AND EVERY ONE OF THE THREE IS INTENDED — say so,
     // because an unexplained re-ordering reads as a regression to the next
@@ -763,6 +768,25 @@ describe('application shell', () => {
     fireEvent.blur(size, { target: { value: '' } })
     await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
     expect(commandsSent(request)[0]).toBe('{"kind":"updateTableHeaderStyle","version":1,"id":"e7","field":"fontSize","op":"clear"}')
+  })
+
+  // SPEC-table-rules' RULED AREA, end to end through App's wiring: the exact
+  // bytes each control puts on the channel, so a panel callback and a command
+  // builder that each pass alone cannot disagree about the spelling between them.
+  it('commits Minimum height as one setTableMinHeight command with the author\u2019s points', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Minimum height in points' }), { target: { value: '600' } })
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"setTableMinHeight","version":1,"id":"e7","op":"set","value":600}')
+  })
+
+  it('commits ticking Rule between rows as one updateTableRules set of that boundary', async () => {
+    const { request, tableSnapshot } = headerStyledTable()
+    await openHeaderSection(request, tableSnapshot)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Rule between rows' }))
+    await waitFor(() => expect(commandsSent(request)).toHaveLength(1))
+    expect(commandsSent(request)[0]).toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"between","op":"set","value":["rows"]}')
   })
 
   it('leaves the matrix untouched: six columns and its arrow navigation still work with the new section present', async () => {

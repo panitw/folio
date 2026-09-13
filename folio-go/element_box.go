@@ -45,15 +45,31 @@ import (
 // byte order.
 //
 // Four kinds are eligible: text, image, rect and line. A TABLE is
-// excluded by name (not by omission): its style.background and
-// style.border are already consumed, as the cell chrome Epic 4 draws, so
-// painting an element box for it too would draw the same declaration
-// twice.
+// excluded by name (not by omission), AND SPEC-table-rules CHANGED THE
+// REASON WITHOUT CHANGING THE EXCLUSION.
+//
+// It used to be excluded because its style.background and style.border
+// were consumed as the cell chrome Epic 4 drew. Those two keys now paint the
+// table's own FRAME and nothing else — the perimeter half of the split — so
+// a table does have a box, and the exclusion here would look like the thing
+// to delete.
+//
+// IT IS NOT, AND THE REASON IS GEOMETRY, NOT POLICY. This function draws a
+// DECLARED rectangle (declaredBox: both width and height present and
+// positive). A table declares no height — AD-13 refuses one at load, and
+// `minHeight` is a FLOOR under a derivation, not a height — and a table's
+// frame closes PER PAGE, so its rectangle is known only once pagination has
+// assigned each page's slice. table_frame.go's applyTableFrames draws it
+// there, through the same buildCellRectWithBackgroundField builder.
 func collectElementBoxRects(bands []bandWithOrigin, visible visibilityVerdicts) ([]tableRectSource, error) {
 	var sources []tableRectSource
 	for bandIndex, b := range bands {
 		for _, el := range b.band.Elements {
 			if el.Type == template.ElementTable {
+				// See this function's doc comment: a table's frame is
+				// real but built per page slice after pagination
+				// (table_frame.go), not here where only a declared
+				// rectangle is available.
 				continue
 			}
 			if !isVisible(visible, el.ID) {

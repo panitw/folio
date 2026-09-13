@@ -2963,10 +2963,15 @@ func paginateDocument(
 	var pdfRects []pagemodel.Rect
 	var rectIsDataRow []bool
 	var rectElementID []string
-	for _, ts := range tableRects {
+	// rectSource, parallel to pdfRects (SPEC-table-rules): the index in
+	// tableRects each rect came from, so a page's frame can find its
+	// table's rects and their row regions by direct lookup.
+	var rectSource []int
+	for srcIdx, ts := range tableRects {
 		lo := len(pdfRects)
 		pdfRects = append(pdfRects, ts.rects...)
 		for range ts.rects {
+			rectSource = append(rectSource, srcIdx)
 			// Story 4.5: a footer row's chrome gets the SAME per-table
 			// row displacement a data row's chrome gets (AC6) — it is
 			// one more row of this table for FR26's purposes.
@@ -2995,8 +3000,48 @@ func paginateDocument(
 				// derivation returns the zero (ungrouped) value, which
 				// is what leaves every table row untouched.
 				Group: keepTogether.orKeepTogether(ts.chromeRowGroup(), ts.elementID),
+				// SPEC-table-rules: report this table's per-page slices
+				// (and floor them) when it draws a frame, rules or a
+				// floor. The zero value for every other table.
+				Slice: ts.frame.sliceRequest(),
 			})
+			items[len(items)-1].Left, items[len(items)-1].Right, items[len(items)-1].HasExtent = rectSourceExtent(ts)
 		}
+	}
+
+	// SPEC-table-rules: a table in the page header or page footer is not
+	// paginated, so its one slice is the whole table, floored — built once
+	// and drawn on every page with the band's other rects.
+	bandSlices := map[int][]frameSlice{}
+	for _, ts := range tableRects {
+		if ts.frame == nil || (ts.band != pageHeaderBandIndex && ts.band != pageFooterBandIndex) {
+			continue
+		}
+		list := bandSlices[ts.band]
+		if n := len(list); n > 0 && list[n-1].elementID == ts.elementID {
+			if ts.top < list[n-1].top {
+				list[n-1].top = ts.top
+			}
+			if ts.bottom > list[n-1].bottom {
+				list[n-1].bottom = ts.bottom
+			}
+		} else {
+			list = append(list, frameSlice{elementID: ts.elementID, top: ts.top, bottom: ts.bottom})
+		}
+		// The floor is capped at the band's own bottom — the band-table
+		// form of "the floor never passes the window" (review item 3).
+		bandBottom := layout.Origins(geometry).Content
+		if ts.band == pageFooterBandIndex {
+			bandBottom = layout.Origins(geometry).PageFooter + geometry.PageFooterHeight
+		}
+		floored := list[len(list)-1].top + ts.frame.minHeight
+		if floored > bandBottom {
+			floored = bandBottom
+		}
+		if floored > list[len(list)-1].bottom {
+			list[len(list)-1].bottom = floored
+		}
+		bandSlices[ts.band] = list
 	}
 
 	// Text. One line's runs are CONTIGUOUS in `runs` and share
@@ -3055,6 +3100,7 @@ func paginateDocument(
 			runs[j].elementID == runs[i].elementID &&
 			runs[j].lineIndex == runs[i].lineIndex {
 			item.Runs = append(item.Runs, layout.TextRunRef(j))
+			extendItem(&item, runs[j].x, runs[j].x)
 			j++
 		}
 		items = append(items, item)
@@ -3092,6 +3138,7 @@ func paginateDocument(
 				// mark belong to the same block as its name.
 				Group: keepTogether.keepTogetherGroup(r.elementID),
 			})
+			extendItem(&items[len(items)-1], r.x, r.x+r.boxW)
 		}
 	}
 
@@ -3172,6 +3219,9 @@ func paginateDocument(
 			if runs[ref].isTableRowLine || runs[ref].isFooterLine {
 				run.Y += rowDisplacementFor(assigned.RowDisplacement, runs[ref].elementID)
 			}
+			// SPEC-table-rules §3: a floored table above this element on
+			// this page pushes it below the floored bottom.
+			run.Y += elementPushFor(assigned.ElementPush, runs[ref].elementID)
 			pageRuns = append(pageRuns, run)
 		}
 		for _, ref := range footer.Runs {
@@ -3185,21 +3235,28 @@ func paginateDocument(
 		for _, ref := range assigned.ContentImages {
 			img := pdfPlacements[ref]
 			img.Y -= assigned.Shift
+			img.Y += elementPushFor(assigned.ElementPush, imageRuns[ref].elementID)
 			pageImages = append(pageImages, img)
 		}
 		for _, ref := range footer.Images {
 			pageImages = append(pageImages, pdfPlacements[ref])
 		}
 
-		pageRects := make([]pagemodel.Rect, 0, len(header.Rects)+len(assigned.ContentRects)+len(footer.Rects))
+		// Every rect of this page, with the table source it came from, so
+		// SPEC-table-rules' frames can be drawn per slice once the page's
+		// rects are placed (applyTableFrames). A page carrying no slice
+		// comes out of applyTableFrames exactly as it went in.
+		headerEntries := make([]framedRect, 0, len(header.Rects))
 		for _, ref := range header.Rects {
-			pageRects = append(pageRects, pdfRects[ref])
+			headerEntries = append(headerEntries, framedRect{rect: pdfRects[ref], src: rectSource[ref]})
 		}
+		pageRects := applyTableFrames(headerEntries, tableRects, bandSlices[pageHeaderBandIndex])
+		contentEntries := make([]framedRect, 0, len(assigned.ContentRects))
 		for _, rep := range assigned.HeaderRepeats {
 			for _, ref := range rep.Rects {
 				r := pdfRects[ref]
 				r.Y -= rep.Shift
-				pageRects = append(pageRects, r)
+				contentEntries = append(contentEntries, framedRect{rect: r, src: rectSource[ref], repeat: true})
 			}
 		}
 		for _, ref := range assigned.ContentRects {
@@ -3221,15 +3278,57 @@ func paginateDocument(
 			if rectIsDataRow[ref] {
 				r.Y += rowDisplacementFor(assigned.RowDisplacement, rectElementID[ref])
 			}
-			pageRects = append(pageRects, r)
+			r.Y += elementPushFor(assigned.ElementPush, rectElementID[ref])
+			contentEntries = append(contentEntries, framedRect{rect: r, src: rectSource[ref]})
 		}
+		contentSlices := make([]frameSlice, 0, len(assigned.TableSlices))
+		for _, sl := range assigned.TableSlices {
+			contentSlices = append(contentSlices, frameSlice{elementID: sl.ElementID, top: sl.Top, bottom: sl.Bottom})
+		}
+		pageRects = append(pageRects, applyTableFrames(contentEntries, tableRects, contentSlices)...)
+		footerEntries := make([]framedRect, 0, len(footer.Rects))
 		for _, ref := range footer.Rects {
-			pageRects = append(pageRects, pdfRects[ref])
+			footerEntries = append(footerEntries, framedRect{rect: pdfRects[ref], src: rectSource[ref]})
 		}
+		pageRects = append(pageRects, applyTableFrames(footerEntries, tableRects, bandSlices[pageFooterBandIndex])...)
 
 		pages = append(pages, layout.ComposePage(geometry, pageRuns, pageImages, pageRects))
 	}
 	return pages, repeatDiags, nil
+}
+
+// extendItem widens a column item's horizontal extent to cover left..right
+// (SPEC-table-rules review item 4: the floor push is for what lies BELOW a
+// table, never beside it, and pagination needs the x extent to tell).
+func extendItem(item *layout.ColumnItem, left, right geom.Length) {
+	if !item.HasExtent || left < item.Left {
+		item.Left = left
+	}
+	if !item.HasExtent || right > item.Right {
+		item.Right = right
+	}
+	item.HasExtent = true
+}
+
+// rectSourceExtent is a rect source's horizontal extent.
+func rectSourceExtent(ts tableRectSource) (left, right geom.Length, ok bool) {
+	var item layout.ColumnItem
+	for _, r := range ts.rects {
+		extendItem(&item, r.X, r.X+r.W)
+	}
+	return item.Left, item.Right, item.HasExtent
+}
+
+// elementPushFor returns the SPEC-table-rules §3 floor push a page's
+// ElementPush gives elementID — a single slice walk, empty on every page of
+// every document with no floored table.
+func elementPushFor(list []layout.ElementPush, elementID string) geom.Length {
+	for _, p := range list {
+		if p.ElementID == elementID {
+			return p.Amount
+		}
+	}
+	return 0
 }
 
 // rectClipBottomFor returns the column-space bottom bound (Story 4.6) a

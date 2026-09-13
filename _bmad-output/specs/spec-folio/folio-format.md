@@ -513,9 +513,58 @@ table width. These two representations cannot be mixed within a table.
 | `columns[].footer` | *Optional.* `sum` · `count` · `avg`. **Unchanged — names the operation only** (D-1.4.1); the numeric source is `columns[].footerOf`, below. Computed over the **whole collection**, never per page (AD-11). Omitted means no footer cell for that column. |
 | `columns[].footerOf` | *Optional.* A bare root-relative dotted value path (e.g. `"transactions.amount"`) naming the numeric source the footer aggregates — no `{{ }}`, no function call, no `[]`. Legal only alongside `footer`, and never alongside `footer: "count"` (storing it would be a second source of truth against `bind`, AD-13). When `footer` is present and `footerOf` is omitted, it is **derived** from the column's own `bind`, but only when `bind` is one of exactly two syntactic shapes: (1) a bare row-scoped path `{{<alias>.<rest>}}` → `footerOf` = `<collection>.<rest>`; (2) a single `formatNumber(<bare row-scoped path>, <pattern literal>)` call → `footerOf` = `<collection>.<rest>` from the first argument, **and** `footerFormat` defaults to `<pattern>`. `<collection>` is the table's own `bind` with `[]` stripped. Any other `bind` shape is a load error — never a guess. **As of Story 3.2, this derivation runs at load time** (`folio.ParseTemplate`) and the derived value is resolved alongside the document, never written back into it — a document that omits `footerOf` still serializes without it. **As of Story 4.5, the aggregate is computed** (`sum`/`count`/`avg`) and can be formatted (`formatNumber`), then rendered into the footer cell through the same expression evaluator used by ordinary bindings. Story 3.6 supplies the diagnostic codes: `TABLE_FOOTER_SOURCE_UNRESOLVED` (derivation failed) and `TABLE_FOOTER_SOURCE_FORBIDDEN` (an explicit `footerOf` conflicts with `bind`'s own shape). |
 | `columns[].footerFormat` | *Optional.* A `formatNumber` pattern applied to the computed footer value. Legal with all three `footer` operations. |
-| `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Collection index zero retains the ordinary body treatment; the alternate colour applies to odd zero-based collection indexes (the second, fourth, sixth rows). Alternation follows that collection index, so it does not reset per page. Colour-by-data is out of scope for this field exactly as it is for `style`'s own colour fields (see "Colours are `#RRGGBB`" below): a `{{ }}` placeholder here is a **load error** naming the element, under the same rejection. `altRowBackground` wins over `style.background` on the rows where it applies; intervening data rows retain the ordinary body background or remain unfilled when none is declared. Headers and footers are not alternating data rows. |
+| `altRowBackground` | *Optional.* Colour for alternating rows (FR28). Collection index zero retains the ordinary body treatment; the alternate colour applies to odd zero-based collection indexes (the second, fourth, sixth rows). Alternation follows that collection index, so it does not reset per page. Colour-by-data is out of scope for this field exactly as it is for `style`'s own colour fields (see "Colours are `#RRGGBB`" below): a `{{ }}` placeholder here is a **load error** naming the element, under the same rejection. As of SPEC-table-rules it is the **only** declaration that fills a data cell — a table's `style.background` paints the table's own frame (below) and reaches no cell. Intervening data rows remain unfilled. Headers and footers are not alternating data rows. |
+| `rules` | *Optional.* The lines **inside** the table: `{"width": 0.5, "color": "#000000", "between": ["columns"]}`. `between` is a closed set — `columns` · `rows` — naming which **boundaries** carry a line: `columns` rules every boundary between two adjacent columns, `rows` every boundary between two adjacent rows. Both, either, or `[]` for none; an **absent** `between` rules nothing. A rule is drawn **once**, at a boundary, and **never on the table's own edge** — the outermost column has no outer vertical rule and the bottom-most row has no bottom rule, because those lines are the frame's own border. A `rows` rule at the header/first-row boundary is **skipped** when `headerStyle.border` already strokes its `bottom`, so that one coordinate never carries two strokes. Column rules run from the **top of each page's slice to its bottom**, through whatever empty area `minHeight` creates on that page; a `rows` rule lies between rows, so it never enters that empty area. `width` defaults to `0.5`, `color` to `#000000`, exactly as `style.border`'s do. Declaring this key raises the document to version `3.1`. |
+| `rules.between` | The closed set naming which boundaries `rules` draws a line at: `columns` · `rows`. Both, either, or `[]` for none; absent rules nothing. Extending this set later is a MAJOR version change (D-1.4.12), so it is effectively permanent. |
+| `rules.width`, `rules.color` | The interior lines' width in points and `#RRGGBB` colour, defaulting to `0.5` and `#000000` exactly as `style.border`'s do. A negative width is a load error (ISO 32000-1 §8.4.3.2); `0` is the thinnest device line. |
+| `minHeight` | *Optional.* A length in points: a **floor under each page's slice** of the table, never a height. For a slice whose top is `t` and whose content bottom is `c`, on a page whose content window ends at `w`, the slice's drawn bottom is `max(c, min(t + minHeight, w))` — it never lifts the content, never passes the window, and never moves the table to another page. Rows are unaffected; `minHeight` never stretches, shrinks or pads one. This **narrows** AD-13 without repealing it — a table still declares no `height`, and its extent is still derived. The frame and the column rules are drawn to each slice's floored bottom, which is what a pre-printed form's empty ruled area is, on every page. The floor is reserved **during pagination**, so an element following the table on that page starts below the floored bottom rather than being overlapped (and moves to the next page if it no longer fits). A non-positive value is a **load error**: `max(0, content)` is `content`, which is what omitting the key already means. A `minHeight` taller than the content window is a **load error** naming the element, `TABLE_MIN_HEIGHT_UNPLACEABLE` — the alternative is a table that can never be placed. Absent or `null` means no floor. Declaring this key raises the document to version `3.1`. |
 
-As of Story 4.2, a **data cell** (every row the table's `bind` produces) cascades its font, border, background, padding, align and valign from the table's own `style` **only** — there is no `headerStyle` arm for a data row (`headerStyle` governs the header row exclusively, Story 4.1/D-000.76). `columns[].align` still wins over `style.align` for that column's own data cells, exactly as it does for the header. A table declaring `headerStyle.fontFamily` and no `style.fontFamily` therefore renders its header successfully and fails its data cells with the same "no resolvable `fontFamily`" error any other text-bearing element without one produces (there is no font default, above).
+**A table's `style.border` and `style.background` paint the table's own frame** (SPEC-table-rules).
+They are stroked and filled **once per page**, around and behind **that page's slice** of the table —
+not stamped onto every cell. A table whose rows span pages draws a complete, closed frame on every
+page it occupies: on a continuation page the frame's top edge sits under the repeated header, and on
+every page its bottom edge sits at that slice's (floored) bottom. It is never one rectangle around the
+whole table, and it never changes the table's page count. **The perimeter belongs to the frame:** where
+the frame strokes an edge, no header or cell edge is stroked on that same line. The interior lines are
+`rules`, above.
+
+> **THIS CHANGED MEANING, AND ITS SIGNAL IS A MINOR VERSION.** Before SPEC-table-rules a table was
+> excluded by name from the element-box painter and its `style.border` was stamped onto every
+> header, data and footer cell, so a 1pt border printed a full grid whose interior lines were each
+> stroked twice and whose frame grew heavier as rows were added. A document that relied on that
+> meaning now loses its grid. This was chosen over a load-time migration: a legacy arm in the loader
+> would outlive everyone who remembers why it is there, and the two meanings cannot both be the
+> default. `SupportedVersion` is `3.1` (`SupportedMajor` stays `3`), so an existing document still
+> loads and renders with the new meaning; there is no version-gated second behaviour. An author who wants
+> the grid back declares `rules: {"between": ["columns", "rows"]}`, which is not quite what
+> `style.border` used to mean, because the perimeter is now the frame's and each interior line is
+> drawn once.
+
+The other `style` members are unchanged: `fontFamily`, `fontSize`, `lineSpacing`, `color`, `bold`,
+`italic`, `align`, `valign` and `padding` still cascade into data cells, because they describe the
+text inside a cell rather than the chrome around it. `headerStyle.border` and
+`headerStyle.background` are unchanged too, and remain the only declaration that puts chrome on a
+header cell — but they no longer fall back to the table's own `style.border`/`style.background`,
+which now belong to the frame.
+
+As of Story 4.2, a **data cell** (every row the table's `bind` produces) cascades its font, padding,
+align and valign from the table's own `style` **only** — there is no `headerStyle` arm for a data row
+(`headerStyle` governs the header row exclusively, Story 4.1/D-000.76), and as of SPEC-table-rules
+no border or background arm at all. `columns[].align` still wins over `style.align` for that column's own data cells, exactly as it does for the header. A table declaring `headerStyle.fontFamily` and no `style.fontFamily` therefore renders its header successfully and fails its data cells with the same "no resolvable `fontFamily`" error any other text-bearing element without one produces (there is no font default, above).
+
+**A column `label` may be more than one line** (SPEC-table-rules). `columns[].label` is an unbounded
+Unicode string and is laid out through the same packer a data cell uses: a `\n` in it starts a new
+line, and a label wider than its column **wraps** rather than being clipped in silence. Residual
+overflow — a run with no break opportunity narrow enough — is clipped and reported with
+`TEXT_CLIPPED_WIDTH`, the same warning a data cell has always emitted; no clip path in a table is
+silent any more. `headerHeight` is the header row's **floor** rather than its exact height: the row
+grows to `max(headerHeight, the packed labels' height + padding)` when a label needs **more than one
+line**. The header's line metrics are the maximum across every column's, so labels in different
+scripts share one line geometry. The field stays required, and the packed height is settled at layout, before pagination, so a
+repeated header is the same height on every page it appears on. A single line that already overflows
+its declared `headerHeight` is unchanged, so a document whose labels are all one line renders
+byte-identically. The command bound on a label is **256 Unicode code points**, counted the same way by
+the engine and the designer.
 
 ### Expressions
 

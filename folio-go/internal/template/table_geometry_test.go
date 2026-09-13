@@ -175,9 +175,17 @@ func TestTableWithNeitherWidthNorHeightLoads(t *testing.T) {
 // the author controls the header's appearance — landing in 4.1 rather
 // than being deferred, because 4.1 is already the story that attaches
 // style to the header row.
+//
+// Rules and MinHeight are the SECOND ruled exception, and they arrive
+// together because they are one capability: SPEC-table-rules splits a
+// table's perimeter from its interior, and a rule that stops at the last
+// row instead of at the box's bottom border is not the thing the spec
+// describes. Both are recorded as owner-ruled in that spec's frozen
+// Intent block, exactly as HeaderStyle is recorded in Story 4.1's
+// Delivery Log.
 var wantTableExtFields = map[string]bool{
 	"Bind": true, "As": true, "Columns": true, "HeaderHeight": true, "AltRowBackground": true,
-	"HeaderStyle": true,
+	"HeaderStyle": true, "Rules": true, "MinHeight": true,
 }
 
 var wantColumnFields = map[string]bool{

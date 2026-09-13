@@ -26,7 +26,7 @@ const appCss = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.
 
 const canvas: CanvasProjection = { width: 595276, height: 841890, orientation: 'portrait', preset: 'A4', locale: 'en', utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [{ face: 'Noto Sans', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content', x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter', x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 
-const column = (id: string, label: string, bind: string): CanvasTableColumn => ({ id, label, width: 60_000, headerAlign: 'left', cellAlign: 'left', bind })
+const column = (id: string, label: string, bind: string): CanvasTableColumn => ({ id, label, labelLines: label === '' ? [] : [label], width: 60_000, headerAlign: 'left', cellAlign: 'left', bind })
 const DATE = column('e10', 'Date', '{{row.date}}')
 const AMOUNT = column('e11', 'Amount', '')
 const table = (columns: ReadonlyArray<CanvasTableColumn> | null = [DATE, AMOUNT], bind = 'transactions[]') => ({ id: 'e7', type: 'table' as const, band: 'content' as const, x: 0, y: 0, width: 120_000, height: 16_000, resizable: false, ...(bind === '' ? {} : { tableBind: bind }), ...(columns === null ? {} : { columns: [...columns] }) })

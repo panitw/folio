@@ -216,7 +216,9 @@ var utf8TrapFixture = []byte(`{
 var minimalEscapeTrapFixture = []byte("{\n  \"assets\": {},\n  \"bands\": {\n    \"content\": {\n      \"elements\": []\n    },\n    \"pageFooter\": {\n      \"elements\": [],\n      \"height\": 20\n    },\n    \"pageHeader\": {\n      \"elements\": [\n        {\n          \"height\": 14,\n          \"id\": \"e1\",\n          \"type\": \"text\",\n          \"value\": \"a \\\"quoted\\\" \\\\ line1\\nline2 a/b\",\n          \"width\": 200,\n          \"x\": 0,\n          \"y\": 0\n        }\n      ],\n      \"height\": 20\n    }\n  },\n  \"fonts\": {},\n  \"locale\": \"en\",\n  \"nextId\": 2,\n  \"page\": {\n    \"margin\": {\n      \"bottom\": 36,\n      \"left\": 36,\n      \"right\": 36,\n      \"top\": 36\n    },\n    \"orientation\": \"portrait\",\n    \"size\": \"A4\"\n  },\n  \"utcOffset\": \"+00:00\",\n  \"version\": \"1.0\"\n}\n")
 
 // maximalFixture exercises every one of the keys the serializer can
-// emit (55 as of Story 7.7, which added the element-level
+// emit (58 as of SPEC-table-rules, which added the table-level "rules"
+// block with its own "between" array and the table-level "minHeight"
+// floor; it was 55 at Story 7.7, which added the element-level
 // "keepTogether" tag; it was 52 at Story 2.4, which added the
 // document-level "unbreakableValues" declaration, and lineSpacing,
 // color and keepTogether have been added since) (D-1.4.15's "maximal document"; this story's finisher review,
@@ -340,6 +342,15 @@ var maximalFixture = []byte(`{
             "valign": "middle"
           },
           "id": "e1",
+          "minHeight": 240,
+          "rules": {
+            "between": [
+              "columns",
+              "rows"
+            ],
+            "color": "#666666",
+            "width": 0.25
+          },
           "style": {
             "align": "left",
             "background": "#F1F4F7",
@@ -458,7 +469,7 @@ var maximalFixture = []byte(`{
     "customer.name"
   ],
   "utcOffset": "+07:00",
-  "version": "2.0"
+  "version": "3.1"
 }
 `)
 

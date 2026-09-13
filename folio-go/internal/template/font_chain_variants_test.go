@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/panitw/folio/folio-go/internal/geom"
 )
 
 // This file is Story 11.2's FORMAT half: the object-form chain entry, its
@@ -428,6 +430,27 @@ func TestAFullyExercisedDocumentIsNotVersionINFLATED(t *testing.T) {
 	for _, key := range []string{`"boldItalic"`, `"face"`, `"keepTogether"`, `"lineSpacing"`} {
 		if !strings.Contains(string(out), key) {
 			t.Fatalf("fixture precondition: maximalFixture no longer emits %s, so this rule is being stated over a document that does not exercise it", key)
+		}
+	}
+
+	// SPEC-table-rules added `rules` and `minHeight` to the maximal
+	// fixture (drift_test.go requires it to emit every key the serializer
+	// can), and those two require 3.1 — which is ALSO the library's
+	// ceiling, so the document as written can no longer witness "not
+	// inflated to the ceiling" at all. They are cleared here rather than
+	// kept out of the fixture, because this test is about what the
+	// CHAIN's object entry requires and the two table keys carry their
+	// own version assertions in version_test.go. The precondition above
+	// still proves the fixture is the maximal one.
+	for _, band := range []*Band{&d.Bands.PageHeader, &d.Bands.Content, &d.Bands.PageFooter} {
+		for i := range band.Elements {
+			if !band.Elements[i].Table.Set {
+				continue
+			}
+			tbl := band.Elements[i].Table.Value
+			tbl.Rules = Presence[TableRules]{}
+			tbl.MinHeight = Presence[geom.Length]{}
+			band.Elements[i].Table = present(tbl)
 		}
 	}
 

@@ -367,6 +367,13 @@ const DiagCodeTableFooterOrphanSuppressed = string(diag.CodeTableFooterOrphanSup
 // Additive only (AD-14): once shipped, this string's meaning is permanent.
 const DiagCodeTableRowClippedHeight = string(diag.CodeTableRowClippedHeight)
 
+// DiagCodeTableMinHeightUnplaceable names SPEC-table-rules §3's refusal:
+// a table whose `minHeight` exceeds the content window it must be placed
+// in. A LOAD error, decidable from the document alone — see
+// diag.CodeTableMinHeightUnplaceable for why it is coded rather than
+// left to become TEMPLATE_MALFORMED.
+const DiagCodeTableMinHeightUnplaceable = string(diag.CodeTableMinHeightUnplaceable)
+
 // Diagnostic is AD-14's one diagnostic/error value. Every failure mode
 // AD-14 names — an over-tall row and an over-tall keep-together group
 // (FR25, FR51; both built, Stories 4.6 and 7.7) and clipped content

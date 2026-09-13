@@ -152,6 +152,17 @@ type ColumnItem struct {
 	// own group — "a row", not "a run of rows" (4.5 is a different rule
 	// and stays out, R7's own scoping).
 	Group ItemGroup
+
+	// Slice — SPEC-table-rules: set on a table's own items when the table
+	// draws a frame, rules or a floor. See SliceRequest.
+	Slice SliceRequest
+
+	// Left, Right — the item's horizontal extent, when HasExtent. Read only
+	// by the floor push (SPEC-table-rules §3), which moves an element below a
+	// floored table but never one beside it. An item with no extent is
+	// treated as overlapping every table.
+	Left, Right geom.Length
+	HasExtent   bool
 }
 
 // ItemGroup names the set of ColumnItems that Paginate must place on one
@@ -625,6 +636,16 @@ type PageAssignment struct {
 	// which is every page of every document that has none. Appended in
 	// the sweep's own deterministic order.
 	ClippedRects []RectClip
+
+	// TableSlices — SPEC-table-rules: each sliced table's extent on this
+	// page, in page space, one entry per table present here, in the
+	// tables' first-appearance order. Nil unless an item requested one.
+	TableSlices []TableSlice
+
+	// ElementPush — SPEC-table-rules §3: the extra displacement an element
+	// on this page receives from a floored table above it. Nil unless a
+	// floor extends a slice below its rows.
+	ElementPush []ElementPush
 }
 
 // Paginate slices the content column into windows and returns one assignment
@@ -832,6 +853,13 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 	// the window a second question.
 	groupPage := make(map[ItemGroupKey]int, len(groups))
 
+	// SPEC-table-rules: per-page table slices and the floor push. Inert —
+	// no allocation beyond its maps, no change to any decision — for a
+	// document whose items request no slice.
+	slicer := newTableSlicer(items, contentTop+height)
+	slicer.shift = func(p int) geom.Length { return pages[p].Shift }
+	slicer.reserved = func(table string, p int) geom.Length { return reservation[tablePageKey{table, p}] }
+
 	for _, idx := range order {
 		it := items[idx]
 
@@ -844,6 +872,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 				// an unrelated item sorting between two members) from
 				// being able to move this item anywhere else.
 				pageOf[idx] = p
+				slicer.place(idx, p)
 				continue
 			}
 		}
@@ -1042,7 +1071,11 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 						continue
 					}
 					pageOf[j] = page
-					if items[j].Bottom <= contentBottom {
+					slicer.place(j, page)
+					// The floor push is a page-space displacement, so the
+					// cut compares the pushed bottom (review item 12).
+					floorPush := slicer.push(items[j].ElementID, page)
+					if items[j].Bottom+floorPush <= contentBottom {
 						continue
 					}
 					// A MEMBER'S RECTS AND ITS RUNS ARE ANSWERED
@@ -1065,7 +1098,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 					// story's reviewer, Finding 11).
 					for _, ref := range items[j].Rects {
 						pages[page].ClippedRects = append(pages[page].ClippedRects,
-							RectClip{Ref: ref, Bottom: contentBottom})
+							RectClip{Ref: ref, Bottom: contentBottom - floorPush})
 					}
 					dropped[j] = true
 				}
@@ -1120,7 +1153,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 
 		// Does this item (or its group) fit ENTIRELY in the window as it
 		// currently stands?
-		if effectiveBottom > ceilingFor(page, windowStart) {
+		if effectiveBottom+slicer.push(it.ElementID, page) > ceilingFor(page, windowStart) {
 			// It does not. The window slides to begin at THIS ITEM'S TOP
 			// — or, grouped, at the GROUP'S earliest Top, which is what
 			// keeps a wrapped row's continuation lines from starting a
@@ -1226,6 +1259,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		}
 
 		pageOf[idx] = page
+		slicer.place(idx, page)
 		pageHasItem = true
 		if it.Group.Present {
 			groupPage[it.Group.Key] = page
@@ -1280,6 +1314,7 @@ func Paginate(g PageGeometry, items []ColumnItem) (Pagination, error) {
 		pages[p].ContentRects = append(pages[p].ContentRects, items[i].Rects...)
 	}
 
+	slicer.finish(pages)
 	return Pagination{Pages: pages, Suppressed: suppressed, Clipped: clipped}, nil
 }
 

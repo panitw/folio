@@ -235,42 +235,55 @@ func TestUnbreakableCellContentIsClippedNotWidened(t *testing.T) {
 	}
 }
 
-// TestDataRowBorderIsDrawn is Story 4.2 review Blocker 1: D-4.2.1 ruled
-// data cells get cell chrome — including a BORDER — cascaded from the
-// table's own `style` (never headerStyle). The mechanism
-// (buildCellRect, shared verbatim with the header) was correct, but no
-// test anywhere asserted a data row's stroke, so dropping it entirely
-// left the full three-module gate green (984/0/1, unchanged).
+// TestDataRowCarriesNoChromeFromTheTablesOwnStyle is the
+// SPEC-table-rules §1 reversal of Story 4.2's TestDataRowBorderIsDrawn.
 //
-// Red-proof (recorded in the Delivery Log as M1, reproducing the
-// reviewer's own mutation): force the data-row buildCellRect call's
-// border arguments to (false, template.Border{}) — this test's
-// HasStroke/Stroke/StrokeWidth/Edges assertions redden; every other
-// test (including the header's own border tests, which use a
-// SEPARATE buildHeaderCellRect call unaffected by this mutation) stays
-// green.
-func TestDataRowBorderIsDrawn(t *testing.T) {
+// D-4.2.1 ruled that data cells get cell chrome cascaded from the
+// table's own `style`, and that ruling is what made a 1pt table border
+// print a full grid whose interior lines were each stroked twice and
+// whose frame grew heavier as rows arrived. SPEC-table-rules overturns
+// it: `style.border` paints the table's own BOX, once, and NOTHING
+// strokes a data cell. The interior lines are `table.rules`, addressed
+// by boundary — see TestRulesDrawOneLinePerInteriorBoundary.
+//
+// The data-row rects still EXIST: they carry the row's pagination
+// identity, and D-2.6.5 forbids an item that occupies space from being
+// empty. They simply paint nothing.
+func TestDataRowCarriesNoChromeFromTheTablesOwnStyle(t *testing.T) {
 	doc := tableHeaderDoc(`{"fontFamily": "latin", "border": {"color": "#112233", "width": 2}}`, twoColumnsNoAlign)
 	pages := tablePagesForTest(t, doc, `{"items": [{"a":"1","b":"2"}]}`)
-	if len(pages[0].Rects) != 4 {
-		t.Fatalf("got %d rects, want 4 (2 header + 2 data row)", len(pages[0].Rects))
+	if len(pages[0].Rects) != 5 {
+		t.Fatalf("got %d rects, want 5 (2 header + 2 data row + the table's own box)", len(pages[0].Rects))
 	}
-	// rects[0:2] are the header's (already covered by
-	// TestTableHeaderBorderEdgesSubset); rects[2:4] are the DATA ROW's
-	// — the property this test exists for.
-	for i, r := range pages[0].Rects[2:] {
-		if !r.HasStroke {
-			t.Fatalf("data rect %d: HasStroke = false, want true (style.border must reach data cells too, D-4.2.1)", i)
+	for i, r := range pages[0].Rects[:4] {
+		if r.HasStroke {
+			t.Errorf("cell rect %d strokes; no cell may carry the element's own style.border (SPEC-table-rules §1)", i)
 		}
-		if r.Stroke != (pagemodel.Color{R: 0x11, G: 0x22, B: 0x33}) {
-			t.Errorf("data rect %d: Stroke = %+v, want #112233", i, r.Stroke)
+		if r.HasFill {
+			t.Errorf("cell rect %d fills; no cell may carry the element's own style.background", i)
 		}
-		if r.StrokeWidth != 2000 {
-			t.Errorf("data rect %d: StrokeWidth = %d, want 2000 (2pt)", i, r.StrokeWidth)
-		}
-		if !r.Edges.Top || !r.Edges.Right || !r.Edges.Bottom || !r.Edges.Left {
-			t.Errorf("data rect %d: Edges = %+v, want all four edges set (no \"edges\" declared, so the full-grid default applies)", i, r.Edges)
-		}
+	}
+	box := pages[0].Rects[4]
+	if !box.HasStroke {
+		t.Fatalf("the table's own box does not stroke — style.border must paint it")
+	}
+	if box.Stroke != (pagemodel.Color{R: 0x11, G: 0x22, B: 0x33}) {
+		t.Errorf("box Stroke = %+v, want #112233", box.Stroke)
+	}
+	if box.StrokeWidth != 2000 {
+		t.Errorf("box StrokeWidth = %d, want 2000 (2pt)", box.StrokeWidth)
+	}
+	if !box.Edges.Top || !box.Edges.Right || !box.Edges.Bottom || !box.Edges.Left {
+		t.Errorf("box Edges = %+v, want all four (no \"edges\" declared)", box.Edges)
+	}
+	// THE FRAME IS THE TABLE'S EXTENT, not a row's: it spans the header
+	// plus the one data row, and it is the only rect that does.
+	if box.Y != pages[0].Rects[0].Y {
+		t.Errorf("box Y = %d, want the header's own top %d", box.Y, pages[0].Rects[0].Y)
+	}
+	lastRow := pages[0].Rects[3]
+	if want := lastRow.Y + lastRow.H - box.Y; box.H != want {
+		t.Errorf("box H = %d, want %d (header top to the last row's bottom)", box.H, want)
 	}
 }
 
@@ -606,20 +619,28 @@ func TestDataCellsDoNotInheritHeaderStyle(t *testing.T) {
 	if len(pages) != 1 {
 		t.Fatalf("got %d pages, want 1", len(pages))
 	}
-	if len(pages[0].Rects) != 4 {
-		t.Fatalf("got %d rects, want 4 (2 header + 2 data row)", len(pages[0].Rects))
+	// SPEC-table-rules §1: style.background paints the table's own BOX
+	// (its fill the FIRST rect), so the two data cells are unfilled and the
+	// header's own fill still comes from headerStyle. The property this
+	// test exists for is unchanged — a data cell never takes
+	// headerStyle's — and it is now joined by its converse.
+	if len(pages[0].Rects) != 5 {
+		t.Fatalf("got %d rects, want 5 (2 header + 2 data row + the table's own box)", len(pages[0].Rects))
 	}
-	headerRects := pages[0].Rects[:2]
-	dataRects := pages[0].Rects[2:]
+	headerRects := pages[0].Rects[1:3]
+	dataRects := pages[0].Rects[3:5]
 	for i, r := range headerRects {
 		if r.Fill != (pagemodel.Color{R: 0xFF, G: 0, B: 0}) {
 			t.Errorf("header rect %d Fill = %+v, want #FF0000 (headerStyle's)", i, r.Fill)
 		}
 	}
 	for i, r := range dataRects {
-		if r.Fill != (pagemodel.Color{R: 0, G: 0, B: 0xFF}) {
-			t.Errorf("data rect %d Fill = %+v, want #0000FF (style's, never headerStyle's)", i, r.Fill)
+		if r.HasFill {
+			t.Errorf("data rect %d fills with %+v; no cell carries the element's own style.background any more", i, r.Fill)
 		}
+	}
+	if box := pages[0].Rects[0]; box.Fill != (pagemodel.Color{R: 0, G: 0, B: 0xFF}) {
+		t.Errorf("the table's own box Fill = %+v, want #0000FF (style's, never headerStyle's)", box.Fill)
 	}
 
 	// Alignment: header is right-aligned (headerStyle.align), data is

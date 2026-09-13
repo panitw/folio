@@ -314,7 +314,7 @@ const rectComponent = { id: 'e3', type: 'rect' as const, band: 'content' as cons
 // projection this panel can render. Twenty-six is `headerHeight` and
 // `altRowBackground` plus twelve committed/resolved pairs — Story 14.8 took it
 // from twenty by adding the border trio's three pairs.
-const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
+const tableHeaderProjection = { headerHeight: 12_000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12_000, headerLineSpacing: 0, headerLineSpacingResolved: 1_000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
 const tableColumnsReply = {
   snapshot: { documentState: 'loaded' as const, revision: 1, byteLength: 3 },
   tableColumns: { revision: 1, table: { tableId: 'e7', collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: [{ id: 'e8', header: 'Amount', width: 72_000, align: 'right' as const, binding: '{{row.amount}}', rowField: 'amount', rowFieldEditable: true, footer: 'sum' as const, footerOf: 'items.amount', footerFormat: '#,##0.00' }] } },
@@ -530,6 +530,17 @@ const V2_CENSUS: ReadonlyArray<string> = [
   // the rule recorded at the bottom of this file — never derived on paper.
   'design · the table editor open · Clear Header border width (pt)',
   'design · the table editor open · Clear Header border colour',
+  // SPEC-table-rules' RULED AREA section, and its three × clears join the
+  // census for exactly the reason the two above it did: each is the shipped
+  // clear affordance on a field that CAN be cleared, and the section's own
+  // checkbox pair (the ruled boundaries) deliberately carries none — unchecking
+  // both IS the clear there, so no fourth glyph control arrives with it.
+  //
+  // MEASURED by executing the sweep and reading the three names it reported,
+  // per the rule recorded at the bottom of this file — never derived on paper.
+  'design · the table editor open · Clear Minimum height',
+  'design · the table editor open · Clear Rule width (pt)',
+  'design · the table editor open · Clear Rule colour',
   // The PDF navigation group — uniform within its group, so R2 is green.
   'preview · Previous PDF page',
   'preview · Next PDF page',

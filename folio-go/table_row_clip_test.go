@@ -37,6 +37,16 @@ import (
 // IDENTICALLY and a wrong clip boundary is invisible. That document is kept
 // here as the DEGENERATE case (AC1), never as the only case.
 //
+// THE FIXTURE'S PAINT MOVED AT SPEC-table-rules, and the over-tall row moved
+// with it. The chrome used to be a table `style.background`/`style.border`,
+// which §1 now gives to the table's OWN BOX — a single rect spanning the whole
+// table, which paints no cell and is a different pagination question entirely.
+// A data cell's only remaining fill is `altRowBackground`, which applies to ODD
+// zero-based collection indexes, so the over-tall row is at index 11 rather
+// than 12 and the repeated header paints from `headerStyle.background`. Nothing
+// about what these tests assert changed: the row is still over-tall, still
+// alone on its page, and still truncated at the content bottom.
+//
 // This one is an ordinary 8pt table in a narrow column. One record's cell
 // carries a wall of text that wraps to fourteen lines, which is what makes
 // the row too tall — a height DERIVED FROM DATA the author never saw, which
@@ -44,10 +54,10 @@ import (
 //
 //	content window   10,000 .. 120,000mp   (110,000mp tall)
 //	header row       10,000 ..  20,000mp
-//	data rows 0..11  10,896mp each, 20,000 .. 150,752mp
-//	the over-tall row (index 12)  150,752 .. 303,296mp  (152,544mp)
-//	  its lines      14 of them, 10,896mp each, at 150,752 + 10,896k
-//	trailing rows 13..15  303,296 .. 335,984mp
+//	data rows 0..10  10,896mp each, 20,000 .. 139,856mp
+//	the over-tall row (index 11)  139,856 .. 292,400mp  (152,544mp)
+//	  its lines      14 of them, 10,896mp each, at 139,856 + 10,896k
+//	trailing rows 12..14  292,400 .. 325,088mp
 //
 // D-000.80 part (a), and it is load-bearing here: the twelve rows BEFORE
 // the over-tall one exist so that "at the top of a fresh page" means page
@@ -61,9 +71,9 @@ func overTallRowDoc() string {
   "bands": {
     "content": {"elements": [
       {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10,
-        "style": {"fontFamily": "latin", "fontSize": 8,
-          "background": "#DDDDDD",
-          "border": {"edges": ["top", "right", "bottom", "left"], "color": "#112233", "width": 1}},
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "headerStyle": {"background": "#DDDDDD"},
+        "altRowBackground": "#DDDDDD",
         "columns": [
           {"id": "e2", "label": "A", "width": 60, "bind": "{{row.a}}"},
           {"id": "e3", "label": "B", "width": 60, "bind": "{{row.b}}"}
@@ -109,11 +119,11 @@ func overTallRowData(before, words, after int) string {
 	return string(b)
 }
 
-// The measured constants of overTallRowDoc()/overTallRowData(12, 40, 3),
+// The measured constants of overTallRowDoc()/overTallRowData(11, 40, 3),
 // named once so every assertion below reads against the same document
 // rather than against a number retyped four times.
 const (
-	clipFixtureBefore = 12
+	clipFixtureBefore = 11
 	clipFixtureWords  = 40
 	clipFixtureAfter  = 3
 
@@ -122,8 +132,8 @@ const (
 	clipFixtureRowIndex = clipFixtureBefore
 
 	clipFixtureContentHeight geom.Length = 110_000
-	clipFixtureRowTop        geom.Length = 150_752
-	clipFixtureRowBottom     geom.Length = 303_296
+	clipFixtureRowTop        geom.Length = 139_856
+	clipFixtureRowBottom     geom.Length = 292_400
 	clipFixtureRowHeight     geom.Length = clipFixtureRowBottom - clipFixtureRowTop // 152,544mp
 
 	// Origins(g).Content for this fixture: the top edge of the content
@@ -140,7 +150,7 @@ const (
 	// because D-4.6.4 composes FR26's repeat with the clip rather than
 	// letting the clip short-circuit it: the header is drawn at the top of
 	// the band and the row is clipped into what is left below it.
-	clipFixtureCutAt geom.Length = clipFixtureRowTop + clipFixtureContentHeight - clipFixtureHeaderHeight // 250,752mp
+	clipFixtureCutAt geom.Length = clipFixtureRowTop + clipFixtureContentHeight - clipFixtureHeaderHeight // 239,856mp
 )
 
 func overTallRowFixtureData() string {
@@ -273,14 +283,14 @@ func TestClippedRowLandsAloneOnAFreshPageAndItsNeighboursDoNotMove(t *testing.T)
 	// Hand-derived from the fixture's own measured extents (see
 	// overTallRowDoc's table) against the four-rule window model:
 	// page 0 takes the header and every row whose bottom is <= 120,000;
-	// page 1 slides to row 9's top and takes rows 9..11 under FR26's
-	// header reservation; row 12 is over-tall and takes page 2 ALONE;
-	// rows 13..15 resume on page 3.
+	// page 1 slides to row 9's top and takes rows 9..10 under FR26's
+	// header reservation; row 11 is over-tall and takes page 2 ALONE;
+	// rows 12..14 resume on page 3.
 	want := map[int][]string{
 		0: {"H", "0", "1", "2", "3", "4", "5", "6", "7", "8"},
-		1: {"9", "10", "11"},
-		2: {"12"},
-		3: {"13", "14", "15"},
+		1: {"9", "10"},
+		2: {"11"},
+		3: {"12", "13", "14"},
 	}
 
 	// (i) THE OVER-TALL ROW IS ALONE. Asserted on its own so it can
@@ -655,8 +665,11 @@ func TestClippedRowKeepsTheLinesThatFitAndTruncatesItsChrome(t *testing.T) {
 	if straddler < 0 {
 		t.Fatalf("fixture defect: no line of the over-tall row straddles the cut at %dmp, so 'never a straddle' is vacuous here", clipFixtureCutAt)
 	}
-	if straddler != 22 {
-		t.Errorf("the straddling line is line %d; the fixture's measured boundary line is 22 (extent 248,816..259,712mp against a cut at %dmp)", straddler, clipFixtureCutAt)
+	// 21 since SPEC-table-rules moved the over-tall row from collection
+	// index 12 to 11 (see overTallRowDoc): every line index above it drops
+	// by the one row's worth of lines, and the cut with it.
+	if straddler != 21 {
+		t.Errorf("the straddling line is line %d; the fixture's measured boundary line is 21 (extent 237,920..248,816mp against a cut at %dmp)", straddler, clipFixtureCutAt)
 	}
 
 	// The kept and dropped sets, hand-derived from the rule "a line is

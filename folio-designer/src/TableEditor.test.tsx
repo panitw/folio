@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { TableEditor } from './TableEditor'
@@ -38,7 +38,7 @@ const canvas = {
   ],
   components: [{ id: 'e7', type: 'table' as const, band: 'content' as const, x: 23276, y: 0, width: 300000, height: 12000, resizable: false }],
 }
-const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '' }
+const tableHeaderProjection = { headerHeight: 12000, altRowBackground: '', headerFontFamily: '', headerFontFamilyResolved: 'body', headerFontSize: 0, headerFontSizeResolved: 12000, headerLineSpacing: 0, headerLineSpacingResolved: 1000, headerBackground: '', headerBackgroundResolved: '', headerColor: '', headerColorResolved: '', headerValign: '', headerValignResolved: 'top', headerAlign: '', headerAlignResolved: 'left', headerBold: false, headerBoldResolved: false, headerItalic: false, headerItalicResolved: false, 'headerBorder.width': '', 'headerBorder.widthResolved': '', 'headerBorder.color': '', 'headerBorder.colorResolved': '', 'headerBorder.edges': '', 'headerBorder.edgesResolved': '', minHeight: 0, 'rules.width': '', 'rules.widthResolved': '', 'rules.color': '', 'rules.colorResolved': '', 'rules.between': '' }
 
 type Footer = '' | 'sum' | 'avg' | 'count'
 type ColumnFixture = Readonly<{ id: string; header: string; width: number; align: 'left' | 'center' | 'right'; rowField: string; binding?: string; rowFieldEditable?: boolean; footer: Footer; footerOf: string; footerFormat: string }>
@@ -319,6 +319,48 @@ describe('the table editor matrix lattice', () => {
     expect(document.activeElement).toBe(first)
     press('ArrowUp')
     expect(document.activeElement).toBe(first)
+  })
+
+  // A header label may hold a line feed, so its textarea owns ArrowUp/ArrowDown
+  // while the caret has a line to move to, and hands them to the lattice only
+  // at its first (ArrowUp) or last (ArrowDown) line.
+  it('lets a multi-line header move its caret before the lattice claims ArrowUp', async () => {
+    await openEditor(tableEngine())
+    const second = screen.getByRole('textbox', { name: 'Header for column 2' }) as HTMLTextAreaElement
+    fireEvent.change(second, { target: { value: 'A\nB' } })
+    second.focus()
+    second.setSelectionRange(3, 3)
+    const onLineTwo = fireEvent.keyDown(second, { key: 'ArrowUp' })
+    expect(onLineTwo, 'the textarea keeps its default caret move').toBe(true)
+    expect(document.activeElement).toBe(second)
+    second.setSelectionRange(1, 1)
+    press('ArrowUp')
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Header for column 1' }))
+  })
+
+  it('lets a multi-line header move its caret before the lattice claims ArrowDown', async () => {
+    await openEditor(tableEngine())
+    const second = screen.getByRole('textbox', { name: 'Header for column 2' }) as HTMLTextAreaElement
+    fireEvent.change(second, { target: { value: 'A\nB' } })
+    second.focus()
+    second.setSelectionRange(1, 1)
+    const onLineOne = fireEvent.keyDown(second, { key: 'ArrowDown' })
+    expect(onLineOne, 'the textarea keeps its default caret move').toBe(true)
+    expect(document.activeElement).toBe(second)
+    second.setSelectionRange(2, 2)
+    press('ArrowDown')
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Header for column 3' }))
+  })
+
+  it('sizes a header textarea to its line count as the author types', async () => {
+    await openEditor(tableEngine())
+    const box = screen.getByRole('textbox', { name: 'Header for column 1' }) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'A' } })
+    expect(box.rows).toBe(1)
+    fireEvent.change(box, { target: { value: 'A\nB' } })
+    expect(box.rows).toBe(2)
+    fireEvent.change(box, { target: { value: '' } })
+    expect(box.rows).toBe(1)
   })
 
   it('skips a cell it may not land on vertically rather than stopping at it', async () => {
@@ -1296,7 +1338,7 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
   const renderFooter = (editCount: number, busy = false, fileBusy = false, discarding = false) => {
     const onCancel = vi.fn()
     const onClose = vi.fn()
-    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} />)
+    const { unmount } = render(<TableEditor projection={directProjection} busy={busy} fileBusy={fileBusy} discarding={discarding} candidates={[]} sampleAvailable={false} editCount={editCount} onClose={onClose} onCancel={onCancel} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} />)
     return { onCancel, onClose, unmount }
   }
 
@@ -1454,21 +1496,23 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
   // what distinguishes "the key changed" from "the test mounted twice".
   const renderPanel = (header: Partial<typeof tableHeaderProjection> = {}) => {
     const onHeaderStyle = vi.fn()
+    const onMinHeight = vi.fn()
+    const onRules = vi.fn()
     const panel = (over: Partial<typeof tableHeaderProjection>) => {
       const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } }
-      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} />
+      return <TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={onHeaderStyle} onMinHeight={onMinHeight} onRules={onRules} />
     }
     const { unmount, rerender } = render(panel(header))
-    return { onHeaderStyle, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }
+    return { onHeaderStyle, onMinHeight, onRules, unmount, reproject: (next: Partial<typeof tableHeaderProjection>) => rerender(panel(next)) }
   }
 
-  it('draws HEADER, CELLS and BORDERS as real headings inside the ONE existing group', () => {
+  it('draws HEADER, CELLS, BORDERS and RULED AREA as real headings inside the ONE existing group', () => {
     renderPanel()
     const group = screen.getByRole('group', { name: 'Table header and rows' })
     // THREE HEADINGS, in the design's order, and they are HEADINGS rather than
     // styled paragraphs: a screen-reader user must perceive the three sections a
     // sighted author sees, which is this story's own subject.
-    expect(within(group).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['HEADER', 'CELLS', 'BORDERS'])
+    expect(within(group).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['HEADER', 'CELLS', 'BORDERS', 'RULED AREA'])
     // ⚠ AND THE SECTION IS STILL ONE GROUP. Three groups would have taken the
     // shrunk sweep in `control-vocabulary-contract.test.tsx` from 32 group
     // instances to 34 and CLEARED its floor of 33, turning a pinned clause into
@@ -1477,6 +1521,8 @@ describe('the table editor\'s three headed sections', { timeout: 30_000 }, () =>
     // whether by `role="group"` or by `aria-labelledby`.
     expect(within(group).queryAllByRole('group')).toEqual([])
     expect(screen.queryByRole('group', { name: 'Border edges' })).toBeNull()
+    // SPEC-table-rules' own section adds no group either, for the same reason.
+    expect(screen.queryByRole('group', { name: 'Ruled boundaries' })).toBeNull()
     // The old undivided heading is gone rather than kept alongside them.
     expect(screen.queryByText('HEADER AND ROWS')).toBeNull()
   })
@@ -1996,7 +2042,7 @@ describe('table column field authoring', () => {
 
   it('retains the next nonmatrix Tab stop when a commit or refusal reprojects the editor', () => {
     const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: defaultColumns.reduce((sum, col) => sum + col.width, 0), collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
-    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn() }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onClose: vi.fn(), onCancel: vi.fn(), onAdd: vi.fn(), onRemove: vi.fn(), onMove: vi.fn(), onUpdate: vi.fn(), onTotalWidth: vi.fn(), onBinding: vi.fn(), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn() }
     const { rerender } = render(<TableEditor {...props} />)
     const next = screen.getByRole('spinbutton', { name: 'Header font size (pt)' })
     next.focus()
@@ -2275,7 +2321,7 @@ describe('proportion controls and pending numeric actions', () => {
     const onTotalWidth = vi.fn(async () => accept)
     const onAdd = vi.fn(); const onClose = vi.fn(); const onCancel = vi.fn()
     const projection = { revision: 1, table: { tableId: 'e7', sizing: 'proportion' as const, totalWidth: 500000, collection: 'items[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns).map((column, index) => ({ ...column, proportion: index === 1 ? '2' : '1', width: index === 1 ? 250000 : 125000 })) } }
-    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onUpdate, onTotalWidth, onAdd, onClose, onCancel, onRemove: vi.fn(), onMove: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn() }
+    const props = { projection, busy: false, fileBusy: false, discarding: false, candidates: [], sampleAvailable: false, editCount: 0, onUpdate, onTotalWidth, onAdd, onClose, onCancel, onRemove: vi.fn(), onMove: vi.fn(), onBinding: vi.fn(async () => true), onConfigure: vi.fn(), onFooter: vi.fn(), onHeaderHeight: vi.fn(), onAltRowBackground: vi.fn(), onHeaderStyle: vi.fn(), onMinHeight: vi.fn(), onRules: vi.fn() }
     const rendered = render(<TableEditor {...props} />)
     return { ...rendered, props, onUpdate, onTotalWidth, onAdd, onClose, onCancel }
   }
@@ -2349,5 +2395,173 @@ describe('proportion controls and pending numeric actions', () => {
     h.rerender(<TableEditor {...h.props} error="e8: proportion must be positive" />)
     expect(input).toHaveValue('1')
     expect(screen.getByRole('alert')).toHaveTextContent('e8: proportion must be positive')
+  })
+})
+
+// SPEC-table-rules' RULED AREA section: the interior lines and the ruled area's
+// floor, authored in the TABLE EDITOR because the owner ruled they belong
+// beside the header and the rows rather than in the inspector's BOX section —
+// which authors the table's own frame, and which since this change is telling
+// the truth about a table.
+describe('the ruled area section', () => {
+  const projectionWith = (over: Partial<typeof tableHeaderProjection>) => ({ revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: 72_000, collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, ...over, columns: projected(defaultColumns) } })
+  const mount = (over: Partial<typeof tableHeaderProjection> = {}) => {
+    const onMinHeight = vi.fn()
+    const onRules = vi.fn()
+    render(<TableEditor projection={projectionWith(over)} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={vi.fn()} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={onMinHeight} onRules={onRules} />)
+    return { onMinHeight, onRules }
+  }
+
+  it('shows an absent floor as an empty box and commits the author\u2019s draft as typed', () => {
+    const { onMinHeight } = mount()
+    const box = screen.getByLabelText('Minimum height in points') as HTMLInputElement
+    expect(box.value).toBe('')
+    fireEvent.change(box, { target: { value: '600' } })
+    fireEvent.blur(box)
+    expect(onMinHeight).toHaveBeenCalledWith('set', '600')
+  })
+
+  it('shows a committed floor in points and clears it when the box is emptied', () => {
+    const { onMinHeight } = mount({ minHeight: 600_000 })
+    const box = screen.getByLabelText('Minimum height in points') as HTMLInputElement
+    expect(box.value).toBe('600')
+    fireEvent.change(box, { target: { value: '' } })
+    fireEvent.blur(box)
+    expect(onMinHeight).toHaveBeenCalledWith('clear')
+  })
+
+  it('ticks the boundaries the document declares and sends the whole set on a change', () => {
+    const { onRules } = mount({ 'rules.between': 'columns' })
+    const columnsBox = screen.getByLabelText('Rule between columns') as HTMLInputElement
+    const rowsBox = screen.getByLabelText('Rule between rows') as HTMLInputElement
+    expect(columnsBox.checked).toBe(true)
+    expect(rowsBox.checked).toBe(false)
+    fireEvent.click(rowsBox)
+    // CANONICAL ORDER, because the engine's projection joins in that order and
+    // its guard admits only that order.
+    expect(onRules).toHaveBeenCalledWith('between', 'set', 'columns,rows')
+  })
+
+  it('treats unticking the last boundary as the clear, because an empty set paints nothing', () => {
+    const { onRules } = mount({ 'rules.between': 'rows' })
+    fireEvent.click(screen.getByLabelText('Rule between rows'))
+    expect(onRules).toHaveBeenCalledWith('between', 'clear')
+  })
+
+  it('states the engine\u2019s resolved width and colour as placeholders, never as values', () => {
+    mount({ 'rules.between': 'columns', 'rules.widthResolved': '500', 'rules.colorResolved': '#000000' })
+    const width = screen.getByLabelText('Rule width (pt)') as HTMLInputElement
+    expect(width.value).toBe('')
+    expect(width.placeholder).toContain('0.5')
+    const colour = screen.getByLabelText('Rule colour') as HTMLInputElement
+    expect(colour.value).toBe('')
+    expect(colour.placeholder).toContain('#000000')
+  })
+
+  it('commits a typed floor with a decimal and clears through the \u00d7', () => {
+    const { onMinHeight } = mount({ minHeight: 600_000 })
+    const box = screen.getByLabelText('Minimum height in points') as HTMLInputElement
+    fireEvent.change(box, { target: { value: '12.5' } })
+    fireEvent.blur(box)
+    expect(onMinHeight).toHaveBeenCalledTimes(1)
+    expect(onMinHeight).toHaveBeenLastCalledWith('set', '12.5')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Minimum height' }))
+    expect(onMinHeight).toHaveBeenLastCalledWith('clear')
+  })
+
+  it('sends the boundaries in canonical order whichever is ticked first', () => {
+    const { onRules } = mount({ 'rules.between': 'rows' })
+    fireEvent.click(screen.getByLabelText('Rule between columns'))
+    expect(onRules).toHaveBeenCalledTimes(1)
+    expect(onRules).toHaveBeenLastCalledWith('between', 'set', 'columns,rows')
+  })
+
+  it('ticking the first boundary from none sends a set of that one', () => {
+    const { onRules } = mount()
+    fireEvent.click(screen.getByLabelText('Rule between rows'))
+    expect(onRules).toHaveBeenCalledTimes(1)
+    expect(onRules).toHaveBeenLastCalledWith('between', 'set', 'rows')
+  })
+
+  it('disables rule width and colour until a boundary is ticked, because a boundaryless block draws nothing', () => {
+    mount()
+    expect((screen.getByLabelText('Rule width (pt)') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Rule colour') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Pick Rule colour') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Clear Rule width (pt)' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Clear Rule colour' }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    // The positive control: the same controls are live once a boundary is.
+    const { onRules } = mount({ 'rules.between': 'columns', 'rules.widthResolved': '500', 'rules.colorResolved': '#000000' })
+    const width = screen.getByLabelText('Rule width (pt)') as HTMLInputElement
+    const colour = screen.getByLabelText('Rule colour') as HTMLInputElement
+    expect(width.disabled).toBe(false)
+    expect(colour.disabled).toBe(false)
+    fireEvent.change(width, { target: { value: '0.75' } })
+    fireEvent.blur(width)
+    expect(onRules).toHaveBeenLastCalledWith('width', 'set', '0.75')
+    fireEvent.change(colour, { target: { value: '#336699' } })
+    fireEvent.blur(colour)
+    expect(onRules).toHaveBeenLastCalledWith('color', 'set', '#336699')
+  })
+
+  it('still lets a committed width be cleared when no boundary is ticked', () => {
+    const { onRules } = mount({ 'rules.width': '500', 'rules.widthResolved': '500' })
+    expect((screen.getByLabelText('Rule width (pt)') as HTMLInputElement).disabled).toBe(true)
+    const clear = screen.getByRole('button', { name: 'Clear Rule width (pt)' }) as HTMLButtonElement
+    expect(clear.disabled).toBe(false)
+    fireEvent.click(clear)
+    expect(onRules).toHaveBeenLastCalledWith('width', 'clear')
+  })
+
+  it('disables the Minimum height clear while no floor is declared', () => {
+    mount()
+    expect((screen.getByRole('button', { name: 'Clear Minimum height' }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    const { onMinHeight } = mount({ minHeight: 600_000 })
+    const clear = screen.getByRole('button', { name: 'Clear Minimum height' }) as HTMLButtonElement
+    expect(clear.disabled).toBe(false)
+    fireEvent.click(clear)
+    expect(onMinHeight).toHaveBeenLastCalledWith('clear')
+  })
+
+  it('says the floor applies to each page\u2019s slice and that column rules run each slice\u2019s height', () => {
+    mount()
+    const note = screen.getByLabelText('Minimum height note').textContent ?? ''
+    expect(note).not.toContain('whichever is more')
+    expect(note).toContain('each page')
+    expect(note).toContain('content bottom')
+    const honest = screen.getByText(/A rule is drawn once/).textContent ?? ''
+    expect(honest).not.toContain('full height of the box')
+    expect(honest).toContain('each page\u2019s slice')
+  })
+
+  it('says nothing is drawn when the document declares no rules block', () => {
+    mount()
+    expect((screen.getByLabelText('Rule width (pt)') as HTMLInputElement).placeholder).toContain('no rules drawn')
+    expect(screen.getByLabelText('Resolved ruled boundaries').textContent).toContain('no interior lines')
+  })
+})
+
+// SPEC-table-rules \u00a74: a column label may hold a line feed, so the control
+// that authors one must be able to hold one. An `<input>` cannot: the character
+// is dropped on paste and unreachable from the keyboard, so the control refused
+// a value the format admits.
+describe('a column label may be more than one line', () => {
+  it('authors the header label in a control that accepts a line feed', () => {
+    const onUpdate = vi.fn()
+    const projection = { revision: 1, table: { tableId: 'e7', sizing: 'points' as const, totalWidth: 72_000, collection: 'transactions[]', alias: 'row', ...tableHeaderProjection, columns: projected(defaultColumns) } }
+    render(<TableEditor projection={projection} busy={false} fileBusy={false} discarding={false} candidates={[]} sampleAvailable={false} editCount={0} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRemove={vi.fn()} onMove={vi.fn()} onUpdate={onUpdate} onTotalWidth={vi.fn()} onBinding={vi.fn()} onConfigure={vi.fn()} onFooter={vi.fn()} onHeaderHeight={vi.fn()} onAltRowBackground={vi.fn()} onHeaderStyle={vi.fn()} onMinHeight={vi.fn()} onRules={vi.fn()} />)
+    const label = screen.getByLabelText('Header for column 1')
+    expect(label.tagName).toBe('TEXTAREA')
+    fireEvent.change(label, { target: { value: '\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\nDATE' } })
+    fireEvent.blur(label)
+    expect(onUpdate).toHaveBeenCalledWith(defaultColumns[0]!.id, 'header', '\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48\nDATE')
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    // And the plain two-line case, byte for byte.
+    const second = screen.getByLabelText('Header for column 2')
+    fireEvent.change(second, { target: { value: 'A\nB' } })
+    fireEvent.blur(second)
+    expect(onUpdate).toHaveBeenLastCalledWith(defaultColumns[1]!.id, 'header', 'A\nB')
   })
 })

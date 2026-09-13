@@ -414,7 +414,129 @@ func decodeTableExt(ctx *parseCtx, id string, obj map[string]json.RawMessage) (T
 		}
 	}
 
+	// rules (SPEC-table-rules §2): the interior lines, addressed by
+	// boundary. Same null-vs-absent handling as `headerStyle` above, and
+	// the key JOINS `consumed` — an unconsumed key round-trips opaquely
+	// as Extra and would silently draw nothing.
+	if rulesRaw, ok := obj["rules"]; ok {
+		consumed["rules"] = true
+		if rawIsNull(rulesRaw) {
+			t.Rules = presentNull[TableRules]()
+		} else {
+			rules, err := decodeTableRules(id, rulesRaw)
+			if err != nil {
+				return TableExt{}, nil, err
+			}
+			t.Rules = present(rules)
+		}
+	}
+
+	// minHeight (SPEC-table-rules §3): a FLOOR under the table's derived
+	// box, never a declared height (AD-13 stands for `height`).
+	//
+	// A NON-POSITIVE FLOOR IS REFUSED, and that is not the border-width
+	// rule in a different coat. A zero border width is the thinnest
+	// device line PDF can draw — a real, meaningful declaration. A zero
+	// or negative floor declares nothing at all: `max(0, content)` IS
+	// `content`, which is what an ABSENT minHeight already means, so the
+	// key would be a second spelling of absence. The format has one
+	// spelling for absence and it is absence.
+	if mhRaw, ok := obj["minHeight"]; ok {
+		consumed["minHeight"] = true
+		if rawIsNull(mhRaw) {
+			t.MinHeight = presentNull[geom.Length]()
+		} else {
+			mh, err := decodePointsRaw("minHeight", id, mhRaw)
+			if err != nil {
+				return TableExt{}, nil, err
+			}
+			if mh <= 0 {
+				return TableExt{}, nil, newLoadError("minHeight", id, string(mhRaw), "must be positive: it is a FLOOR under the table's derived height, and a floor of zero is what omitting the key already means")
+			}
+			t.MinHeight = present(mh)
+		}
+	}
+
 	return t, consumed, nil
+}
+
+// decodeTableRules decodes `table.rules`, the boundary-addressed interior
+// lines. Its shape deliberately mirrors decodeBorder's — the same three
+// sub-key readers, the same passthrough Extra, the same non-negative
+// width refusal on ISO 32000-1 §8.4.3.2's ground — because the two blocks
+// resolve through the SAME paint-time defaults downstream
+// (table_render.go's resolvedBorderWidth/resolvedBorderColor). What it
+// does NOT mirror is `edges`: `between` names a boundary of the table,
+// not a side of a cell, and the two vocabularies are kept apart on
+// purpose (see TableRules and RuleBoundaryTokens).
+func decodeTableRules(elementID string, raw json.RawMessage) (TableRules, error) {
+	const fieldPrefix = "rules"
+	obj, err := decodeObjectMap(raw)
+	if err != nil {
+		return TableRules{}, newLoadError(fieldPrefix, elementID, string(raw), "must be an object: "+err.Error())
+	}
+	consumed := map[string]bool{}
+	var r TableRules
+	// Each member admits an explicit `null`, which round-trips as null and
+	// means what absence means — the precedent every Presence field follows.
+	if v, ok := obj["color"]; ok && rawIsNull(v) {
+		consumed["color"] = true
+		r.Color = presentNull[string]()
+	} else if ok {
+		consumed["color"] = true
+		s, err := decodeStringRaw(v)
+		if err != nil {
+			return TableRules{}, newLoadError(fieldPrefix+".color", elementID, string(v), "must be a string: "+err.Error())
+		}
+		r.Color = present(s)
+	}
+	if v, ok := obj["width"]; ok && rawIsNull(v) {
+		consumed["width"] = true
+		r.Width = presentNull[geom.Length]()
+	} else if ok {
+		consumed["width"] = true
+		w, err := decodePointsRaw(fieldPrefix+".width", elementID, v)
+		if err != nil {
+			return TableRules{}, err
+		}
+		// decodeBorder's refusal, for decodeBorder's reason: a PDF line
+		// width is non-negative (ISO 32000-1 §8.4.3.2), and a negative
+		// one reaches the emitter verbatim as `-5 w`, which is not a
+		// valid PDF. Zero stays valid — the thinnest device line.
+		if w < 0 {
+			return TableRules{}, newLoadError(fieldPrefix+".width", elementID, string(v), "must not be negative: a PDF line width is non-negative (ISO 32000-1 8.4.3.2); use 0 for the thinnest line")
+		}
+		r.Width = present(w)
+	}
+	if v, ok := obj["between"]; ok && rawIsNull(v) {
+		consumed["between"] = true
+		r.Between = presentNull[[]string]()
+	} else if ok {
+		consumed["between"] = true
+		between, err := decodeStringArrayRaw(v)
+		if err != nil {
+			return TableRules{}, newLoadError(fieldPrefix+".between", elementID, string(v), "must be an array of strings: "+err.Error())
+		}
+		seen := map[string]bool{}
+		for _, b := range between {
+			if !closedRuleBoundaries[b] {
+				return TableRules{}, newLoadError(fieldPrefix+".between", elementID, b, closedSetMessage(RuleBoundaryTokens))
+			}
+			// A boundary named twice would stroke each of its lines twice —
+			// the defect `between` exists to remove (review item 5).
+			if seen[b] {
+				return TableRules{}, newLoadError(fieldPrefix+".between", elementID, b, "must name each of columns, rows at most once")
+			}
+			seen[b] = true
+		}
+		r.Between = present(between)
+	}
+	extra, err := extraFields(obj, consumed)
+	if err != nil {
+		return TableRules{}, fmt.Errorf("template: %s: %w", fieldPrefix, err)
+	}
+	r.Extra = extra
+	return r, nil
 }
 
 // decodeColumn decodes one table column, including the footer schema's

@@ -72,6 +72,12 @@ import (
 // proportions is a shape earlier readers reject. Only content using this
 // representation raises to 3.0.
 //
+// A FOURTH MINOR, 3.1, was added by SPEC-table-rules: a table's `rules`
+// and `minHeight` keys. Additive, extending no closed set, so a MINOR —
+// and SupportedVersion moves to 3.1 because it names the highest version
+// this library can load, and the library can now load documents carrying
+// those keys.
+//
 // NONE OF THAT CHANGES WHAT AN EXISTING DOCUMENT DECLARES. A document
 // using only `lineSpacing` or `color` still declares 1.1; one using
 // neither still declares 1.0; only one that actually carries
@@ -79,7 +85,7 @@ import (
 // document declares the LOWEST version its content requires.
 const (
 	SupportedMajor   = 3
-	SupportedVersion = "3.0"
+	SupportedVersion = "3.1"
 )
 
 // baseVersion is the lowest version any document can declare, and the
@@ -115,6 +121,21 @@ const (
 	keepTogetherVersion      = "1.2"
 	majorFeatureVersion      = "2.0"
 	proportionalTableVersion = "3.0"
+	// tableRulesVersion is the version introduced by SPEC-table-rules'
+	// two new table keys, `rules` and `minHeight`. A MINOR bump on 3:
+	// both are ADDITIVE keys a 3.0 reader does not know, so a document
+	// declaring one must say so, and nothing about them widens or
+	// re-spells an existing key's value set.
+	//
+	// ⚠ IT DOES NOT, AND CANNOT, MARK THE OTHER HALF OF SPEC-table-rules
+	// — the CHANGE OF MEANING of a table's `style.border`/`style.background`
+	// from cell chrome to the table's own box. That change carries no new
+	// key, so no version rule can detect it: an old document renders
+	// differently with no signal. The owner ruled out both a legacy arm
+	// and a major bump (a major bump would reject every existing
+	// document), so the divergence is DISCLOSED here and in
+	// folio-format.md rather than mechanised.
+	tableRulesVersion = "3.1"
 )
 
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
@@ -303,6 +324,16 @@ func versionRequiredByContent(d *Document) string {
 				}
 			}
 			if el.Table.Set && !el.Table.Null {
+				// SPEC-table-rules: Presence.Set, on `color`'s terms —
+				// an explicit `rules: null` or `minHeight: null` is
+				// still the KEY appearing in a file a 3.0 reader does
+				// not recognise.
+				if el.Table.Value.Rules.Set && rankTableRules > highest {
+					highest = rankTableRules
+				}
+				if el.Table.Value.MinHeight.Set && rankTableRules > highest {
+					highest = rankTableRules
+				}
 				hs := el.Table.Value.HeaderStyle
 				if hs.Set && !hs.Null {
 					if r := styleVersionRank(hs.Value); r > highest {
@@ -332,6 +363,7 @@ const (
 	rankKeepTogether
 	rankMajorFeature
 	rankProportionalTable
+	rankTableRules
 )
 
 // versionForRank maps a rank back to the version string it names.
@@ -349,6 +381,7 @@ var versionForRank = [...]string{
 	rankKeepTogether:      keepTogetherVersion,
 	rankMajorFeature:      majorFeatureVersion,
 	rankProportionalTable: proportionalTableVersion,
+	rankTableRules:        tableRulesVersion,
 }
 
 // styleVersionRank is the lowest version that can express ONE style

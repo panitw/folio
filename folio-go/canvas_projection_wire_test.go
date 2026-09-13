@@ -507,6 +507,13 @@ var tableColumnsProjectionWireKeys = []string{
 	"headerLineSpacingResolved",
 	"headerValign",
 	"headerValignResolved",
+	// SPEC-table-rules: the interior lines and the ruled area's floor.
+	"minHeight",
+	"rules.between",
+	"rules.color",
+	"rules.colorResolved",
+	"rules.width",
+	"rules.widthResolved",
 	"sizing",
 	"tableId",
 	"totalWidth",
@@ -707,7 +714,7 @@ var canvasComponentWireKeys = []string{
 // may legally be empty, so an `omitempty` on either would drop the key for
 // exactly the documents that leave it empty and terminate the worker for
 // exactly those.
-var canvasComponentColumnWireKeys = []string{"bind", "cellAlign", "headerAlign", "id", "label", "width"}
+var canvasComponentColumnWireKeys = []string{"bind", "cellAlign", "headerAlign", "id", "label", "labelLines", "width"}
 
 // canvasTableComponentEmittedKeys is the EXACT set a bound table with one
 // column marshals, recorded so the new member cannot quietly stop being sent.

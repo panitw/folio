@@ -158,7 +158,15 @@ func TestTableHeaderNoStyleExceptFontFamilyRendersDocumentedDefaults(t *testing.
 // regardless of style.border.edges — reds, asserted here by checking
 // Right/Left are explicitly false.
 func TestTableHeaderBorderEdgesSubset(t *testing.T) {
-	doc := tableHeaderDoc(`{"fontFamily": "latin", "border": {"edges": ["bottom", "top"], "color": "#112233", "width": 1}}`, twoColumnsNoAlign)
+	// THE BORDER MOVED TO headerStyle, and that is SPEC-table-rules §1
+	// rather than a test convenience: a table's own `style.border` now
+	// paints the table's BOX, and `headerStyle.border` is the only
+	// declaration left that puts chrome on a header cell. The assertion
+	// below — a named subset strokes exactly those edges — is unchanged.
+	doc := tableHeaderDocFull(
+		`{"fontFamily": "latin"}`,
+		`{"border": {"edges": ["bottom", "top"], "color": "#112233", "width": 1}}`,
+		twoColumnsNoAlign, 20)
 	pages := tablePagesForTest(t, doc, `{"items": []}`)
 	for i, r := range pages[0].Rects {
 		if !r.HasStroke {
@@ -181,7 +189,8 @@ func TestTableHeaderBorderEdgesSubset(t *testing.T) {
 
 // TestTableHeaderBackgroundFill is AC3's background assertion.
 func TestTableHeaderBackgroundFill(t *testing.T) {
-	doc := tableHeaderDoc(`{"fontFamily": "latin", "background": "#00FF00"}`, twoColumnsNoAlign)
+	// headerStyle, for the reason TestTableHeaderBorderEdgesSubset states.
+	doc := tableHeaderDocFull(`{"fontFamily": "latin"}`, `{"background": "#00FF00"}`, twoColumnsNoAlign, 20)
 	pages := tablePagesForTest(t, doc, `{"items": []}`)
 	for i, r := range pages[0].Rects {
 		if !r.HasFill {
@@ -285,13 +294,27 @@ func TestHeaderStyleBackgroundWinsOverStyle(t *testing.T) {
 		`{"background": "#00FF00"}`,
 		twoColumnsNoAlign, 20)
 	pages := tablePagesForTest(t, doc, `{"items": []}`)
-	for i, r := range pages[0].Rects {
+	// SPEC-table-rules §1 sharpened what "wins" means here. The two
+	// declarations no longer COMPETE for the header cell at all: the
+	// header cell takes headerStyle's green, and style's red paints the
+	// table's own frame — its fill the FIRST rect, under the two header
+	// cells' fills. What
+	// the test still guards is the thing it was written for: a header
+	// cell never carries the table's own style.background.
+	rects := pages[0].Rects
+	if len(rects) != 3 {
+		t.Fatalf("got %d rects, want 3 (2 header cells + the table's own box)", len(rects))
+	}
+	for i, r := range rects[1:] {
 		if !r.HasFill {
-			t.Fatalf("rect %d: HasFill = false, want true", i)
+			t.Fatalf("header rect %d: HasFill = false, want true", i)
 		}
 		if r.Fill != (pagemodel.Color{R: 0, G: 255, B: 0}) {
-			t.Errorf("rect %d: Fill = %+v, want #00FF00 (headerStyle.background must win over style.background=#FF0000)", i, r.Fill)
+			t.Errorf("rect %d: Fill = %+v, want #00FF00 (a header cell takes headerStyle.background, never style.background=#FF0000)", i, r.Fill)
 		}
+	}
+	if box := rects[0]; !box.HasFill || box.Fill != (pagemodel.Color{R: 255, G: 0, B: 0}) {
+		t.Errorf("the table's own box: HasFill=%v Fill=%+v, want a #FF0000 fill — style.background paints the box", box.HasFill, box.Fill)
 	}
 }
 
@@ -744,21 +767,46 @@ func TestColumnGeometryNeverNegotiatesAgainstLabelContent(t *testing.T) {
 				t.Fatalf("%s: control failed — wide label produced %d glyphs, narrow produced %d; the two renders must differ", c.name, totalWideGlyphs, totalNarrowGlyphs)
 			}
 
-			// The wide label's header text overflows its own (zero-
-			// padding) box and is clipped, per AC2 — it never widens
-			// the column.
-			foundClip := false
+			// The wide label NEVER WIDENS THE COLUMN — that is the
+			// assertion above, and it is untouched by SPEC-table-rules.
+			// What the label does INSIDE the column changed: it WRAPS
+			// (§4, through the body cell's packer) instead of being
+			// clipped in silence. So a clip is no longer required, and
+			// where it still happens — a run with no break opportunity
+			// narrow enough, which is the latin and thai cases here —
+			// it must be bounded by the column's own width AND reported,
+			// which is the half that was missing before.
+			wideTpl, terr := ParseTemplate([]byte(wideDoc))
+			if terr != nil {
+				t.Fatalf("%s: ParseTemplate(wideDoc): %v", c.name, terr)
+			}
+			wideRes, rerr := Render(wideTpl, Data(items), nil, testShippedFontSet())
+			if rerr != nil {
+				t.Fatalf("%s: Render(wideDoc): %v", c.name, rerr)
+			}
+			wideDiags := wideRes.Diagnostics
+
+			clipped, warned := false, 0
 			for _, r := range widePages[0].Runs {
 				if r.ClipToBox {
-					foundClip = true
+					clipped = true
 					if r.ClipWidth != 60000 {
 						t.Errorf("%s: ClipWidth = %d, want 60000 (the column's own width)", c.name, r.ClipWidth)
 					}
 				}
 			}
-			if !foundClip {
-				t.Errorf("%s: expected the wide label's runs to carry ClipToBox (it overflows its declared 60pt column)", c.name)
+			for _, d := range wideDiags {
+				if d.Code == DiagCodeTextClippedWidth {
+					warned++
+				}
 			}
+			if clipped && warned == 0 {
+				t.Errorf("%s: the wide label was clipped and NO TEXT_CLIPPED_WIDTH warning was emitted — the silent header clip is what SPEC-table-rules retired", c.name)
+			}
+			if !clipped && warned != 0 {
+				t.Errorf("%s: nothing was clipped but %d TEXT_CLIPPED_WIDTH warning(s) were emitted", c.name, warned)
+			}
+			t.Logf("%s: wide label clipped=%v, warnings=%d", c.name, clipped, warned)
 		})
 	}
 }
@@ -894,17 +942,23 @@ func TestTableInPageHeaderRepeatsIdenticallyAcrossPages(t *testing.T) {
 	if len(pages) < 2 {
 		t.Fatalf("presence precondition: got %d page(s), want at least 2 (this test needs a second page to prove the header repeats)", len(pages))
 	}
+	// Two rects: the header row's single column cell, and the table's own
+	// BOX (SPEC-table-rules §1 — the `style.background` declared below
+	// paints it, and no longer the cell). BOTH must repeat identically,
+	// which is a strictly stronger statement of the same property.
 	for i, p := range pages[:2] {
-		if len(p.Rects) != 1 {
-			t.Fatalf("page %d: got %d rects, want 1 (the pageHeader table's single column cell)", i, len(p.Rects))
+		if len(p.Rects) != 2 {
+			t.Fatalf("page %d: got %d rects, want 2 (the pageHeader table's single column cell and the table's own box)", i, len(p.Rects))
 		}
 	}
-	r0, r1 := pages[0].Rects[0], pages[1].Rects[0]
-	if r0 != r1 {
-		t.Errorf("pageHeader table rect differs between page 1 and page 2: page1=%+v page2=%+v — a page-header item must repeat IDENTICALLY (no pagination Shift applies to it)", r0, r1)
+	for i := range pages[0].Rects {
+		r0, r1 := pages[0].Rects[i], pages[1].Rects[i]
+		if r0 != r1 {
+			t.Errorf("pageHeader table rect %d differs between page 1 and page 2: page1=%+v page2=%+v — a page-header item must repeat IDENTICALLY (no pagination Shift applies to it)", i, r0, r1)
+		}
 	}
-	if !r0.HasFill {
-		t.Fatal("presence precondition: the header rect must carry HasFill (style.background is declared)")
+	if !pages[0].Rects[0].HasFill {
+		t.Fatal("presence precondition: the table's own box must carry HasFill (style.background is declared)")
 	}
 }
 
@@ -1203,27 +1257,22 @@ func TestTrailingBreakInACellGrowsTheRowByOneAdvance(t *testing.T) {
 	t.Logf("D-7.1.3 row height: %q -> %d mp, %q -> %d mp (+%d = one Advance), both emitting %d line run(s)", "abc", plainH, "abc\n", brokenH, brokenH-plainH, plainRuns)
 }
 
-// TestLineFeedInAColumnLabelStillWarns is the other half of Story 7.1's
-// missing-glyph change, and it is the case that change could have
-// silently swallowed.
+// TestLineFeedInAColumnLabelBreaksTheLine is the SPEC-table-rules
+// reversal of Story 7.1's TestLineFeedInAColumnLabelStillWarns, and the
+// reversal is the whole point of that change.
 //
-// A table COLUMN LABEL is shaped by shapeSegments and handed straight to
-// positionSegments — it is the one production caller that never packs,
-// so no mandatory break is ever taken there and a line feed in a label
-// really IS dropped: no glyph, no advance, two words run together on one
-// baseline. That is exactly the condition FR41's fifth mode exists to
-// report, and the Warning is the only signal it has.
+// A column label used to be shaped by shapeSegments and handed straight
+// to positionSegments — the one production caller that never packed — so
+// a line feed in a label really WAS dropped: no glyph, no advance, two
+// words run together on one baseline, and a TEXT_MISSING_GLYPH Warning
+// as the only signal that anything had happened. SPEC-table-rules §4
+// routes a label through the SAME packer a data cell uses, so the break
+// is now TAKEN: two lines, and no Warning, because nothing was dropped.
 //
-// Suppressing the Warning globally would have removed that signal on the
-// one path where it is true, which is why shapeSegments takes the
-// caller's own lineBreakHandling rather than deciding for itself.
-//
-// COLUMN LABELS DELIBERATELY DO NOT BREAK. The intent contract's caller
-// enumeration is closed — "text elements, both table-cell paths, and the
-// canvas projection" — and a label is not a cell. Header line breaking
-// is out of scope for this story, and this test pins that too: the label
-// stays on ONE baseline.
-func TestLineFeedInAColumnLabelStillWarns(t *testing.T) {
+// The old test's closing assertion — "the label stays on ONE baseline" —
+// is inverted here for the same reason. That was never a property worth
+// keeping; it was the defect, written down.
+func TestLineFeedInAColumnLabelBreaksTheLine(t *testing.T) {
 	doc := func(label string) string {
 		return fmt.Sprintf(`{
   "assets": {},
@@ -1280,16 +1329,14 @@ func TestLineFeedInAColumnLabelStillWarns(t *testing.T) {
 		t.Fatalf("presence precondition: an ordinary column label produced %d missing-glyph Warning(s): %+v", n, diags)
 	}
 
-	// THE SUBJECT: a label carrying a line feed. The label path never
-	// packs, so the rune is genuinely dropped and must still be
-	// reported — exactly once, coalesced per distinct rune (D-3.7.3).
+	// THE SUBJECT: a label carrying a line feed. The break is taken, so
+	// no rune is dropped and there is nothing to warn about.
 	n, diags := countMissingGlyph(doc("Alpha\nBravo"))
-	if n != 1 {
-		t.Fatalf("a column label carrying a line feed produced %d missing-glyph Warning(s), want exactly 1 — the label path never packs, so the rune is DROPPED and the Warning is its only signal (diagnostics: %+v)", n, diags)
+	if n != 0 {
+		t.Fatalf("a column label carrying a line feed produced %d missing-glyph Warning(s), want 0 — the label is packed now, so the break is TAKEN rather than handed to the shaper as a rune to draw (diagnostics: %+v)", n, diags)
 	}
 
-	// ...and the label is still ONE baseline: header line breaking is
-	// out of this story's closed caller enumeration.
+	// ...and it occupies TWO baselines.
 	_, contentRuns, _ := paginateContentTableForTest(t, doc("Alpha\nBravo"), dataJSON)
 	baselines := map[geom.Length]bool{}
 	labelRuns := 0
@@ -1298,17 +1345,21 @@ func TestLineFeedInAColumnLabelStillWarns(t *testing.T) {
 			continue
 		}
 		if containsSubstring(r.text, "Alpha") || containsSubstring(r.text, "Bravo") {
-			baselines[r.itemTop] = true
+			// The run's own y, not itemTop: every line of ONE header row
+			// shares the header's extent by construction (it is one
+			// group that moves whole), so itemTop cannot distinguish
+			// them and an assertion made on it would be vacuous.
+			baselines[r.y] = true
 			labelRuns++
 		}
 	}
 	if labelRuns == 0 {
 		t.Fatal("presence precondition: no run carrying the column label was found, so the baseline assertion below is vacuous")
 	}
-	if len(baselines) != 1 {
-		t.Errorf("the column label occupies %d baselines, want 1 — a label is not a cell, and header line breaking is outside this story's closed caller enumeration", len(baselines))
+	if len(baselines) != 2 {
+		t.Errorf("the column label occupies %d baselines, want 2 — the line feed must start a new line", len(baselines))
 	}
-	t.Logf("label path: %d run(s) on %d baseline, %d missing-glyph Warning — the break is neither taken nor silently swallowed", labelRuns, len(baselines), n)
+	t.Logf("label path: %d run(s) on %d baseline(s), %d missing-glyph Warning — the break is taken and nothing is dropped", labelRuns, len(baselines), n)
 }
 
 // justifyCascadeColumns declares no column-level `align` at all, so

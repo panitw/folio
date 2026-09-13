@@ -102,6 +102,19 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			_, err := ParseTemplate([]byte(source))
 			return err
 		},
+		diag.CodeTableMinHeightUnplaceable: func(t *testing.T) error {
+			// SPEC-table-rules §3. A LOAD-time trigger, like
+			// STYLE_LINE_SPACING_INVALID's: the floor, the page size,
+			// the margins and the band heights are all declared, so the
+			// condition is decidable at ParseTemplate with no data.
+			// 10000pt is taller than any page this format can describe.
+			source := strings.Replace(roundTripGoldenSource(t), `"headerHeight":`, "\"minHeight\": 10000,\n          \"headerHeight\":", 1)
+			if source == roundTripGoldenSource(t) {
+				t.Fatal("fixture precondition: the table element's headerHeight was not found, so this trigger would exercise nothing")
+			}
+			_, err := ParseTemplate([]byte(source))
+			return err
+		},
 		diag.CodeTableFooterSourceForbidden: func(t *testing.T) error {
 			source := roundTripGoldenSource(t)
 			source = strings.Replace(source, `"footer": "sum",`, "\"footer\": \"count\",\n              \"footerOf\": \"transactions.amount\",", 1)

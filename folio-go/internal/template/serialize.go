@@ -425,6 +425,26 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 				fields = append(fields, kv{"headerStyle", func(dst []byte, depth int) []byte { return writeStyle(dst, depth, hs) }})
 			}
 		}
+		// SPEC-table-rules. The unkeyed literal form is REQUIRED here for
+		// the reason keepTogether's own note above gives: drift_test.go's
+		// AST reader sees a kv literal only in the `kv{"key", …}`
+		// spelling, so a keyed one emits a key the drift guard is blind
+		// to.
+		if t.Rules.Set {
+			if t.Rules.Null {
+				fields = append(fields, kv{"rules", writeNull()})
+			} else {
+				rl := t.Rules.Value
+				fields = append(fields, kv{"rules", func(dst []byte, depth int) []byte { return writeTableRules(dst, depth, rl) }})
+			}
+		}
+		if t.MinHeight.Set {
+			if t.MinHeight.Null {
+				fields = append(fields, kv{"minHeight", writeNull()})
+			} else {
+				fields = append(fields, kv{"minHeight", writePoints(t.MinHeight.Value)})
+			}
+		}
 	}
 	fields = append(fields, extraKVs(e.Extra)...)
 	return writeObject(dst, depth, fields)
@@ -561,6 +581,33 @@ func writeBorder(dst []byte, depth int, b Border) []byte {
 		fields = append(fields, kv{"width", writePoints(b.Width.Value)})
 	}
 	fields = append(fields, extraKVs(b.Extra)...)
+	return writeObject(dst, depth, fields)
+}
+
+// writeTableRules writes `table.rules` (SPEC-table-rules §2). The order
+// fields are appended in here does not reach the bytes: writeObject sorts
+// every object's keys, so the block is written between, color, width — the
+// canonical order — and the decoder reads a map. An explicit null member is
+// written as null.
+func writeTableRules(dst []byte, depth int, r TableRules) []byte {
+	var fields []kv
+	if r.Color.Set && r.Color.Null {
+		fields = append(fields, kv{"color", writeNull()})
+	} else if r.Color.Set {
+		fields = append(fields, kv{"color", writeString(r.Color.Value)})
+	}
+	if r.Between.Set && r.Between.Null {
+		fields = append(fields, kv{"between", writeNull()})
+	} else if r.Between.Set {
+		between := r.Between.Value
+		fields = append(fields, kv{"between", func(dst []byte, depth int) []byte { return writeStringArray(dst, depth, between) }})
+	}
+	if r.Width.Set && r.Width.Null {
+		fields = append(fields, kv{"width", writeNull()})
+	} else if r.Width.Set {
+		fields = append(fields, kv{"width", writePoints(r.Width.Value)})
+	}
+	fields = append(fields, extraKVs(r.Extra)...)
 	return writeObject(dst, depth, fields)
 }
 

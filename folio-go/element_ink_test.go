@@ -307,13 +307,39 @@ func TestANullHeaderColorFallsThroughToTheTableColour(t *testing.T) {
 		t.Errorf("headerStyle {\"color\": null} gives %d inked / %d black, want %d / 0 — an explicit null must fall through to style.color, exactly as headerStyle.background and headerStyle.border already do", null, nullBlack, absent)
 	}
 
-	// The controls, on the same table and the same document: the background
-	// and border arms already fall through on an explicit null, and this
-	// counts their ink so "3" above is measured against siblings rather than
-	// against a number.
-	for _, control := range []struct{ name, headerStyle string }{
-		{"background", `"headerStyle": {"background": null},`},
-		{"border", `"headerStyle": {"border": null},`},
+	// THE CONTROLS CHANGED SIDES AT SPEC-table-rules, and the change is
+	// worth stating rather than deleting.
+	//
+	// They used to read "the background and border arms already fall
+	// through on an explicit null" — a sibling to measure `color`'s 3
+	// against. Those two arms no longer HAVE a `style` leg to fall
+	// through to: §1 gives a table's `style.border`/`style.background`
+	// to the table's own BOX, and `headerStyle`'s are the only
+	// declaration that can put chrome on a header cell. So the control
+	// now measures the other answer: a null on either arm paints NO
+	// header cell and NO data cell, and the table's own box is the one
+	// rect that carries the declaration — exactly ONE fill and exactly
+	// ONE stroke for this document, whose `style` declares both.
+	//
+	// `color` is unaffected and still cascades, which is why the
+	// assertion above is unchanged: colour describes the text inside a
+	// cell, not the chrome around it.
+	//
+	// THE TWO ARMS EXPECT DIFFERENT STROKE COUNTS, and the difference is
+	// a pre-existing loader behaviour this test now surfaces rather than
+	// anything SPEC-table-rules did: `"border": null` does NOT decode as
+	// a null Presence — decodeBorder reads the null as an empty object,
+	// so the header ends up declaring a border with every sub-key
+	// absent, which resolves to the format's own default (0.5pt, black,
+	// all four edges) and strokes. `"background": null` really is a null
+	// Presence and paints nothing. Both are asserted as measured.
+	for _, control := range []struct {
+		name, headerStyle       string
+		wantFills, wantStrokes  int
+		headerCellStrokesItsOwn bool
+	}{
+		{name: "background", headerStyle: `"headerStyle": {"background": null},`, wantFills: 1, wantStrokes: 1},
+		{name: "border", headerStyle: `"headerStyle": {"border": null},`, wantFills: 1, wantStrokes: 2, headerCellStrokesItsOwn: true},
 	} {
 		tpl, err := ParseTemplate([]byte(cascadeTableDoc(control.headerStyle)))
 		if err != nil {
@@ -323,17 +349,34 @@ func TestANullHeaderColorFallsThroughToTheTableColour(t *testing.T) {
 		if err != nil {
 			t.Fatalf("buildPageModel: %v", err)
 		}
+		// The frame is drawn per page slice after pagination: its fill is
+		// the FIRST rect (under every cell fill), its stroke the LAST.
+		rects := pages[0].Rects
 		fills, strokes := 0, 0
-		for _, rect := range pages[0].Rects {
+		fillIndex, strokeIndex, headerIndex := 0, len(rects)-1, 0
+		if len(rects) > 0 && rects[0].HasFill {
+			headerIndex = 1
+		}
+		for i, rect := range rects {
+			headerCell := i == headerIndex
 			if rect.HasFill {
 				fills++
+				if i != fillIndex {
+					t.Errorf("%s control: rect %d fills; only the table's own box may", control.name, i)
+				}
 			}
 			if rect.HasStroke {
 				strokes++
+				// A DATA cell may never stroke. The header cell may,
+				// but only from headerStyle's own border — never from
+				// the table's style, which is the box's.
+				if i != strokeIndex && !(headerCell && control.headerCellStrokesItsOwn) {
+					t.Errorf("%s control: rect %d strokes; no cell may carry the element's own style.border", control.name, i)
+				}
 			}
 		}
-		if fills != 3 || strokes != 3 {
-			t.Errorf("%s control: %d fills / %d stroke groups, want 3 / 3 — an explicit null on this arm falls through to the table's own style", control.name, fills, strokes)
+		if fills != control.wantFills || strokes != control.wantStrokes {
+			t.Errorf("%s control: %d fills / %d stroke groups, want %d / %d — the table's own style paints the BOX and reaches no cell", control.name, fills, strokes, control.wantFills, control.wantStrokes)
 		}
 	}
 }

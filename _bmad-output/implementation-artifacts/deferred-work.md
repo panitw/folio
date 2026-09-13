@@ -13763,3 +13763,13 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `spec-fix-table-column-authoring.md`
   summary: Coordinate table-editor input and dismissal behavior with an ongoing file save.
   evidence: The existing Cmd/Ctrl+S shortcut precedes the modal guard, and commitTableColumn silently refuses while fileBusy although most editor inputs remain enabled. A dirty row field followed by Done/Escape now preserves the draft and leaves the dialog open until the file operation ends; Cancel is already disabled during fileBusy. Review identified this broader pre-existing interlock gap; file-save completion/failure handling across editor inputs remains separate work.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-table-ruled-form.md`
+  summary: The designer canvas paints none of the ruled-form geometry — no frame, no interior rules, no minHeight ruled area — and draws a header whose labels pack to more lines than headerHeight at the old row height.
+  evidence: TablePaint only switched from label to labelLines; the canvas table height still derives from headerHeight alone, and the spec's tasks scoped the canvas to painting packed label lines, so the PDF and canvas now disagree for ruled tables.
+- source_spec: `_bmad-output/implementation-artifacts/spec-table-ruled-form.md`
+  summary: An explicit `"border": null` on a table's headerStyle decodes as an empty border object and paints a default 0.5pt black border on all four edges, and element_ink_test.go now pins that result.
+  evidence: The loader treats null as {} for border while treating null as absence for background; the behaviour predates this change and the new test asserts it "as measured".
+- source_spec: `_bmad-output/implementation-artifacts/spec-table-ruled-form.md`
+  summary: A hand-edited document with a column label over 256 code points loads and renders, but the Table Editor refuses to open with a generic "table column cannot be projected" error that names no field.
+  evidence: The loader has no label bound while TableColumns refuses labels over the bound; the bound predates this change, which only moved its unit from bytes to code points.

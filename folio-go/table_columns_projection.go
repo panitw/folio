@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/geom"
@@ -164,6 +165,42 @@ type TableColumnsProjection struct {
 	HeaderBorderEdges         string `json:"headerBorder.edges"`
 	HeaderBorderEdgesResolved string `json:"headerBorder.edgesResolved"`
 
+	// SPEC-table-rules' FOUR MEMBERS: the interior lines and the ruled
+	// area's floor, which the owner ruled belong to the TABLE EDITOR and
+	// not to the inspector's BOX section (that section already authors
+	// the table's own `style.border`/`style.background`, which is now
+	// exactly what it says it is).
+	//
+	// MinHeight is THOUSANDTHS, like HeaderHeight, and 0 is absent — a
+	// non-positive floor is refused at the loader, so 0 is unambiguous
+	// here in a way a zero border width is not.
+	//
+	// The RULES trio follows the header-border trio's spellings exactly,
+	// and for the same reasons stated at length above: the width pair is
+	// STRINGS because a declared `0` is a real, painted, thinnest-device
+	// line and a numeric member whose absence is spelled 0 cannot tell it
+	// from an absent block; the resolved halves are the format's own
+	// defaults, computed by the SAME resolvedBorderWidth/Color the
+	// renderer calls; and RulesBetween is the boundary set in the
+	// format's own order, comma-joined, "" for none — the same shape
+	// HeaderBorderEdges uses, because the browser's guard admits a
+	// canonical list and a re-ordered one would be refused.
+	//
+	// "" ON THE WHOLE TRIO MEANS "THE TABLE DECLARES NO `rules` BLOCK",
+	// and that is a disclosed collapse: a hand-edited `rules: {}` or
+	// `rules: {"between": []}` reads the same way here. Neither paints
+	// anything, and the editor's own way of saying "no rules" is to
+	// author none — so nothing an author can express through the panel
+	// is lost, and a document that says it in the other spelling still
+	// round-trips byte-identically, because the panel writes nothing
+	// unless the author changes something.
+	MinHeight          int64  `json:"minHeight"`
+	RulesWidth         string `json:"rules.width"`
+	RulesWidthResolved string `json:"rules.widthResolved"`
+	RulesColor         string `json:"rules.color"`
+	RulesColorResolved string `json:"rules.colorResolved"`
+	RulesBetween       string `json:"rules.between"`
+
 	Columns []TableColumnProjection `json:"columns"`
 }
 
@@ -288,13 +325,21 @@ func TableColumns(t *Template, tableID string) (TableColumnsProjection, error) {
 		HeaderBorderColorResolved: resolvedHeaderBorderColor(resolved),
 		HeaderBorderEdges:         canonicalEdgeList(committedHeaderBorder(committed).Edges),
 		HeaderBorderEdgesResolved: resolvedHeaderBorderEdges(resolved),
+		MinHeight:                 committedLength(element.Table.Value.MinHeight),
+		RulesWidth:                committedBorderWidth(committedTableRules(element.Table.Value).Width),
+		RulesWidthResolved:        resolvedTableRulesWidth(element.Table.Value),
+		RulesColor:                committedStyleString(committedTableRules(element.Table.Value).Color),
+		RulesColorResolved:        resolvedTableRulesColor(element.Table.Value),
+		RulesBetween:              canonicalBoundaryList(committedTableRules(element.Table.Value).Between),
 		Columns:                   make([]TableColumnProjection, 0, len(element.Table.Value.Columns)),
 	}
 	if element.Width.Set {
 		projection.Sizing = "proportion"
 	}
 	for i, column := range element.Table.Value.Columns {
-		if len(column.Label) > 256 || widths[i] <= 0 || len(column.ID) == 0 || len(column.ID) > 128 {
+		// A label is bounded in CODE POINTS (SPEC-table-rules §4), the unit the
+		// command and the browser guard both count.
+		if utf8.RuneCountInString(column.Label) > 256 || widths[i] <= 0 || len(column.ID) == 0 || len(column.ID) > 128 {
 			return TableColumnsProjection{}, fmt.Errorf("folio: table column cannot be projected")
 		}
 		align := "left"
@@ -440,6 +485,63 @@ func resolvedHeaderBorderEdges(resolved resolvedHeaderStyle) string {
 		return ""
 	}
 	return edgeListOf(resolvedBorderEdges(resolved.border))
+}
+
+// committedTableRules reads `table.rules` AS THE DOCUMENT DECLARES IT
+// (SPEC-table-rules). An absent or explicitly null block yields the zero
+// TableRules, whose three Presence members all read as absent — which is
+// exactly what it means, and what makes "clear these back to absent"
+// expressible from the panel.
+func committedTableRules(table template.TableExt) template.TableRules {
+	if !table.Rules.Set || table.Rules.Null {
+		return template.TableRules{}
+	}
+	return table.Rules.Value
+}
+
+// resolvedTableRulesWidth / resolvedTableRulesColor ask the RENDERER'S OWN
+// functions, exactly as the header-border trio above does, so the panel
+// cannot show a number the PDF does not draw. They are "" when the table
+// declares no `rules` block at all — there is then nothing to resolve,
+// and no line to state a width or a colour for.
+func resolvedTableRulesWidth(table template.TableExt) string {
+	if !table.Rules.Set || table.Rules.Null {
+		return ""
+	}
+	rules := table.Rules.Value
+	return strconv.FormatInt(int64(resolvedBorderWidth(template.Border{Width: rules.Width})), 10)
+}
+
+func resolvedTableRulesColor(table template.TableExt) string {
+	if !table.Rules.Set || table.Rules.Null {
+		return ""
+	}
+	rules := table.Rules.Value
+	return resolvedBorderColor(template.Border{Color: rules.Color})
+}
+
+// canonicalBoundaryList is canonicalEdgeList's sibling for
+// `rules.between`: the boundary names in RuleBoundaryTokens' own order,
+// comma-joined, "" for none. A SEPARATE function from canonicalEdgeList
+// and deliberately not a generalisation of it — an edge is one of a
+// cell's four sides and a boundary is one of the table's interior seams,
+// and SPEC-table-rules keeps the two vocabularies apart precisely because
+// conflating them is the defect it repairs.
+func canonicalBoundaryList(between template.Presence[[]string]) string {
+	if !between.Set || between.Null {
+		return ""
+	}
+	declared := map[string]bool{}
+	for _, b := range between.Value {
+		declared[b] = true
+	}
+	var out []string
+	for _, token := range template.RuleBoundaryTokens {
+		if declared[token] {
+			out = append(out, token)
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // canonicalEdgeList and edgeListOf are the ONE spelling of an edge set on this

@@ -17,6 +17,7 @@ import (
 	"github.com/panitw/folio/folio-go/internal/expr"
 	"github.com/panitw/folio/folio-go/internal/fontset"
 	"github.com/panitw/folio/folio-go/internal/geom"
+	"github.com/panitw/folio/folio-go/internal/layout"
 	"github.com/panitw/folio/folio-go/internal/template"
 )
 
@@ -307,6 +308,10 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return applyTableColumnCommand(t, raw, setTableAltRowBackground)
 	case "updateTableHeaderStyle":
 		return applyTableColumnCommand(t, raw, updateTableHeaderStyle)
+	case "setTableMinHeight":
+		return applyTableColumnCommand(t, raw, setTableMinHeight)
+	case "updateTableRules":
+		return applyTableColumnCommand(t, raw, updateTableRules)
 	default:
 		return CanvasProjection{}, fmt.Errorf("folio: unknown component command")
 	}
@@ -521,8 +526,16 @@ func updateTableColumn(t *Template, raw map[string]json.RawMessage) (CanvasProje
 	switch field {
 	case "header":
 		label, err := commandString(map[string]json.RawMessage{"value": value}, "value")
-		if err != nil || len(label) > 256 {
-			return CanvasProjection{}, componentFailure(id, "column.header", "header must be a bounded string")
+		// ⚠ CHARACTERS, NOT BYTES (SPEC-table-rules §4). The bound was
+		// `len(label)`, which counts UTF-8 BYTES: 256 of them is about 85
+		// Thai characters, and a bilingual two-line heading is exactly the
+		// label an author now writes here. The browser's own bound
+		// (engine-protocol.ts, `column.header.length <= 256`) has always
+		// counted units of text rather than bytes, so this also makes the
+		// two doors agree — a label the panel accepted and the engine
+		// refused was a refusal with no field the author could see.
+		if err != nil || utf8.RuneCountInString(label) > 256 {
+			return CanvasProjection{}, componentFailure(id, "column.header", "header must be at most 256 characters")
 		}
 		column.Label = label
 	case "width":
@@ -2680,6 +2693,12 @@ func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	// Presence restores the document byte for byte.
 	previous := band.Height
 	band.Height = template.Presence[geom.Length]{Set: true, Value: proposed}
+	// SPEC-table-rules review item 1: a taller band shrinks the content
+	// window, and must not strand a table's minHeight.
+	if err := refuseStrandedFloor(t, bandHeightPath(name)); err != nil {
+		band.Height = previous
+		return CanvasProjection{}, err
+	}
 	updated, err := Canvas(t)
 	if err != nil {
 		band.Height = previous
@@ -2975,6 +2994,174 @@ func setTableHeaderHeight(t *Template, raw map[string]json.RawMessage) (CanvasPr
 	if err := containComponent(band, element.X, element.Y, width, projected); err != nil {
 		return CanvasProjection{}, componentFailure(id, "table.headerHeight", err.Error())
 	}
+	return Canvas(t)
+}
+
+// setTableMinHeight writes SPEC-table-rules §3's floor under the table's own
+// box.
+//
+// IT OFFERS A CLEAR, and that is the whole difference from its sibling
+// setTableHeaderHeight: `headerHeight` is REQUIRED by the format (a cleared one
+// is a document that cannot be reopened), while `minHeight` is optional and
+// "no floor" is a state an author must be able to get back to.
+//
+// A NON-POSITIVE FLOOR IS REFUSED HERE FOR THE LOADER'S REASON, restated rather
+// than re-derived: `max(0, content)` is `content`, which is what omitting the
+// key already means, so a zero floor is a second spelling of absence and the
+// format has one.
+//
+// NO CONTAINMENT RE-CHECK, and that asymmetry with setTableHeaderHeight is
+// deliberate. projectedSize derives a table's PROJECTED height from
+// HeaderHeight alone — the canvas has no data, so it has no rows — and a floor
+// is not the header. The floor's own placement rule is the one ParseTemplate
+// enforces (a minHeight taller than the content window is
+// TABLE_MIN_HEIGHT_UNPLACEABLE), and it is enforced at the file door where it
+// belongs rather than approximated here against a band.
+func setTableMinHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	band, element, err := tableCommandTarget(t, id)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	op, value, err := tableCommandOp(raw, id, "table.minHeight", 4)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if op == "clear" {
+		element.Table.Value.MinHeight = template.Presence[geom.Length]{}
+		return Canvas(t)
+	}
+	height, err := propertyLength(value, "value")
+	if err != nil || height <= 0 {
+		return CanvasProjection{}, componentFailure(id, "table.minHeight", "minHeight must be a positive length: it is a floor under the table's derived height, and a floor of zero is what clearing it already means")
+	}
+	// Review item 2: a floor taller than the content window is refused HERE,
+	// at its own field, rather than by the re-parse as an unlocated error.
+	if band.Name == bandContent {
+		if g, gerr := pageGeometryOf(t); gerr == nil {
+			if window := layout.ContentHeight(g); height > window {
+				return CanvasProjection{}, componentFailure(id, "table.minHeight", fmt.Sprintf("minHeight %spt is taller than the content window (%spt), so the table would fit on no page", template.FormatPoints(height), template.FormatPoints(window)))
+			}
+		}
+	}
+	element.Table.Value.MinHeight = template.Presence[geom.Length]{Set: true, Value: height}
+	return Canvas(t)
+}
+
+// updateTableRules writes ONE attribute of SPEC-table-rules §2's interior-line
+// block, on updateTableHeaderStyle's exact shape: one field per command, each
+// validated by THE SAME PREDICATE THE LOADER ASKS, and a clear of the last
+// attribute collapsing the block away.
+//
+// A CLEAR OF `between` REMOVES THE WHOLE BLOCK. A `rules` block with no
+// boundary draws nothing at all, yet it still raises the document's version,
+// so an author unticking the last boundary (the editor sends exactly this
+// clear) is saying "no rules" — and a saved width or colour left behind would
+// be a dead block in the file. Clearing `width` or `color` removes only that
+// attribute, and the block goes away when nothing is left in it.
+//
+// A document holding an explicit `"rules": null` is left untouched by any
+// clear: there is nothing to remove, and rewriting the null would change the
+// bytes of a document the author did not edit.
+//
+// THE BOUNDARY SET IS template.IsRuleBoundary's, never a second literal pair
+// here: a command door that admitted a boundary the file door refuses could
+// stamp out a document the designer cannot reopen — the failure updateTableHeaderStyle's
+// own comment names.
+func updateTableRules(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	id, err := commandString(raw, "id")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", "table.id", err.Error())
+	}
+	_, element, err := tableCommandTarget(t, id)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	field, err := commandString(raw, "field")
+	if err != nil {
+		return CanvasProjection{}, componentFailure(id, "table.rules", err.Error())
+	}
+	switch field {
+	case "width", "color", "between":
+	default:
+		return CanvasProjection{}, componentFailure(id, "table.rules", "field must be width, color or between")
+	}
+	op, value, err := tableCommandOp(raw, id, "table.rules."+field, 5)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+
+	rules := template.TableRules{}
+	if element.Table.Value.Rules.Set && !element.Table.Value.Rules.Null {
+		rules = element.Table.Value.Rules.Value
+	}
+
+	if op == "clear" {
+		if element.Table.Value.Rules.Set && element.Table.Value.Rules.Null {
+			return Canvas(t)
+		}
+		switch field {
+		case "width":
+			rules.Width = template.Presence[geom.Length]{}
+		case "color":
+			rules.Color = template.Presence[string]{}
+		case "between":
+			element.Table.Value.Rules = template.Presence[template.TableRules]{}
+			return Canvas(t)
+		}
+		// THE BLOCK COLLAPSES WHEN NOTHING IS LEFT IN IT, the same move
+		// cleanupEmptyStyle makes for element.Style: an empty `rules: {}`
+		// is a key in the file that means nothing, and leaving one behind
+		// would make "clear the last attribute" a no-op in the bytes.
+		if !rules.Width.Set && !rules.Color.Set && !rules.Between.Set && len(rules.Extra) == 0 {
+			element.Table.Value.Rules = template.Presence[template.TableRules]{}
+			return Canvas(t)
+		}
+		element.Table.Value.Rules = template.Presence[template.TableRules]{Set: true, Value: rules}
+		return Canvas(t)
+	}
+
+	switch field {
+	case "width":
+		width, werr := propertyLength(value, "value")
+		if werr != nil || width < 0 {
+			return CanvasProjection{}, componentFailure(id, "table.rules.width", "rules.width must not be negative: a PDF line width is non-negative (ISO 32000-1 8.4.3.2); use 0 for the thinnest line")
+		}
+		rules.Width = template.Presence[geom.Length]{Set: true, Value: width}
+	case "color":
+		colour, cerr := propertyString(value)
+		if cerr != nil || !validPropertyColor(colour) {
+			return CanvasProjection{}, componentFailure(id, "table.rules.color", "rules.color must be a #RRGGBB colour")
+		}
+		rules.Color = template.Presence[string]{Set: true, Value: colour}
+	case "between":
+		var names []string
+		if jerr := json.Unmarshal(value, &names); jerr != nil {
+			return CanvasProjection{}, componentFailure(id, "table.rules.between", "between must be an array of boundary names")
+		}
+		seen := map[string]bool{}
+		for _, name := range names {
+			if !template.IsRuleBoundary(name) || seen[name] {
+				return CanvasProjection{}, componentFailure(id, "table.rules.between", "between must name each of columns, rows at most once")
+			}
+			seen[name] = true
+		}
+		// CANONICAL ORDER, written by the engine. The projection joins in
+		// RuleBoundaryTokens' order and the browser's guard admits only
+		// that order, so a command that stored the author's click order
+		// would produce a document the guard then refuses to read back.
+		ordered := make([]string, 0, len(names))
+		for _, token := range template.RuleBoundaryTokens {
+			if seen[token] {
+				ordered = append(ordered, token)
+			}
+		}
+		rules.Between = template.Presence[[]string]{Set: true, Value: ordered}
+	}
+	element.Table.Value.Rules = template.Presence[template.TableRules]{Set: true, Value: rules}
 	return Canvas(t)
 }
 

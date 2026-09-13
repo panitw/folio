@@ -78,6 +78,21 @@ export const MAX_CANVAS_BODY_TEXT_FRAGMENTS = 65536
 // maxCanvasPropertyString — identifiers, colours and expressions only. Body
 // text no longer shares it on either side of the channel (DW-25).
 export const MAX_CANVAS_PROPERTY_STRING = 512
+// A column label's bound is CODE POINTS, never UTF-16 units (SPEC-table-rules
+// §4). Go counts runes (component_commands.go's updateTableColumn); counting
+// `.length` here would refuse a label of 200 emoji the engine accepted, and a
+// refused projection means the Table Editor never opens.
+export const MAX_TABLE_COLUMN_HEADER_CODE_POINTS = 256
+// A canvas table column's `labelLines` are the ENGINE's packed header label
+// lines — wrapped and split on line feeds in Go, line feeds removed — so the
+// canvas paints one element per line and the browser makes no break decision
+// (AD-17 condition 2). Go caps the list at maxCanvasTableLabelLines and each
+// line at maxCanvasTableLabelLineLength — label TEXT, so not the identifier
+// bound MAX_CANVAS_PROPERTY_STRING. A Go test parses these two lines from this
+// file and pins them against Go's constants: keep each `export const NAME =
+// <integer>` on one line.
+export const MAX_CANVAS_TABLE_LABEL_LINES = 256
+export const MAX_CANVAS_TABLE_LABEL_LINE_LENGTH = 1024
 // THE FIFTH HAND-COPIED CROSS-LANGUAGE BOUND, and the only one that does not
 // come from `page_setup.go`: `template.MinLineSpacingThousandths` and
 // `template.MaxLineSpacingThousandths` (folio-go/internal/template/
@@ -332,7 +347,25 @@ export type TableHeaderStyle = Readonly<{
 }>
 export type GroupMovePreview = Readonly<{ revision: number; dx: number; dy: number }>
 
-export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; sizing: 'points' | 'proportion'; totalWidth: number; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle }>
+// TableRules is SPEC-table-rules' half of the table projection: the interior
+// lines (`rules`) and the ruled area's floor (`minHeight`). It is a separate
+// type from TableHeaderStyle because it governs the TABLE, not the header row
+// — and because the two arrive through different commands.
+//
+// The width and colour pairs are spelled exactly as the header border's are,
+// committed beside resolved, strings throughout, '' for absent. `between` is
+// the boundary set comma-joined in the format's own order — never an array,
+// so the whole block moves as six scalars and the guard below stays one
+// closed-set check per member. `minHeight` is thousandths and 0 is absent, the
+// same spelling `headerHeight` uses.
+export type TableRules = Readonly<{
+  minHeight: number
+  'rules.width': string; 'rules.widthResolved': string
+  'rules.color': string; 'rules.colorResolved': string
+  'rules.between': string
+}>
+
+export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableId: string; sizing: 'points' | 'proportion'; totalWidth: number; collection: string; alias: string; headerHeight: number; altRowBackground: string; columns: ReadonlyArray<TableColumn> }> & TableHeaderStyle & TableRules }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
 // boundary. These types describe transport, not the .folio file format.
@@ -434,7 +467,7 @@ export type CanvasProjection = Readonly<{
 	// entry in a paint position, which canvas-font-stack.test.ts forbids by name.
 	fontChains: ReadonlyArray<Readonly<{ name: string; entries: ReadonlyArray<Readonly<{ face: string; assetKey: string; family: string; style: string; bold: string; italic: string; boldItalic: string }>> }>>
 	bands: ReadonlyArray<Readonly<{ name: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number }>>
-	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
+	components: ReadonlyArray<Readonly<{ id: string; type: 'text' | 'image' | 'table' | 'line' | 'rect'; band: 'pageHeader' | 'content' | 'pageFooter'; x: number; y: number; width: number; height: number; resizable: boolean; authored?: AuthoredProperties; value?: string; binding?: string; visibleIf?: string; fontFamily?: string; fontSize?: number; lineSpacing?: number; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; valign?: 'top' | 'middle' | 'bottom'; color?: string; background?: string; borderWidth?: number; borderColor?: string; borderEdges?: ReadonlyArray<'top' | 'right' | 'bottom' | 'left'>; paddingTop?: number; paddingRight?: number; paddingBottom?: number; paddingLeft?: number; tableBind?: string; columns?: ReadonlyArray<Readonly<{ id: string; label: string; labelLines: ReadonlyArray<string>; width: number; headerAlign: 'left' | 'center' | 'right'; cellAlign: 'left' | 'center' | 'right'; bind: string }>>; textPaint?: Readonly<{ overflow: boolean; truncated: boolean; lines: ReadonlyArray<Readonly<{ top: number; baseline: number; advance: number; width: number; fragments: ReadonlyArray<Readonly<{ text: string; x: number; face?: string; assetKey?: string }>> }>> }>; image?: Readonly<{ mediaType: string; assetKey: string; width: number; height: number; drawX: number; drawY: number; drawWidth: number; drawHeight: number }>; imageUnavailable?: 'missing' | 'undecodable' }>>
 }>
 
 export type EngineSuccess = Readonly<{
@@ -615,7 +648,7 @@ const isProportionString = (value: string): boolean => {
   return scaled > 0n && scaled <= 9223372036854775807n
 }
 const isTableColumns = (value: unknown): value is TableColumns => {
-  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'sizing', 'totalWidth', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'columns'])) return false
+  if (!isRecord(value) || !hasExactKeys(value, ['revision', 'table']) || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0 || !isRecord(value.table) || !hasExactKeys(value.table, ['tableId', 'sizing', 'totalWidth', 'collection', 'alias', 'headerHeight', 'altRowBackground', 'headerFontFamily', 'headerFontFamilyResolved', 'headerFontSize', 'headerFontSizeResolved', 'headerLineSpacing', 'headerLineSpacingResolved', 'headerBackground', 'headerBackgroundResolved', 'headerColor', 'headerColorResolved', 'headerValign', 'headerValignResolved', 'headerAlign', 'headerAlignResolved', 'headerBold', 'headerBoldResolved', 'headerItalic', 'headerItalicResolved', 'headerBorder.width', 'headerBorder.widthResolved', 'headerBorder.color', 'headerBorder.colorResolved', 'headerBorder.edges', 'headerBorder.edgesResolved', 'minHeight', 'rules.width', 'rules.widthResolved', 'rules.color', 'rules.colorResolved', 'rules.between', 'columns'])) return false
   const table = value.table
   if (!['points', 'proportion'].includes(table.sizing as string) || typeof table.totalWidth !== 'number' || !Number.isSafeInteger(table.totalWidth) || table.totalWidth < 0 || table.sizing === 'proportion' && table.totalWidth === 0) return false
   // THE TYPED CLAUSES FOR STORY 12.3's SIXTEEN MEMBERS. Every one is REQUIRED
@@ -681,7 +714,17 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   // CANONICAL because Go joins in the format's own order; a re-ordered or
   // repeated list is a projection this engine does not produce.
   if (!(['headerBorder.edges', 'headerBorder.edgesResolved'] as const).every((key) => isCanonicalEdgeList(table[key]))) return false
-  return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && column.header.length <= 256 && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
+  // SPEC-table-rules' SIX MEMBERS, each checked the way its nearest sibling
+  // already is — the two width strings against the canonical thousandths
+  // spelling, the two colours as ordinary bounded strings, `minHeight` as a
+  // length (never negative: the loader refuses a non-positive floor outright,
+  // which is why this one CAN take the bound `headerHeight` cannot), and
+  // `between` against the closed boundary set in the format's own order.
+  if (!(['rules.width', 'rules.widthResolved'] as const).every((key) => typeof table[key] === 'string' && (table[key] as string).length <= MAX_CANVAS_PROPERTY_STRING && isThousandthsLengthString(table[key]))) return false
+  if (!(['rules.color', 'rules.colorResolved'] as const).every((key) => typeof table[key] === 'string' && (table[key] as string).length <= MAX_CANVAS_PROPERTY_STRING)) return false
+  if (typeof table.minHeight !== 'number' || !Number.isSafeInteger(table.minHeight) || table.minHeight < 0) return false
+  if (!['', 'columns', 'rows', 'columns,rows'].includes(table['rules.between'] as string)) return false
+  return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && Array.from(column.header).length <= MAX_TABLE_COLUMN_HEADER_CODE_POINTS && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
   if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
@@ -842,7 +885,7 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
 	// hundred-and-fifty-column document paints today, so a cap here would newly
 	// kill it — and `components` itself, one level up, is unbounded in this same
 	// guard for exactly this reason.
-	if (component.columns !== undefined && (!Array.isArray(component.columns) || !component.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'label', 'width', 'headerAlign', 'cellAlign', 'bind']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.label === 'string' && column.label.length <= MAX_CANVAS_PROPERTY_STRING && typeof column.width === 'number' && Number.isSafeInteger(column.width) && ['left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.cellAlign as string) && typeof column.bind === 'string' && column.bind.length <= MAX_CANVAS_PROPERTY_STRING) || new Set(component.columns.map((column) => (column as Record<string, unknown>).id)).size !== component.columns.length)) return false
+	if (component.columns !== undefined && (!Array.isArray(component.columns) || !component.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'label', 'labelLines', 'width', 'headerAlign', 'cellAlign', 'bind']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.label === 'string' && column.label.length <= MAX_CANVAS_PROPERTY_STRING && Array.isArray(column.labelLines) && column.labelLines.length <= MAX_CANVAS_TABLE_LABEL_LINES && column.labelLines.every((line) => typeof line === 'string' && line.length <= MAX_CANVAS_TABLE_LABEL_LINE_LENGTH) && typeof column.width === 'number' && Number.isSafeInteger(column.width) && ['left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.cellAlign as string) && typeof column.bind === 'string' && column.bind.length <= MAX_CANVAS_PROPERTY_STRING) || new Set(component.columns.map((column) => (column as Record<string, unknown>).id)).size !== component.columns.length)) return false
 	// The twin of the `tableBind` cross-clause above: only a table has columns,
 	// and a non-table component carrying them is a producer that has lost track
 	// of which element it is projecting.

@@ -248,9 +248,16 @@ func TestHeaderAndFooterBoxesRepeatOnEveryPage(t *testing.T) {
 	}
 }
 
+// TestATableStyleIsNeverPaintedTwice keeps its name and reverses its
+// arithmetic, which is the honest record of what SPEC-table-rules did.
+//
+// Story 9.1 asserted "a table's style paints as cell chrome ONLY, never
+// a second time as an element box". SPEC-table-rules moved the
+// declaration to the other side of that sentence: a table's
+// `style.background` paints the table's own BOX only, never a cell. The
+// invariant the test actually guards — ONCE, never twice — is unchanged,
+// and it is still what fails if the two painters are ever both wired up.
 func TestATableStyleIsNeverPaintedTwice(t *testing.T) {
-	// e1's style is a TABLE's style: Epic 4 already paints it as the cell
-	// chrome. Story 9.1 must not add an element box on top of it.
 	doc := `{
   "assets": {},
   "bands": {
@@ -280,10 +287,29 @@ func TestATableStyleIsNeverPaintedTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildPageModel: %v", err)
 	}
-	// One header cell + one body cell for the single column and single row.
-	// An element box would be a THIRD rect spanning the table's own extent.
-	if got := len(pages[0].Rects); got != 2 {
-		t.Errorf("a styled table produced %d rect(s), want 2 (header cell, body cell) — its style must paint as cell chrome only, never a second time as an element box", got)
+	// The table's own frame fill, one header cell and one body cell. The
+	// frame is drawn per page slice after pagination, and its FILL goes
+	// before the table's first rect so row and header fills paint over it. The two
+	// CELLS are built unconditionally — they carry the rows' pagination
+	// identity and D-2.6.5 forbids an empty item that occupies space —
+	// but neither may PAINT, and exactly one rect may.
+	if got := len(pages[0].Rects); got != 3 {
+		t.Fatalf("a styled table produced %d rect(s), want 3 (header cell, body cell, the table's own box)", got)
+	}
+	filled := 0
+	for i, r := range pages[0].Rects {
+		if r.HasFill {
+			filled++
+			if i != 0 {
+				t.Errorf("rect %d carries the fill; only the FIRST rect — the table's own frame fill — may (SPEC-table-rules §1: style.background reaches no cell)", i)
+			}
+			if r.Fill != (pagemodel.Color{R: 0x11, G: 0x22, B: 0x33}) {
+				t.Errorf("the box's fill = %+v, want #112233", r.Fill)
+			}
+		}
+	}
+	if filled != 1 {
+		t.Errorf("a table declaring one style.background painted %d filled rect(s), want exactly 1 — once, never twice", filled)
 	}
 }
 

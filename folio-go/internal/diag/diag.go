@@ -243,6 +243,28 @@ const (
 	// D-1.4.2: never ahead of it).
 	CodeTableRowClippedHeight Code = "TABLE_ROW_CLIPPED_HEIGHT"
 
+	// CodeTableMinHeightUnplaceable names SPEC-table-rules §3's one
+	// refusal: a table whose `minHeight` is TALLER THAN THE CONTENT
+	// WINDOW it would have to be placed in. The alternative to refusing
+	// is a table that can never be placed on any page of the document
+	// that declares it, discovered at render, on every page.
+	//
+	// IT EARNS A CODE ON R7's TERMS: a template author causes it and a
+	// template author fixes it — shorten the floor, or give the page
+	// more room — and it must reach them with the element's id attached.
+	// An uncoded load rejection becomes CodeTemplateMalformed at
+	// folio.ParseTemplate's boundary, and wasm/cmd/engine's
+	// reportableMessage replaces THAT message, and only that one, with
+	// "The template could not be processed" — so an uncoded refusal here
+	// would never reach the author at all (CodeStyleLineSpacingInvalid's
+	// own grounds, unchanged).
+	//
+	// DISTINCT FROM CodeContentUnlayoutable, which names an element
+	// measured too tall for its window at RENDER. This one is decidable
+	// from the document alone, with no data and no measurement, so it is
+	// answered at load where the author is still holding the file.
+	CodeTableMinHeightUnplaceable Code = "TABLE_MIN_HEIGHT_UNPLACEABLE"
+
 	// CodeStyleLineSpacingInvalid names Story 7.2's own new condition
 	// (D-7.2.5): a `style.lineSpacing` (or `headerStyle.lineSpacing`)
 	// whose value is OUTSIDE ITS DECLARED DOMAIN — not a whole number of
@@ -367,6 +389,7 @@ var allCodes = []Code{
 	CodeTableHeaderRepeatSuppressed,
 	CodeTableFooterOrphanSuppressed,
 	CodeTableRowClippedHeight,
+	CodeTableMinHeightUnplaceable,
 	CodeStyleLineSpacingInvalid,
 	CodeTemplateFieldInvalid,
 }
@@ -403,6 +426,7 @@ var dispositions = map[Code]Disposition{
 	CodeTableHeaderRepeatSuppressed: DispositionWarning,
 	CodeTableFooterOrphanSuppressed: DispositionWarning,
 	CodeTableRowClippedHeight:       DispositionWarning,
+	CodeTableMinHeightUnplaceable:   DispositionError,
 	CodeStyleLineSpacingInvalid:     DispositionError,
 	CodeTemplateFieldInvalid:        DispositionError,
 }

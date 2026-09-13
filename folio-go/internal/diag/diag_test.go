@@ -43,6 +43,7 @@ var codePins = []struct {
 	{"CodeTableHeaderRepeatSuppressed", CodeTableHeaderRepeatSuppressed, "TABLE_HEADER_REPEAT_SUPPRESSED"},
 	{"CodeTableFooterOrphanSuppressed", CodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
 	{"CodeTableRowClippedHeight", CodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
+	{"CodeTableMinHeightUnplaceable", CodeTableMinHeightUnplaceable, "TABLE_MIN_HEIGHT_UNPLACEABLE"},
 	{"CodeStyleLineSpacingInvalid", CodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
 	{"CodeTemplateFieldInvalid", CodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
 }

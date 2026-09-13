@@ -215,6 +215,40 @@ var closedBorderEdges = func() map[string]bool {
 // rules to avoid.
 func IsBorderEdge(s string) bool { return closedBorderEdges[s] }
 
+// RuleBoundaryTokens is the closed set `table.rules.between` admits, in
+// the order a refusal names them — and the order the projection joins
+// them. One declaration, exactly as BorderEdgeTokens is.
+//
+// ⚠ THIS SET IS EFFECTIVELY PERMANENT FROM THE COMMIT THAT SHIPPED IT.
+// Extending a closed set is a MAJOR version change under D-1.4.12, so a
+// third boundary name cannot be added without a major bump. It was
+// closed deliberately (SPEC-table-rules, "Ask First"): a table has
+// exactly two families of interior boundary, one per axis, and a value
+// outside the pair would name something that does not exist.
+//
+// It is NOT BorderEdgeTokens and must never be derived from it. An edge
+// is one of a CELL's four sides; a boundary is one of the TABLE's
+// interior seams. Conflating the two vocabularies is the defect this
+// block replaces.
+var RuleBoundaryTokens = []string{"columns", "rows"}
+
+// closedRuleBoundaries is RuleBoundaryTokens as a lookup, built from the
+// slice so the set and the sentence that reports it cannot drift apart.
+var closedRuleBoundaries = func() map[string]bool {
+	set := make(map[string]bool, len(RuleBoundaryTokens))
+	for _, token := range RuleBoundaryTokens {
+		set[token] = true
+	}
+	return set
+}()
+
+// IsRuleBoundary reports whether s is a member of the rule-boundary set.
+// Exported for the command path (component_commands.go's `rules` arm),
+// which owes the author a LOCATED refusal drawn from the SAME source the
+// loader reads — never a second literal pair that could admit at the
+// command door a value the file door still refuses.
+func IsRuleBoundary(s string) bool { return closedRuleBoundaries[s] }
+
 var closedFooterKinds = map[string]bool{
 	"sum": true, "count": true, "avg": true,
 }

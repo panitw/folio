@@ -45,6 +45,7 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeTableHeaderRepeatSuppressed", DiagCodeTableHeaderRepeatSuppressed, "TABLE_HEADER_REPEAT_SUPPRESSED"},
 	{"DiagCodeTableFooterOrphanSuppressed", DiagCodeTableFooterOrphanSuppressed, "TABLE_FOOTER_ORPHAN_SUPPRESSED"},
 	{"DiagCodeTableRowClippedHeight", DiagCodeTableRowClippedHeight, "TABLE_ROW_CLIPPED_HEIGHT"},
+	{"DiagCodeTableMinHeightUnplaceable", DiagCodeTableMinHeightUnplaceable, "TABLE_MIN_HEIGHT_UNPLACEABLE"},
 	{"DiagCodeStyleLineSpacingInvalid", DiagCodeStyleLineSpacingInvalid, "STYLE_LINE_SPACING_INVALID"},
 	{"DiagCodeTemplateFieldInvalid", DiagCodeTemplateFieldInvalid, "TEMPLATE_FIELD_INVALID"},
 }

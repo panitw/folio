@@ -734,7 +734,17 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 			func(v TableColumnsProjection) string { return strconv.FormatInt(v.HeaderFontSizeResolved, 10) }},
 		{"lineSpacing", "HeaderLineSpacingResolved", `"lineSpacing": 1.5`, `2`, "1500", "2000",
 			func(v TableColumnsProjection) string { return strconv.FormatInt(v.HeaderLineSpacingResolved, 10) }},
-		{"background", "HeaderBackgroundResolved", `"background": "#eeeeee"`, `"#101010"`, "#eeeeee", "#101010",
+		// ⚠ wantTable IS "" FOR THE CHROME FOUR (this row and the border
+		// trio below), and that is SPEC-table-rules §1 rather than a
+		// gap. `background` and `border` are the only members on this
+		// cascade with NO `style` leg any more: a table's own
+		// `style.background`/`style.border` paint the table's BOX, and
+		// `headerStyle`'s are the only declaration that reaches a header
+		// cell. So with nothing on headerStyle the resolved twin
+		// correctly answers "nothing resolves" — the projection's
+		// ordinary spelling of absence — and leg two, which is what the
+		// author is actually authoring, is unchanged.
+		{"background", "HeaderBackgroundResolved", `"background": "#eeeeee"`, `"#101010"`, "", "#101010",
 			func(v TableColumnsProjection) string { return v.HeaderBackgroundResolved }},
 		{"color", "HeaderColorResolved", `"color": "#1b2a4a"`, `"#c81e1e"`, "#1b2a4a", "#c81e1e",
 			func(v TableColumnsProjection) string { return v.HeaderColorResolved }},
@@ -764,15 +774,15 @@ func TestEveryResolvedProjectionMemberFollowsBothLegsOfTheCascade(t *testing.T) 
 		// edges), and leg two's expected value is the attribute the command just
 		// wrote. A member wired to the committed field fails leg one; one wired
 		// to `style.border` fails leg two, exactly as for the nine.
-		{"border.width", "HeaderBorderWidthResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `1.5`, "3000", "1500",
+		{"border.width", "HeaderBorderWidthResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `1.5`, "", "1500",
 			func(v TableColumnsProjection) string { return v.HeaderBorderWidthResolved }},
-		{"border.color", "HeaderBorderColorResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `"#c81e1e"`, "#445566", "#c81e1e",
+		{"border.color", "HeaderBorderColorResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `"#c81e1e"`, "", "#c81e1e",
 			func(v TableColumnsProjection) string { return v.HeaderBorderColorResolved }},
 		// AND THE EDGES ROW IS THE ONE THAT PINS THE CANONICAL ORDER AS WELL AS
 		// THE CASCADE: the command sends `["left","top"]` and the projection must
 		// answer `top,left`, because the browser's guard admits only the format's
 		// own order and Go is the side that fixes it.
-		{"border.edges", "HeaderBorderEdgesResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `["left", "top"]`, "top,bottom", "top,left",
+		{"border.edges", "HeaderBorderEdgesResolved", `"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}`, `["left", "top"]`, "", "top,left",
 			func(v TableColumnsProjection) string { return v.HeaderBorderEdgesResolved }},
 	}
 	// THE TIE DW-240 WAS MISSING, AND THE DURABLE HALF OF ITS FIX. Nothing
@@ -1128,10 +1138,16 @@ func TestSetTheHeaderHeightLocatesItsArityRefusal(t *testing.T) {
 // written one.
 // ---------------------------------------------------------------------------
 
-// A table whose OWN border is fully declared and whose header declares none, so
-// every leg of the block-granular takeover is observable: the header inherits
-// the table's border until the first attribute is authored, and stops inheriting
-// it entirely from that moment.
+// A table whose OWN border is fully declared and whose header declares none.
+//
+// SPEC-table-rules §1 CHANGED WHAT THE TABLE'S OWN BORDER DOES here, and the
+// fixture is kept as it was so the change is visible: the table's border now
+// paints the table's BOX and the header inherits NOTHING from it. What the four
+// rows below assert is unaffected — they are claims about the BYTES a command
+// leaves behind (one attribute per command, a second leaving the first alone, a
+// clear of one, the clear of the last collapsing two nested blocks) — and the
+// resolved-projection preconditions now read "the header declares and resolves
+// no border at all" rather than "the header inherits the table's".
 func headerBorderDocument(t *testing.T, headerStyle string) *Template {
 	t.Helper()
 	return headerCascadeDocument(t, `"style": {"border": {"width": 3, "color": "#445566", "edges": ["top", "bottom"]}},`, headerStyle)
@@ -1144,10 +1160,11 @@ func headerBorderDocument(t *testing.T, headerStyle string) *Template {
 // their behalf to soften a cascade change the panel discloses in words instead.
 func TestAuthoringOneHeaderBorderAttributeWritesOnlyThatAttribute(t *testing.T) {
 	tpl := headerBorderDocument(t, "")
-	// PRECONDITION: the header inherits the table's border, whole.
+	// PRECONDITION: the header inherits NOTHING — the table's own border is
+	// the box's now (SPEC-table-rules §1).
 	before := projectHeaderCascade(t, tpl)
-	if before.HeaderBorderWidthResolved != "3000" || before.HeaderBorderColorResolved != "#445566" || before.HeaderBorderEdgesResolved != "top,bottom" {
-		t.Fatalf("precondition: the header must inherit the table's border, got %#v", before)
+	if before.HeaderBorderWidthResolved != "" || before.HeaderBorderColorResolved != "" || before.HeaderBorderEdgesResolved != "" {
+		t.Fatalf("precondition: the header must resolve no border of its own, got %#v", before)
 	}
 	if before.HeaderBorderWidth != "" || before.HeaderBorderColor != "" || before.HeaderBorderEdges != "" {
 		t.Fatalf("precondition: the header must declare no border of its own, got %#v", before)
@@ -1246,11 +1263,15 @@ func TestClearingTheLastHeaderBorderAttributeCollapsesBorderAndHeaderStyle(t *te
 	if bytes.Contains(encoded, []byte(`"headerStyle"`)) {
 		t.Errorf("clearing the header style's only member left a headerStyle key:\n%s", encoded)
 	}
-	// THE TABLE'S OWN BORDER IS BACK, which is what makes the collapse a
-	// behaviour rather than tidiness: the header inherits again.
+	// THE HEADER RESOLVES NO BORDER AT ALL, which is what makes the collapse
+	// a behaviour rather than tidiness: before SPEC-table-rules the header
+	// inherited the table's border back; now the table's border is the box's,
+	// so what comes back is the absence — and a member still claiming
+	// 3pt/#445566/top,bottom here would mean the collapse never happened and
+	// the stale header block is still being read.
 	view := projectHeaderCascade(t, tpl)
-	if view.HeaderBorderWidthResolved != "3000" || view.HeaderBorderColorResolved != "#445566" || view.HeaderBorderEdgesResolved != "top,bottom" {
-		t.Errorf("after clearing the last attribute the header resolves %#v, want the table's own 3pt/#445566/top,bottom back", view)
+	if view.HeaderBorderWidthResolved != "" || view.HeaderBorderColorResolved != "" || view.HeaderBorderEdgesResolved != "" {
+		t.Errorf("after clearing the last attribute the header resolves %#v, want no border at all", view)
 	}
 	if _, err := ParseTemplate(encoded); err != nil {
 		t.Fatalf("the collapsed document no longer loads: %v", err)

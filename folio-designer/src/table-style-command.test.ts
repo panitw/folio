@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand } from './table-style-command'
+import { tableAltRowBackgroundCommand, tableHeaderHeightCommand, tableHeaderStyleCommand, tableMinHeightCommand, tableRulesCommand } from './table-style-command'
 
 // THIS FILE IS THE SINGLE AUTHORITY ON THESE WIRE BYTES — Story 12.3's seven
 // header-style fields and Story 14.8's border trio alike — and the story
@@ -128,5 +128,39 @@ describe('tableHeaderStyleCommand', () => {
     expect([...((JSON.parse(wire) as Record<string, string>).value ?? '')]).toEqual(['n', EMOJI, 'm', 'e'])
     expect(wire).not.toContain('\\ud83d')
     expect(wire).not.toContain('\\uD83D')
+  })
+})
+
+// SPEC-table-rules' two kinds. Exact bytes, because a mock-call assertion in the
+// panel's tests is satisfied equally by an encoder that drifted.
+describe('tableMinHeightCommand', () => {
+  it('encodes set with an unquoted length and clear with no value, in order', () => {
+    expect(text(tableMinHeightCommand('e7', 'set', '600')))
+      .toBe('{"kind":"setTableMinHeight","version":1,"id":"e7","op":"set","value":600}')
+    expect(text(tableMinHeightCommand('e7', 'set', '12.5')))
+      .toBe('{"kind":"setTableMinHeight","version":1,"id":"e7","op":"set","value":12.5}')
+    expect(text(tableMinHeightCommand('e7', 'clear')))
+      .toBe('{"kind":"setTableMinHeight","version":1,"id":"e7","op":"clear"}')
+    expect(keys(tableMinHeightCommand('e7', 'set', '600'))).toEqual(['kind', 'version', 'id', 'op', 'value'])
+    expect(keys(tableMinHeightCommand('e7', 'clear'))).toEqual(['kind', 'version', 'id', 'op'])
+  })
+})
+
+describe('tableRulesCommand', () => {
+  it('encodes width as a number, color as a string, between as an array, and clear with no value', () => {
+    expect(text(tableRulesCommand('e7', 'width', 'set', '0.5')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"width","op":"set","value":0.5}')
+    expect(text(tableRulesCommand('e7', 'color', 'set', '#336699')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"color","op":"set","value":"#336699"}')
+    expect(text(tableRulesCommand('e7', 'between', 'set', 'columns,rows')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"between","op":"set","value":["columns","rows"]}')
+    expect(text(tableRulesCommand('e7', 'between', 'set', 'columns')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"between","op":"set","value":["columns"]}')
+    expect(text(tableRulesCommand('e7', 'between', 'clear')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"between","op":"clear"}')
+    expect(text(tableRulesCommand('e7', 'width', 'clear')))
+      .toBe('{"kind":"updateTableRules","version":1,"id":"e7","field":"width","op":"clear"}')
+    expect(keys(tableRulesCommand('e7', 'color', 'set', '#336699'))).toEqual(['kind', 'version', 'id', 'field', 'op', 'value'])
+    expect(keys(tableRulesCommand('e7', 'color', 'clear'))).toEqual(['kind', 'version', 'id', 'field', 'op'])
   })
 })

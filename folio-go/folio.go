@@ -90,5 +90,14 @@ func ParseTemplate(b []byte) (*Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Template{doc: doc, derivedFooters: derived}, nil
+	t := &Template{doc: doc, derivedFooters: derived}
+	// SPEC-table-rules §3: a table whose `minHeight` exceeds the content
+	// window can never be placed, and that is decidable from the document
+	// alone — so it is refused HERE, at the same public boundary the
+	// expression checks are refused at, and for the same layering reason
+	// (internal/template may not import internal/layout).
+	if err := validateTableMinHeights(t); err != nil {
+		return nil, err
+	}
+	return t, nil
 }

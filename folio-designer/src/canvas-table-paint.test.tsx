@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import App, { canvasDisplay } from './App'
-import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_PROPERTY_STRING, parseInbound, type CanvasProjection, type CanvasTableColumn } from './engine-protocol'
+import { ENGINE_PROTOCOL_VERSION, MAX_CANVAS_PROPERTY_STRING, MAX_CANVAS_TABLE_LABEL_LINE_LENGTH, MAX_CANVAS_TABLE_LABEL_LINES, parseInbound, type CanvasProjection, type CanvasTableColumn } from './engine-protocol'
 import type { EngineClient } from './engine-client'
 
 const appCss = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'App.css'), 'utf8')
@@ -31,7 +31,7 @@ const canvas: CanvasProjection = { width: 595276, height: 841890, orientation: '
 // alias nothing references cannot keep the painter and the guard naming one
 // shape, which is the whole reason it is exported.
 type Column = CanvasTableColumn
-const column = (id: string, label: string, width: number, bind: string, headerAlign: Column['headerAlign'] = 'left', cellAlign: Column['cellAlign'] = 'left'): Column => ({ id, label, width, headerAlign, cellAlign, bind })
+const column = (id: string, label: string, width: number, bind: string, headerAlign: Column['headerAlign'] = 'left', cellAlign: Column['cellAlign'] = 'left'): Column => ({ id, label, labelLines: label === '' ? [] : label.split('\n'), width, headerAlign, cellAlign, bind })
 
 // The design's own five-column statement table, at the widths TableEditor.dc.html
 // declares — NOT at Binding.dc.html's pixel tracks, which are a drawing and not
@@ -482,3 +482,54 @@ describe('the protocol guard admits the canvas table columns, and only those', (
     expect(bad({})).toBeDefined()
   })
 })
+
+// SPEC-table-rules §4: the heading paints the ENGINE's packed label lines, one
+// block per line, and never hands `label` to the browser to wrap.
+describe('the canvas paints a column label as the engine packed it', () => {
+  const inbound = (components: ReadonlyArray<unknown>) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: { ...canvas, components } } })
+  it('draws one line element per labelLines entry, in order, and ignores label for the paint', () => {
+    const packed: Column = { ...column('e10', 'ignored', 40_000, '{{date}}', 'center', 'left'), label: 'วันที่\nDATE of posting', labelLines: ['วันที่', 'DATE of', 'posting'] }
+    const view = mount([table({ columns: [packed, column('e11', 'Amount', 40_000, '{{amount}}'), column('e12', '', 20_000, '{{x}}')], width: 100_000 })])
+    const headings = home(view.container).querySelectorAll('.canvas-table-heading')
+    expect(textsOf(headings[0] as Element, '.canvas-table-heading-line')).toEqual(['วันที่', 'DATE of', 'posting'])
+    expect(textsOf(headings[1] as Element, '.canvas-table-heading-line')).toEqual(['Amount'])
+    expect(headings[2]?.querySelectorAll('.canvas-table-heading-line')).toHaveLength(0)
+    // Nothing but the line elements is painted inside the heading: no raw
+    // line feed for the browser to act on.
+    expect(Array.from((headings[0] as Element).childNodes).every((node) => (node as Element).classList?.contains('canvas-table-heading-line'))).toBe(true)
+    expect(headings[0]?.textContent).not.toContain('\n')
+    // The heading keeps its column id, its paint marker and its alignment.
+    expect((headings[0] as HTMLElement).dataset.columnId).toBe('e10')
+    expect(headings[0]?.classList.contains('canvas-display-paint')).toBe(true)
+    expect((headings[0] as HTMLElement).style.textAlign).toBe('center')
+  })
+
+  it('declares each line a block and leaves the break to the engine', () => {
+    const rule = cssRule('.canvas-table-heading-line')
+    expect(rule).toMatch(/display:\s*block/)
+    expect(rule).not.toMatch(/white-space/)
+  })
+
+  it('refuses a canvas column whose labelLines is missing, over-long or mistyped', () => {
+    const bad = (patch: Record<string, unknown>) => inbound([table({ columns: [{ ...column('e10', 'Date', 22_000, '{{date}}'), ...patch } as Column], width: 22_000 })])
+    const { labelLines: _lines, ...noLines } = column('e10', 'Date', 22_000, '{{date}}')
+    expect(inbound([table({ columns: [noLines as Column], width: 22_000 })])).toBeUndefined()
+    expect(bad({ labelLines: 'Date' })).toBeUndefined()
+    expect(bad({ labelLines: [7] })).toBeUndefined()
+    // The bounds are Go's own (maxCanvasTableLabelLines and
+    // maxCanvasTableLabelLineLength), not the generic property-string bound: a
+    // packed line is label TEXT, and a legitimate label line may be longer than
+    // an identifier's 512 units.
+    expect(MAX_CANVAS_TABLE_LABEL_LINES).toBe(256)
+    expect(MAX_CANVAS_TABLE_LABEL_LINE_LENGTH).toBe(1024)
+    expect(bad({ labelLines: ['x'.repeat(1025)] })).toBeUndefined()
+    expect(bad({ labelLines: Array.from({ length: 257 }, () => 'x') })).toBeUndefined()
+    // Positive controls at the bounds — and past the old property-string bound.
+    expect(bad({ labelLines: ['x'.repeat(MAX_CANVAS_PROPERTY_STRING + 1)] })).toBeDefined()
+    expect(bad({ labelLines: ['x'.repeat(1024)] })).toBeDefined()
+    expect(bad({ labelLines: Array.from({ length: 256 }, () => 'x') })).toBeDefined()
+    expect(bad({ labelLines: Array.from({ length: 16 }, () => 'x'.repeat(1024)) })).toBeDefined()
+    expect(bad({ labelLines: [] })).toBeDefined()
+  })
+})
+

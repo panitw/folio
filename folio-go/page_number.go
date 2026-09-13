@@ -107,6 +107,7 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			contentRuns[j].elementID == contentRuns[i].elementID &&
 			contentRuns[j].lineIndex == contentRuns[i].lineIndex {
 			item.Runs = append(item.Runs, layout.TextRunRef(j))
+			extendItem(&item, contentRuns[j].x, contentRuns[j].x)
 			j++
 		}
 		items = append(items, item)
@@ -131,6 +132,7 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			Images:    []layout.ImageRef{layout.ImageRef(i)},
 			Group:     keepTogether.keepTogetherGroup(r.elementID),
 		})
+		extendItem(&items[len(items)-1], r.x, r.x+r.boxW)
 	}
 	// Story 4.1: table header rects. collectBandTableRuns already
 	// filters to VISIBLE tables with >=1 column before returning
@@ -155,7 +157,11 @@ func contentColumnItems(contentRuns []textRunSource, imageRuns []imageRunSource,
 			// {{page}} resolve against (D-2.7.2), so it must agree with
 			// paginateDocument's own partition, not merely its count.
 			Group: keepTogether.orKeepTogether(ts.chromeRowGroup(), ts.elementID),
+			// SPEC-table-rules: the SAME slice request paginateDocument
+			// makes, so a floor's push decides the same page count here.
+			Slice: ts.frame.sliceRequest(),
 		})
+		items[len(items)-1].Left, items[len(items)-1].Right, items[len(items)-1].HasExtent = rectSourceExtent(ts)
 	}
 	return items
 }

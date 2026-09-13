@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type Key
 import { MAX_ENGINE_HISTORY_ENTRIES, type TableColumns } from './engine-protocol'
 import { alignSegments, SegmentedControl } from './segmented-control'
 import { isHexColour, swatchColor } from './swatch-color'
-import type { TableHeaderStyleField } from './table-style-command'
+import type { TableHeaderStyleField, TableRulesField } from './table-style-command'
 import { tableColumnBindingSuggestion } from './table-column-command'
 
 type Field = 'header' | 'width' | 'proportion' | 'align'
 type BindingControl = HTMLInputElement | HTMLTextAreaElement
 type ActiveCell = Readonly<{ row: number; column: number }>
 type Candidate = Readonly<{ collection: string; field: string }>
-type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => Promise<boolean> | void; onTotalWidth: (value: string) => Promise<boolean> | void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void }>
+type Props = Readonly<{ projection: TableColumns; busy: boolean; fileBusy: boolean; discarding: boolean; error?: string; candidates: ReadonlyArray<Candidate>; sampleAvailable: boolean; band?: string; availableWidth?: number; sampleItemCount?: number; editCount: number; onClose: () => void; onCancel: () => void; onAdd: (index: number) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onUpdate: (id: string, field: Field, value: string | number) => Promise<boolean> | void; onTotalWidth: (value: string) => Promise<boolean> | void; onBinding: (id: string, binding: string) => Promise<boolean>; onConfigure: (collection: string, alias: string) => void; onFooter: (id: string, footer: string, footerOf: string, footerFormat: string) => void; onHeaderHeight: (height: string) => void; onAltRowBackground: (operation: 'set' | 'clear', value?: string) => void; onHeaderStyle: (field: TableHeaderStyleField, operation: 'set' | 'clear', value?: string) => void; onMinHeight: (operation: 'set' | 'clear', value?: string) => void; onRules: (field: TableRulesField, operation: 'set' | 'clear', value?: string) => void }>
 
 // STORY 14.7 — SIX LABELLED COLUMNS ON SCREEN, TWELVE LATTICE CELLS BEHIND
 // THEM, and the two numbers are different on purpose.
@@ -49,6 +49,15 @@ const COLUMN_COUNT = 6
 // than a second opinion about what a legal alignment is.
 const BORDER_EDGES = ['top', 'right', 'bottom', 'left'] as const
 
+// THE TWO RULE BOUNDARIES, IN THE FORMAT'S OWN ORDER — the order the engine's
+// `RuleBoundaryTokens` declares, which is the order its projection joins them
+// in and the only order its guard admits. A separate constant from
+// BORDER_EDGES and deliberately not derived from it: an edge is one of a
+// cell's four sides and a boundary is one of the table's interior seams, and
+// SPEC-table-rules keeps the two vocabularies apart precisely because
+// conflating them is the defect it repairs.
+const RULE_BOUNDARIES = ['columns', 'rows'] as const
+
 // The display unit is POINTS, one decimal (D-14.2.Q3, settled product-wide).
 // The stored value is millipoints and is untouched by anything in this file.
 const pointsOf = (millipoints: number): string => (millipoints / 1000).toFixed(1)
@@ -60,6 +69,8 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 // the two lengths, a bare ratio for the spacing. Every box in this panel is in
 // author units, exactly as the matrix's own Width column already is.
 const authored = (thousandths: number): string => String(thousandths / 1000)
+// A header label's visible line count: its line feeds plus one, never below one.
+const labelRows = (label: string): number => label.split('\n').length
 
 // What the document WILL USE for a field the author has not set — the engine's
 // own answer, shown IN the box as a placeholder rather than beside it on a
@@ -93,7 +104,7 @@ const authored = (thousandths: number): string => String(thousandths / 1000)
 // is a third thing again. Those three words are now the three placeholders.
 const resolvedHint = (resolved: string, whenEmpty: string): string => resolved === '' ? whenEmpty : resolved
 
-export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle }: Props) {
+export function TableEditor({ projection, busy, fileBusy, discarding, error, candidates, sampleAvailable, band, availableWidth, sampleItemCount, editCount, onClose, onCancel, onAdd, onRemove, onMove, onUpdate, onTotalWidth, onBinding, onConfigure, onFooter, onHeaderHeight, onAltRowBackground, onHeaderStyle, onMinHeight, onRules }: Props) {
   const table = projection.table
   const columns = table.columns
   const proportional = table.sizing === 'proportion'
@@ -283,6 +294,14 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const moveFocus = (event: KeyboardEvent<HTMLElement>, row: number, column: number) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     if (column === CELL.bound && event.currentTarget instanceof HTMLTextAreaElement && ['ArrowUp', 'ArrowDown'].includes(event.key)) return
+    // A header label may hold line feeds: its textarea keeps ArrowUp while the
+    // caret has a line above it and ArrowDown while it has one below, and the
+    // lattice claims the key only from the first or last line respectively.
+    if (column === CELL.header && event.currentTarget instanceof HTMLTextAreaElement) {
+      const box = event.currentTarget
+      if (event.key === 'ArrowUp' && box.value.slice(0, box.selectionStart).includes('\n')) return
+      if (event.key === 'ArrowDown' && box.value.slice(box.selectionEnd).includes('\n')) return
+    }
     // Alt+Down hands a single-line control's native datalist its suggestions.
     if (column === CELL.bound && event.altKey && event.key === 'ArrowDown') {
       const input = event.currentTarget
@@ -477,6 +496,43 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
         <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onHeaderStyle(field, 'clear'))}>×</button>
       </span>
     </label>
+  // THE TWO RULE CONTROLS, AND THEY ARE `styleNumber`/`styleColour` WITH ONE
+  // CALLBACK CHANGED. They are separate factories rather than a widened pair
+  // because the two pairs address different commands — `updateTableHeaderStyle`
+  // and `updateTableRules` — with different field vocabularies, and a factory
+  // taking a union of both fields plus a discriminator would be a wider thing
+  // than two small ones. Every behaviour they share (the remount key, the
+  // resolved value as the placeholder, the busy-restore, the × clear, the
+  // unset-swatch treatment) is spelled the same way here on purpose: a reader
+  // comparing the two sections should see the same control twice.
+  const commitRulesText = (field: TableRulesField, committed: string) => (event: FocusEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    if (busy) { setRestore((count) => count + 1); return }
+    if (input.validity?.badInput) return
+    const value = input.value
+    if (value === committed) return
+    if (value === '') onRules(field, 'clear')
+    else onRules(field, 'set', value)
+  }
+  // `locked` is "no boundary is ticked". A rules block with no boundary draws
+  // nothing yet still bumps the document version, so width and colour cannot
+  // be authored until a boundary is — but a value already committed (a file
+  // written elsewhere) can still be cleared, so the × follows the value.
+  const rulesNumber = (field: TableRulesField, label: string, committed: string, resolved: string, step: string, min: string, whenUnresolved: string, locked: boolean) =>
+    <label className="table-header-field">{label}
+      <span className="table-header-control">
+        <input key={boxKey(committed)} aria-label={label} placeholder={resolvedHint(resolved, whenUnresolved)} type="number" min={min} step={step} disabled={busy || locked} defaultValue={committed === '' ? '' : authored(Number(committed))} onBlur={commitRulesText(field, committed === '' ? '' : authored(Number(committed)))} />
+        <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy || locked && committed === ''} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onRules(field, 'clear'))}>×</button>
+      </span>
+    </label>
+  const rulesColour = (field: TableRulesField, label: string, committed: string, resolved: string, whenUnresolved: string, locked: boolean) =>
+    <label className="table-header-field">{label}
+      <span className="table-header-control">
+        <input key={boxKey(committed)} aria-label={label} placeholder={resolvedHint(resolved, whenUnresolved)} disabled={busy || locked} defaultValue={committed} onBlur={commitRulesText(field, committed)} />
+        <input type="color" className={`property-swatch${isHexColour(committed) ? '' : ' property-swatch-unset'}`} aria-label={`Pick ${label}`} value={swatchColor(committed)} disabled={busy || locked} onChange={(event) => { const value = event.target.value; dispatchOnce(() => onRules(field, 'set', value)) }} />
+        <button type="button" className="property-inline-action" aria-label={`Clear ${label}`} title={`Clear ${label}`} disabled={busy || locked && committed === ''} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onRules(field, 'clear'))}>×</button>
+      </span>
+    </label>
   // A FACT THE ENGINE DERIVES, STATED AS ONE — never offered as a control and
   // never drawn as a disabled control either. `Row height` and `Repeat on
   // continuation pages` are both things the design drew as settings and the
@@ -620,6 +676,11 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   }
   const committedEdges: ReadonlyArray<string> = table['headerBorder.edges'] === '' ? [] : table['headerBorder.edges'].split(',')
   const borderPainted = table['headerBorder.edgesResolved'] !== ''
+  // SPEC-table-rules. `ruled` is "a rules block exists at all", which is the
+  // condition the engine itself uses to decide whether the resolved width and
+  // colour mean anything: it spells "no block" as '' on both.
+  const ruled = table['rules.widthResolved'] !== ''
+  const committedBoundaries = table['rules.between'] === '' ? [] : table['rules.between'].split(',')
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { totalBlurTarget.current = null; totalHeldFocus.current = event.target === totalInput.current; if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
@@ -639,7 +700,25 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               so nothing the eleven-column matrix could reach by keyboard has
               become unreachable. A disabled end states WHICH end it is. */}
           <span role="gridcell" aria-colindex={1} className="matrix-rail"><span className="matrix-ordinal">{index + 1}</span><span className="matrix-actions"><button {...matrixCell(index, CELL.moveEarlier)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} earlier`} title={index === 0 ? `Column ${index + 1} is already first` : `Move column ${index + 1} earlier`} disabled={busy || index === 0} onClick={() => dispatchOnce(() => onMove(column.id, index - 1))}>↑</button><button {...matrixCell(index, CELL.moveLater)} type="button" className="matrix-affordance" aria-label={`Move column ${index + 1} later`} title={index === columns.length - 1 ? `Column ${index + 1} is already last` : `Move column ${index + 1} later`} disabled={busy || index === columns.length - 1} onClick={() => dispatchOnce(() => onMove(column.id, index + 1))}>↓</button><button {...matrixCell(index, CELL.remove)} type="button" className="matrix-affordance" aria-label={`Remove column ${index + 1}`} title={`Remove column ${index + 1}`} disabled={busy} onClick={() => dispatchOnce(() => onRemove(column.id))}>×</button></span></span>
-          <span role="gridcell" aria-colindex={2}><input key={boxKey(column.header)} {...matrixCell(index, CELL.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
+          {/* ⚠ A `<textarea>` AND NOT AN `<input>` (SPEC-table-rules §4). A
+              column label may now hold a line feed — a bilingual heading is
+              Thai over English — and an `<input>` cannot hold one at all: the
+              character is silently dropped on paste and unreachable from the
+              keyboard, so the control refused a value the format admits.
+
+              ENTER INSERTS A BREAK; it does not submit and it does not commit.
+              The commit is still the blur, exactly as every other box in this
+              matrix commits, so the roving lattice and the busy-restore
+              behaviour are unchanged. `rows` follows the label's line count
+              (updated on every change), so a one-line label keeps the shipped
+              single-line look and a two-line one shows both lines.
+
+              ⚠ THE KEYDOWN HANDLER IS `matrixCell`'s AND MUST STAY IT: the
+              lattice's arrow-key navigation is spread in below, and a second
+              onKeyDown here would replace it and strand this cell. Enter is not
+              one of the keys `moveFocus` claims; ArrowUp/ArrowDown are claimed
+              only from the label's first/last line (see `moveFocus`). */}
+          <span role="gridcell" aria-colindex={2}><textarea key={boxKey(column.header)} {...matrixCell(index, CELL.header)} rows={labelRows(column.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onChange={(event) => { event.currentTarget.rows = labelRows(event.currentTarget.value) }} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; event.currentTarget.rows = labelRows(event.currentTarget.value); return } if (event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
           <span role="gridcell" aria-colindex={3} className="matrix-bound">
             {bindingControl(column, index)}
           </span>
@@ -857,6 +936,47 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
           ? 'This header border is authored as a whole: it no longer follows the table’s border, and anything left blank above falls to the format’s own default rather than to the table’s value. Clear all three to give the table’s border back.'
           : 'No header border attribute is authored here. The note under each control is the engine’s resolved answer for that attribute. Setting any one of the three authors the header’s border as a whole, and from then on the other two fall to the format’s own default.'}</p>
         <p className="honest-note">A field left blank falls back to the table's own style and then to the format's default — except the three border attributes, which the engine takes as one block, as the line above says. The engine resolves every one of them; the note under each control is the engine's answer, not this panel's.</p>
+        {/* SPEC-table-rules' RULED AREA. It is a fourth heading inside the SAME
+            `role="group"` as the other three, for the reason the HEADER/CELLS/
+            BORDERS comment above gives at length: a fourth `role="group"` moves
+            the shrunk sweep's group count and clears a pinned floor, which is an
+            arm that spends something where one exists that spends nothing.
+
+            IT LIVES HERE AND NOT IN THE INSPECTOR'S BOX SECTION, and that is the
+            owner's ruling. BOX authors the table's own `style.border` /
+            `style.background` — which, since SPEC-table-rules, is exactly what it
+            says it is: the frame around the table. These three are the lines
+            INSIDE it and the floor under it, which are table configuration and
+            belong beside the header and the rows. */}
+        <h3 className="section-label">RULED AREA</h3>
+        {/* THE TABLE'S FRAME IS STILL NOT RESTATED HERE, for the reason the
+            BORDERS heading gives: it is the inspector's BOX section's, and since
+            SPEC-table-rules that section is telling the truth about a table. */}
+        <label className="table-header-field">Minimum height (pt)
+          <span className="table-header-control">
+            <input key={boxKey(table.minHeight)} aria-label="Minimum height in points" placeholder="no floor — the rows decide" type="number" min="0.001" step="0.001" disabled={busy} defaultValue={table.minHeight === 0 ? '' : authored(table.minHeight)} onBlur={(event) => { const input = event.currentTarget; if (busy) { setRestore((count) => count + 1); return } if (input.validity?.badInput) return; const committed = table.minHeight === 0 ? '' : authored(table.minHeight); if (input.value === committed) return; if (input.value === '') onMinHeight('clear'); else onMinHeight('set', input.value) }} />
+            <button type="button" className="property-inline-action" aria-label="Clear Minimum height" title="Clear Minimum height" disabled={busy || table.minHeight === 0} onMouseDown={(event) => event.preventDefault()} onClick={() => dispatchOnce(() => onMinHeight('clear'))}>×</button>
+          </span>
+          <output aria-label="Minimum height note">A floor, never a height: each page&rsquo;s slice of the table is at least this tall, capped at that page&rsquo;s content bottom. Rows are laid out exactly as they would be without it.</output>
+        </label>
+        {/* FOUR CHECKBOXES' WORTH OF REASONING IN TWO, AND THE SAME REASONING:
+            no `role="group"`, no `×` clear, for exactly the grounds the header
+            border edges carry above. Unchecking both IS the clear, and it sends
+            one — an empty `between` paints nothing, so "no boundaries" and "no
+            block" are the same drawing and the panel picks the spelling that
+            leaves no dead key in the file. */}
+        <div className="table-header-field">Ruled boundaries
+          <span className="table-header-control table-header-edges">
+            {RULE_BOUNDARIES.map((boundary) => <label key={boundary}>
+              <input type="checkbox" aria-label={`Rule between ${boundary}`} disabled={busy} checked={committedBoundaries.includes(boundary)} onChange={() => { const next = RULE_BOUNDARIES.filter((name) => name === boundary ? !committedBoundaries.includes(name) : committedBoundaries.includes(name)); dispatchOnce(() => next.length === 0 ? onRules('between', 'clear') : onRules('between', 'set', next.join(','))) }} />
+              {boundary}
+            </label>)}
+          </span>
+          <output aria-label="Resolved ruled boundaries">{committedBoundaries.length === 0 ? 'Using: nothing — no interior lines are drawn' : `Using: ${committedBoundaries.join(', ')}`}</output>
+        </div>
+        {rulesNumber('width', 'Rule width (pt)', table['rules.width'], ruled ? authored(Number(table['rules.widthResolved'])) : '', '0.001', '0', 'nothing — no rules drawn', committedBoundaries.length === 0)}
+        {rulesColour('color', 'Rule colour', table['rules.color'], ruled ? table['rules.colorResolved'] : '', 'nothing — no rules drawn', committedBoundaries.length === 0)}
+        <p className="honest-note">A rule is drawn once, at a boundary between two columns or two rows, and never on the table&rsquo;s own edge — the outer verticals and the bottom line are the table&rsquo;s border, in the inspector&rsquo;s BOX section. Column rules run the height of each page&rsquo;s slice of the table, through whatever empty area the minimum height creates on that page. Where the header row already draws its own bottom border, the rules skip that boundary rather than stroking it twice.</p>
       </div>
       {error && <p role="alert" className="file-message">{error}</p>}
       {/* THE FOOTER BAR: THE SUMMARY, AND THE TWO WAYS OUT (Story 14.7b).

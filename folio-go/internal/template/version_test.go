@@ -291,3 +291,50 @@ func TestATableStyleJustifyIsRefusedBeforeAnyVersionIsComputed(t *testing.T) {
 		t.Errorf("versionRequiredByContent over a justified TEXT element = %q, want %q — this story narrows the set by consumer, it does not ban the value", got, majorFeatureVersion)
 	}
 }
+
+// TestTableRuleKeysRequire31 is SPEC-table-rules' version rule: `rules` and
+// `minHeight` are ADDITIVE keys a 3.0 reader does not know, so a document
+// declaring either must say 3.1 — and a document declaring neither must not
+// move at all, which is the half that keeps the corpus where it is.
+//
+// Presence.Set, on `color`'s terms: an explicit `rules: null` is still the KEY
+// appearing in a file a 3.0 reader does not recognise.
+func TestTableRuleKeysRequire31(t *testing.T) {
+	base := func(extra string) []byte {
+		return []byte(`{
+  "assets": {},
+  "bands": {
+    "content": {"elements": [
+      {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10` + extra + `,
+        "columns": [{"id": "e2", "label": "A", "width": 60, "bind": "{{row.a}}"}]}
+    ]},
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 3,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+00:00",
+  "version": "1.0"
+}
+`)
+	}
+	for _, c := range []struct{ name, extra, want string }{
+		{"neither key", "", baseVersion},
+		{"rules", `, "rules": {"between": ["columns"]}`, tableRulesVersion},
+		{"an explicit null rules", `, "rules": null`, tableRulesVersion},
+		{"minHeight", `, "minHeight": 600`, tableRulesVersion},
+		{"both", `, "rules": {"between": ["rows"]}, "minHeight": 600`, tableRulesVersion},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := ParseDocument(base(c.extra))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := versionRequiredByContent(d); got != c.want {
+				t.Errorf("versionRequiredByContent = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

@@ -30,8 +30,8 @@ After this change a table's `style` behaves as every other element type's does:
 
 | Field | Was | Becomes |
 |---|---|---|
-| `style.border` | stroked around every cell | stroked once around the table's box |
-| `style.background` | filled behind every cell | filled once behind the table's box |
+| `style.border` | stroked around every cell | stroked once around each page's slice of the table — its frame |
+| `style.background` | filled behind every cell | filled once behind each page's slice of the table |
 
 The other `style` members are unchanged: `fontFamily`, `fontSize`, `lineSpacing`, `color`, `bold`,
 `italic`, `align`, `valign` and `padding` still cascade into data cells, because they describe the
@@ -41,10 +41,32 @@ text inside a cell rather than the chrome around it.
 a load-time migration: a legacy arm in the loader would outlive everyone who remembers why it is
 there, and the two meanings cannot both be the default. An author who wants the grid back declares
 `rules: {"between": ["columns", "rows"]}` (§2) — which is not quite what `style.border` used to
-mean, because the perimeter is now the box's and each interior line is drawn once.
+mean, because the perimeter is now the frame's and each interior line is drawn once.
 
-**Every golden whose document sets a table `style.border` moves**, and that is the change being
-witnessed rather than a casualty. A document that sets no table border must hash identically.
+**No shipped golden moves.** No fixture in `fixtures/` declares a table `style.border`, so the change
+is witnessed by new tests rather than by moved goldens. A document that sets no table border must
+hash identically.
+
+### The frame closes on every page
+
+**Owner-ruled.** A table whose rows span pages draws a complete frame around *each page's slice*, and
+**the repeated header lies inside that frame**: on a continuation page the frame's top edge sits at the
+top of the repeated header, exactly as on the first page, and the column rules run through it. On every
+page the frame's bottom edge sits at that slice's bottom. It is never one rectangle around the whole
+table, and no page looks different from the first.
+
+This constrains construction, not only appearance. A slice's extent is known only once pages are
+assigned, so the frame is emitted **after pagination**, per slice. Built before, the only thing that
+could carry it is one item as tall as the whole table — which pagination correctly treats as a group
+that fits no page. A first attempt did exactly that and turned a 2-page bordered table into 3 pages:
+the first holding only the header, the next carrying one frame clipped at its bottom.
+
+### The version signal
+
+**Owner-ruled: a minor bump.** `SupportedVersion` becomes `3.1` and `SupportedMajor` stays `3`, so an
+existing document still loads and renders with the new meaning. A major bump was the only other way to
+mark the change, and it would refuse every existing document outright — a different break from the
+one chosen, which expected old files to render differently rather than to stop opening.
 
 ## 2. `table.rules` — the lines inside the table
 
@@ -56,18 +78,18 @@ witnessed rather than a casualty. A document that sets no table border must hash
 
 | Field | Meaning |
 |---|---|
-| `between` | Which boundaries get a line. `"columns"` rules every boundary between adjacent columns; `"rows"` rules every boundary between adjacent rows. Both, either, or `[]` for none. |
+| `between` | Which boundaries get a line. `"columns"` rules every boundary between adjacent columns; `"rows"` rules every boundary between adjacent rows. Both, either, or `[]` for none. **A closed set** (owner-ruled): any other value is a load error, and adding a value later is a major version bump (D-1.4.12). |
 | `width` | Default 0.5pt, as everywhere else. |
 | `color` | Default `#000000`, as everywhere else. |
 
 `{"between": ["columns"]}` is the target form: the columns are ruled, the rows are not.
 
-### The box owns its perimeter; the rules own the inside
+### The frame owns its perimeter; the rules own the inside
 
 **A rule is drawn once, at a boundary between two things, and never on the table's own edge.** The
 outermost column has no outer vertical rule and the bottom-most row has no bottom rule — those two
-lines are the box's left, right and bottom border (§1), and the box is the only thing that draws
-them.
+lines are the frame's left, right and bottom border (§1), and the frame is the only thing that
+draws them.
 
 This is a ruling against the cell-chrome model it replaces, on two counts that are defects in it
 today rather than matters of taste:
@@ -81,35 +103,51 @@ today rather than matters of taste:
   grid cannot have one. Splitting the perimeter (§1) from the rules (here) makes those two weights
   two decisions.
 
-`between: ["columns"]` therefore draws its verticals **from the top of the table's box to the
-bottom of it**, through whatever empty ruled area `minHeight` (§3) creates — because the bottom of
-a column rule is the box's bottom border, and a rule that stopped at the last row would leave the
-form's columns hanging in mid-air. This is the whole reason `minHeight` and `rules` are one change
-and not two.
+`between: ["columns"]` therefore draws its verticals **from the top of each page's slice to the
+bottom of it**, through whatever empty ruled area `minHeight` (§3) creates on that page — because the
+bottom of a column rule is the frame's bottom border, and a rule that stopped at the last row would
+leave the form's columns hanging in mid-air. This is the whole reason `minHeight` and `rules` are one
+change and not two. A `rows` rule, by contrast, lies *between* rows, so it never enters the empty
+area: there are no rows there to be between.
 
 The header row keeps `headerStyle.border` unchanged, which is what draws the rule under the header
 in the target form. A `rows` rule between the header and the first data row would be a second line
 at the same coordinate; the header's own border wins and the rules skip that boundary.
 
+**The same rule holds at the perimeter, the other way round.** Where the frame strokes an edge, no
+header or cell edge is stroked on that same line: a `headerStyle.border` naming `top`, `left` or
+`right` would otherwise draw a second line over the frame's own. Inside the table the header's border
+wins over the rules; on the table's edge the frame wins over the header.
+
 ## 3. `table.minHeight` — a ruled area taller than its rows
 
-*Optional.* A length in points. The table's **box** is at least this tall; rows are unaffected.
+*Optional.* A length in points. **Each page's slice** of the table is at least this tall; rows are
+unaffected.
 
 This **narrows AD-13**, which today rejects `height` on a table at load with "a table declares x and
 y only — never height". That ruling stands for `height` and is what `minHeight` is carefully not: a
-table's drawn extent is still *derived*, as `max(minHeight, header + Σ rows + footer)`. An author
-cannot shorten a table by declaring a small `minHeight`, and cannot pin a row to a size. What they
-gain is a floor, which is the whole of what a pre-printed form needs.
+slice's drawn extent is still *derived*. For a slice whose top is `t` and whose content bottom is
+`c`, on a page whose content window ends at `w`:
+
+```
+floored bottom = max(c, min(t + minHeight, w))
+```
+
+An author cannot shorten a table by declaring a small `minHeight`, and cannot pin a row to a size.
+What they gain is a floor **on every page** (owner-ruled), which is what a pre-printed form needs: a
+statement's last page fills out below its final row exactly as its first does.
 
 | Rule | Behaviour |
 |---|---|
 | Rows | Content-sized, exactly as now. `minHeight` never stretches, shrinks or pads a row. |
-| The box | `style.border` and `style.background` (§1) are drawn to the box's full height. |
-| Column rules | Drawn to the box's full height (§2), which is what the ruled area is for. |
-| Pagination | The box's height is what a continuation page must accommodate. **A `minHeight` taller than a content window is a load error**, naming the element — the alternative is a table that can never be placed. |
-| Absent / `null` | No floor; the box is the rows, which is today's behaviour. |
+| The frame | Drawn to each slice's floored bottom (§1). |
+| Column rules | Drawn to each slice's floored bottom (§2), which is what the ruled area is for. |
+| A page that cannot fit it | Where `t + minHeight` passes the content bottom, the ruled area runs **to the content bottom**. The floor never moves a table to another page and never overflows the window. |
+| Content below | The floor is reserved **during pagination**, as the repeated header's height already is, so an element following the table on that page starts below the floored bottom rather than being overlapped. |
+| Too tall | **A `minHeight` taller than the content window is a load error**, naming the element — a floor no page could ever satisfy. |
+| Absent / `null` | No floor; each slice is its rows, which is today's behaviour. |
 
-Declaring this key raises the document's `version`.
+Declaring this key raises the document's `version` to `3.1` (§1, *The version signal*).
 
 ---
 
@@ -132,19 +170,32 @@ the same rule. Consequences, all of them intended:
 |---|---|---|
 | `"label": "วันที่\nDATE"` | one line, `TEXT_MISSING_GLYPH` | two lines |
 | A label wider than its column | clipped to the padded box, **silently** | wrapped, like every other text in the document |
-| `headerHeight` | the header row's exact height | its **floor** — see below |
+| `headerHeight` | the header row's exact height | its **floor**, when a label needs more than one line — see below |
 
-### `headerHeight` becomes a floor
+### `headerHeight` becomes a floor for multi-line labels
 
-The header row is `max(headerHeight, the packed label's height + padding)`. The field stays
-**required**, so no command can clear it, and it is still accounted for on **every** continuation
-page — the labels are static, so the packed height is settled at layout, before pagination, and is
-the same on every page a header repeats on.
+When any label packs to **more than one line**, the header row is
+`max(headerHeight, the packed labels' height + padding)`. A header whose every label fits on one line
+keeps `headerHeight` exactly, as today. The field stays **required**, so no command can clear it, and
+it is still accounted for on **every** continuation page — the labels are static, so the packed height
+is settled at layout, before pagination, and is the same on every page a header repeats on.
+
+**Why not unconditionally.** The corpus already holds headers whose single line overruns their
+`headerHeight`: `fixtures/statement-*` declare `headerHeight: 28` with an 8pt label and 8pt padding
+each side, and that one line measures 28.88pt. An unconditional `max` grows all four signed-off
+statement goldens by 0.88pt for a change that is about wrapping, breaking the promise that a document
+with no line feed hashes identically. The floor exists so a heading that *needs* further lines gets
+room for them, and the narrowed rule keeps that whole.
 
 This narrows the field the same way `minHeight` narrows a table's extent (§3), and for the same
 reason: an author declaring a floor is declaring the form's proportions, not overriding what the
 text needs. The alternative — keeping `headerHeight` exact and clipping a second line — reproduces
 in the vertical the defect this section removes in the horizontal.
+
+**Line metrics are taken across every column.** Labels in different scripts resolve different faces in
+the chain, and those faces carry different ascents, descents and advances. The header's line geometry
+is the maximum across all columns, never one column's: a Thai heading beside an English one must not
+be spaced by whichever happened to be measured last.
 
 ### The silent clip is retired, not relocated
 
@@ -158,22 +209,31 @@ grows to fit it, there is nothing left to clip and nothing left to fail to repor
 A document whose labels hold no `\n` and whose every label fits its column must **hash identically**
 — that is the whole corpus standing as a witness. Two kinds of document do move, and both are
 repairs: one whose label held a `\n` (was a warning and one line, becomes two lines), and one whose
-label was too wide (was clipped in silence, now wraps and may grow the header row, which can change
-where the table paginates).
+label was too wide (was clipped in silence, now wraps onto further lines and grows the header row,
+which can change where the table paginates).
 
 ### The designer must be able to type one
 
 The Table Editor's header cell is an `<input>`, which cannot hold a line feed, and the command
 bounds a label at 256 **bytes** (`folio-go/component_commands.go:523`) — about 85 Thai characters.
 Authoring a two-line Thai/English label needs a control that accepts a break and a bound expressed
-in characters rather than bytes. The canvas's `.canvas-table-heading` must paint the second line
-too, or the canvas resumes lying about the header the way it currently does about the border.
+in **Unicode code points** rather than bytes.
+
+**Both doors count the same unit.** The browser's projection guard counts `.length`, which is UTF-16
+code units: an emoji is one code point but two units. If the engine counted code points while the
+browser counted units, a label of 200 emoji would commit and then make the browser refuse the whole
+table projection — and the Table Editor would never open. Both count code points.
+
+**The canvas paints the engine's lines.** The canvas must show the second line, and any wrapped ones,
+or it resumes lying about the header the way it once did about the border. It does so by painting the
+packed lines the engine projects, never by letting CSS wrap: text layout is the engine's authority,
+and `canvas-authority-contract.test.ts` bans browser wrapping in `App.css` for exactly that reason.
 
 ## Resolved — how far do the column rules run
 
-**To the bottom of the box.** Ruled by the owner: *"the bottom most row will get the bottom border
-from the table box border."* If the bottom line belongs to the box, the verticals must reach it, so
-they span the box rather than the rows. The three readings this replaces were all consequences of
+**To the bottom of each page's slice.** Ruled by the owner: *"the bottom most row will get the bottom
+border from the table box border."* If the bottom line belongs to the frame, the verticals must reach
+it, so they span the slice rather than the rows. The three readings this replaces were all consequences of
 keeping a per-cell model: spanning edges that behave differently from non-spanning ones, a second
 field that also draws vertical lines, or phantom rows that pagination and `altRowBackground` would
 each have to be taught to ignore. A boundary-based `rules` block needs none of them.

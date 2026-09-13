@@ -80,6 +80,8 @@ var declaredTableBehaviourSuite = []string{
 	"table_row_clip_test.go",        // Story 4.6 — a row taller than the page
 	"table_alternating_row_test.go", // Story 4.8 — odd collection-index alternate fills
 	"table_header_style_test.go",    // Story 12.3 — the header/alt-row authoring commands and the headerStyle writer census
+	"table_ruled_form_test.go",      // SPEC-table-rules — the per-page frame and rules, the per-page floor and its push, perimeter ownership, the two table commands and the packed label projection
+	"table_rules_test.go",           // SPEC-table-rules — the table's own box, the boundary-addressed interior rules, the ruled area's floor and the packed column label
 }
 
 // TestTableBehaviourSuiteIsNotSupersededByTheGolden asserts every

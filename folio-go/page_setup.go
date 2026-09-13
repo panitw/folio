@@ -359,7 +359,14 @@ const (
 type CanvasTableColumn struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
-	Width int64  `json:"width"`
+	// LabelLines — SPEC-table-rules §4: the header label as the ENGINE lays
+	// it out, one entry per line, line feeds removed. The canvas paints
+	// these and never lets the browser wrap. Always present ([] for an
+	// empty label). With a font set (CanvasWithTextPaint) they are the
+	// packed lines the PDF prints; without one, the label split at its
+	// line feeds.
+	LabelLines []string `json:"labelLines"`
+	Width      int64    `json:"width"`
 	// HeaderAlign is resolveHeaderStyle's fallback with the column's own
 	// `align` applied over it; CellAlign is resolveBodyStyle's, the same way.
 	HeaderAlign string `json:"headerAlign"`
@@ -1766,6 +1773,10 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 			component.TextPaint = paint
 		}
 	}
+	// SPEC-table-rules §4: the table header labels, through the SAME
+	// document font cache as the text above — the canvas and the PDF path
+	// must agree on which faces exist (AD-17).
+	addCanvasTableLabelLines(t, projection, fs, cache)
 	return nil
 }
 
@@ -1944,6 +1955,7 @@ func canvasTableColumns(element template.Element) ([]CanvasTableColumn, error) {
 		columns = append(columns, CanvasTableColumn{
 			ID:          string(column.ID),
 			Label:       clipCanvasPropertyString(column.Label),
+			LabelLines:  canvasLabelLinesAtBreaks(column.Label),
 			Width:       int64(widths[i]),
 			HeaderAlign: columnAlign(header.alignFallback, column),
 			CellAlign:   columnAlign(body.alignFallback, column),
@@ -1970,11 +1982,106 @@ func canvasTableColumns(element template.Element) ([]CanvasTableColumn, error) {
 // units and 4 bytes, so UTF-16 length is never greater than byte length. A
 // value inside the byte bound is therefore inside the guard's bound too, and
 // the test for that computes both rather than reasoning about it.
+// maxCanvasHeaderLabelLines bounds CanvasTableColumn.LabelLines; the
+// browser's guard admits no more.
+// It is 256 because a label is bounded at 256 code points, so it can pack to
+// at most 256 lines; the canvas never drops one.
+const maxCanvasHeaderLabelLines = 256
+
+// maxCanvasHeaderLabelLineBytes bounds one LabelLines entry. 1024 bytes holds
+// the longest line a 256-code-point label can produce (256 Thai characters are
+// 768 bytes), so the canvas never cuts a label line.
+// engine-protocol.ts mirrors both bounds (TestCanvasLabelLineBoundsMatchTheDesignerGuard).
+const maxCanvasHeaderLabelLineBytes = 1024
+
+// canvasLabelLinesAtBreaks is the font-less projection of a label: its
+// mandatory breaks only.
+func canvasLabelLinesAtBreaks(label string) []string {
+	out := []string{}
+	if label == "" {
+		return out
+	}
+	for _, line := range strings.Split(label, "\n") {
+		if len(out) == maxCanvasHeaderLabelLines {
+			break
+		}
+		out = append(out, clipCanvasStringTo(strings.TrimRight(line, "\r"), maxCanvasHeaderLabelLineBytes))
+	}
+	return out
+}
+
+// canvasLabelLines turns packed lines into their text, line feeds removed.
+func canvasLabelLines(label string, lines []wrappedLine) []string {
+	runes := []rune(label)
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		if len(out) == maxCanvasHeaderLabelLines {
+			break
+		}
+		out = append(out, clipCanvasStringTo(strings.TrimRight(string(runes[ln.from:ln.to]), "\r\n"), maxCanvasHeaderLabelLineBytes))
+	}
+	return out
+}
+
+// addCanvasTableLabelLines replaces every table column's font-less
+// LabelLines with the lines the rendered header packs, through the same
+// shaper and the same packer (packHeaderLabelLines). A table whose header
+// font does not resolve keeps the line-feed split, as a text element whose
+// chain does not resolve degrades rather than failing the canvas.
+func addCanvasTableLabelLines(t *Template, projection *CanvasProjection, fs FontSet, cache *fontCache) {
+	components := make(map[string]*CanvasComponent, len(projection.Components))
+	for i := range projection.Components {
+		components[projection.Components[i].ID] = &projection.Components[i]
+	}
+	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements} {
+		for _, el := range elements {
+			if el.Type != template.ElementTable || !el.Table.Set || el.Table.Null {
+				continue
+			}
+			component := components[string(el.ID)]
+			if component == nil || len(component.Columns) != len(el.Table.Value.Columns) {
+				continue
+			}
+			hs := resolveHeaderStyle(el)
+			if !hs.hasFontFamily {
+				continue
+			}
+			entries, err := lookupFontChain(t, hs.fontFamily)
+			if err != nil {
+				continue
+			}
+			chain, styledChain := chainFaceNames(entries, fontStyleOf(hs.bold, hs.italic))
+			headerCache := cache.forChain(hs.fontFamily)
+			widths, err := template.TableColumnWidths(el)
+			if err != nil {
+				continue
+			}
+			_, padRight, _, padLeft := paddingEdges(hs.padding)
+			for i, col := range el.Table.Value.Columns {
+				if col.Label == "" {
+					continue
+				}
+				segs, _, serr := shapeSegments(string(col.ID), chain, styledChain, col.Label, fs, headerCache, breaksAreConsumed)
+				if serr != nil {
+					continue
+				}
+				lines := packHeaderLabelLines(segs, col.Label, hs.fontSize, widths[i]-padLeft-padRight)
+				component.Columns[i].LabelLines = canvasLabelLines(col.Label, lines)
+			}
+		}
+	}
+}
+
 func clipCanvasPropertyString(value string) string {
-	if len(value) <= maxCanvasPropertyString {
+	return clipCanvasStringTo(value, maxCanvasPropertyString)
+}
+
+// clipCanvasStringTo cuts value to at most limit bytes, at a rune boundary.
+func clipCanvasStringTo(value string, limit int) string {
+	if len(value) <= limit {
 		return value
 	}
-	cut := maxCanvasPropertyString
+	cut := limit
 	for cut > 0 && !utf8.RuneStart(value[cut]) {
 		cut--
 	}
@@ -2280,6 +2387,12 @@ func ApplyPageSetupCommand(t *Template, command []byte) (CanvasProjection, error
 		page.SizeIsName = true
 		page.SizeName = preset
 		page.SizeCustom = template.PageSize{}
+	}
+	// SPEC-table-rules review item 1: a page size, margin or orientation
+	// that shrinks the content window must not strand a table's minHeight.
+	if err := refuseStrandedFloor(t, "table.minHeight"); err != nil {
+		restorePage(t, before)
+		return CanvasProjection{}, err
 	}
 	projection, err := Canvas(t)
 	if err != nil {

@@ -470,6 +470,10 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    a token is not available — design-contract.test.ts asserts token-NAME equality
    between designTokenSets and DESIGN.md, which is read-only for this story. */
 .canvas-table-heading { padding: 4px 5px; color: var(--color-page-ink); font: var(--type-page-body); font-weight: 600; border-bottom: var(--hairline) solid var(--color-page-ink); }
+/* One block per ENGINE-packed label line (SPEC-table-rules 4). The break is
+   Go's; the line inherits `white-space: pre` from `.canvas-display-paint` and
+   clips rather than re-flowing when the canvas font runs wider than the PDF's. */
+.canvas-table-heading-line { display: block; overflow: hidden; text-overflow: ellipsis; }
 .canvas-table-cell { padding: 4px 5px; color: var(--color-bind-on-page); font: var(--type-page-mono); }
 .canvas-table-grid .canvas-table-unset { padding: 4px 5px; }
 /* STORY 14.10 — THE COLUMN SPANS ARE THE ONE PART OF THE TABLE PAINT THAT IS

@@ -51,24 +51,30 @@ func fiveAlternatingRowsData(prefix string) string {
   ]}`, prefix+"0", prefix+"1", prefix+"2", prefix+"3", prefix+"4")
 }
 
-func dataRowRectGroups(t *testing.T, pages []pagemodel.Page, columns int) [][]pagemodel.Rect {
+// dataRowRectGroups slices out the five data rows' cell rects. boxRects
+// is 1 when the table declares a `style.background` or `style.border` —
+// SPEC-table-rules §1 makes that the table's OWN BOX, one extra rect
+// appended after every row's — and 0 when it declares neither.
+func dataRowRectGroups(t *testing.T, pages []pagemodel.Page, columns, boxRects int) [][]pagemodel.Rect {
 	t.Helper()
 	if len(pages) != 1 {
 		t.Fatalf("got %d pages, want 1", len(pages))
 	}
 	rects := pages[0].Rects
-	if len(rects) != columns*6 {
-		t.Fatalf("got %d rects, want %d (one header plus five data rows, %d columns each)", len(rects), columns*6, columns)
+	if len(rects) != columns*6+boxRects {
+		t.Fatalf("got %d rects, want %d (one header plus five data rows, %d columns each, plus %d box rect(s))", len(rects), columns*6+boxRects, columns, boxRects)
 	}
 	groups := make([][]pagemodel.Rect, 5)
 	for row := range groups {
-		start := columns * (row + 1)
+		// The frame's fill, when the table declares style.background, is
+		// drawn BEFORE the table's first rect (SPEC-table-rules).
+		start := boxRects + columns*(row+1)
 		groups[row] = rects[start : start+columns]
 	}
 	return groups
 }
 
-func assertRowFills(t *testing.T, groups [][]pagemodel.Rect, base *pagemodel.Color, alt pagemodel.Color) {
+func assertRowFills(t *testing.T, groups [][]pagemodel.Rect, alt pagemodel.Color) {
 	t.Helper()
 	for row, cells := range groups {
 		for column, rect := range cells {
@@ -78,12 +84,12 @@ func assertRowFills(t *testing.T, groups [][]pagemodel.Rect, base *pagemodel.Col
 				}
 				continue
 			}
-			if base == nil {
-				if rect.HasFill {
-					t.Errorf("row %d column %d unexpectedly filled %+v; no base background was declared", row, column, rect.Fill)
-				}
-			} else if !rect.HasFill || rect.Fill != *base {
-				t.Errorf("row %d column %d fill = {present:%v color:%+v}, want base %+v", row, column, rect.HasFill, rect.Fill, *base)
+			// SPEC-table-rules §1: `altRowBackground` is the ONLY
+			// declaration that fills a data cell, so an even row is
+			// unfilled whether or not the table declares a
+			// `style.background` — that now paints the table's own box.
+			if rect.HasFill {
+				t.Errorf("row %d column %d is filled %+v; only altRowBackground may fill a data cell", row, column, rect.Fill)
 			}
 		}
 	}
@@ -91,16 +97,16 @@ func assertRowFills(t *testing.T, groups [][]pagemodel.Rect, base *pagemodel.Col
 
 func TestAlternatingRowBackgroundAppliesToOddCollectionIndexes(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		base string
-		want *pagemodel.Color
+		name     string
+		base     string
+		boxRects int
 	}{
-		{name: "ordinary body background remains on even rows", base: "#112233", want: &alternatingBase},
+		{name: "a table style.background no longer reaches an even row", base: "#112233", boxRects: 1},
 		{name: "even rows remain unfilled without a body background"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pages := tablePagesForTest(t, alternatingTableDoc(tc.base, "#DDEEFF"), fiveAlternatingRowsData("R"))
-			assertRowFills(t, dataRowRectGroups(t, pages, 2), tc.want, alternatingFill)
+			assertRowFills(t, dataRowRectGroups(t, pages, 2, tc.boxRects), alternatingFill)
 		})
 	}
 }
@@ -110,16 +116,16 @@ func TestAlternatingRowChoiceDependsOnTemplateAndCollectionIndexOnly(t *testing.
 	redPages := tablePagesForTest(t, alternatingTableDoc("#112233", "#CC0000"), fiveAlternatingRowsData("A"))
 	changedDataPages := tablePagesForTest(t, alternatingTableDoc("#112233", "#DDEEFF"), fiveAlternatingRowsData("Z"))
 
-	blueGroups := dataRowRectGroups(t, bluePages, 2)
-	redGroups := dataRowRectGroups(t, redPages, 2)
-	changedGroups := dataRowRectGroups(t, changedDataPages, 2)
+	blueGroups := dataRowRectGroups(t, bluePages, 2, 1)
+	redGroups := dataRowRectGroups(t, redPages, 2, 1)
+	changedGroups := dataRowRectGroups(t, changedDataPages, 2, 1)
 	for row := range blueGroups {
 		for column := range blueGroups[row] {
 			if blueGroups[row][column].HasFill != changedGroups[row][column].HasFill || blueGroups[row][column].Fill != changedGroups[row][column].Fill {
 				t.Errorf("row %d column %d changed its fill when unrelated cell values changed", row, column)
 			}
-			if row%2 == 0 && (!blueGroups[row][column].HasFill || blueGroups[row][column].Fill != alternatingBase) {
-				t.Errorf("row %d column %d ordinary body fill = {present:%v color:%+v}, want base %+v", row, column, blueGroups[row][column].HasFill, blueGroups[row][column].Fill, alternatingBase)
+			if row%2 == 0 && blueGroups[row][column].HasFill {
+				t.Errorf("row %d column %d is filled %+v; an even row takes no fill now that style.background paints the table's box", row, column, blueGroups[row][column].Fill)
 			}
 		}
 	}
@@ -175,7 +181,11 @@ func alternatingPaginatedFooterDoc() string {
 	doc := footerFixtureDoc("count", false)
 	doc = strings.Replace(doc,
 		`"style": {"fontFamily": "latin", "fontSize": 8}`,
-		`"style": {"fontFamily": "latin", "fontSize": 8, "background": "#112233"}, "headerStyle": {"background": "#445566"}, "altRowBackground": "#DDEEFF"`, 1)
+		// NO table `style.background`: SPEC-table-rules §1 makes it the
+		// table's own box, which is a single rect spanning a
+		// twenty-row, three-page table and therefore a different
+		// pagination question from the one this fixture is for.
+		`"style": {"fontFamily": "latin", "fontSize": 8}, "headerStyle": {"background": "#445566"}, "altRowBackground": "#DDEEFF"`, 1)
 	return doc
 }
 
@@ -253,13 +263,13 @@ func TestAlternatingRowBackgroundContinuesAcrossPagesAndExcludesHeaderFooter(t *
 			if first == -1 {
 				first = source.rowIndex
 			}
-			want := alternatingBase
-			if source.rowIndex%2 == 1 {
-				want = alternatingFill
-			}
+			// Even rows carry NO fill (SPEC-table-rules §1: only
+			// altRowBackground fills a data cell); odd rows carry the
+			// alternate. The parity is still the whole assertion.
+			wantFill := source.rowIndex%2 == 1
 			for column, rect := range source.rects {
-				if !rect.HasFill || rect.Fill != want {
-					t.Errorf("page %d row %d column %d fill = {present:%v color:%+v}, want %+v from collection parity", pageIndex, source.rowIndex, column, rect.HasFill, rect.Fill, want)
+				if rect.HasFill != wantFill || (wantFill && rect.Fill != alternatingFill) {
+					t.Errorf("page %d row %d column %d fill = {present:%v color:%+v}, want filled=%v from collection parity", pageIndex, source.rowIndex, column, rect.HasFill, rect.Fill, wantFill)
 				}
 			}
 		}
@@ -285,8 +295,14 @@ func TestAlternatingRowBackgroundContinuesAcrossPagesAndExcludesHeaderFooter(t *
 		case source.isFooterRow:
 			seenFooter++
 			for _, rect := range source.rects {
-				if !rect.HasFill || rect.Fill != alternatingBase {
-					t.Errorf("source footer fill = {present:%v color:%+v}, want body %+v", rect.HasFill, rect.Fill, alternatingBase)
+				// SPEC-table-rules §1: a footer cell takes no chrome from
+				// the element's own style either. The property this arm
+				// guards is the one it always guarded — a footer is NOT
+				// an alternating data row — and it is now spelled as
+				// "never the alternate colour" rather than "always the
+				// body colour".
+				if rect.HasFill {
+					t.Errorf("source footer fill = {present:%v color:%+v}, want no fill at all", rect.HasFill, rect.Fill)
 				}
 			}
 		}
@@ -318,9 +334,11 @@ func TestAlternatingRowBackgroundContinuesAcrossPagesAndExcludesHeaderFooter(t *
 		}
 	}
 	// The source assertions above prove the footer's assigned colour before
-	// pagination. Count the final page-model rectangles as well: 20 rows ×
-	// three cells gives 30 base cells at even indexes and 30 alternate cells at
-	// odd indexes, while the three footer cells add only to the base colour.
+	// pagination. Count the final page-model rectangles as well: of 20 rows ×
+	// three cells, the 30 at odd collection indexes are the alternate colour
+	// and NOTHING else in this document is filled except the header
+	// (counted separately above) — the even rows and the footer take no
+	// fill at all now that `style.background` paints the table's box.
 	// This catches a pagination-stage mix-up that recolours the footer after
 	// collectBandTableRuns has returned.
 	baseCells, alternateCells := 0, 0
@@ -334,8 +352,8 @@ func TestAlternatingRowBackgroundContinuesAcrossPagesAndExcludesHeaderFooter(t *
 			}
 		}
 	}
-	if baseCells != 33 {
-		t.Errorf("final page-model carries %d body-colour cells, want 33 (30 even data cells plus 3 footer cells)", baseCells)
+	if baseCells != 0 {
+		t.Errorf("final page-model carries %d body-colour cells, want 0 — no cell takes the element's own style.background", baseCells)
 	}
 	if alternateCells != 30 {
 		t.Errorf("final page-model carries %d alternate-colour cells, want 30 (10 odd data rows × 3 columns)", alternateCells)

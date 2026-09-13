@@ -111,6 +111,37 @@ export function tableHeaderStyleCommand(id: string, field: TableHeaderStyleField
   return commandBytes('updateTableHeaderStyle', [['id', jsonString(id)], ['field', jsonString(field)], ...operationFields(operation, encoded)])
 }
 
+// SPEC-table-rules' TWO KINDS, on the two shapes this module already has.
+//
+// `setTableMinHeight` is `setTableHeaderHeight`'s shape WITH a clear, and that
+// difference is the format's: `headerHeight` is required and `minHeight` is
+// optional, so "no floor" is a state an author must be able to get back to.
+//
+// `updateTableRules` is `updateTableHeaderStyle`'s shape — one attribute per
+// command, never the block whole, for the same reason stated there: a block
+// `set` would have to re-transmit the attributes the author did not touch,
+// read back from the projection across an async boundary.
+export type TableRulesField = 'width' | 'color' | 'between'
+
+// `width` travels as a NUMBER (Go decodes it with a length decoder) and
+// `between` as an ARRAY of boundary names (a plain json.Unmarshal into
+// []string, the same decoder `border.edges` uses). The caller passes `between`
+// comma-joined, which is the spelling the PROJECTION uses for the same set, so
+// the panel never converts between two shapes of one value.
+const NUMERIC_TABLE_RULES_FIELDS: ReadonlyArray<TableRulesField> = ['width']
+const ARRAY_TABLE_RULES_FIELDS: ReadonlyArray<TableRulesField> = ['between']
+
+export function tableMinHeightCommand(id: string, operation: 'set' | 'clear', value = ''): ArrayBuffer {
+  return commandBytes('setTableMinHeight', [['id', jsonString(id)], ...operationFields(operation, jsonNumber(value))])
+}
+
+export function tableRulesCommand(id: string, field: TableRulesField, operation: 'set' | 'clear', value = ''): ArrayBuffer {
+  const encoded = ARRAY_TABLE_RULES_FIELDS.includes(field) ? jsonArray(value === '' ? [] : value.split(',').map(jsonString))
+    : NUMERIC_TABLE_RULES_FIELDS.includes(field) ? jsonNumber(value)
+    : jsonString(value)
+  return commandBytes('updateTableRules', [['id', jsonString(id)], ['field', jsonString(field)], ...operationFields(operation, encoded)])
+}
+
 // The `{op[, value]}` tail both clearable kinds share. A clear carries NO
 // value, and that is arity rather than politeness: Go counts every top-level
 // key and refuses any other count, so a clear that carried one would be refused

@@ -232,6 +232,13 @@ type tableRectSource struct {
 	// the collection") never mistakes the footer for a row, regardless
 	// of the orphan-tie mechanism's own bookkeeping.
 	isFooterRow bool
+
+	// frame — SPEC-table-rules: the table's own frame, interior rules and
+	// floor, shared by every row source of one table (nil when the table
+	// declares none of them). It is NOT a pagination item: the frame is
+	// built per page slice AFTER pagination (table_frame.go), because a
+	// slice's extent is known only once pages are assigned.
+	frame *tableFrame
 }
 
 // chromeRowGroup derives this rect source's layout.ItemGroup — Story 4.3's
@@ -354,18 +361,28 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 		r.lineSpacing = base.LineSpacing.Value
 	}
 
-	switch {
-	case hasHeader && header.Border.Set && !header.Border.Null:
+	// ⚠ THE CHROME PAIR HAS NO `style` ARM, AND IT IS THE ONLY PAIR ON
+	// THIS CASCADE THAT HAS NONE (SPEC-table-rules §1).
+	//
+	// Every other field here describes the TEXT INSIDE a cell, so it
+	// cascades headerStyle -> style -> default like a text property
+	// should. `border` and `background` describe the CHROME AROUND a
+	// box, and a table's own `style.border`/`style.background` now paint
+	// the TABLE'S OWN BOX — once, around the perimeter — exactly as
+	// every other element type's do. Letting them also cascade in here
+	// would stroke the frame a second time along the header row's four
+	// sides, which is the doubled-stroke defect the split exists to
+	// remove.
+	//
+	// `headerStyle.border`/`headerStyle.background` are UNCHANGED and
+	// keep their whole meaning: they are what draws the header's fill
+	// and the rule under it, and they remain the ONLY declaration that
+	// puts chrome on a header cell.
+	if hasHeader && header.Border.Set && !header.Border.Null {
 		r.hasBorder, r.border = true, header.Border.Value
-	case base.Border.Set && !base.Border.Null:
-		r.hasBorder, r.border = true, base.Border.Value
 	}
-
-	switch {
-	case hasHeader && header.Background.Set && !header.Background.Null:
+	if hasHeader && header.Background.Set && !header.Background.Null {
 		r.hasBackground, r.background = true, header.Background.Value
-	case base.Background.Set && !base.Background.Null:
-		r.hasBackground, r.background = true, base.Background.Value
 	}
 
 	// `&& !header.Color.Null` is what makes this arm match its EIGHT
@@ -442,11 +459,12 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 // font-resolution failure produces, never a third spelling (AC5's own
 // grounds, D-000.65).
 type resolvedBodyStyle struct {
-	hasBorder bool
-	border    template.Border
-
-	hasBackground bool
-	background    string
+	// NO border/background MEMBERS, and their absence is the point
+	// (SPEC-table-rules §1): a data or footer cell carries no chrome from
+	// the element's own style, because that declaration paints the
+	// TABLE'S OWN BOX. There is nothing here for a cell builder to read,
+	// which is what makes the old grid unreachable rather than merely
+	// unused.
 
 	// Story 10.1: a data cell's ink, from the table's own style alone —
 	// the same arm every other body-cell property cascades through.
@@ -469,12 +487,18 @@ func resolveBodyStyle(el template.Element) resolvedBodyStyle {
 
 	r := resolvedBodyStyle{valign: "top", alignFallback: "left"}
 
-	if base.Border.Set && !base.Border.Null {
-		r.hasBorder, r.border = true, base.Border.Value
-	}
-	if base.Background.Set && !base.Background.Null {
-		r.hasBackground, r.background = true, base.Background.Value
-	}
+	// SPEC-table-rules §1: a data cell carries NO chrome from the
+	// element's own style. `style.border` and `style.background` paint
+	// the TABLE'S BOX now, so consuming them here would stamp the frame
+	// onto every cell of every row — which is the grid this change
+	// replaces, and the reason a 1pt frame used to get thicker as rows
+	// were added. The interior lines are `table.rules`, drawn ONCE per
+	// boundary from the table's own geometry (collectBandTableRuns),
+	// never per cell.
+	//
+	// `table.altRowBackground` is UNAFFECTED and still fills its rows:
+	// it is a row property with no perimeter meaning, and it never
+	// belonged to the box.
 	// `.Null` beside `.Set`, matching every other arm in this function and
 	// the header cascade above. ⚠ THIS CHANGES NOTHING OBSERVABLE TODAY:
 	// styleInk opens with `!st.Color.Set || st.Color.Null`, so a null
@@ -763,6 +787,11 @@ func collectBandTableRuns(
 
 		hs := resolveHeaderStyle(el)
 		tableTop := layout.PlaceInBand(b.origin, el.Y)
+		// tableBottom is the HEADER row's bottom, and it is re-derived
+		// below once the labels have been packed: SPEC-table-rules §4
+		// makes `headerHeight` a floor, so the row's real height is not
+		// known until the packer has run. It is seeded from the declared
+		// floor so the declaration reads beside tableTop.
 		tableBottom := tableTop + tbl.HeaderHeight
 
 		widths, widthErr := template.TableColumnWidths(el)
@@ -811,14 +840,46 @@ func collectBandTableRuns(
 			metricsChain = metricsFaceNames(chain, styledChain, fs, headerCache)
 		}
 
+		// --- SPEC-table-rules §4: the header labels go through the
+		// BODY CELL'S PACKER ---
+		//
+		// A label used to be shaped `breaksAreDrawn` and positioned
+		// directly against a vertical model that was one line BY
+		// CONSTRUCTION, so a `\n` was handed to the shaper as a rune to
+		// draw, no font covered it, and the author got a
+		// TEXT_MISSING_GLYPH warning and one line. And a label wider than
+		// its column was clipped in SILENCE — the one clip path in this
+		// file that appended no diagnostic at all.
+		//
+		// Both are one defect: the header had a second, weaker
+		// implementation of a rule the body already had. So it is packed
+		// through `breaksAreConsumed` + packLines, against the column's
+		// own content width, and the header row GROWS to the packed
+		// height. The two modes differ ONLY in whether a U+000A earns a
+		// missing-glyph warning (shapeSegments' own note) — segmentation
+		// is identical — so a label holding no line feed shapes to the
+		// same segments it always did.
+		//
+		// `headerHeight` therefore becomes a FLOOR rather than an exact
+		// height, narrowed exactly as `minHeight` narrows a table's
+		// extent and for the same reason: an author declaring a floor is
+		// declaring the form's proportions, not overriding what the text
+		// needs. The field stays REQUIRED, and the packed height is
+		// settled here — at layout, before pagination — so a repeated
+		// header is the same height on every page it appears on.
+		type headerCell struct {
+			lines     []wrappedLine
+			segs      []faceSegment
+			align     string
+			clip      bool
+			clipX     geom.Length
+			clipWidth geom.Length
+		}
+		headerCells := make([]headerCell, len(tbl.Columns))
+		headerLines := 0
+		var headerVM verticalMetrics
 		for i, col := range tbl.Columns {
 			cg := geometry.Columns[i]
-			rect, rerr := buildHeaderCellRect(string(el.ID), cg.X, tableTop, cg.Width, tbl.HeaderHeight, hs)
-			if rerr != nil {
-				return nil, nil, nil, rerr
-			}
-			rects[i] = rect
-
 			if col.Label == "" {
 				continue
 			}
@@ -827,25 +888,16 @@ func collectBandTableRuns(
 				// style.fontFamily already has (R6, amended, and
 				// fontChain's own error text): a non-empty label
 				// needs a resolvable font, and no default exists
-				// (this story's Delivery Log) — plain-wrapped, exactly
+				// (Story 4.1's Delivery Log) — plain-wrapped, exactly
 				// as fontChain's caller wraps it for a text element.
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: has a column label but no style.fontFamily (nor headerStyle.fontFamily) to resolve a font from", el.ID)
 			}
 
-			align := columnAlign(hs.alignFallback, col)
-
-			contentX := cg.X + padLeft
-			contentW := cg.Width - padLeft - padRight
-			contentY := tableTop + padTop
-			contentH := tbl.HeaderHeight - padTop - padBottom
-
-			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, styledChain, col.Label, fs, headerCache, breaksAreDrawn)
+			segs, glyphDiags, serr := shapeSegments(string(col.ID), chain, styledChain, col.Label, fs, headerCache, breaksAreConsumed)
 			if serr != nil {
 				return nil, nil, nil, serr
 			}
 			diags = append(diags, glyphDiags...)
-			totalRunes := len([]rune(col.Label))
-
 			vm, verr := chainVerticalModel(metricsChain, hs.fontSize, hs.lineSpacing, fs, headerCache)
 			if verr != nil {
 				// Located: the leading model knows the chain and the
@@ -854,73 +906,191 @@ func collectBandTableRuns(
 				// this file's body/footer site below.
 				return nil, nil, nil, fmt.Errorf("folio: Render: element %s: %w", el.ID, verr)
 			}
+			// LINE METRICS ARE THE MAXIMUM ACROSS COLUMNS, never the last
+			// column's: labels in different scripts resolve different faces,
+			// and a Thai heading beside an English one must not be spaced by
+			// whichever happened to be measured last (SPEC-table-rules §4).
+			headerVM = maxVerticalMetrics(headerVM, vm)
 
-			measured := measureRuneRange(segs, 0, totalRunes, hs.fontSize)
+			contentW := cg.Width - padLeft - padRight
+			lines := packHeaderLabelLines(segs, col.Label, hs.fontSize, contentW)
 
-			var textX geom.Length
-			switch align {
-			case "right":
-				textX = contentX + contentW - measured
-			case "center":
-				textX = contentX + geom.ScaleRound(contentW-measured, 1, 2)
-			// "left" is the header cell's start edge. Every other
-			// value the load-time closed-set check already rejected,
-			// and since Story 7.8 that includes "justify": a TABLE's
-			// style.align and headerStyle.align validate against
-			// TableStyleAlignTokens — the same three values
-			// columns[].align admits — precisely because all three
-			// meet here, in alignFallback. A justified value can no
-			// longer cascade into a header cell at all, because the
-			// document carrying it does not load. The scope boundary
-			// this arm used to describe is enforced one stage earlier.
-			default:
-				textX = contentX
+			// THE SILENT CLIP IS RETIRED, NOT RELOCATED. What is left
+			// after wrapping is residual overflow — a single run with no
+			// break opportunity narrow enough — and it now reports
+			// through the SAME DiagCodeTextClippedWidth a body cell has
+			// always used, with the same message builder. There is no
+			// longer a path in this file that clips and says nothing.
+			overflow, overflows := detectWidthOverflow(string(col.ID), lines, contentW)
+			if overflows {
+				diags = append(diags, Diagnostic{
+					Severity:  SeverityWarning,
+					Code:      DiagCodeTextClippedWidth,
+					ElementID: overflow.elementID,
+					Message:   widthClipMessage("column", "content", overflow),
+				})
 			}
 
-			textBlockHeight := vm.FirstBaseline + vm.LastDescent
-			var lineTopY geom.Length
-			switch hs.valign {
-			case "bottom":
-				lineTopY = contentY + contentH - textBlockHeight
-			case "middle":
-				lineTopY = contentY + geom.ScaleRound(contentH-textBlockHeight, 1, 2)
-			default: // "top"
-				lineTopY = contentY
+			if len(lines) > headerLines {
+				headerLines = len(lines)
 			}
-
-			placed, perr := positionSegments(segs, 0, totalRunes, textX, lineTopY, hs.fontSize, vm.FirstBaseline, nil)
-			if perr != nil {
-				return nil, nil, nil, perr
+			headerCells[i] = headerCell{
+				lines: lines, segs: segs, align: columnAlign(hs.alignFallback, col),
+				clip: overflows, clipX: cg.X + padLeft, clipWidth: contentW,
 			}
+		}
 
-			overflows := measured > contentW
+		// The header row is max(headerHeight, the packed labels' height +
+		// padding). headerLines is 0 for a table whose every label is
+		// empty — there is no packed block at all then, and the declared
+		// height stands unmodified, which is what keeps a label-less
+		// table byte-identical.
+		headerRowHeight := tbl.HeaderHeight
+		headerBlockHeight := geom.Length(0)
+		if headerLines > 0 {
+			headerBlockHeight = headerVM.FirstBaseline + geom.Length(int64(headerLines-1))*headerVM.Advance + headerVM.LastDescent
+			// ⚠ THE FLOOR IS RAISED BY EXTRA LINES, NOT BY THE FIRST ONE,
+			// AND THAT BOUNDARY IS DELIBERATE.
+			//
+			// SPEC-table-rules states both "the header row is
+			// max(headerHeight, the packed label's height + padding)" AND
+			// — in its frozen Boundaries block — that a document with no
+			// `\n` in a label must render to the SAME PDF HASH, with the
+			// golden corpus as the witness. Those two are in conflict on
+			// the corpus that exists: the statement goldens declare
+			// `headerHeight: 28` with 8pt labels and 8pt of padding each
+			// side, whose ONE line already measures 28.88pt, so an
+			// unconditional max moves all four signed-off goldens by
+			// 0.88pt for a change that was supposed to be about WRAPPING.
+			//
+			// The frozen constraint wins, and the narrowing costs the
+			// feature nothing: the whole point of the floor is that a
+			// heading which NEEDS MORE THAN ONE LINE gets the room for
+			// them. A single line that already overflows its declared
+			// padding is today's behaviour, unchanged, and is a separate
+			// complaint about a field the author set too small.
+			if headerLines > 1 {
+				if packed := padTop + headerBlockHeight + padBottom; packed > headerRowHeight {
+					headerRowHeight = packed
+				}
+			}
+		}
+		tableBottom = tableTop + headerRowHeight
+
+		for i := range tbl.Columns {
+			cg := geometry.Columns[i]
+			rect, rerr := buildHeaderCellRect(string(el.ID), cg.X, tableTop, cg.Width, headerRowHeight, hs)
+			if rerr != nil {
+				return nil, nil, nil, rerr
+			}
+			rects[i] = rect
+		}
+
+		if headerLines > 0 {
 			headerInk, hasHeaderInk, inkErr := styleInk(hs.inkStyle, string(el.ID), hs.inkField)
 			if inkErr != nil {
 				return nil, nil, nil, inkErr
 			}
-			for j := range placed {
-				placed[j].band = bandIndex
-				placed[j].elementID = string(el.ID)
-				placed[j].lineIndex = 0
-				placed[j].itemTop = tableTop
-				placed[j].itemBottom = tableBottom
-				placed[j].isHeaderLabel = true
-				if hasHeaderInk {
-					placed[j].hasColor = true
-					placed[j].color = headerInk
-				}
-				if overflows {
-					// AC2: the wide-label render's header text is
-					// clipped, per its declared (padded) box — it
-					// NEVER widens the column. Same mechanism Story
-					// 2.8 already gives text elements (D-2.8.1),
-					// reused rather than re-invented.
-					placed[j].clipToBox = true
-					placed[j].clipX = contentX
-					placed[j].clipWidth = contentW
+			contentY := tableTop + padTop
+			contentH := headerRowHeight - padTop - padBottom
+
+			// The BLOCK's own vertical placement inside the padded cell,
+			// unchanged in shape from the single-line version this
+			// replaces — for a one-line header the block height IS
+			// FirstBaseline+LastDescent, so the arithmetic is the same
+			// integer it always was.
+			var blockTopY geom.Length
+			switch hs.valign {
+			case "bottom":
+				blockTopY = contentY + contentH - headerBlockHeight
+			case "middle":
+				blockTopY = contentY + geom.ScaleRound(contentH-headerBlockHeight, 1, 2)
+			default: // "top"
+				blockTopY = contentY
+			}
+
+			for li := 0; li < headerLines; li++ {
+				lineTopY := blockTopY + geom.Length(int64(li))*headerVM.Advance
+				for i := range tbl.Columns {
+					hc := headerCells[i]
+					if len(hc.lines) == 0 {
+						continue
+					}
+					// A SHORTER CELL'S OWN SLACK, distributed by the same
+					// whole-line rule a data row already uses (the body's
+					// lineOffsets): a two-line heading beside a one-line
+					// one puts the short label at the top, the middle or
+					// the bottom of the row according to valign, never
+					// half a line off it.
+					slack := headerLines - len(hc.lines)
+					offset := 0
+					switch hs.valign {
+					case "bottom":
+						offset = slack
+					case "middle":
+						offset = slack / 2
+					}
+					cellLi := li - offset
+					if cellLi < 0 || cellLi >= len(hc.lines) {
+						continue
+					}
+					ln := hc.lines[cellLi]
+					contentX := geometry.Columns[i].X + padLeft
+					contentW := geometry.Columns[i].Width - padLeft - padRight
+
+					var textX geom.Length
+					switch hc.align {
+					case "right":
+						textX = contentX + contentW - ln.width
+					case "center":
+						textX = contentX + geom.ScaleRound(contentW-ln.width, 1, 2)
+					// "left" is the header cell's start edge. Every other
+					// value the load-time closed-set check already
+					// rejected, and since Story 7.8 that includes
+					// "justify": a TABLE's style.align and
+					// headerStyle.align validate against
+					// TableStyleAlignTokens.
+					default:
+						textX = contentX
+					}
+
+					placed, perr := positionSegments(hc.segs, ln.from, ln.to, textX, lineTopY, hs.fontSize, headerVM.FirstBaseline, nil)
+					if perr != nil {
+						return nil, nil, nil, perr
+					}
+					for j := range placed {
+						placed[j].band = bandIndex
+						placed[j].elementID = string(el.ID)
+						// EVERY header line of one table shares lineIndex
+						// 0, exactly as every column's label always has.
+						// The header is ONE group (isHeaderRow /
+						// isHeaderLabel), it moves whole, and its lines
+						// share one extent — so merging them into one
+						// ColumnItem is correct, and it is what keeps the
+						// body's own nextLineIndex counter starting at 1
+						// with nothing to collide with.
+						placed[j].lineIndex = 0
+						placed[j].itemTop = tableTop
+						placed[j].itemBottom = tableBottom
+						placed[j].isHeaderLabel = true
+						if hasHeaderInk {
+							placed[j].hasColor = true
+							placed[j].color = headerInk
+						}
+						if hc.clip {
+							placed[j].clipToBox = true
+							placed[j].clipX = hc.clipX
+							placed[j].clipWidth = hc.clipWidth
+						}
+					}
+					runs = append(runs, placed...)
 				}
 			}
-			runs = append(runs, placed...)
+		}
+
+		frame, frameErr := buildTableFrame(el, tbl, hs, geometry)
+		if frameErr != nil {
+			return nil, nil, nil, frameErr
 		}
 
 		rectSources = append(rectSources, tableRectSource{
@@ -930,6 +1100,7 @@ func collectBandTableRuns(
 			bottom:      tableBottom,
 			rects:       rects,
 			isHeaderRow: true,
+			frame:       frame,
 		})
 
 		// --- Story 4.2: data rows ---
@@ -1157,18 +1328,24 @@ func collectBandTableRuns(
 				// extent (AC7), with no changes needed to either of
 				// those two functions.
 				cellRects := make([]pagemodel.Rect, len(tbl.Columns))
-				hasRowBackground := bs.hasBackground
-				rowBackground := bs.background
-				rowBackgroundField := "style.background"
+				// SPEC-table-rules §1: `table.altRowBackground` is now the
+				// ONLY thing that can fill a data cell, and NOTHING can
+				// stroke one. A row that is not an alternating row gets a
+				// Rect with neither fill nor stroke — still built, because
+				// D-2.6.5 requires an item that occupies space not to be
+				// empty, and still the carrier of this row's pagination
+				// identity.
+				hasRowBackground := false
+				rowBackground := ""
+				rowBackgroundField := "table.altRowBackground"
 				if rowIdx%2 == 1 && hasAltBackground {
 					hasRowBackground = true
 					rowBackground = altBackground
-					rowBackgroundField = "table.altRowBackground"
 				}
 				for ci := range tbl.Columns {
 					cg := geometry.Columns[ci]
 					rect, rerr := buildCellRectWithBackgroundField(string(el.ID), cg.X, rowTop, cg.Width, rowHeight,
-						hasRowBackground, rowBackground, rowBackgroundField, bs.hasBorder, bs.border)
+						hasRowBackground, rowBackground, rowBackgroundField, false, template.Border{})
 					if rerr != nil {
 						return nil, nil, nil, rerr
 					}
@@ -1182,6 +1359,7 @@ func collectBandTableRuns(
 					rects:     cellRects,
 					isDataRow: true,
 					rowIndex:  rowIdx,
+					frame:     frame,
 				})
 
 				// One physical line at a time: ALL columns' cell content
@@ -1355,7 +1533,11 @@ func collectBandTableRuns(
 				footerCellRects := make([]pagemodel.Rect, len(tbl.Columns))
 				for ci := range tbl.Columns {
 					cg := geometry.Columns[ci]
-					rect, rerr := buildCellRect(string(el.ID), cg.X, rowTop, cg.Width, footerRowHeight, bs.hasBackground, bs.background, bs.hasBorder, bs.border)
+					// SPEC-table-rules §1: no chrome from the element's own
+					// style, exactly as a data row's cells above. The
+					// footer keeps its own rect so it keeps its own
+					// pagination identity (isFooterRow, below).
+					rect, rerr := buildCellRect(string(el.ID), cg.X, rowTop, cg.Width, footerRowHeight, false, "", false, template.Border{})
 					if rerr != nil {
 						return nil, nil, nil, rerr
 					}
@@ -1368,6 +1550,7 @@ func collectBandTableRuns(
 					bottom:      footerRowBottom,
 					rects:       footerCellRects,
 					isFooterRow: true,
+					frame:       frame,
 				})
 
 				for li := 0; li < linesInRow; li++ {
@@ -1428,7 +1611,30 @@ func collectBandTableRuns(
 				}
 			}
 		}
+
 	}
 
 	return runs, rectSources, diags, nil
+}
+
+// packHeaderLabelLines lays out one column label through the BODY CELL'S
+// PACKER (SPEC-table-rules §4): its line feeds are consumed as mandatory
+// breaks and it wraps against the column's content width, exactly as a data
+// cell does. It is the one header packer — the rendered header and the
+// canvas projection (addCanvasTableLabelLines) both call it, so the canvas
+// paints the engine's lines rather than deciding its own.
+//
+// A LABEL IS LITERAL TEXT, so it carries no substitutions and therefore no
+// atomic spans: `unbreakableValues` names DATA paths, and no data reaches a
+// label.
+//
+// contentW <= 0 (a column narrower than its own padding) packs mandatory
+// breaks only, never one rune per line; it is clamped so the guard is this
+// function's and not an accident of packLines'.
+func packHeaderLabelLines(segs []faceSegment, label string, fontSize, contentW geom.Length) []wrappedLine {
+	if contentW < 0 {
+		contentW = 0
+	}
+	ops := text.Opportunities(text.Dictionary(), label, nil)
+	return packLines(segs, ops, len([]rune(label)), fontSize, contentW)
 }

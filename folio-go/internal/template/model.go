@@ -477,6 +477,50 @@ type TableExt struct {
 	// extension of R5's otherwise-permanent TableExt field set (Story
 	// 4.1's Delivery Log records the ruling by name).
 	HeaderStyle Presence[Style]
+
+	// Rules is SPEC-table-rules' interior-line block: which BOUNDARIES
+	// inside the table carry a line, and at what width and colour. It is
+	// deliberately NOT an `edges` vocabulary — an edge belongs to a cell
+	// and a boundary belongs to the table, which is why the old
+	// cell-chrome model stroked every interior line twice and made the
+	// frame's weight a function of the row count. See TableRules.
+	Rules Presence[TableRules]
+
+	// MinHeight is SPEC-table-rules' FLOOR under the table's own box —
+	// the ruled area a pre-printed form needs when the data has not
+	// arrived yet. It NARROWS AD-13 rather than repealing it: a table
+	// still declares no `height`, and its drawn extent is still DERIVED,
+	// as max(MinHeight, header + Σ rows + footer). An author cannot
+	// shorten a table with a small MinHeight and cannot pin a row to a
+	// size.
+	MinHeight Presence[geom.Length]
+}
+
+// TableRules is `table.rules` — the lines INSIDE a table (SPEC-table-rules
+// §2).
+//
+// A rule is drawn ONCE, at a boundary between two things, and NEVER on the
+// table's own edge: the perimeter belongs to the element's own
+// `style.border` (which since SPEC-table-rules paints the table's box like
+// every other element type's does) and the interior belongs here. That
+// split is what makes a heavy frame around a fine grid expressible at all.
+//
+// Between names BOUNDARIES, from the closed set RuleBoundaryTokens:
+// "columns" rules every boundary between two adjacent columns, "rows"
+// every boundary between two adjacent rows. Both, either, or an explicit
+// empty array for none.
+//
+// Width and Color default exactly as `style.border`'s do — 0.5pt and
+// #000000 — and the render resolves them through the SAME two functions a
+// border's sub-keys resolve through, never a second copy of the defaults.
+type TableRules struct {
+	Width   Presence[geom.Length]
+	Color   Presence[string]
+	Between Presence[[]string]
+
+	// Extra carries unknown keys on `rules` opaquely, exactly as
+	// Border.Extra does for `style.border` (D-1.4.9).
+	Extra []Field
 }
 
 // Column is one table column.
