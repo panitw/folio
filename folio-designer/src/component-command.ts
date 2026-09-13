@@ -55,6 +55,14 @@ export function deleteComponentCommand(id: string): ArrayBuffer {
 export function duplicateComponentCommand(id: string, snap: boolean): ArrayBuffer {
   return commandBytes('duplicateComponent', [['id', jsonString(id)], ['snap', jsonBoolean(snap)]])
 }
+// A whole selection in one command, so a group delete or paste is one undo
+// entry. Go validates every id before it mutates anything.
+export function deleteComponentsCommand(ids: ReadonlyArray<string>): ArrayBuffer {
+  return commandBytes('deleteComponents', [['ids', jsonArray(ids.map(jsonString))]])
+}
+export function duplicateComponentsCommand(ids: ReadonlyArray<string>, snap: boolean): ArrayBuffer {
+  return commandBytes('duplicateComponents', [['ids', jsonArray(ids.map(jsonString))], ['snap', jsonBoolean(snap)]])
+}
 
 // The tree supplies decoded JSON object-key segments only. Go owns the
 // expression grammar, root/params scope, target eligibility, canonical

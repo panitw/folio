@@ -15,7 +15,7 @@ import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
 import { documentLocaleCommand, documentUTCOffsetCommand } from './document-settings-command'
-import { bindComponentScalarCommand, bindTableCollectionCommand, createComponentCommand, deleteComponentCommand, dropComponentCommand, duplicateComponentCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
+import { bindComponentScalarCommand, bindTableCollectionCommand, createComponentCommand, deleteComponentCommand, deleteComponentsCommand, dropComponentCommand, duplicateComponentCommand, duplicateComponentsCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
 import { ORIGIN_FLOOR_FIELDS, POSITIVE_LENGTH_FIELDS, isPropertyField, updateComponentPropertiesCommand, type PropertyField, type PropertyIntent, type PropertyIntents } from './component-property-command'
 import { FontBrowser } from './FontBrowser'
 import { type FontChainCommitError, type FontChainControl } from './font-chain-control'
@@ -461,6 +461,23 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const pageSetupInFlight = useRef(false)
   const draftGeneration = useRef(0)
   const documentGeneration = useRef(0)
+  // CANVAS CLIPBOARD. It holds ids, never element data: paste copies the live
+  // originals as they are at paste time, and a clipboard from another document
+  // generation is ignored. It never touches the OS clipboard.
+  //
+  // It is keyed on DOCUMENT IDENTITY, which advances only when a different
+  // document is installed (Open, Start blank) — never on undo/redo, which bump
+  // `documentGeneration`. `lists` is the stair-step history, newest last: paste
+  // uses the newest list that still has ids in the document.
+  const documentIdentity = useRef(0)
+  const clipboardRef = useRef<Readonly<{ identity: number; lists: ReadonlyArray<ReadonlyArray<string>> }>>(undefined)
+  // One keyboard delete or paste at a time: a second press or key repeat must
+  // not duplicate the same sources again or delete ids already gone.
+  const mutationInFlight = useRef(false)
+  // FOCUS AREA: the band of the most recent canvas press, keyboard focus or
+  // selection change. Select All selects every component in it.
+  const focusBandRef = useRef<CanvasProjection['bands'][number]['name']>('content')
+  const installDocumentIdentity = () => { documentIdentity.current++; clipboardRef.current = undefined; focusBandRef.current = 'content' }
   const [documentGenerationValue, setDocumentGenerationValue] = useState(0)
   // The asset keys whose faces have ACTUALLY reached the page's font set.
   // Not the keys the document declares: a fragment may only ask for a derived
@@ -1139,7 +1156,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // because a caller that selects "whatever came back" must have NOTHING to
   // select in those cases. Selecting a stale id is the failure this shape
   // forecloses, and the I/O matrix names it as its own row.
-  const commitComponent = async (payload: ArrayBuffer, after?: () => void) => {
+  const commitComponent = async (payload: ArrayBuffer, after?: (added: ReadonlyArray<string>) => void) => {
     if (!engine || fileBusy) return
     setCommitError(undefined)
     const generation = documentGeneration.current
@@ -1150,15 +1167,19 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if (documentGeneration.current !== generation) return
       if (result.snapshot.revision !== priorRevision) invalidatePreview()
       if ((snapshotRef.current?.revision ?? -1) <= result.snapshot.revision) setCurrentSnapshot(result.snapshot)
-      after?.()
-      const added = (result.snapshot.canvas?.components ?? []).filter((component) => !priorIds.has(component.id))
-      return added.length === 1 ? added[0]!.id : undefined
+      // Every id the snapshot added, in projection order. A paste selects the
+      // whole list; the single-id return below stays the create commands' door.
+      const added = (result.snapshot.canvas?.components ?? []).filter((component) => !priorIds.has(component.id)).map((component) => component.id)
+      after?.(added)
+      return added.length === 1 ? added[0]! : undefined
     }
     catch (error) { if (documentGeneration.current === generation) { setCommitError(componentDiagnostic(error)); clearInteraction() } }
   }
   const installSelection = (ids: ReadonlyArray<string>) => {
     setBindingError(undefined); setPropertyError(undefined); setCommitError(undefined); revokeTableEditor(); setColumnSelection(undefined)
     selectedRef.current = ids; setSelected(ids)
+    const band = (snapshotRef.current?.canvas?.components ?? []).find((component) => component.id === ids.at(-1))?.band
+    if (band) focusBandRef.current = band
   }
   const canvasSelection = useCanvasSelection({ engine, canvas, revision: snapshot?.revision ?? 0, generation: documentGenerationValue, zoom, selection: selected, enabled: mode === 'design' && !placing && !fileBusy, snap: snapEnabled, documentDelta: canvasDisplay.documentDelta,
     capture: (id) => canvasRegionRef.current?.setPointerCapture?.(id),
@@ -1582,7 +1603,53 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setPendingFocus(undefined)
     placed.focus()
   }, [pendingFocus, snapshot])
-  const deleteSelection = () => { if (selected.length === 1) void commitComponent(deleteComponentCommand(selected[0]!), () => { revokeTableEditor(); setSelected([]); setColumnSelection(undefined) }) }
+  // Any selection size. One component keeps its single-id command; a group is
+  // ONE deleteComponents command, so one undo restores all of it. A refusal
+  // leaves the selection standing (commitComponent reports it).
+  const deleteSelection = () => {
+    const ids = selectedRef.current
+    if (ids.length === 0 || mutationInFlight.current) return
+    mutationInFlight.current = true
+    void commitComponent(ids.length === 1 ? deleteComponentCommand(ids[0]!) : deleteComponentsCommand(ids), () => { revokeTableEditor(); selectedRef.current = []; setSelected([]); setColumnSelection(undefined) }).finally(() => { mutationInFlight.current = false })
+  }
+  // THE ONE OWNERSHIP CHECK for canvas keys, shared by the window arm and a
+  // focused component's own Delete. Design mode, no modal, nothing else owning
+  // the canvas, and the key aimed at the canvas (or at no control at all).
+  const canvasKeyAllowed = (event: Pick<KeyboardEvent, 'target'>): boolean =>
+    modeRef.current === 'design' && engine !== undefined && !fileBusy && tableEditor === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && !canvasSelection.active()
+    && (event.target === document.body || (event.target instanceof Node && canvasRegionRef.current?.contains(event.target) === true))
+  const keyboardDelete = (event: Pick<KeyboardEvent, 'target' | 'repeat' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean => {
+    if (!canvasKeyAllowed(event) || event.repeat || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || selectedRef.current.length === 0) return false
+    deleteSelection()
+    return true
+  }
+  const copySelection = () => { clipboardRef.current = { identity: documentIdentity.current, lists: [[...selectedRef.current]] } }
+  // Paste duplicates the newest copied list with ids still in the document,
+  // then selects the copies and pushes THEM onto the clipboard, so repeated
+  // pastes stair-step and an undone paste falls back to what it copied. Go
+  // decides where each copy lands.
+  const pasteClipboard = (): boolean => {
+    const clip = clipboardRef.current
+    if (!clip || clip.identity !== documentIdentity.current || mutationInFlight.current) return false
+    const present = new Set((snapshotRef.current?.canvas?.components ?? []).map((component) => component.id))
+    for (let index = clip.lists.length - 1; index >= 0; index--) {
+      const ids = clip.lists[index]!.filter((id) => present.has(id))
+      if (ids.length === 0) continue
+      const kept = clip.lists.slice(0, index + 1)
+      mutationInFlight.current = true
+      void commitComponent(duplicateComponentsCommand(ids, snapEnabled), (added) => {
+        if (added.length === 0 || clipboardRef.current !== clip) return
+        clipboardRef.current = { identity: clip.identity, lists: [...kept, added].slice(-32) }
+        installSelection(added)
+      }).finally(() => { mutationInFlight.current = false })
+      return true
+    }
+    return false
+  }
+  const selectAllInFocusBand = () => {
+    const band = focusBandRef.current
+    installSelection((snapshotRef.current?.canvas?.components ?? []).filter((component) => component.band === band).map((component) => component.id))
+  }
   const duplicateSelection = () => { if (selected.length === 1) void commitComponent(duplicateComponentCommand(selected[0]!, snapEnabled)) }
   const nudgeSelection = (dx: number, dy: number) => {
     const component = snapshotRef.current?.canvas?.components.find((candidate) => candidate.id === selectedRef.current[0])
@@ -2485,6 +2552,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       const canonical = await engineFileStep((signal) => engine.request('serialize', undefined, signal))
       if (!canonical.bytes) throw new Error('Local file could not be serialized')
       const inputWasCanonical = equalBytes(opened.bytes, canonical.bytes)
+      installDocumentIdentity()
       setCurrentSnapshot(loaded.snapshot, false, true)
       clearSampleData()
       setTitle(opened.name)
@@ -2530,6 +2598,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setFileBusy(true); setFileError(undefined); setFileStatus('Starting blank local template…')
     try {
       const loaded = await engineFileStep((signal) => engine.request('load', blankBytes, signal))
+      installDocumentIdentity()
       setCurrentSnapshot(loaded.snapshot, false, true)
       clearSampleData()
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
@@ -2693,6 +2762,18 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if (modifier && event.key.toLowerCase() === 'z' && !event.shiftKey && undoAvailable) { event.preventDefault(); void applyHistory('undo'); return }
       if ((modifier && event.shiftKey && event.key.toLowerCase() === 'z' || !mac && modifier && event.key.toLowerCase() === 'y') && redoAvailable) { event.preventDefault(); void applyHistory('redo'); return }
       if (modifier && event.key.toLowerCase() === 'd' && modeRef.current === 'design' && selectedRef.current.length === 1) { event.preventDefault(); duplicateSelection(); return }
+      // CANVAS CLIPBOARD, DELETE AND SELECT ALL. Design mode only, and never
+      // while a pointer gesture, a component drag, a placement or file work
+      // owns the canvas. The editable-target and open-modal guard above
+      // already applies.
+      // A key aimed at a control outside the canvas is left to the browser.
+      if (canvasKeyAllowed(event)) {
+        const key = event.key.toLowerCase()
+        if ((event.key === 'Delete' || event.key === 'Backspace') && keyboardDelete(event)) { event.preventDefault(); return }
+        if (modifier && !event.altKey && !event.shiftKey && key === 'c' && selectedRef.current.length > 0) { event.preventDefault(); copySelection(); return }
+        if (modifier && !event.altKey && !event.shiftKey && key === 'v' && !event.repeat) { if (pasteClipboard()) event.preventDefault(); return }
+        if (modifier && !event.altKey && !event.shiftKey && key === 'a') { event.preventDefault(); selectAllInFocusBand(); return }
+      }
       if (modeRef.current === 'design' && selectedRef.current.length === 1 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); const step = event.shiftKey ? 10_000 : 1_000; if (event.key === 'ArrowLeft') nudgeSelection(-step, 0); if (event.key === 'ArrowRight') nudgeSelection(step, 0); if (event.key === 'ArrowUp') nudgeSelection(0, -step); if (event.key === 'ArrowDown') nudgeSelection(0, step); return }
       if (event.altKey && event.key.toLowerCase() === 's' && modeRef.current === 'design') { event.preventDefault(); setSnapEnabled((value) => !value); return }
       if (event.altKey && event.key.toLowerCase() === 'p' && engine && snapshotRef.current) {
@@ -2836,7 +2917,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={deleteSelection} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
           : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event)} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // Body previews stay inside their starting window. Only the existing
         // resize path lifts the clip while its anchor tracks across sheets.
@@ -2867,7 +2948,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}</CanvasSelectionLayer>
     </section>
   }
@@ -3046,8 +3127,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           defect class: an inert-until-needed pointer surface, so a click 4px
           from an existing rule is a PLACEMENT and not a selection of the
           neighbour. */}
-      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if ((event.key === 'Delete' || event.key === 'Backspace') && event.target === event.currentTarget && selected.length === 1) { event.preventDefault(); deleteSelection() } if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
-        <div className="canvas-tools" aria-label="Canvas controls"><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out" data-tip="Zoom out"><ToolIcon glyph="zoom-out" /></button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in" data-tip="Zoom in"><ToolIcon glyph="zoom-in" /></button><button className="tool-button" type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible} aria-label={`Grid ${gridVisible ? 'on' : 'off'}`} data-tip={`Grid ${gridVisible ? 'on' : 'off'}`}><ToolIcon glyph="grid" /></button><button className="tool-button" type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled} aria-label={`Snap ${snapEnabled ? 'on' : 'off'}`} data-tip={toolTip(`Snap ${snapEnabled ? 'on' : 'off'}`, shortcuts.snap)}><ToolIcon glyph="snap" /></button><button className="tool-button" type="button" onClick={duplicateSelection} disabled={selected.length !== 1} aria-label="Duplicate" data-tip={toolTip('Duplicate', shortcuts.duplicate)}><ToolIcon glyph="duplicate" /></button><button className="tool-button" type="button" onClick={deleteSelection} disabled={selected.length !== 1} aria-label="Delete" data-tip={toolTip('Delete', `${shortcuts.delete} key`)}><ToolIcon glyph="delete" /></button><span className="tool-hint" role="img" aria-label={toolTip('Nudge', shortcuts.nudge)} data-tip={toolTip('Nudge', shortcuts.nudge)}><ToolIcon glyph="nudge" /></span></div>
+      {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
+        <div className="canvas-tools" aria-label="Canvas controls"><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out" data-tip="Zoom out"><ToolIcon glyph="zoom-out" /></button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in" data-tip="Zoom in"><ToolIcon glyph="zoom-in" /></button><button className="tool-button" type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible} aria-label={`Grid ${gridVisible ? 'on' : 'off'}`} data-tip={`Grid ${gridVisible ? 'on' : 'off'}`}><ToolIcon glyph="grid" /></button><button className="tool-button" type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled} aria-label={`Snap ${snapEnabled ? 'on' : 'off'}`} data-tip={toolTip(`Snap ${snapEnabled ? 'on' : 'off'}`, shortcuts.snap)}><ToolIcon glyph="snap" /></button><button className="tool-button" type="button" onClick={duplicateSelection} disabled={selected.length !== 1} aria-label="Duplicate" data-tip={toolTip('Duplicate', shortcuts.duplicate)}><ToolIcon glyph="duplicate" /></button><button className="tool-button" type="button" onClick={deleteSelection} disabled={selected.length === 0} aria-label="Delete" data-tip={toolTip('Delete', `${shortcuts.delete} key`)}><ToolIcon glyph="delete" /></button><span className="tool-hint" role="img" aria-label={toolTip('Nudge', shortcuts.nudge)} data-tip={toolTip('Nudge', shortcuts.nudge)}><ToolIcon glyph="nudge" /></span></div>
         {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
 
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</span>}
@@ -5147,7 +5228,7 @@ function componentDiagnostic(error: unknown): string { const received = componen
 // mid-drag would let a snapshot arriving from elsewhere move the anchor under
 // the author's hand. `proposed` is the only field a move rewrites.
 type BoundaryDrag = Readonly<{ band: CappingBand; pointerId: number; startClientY: number; original: number; limit: number; proposed: number; changed: boolean }>
-type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean }>
+type DragState = Readonly<{ id: string; mode: DragAnchor; startClientX: number; startClientY: number; x: number; y: number; width: number; height: number; originalX: number; originalY: number; originalWidth: number; originalHeight: number; changed: boolean; released?: boolean }>
 // The layer belongs to the sheet, outside every band clip and stacking
 // context. Only resize controls receive pointers; empty space still hits bands.
 const CanvasSelectionLayerContext = createContext<HTMLDivElement | null>(null)
@@ -5155,7 +5236,7 @@ function CanvasSelectionLayer({ children }: { children: ReactNode }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   return <CanvasSelectionLayerContext value={host}>{children}<div className="canvas-selection-layer" ref={setHost} /></CanvasSelectionLayerContext>
 }
-function CanvasComponent({ component, carriedFaces, chromeOffset, origin, note, limit, zoom, selected, selectedColumnId, preview, engine, generation, trackColumn, onSelect, onBodyPress, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; chromeOffset: Readonly<{ x: number; y: number }>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; selectedColumnId?: string; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean, target?: EventTarget | null) => void; onBodyPress: (id: string, event: PointerEvent) => boolean; onDelete: () => void; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
+function CanvasComponent({ component, carriedFaces, chromeOffset, origin, note, limit, zoom, selected, selectedColumnId, preview, engine, generation, trackColumn, onSelect, onBodyPress, onDelete, onDragStart, onDragEnd }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; chromeOffset: Readonly<{ x: number; y: number }>; origin: number; note?: string; limit: DragLimit; zoom: number; selected: boolean; selectedColumnId?: string; preview?: DragState; engine?: EngineClient; generation: number; trackColumn?: (edge: number, delta: number) => number; onSelect: (id: string, extend: boolean, target?: EventTarget | null) => void; onBodyPress: (id: string, event: PointerEvent) => boolean; onDelete: (event: KeyboardEvent) => boolean; onDragStart: (drag: DragState | undefined) => void; onDragEnd: (drag: DragState) => void }) {
   const chromeHost = useContext(CanvasSelectionLayerContext)
   const selectedByPointer = useRef(false)
   const proposal = preview ?? { x: component.x, y: component.y, width: component.width, height: component.height }
@@ -5188,7 +5269,7 @@ function CanvasComponent({ component, carriedFaces, chromeOffset, origin, note, 
   const move = (event: PointerEvent) => { if (!preview) return; const rawDX = event.clientX - preview.startClientX; const rawDY = event.clientY - preview.startClientY; const changed = preview.changed || (preview.mode !== 'move' && lineAxis ? Math.abs(lineAxis === 'horizontal' ? rawDX : rawDY) >= 2 : Math.abs(rawDX) >= 2 || Math.abs(rawDY) >= 2); const dx = canvasDisplay.documentDelta(rawDX, zoom) * 1000; const travelled = canvasDisplay.documentDelta(rawDY, zoom) * 1000; const edge = preview.mode === 'sw' || preview.mode === 's' || preview.mode === 'se' ? preview.originalY + preview.originalHeight : preview.originalY; const dy = trackColumn ? trackColumn(edge, travelled) - edge : travelled; onDragStart({ ...preview, changed, ...proposedBounds(preview.mode, preview, dx, dy, limit, lineAxis === 'horizontal' ? Math.max(1000, preview.originalHeight) : lineAxis === 'vertical' ? Math.max(1000, preview.originalWidth + 1) : undefined) }) }
   const finish = (event: PointerEvent) => { if (!preview) return; event.stopPropagation(); onDragEnd(preview) }
   const paint = component.textPaint
-  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected canvas-component-external-chrome' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey, event.target); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.preventDefault(); event.stopPropagation(); onDelete() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} selectedColumnId={selectedColumnId} /> : ''}{chromeHost && selected ? createPortal(<div className={`canvas-selection-chrome${chromeOverflows ? ' canvas-selection-chrome-overflow' : ''}`} style={{ ...componentStyle({ ...active, x: active.x + chromeOffset.x, y: active.y + chromeOffset.y }, zoom), '--chrome-visible-height': canvasDisplay.css(chromeVisibleHeight, zoom) } as CSSProperties}>{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && visibleAnchors.map((anchor) => anchor === 'se'
+  return <div className={`canvas-component canvas-component-${component.type}${paint?.overflow ? ' canvas-component-text-overflow' : ''}${selected ? ' canvas-component-selected canvas-component-external-chrome' : ''}`} aria-label={componentAccessibleName(component, note)} role="button" tabIndex={0} data-component-id={component.id} style={componentStyle(active, zoom)} onClick={(event) => { event.stopPropagation(); if (!selectedByPointer.current) onSelect(component.id, event.shiftKey, event.target); selectedByPointer.current = false }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(component.id, event.shiftKey) } if (selected && (event.key === 'Delete' || event.key === 'Backspace')) { event.stopPropagation(); if (onDelete(event.nativeEvent)) event.preventDefault() } }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)}><ComponentBox component={component} zoom={zoom} />{paint?.truncated ? <span className="canvas-text-truncated">{canvasTruncationNotice}</span> : undefined}{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} selectedColumnId={selectedColumnId} /> : ''}{chromeHost && selected ? createPortal(<div className={`canvas-selection-chrome${chromeOverflows ? ' canvas-selection-chrome-overflow' : ''}`} style={{ ...componentStyle({ ...active, x: active.x + chromeOffset.x, y: active.y + chromeOffset.y }, zoom), '--chrome-visible-height': canvasDisplay.css(chromeVisibleHeight, zoom) } as CSSProperties}>{selected && <span className="canvas-dimension" aria-hidden="true">{points(active.width)} × {points(active.height)}</span>}{selected && component.resizable && visibleAnchors.map((anchor) => anchor === 'se'
       ? <button key={anchor} type="button" className="resize-handle" aria-label={`Resize ${component.id}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : lineAxis ? <button key={anchor} type="button" className={`selection-handle selection-handle-${anchor}`} aria-label={`Resize ${component.id} ${anchor === 'w' || anchor === 'n' ? 'start' : 'end'}`} onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />
       : <span key={anchor} className={`selection-handle selection-handle-${anchor}`} aria-hidden="true" onPointerDown={(event) => begin(event, anchor)} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => onDragStart(undefined)} />)}</div>, chromeHost) : undefined}</div>

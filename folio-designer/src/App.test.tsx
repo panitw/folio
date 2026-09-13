@@ -1415,6 +1415,8 @@ describe('application shell', () => {
     ['ArrowDown', { key: 'ArrowDown' }],
     ['Snap (Alt+S)', { key: 's', altKey: true }],
     ['Preview (Alt+P)', { key: 'p', altKey: true }],
+    ['Delete', { key: 'Delete' }],
+    ['Backspace', { key: 'Backspace' }],
   ])('sends no %s to the document from a button inside the open table editor', async (_name, keyboard) => {
     const request = await openTableEditorOver()
     const settled = request.mock.calls.length
@@ -1485,6 +1487,8 @@ describe('application shell', () => {
     // browser: Snap toggles its own pressed state, Alt+P swaps the whole main.
     ['Snap (Alt+S)', { key: 's', altKey: true }, () => { expect(screen.getByRole('button', { name: /^Snap/ })).toHaveAttribute('aria-pressed', 'false') }],
     ['Preview (Alt+P)', { key: 'p', altKey: true }, () => { expect(screen.queryByLabelText('Canvas region')).toBeNull() }],
+    ['Delete', { key: 'Delete' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"deleteComponent","version":1,"id":"e7"}']) }],
+    ['Backspace', { key: 'Backspace' }, (request: ReturnType<typeof modalTableRequest>) => { expect(sentCommands(request)).toEqual(['{"kind":"deleteComponent","version":1,"id":"e7"}']) }],
   ])('sends %s to the document when no dialog is open, which is what makes the suppressed arm a measurement', async (_name, keyboard, verify) => {
     const platform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
     Object.defineProperty(window.navigator, 'platform', { value: '', configurable: true })
@@ -1500,6 +1504,351 @@ describe('application shell', () => {
       if (platform) Object.defineProperty(window.navigator, 'platform', platform)
       else Reflect.deleteProperty(window.navigator, 'platform')
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // CANVAS KEYBOARD SHORTCUTS: copy, paste, delete, select all.
+  // -------------------------------------------------------------------------
+  const shortcutComponents = [
+    { id: 'e1', type: 'rect' as const, band: 'pageHeader' as const, x: 0, y: 0, width: 12000, height: 12000, resizable: true },
+    { id: 'e2', type: 'rect' as const, band: 'content' as const, x: 0, y: 0, width: 12000, height: 12000, resizable: true },
+    { id: 'e3', type: 'rect' as const, band: 'content' as const, x: 24000, y: 0, width: 12000, height: 12000, resizable: true },
+  ]
+  const shortcutSnapshot = (components: typeof shortcutComponents, revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: { ...canvas, components }, canUndo: true, canRedo: false })
+  // Duplicates append a copy per id (named e<revision>a, e<revision>b, …);
+  // deletes remove the ids. Every other operation answers the current snapshot.
+  // Undo pops a component list; the seeded entry is the document before e3.
+  const shortcutRequest = () => {
+    let revision = 1
+    let components = shortcutComponents
+    const history = [shortcutComponents.filter((component) => component.id !== 'e3')]
+    return vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'undo' && history.length > 0) { components = history.pop()!; revision++ }
+      if (operation === 'command' && payload) {
+        const command = JSON.parse(new TextDecoder().decode(payload)) as { kind: string; id?: string; ids?: string[] }
+        history.push(components)
+        revision++
+        if (command.kind === 'duplicateComponents') components = [...components, ...command.ids!.map((id, index) => ({ ...components.find((component) => component.id === id)!, id: `e${revision}${'abcdef'[index]}` }))]
+        if (command.kind === 'deleteComponents') components = components.filter((component) => !command.ids!.includes(component.id))
+        if (command.kind === 'deleteComponent') components = components.filter((component) => component.id !== command.id)
+      }
+      return { snapshot: shortcutSnapshot(components, revision), ...(operation === 'serialize' ? { bytes } : {}) }
+    })
+  }
+  const shortcutCommands = (request: ReturnType<typeof shortcutRequest>) =>
+    (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+  const selectedComponentIds = () => Array.from(document.querySelectorAll<HTMLElement>('.canvas-component-selected[data-component-id]')).map((element) => element.dataset.componentId)
+  const onPlatform = async (value: string, run: () => Promise<void>) => {
+    const platform = Object.getOwnPropertyDescriptor(window.navigator, 'platform')
+    Object.defineProperty(window.navigator, 'platform', { value, configurable: true })
+    try { await run() } finally {
+      if (platform) Object.defineProperty(window.navigator, 'platform', platform)
+      else Reflect.deleteProperty(window.navigator, 'platform')
+    }
+  }
+  const renderShortcutCanvas = (fileAccess?: FileAccess) => {
+    const request = shortcutRequest()
+    render(<App engine={engine(request)} {...(fileAccess ? { fileAccess } : {})} initialSnapshot={shortcutSnapshot(shortcutComponents, 1)} />)
+    return request
+  }
+  const selectContentPair = () => {
+    fireEvent.click(screen.getByLabelText('rect component e2'))
+    fireEvent.click(screen.getByLabelText('rect component e3'), { shiftKey: true })
+    expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+  }
+
+  it('copies a group without a command, pastes it as one duplicateComponents, selects the copies and stair-steps', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const region = screen.getByLabelText('Canvas region')
+      expect(fireEvent.keyDown(region, { key: 'c', ctrlKey: true })).toBe(false)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e2","e3"],"snap":true}']))
+      await waitFor(() => expect(selectedComponentIds()).toEqual(['e2a', 'e2b']))
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(shortcutCommands(request)[1]).toBe('{"kind":"duplicateComponents","version":1,"ids":["e2a","e2b"],"snap":true}'))
+    })
+  })
+
+  it('drops copied ids that are gone and sends nothing when none remain, or when nothing was copied', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      const region = screen.getByLabelText('Canvas region')
+      expect(fireEvent.keyDown(region, { key: 'v', ctrlKey: true })).toBe(true)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+      fireEvent.click(screen.getByLabelText('rect component e2'))
+      fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+      fireEvent.keyDown(region, { key: 'Delete' })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"deleteComponent","version":1,"id":"e2"}']))
+      await waitFor(() => expect(screen.queryByLabelText('rect component e2')).toBeNull())
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toHaveLength(1)
+    })
+  })
+
+  it.each([
+    ['Mac', 'MacIntel', { metaKey: true }, { ctrlKey: true }],
+    ['Windows', 'Win32', { ctrlKey: true }, { metaKey: true }],
+  ])('reads the %s primary modifier for copy and paste and ignores the other one', async (_name, platform, primary, other) => {
+    await onPlatform(platform, async () => {
+      const request = renderShortcutCanvas()
+      fireEvent.click(screen.getByLabelText('rect component e2'))
+      const region = screen.getByLabelText('Canvas region')
+      fireEvent.keyDown(region, { key: 'c', ...other })
+      fireEvent.keyDown(region, { key: 'v', ...other })
+      expect(fireEvent.keyDown(region, { key: 'a', ...other })).toBe(true)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+      expect(selectedComponentIds()).toEqual(['e2'])
+      fireEvent.keyDown(region, { key: 'c', ...primary })
+      fireEvent.keyDown(region, { key: 'v', ...primary })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e2"],"snap":true}']))
+    })
+  })
+
+  it('pastes only the copied ids that are still in the document', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const region = screen.getByLabelText('Canvas region')
+      fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+      // Clicking a member of a group keeps the group; clear it to delete e3 alone.
+      fireEvent.keyDown(region, { key: 'Escape' })
+      fireEvent.click(screen.getByLabelText('rect component e3'))
+      expect(selectedComponentIds()).toEqual(['e3'])
+      fireEvent.keyDown(region, { key: 'Delete' })
+      await waitFor(() => expect(screen.queryByLabelText('rect component e3')).toBeNull())
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"deleteComponent","version":1,"id":"e3"}', '{"kind":"duplicateComponents","version":1,"ids":["e2"],"snap":true}']))
+    })
+  })
+
+  it('reports a refused group delete and keeps the selection standing', async () => {
+    const accepted = shortcutRequest()
+    const request = vi.fn(async (operation: string, payload?: ArrayBuffer) => {
+      if (operation === 'command' && payload && new TextDecoder().decode(payload).includes('"deleteComponents"')) throw new Error('component was not found')
+      return accepted(operation, payload)
+    })
+    render(<App engine={engine(request)} initialSnapshot={shortcutSnapshot(shortcutComponents, 1)} />)
+    selectContentPair()
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'Delete' })
+    expect(await screen.findByRole('alert')).toHaveTextContent(/component was not found/)
+    expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+    expect(screen.getByLabelText('rect component e3')).toBeInTheDocument()
+  })
+
+  it('deletes a whole selection with one deleteComponents and clears the selection', async () => {
+    const request = renderShortcutCanvas()
+    selectContentPair()
+    const region = screen.getByLabelText('Canvas region')
+    expect(fireEvent.keyDown(region, { key: 'Backspace' })).toBe(false)
+    await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"deleteComponents","version":1,"ids":["e2","e3"]}']))
+    await waitFor(() => expect(selectedComponentIds()).toEqual([]))
+    // Nothing selected: nothing sent and the key's default is left alone.
+    expect(fireEvent.keyDown(region, { key: 'Delete' })).toBe(true)
+    await act(async () => { await Promise.resolve() })
+    expect(shortcutCommands(request)).toHaveLength(1)
+  })
+
+  it('selects every component in the last band touched, and prevents the page text selection', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      const region = screen.getByLabelText('Canvas region')
+      // Before any band is touched the focus area is Content.
+      expect(fireEvent.keyDown(region, { key: 'a', ctrlKey: true })).toBe(false)
+      expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+      fireEvent.click(screen.getByLabelText('rect component e1'))
+      fireEvent.keyDown(region, { key: 'a', ctrlKey: true })
+      expect(selectedComponentIds()).toEqual(['e1'])
+      fireEvent.pointerDown(screen.getByLabelText('Page Footer'), { pointerId: 9, clientX: 1, clientY: 1, button: 2 })
+      fireEvent.keyDown(region, { key: 'a', ctrlKey: true })
+      expect(selectedComponentIds()).toEqual([])
+      fireEvent.focus(screen.getByLabelText('Content'))
+      fireEvent.keyDown(region, { key: 'a', ctrlKey: true })
+      expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+      expect(shortcutCommands(request)).toEqual([])
+    })
+  })
+
+  it('leaves copy, paste, select all and delete to the browser inside an editable target', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const field = screen.getAllByRole('textbox')[0]!
+      for (const keyboard of [{ key: 'c', ctrlKey: true }, { key: 'v', ctrlKey: true }, { key: 'a', ctrlKey: true }, { key: 'Delete' }, { key: 'Backspace' }]) {
+        expect(fireEvent.keyDown(field, keyboard)).toBe(true)
+      }
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+      expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+      // The editable copy did not fill the canvas clipboard either.
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'v', ctrlKey: true })
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+    })
+  })
+
+  it('sends no clipboard or delete command in Preview mode', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      fireEvent.click(screen.getByLabelText('rect component e2'))
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'c', ctrlKey: true })
+      fireEvent.keyDown(window, { key: 'p', altKey: true })
+      await waitFor(() => expect(screen.queryByLabelText('Canvas region')).toBeNull())
+      for (const keyboard of [{ key: 'v', ctrlKey: true }, { key: 'a', ctrlKey: true }, { key: 'Delete' }, { key: 'Backspace' }]) fireEvent.keyDown(document.body, keyboard)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+    })
+  })
+
+  it('keeps the clipboard across Undo and pastes the copied ids that survive it', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const region = screen.getByLabelText('Canvas region')
+      fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+      fireEvent.keyDown(region, { key: 'z', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByLabelText('rect component e3')).toBeNull())
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e2"],"snap":true}']))
+    })
+  })
+
+  it('empties the clipboard when a different document is opened', async () => {
+    await onPlatform('', async () => {
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'other.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      const request = renderShortcutCanvas(files)
+      fireEvent.click(screen.getByLabelText('rect component e2'))
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'c', ctrlKey: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Open local template' })).toBeEnabled())
+      await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'load')).toBe(true))
+      await act(async () => { await Promise.resolve() })
+      expect(fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'v', ctrlKey: true })).toBe(true)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+    })
+  })
+
+  it('falls back to the copied originals when the pasted copies were undone', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      fireEvent.click(screen.getByLabelText('rect component e2'))
+      const region = screen.getByLabelText('Canvas region')
+      fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(selectedComponentIds()).toEqual(['e2a']))
+      fireEvent.keyDown(region, { key: 'z', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByLabelText('rect component e2a')).toBeNull())
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e2"],"snap":true}', '{"kind":"duplicateComponents","version":1,"ids":["e2"],"snap":true}']))
+    })
+  })
+
+  it('leaves Delete and select all to the browser on a focused button outside the canvas', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const outside = screen.getByRole('button', { name: 'Undo' })
+      expect(screen.getByLabelText('Canvas region').contains(outside)).toBe(false)
+      outside.focus()
+      expect(fireEvent.keyDown(outside, { key: 'Delete' })).toBe(true)
+      expect(fireEvent.keyDown(outside, { key: 'a', ctrlKey: true })).toBe(true)
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+      expect(selectedComponentIds()).toEqual(['e2', 'e3'])
+    })
+  })
+
+  it('sends nothing for Delete, paste or select all while a placement is armed', async () => {
+    await onPlatform('', async () => {
+      const request = renderShortcutCanvas()
+      selectContentPair()
+      const region = screen.getByLabelText('Canvas region')
+      fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Place Rectangle' }))
+      expect(screen.getByRole('button', { name: 'Place Rectangle' })).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.keyDown(region, { key: 'Delete' })
+      fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+      expect(fireEvent.keyDown(region, { key: 'a', ctrlKey: true })).toBe(true)
+      fireEvent.keyDown(screen.getByLabelText('rect component e2'), { key: 'Delete' })
+      await act(async () => { await Promise.resolve() })
+      expect(shortcutCommands(request)).toEqual([])
+    })
+  })
+
+  it('enables the toolbar Delete for a group and sends one deleteComponents', async () => {
+    const request = renderShortcutCanvas()
+    selectContentPair()
+    const button = screen.getByRole('button', { name: 'Delete' })
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"deleteComponents","version":1,"ids":["e2","e3"]}']))
+  })
+
+  it('ignores a repeated or a second in-flight Delete, and Shift+Delete', async () => {
+    const request = renderShortcutCanvas()
+    selectContentPair()
+    const region = screen.getByLabelText('Canvas region')
+    expect(fireEvent.keyDown(region, { key: 'Delete', shiftKey: true })).toBe(true)
+    expect(fireEvent.keyDown(region, { key: 'Backspace', shiftKey: true })).toBe(true)
+    expect(fireEvent.keyDown(region, { key: 'Delete', repeat: true })).toBe(true)
+    await act(async () => { await Promise.resolve() })
+    expect(shortcutCommands(request)).toEqual([])
+    fireEvent.keyDown(region, { key: 'Delete' })
+    fireEvent.keyDown(region, { key: 'Delete' })
+    await waitFor(() => expect(shortcutCommands(request)).toEqual(['{"kind":"deleteComponents","version":1,"ids":["e2","e3"]}']))
+    await act(async () => { await Promise.resolve() })
+    expect(shortcutCommands(request)).toHaveLength(1)
+  })
+
+  it('sends Delete after a released resize whose command is still pending', async () => {
+    const placed = { id: 'e9', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72000, height: 24000, resizable: true }
+    const componentCanvas = { ...canvas, components: [placed] }
+    let settle: (() => void) | undefined
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'command' && !settle) await new Promise<void>((resolve) => { settle = resolve })
+      return { snapshot: { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas: componentCanvas } }
+    })
+    render(<App engine={engine(request)} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: componentCanvas }} />)
+    const body = screen.getByLabelText('text component e9')
+    fireEvent.click(body)
+    const handle = screen.getByRole('button', { name: 'Resize e9' })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 20, clientY: 16 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 20, clientY: 16 })
+    await waitFor(() => expect(settle).toBeDefined())
+    body.focus()
+    expect(fireEvent.keyDown(body, { key: 'Delete' })).toBe(false)
+    await waitFor(() => expect(shortcutCommands(request as unknown as ReturnType<typeof shortcutRequest>)).toHaveLength(2))
+    const sent = shortcutCommands(request as unknown as ReturnType<typeof shortcutRequest>)
+    expect(JSON.parse(sent[0]!)).toMatchObject({ kind: 'setComponentBounds', id: 'e9' })
+    expect(sent[1]).toBe('{"kind":"deleteComponent","version":1,"id":"e9"}')
+    await act(async () => { settle!() })
+  })
+
+  it('sends no paste or select all from inside the open table editor', async () => {
+    await onPlatform('', async () => {
+      const request = modalTableRequest()
+      render(<App engine={engine(request)} initialSnapshot={modalTableSnapshot} />)
+      fireEvent.click(screen.getByRole('button', { name: 'table component e7' }))
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'c', ctrlKey: true })
+      fireEvent.click(screen.getByRole('button', { name: 'Configure columns' }))
+      await screen.findByRole('dialog', { name: 'Table Editor' })
+      const settled = request.mock.calls.length
+      const done = screen.getByRole('button', { name: 'Done' })
+      done.focus()
+      expect(fireEvent.keyDown(done, { key: 'v', ctrlKey: true })).toBe(true)
+      expect(fireEvent.keyDown(done, { key: 'a', ctrlKey: true })).toBe(true)
+      await act(async () => { await Promise.resolve() })
+      expect(request.mock.calls.slice(settled)).toEqual([])
+      expect(screen.getByRole('dialog', { name: 'Table Editor' })).toBeInTheDocument()
+    })
   })
 
   it('keeps the Save shortcut working while the table editor is open, because it sits above the guard', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindComponentScalarCommand, bindTableCollectionCommand, dropComponentCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
+import { bindComponentScalarCommand, bindTableCollectionCommand, deleteComponentsCommand, dropComponentCommand, duplicateComponentsCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
 
 const text = (value: ArrayBuffer) => new TextDecoder().decode(value)
 
@@ -25,6 +25,12 @@ describe('opaque component commands', () => {
 
 it('encodes a captured group movement as one relative, revision-fenced command', () => {
   expect(new TextDecoder().decode(moveComponentsCommand(['e1', 'e2'], 'e2', -1125, 2227, true, 17))).toBe('{"kind":"moveComponents","version":1,"ids":["e1","e2"],"referenceId":"e2","dx":-1.125,"dy":2.227,"snap":true,"expectedRevision":17}')
+})
+
+it('encodes a group delete and a group duplicate as one command each', () => {
+  expect(new TextDecoder().decode(deleteComponentsCommand(['e1', 'e9']))).toBe('{"kind":"deleteComponents","version":1,"ids":["e1","e9"]}')
+  expect(new TextDecoder().decode(duplicateComponentsCommand(['e1', 'e9'], true))).toBe('{"kind":"duplicateComponents","version":1,"ids":["e1","e9"],"snap":true}')
+  expect(JSON.parse(new TextDecoder().decode(deleteComponentsCommand(['e"1'])))).toEqual({ kind: 'deleteComponents', version: 1, ids: ['e"1'] })
 })
 
 // Pointer-only policy remains optional for continuous-coordinate callers.

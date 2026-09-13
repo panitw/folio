@@ -256,6 +256,10 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return deleteComponent(t, raw)
 	case "duplicateComponent":
 		return duplicateComponent(t, raw)
+	case "deleteComponents":
+		return deleteComponents(t, raw)
+	case "duplicateComponents":
+		return duplicateComponents(t, raw)
 	case "updateComponentProperties":
 		return updateComponentProperties(t, raw)
 	case "setComponentAsset":
@@ -2288,23 +2292,44 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
 	}
-	idsNeeded := int64(1)
-	if element.Type == template.ElementTable {
-		idsNeeded += int64(len(element.Table.Value.Columns))
-	}
-	if t.doc.NextID <= 0 || t.doc.NextID > (1<<63-1)-idsNeeded {
+	if idsNeeded := componentIDsNeeded(*element); t.doc.NextID <= 0 || t.doc.NextID > (1<<63-1)-idsNeeded {
 		return CanvasProjection{}, fmt.Errorf("folio: nextId cannot allocate another component")
 	}
-	clone := *element
 	ids := template.Document{NextID: t.doc.NextID}
-	clone.ID = template.AllocateElementID(&ids)
+	clone := cloneComponent(*element, projected, snap, &ids)
+	previousElements, previousID := band.Elements, t.doc.NextID
+	band.Elements = append(band.Elements, clone)
+	t.doc.NextID = ids.NextID
+	projection, err := Canvas(t)
+	if err != nil {
+		band.Elements, t.doc.NextID = previousElements, previousID
+		return CanvasProjection{}, err
+	}
+	return projection, nil
+}
+
+// componentIDsNeeded is how many document-wide ids one copy of element uses:
+// its own and one per table column.
+func componentIDsNeeded(element template.Element) int64 {
+	if element.Type == template.ElementTable {
+		return 1 + int64(len(element.Table.Value.Columns))
+	}
+	return 1
+}
+
+// cloneComponent is the one copy rule shared by duplicateComponent and
+// duplicateComponents. It allocates from ids, so several copies in one command
+// draw from one counter; the caller has already checked the counter has room.
+func cloneComponent(element template.Element, projected CanvasBand, snap bool, ids *template.Document) template.Element {
+	clone := element
+	clone.ID = template.AllocateElementID(ids)
 	ids.NextID++
 	if clone.Type == template.ElementTable {
 		// Column IDs are document-wide identities. Copy their storage before
 		// replacing IDs so the source table remains independently editable.
 		clone.Table.Value.Columns = slices.Clone(element.Table.Value.Columns)
 		for index := range clone.Table.Value.Columns {
-			clone.Table.Value.Columns[index].ID = template.AllocateElementID(&ids)
+			clone.Table.Value.Columns[index].ID = template.AllocateElementID(ids)
 			ids.NextID++
 		}
 	}
@@ -2336,15 +2361,127 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 		x, y = clone.X, clone.Y
 	}
 	clone.X, clone.Y = x, y
-	previousElements, previousID := band.Elements, t.doc.NextID
-	band.Elements = append(band.Elements, clone)
-	t.doc.NextID = ids.NextID
-	projection, err := Canvas(t)
+	return clone
+}
+
+// commandComponentIDs reads a selection's ids: non-empty, every entry a
+// non-empty string, no entry twice.
+func commandComponentIDs(raw map[string]json.RawMessage) ([]string, error) {
+	var ids []string
+	if json.Unmarshal(raw["ids"], &ids) != nil || len(ids) == 0 {
+		return nil, componentFailure("", "component.ids", "command requires component ids")
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			return nil, componentFailure("", "component.ids", "component ids must be non-empty strings")
+		}
+		if seen[id] {
+			return nil, componentFailure(id, "component.ids", "component ids must be unique")
+		}
+		seen[id] = true
+	}
+	return ids, nil
+}
+
+// workingComponentCopy and installComponentCopy bracket a multi-component
+// command so that every id is resolved against, and every change is made to, a
+// canonical clone; the caller's template is replaced only once the whole clone
+// serializes, reparses and projects.
+func workingComponentCopy(t *Template) (*Template, error) {
+	before, err := SerializeTemplate(t)
 	if err != nil {
-		band.Elements, t.doc.NextID = previousElements, previousID
+		return nil, err
+	}
+	return ParseTemplate(before)
+}
+
+func installComponentCopy(t, working *Template) (CanvasProjection, error) {
+	canonical, err := SerializeTemplate(working)
+	if err != nil {
 		return CanvasProjection{}, err
 	}
+	installed, err := ParseTemplate(canonical)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	projection, err := Canvas(installed)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	t.doc, t.derivedFooters = installed.doc, installed.derivedFooters
 	return projection, nil
+}
+
+// deleteComponents removes a whole selection in one command, so a group delete
+// is one history entry. Every id is found before anything is removed.
+func deleteComponents(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 3); err != nil {
+		return CanvasProjection{}, err
+	}
+	ids, err := commandComponentIDs(raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := workingComponentCopy(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	for _, id := range ids {
+		band, _, index, _, err := findComponent(working, id)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+		}
+		band.Elements = append(band.Elements[:index:index], band.Elements[index+1:]...)
+	}
+	return installComponentCopy(t, working)
+}
+
+// duplicateComponents copies a whole selection in one command. Each copy obeys
+// duplicateComponent's rules, in its source's band, and every copy's ids come
+// from one counter in the order the ids were given.
+func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, err
+	}
+	ids, err := commandComponentIDs(raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	snap, err := commandBool(raw, "snap")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	working, err := workingComponentCopy(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	type source struct {
+		band      *template.Band
+		projected CanvasBand
+		element   template.Element
+	}
+	sources := make([]source, 0, len(ids))
+	idsNeeded := int64(0)
+	for _, id := range ids {
+		band, projected, _, element, err := findComponent(working, id)
+		if err != nil {
+			return CanvasProjection{}, componentFailure(id, "component.id", "component was not found")
+		}
+		// Copy the element value now: appending clones below may move the
+		// band's backing array out from under a pointer.
+		sources = append(sources, source{band: band, projected: projected, element: *element})
+		idsNeeded += componentIDsNeeded(*element)
+	}
+	if working.doc.NextID <= 0 || working.doc.NextID > (1<<63-1)-idsNeeded {
+		return CanvasProjection{}, fmt.Errorf("folio: nextId cannot allocate another component")
+	}
+	counter := template.Document{NextID: working.doc.NextID}
+	for _, src := range sources {
+		src.band.Elements = append(src.band.Elements, cloneComponent(src.element, src.projected, snap, &counter))
+	}
+	working.doc.NextID = counter.NextID
+	return installComponentCopy(t, working)
 }
 
 func projectedSize(element template.Element) (geom.Length, geom.Length) {

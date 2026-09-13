@@ -147,5 +147,7 @@ export function useCanvasSelection(context: Context) {
   const freshPointer = () => { suppressClick.current = false }
   const consumeClick = () => { const suppressed = suppressClick.current; suppressClick.current = false; return suppressed }
   const blocksPointer = () => commitPending.current
-  return { rectangle, group, beginRectangle, beginGroup, move, finish, cancel, lostCapture, freshPointer, consumeClick, blocksPointer }
+  // True while a rectangle or group gesture, or its commit, owns the canvas.
+  const active = () => gesture.current !== undefined || commitPending.current
+  return { rectangle, group, beginRectangle, beginGroup, move, finish, cancel, lostCapture, freshPointer, consumeClick, blocksPointer, active }
 }
