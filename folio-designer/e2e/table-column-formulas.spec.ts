@@ -201,6 +201,9 @@ test('opening multiline binding text preserves its bytes and intentional multili
   await expectAligned(page, 1)
   await text().focus()
   await text().press('Shift+Tab')
+  // Shift+Tab walks back through the row's own fields before leaving the matrix.
+  await expect(dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true })).toBeFocused()
+  await dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true }).press('Shift+Tab')
   await expect(dialog(page).getByRole('spinbutton', { name: 'Total table width in points', exact: true })).toBeFocused()
   await text().focus()
   await dialog(page).getByRole('textbox', { name: 'Header for column 1', exact: true }).focus()

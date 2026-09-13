@@ -926,6 +926,8 @@ textarea.property-value-prose { min-height: 72px; resize: none; }
 .table-editor-sizing input { max-width: 180px; }
 .table-editor-sizing p { margin: 0; }
 .matrix-binding-multiline { min-height: 28px; height: 28px; resize: vertical; padding: 2px; }
+/* A header label sizes to its `rows` (one to three lines), not the global textarea minimum. */
+.matrix-header-label { min-height: 0; resize: none; }
 .matrix-unit { color: var(--color-ink-low); font: var(--type-body); }
 .matrix-reveal { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--color-ink-low); font: var(--type-body); }
 /* Add column and the width budget, below the grid rather than inside every row. */

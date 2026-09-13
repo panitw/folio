@@ -351,8 +351,18 @@ describe('application shell', () => {
     //      the section back above the matrix reds this line; and
     //   2. the next tabbable control after the cell, in the trap's own document
     //      order, is the header section's first control.
-    fireEvent.keyDown(header, { key: 'Tab' })
-    expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(header)
+    //
+    // TAB FIRST WALKS THE ROW'S FIELDS (`tabThroughMatrix`): header → binding →
+    // width → the pressed alignment segment → footer aggregate, and Shift+Tab
+    // walks back. Only from the last field does the handoff below apply.
+    const walk = [screen.getByRole('combobox', { name: 'Binding for column 1' }), screen.getByRole('spinbutton', { name: 'Width for column 1 in points' }), screen.getByRole('button', { name: 'Align left for column 1' }), screen.getByRole('combobox', { name: 'Footer aggregate for column 1' })]
+    for (const next of walk) { fireEvent.keyDown(document.activeElement!, { key: 'Tab' }); expect(document.activeElement).toBe(next) }
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(walk[2])
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+    const lastCell = walk[3]!
+    fireEvent.keyDown(lastCell, { key: 'Tab' })
+    expect(document.activeElement, 'a forward Tab from the matrix cell must not wrap: the cell is no longer last').toBe(lastCell)
     const dialogElement = screen.getByRole('dialog', { name: 'Table Editor' })
     // `textarea` IS IN THIS SELECTOR BECAUSE IT IS IN THE TRAP'S (TableEditor's
     // own `focusable` query). SPEC-table-rules made the header-label cell a
@@ -379,7 +389,7 @@ describe('application shell', () => {
     // count is zero and `Cancel` is present. BOTH ENDS ARE RE-DERIVED FROM THE
     // DOM rather than named, so a fourth re-ordering has to face the assertions
     // and not the comment.
-    expect(tabbable[tabbable.indexOf(header) + 1]).toBe(screen.getByRole('button', { name: 'Add column' }))
+    expect(tabbable[tabbable.indexOf(lastCell) + 1]).toBe(screen.getByRole('button', { name: 'Add column' }))
     // BOTH ENDS ARE THE LIST'S OWN, and the pair's ORDER is read off the list
     // rather than off a hard-coded offset from its tail: `Cancel` is asserted to
     // be the member immediately BEFORE whatever the last member turns out to be.

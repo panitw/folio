@@ -69,8 +69,10 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 // the two lengths, a bare ratio for the spacing. Every box in this panel is in
 // author units, exactly as the matrix's own Width column already is.
 const authored = (thousandths: number): string => String(thousandths / 1000)
-// A header label's visible line count: its line feeds plus one, never below one.
-const labelRows = (label: string): number => label.split('\n').length
+// A header label's visible line count: its line feeds plus one, between one and
+// three. A longer label scrolls inside the box rather than growing the row.
+const MAX_LABEL_ROWS = 3
+const labelRows = (label: string): number => Math.min(MAX_LABEL_ROWS, label.split('\n').length)
 
 // What the document WILL USE for a field the author has not set — the engine's
 // own answer, shown IN the box as a placeholder rather than beside it on a
@@ -291,6 +293,30 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     }
     totalBlurTarget.current = null
   }, [projection, error, busy])
+  const cellEnabled = (row: number, column: number) => dialog.current?.querySelector<HTMLElement>(`[data-matrix-cell="${row}:${column}"]`)?.matches(':disabled') === false
+  // TAB WALKS A ROW'S FIELDS, THEN THE NEXT ROW'S. The lattice keeps a single
+  // tab stop for its arrow keys, so native Tab left the grid from whichever cell
+  // held focus. Tab now visits header → binding → width/proportion → the pressed
+  // alignment segment → footer aggregate (and its revealed source and format) →
+  // the next row's header; Shift+Tab walks back. The row's reorder/remove
+  // affordances stay arrow-key only. Past either end of the matrix nothing is
+  // intercepted and Tab continues in the dialog's own order.
+  const tabThroughMatrix = (event: KeyboardEvent<HTMLElement>): boolean => {
+    const address = event.target instanceof HTMLElement ? event.target.dataset.matrixCell : undefined
+    if (address === undefined) return false
+    const [row, column] = address.split(':').map(Number) as [number, number]
+    // Rail affordances sit just before the header; the three segments share one stop.
+    const rank = (cell: number) => cell < CELL.header ? CELL.header - 0.5 : cell >= CELL.align && cell < CELL.aggregate ? CELL.align : cell
+    const order = (stop: ActiveCell) => stop.row * cellCount + rank(stop.column)
+    const here = order({ row, column })
+    const stops = columns.flatMap((entry, stopRow) => [CELL.header, CELL.bound, CELL.width, CELL.align + Math.max(0, alignSegments.findIndex((segment) => segment.value === entry.align)), CELL.aggregate, CELL.footerOf, CELL.footerFormat]
+      .filter((stop) => cellEnabled(stopRow, stop)).map((stop) => ({ row: stopRow, column: stop })))
+    const next = event.shiftKey ? stops.filter((stop) => order(stop) < here).pop() : stops.find((stop) => order(stop) > here)
+    if (!next) return false
+    event.preventDefault()
+    focusCell(next)
+    return true
+  }
   const moveFocus = (event: KeyboardEvent<HTMLElement>, row: number, column: number) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     if (column === CELL.bound && event.currentTarget instanceof HTMLTextAreaElement && ['ArrowUp', 'ArrowDown'].includes(event.key)) return
@@ -312,7 +338,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     // explicit horizontal matrix-navigation route from this input.
     if (column === CELL.bound && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) && !(event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey && ['ArrowLeft', 'ArrowRight'].includes(event.key))) return
     event.preventDefault()
-		const enabled = (candidateRow: number, candidateColumn: number) => dialog.current?.querySelector<HTMLElement>(`[data-matrix-cell="${candidateRow}:${candidateColumn}"]`)?.matches(':disabled') === false
+		const enabled = cellEnabled
 		if (event.key === 'Home' || event.key === 'End') {
 			const start = event.key === 'Home' ? 0 : cellCount - 1; const step = event.key === 'Home' ? 1 : -1
 			for (let candidate = start; candidate >= 0 && candidate < cellCount; candidate += step) if (enabled(row, candidate)) { focusCell({ row, column: candidate }); return }
@@ -348,6 +374,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
     // ordinary blur commit leaves Escape working exactly as it did.
     if (event.key === 'Escape') { event.preventDefault(); if (discarding) return; void afterPendingField('close'); return }
     if (event.key !== 'Tab') return
+    if (tabThroughMatrix(event)) return
     const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])') ?? []).filter((element) => element.tabIndex >= 0)
     if (!focusable.length) return
     const index = focusable.indexOf(document.activeElement as HTMLElement)
@@ -684,7 +711,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
   const borderAuthored = table['headerBorder.width'] !== '' || table['headerBorder.color'] !== '' || table['headerBorder.edges'] !== ''
   return <section ref={dialog} className="table-editor-backdrop" role="dialog" aria-modal="true" aria-label="Table Editor" aria-busy={busy || undefined} onKeyDownCapture={trapDialog} onFocusCapture={(event) => { totalBlurTarget.current = null; totalHeldFocus.current = event.target === totalInput.current; if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-matrix-cell')) cellHeldFocus.current = false }}>
     <div className="table-editor">
-      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Enter a full binding such as {`{{${table.alias}.date}}`} or a formula such as {`{{upper(${table.alias}.trn_code)}}`}. Use Alt+Left/Right to move between cells. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
+      <div className="table-editor-heading"><div><p className="section-label">TABLE EDITOR</p><h2>Configure columns</h2><p id="table-editor-help">Configure columns, bindings, widths, alignment and footer totals. Enter a full binding such as {`{{${table.alias}.date}}`} or a formula such as {`{{upper(${table.alias}.trn_code)}}`}. Tab moves through a column's fields and on to the next column; Alt+Left/Right moves between cells. In single-line bindings, Alt+Down opens sample suggestions and Shift+Enter adds a new line. Multiline bindings can be resized vertically. You can also select a column on the canvas and pick a path in the DATA tab.</p></div><output className="table-editor-scope" aria-label="Table scope" aria-live="off">{scopeLine}</output></div>
       {/* Collection and alias configure the shared row scope. The labelled
           group remains accessible beside the per-column field controls. */}
       <div className="table-editor-config" role="group" aria-label="Table row scope"><p className="section-label">ROW SCOPE</p><label>Root collection<input key={boxKey(table.collection)} aria-label="Root collection" list="table-collection-candidates" defaultValue={projection.table.collection} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.collection) onConfigure(event.currentTarget.value, projection.table.alias === 'row' ? '' : projection.table.alias) }} /></label><datalist id="table-collection-candidates">{[...new Set(candidates.map((candidate) => candidate.collection))].map((collection) => <option key={collection} value={collection} />)}</datalist><label>Row alias<input key={boxKey(table.alias)} aria-label="Row alias" defaultValue={projection.table.alias} disabled={busy} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; return } if (event.currentTarget.value !== projection.table.alias) onConfigure(projection.table.collection, event.currentTarget.value === 'row' ? '' : event.currentTarget.value) }} /></label><p className="honest-note">{sampleAvailable ? 'Set the table’s collection and row alias here. Candidate collections come from the loaded sample; the engine validates every saved binding.' : 'Set the table’s collection and row alias here. No sample data is loaded, so nothing is suggested; the engine validates every saved binding.'}</p></div>
@@ -718,7 +745,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
               onKeyDown here would replace it and strand this cell. Enter is not
               one of the keys `moveFocus` claims; ArrowUp/ArrowDown are claimed
               only from the label's first/last line (see `moveFocus`). */}
-          <span role="gridcell" aria-colindex={2}><textarea key={boxKey(column.header)} {...matrixCell(index, CELL.header)} rows={labelRows(column.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onChange={(event) => { event.currentTarget.rows = labelRows(event.currentTarget.value) }} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; event.currentTarget.rows = labelRows(event.currentTarget.value); return } if (event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
+          <span role="gridcell" aria-colindex={2}><textarea key={boxKey(column.header)} {...matrixCell(index, CELL.header)} className="matrix-header-label" rows={labelRows(column.header)} aria-label={`Header for column ${index + 1}`} disabled={busy} defaultValue={column.header} onChange={(event) => { event.currentTarget.rows = labelRows(event.currentTarget.value) }} onBlur={(event) => { if (busy) { event.currentTarget.value = event.currentTarget.defaultValue; event.currentTarget.rows = labelRows(event.currentTarget.value); return } if (event.currentTarget.value !== column.header) onUpdate(column.id, 'header', event.currentTarget.value) }} /></span>
           <span role="gridcell" aria-colindex={3} className="matrix-bound">
             {bindingControl(column, index)}
           </span>
@@ -761,7 +788,7 @@ export function TableEditor({ projection, busy, fileBusy, discarding, error, can
           D-12.3.2. Story 14.7 moved `Close Table Editor` out of the heading and
           into the footer bar below, and Story 14.7b turned that one button into
           the `Cancel` / `Done` pair — so the order is now [Root collection, Row
-          alias, the one active matrix cell, Add column, these controls in
+          alias, the matrix (Tab walks every row's fields, see `tabThroughMatrix`), Add column, these controls in
           document order, Cancel, Done]. `Cancel` DROPS OUT of it whenever it is
           disabled, because the trap's query is `button:not([disabled])`.
           App.test.tsx asserts both ends of that list, re-derived from the DOM.
