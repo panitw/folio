@@ -161,9 +161,10 @@ resolves toward making that handoff reliable rather than toward feature breadth.
 - **No cgo**, because the engine must compile to WebAssembly.
 - **No PDF encryption** — ISO 32000-1 §7.6.2 mandates a random IV per encrypted string and
   stream, which is mutually exclusive with byte-identity.
-- **The component palette is exactly five** (Text, Image, Table, Line, Rectangle) and the
-  **expression language is exactly eight functions**. Growth in either is a defined failure
-  signal, not a feature.
+- **The MVP component palette is exactly five** (Text, Image, Table, Line, Rectangle) and the
+  **expression language is exactly eight functions**. Growth in either without a spec that
+  moves it into scope is a defined failure signal, not a feature. `spec-barcode-qr-elements`
+  adds Barcode and QR Code post-MVP.
 - **Images are embedded in the template**; Folio never fetches an image by URL or reads one
   from disk at render time.
 - **All fonts are embedded and subsetted**, and subsetting is byte-stable — no wall-clock
@@ -195,7 +196,7 @@ resolves toward making that handoff reliable rather than toward feature breadth.
   bursting.** The calling application prepares the data as JSON; Folio never touches a database.
 - **Accounts, RBAC, multi-tenancy, a server-side report repository.** There is no operator or
   administrator role in MVP.
-- **Barcodes, QR codes, pivot tables, charts, subreports, digital signatures, general-purpose
+- **Pivot tables, charts, subreports, digital signatures, general-purpose
   scripting, advanced conditional formatting** (conditional *visibility* is in scope;
   data-driven *styling* is not), **advanced font management UI, PDF encryption.**
 - **Accessibility conformance** — neither designer UI conformance nor tagged PDF (PDF/UA,

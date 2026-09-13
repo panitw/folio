@@ -131,11 +131,14 @@ Java SDK · .NET SDK · Node.js SDK · Excel export · charts · subreports
 
 ### 5.3 Out of scope — not planned
 
-Barcode · QR code · pivot tables · SQL query designer · direct database connections ·
+Pivot tables · SQL query designer · direct database connections ·
 scheduled reports · email delivery · role-based access control · multi-tenancy ·
 server-side report repository · general-purpose scripting · advanced conditional
 formatting · right-to-left text · advanced font management UI · digital signatures ·
 report bursting · JasperReports `.jrxml` compatibility · **PDF encryption** (see NFR1.g).
+
+Barcode (Code 128) and QR code came off this list on 2026-09-13 and are specified in
+[`spec-barcode-qr-elements`](../../../specs/spec-barcode-qr-elements/SPEC.md).
 
 Non-PDF output formats — HTML, CSV, PNG, SVG, PowerPoint, Word — are excluded from MVP
 because different output formats carry different layout semantics.
@@ -185,7 +188,8 @@ No template is stored server-side.
   orientation; and page margins.
 - **FR3** — Align work using a grid with snapping.
 - **FR4** — Place components from an MVP palette of exactly five: **Text, Image, Table,
-  Line, Rectangle**.
+  Line, Rectangle**. Post-MVP, **Barcode** and **QR Code** extend the palette to seven
+  (`spec-barcode-qr-elements`).
 - **FR5** — Edit component properties: position (X/Y), size (width/height), font family,
   font size, bold, italic, text alignment, vertical alignment, border, padding, background,
   visibility, and data binding.
@@ -515,7 +519,7 @@ Signals that MVP is succeeding in the wrong direction:
 | # | Counter-metric | Why it matters |
 |---|---|---|
 | C1 | Expression function count exceeding the **eight** specified | The language is becoming a scripting language |
-| C2 | Component palette exceeding five | Breadth is displacing reliability |
+| C2 | Component palette exceeding five during MVP, or growing afterwards without a spec (Barcode and QR Code: `spec-barcode-qr-elements`) | Breadth is displacing reliability |
 | C3 | Any determinism exception carved out to ship a feature | NFR1 is the product; erosion is fatal |
 | C4 | Designer work starting before the engine renders the golden report | The sequencing rule, violated. Upheld by the epic breakdown — see §3 |
 | C5 | Time-to-first-PDF for a new integrator exceeding a few minutes | The "extremely simple API" goal has failed |
