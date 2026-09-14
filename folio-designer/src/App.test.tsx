@@ -1211,6 +1211,10 @@ describe('application shell', () => {
       ['Snap on', `Snap on (${shortcuts.snap})`],
       ['Duplicate', `Duplicate (${shortcuts.duplicate})`],
       ['Delete', `Delete (${shortcuts.delete} key)`],
+      // SPEC-multi-pages story 2 (D-2.3): the two page buttons join the glyph
+      // toolbar. With no document yet, each states why it is disabled.
+      ['Add page', 'Add page: no document is open'],
+      ['Delete page', 'Delete page: no document is open'],
     ])
     for (const button of within(tools).getAllByRole('button')) {
       expect(button.querySelector('svg.tool-icon[aria-hidden="true"]')).not.toBeNull()
@@ -10886,5 +10890,234 @@ describe('spec-section-break: the Section Break on the canvas', () => {
     expect(handle()).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByLabelText(/text component e1/))
     expect(handle()).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
+// SPEC-multi-pages story 2: pages on the canvas. Each designed page is its own
+// group of sheets with a "Page N" label; a page is selected by its empty space
+// or its label; Add page and Delete page are one command each, and Delete page
+// confirms in-app first. These rows pin what the canvas sends and draws.
+describe('SPEC-multi-pages: pages on the canvas', () => {
+  const snapshotOf = (projection: CanvasProjection, revision = 1, extra: object = {}) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection, ...extra })
+  const text = (id: string, page: number, y = 0, band: 'content' | 'pageHeader' = 'content') => ({ id, type: 'text' as const, band, x: 0, y, width: 72_000, height: 24_000, resizable: true, page })
+  const pages = (count: number, patch: Partial<CanvasProjection> = {}): CanvasProjection => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, () => 0), contentWindowPages: Array.from({ length: count }, (_value, index) => index), pageBreaks: Array.from({ length: count }, (_value, index) => index !== 1), ...patch })
+  const open = (projection: CanvasProjection, answer: (operation: string) => Promise<unknown> = async () => ({ snapshot: snapshotOf(projection, 2) }), extra: object = {}) => {
+    const request = vi.fn(answer)
+    render(<App engine={engine(request as never)} initialSnapshot={snapshotOf(projection, 1, extra)} />)
+    return request
+  }
+  const sent = (request: ReturnType<typeof vi.fn>) => (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+  const tools = () => within(screen.getByLabelText('Canvas controls'))
+  const surfaces = () => Array.from(document.querySelectorAll('.page-surface')) as HTMLElement[]
+  const label = (n: number) => screen.getByRole('button', { name: `Page ${n}` })
+  const settle = async () => { await act(async () => { await Promise.resolve() }) }
+
+  it('keeps a one-page document exactly as it was, plus one Page 1 label', () => {
+    open({ ...canvas, components: [text('e1', 0)] })
+    expect(surfaces().map((surface) => surface.getAttribute('aria-label'))).toEqual(['Report page with Page Header, Content, and Page Footer'])
+    expect(screen.getByLabelText('Content')).toBeInTheDocument()
+    expect(screen.getByLabelText('text component e1')).toBeInTheDocument()
+    expect(Array.from(document.querySelectorAll('.page-label')).map((node) => node.textContent)).toEqual(['Page 1'])
+    expect(tools().getByRole('button', { name: 'Delete page' })).toBeDisabled()
+    expect(tools().getByRole('button', { name: 'Delete page' })).toHaveAccessibleDescription('A document keeps at least one page.')
+    expect(tools().getByRole('button', { name: 'Delete page' })).toHaveAttribute('data-tip', 'Delete page: a document keeps at least one page')
+  })
+
+  it('draws each page component only on its own page sheets, labels each page, and the break only on page 1', () => {
+    open(pages(2, { sectionBreak: 400_000, components: [text('e1', 0, 0), text('e2', 1, 0)].map((component) => component.page === 0 ? { ...component, belowSectionBreak: false } : component) }))
+    expect(Array.from(document.querySelectorAll('.page-label')).map((node) => node.textContent)).toEqual(['Page 1', 'Page 2'])
+    const [first, second] = surfaces()
+    expect(within(first!).getByLabelText('text component e1')).toBeInTheDocument()
+    expect(within(first!).queryByLabelText('text component e2')).toBeNull()
+    expect(within(second!).getByLabelText('text component e2')).toBeInTheDocument()
+    expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(0)
+    expect(first!.querySelectorAll('.section-break-line')).toHaveLength(1)
+    expect(second!.querySelectorAll('.section-break-line')).toHaveLength(0)
+  })
+
+  it('selects a page from its empty space or its label, outlines it, and shows its Page Break', async () => {
+    const request = open(pages(2))
+    fireEvent.click(surfaces()[1]!)
+    expect(label(2)).toHaveAttribute('aria-pressed', 'true')
+    expect(surfaces()[1]).toHaveClass('page-surface-selected')
+    expect(surfaces()[0]).not.toHaveClass('page-surface-selected')
+    expect(screen.getByText('PAGE SETUP')).toBeInTheDocument()
+    expect(screen.getByText('PAGE 2')).toBeInTheDocument()
+    const pageBreak = screen.getByRole('checkbox', { name: 'Page Break' })
+    expect(pageBreak).not.toBeChecked()
+    fireEvent.click(pageBreak)
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setPageBreak","version":1,"page":1,"pageBreak":true}']))
+    fireEvent.click(label(1))
+    expect(label(1)).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('checkbox', { name: 'Page Break' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Page Break' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Page Break' })).toHaveAccessibleDescription('Page 1 always starts the document, so Page Break does not apply to it.')
+  })
+
+  it('clears the page selection on Escape and on selecting an element', () => {
+    open(pages(2, { components: [text('e1', 0)] }))
+    fireEvent.click(label(2))
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'Escape' })
+    expect(label(2)).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText('PAGE 2')).toBeNull()
+    fireEvent.click(label(2))
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+    expect(label(2)).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('checkbox', { name: 'Page Break' })).toBeNull()
+  })
+
+  it('adds a page after the selected page and selects it, or at the end with none selected', async () => {
+    const request = open(pages(3), async () => ({ snapshot: snapshotOf(pages(4), 2) }))
+    fireEvent.click(label(2))
+    fireEvent.click(tools().getByRole('button', { name: 'Add page' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"addPage","version":1,"after":1}']))
+    await waitFor(() => expect(label(3)).toHaveAttribute('aria-pressed', 'true'))
+    cleanup()
+    const appended = open(pages(2), async () => ({ snapshot: snapshotOf(pages(3), 2) }))
+    fireEvent.click(tools().getByRole('button', { name: 'Add page' }))
+    await waitFor(() => expect(sent(appended)).toEqual(['{"kind":"addPage","version":1}']))
+    await waitFor(() => expect(label(3)).toHaveAttribute('aria-pressed', 'true'))
+  })
+
+  it('confirms Delete page in-app, naming the page; Cancel and Escape send nothing', async () => {
+    const request = open(pages(3, { components: [text('e1', 0), text('e2', 1)] }), async () => ({ snapshot: snapshotOf(pages(2), 2) }))
+    fireEvent.keyDown(screen.getByLabelText('text component e2'), { key: 'Enter' })
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete page 2?' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' })))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await settle()
+    expect(sent(request)).toEqual([])
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Delete page 2?' })).getByRole('button', { name: 'Delete page' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"deletePage","version":1,"page":1}']))
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Page \d$/ })).toHaveLength(2))
+  })
+
+  it('targets the page of the selected element when no page is selected', () => {
+    open(pages(3, { components: [text('e3', 2)] }))
+    fireEvent.keyDown(screen.getByLabelText('text component e3'), { key: 'Enter' })
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    expect(screen.getByRole('dialog', { name: 'Delete page 3?' })).toBeInTheDocument()
+  })
+
+  it('disables Delete page with its reason when there is no single page to name', () => {
+    open(pages(2, { components: [text('h1', 0, 0, 'pageHeader'), text('e1', 0), text('e2', 1)] }))
+    const button = () => tools().getByRole('button', { name: 'Delete page' })
+    expect(button()).toBeDisabled()
+    expect(button()).toHaveAccessibleDescription('Select a page, or content on one page.')
+    fireEvent.keyDown(screen.getByLabelText('text component h1'), { key: 'Enter' })
+    expect(button()).toBeDisabled()
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+    expect(button()).toBeEnabled()
+    // Select all in the content band: e1 on page 1 and e2 on page 2.
+    fireEvent.focus(screen.getByLabelText('Content on page 1 of 2'))
+    fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'a', ctrlKey: true })
+    expect(screen.getByLabelText('text component e1')).toHaveClass('canvas-component-selected')
+    expect(screen.getByLabelText('text component e2')).toHaveClass('canvas-component-selected')
+    expect(button()).toBeDisabled()
+    expect(button()).toHaveAttribute('data-tip', 'Delete page: the selection is on more than one page')
+  })
+
+  it('states a file action in progress as the reason both page buttons are disabled', async () => {
+    const request = vi.fn(async (operation: string) => operation === 'load' ? new Promise<never>(() => undefined) : ({ snapshot: snapshotOf(pages(2), 2) }))
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'busy.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={snapshotOf(pages(2))} />)
+    fireEvent.click(label(2))
+    expect(tools().getByRole('button', { name: 'Delete page' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+    await waitFor(() => expect(tools().getByRole('button', { name: 'Add page' })).toBeDisabled())
+    for (const name of ['Add page', 'Delete page']) {
+      const button = tools().getByRole('button', { name })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('data-tip', `${name}: a file action is in progress`)
+      expect(button).toHaveAccessibleDescription('A file action is in progress.')
+    }
+  })
+
+  it('moves focus to the canvas region after a confirmed delete, and describes the dialog', async () => {
+    open(pages(2), async () => ({ snapshot: snapshotOf({ ...canvas, pageBreaks: [true] }, 2) }))
+    fireEvent.click(label(2))
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete page 2?' })
+    expect(dialog).toHaveAccessibleDescription('This removes the page and everything on it.')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete page' }))
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /^Page \d$/ })).toHaveLength(1))
+    expect(document.activeElement).toBe(screen.getByLabelText('Canvas region'))
+  })
+
+  it('keeps keyboard focus in the dialog when its backdrop is pressed', async () => {
+    const request = open(pages(2))
+    fireEvent.click(label(2))
+    fireEvent.click(tools().getByRole('button', { name: 'Delete page' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete page 2?' })
+    ;(document.activeElement as HTMLElement).blur()
+    fireEvent.pointerDown(dialog)
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await settle()
+    expect(sent(request)).toEqual([])
+  })
+
+  it('deletes only the selected later-page element from the keyboard, even with Delete page enabled', async () => {
+    for (const key of ['Delete', 'Backspace']) {
+      const request = open(pages(3, { components: [text('e1', 0), text('e2', 1)] }))
+      fireEvent.keyDown(screen.getByLabelText('text component e2'), { key: 'Enter' })
+      expect(tools().getByRole('button', { name: 'Delete page' })).toBeEnabled()
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key })
+      await waitFor(() => expect(sent(request)).toEqual(['{"kind":"deleteComponent","version":1,"id":"e2"}']))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('resizes a later-page component within its own page column', async () => {
+    // Page 2 has two windows; its component's foot is on page 2's second sheet.
+    const request = open({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 0, 600_000], contentWindowPages: [0, 1, 1], pageBreaks: [true, true], components: [text('e2', 1, 590_000)] })
+    fireEvent.keyDown(screen.getByLabelText('text component e2'), { key: 'Enter' })
+    const handle = screen.getByRole('button', { name: 'Resize e2' })
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 10, clientY: -90 })
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 10, clientY: -90 })
+    await waitFor(() => expect(sent(request)).toHaveLength(1))
+    // 100px up crosses page 2's seam onto page 2's first sheet (origin 0). A
+    // page-1 mapping would keep the edge on sheet 1 and send a height of 1.
+    expect(sent(request)[0]).toBe('{"kind":"setComponentBounds","version":1,"id":"e2","x":0,"y":590,"width":72,"height":189.89,"snap":true}')
+  })
+
+  it('never deletes a page from the Delete or Backspace key', async () => {
+    const request = open(pages(2))
+    fireEvent.click(label(2))
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.keyDown(region, { key: 'Delete' })
+    fireEvent.keyDown(region, { key: 'Backspace' })
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(sent(request)).toEqual([])
+  })
+
+  it('accepts no palette drop on a later page content band', async () => {
+    const request = open(pages(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    fireEvent.keyDown(screen.getByLabelText('Content on page 2 of 2'), { key: 'Enter' })
+    await settle()
+    expect(sent(request)).toEqual([])
+    fireEvent.keyDown(screen.getByLabelText('Content on page 1 of 2'), { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toHaveLength(1))
+  })
+
+  it('selects no page once undo removes the selected page', async () => {
+    open(pages(2), async () => ({ snapshot: snapshotOf({ ...canvas, pageBreaks: [true] }, 2, { canUndo: false, canRedo: true }) }), { canUndo: true, canRedo: false })
+    fireEvent.click(label(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Page 2' })).toBeNull())
+    expect(label(1)).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('checkbox', { name: 'Page Break' })).toBeNull()
   })
 })

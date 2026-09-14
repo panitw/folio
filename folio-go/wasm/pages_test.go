@@ -107,3 +107,102 @@ func TestIdAddressedCommandsWorkOnALaterPageElementAndUndo(t *testing.T) {
 		}
 	}
 }
+
+// SPEC-multi-pages story 2: every page command is one undo entry, and one undo
+// restores the exact bytes — across the one-page and pages shapes.
+func TestPageCommandsAreOneUndoEntryEachAndRestoreTheBytes(t *testing.T) {
+	input, err := os.ReadFile("../../fixtures/multi-page-statement/input.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	if _, err := engine.Load(input); err != nil {
+		t.Fatal(err)
+	}
+	parse := func() *template.Document {
+		t.Helper()
+		saved, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := template.ParseDocument(saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	for _, c := range []struct {
+		command string
+		check   func(d *template.Document)
+	}{
+		// Two pages to one: page 2 goes, the one-page shape returns.
+		{`{"kind":"deletePage","version":1,"page":1}`, func(d *template.Document) {
+			if d.Pages != nil || len(d.Bands.Content.Elements) == 0 {
+				t.Error("deleting page 2 of 2 did not return the one-page shape")
+			}
+		}},
+		// One page to two: the content moves into pages[0].
+		{`{"kind":"addPage","version":1}`, func(d *template.Document) {
+			if d.PageCount() != 2 || len(d.Bands.Content.Elements) != 0 || len(d.Pages[1].Elements) != 0 || !d.Pages[1].PageBreak {
+				t.Error("adding a page did not write the pages shape with an empty page 2")
+			}
+		}},
+		{`{"kind":"addPage","version":1,"after":0}`, func(d *template.Document) {
+			if d.PageCount() != 3 || len(d.Pages[1].Elements) != 0 {
+				t.Error("adding after page 1 did not insert an empty page 2")
+			}
+		}},
+		// After the last index appends, as no after does.
+		{`{"kind":"addPage","version":1,"after":2}`, func(d *template.Document) {
+			if d.PageCount() != 4 || len(d.Pages[3].Elements) != 0 || !d.Pages[3].PageBreak {
+				t.Error("adding after the last page did not append an empty page 4")
+			}
+		}},
+		{`{"kind":"setPageBreak","version":1,"page":1,"pageBreak":false}`, func(d *template.Document) {
+			if d.Pages[1].PageBreak {
+				t.Error("Page Break was not cleared")
+			}
+		}},
+		// Page 1 goes; old page 2 becomes page 1.
+		{`{"kind":"deletePage","version":1,"page":0}`, func(d *template.Document) {
+			if d.PageCount() != 3 || len(d.Pages[0].Elements) != 0 {
+				t.Error("deleting page 1 did not make page 2 the first page")
+			}
+		}},
+	} {
+		// Each row builds on the document the previous row left (it is redone
+		// after its undo check).
+		before, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.command == `{"kind":"addPage","version":1}` {
+			// The previous row left one page.
+			if parse().Pages != nil {
+				t.Fatal("precondition: one page")
+			}
+		}
+		if _, err := engine.Apply([]byte(c.command)); err != nil {
+			t.Fatalf("%s: %v", c.command, err)
+		}
+		c.check(parse())
+		if _, err := engine.Undo(); err != nil {
+			t.Fatal(err)
+		}
+		if undone, _, _ := engine.Serialize(); !bytes.Equal(undone, before) {
+			t.Fatalf("one undo did not restore the bytes before %s", c.command)
+		}
+		if _, err := engine.Redo(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The last page is never deleted.
+	for parse().PageCount() > 1 {
+		if _, err := engine.Apply([]byte(`{"kind":"deletePage","version":1,"page":0}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"deletePage","version":1,"page":0}`)); err == nil {
+		t.Error("the engine deleted the only page")
+	}
+}

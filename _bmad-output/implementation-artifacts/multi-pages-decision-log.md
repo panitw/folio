@@ -96,6 +96,50 @@ A reader of the file, or an AI agent editing it, sees one list and never has to 
 
 **How we'd know it was wrong.** An e2e test finds focus anywhere other than on the copy that was clicked.
 
+## Owner decisions from story 2 planning
+
+### D-2.1: Delete page targets the selected page, or the one page the selected elements are on
+**Owner decision**, against the planner's recommendation to enable it only with a page selected.
+
+**Verdict.** Delete page targets the selected page. When no page is selected, it targets the page holding the selected content elements, provided they all sit on one page. It is disabled, with its reason shown, when nothing is selected, when the selection is only header or footer elements or the section break, or when the selected elements span pages. The confirmation always names the target page.
+
+**Situation.** SPEC CAP-2 says "select a page and delete it", but authors mostly have an element selected, not a page. The owner wanted the button to be usable from an element selection.
+
+**In simple terms.** Click the signature line on page 3, press Delete page, and the dialog asks "Delete page 3?". Select a clause on page 1 and one on page 2 together, and the button is disabled, because there is no single page to name.
+
+**Options considered.** Enabling the button only while a page is selected was the safer, more explicit option, and the owner chose convenience over it. The confirmation naming the page is what keeps the convenient option safe.
+
+**Consequences.** The designer needs each component's page, which story 2 projects. "The page of the selection" is a narrower idea than story 4's "current page" (D-G.2) and must not be merged with it silently.
+
+**How we'd know it was wrong.** Authors confirm deletes of pages they did not mean to delete.
+
+### D-2.2: The Delete and Backspace keys never delete a page
+**Owner decision**, against the planner's recommendation.
+
+**Verdict.** With a page selected, Delete and Backspace do nothing. A page is deleted only from the toolbar's Delete page button. Deleting elements and the section break from the keyboard is unchanged.
+
+**Situation.** The keys already delete the selected elements or section break. Extending them to pages would be consistent, but it risks starting a page delete by accident.
+
+**In simple terms.** An author clicks empty space on page 2, which selects the page, and then presses Backspace out of habit. Nothing happens, not even a dialog.
+
+**Consequences.** Keyboard routing (`keyboardDelete`) must ignore a page-only selection.
+
+### D-2.3: Add page and Delete page are icon buttons
+**Owner decision**, made at CHECKPOINT 1 and overriding the planned word buttons.
+
+**Verdict.** Add page and Delete page are icon-only glyph buttons in the canvas controls toolbar, built the same way as Zoom, Grid, Snap, Duplicate and Delete: `tool-button`, a new `ToolGlyph`, an `aria-label` and a `data-tip` tooltip. A disabled button gives its reason in its tooltip and accessible description.
+
+**Situation.** Control-vocabulary V2 (`14-1-one-button-vocabulary.md:407`) allows a glyph-only control only inside a segmented control. R4 pins the allowed icon-only controls to a fixed list of 11. On that basis the plan used words. The owner wants the page buttons to match the icon toolbar they sit in.
+
+**Options considered.** Word buttons in their own group would follow V1–V3, but look out of place in an all-icon bar. The owner chose visual consistency with the existing tools.
+
+**Consequences.**
+- R4's icon-only list and `V2_CENSUS` grow by exactly these two controls, and the test pins are updated on purpose.
+- Two glyphs join `toolbar-icons.tsx`.
+- Because DESIGN.md's rule to state the reason next to a disabled control can't be shown inline on an icon, the reason goes in the tooltip.
+
+**How we'd know it was wrong.** Authors can't tell the two page glyphs apart from Duplicate and Delete.
+
 ## Standing decisions
 
 ### D-S.1 — Build order is stories.yaml list order, 1 through 5

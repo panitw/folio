@@ -57,3 +57,14 @@ describe('rectangle selection geometry (AC-1, AC-2, AC-4, AC-5)', () => {
     expect(component.image.drawY).toBe(25000)
   })
 })
+
+// SPEC-multi-pages story 2: a rectangle tests a content component against its
+// own page's windows — page-local origins are meaningless on another page.
+describe('rectangle selection across designed pages', () => {
+  it('encloses a component only on its own page sheet', () => {
+    const canvas: CanvasProjection = { ...base, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], contentWindowCount: 2, pageBreaks: [true, true], components: [{ ...box('e1', 0, 0), page: 0 }, { ...box('e2', 0, 0), page: 1 }] }
+    const pitch = sheetPitch(canvas, 1)
+    expect(enclosedComponents(canvas, 1, { left: 0, top: 0, right: 600000, bottom: 800000 })).toEqual(['e1'])
+    expect(enclosedComponents(canvas, 1, { left: 0, top: pitch, right: 600000, bottom: pitch + 800000 })).toEqual(['e2'])
+  })
+})

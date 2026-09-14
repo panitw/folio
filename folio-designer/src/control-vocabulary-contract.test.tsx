@@ -445,6 +445,23 @@ const V2_CENSUS: ReadonlyArray<string> = [
   'design · a line element selected · Zoom in',
   'design · a rect element selected · Zoom out',
   'design · a rect element selected · Zoom in',
+  // SPEC-multi-pages story 2 / D-2.3 — THE OWNER OVERRIDES V2 FOR THE TWO PAGE
+  // BUTTONS. Add page and Delete page are icon-only glyph buttons in
+  // `.canvas-tools`, matching the toolbar they sit in, so the closed set grows
+  // by exactly these two controls, deliberately, in every design state that
+  // renders the toolbar.
+  'design · nothing selected · Add page',
+  'design · nothing selected · Delete page',
+  'design · a text element selected · Add page',
+  'design · a text element selected · Delete page',
+  'design · a table element selected · Add page',
+  'design · a table element selected · Delete page',
+  'design · a line element selected · Add page',
+  'design · a line element selected · Delete page',
+  'design · a rect element selected · Add page',
+  'design · a rect element selected · Delete page',
+  'design · the table editor open · Add page',
+  'design · the table editor open · Delete page',
   // `.property-inline-action` — the inspector's `×` clear, `∅` null and the
   // font-family disclosure chevron. Uniform within their class, so R1 is green.
   // They render only while something is selected.

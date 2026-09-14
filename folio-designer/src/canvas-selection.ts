@@ -1,5 +1,5 @@
 import type { CanvasProjection } from './engine-protocol'
-import { sheetPitch, sheetStack } from './sheet-stack'
+import { componentPage, sheetPitch, sheetStack } from './sheet-stack'
 
 export type SelectionPoint = Readonly<{ x: number; y: number }>
 export type SelectionRectangle = Readonly<{ left: number; top: number; right: number; bottom: number }>
@@ -16,10 +16,13 @@ export function enclosedComponents(canvas: CanvasProjection, zoom: number, rect:
     const band = canvas.bands.find((entry) => entry.name === component.band)!
     const x = band.x + component.x
     if (component.band !== 'content') return stack.sheets.some((sheet) => encloses(x, sheet.index * pitch + band.y + component.y, component.width, component.height))
-    if (component.height === 0) return stack.sheets.some((sheet) => component.y >= sheet.origin && component.y <= sheet.origin + Math.min(canvas.contentWindowHeight, sheet.seam ?? canvas.contentWindowHeight) && encloses(x, sheet.index * pitch + band.y + component.y - sheet.origin, component.width, 0))
+    // SPEC-multi-pages: a content component is tested against its OWN page's
+    // windows only — origins are page-local.
+    const sheets = stack.sheets.filter((sheet) => sheet.page === componentPage(component))
+    if (component.height === 0) return sheets.some((sheet) => component.y >= sheet.origin && component.y <= sheet.origin + Math.min(canvas.contentWindowHeight, sheet.seam ?? canvas.contentWindowHeight) && encloses(x, sheet.index * pitch + band.y + component.y - sheet.origin, component.width, 0))
     let covered = component.y
     const end = component.y + component.height
-    for (const sheet of stack.sheets) {
+    for (const sheet of sheets) {
       const start = Math.max(component.y, sheet.origin)
       const stop = Math.min(end, sheet.origin + Math.min(canvas.contentWindowHeight, sheet.seam ?? canvas.contentWindowHeight))
       if (stop <= start) continue

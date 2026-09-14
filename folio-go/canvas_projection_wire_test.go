@@ -66,6 +66,7 @@ var canvasProjectionWireKeys = []string{
 	"marginRight",
 	"marginTop",
 	"orientation",
+	"pageBreaks",
 	"preset",
 	"utcOffset",
 	"width",
@@ -710,6 +711,7 @@ var canvasComponentWireKeys = []string{
 	"paddingLeft",
 	"paddingRight",
 	"paddingTop",
+	"page",
 	"qrcode",
 	"qrcodeUnavailable",
 	"resizable",
@@ -740,7 +742,7 @@ var canvasComponentColumnWireKeys = []string{"bind", "cellAlign", "headerAlign",
 // column marshals, recorded so the new member cannot quietly stop being sent.
 // The subset check below cannot see that: a component that emits FEWER keys
 // than the record is still a subset of it.
-var canvasTableComponentEmittedKeys = []string{"authored", "band", "columns", "fontFamily", "fontSize", "height", "id", "resizable", "tableBind", "type", "width", "x", "y"}
+var canvasTableComponentEmittedKeys = []string{"authored", "band", "columns", "fontFamily", "fontSize", "height", "id", "page", "resizable", "tableBind", "type", "width", "x", "y"}
 
 // componentsFromProjectionBytes reads the projected components as raw objects,
 // by the same rule every helper in this file uses: from the marshalled bytes,

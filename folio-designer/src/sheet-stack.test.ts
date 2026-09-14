@@ -184,3 +184,56 @@ describe('sheet stack display-space inverse', () => {
     expect(columnForStackY(model, projection, 1, 0).columnY).toBe(-CONTENT_TOP)
   })
 })
+
+// SPEC-multi-pages story 2: each designed page is its own group of sheets.
+// Origins are page-local, so a component is homed, echoed and mapped among its
+// own page's windows only, and a seam never crosses a page boundary.
+describe('sheet stack across designed pages', () => {
+  const onPage = (page: number, id: string, y: number, height = 24_000) => ({ ...component(id, y, height), page })
+  const twoPages = canvas({
+    contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 0], contentWindowPages: [0, 0, 1], pageBreaks: [true, true],
+    components: [onPage(0, 'a', 100_000), onPage(0, 'c', 690_000, 40_000), onPage(1, 'b', 710_000)],
+  })
+
+  it('groups sheets by page and marks each page start', () => {
+    const stack = sheetStack(twoPages)
+    expect(stack.sheets.map((sheet) => [sheet.page, sheet.pageStart])).toEqual([[0, true], [0, false], [1, true]])
+  })
+
+  it('homes and echoes a component only on its own page sheets', () => {
+    const stack = sheetStack(twoPages)
+    const ids = stack.sheets.map((sheet) => sheet.content.map((occurrence) => `${occurrence.component.id}${occurrence.home ? '' : '~'}`))
+    // b's page-local y of 710000 would fall in page 1's second window; it is
+    // page 2's, so it is drawn on page 2's sheet alone.
+    expect(ids).toEqual([['a', 'c'], ['c~'], ['b']])
+    expect(stack.sheets[2]!.content[0]!.y).toBe(710_000)
+  })
+
+  it('never draws a seam across a page boundary', () => {
+    expect(sheetStack(twoPages).sheets.map((sheet) => sheet.seam)).toEqual([700_000, undefined, undefined])
+  })
+
+  it('keeps one page of the same geometry exactly as before', () => {
+    const one = sheetStack(canvas({ ...prose, components: [component('a', 100_000)] }))
+    expect(one.sheets.map((sheet) => [sheet.page, sheet.pageStart])).toEqual([[0, true], [0, false], [0, false]])
+    expect(one.sheets.map((sheet) => sheet.seam)).toEqual([715_000, 715_000, undefined])
+  })
+
+  it('truncates the tail of the whole stack, across pages', () => {
+    const many = MAX_CANVAS_SHEETS + 2
+    const stack = sheetStack(canvas({ contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index < MAX_CANVAS_SHEETS ? index * 700_000 : 0), contentWindowPages: Array.from({ length: many }, (_value, index) => index < MAX_CANVAS_SHEETS ? 0 : 1), pageBreaks: [true, true] }))
+    expect(stack.sheets).toHaveLength(MAX_CANVAS_SHEETS)
+    expect(stack.windowCount).toBe(many)
+    expect(stack.truncated).toBe(true)
+  })
+
+  it('maps a column offset among its own page sheets, and holds a drag to that page', () => {
+    const stack = sheetStack(twoPages)
+    const pitch = sheetPitch(twoPages, 1)
+    expect(stackYForColumn(stack, twoPages, 1, 100_000, 1)).toBe(2 * pitch + CONTENT_TOP + 100_000)
+    expect(stackYForColumn(stack, twoPages, 1, 100_000)).toBe(CONTENT_TOP + 100_000)
+    // A drag from page 2 up past its top stays on page 2's sheet.
+    expect(columnForStackY(stack, twoPages, 1, CONTENT_TOP, 1).window).toBe(2)
+    expect(columnEdgeAfterDrag(stack, twoPages, 1, 100_000, -50_000, 1)).toBe(50_000)
+  })
+})

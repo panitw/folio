@@ -308,6 +308,12 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return removeSectionBreak(t, raw)
 	case "setSectionBreakAnchor":
 		return setSectionBreakAnchor(t, raw)
+	case "addPage":
+		return addPage(t, raw)
+	case "deletePage":
+		return deletePage(t, raw)
+	case "setPageBreak":
+		return setPageBreak(t, raw)
 	case "setDocumentLocale":
 		return setDocumentLocale(t, raw)
 	case "setDocumentUTCOffset":

@@ -13784,3 +13784,9 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-section-break-anchor-follow-pusher.md`
   summary: SPEC-section-break CAP-7's intent line still says only that the section "is pushed down", though an unanchored section now also moves up to follow content that ends above the line on a later page.
   evidence: The CAP-7 success criterion and the Unanchored constraint already carry the follow-up rule. Only the one-sentence intent lags. Rewording it is a spec edit, which bmad-build defers to a bmad-spec run.
+- source_spec: `_bmad-output/specs/spec-multi-pages/stories/2-pages-on-the-canvas.md`
+  summary: On a multi-page document whose pages overflow onto several sheets, canvas accessible names count sheets ("Content on page 3 of 3") while the new page labels count designed pages ("Page 2"), so a screen reader hears two different page numbers.
+  evidence: App.tsx band aria-label, the page-surface aria-label and canvasColumnPositionNotice still use sheet.index + 1 of all sheets. Renaming them changes the multi-sheet names that the one-page constraint and existing tests pin, so it belongs with story 4's current-page accessibility work.
+- source_spec: `_bmad-output/specs/spec-multi-pages/stories/2-pages-on-the-canvas.md`
+  summary: While a palette item is armed, a later page's content band ignores the drop without stating why, and the click falls through to select that page.
+  evidence: The `accepts` guard in App.tsx sheetSurface is a deliberate temporary block until story 3 adds per-page drops, which replaces this path. Story 3 must remove the guard rather than add feedback to it.

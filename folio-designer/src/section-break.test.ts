@@ -42,3 +42,12 @@ describe('sectionBreakPlacement', () => {
     expect(contentBandHeight(projection({}))).toBe(729_890)
   })
 })
+
+// SPEC-multi-pages story 2: the break is page 1's, placed among page 1's
+// windows only. A later page's page-local origin of 0 must not claim it.
+describe('sectionBreakPlacement across designed pages', () => {
+  it('draws the line only on page 1 sheets', () => {
+    expect(sectionBreakPlacement(projection({ sectionBreak: 400_000, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, true] }))).toEqual({ sheet: 0, y: 400_000 })
+    expect(sectionBreakPlacement(projection({ sectionBreak: 900_000, contentWindowCount: 3, contentWindowOrigins: [0, 728_000, 0], contentWindowPages: [0, 0, 1], pageBreaks: [true, true] }))).toEqual({ sheet: 1, y: 172_000 })
+  })
+})

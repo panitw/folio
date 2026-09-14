@@ -1359,3 +1359,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .canvas-selection-chrome .selection-handle-w, .canvas-selection-chrome .selection-handle-e { top: calc(var(--component-height) / 2 - 6px); }
 .canvas-selection-chrome .selection-handle-sw, .canvas-selection-chrome .selection-handle-s { top: calc(var(--component-height) - 6px); bottom: auto; }
 .canvas-selection-chrome .resize-handle { top: calc(var(--component-height) - 15px); bottom: auto; }
+/* SPEC-multi-pages story 2 — PAGES ON THE CANVAS. The page label sits in the
+   RIGHT canvas gutter beside its page's first sheet — the left gutter holds the
+   band tabs, which would cover it. CANVAS_GUTTER pads both sides equally, so
+   there is room. The label is out of flow, so the stack's pitch (one page plus
+   the declared gap) is unchanged; the selected page's sheets are outlined. */
+.page-label { position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-2)); padding: 2px var(--space-2); border: var(--hairline) solid var(--color-line-strong); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink-high); font: var(--type-mono); white-space: nowrap; cursor: pointer; }
+.page-label[aria-pressed="true"] { border-color: var(--color-select); background: var(--color-active); color: var(--color-select); }
+.page-surface-selected { outline: 2px solid var(--color-select); outline-offset: 2px; }
+.page-break-setting { display: flex; align-items: center; gap: var(--space-2); }
+.page-dialog-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
+.page-dialog { width: min(420px, calc(100vw - 48px)); padding: var(--space-6); border: var(--hairline) solid var(--color-line-strong); background: var(--color-panel); color: var(--color-ink-high); box-shadow: var(--shadow-page); }
+.page-dialog h2 { margin-top: 0; }
+.page-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-5); }

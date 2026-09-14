@@ -1,5 +1,5 @@
 import type { CanvasProjection } from './engine-protocol'
-import { homeWindow } from './sheet-stack'
+import { homeWindow, pageWindows } from './sheet-stack'
 
 // spec-section-break CAP-1 / CAP-6. THE ARITHMETIC BEHIND THE SECTION BREAK
 // LINE, in the same millipoints Go projected, and nothing else.
@@ -35,6 +35,9 @@ export function proposedSectionBreak(original: number, dy: number, contentHeight
 export function sectionBreakPlacement(canvas: CanvasProjection): Readonly<{ sheet: number; y: number }> | undefined {
   const offset = canvas.sectionBreak
   if (offset === undefined) return undefined
-  const sheet = homeWindow(canvas.contentWindowOrigins, offset)
+  // SPEC-multi-pages: the break is page 1's, so it is placed among page 1's
+  // windows only — they are the stack's first — and never on a later page.
+  const own = pageWindows(canvas, 0)
+  const sheet = own.first + homeWindow(own.origins, offset)
   return { sheet, y: offset - (canvas.contentWindowOrigins[sheet] ?? 0) }
 }

@@ -53,6 +53,12 @@ export type Sheet = Readonly<{
   // content column — straight from contentWindowOrigins, never index * height.
   index: number
   origin: number
+  // SPEC-multi-pages story 2: the designed page this window belongs to
+  // (contentWindowPages), and whether it is that page's first sheet — where the
+  // page label is drawn. Origins are PAGE-LOCAL, so `origin` is measured in this
+  // page's own column.
+  page: number
+  pageStart: boolean
   // Where the NEXT window begins, measured down this sheet's content band,
   // when that falls inside the band. Absent when the next window begins past
   // this sheet's own foot — a declared gap — in which case the band's foot IS
@@ -72,6 +78,29 @@ export type SheetStack = Readonly<{
 }>
 
 const contentComponents = (canvas: CanvasProjection): ReadonlyArray<CanvasComponentProjection> => canvas.components.filter((component) => component.band === 'content')
+
+// SPEC-multi-pages story 2: the designed page a component belongs to, as Go
+// projected it. A one-page projection may omit it, and then every component is
+// on page 0; a header or footer component is always 0.
+export const componentPage = (component: CanvasComponentProjection): number => component.page ?? 0
+
+// How many designed pages the projection has: its last window's page, plus one.
+export function pageCountOf(canvas: CanvasProjection): number {
+  return (canvas.contentWindowPages[canvas.contentWindowPages.length - 1] ?? 0) + 1
+}
+
+// One page's windows: the index of its first window in the whole stack, and
+// its page-local origins in order. Windows are grouped by page in page order.
+export function pageWindows(canvas: CanvasProjection, page: number): Readonly<{ first: number; origins: ReadonlyArray<number> }> {
+  const origins: number[] = []
+  let first = -1
+  canvas.contentWindowPages.forEach((owner, index) => {
+    if (owner !== page) return
+    if (first < 0) first = index
+    origins.push(canvas.contentWindowOrigins[index] as number)
+  })
+  return { first: Math.max(first, 0), origins: origins.length > 0 ? origins : [0] }
+}
 
 // The window a component BELONGS to: the last one that begins at or above its
 // own top. origins[0] is 0 and a component's y is non-negative, so this always
@@ -108,16 +137,25 @@ export function sheetStack(canvas: CanvasProjection): SheetStack {
   // bans a window position derived by multiplying the window height by an
   // index, and a text guard can only catch the spelling it can see.
   const windowHeight = canvas.contentWindowHeight
+  const windowPages = canvas.contentWindowPages
+  // The cap truncates the TAIL of the whole stack, across every page.
   const drawn = Math.min(origins.length, MAX_CANVAS_SHEETS)
   const components = contentComponents(canvas)
+  // A component is homed among ITS OWN page's windows only: origins are
+  // page-local, so page 2's y means nothing against page 1's origins.
+  const perPage = new Map<number, ReturnType<typeof pageWindows>>()
+  const windowsOf = (page: number) => { let found = perPage.get(page); if (!found) { found = pageWindows(canvas, page); perPage.set(page, found) } return found }
   const homes = new Map<string, number>()
-  for (const component of components) homes.set(component.id, homeWindow(origins, component.y))
+  for (const component of components) { const own = windowsOf(componentPage(component)); homes.set(component.id, own.first + homeWindow(own.origins, component.y)) }
   const sheets: Sheet[] = []
   for (let index = 0; index < drawn; index += 1) {
     const origin = origins[index] as number
-    const next = origins[index + 1]
+    const page = windowPages[index] ?? 0
+    // A seam never crosses a page boundary: the next page starts a new column.
+    const next = windowPages[index + 1] === page ? origins[index + 1] : undefined
     const content: SheetOccurrence[] = []
     for (const component of components) {
+      if (componentPage(component) !== page) continue
       const home = homes.get(component.id) === index
       // Drawn on every window its extent intersects, and unconditionally on
       // its home window — so a component the engine never paginated (a text
@@ -130,7 +168,7 @@ export function sheetStack(canvas: CanvasProjection): SheetStack {
       if (intersects) content.push({ component, y: component.y - origin, home })
       else if (home) content.push({ component, y: offsetWithinWindow(component.y, origin, Math.max(0, windowHeight - component.height)), home })
     }
-    sheets.push({ index, origin, ...(next !== undefined && next - origin <= windowHeight ? { seam: next - origin } : {}), content })
+    sheets.push({ index, origin, page, pageStart: index === 0 || windowPages[index - 1] !== page, ...(next !== undefined && next - origin <= windowHeight ? { seam: next - origin } : {}), content })
   }
   return { sheets, windowCount: origins.length, truncated: origins.length > drawn, isExact: canvas.contentWindowCountIsExact }
 }
@@ -154,23 +192,36 @@ export function sheetPitch(canvas: CanvasProjection, zoom: number): number {
 
 const contentBandTop = (canvas: CanvasProjection): number => (canvas.bands[1] as CanvasProjection['bands'][number]).y
 
-// A column offset, as a distance down the whole stack from the top edge of
-// sheet one's page.
-export function stackYForColumn(stack: SheetStack, canvas: CanvasProjection, zoom: number, columnY: number): number {
-  const origins = stack.sheets.map((sheet) => sheet.origin)
-  const index = Math.min(homeWindow(origins, Math.max(columnY, 0)), stack.sheets.length - 1)
+// The drawn sheets of one page, falling back to the last drawn sheet when the
+// cap truncated that page away entirely, so the mapping always has a sheet.
+const drawnSheetsOf = (stack: SheetStack, page: number): ReadonlyArray<Sheet> => {
+  const own = stack.sheets.filter((sheet) => sheet.page === page)
+  return own.length > 0 ? own : stack.sheets.slice(-1)
+}
+
+// A column offset IN `page`'s COLUMN, as a distance down the whole stack from
+// the top edge of sheet one's page. Origins are page-local, so the offset is
+// mapped among that page's sheets only.
+export function stackYForColumn(stack: SheetStack, canvas: CanvasProjection, zoom: number, columnY: number, page = 0): number {
+  const own = drawnSheetsOf(stack, page)
+  const sheet = own[Math.min(homeWindow(own.map((entry) => entry.origin), Math.max(columnY, 0)), own.length - 1)] as Sheet
   // Read through the SAME clamp the drawing uses, so the point this returns is
   // the point the author is actually looking at, and the inverse below can
   // recover it exactly.
-  return index * sheetPitch(canvas, zoom) + contentBandTop(canvas) + offsetWithinWindow(columnY, origins[index] as number, canvas.contentWindowHeight)
+  return sheet.index * sheetPitch(canvas, zoom) + contentBandTop(canvas) + offsetWithinWindow(columnY, sheet.origin, canvas.contentWindowHeight)
 }
 
 // And back: which sheet a point down the stack falls on, and what column
 // offset that is. The two are inverses on every point of every drawn sheet,
 // which is the property the drag depends on and sheet-stack.test.ts asserts.
-export function columnForStackY(stack: SheetStack, canvas: CanvasProjection, zoom: number, stackY: number): Readonly<{ window: number; columnY: number }> {
+// With `page`, the sheet is held to that page's sheets, so a drag never maps
+// into another page's column (moving between pages is story 3).
+export function columnForStackY(stack: SheetStack, canvas: CanvasProjection, zoom: number, stackY: number, page?: number): Readonly<{ window: number; columnY: number }> {
   const pitch = sheetPitch(canvas, zoom)
-  const index = Math.min(Math.max(Math.floor(stackY / pitch), 0), stack.sheets.length - 1)
+  const own = page === undefined ? stack.sheets : drawnSheetsOf(stack, page)
+  const low = (own[0] as Sheet).index
+  const high = (own[own.length - 1] as Sheet).index
+  const index = Math.min(Math.max(Math.floor(stackY / pitch), low), high)
   const sheet = stack.sheets[index] as Sheet
   return { window: index, columnY: sheet.origin + (stackY - index * pitch - contentBandTop(canvas)) }
 }
@@ -178,7 +229,8 @@ export function columnForStackY(stack: SheetStack, canvas: CanvasProjection, zoo
 // What the drag actually asks for: given the column offset of the edge the
 // gesture is moving and the raw document-space delta the pointer travelled,
 // where does that edge end up in the COLUMN? One opaque number goes to Go,
-// and it is a column coordinate, never a pin to a sheet.
-export function columnEdgeAfterDrag(stack: SheetStack, canvas: CanvasProjection, zoom: number, columnEdge: number, delta: number): number {
-  return columnForStackY(stack, canvas, zoom, stackYForColumn(stack, canvas, zoom, columnEdge) + delta).columnY
+// and it is a column coordinate, never a pin to a sheet. It stays within the
+// component's own page.
+export function columnEdgeAfterDrag(stack: SheetStack, canvas: CanvasProjection, zoom: number, columnEdge: number, delta: number, page = 0): number {
+  return columnForStackY(stack, canvas, zoom, stackYForColumn(stack, canvas, zoom, columnEdge, page) + delta, page).columnY
 }

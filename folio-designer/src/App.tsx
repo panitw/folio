@@ -15,6 +15,7 @@ import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
 import { removeSectionBreakCommand, setSectionBreakAnchorCommand, setSectionBreakCommand } from './section-break-command'
+import { addPageCommand, deletePageCommand, setPageBreakCommand } from './page-command'
 import { contentBandHeight, proposedSectionBreak, sectionBreakPlacement } from './section-break'
 import { documentLocaleCommand, documentUTCOffsetCommand } from './document-settings-command'
 import { bindComponentScalarCommand, bindTableCollectionCommand, createComponentCommand, deleteComponentCommand, deleteComponentsCommand, dropComponentCommand, duplicateComponentCommand, duplicateComponentsCommand, moveComponentCommand, setComponentBoundsCommand, type PaletteKind } from './component-command'
@@ -31,7 +32,7 @@ import { openFontStore, storeWriteRefusal, storedFaceKey, type FontStore, type S
 import { previewFaceFamily } from './preview-face-family'
 import { openPreviewFaceRegistry, type PreviewFaceBytes, type PreviewFaceRegistry, type PreviewFaceStatus } from './preview-face-registry'
 import { proposedBounds, resizeAnchors, type DragAnchor, type DragLimit } from './resize-anchor'
-import { columnEdgeAfterDrag, sheetPitch, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
+import { columnEdgeAfterDrag, componentPage, pageCountOf, sheetPitch, sheetStack, SHEET_STACK_GAP, type Sheet, type SheetOccurrence, type SheetStack } from './sheet-stack'
 import { translatedCanvas } from './canvas-selection'
 import { useCanvasSelection, type GroupPreview } from './use-canvas-selection'
 import { tableWidthCommand, addTableColumnCommand, configureTableBindingCommand, moveTableColumnCommand, removeTableColumnCommand, updateTableColumnBindingCommand, updateTableColumnCommand, updateTableColumnExpressionCommand, updateTableColumnFooterCommand } from './table-column-command'
@@ -370,6 +371,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // THE SECTION BREAK'S OWN SELECTION, never a component id: it joins no bulk
   // edit, group move, copy, duplicate or select all. installSelection clears it.
   const [sectionBreakSelected, setSectionBreakSelected] = useState(false)
+  // SPEC-multi-pages story 2: THE SELECTED DESIGNED PAGE, 0-based. Designer
+  // state only, never saved: selecting an element or the section break,
+  // Escape, and undo, redo or a replaced document all clear it.
+  const [selectedPage, setSelectedPage] = useState<number>()
+  // The page a Delete page confirmation is open for.
+  const [pageDeleteConfirm, setPageDeleteConfirm] = useState<number>()
+  const deletePageButtonRef = useRef<HTMLButtonElement>(null)
   const [sectionBreakDrag, setSectionBreakDrag] = useState<SectionBreakDrag>()
   const sectionBreakDragRef = useRef<SectionBreakDrag | undefined>(undefined)
   const abortSectionBreakDrag = () => { sectionBreakDragRef.current = undefined; setSectionBreakDrag(undefined) }
@@ -605,6 +613,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // The break is selected only while the document still has one: an undo or a
   // replaced document takes the selection with it.
   const breakSelected = sectionBreakSelected && canvas?.sectionBreak !== undefined
+  // A selected page exists only while the document still has it.
+  const pageCount = canvas ? pageCountOf(canvas) : 1
+  const pageSelection = selectedPage !== undefined && canvas && selectedPage < pageCount ? selectedPage : undefined
+  // WHICH PAGE DELETE PAGE TARGETS (D-2.1): the selected page, else the one page
+  // every selected CONTENT element is on. Otherwise the reason it is disabled.
+  const deletePageTarget: Readonly<{ page: number } | { reason: string }> = (() => {
+    if (!canvas) return { reason: 'no document is open' }
+    if (pageCount === 1) return { reason: 'a document keeps at least one page' }
+    if (pageSelection !== undefined) return { page: pageSelection }
+    const pages = new Set(canvas.components.filter((component) => component.band === 'content' && selected.includes(component.id)).map(componentPage))
+    if (pages.size === 1) return { page: [...pages][0]! }
+    if (pages.size > 1) return { reason: 'the selection is on more than one page' }
+    return { reason: 'select a page, or content on one page' }
+  })()
   // STORY 8.4a — THE FACES THIS DOCUMENT CARRIES, REGISTERED ONCE FOR THE
   // WHOLE DOCUMENT.
   //
@@ -1204,7 +1226,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     catch (error) { if (documentGeneration.current === generation) { setCommitError(componentDiagnostic(error)); clearInteraction() } }
   }
   const installSelection = (ids: ReadonlyArray<string>) => {
-    setBindingError(undefined); setPropertyError(undefined); setCommitError(undefined); revokeTableEditor(); setColumnSelection(undefined); setSectionBreakSelected(false)
+    setBindingError(undefined); setPropertyError(undefined); setCommitError(undefined); revokeTableEditor(); setColumnSelection(undefined); setSectionBreakSelected(false); setSelectedPage(undefined)
     selectedRef.current = ids; setSelected(ids)
     const band = (snapshotRef.current?.canvas?.components ?? []).find((component) => component.id === ids.at(-1))?.band
     if (band) focusBandRef.current = band
@@ -1661,7 +1683,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // focused component's own Delete. Design mode, no modal, nothing else owning
   // the canvas, and the key aimed at the canvas (or at no control at all).
   const canvasKeyAllowed = (event: Pick<KeyboardEvent, 'target'>): boolean =>
-    modeRef.current === 'design' && engine !== undefined && !fileBusy && tableEditor === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
+    modeRef.current === 'design' && engine !== undefined && !fileBusy && tableEditor === undefined && pageDeleteConfirm === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
     && (event.target === document.body || (event.target instanceof Node && canvasRegionRef.current?.contains(event.target) === true))
   const keyboardDelete = (event: Pick<KeyboardEvent, 'target' | 'repeat' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean => {
     if (!canvasKeyAllowed(event) || event.repeat || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
@@ -1825,6 +1847,31 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // and deleted. Each gesture is ONE engine command, so one undo entry, and the
   // engine snaps and refuses; nothing here measures the DOM.
   const selectSectionBreak = () => { installSelection([]); setSectionBreakSelected(true) }
+  // SPEC-multi-pages story 2: PAGES ON THE CANVAS. Selecting a page is designer
+  // state; adding, deleting and Page Break are each ONE engine command, so one
+  // undo entry, and the engine refuses what cannot be done.
+  const selectPage = (page: number) => { installSelection([]); setSelectedPage(page) }
+  // After the selected page, or at the end; the new page arrives selected.
+  const addPage = () => {
+    const projection = snapshotRef.current?.canvas
+    if (!projection || mutationInFlight.current) return
+    const after = pageSelection
+    const inserted = after === undefined ? pageCountOf(projection) : after + 1
+    mutationInFlight.current = true
+    void commitComponent(addPageCommand(after), () => selectPage(inserted)).finally(() => { mutationInFlight.current = false })
+  }
+  const requestDeletePage = () => { if ('page' in deletePageTarget) setPageDeleteConfirm(deletePageTarget.page) }
+  const cancelDeletePage = () => { setPageDeleteConfirm(undefined); deletePageButtonRef.current?.focus() }
+  const confirmDeletePage = () => {
+    const page = pageDeleteConfirm
+    setPageDeleteConfirm(undefined)
+    // The dialog unmounts and Delete page is usually disabled afterwards, so
+    // focus goes to the canvas region rather than falling to <body>.
+    canvasRegionRef.current?.focus({ preventScroll: true })
+    if (page === undefined || mutationInFlight.current) return
+    mutationInFlight.current = true
+    void commitComponent(deletePageCommand(page), () => installSelection([])).finally(() => { mutationInFlight.current = false })
+  }
   const armSectionBreak = () => { if (snapshotRef.current?.canvas?.sectionBreak !== undefined) return; setPlacing('sectionBreak'); setHoverBand(undefined) }
   // `y` is the click's content-column offset in points. The engine snaps it.
   const placeSectionBreak = (y: number) => {
@@ -2628,7 +2675,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setSelectedPage(undefined); setPageDeleteConfirm(undefined); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   // Retire a settled status. Re-armed on every change to either input, so a new
@@ -2900,7 +2947,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       //
       // Cmd+S sits ABOVE this line and is untouched: saving is not a mutation of
       // what the modal edits.
-      if (editing || tableEditor !== undefined) return
+      if (editing || tableEditor !== undefined || pageDeleteConfirm !== undefined) return
       if (modifier && event.key.toLowerCase() === 'z' && !event.shiftKey && undoAvailable) { event.preventDefault(); void applyHistory('undo'); return }
       if ((modifier && event.shiftKey && event.key.toLowerCase() === 'z' || !mac && modifier && event.key.toLowerCase() === 'y') && redoAvailable) { event.preventDefault(); void applyHistory('redo'); return }
       if (modifier && event.key.toLowerCase() === 'd' && modeRef.current === 'design' && selectedRef.current.length === 1) { event.preventDefault(); duplicateSelection(); return }
@@ -3032,6 +3079,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // measures the DOM and nothing multiplies a window height by an index.
   const displayCanvas = canvas && canvasSelection.group ? translatedCanvas(canvas, canvasSelection.group.ids, canvasSelection.group.dx, canvasSelection.group.dy) : canvas
   const stack = displayCanvas ? sheetStack(displayCanvas) : undefined
+  // SPEC-multi-pages story 2: ONE reason per disabled page button, fed to its
+  // tooltip and its accessible description alike — never a bare grey-out.
+  const fileActionReason = 'a file action is in progress'
+  const addPageReason = !canvas ? 'no document is open' : fileBusy ? fileActionReason : undefined
+  const deletePageReason = canvas && fileBusy ? fileActionReason : 'reason' in deletePageTarget ? deletePageTarget.reason : undefined
   const sheetSurface = (projection: CanvasProjection, model: SheetStack, sheet: Sheet) => {
     const sheets = model.sheets.length
     // A single-sheet document must render exactly the DOM and exactly the
@@ -3042,7 +3094,12 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // Drawn ONCE, on the sheet whose window holds the offset, with no echoes.
     const breakAt = sectionBreakPlacement(projection)
     const pageOf = many ? ` ${sheet.index + 1} of ${sheets}` : ''
-    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onPointerDown={(event) => beginRectangle(event, undefined, sheet.index)} onClick={(event) => { if (!event.shiftKey) installSelection([]) }}>
+    // SPEC-multi-pages story 2: clicking a sheet's empty space selects ITS
+    // designed page, every sheet of which is outlined; the page's first sheet
+    // carries the page label, which selects the page too.
+    const pageIsSelected = pageSelection === sheet.page
+    return <section key={sheet.index} className={`page-surface${gridVisible ? ' page-grid' : ''}${pageIsSelected ? ' page-surface-selected' : ''}`} aria-label={`Report page${pageOf} with Page Header, Content, and Page Footer`} style={pageStyle(projection, zoom)} onPointerDown={(event) => beginRectangle(event, undefined, sheet.index)} onClick={(event) => { if (!event.shiftKey) selectPage(sheet.page) }}>
+      {sheet.pageStart ? <button type="button" className="page-label" aria-pressed={pageIsSelected} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); selectPage(sheet.page) }}>{`Page ${sheet.page + 1}`}</button> : undefined}
       <CanvasSelectionLayer>{projection.bands.map((band) => {
         const content = band.name === 'content'
         // The content band is one WINDOW of the column, so a component's
@@ -3053,6 +3110,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // An empty repeating band has no page hit target; keep its named
         // creation path so the engine refuses it instead of hitting Content.
         const dropOnPage = placing === 'sectionBreak' ? false : placing === 'image' && !content ? band.height > 0 : sheet.index === 0
+        // SPEC-multi-pages story 2: nothing is dropped or created onto a later
+        // page's content band yet (story 3). The engine's create and drop
+        // commands both target page 1's column.
+        const accepts = !(content && sheet.page > 0)
         // The two repeating bands are drawn on every sheet because the engine
         // repeats them — but exactly ONE occurrence of each of their
         // components is interactive and accessibly named, the same rule a
@@ -3062,7 +3123,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && sheet.index > 0 ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && !sheet.pageStart ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta, componentPage(occurrence.component)) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
           : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event)} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // Body previews stay inside their starting window. Only the existing
         // resize path lifts the clip while its anchor tracks across sheets.
@@ -3093,7 +3154,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0)) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && accepts && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && accepts && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && accepts && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0)) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}</CanvasSelectionLayer>
     </section>
   }
@@ -3273,9 +3334,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           from an existing rule is a PLACEMENT and not a selection of the
           neighbour. */}
       {mode === 'design' ? <main ref={canvasRegionRef} className={`canvas-region${placing ? ' canvas-region-placing' : ''}${selected.length > 1 ? ' canvas-region-multi' : ''}`} aria-label="Canvas region" tabIndex={0} onPointerMove={(event) => { canvasSelection.move(event); if (placing) setPlacingAt({ x: event.clientX, y: event.clientY }) }} onPointerUp={(event) => canvasSelection.finish(event)} onPointerCancel={() => canvasSelection.cancel()} onLostPointerCapture={() => canvasSelection.lostCapture()} onPointerDownCapture={(event) => { if (canvasSelection.blocksPointer()) { event.preventDefault(); event.stopPropagation() } else canvasSelection.freshPointer() }} onScroll={() => canvasSelection.cancel()} onClickCapture={(event) => { if (canvasSelection.consumeClick()) { event.preventDefault(); event.stopPropagation() } }} onPointerLeave={() => setPlacingAt(undefined)} onKeyDown={(event) => { if (event.key === 'Escape') { if (canvasSelection.cancel()) { event.preventDefault(); event.stopPropagation(); return } clearInteraction(); installSelection([]) } }}>
-        <div className="canvas-tools" aria-label="Canvas controls"><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out" data-tip="Zoom out"><ToolIcon glyph="zoom-out" /></button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in" data-tip="Zoom in"><ToolIcon glyph="zoom-in" /></button><button className="tool-button" type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible} aria-label={`Grid ${gridVisible ? 'on' : 'off'}`} data-tip={`Grid ${gridVisible ? 'on' : 'off'}`}><ToolIcon glyph="grid" /></button><button className="tool-button" type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled} aria-label={`Snap ${snapEnabled ? 'on' : 'off'}`} data-tip={toolTip(`Snap ${snapEnabled ? 'on' : 'off'}`, shortcuts.snap)}><ToolIcon glyph="snap" /></button><button className="tool-button" type="button" onClick={duplicateSelection} disabled={selected.length !== 1} aria-label="Duplicate" data-tip={toolTip('Duplicate', shortcuts.duplicate)}><ToolIcon glyph="duplicate" /></button><button className="tool-button" type="button" onClick={breakSelected ? deleteSectionBreak : deleteSelection} disabled={selected.length === 0 && !breakSelected} aria-label="Delete" data-tip={toolTip('Delete', `${shortcuts.delete} key`)}><ToolIcon glyph="delete" /></button><span className="tool-hint" role="img" aria-label={toolTip('Nudge', shortcuts.nudge)} data-tip={toolTip('Nudge', shortcuts.nudge)}><ToolIcon glyph="nudge" /></span></div>
+        <div className="canvas-tools" aria-label="Canvas controls"><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))} aria-label="Zoom out" data-tip="Zoom out"><ToolIcon glyph="zoom-out" /></button><output aria-label="Canvas zoom">{Math.round(zoom * 100)}%</output><button className="tool-button" type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.1))} aria-label="Zoom in" data-tip="Zoom in"><ToolIcon glyph="zoom-in" /></button><button className="tool-button" type="button" onClick={() => setGridVisible((value) => !value)} aria-pressed={gridVisible} aria-label={`Grid ${gridVisible ? 'on' : 'off'}`} data-tip={`Grid ${gridVisible ? 'on' : 'off'}`}><ToolIcon glyph="grid" /></button><button className="tool-button" type="button" onClick={() => setSnapEnabled((value) => !value)} aria-pressed={snapEnabled} aria-label={`Snap ${snapEnabled ? 'on' : 'off'}`} data-tip={toolTip(`Snap ${snapEnabled ? 'on' : 'off'}`, shortcuts.snap)}><ToolIcon glyph="snap" /></button><button className="tool-button" type="button" onClick={duplicateSelection} disabled={selected.length !== 1} aria-label="Duplicate" data-tip={toolTip('Duplicate', shortcuts.duplicate)}><ToolIcon glyph="duplicate" /></button><button className="tool-button" type="button" onClick={breakSelected ? deleteSectionBreak : deleteSelection} disabled={selected.length === 0 && !breakSelected} aria-label="Delete" data-tip={toolTip('Delete', `${shortcuts.delete} key`)}><ToolIcon glyph="delete" /></button><button className="tool-button" type="button" onClick={addPage} disabled={addPageReason !== undefined} aria-label="Add page" data-tip={addPageReason ? `Add page: ${addPageReason}` : 'Add page'} aria-describedby={addPageReason ? 'add-page-reason' : undefined}><ToolIcon glyph="add-page" /></button>{addPageReason && <span id="add-page-reason" className="sr-only">{reasonSentence(addPageReason)}</span>}<button ref={deletePageButtonRef} className="tool-button" type="button" onClick={requestDeletePage} disabled={deletePageReason !== undefined} aria-label="Delete page" data-tip={deletePageReason ? `Delete page: ${deletePageReason}` : 'Delete page'} aria-describedby={deletePageReason ? 'delete-page-reason' : undefined}><ToolIcon glyph="delete-page" /></button>{deletePageReason && <span id="delete-page-reason" className="sr-only">{reasonSentence(deletePageReason)}</span>}<span className="tool-hint" role="img" aria-label={toolTip('Nudge', shortcuts.nudge)} data-tip={toolTip('Nudge', shortcuts.nudge)}><ToolIcon glyph="nudge" /></span></div>
         {displayCanvas && stack ? <div className="canvas-body" style={{ width: `calc(${canvasDisplay.css(displayCanvas.width, zoom)} + ${2 * CANVAS_GUTTER}px)`, paddingInline: `${CANVAS_GUTTER}px` }} onPointerDown={(event) => beginRectangle(event, undefined, 0, true)}><div className="sheet-stack" style={{ '--sheet-stack-gap': `${SHEET_STACK_GAP}px`, width: canvasDisplay.css(displayCanvas.width, zoom) } as CSSProperties} onPointerDown={(event) => beginRectangle(event)}>{stack.sheets.map((sheet) => sheetSurface(displayCanvas, stack, sheet))}{canvasSelection.rectangle && <div className="canvas-selection-rectangle" aria-label="Selection rectangle" style={{ left: canvasDisplay.css(canvasSelection.rectangle.left, zoom), top: canvasDisplay.css(canvasSelection.rectangle.top, zoom), width: canvasDisplay.css(canvasSelection.rectangle.right - canvasSelection.rectangle.left, zoom), height: canvasDisplay.css(canvasSelection.rectangle.bottom - canvasSelection.rectangle.top, zoom) }} />}</div></div> : <p className="canvas-awaiting" role="status">Waiting for Go page geometry.</p>}
 
+        {pageDeleteConfirm !== undefined && <DeletePageDialog page={pageDeleteConfirm} onConfirm={confirmDeletePage} onCancel={cancelDeletePage} />}
         {placing && placingAt && <span className="placement-ghost" aria-hidden="true" style={{ '--ghost-x': `${placingAt.x}px`, '--ghost-y': `${placingAt.y}px` } as CSSProperties}>{placing === 'sectionBreak' ? <><SectionBreakIcon />Section Break</> : <><PaletteIcon kind={placing} />{paletteItems.find(([, kind]) => kind === placing)?.[0]}</>}</span>}
         {commitError && <p role="alert" className="file-message">{commitError}</p>}{locateStatus && <p role="status" aria-live="polite" className="file-message">{locateStatus}</p>}{/* STORY 14.7b — WHAT A COMPLETED CANCEL DISCARDED, in this region and in
             its OWN state. Not folded into `fileStatus`: that line is for local
@@ -3320,7 +3382,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
             itself belongs to the DATA panel.
             "Configure columns" stays live throughout: the TABLE is still the
             component selection, so `openTableEditor`'s
-            `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : breakSelected && canvas?.sectionBreak !== undefined ? <SectionBreakProperties key={`${documentGenerationValue}:${canvas.sectionBreak}`} offset={canvas.sectionBreak} anchor={canvas.sectionBreakAnchor ?? true} onCommit={(draft) => void commitComponent(setSectionBreakCommand(draft, false))} onAnchor={(anchor) => void commitComponent(setSectionBreakAnchorCommand(anchor))} /> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} groupPreview={canvasSelection.group} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />}</div>
+            `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : breakSelected && canvas?.sectionBreak !== undefined ? <SectionBreakProperties key={`${documentGenerationValue}:${canvas.sectionBreak}`} offset={canvas.sectionBreak} anchor={canvas.sectionBreakAnchor ?? true} onCommit={(draft) => void commitComponent(setSectionBreakCommand(draft, false))} onAnchor={(anchor) => void commitComponent(setSectionBreakAnchorCommand(anchor))} /> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} groupPreview={canvasSelection.group} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <><PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} />{canvas && pageSelection !== undefined && <PageSection page={pageSelection} pageBreak={canvas.pageBreaks?.[pageSelection] ?? true} disabled={fileBusy} onPageBreak={(value) => void commitComponent(setPageBreakCommand(pageSelection, value))} />}</>}</div>
         <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.type === 'table' ? selectedComponent.tableBind : selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} columnScope={columnBindScope} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} onConnectColumn={(field) => void bindPickedColumn(field)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
@@ -5366,6 +5428,43 @@ function SectionBreakProperties({ offset, anchor, onCommit, onAnchor }: { offset
   }
   return <><p className="section-label">SECTION BREAK</p><p className="honest-note">Content declared below this line moves together. If content above ends above the line, nothing moves.</p><label>Y (pt)<input aria-label="Y (pt)" inputMode="decimal" value={draft ?? committed} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') setDraft(undefined) }} /></label><label className="section-break-anchor"><input type="checkbox" aria-label="Anchor" checked={anchor} onChange={() => onAnchor(!anchor)} />Anchor</label><p className="honest-note">{anchor ? 'Anchored: when content above crosses the line, this section moves to a new page at its designed position.' : 'Not anchored: when content above crosses the line, this section moves down by that much on the same page, keeping its gap from the line, if it fits. Otherwise it starts a new page with the line at the top.'}</p></>
 }
+
+// SPEC-multi-pages story 2: THE SELECTED PAGE'S SECTION OF PAGE SETUP. Page
+// setup itself is document-wide; the page's own setting is its Page Break,
+// which does not apply to page 1 and is disabled there with the reason shown.
+function PageSection({ page, pageBreak, disabled, onPageBreak }: { page: number; pageBreak: boolean; disabled: boolean; onPageBreak: (value: boolean) => void }) {
+  const first = page === 0
+  return <><p className="section-label">{`PAGE ${page + 1}`}</p><label className="page-break-setting"><input type="checkbox" aria-label="Page Break" checked={first || pageBreak} disabled={first || disabled} aria-describedby={first ? 'page-break-reason' : undefined} onChange={() => onPageBreak(!pageBreak)} />Page Break</label>{first ? <p id="page-break-reason" className="honest-note">Page 1 always starts the document, so Page Break does not apply to it.</p> : <p className="honest-note">{pageBreak ? 'On: this page starts on a new printed page after the previous page.' : 'Off: this page follows on from the previous page instead of always starting a new printed page.'}</p>}</>
+}
+
+// SPEC-multi-pages story 2: THE DELETE PAGE CONFIRMATION. In-app, never
+// window.confirm; it names the page, Cancel takes focus first, Tab stays inside
+// it and Escape cancels. Keys never reach the canvas behind it.
+function DeletePageDialog({ page, onConfirm, onCancel }: { page: number; onConfirm: () => void; onCancel: () => void }) {
+  const confirm = useRef<HTMLButtonElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
+  useEffect(() => { cancel.current?.focus() }, [])
+  // A press on the backdrop would move focus to <body>, where Escape and Tab no
+  // longer reach this dialog; keep it on Cancel instead.
+  const holdFocus = (event: { target: EventTarget; preventDefault: () => void }) => {
+    if (event.target instanceof Element && event.target.closest('.page-dialog') === null) { event.preventDefault(); cancel.current?.focus() }
+  }
+  return <section className="page-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="delete-page-title" aria-describedby="delete-page-description" onPointerDown={holdFocus} onMouseDown={holdFocus} onKeyDownCapture={(event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); return }
+    if (event.key !== 'Tab') { event.stopPropagation(); return }
+    event.preventDefault(); event.stopPropagation()
+    ;(document.activeElement === confirm.current ? cancel.current : confirm.current)?.focus()
+  }}>
+    <div className="page-dialog">
+      <h2 id="delete-page-title">{`Delete page ${page + 1}?`}</h2>
+      <p id="delete-page-description" className="honest-note">This removes the page and everything on it.</p>
+      <div className="page-dialog-actions"><button ref={confirm} type="button" className="page-dialog-confirm" onClick={onConfirm}>Delete page</button><button ref={cancel} type="button" onClick={onCancel}>Cancel</button></div>
+    </div>
+  </section>
+}
+
+// A lower-case reason clause as a sentence, for an accessible description.
+function reasonSentence(reason: string): string { return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.` }
 
 function Field({ label, value, inputMode = 'decimal', onChange }: { label: string; value: string; inputMode?: 'decimal' | 'text'; onChange: (value: string) => void }) { return <label>{label}<input aria-label={label} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)} /></label> }
 function bandName(name: CanvasProjection['bands'][number]['name']): string { return name === 'pageHeader' ? 'Page Header' : name === 'pageFooter' ? 'Page Footer' : 'Content' }

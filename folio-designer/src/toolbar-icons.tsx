@@ -4,7 +4,7 @@
 // offline release gains no emitted asset (D-14.0.1). The picture is decorative:
 // each control carries its accessible name in `aria-label` and its hover guide
 // — the name plus any shortcut — in `data-tip`, which `.tool-button` paints.
-export type ToolGlyph = 'open' | 'save' | 'save-as' | 'blank' | 'undo' | 'redo' | 'zoom-out' | 'zoom-in' | 'grid' | 'snap' | 'duplicate' | 'delete' | 'nudge'
+export type ToolGlyph = 'open' | 'save' | 'save-as' | 'blank' | 'undo' | 'redo' | 'zoom-out' | 'zoom-in' | 'grid' | 'snap' | 'duplicate' | 'delete' | 'add-page' | 'delete-page' | 'nudge'
 
 const toolGlyphs: Readonly<Record<ToolGlyph, string>> = {
   open: 'M2 4.5h4l1.5 1.5H14v6.5H2z',
@@ -19,6 +19,10 @@ const toolGlyphs: Readonly<Record<ToolGlyph, string>> = {
   snap: 'M3.5 2.5v5a4.5 4.5 0 0 0 9 0v-5h-3v5a1.5 1.5 0 0 1-3 0v-5z M3.5 5h3 M9.5 5h3',
   duplicate: 'M5.5 5.5h8v8h-8z M10.5 5.5v-3h-8v8h3',
   delete: 'M2.5 4h11 M6 4V2.5h4V4 M4 4l.7 9.5h6.6L12 4 M6.8 6.5V11 M9.2 6.5V11',
+  // SPEC-multi-pages story 2 (D-2.3): a page with a plus, and a page with a
+  // minus — the page outline sets them apart from Duplicate and Delete.
+  'add-page': 'M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M8 7v5 M5.5 9.5h5',
+  'delete-page': 'M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 9.5h5',
   nudge: 'M8 2v12 M2 8h12 M6.5 3.5L8 2l1.5 1.5 M6.5 12.5L8 14l1.5-1.5 M3.5 6.5L2 8l1.5 1.5 M12.5 6.5L14 8l-1.5 1.5',
 }
 

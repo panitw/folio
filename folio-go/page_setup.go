@@ -328,6 +328,12 @@ type CanvasComponent struct {
 	// component of a document without a break, so such a document projects
 	// exactly as before. The designer derives membership from nothing else.
 	BelowSectionBreak *bool `json:"belowSectionBreak,omitempty"`
+	// Page is SPEC-multi-pages' designed page a CONTENT component belongs to,
+	// 0-based and always present, so the designer homes and echoes it only on
+	// its own page's sheets. It is 0 for every page header and page footer
+	// component, which belong to no one page, and for every component of a
+	// one-page document.
+	Page int `json:"page"`
 }
 
 // imageUnavailableMissing / imageUnavailableUndecodable are
@@ -562,6 +568,11 @@ type CanvasProjection struct {
 	// from there, in that page's own band-relative frame. A one-page document
 	// projects all zeros. Always non-empty, for ContentWindowOrigins' reason.
 	ContentWindowPages []int `json:"contentWindowPages"`
+	// PageBreaks is each designed page's Page Break setting, one entry per
+	// page in page order, so the Page Setup checkbox shows the engine's value.
+	// Page 1's does not apply and is always true. Always non-empty, for
+	// ContentWindowOrigins' reason.
+	PageBreaks []bool `json:"pageBreaks"`
 	// ContentWindowCountIsExact states, as a value rather than only in the
 	// comment above, whether ContentWindowCount can be TRUSTED as the number
 	// of pages this content column occupies. The ENGINE reports it, because
@@ -977,6 +988,19 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	pageBreaks := make([]bool, t.doc.PageCount())
+	pageBreaks[0] = true
+	if len(pageBreaks) > 1 {
+		for page := 1; page < len(pageBreaks); page++ {
+			pageBreaks[page] = t.doc.Pages[page].PageBreak
+		}
+		pageOf := contentPageIndex(t)
+		for index := range components {
+			if components[index].Band == bandContent {
+				components[index].Page = pageOf[components[index].ID]
+			}
+		}
+	}
 	var sectionBreak *int64
 	var sectionBreakAnchor *bool
 	if offset, ok := declaredSectionBreak(t); ok {
@@ -997,7 +1021,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 			components[index].BelowSectionBreak = &below
 		}
 	}
-	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: int64(t.doc.PageCount()), ContentWindowOrigins: canvasOnePerPageOrigins(t.doc.PageCount()), ContentWindowPages: canvasOnePerPagePages(t.doc.PageCount()), ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: int64(t.doc.PageCount()), ContentWindowOrigins: canvasOnePerPageOrigins(t.doc.PageCount()), ContentWindowPages: canvasOnePerPagePages(t.doc.PageCount()), PageBreaks: pageBreaks, ContentWindowCountIsExact: false}, nil
 }
 
 // canvasOnePerPageOrigins and canvasOnePerPagePages are the window sequence
