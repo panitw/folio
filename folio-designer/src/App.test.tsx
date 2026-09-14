@@ -7319,9 +7319,10 @@ describe('Story 12.5: a band boundary is dragged on the canvas', () => {
     expect(sentCommands(request)[0]).not.toContain('null')
   })
 
-  // MATRIX ROW 13. One interactive boundary per DOCUMENT, on the home sheet,
+  // MATRIX ROW 13. One NAMED boundary per DOCUMENT, on the home sheet,
   // following the occurrence.home idiom the repeating components already use.
-  it('draws exactly two handles for a three-sheet stack, both on the home sheet', () => {
+  // Every other sheet draws an aria-hidden, untabbable handle that still drags.
+  it('names exactly two handles for a three-sheet stack, both on the home sheet, and hides the rest', () => {
     open({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], contentWindowPages: [0, 0, 0] })
     expect(document.querySelectorAll('.page-surface')).toHaveLength(3)
     expect(document.querySelectorAll('.page-band-pageFooter')).toHaveLength(3)
@@ -7329,10 +7330,28 @@ describe('Story 12.5: a band boundary is dragged on the canvas', () => {
     // uniqueness claim.
     expect(headerHandle()).toBeInTheDocument()
     expect(footerHandle()).toBeInTheDocument()
-    const handles = Array.from(document.querySelectorAll('.band-boundary-handle'))
-    expect(handles).toHaveLength(2)
     const home = document.querySelectorAll('.page-surface')[0] as HTMLElement
-    expect(handles.every((handle) => home.contains(handle))).toBe(true)
+    expect(home.contains(headerHandle()) && home.contains(footerHandle())).toBe(true)
+    const handles = Array.from(document.querySelectorAll('.band-boundary-handle'))
+    expect(handles).toHaveLength(6)
+    const hidden = handles.filter((handle) => !home.contains(handle))
+    expect(hidden).toHaveLength(4)
+    expect(hidden.every((handle) => handle.getAttribute('aria-hidden') === 'true' && handle.getAttribute('tabindex') === '-1' && !handle.hasAttribute('aria-label'))).toBe(true)
+  })
+
+  // SPEC-multi-pages: the header and footer heights are shared, so they resize
+  // from any sheet, with today's command, and the proposal shows on every sheet.
+  it('resizes the page header from a later sheet with the same command', async () => {
+    const { request } = open({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, true] })
+    const later = document.querySelectorAll('.page-surface')[1]!.querySelector('.page-band-content .band-boundary-handle') as HTMLElement
+    expect(later).toHaveAttribute('aria-hidden', 'true')
+    press(later, 100)
+    drag(later, 106)
+    expect(document.querySelectorAll('.band-boundary-proposal')).toHaveLength(2)
+    release(later, 106)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+    // No page, no sheet: the one shared height, exactly as from the home sheet.
+    expect(sentCommands(request)[0]).toMatch(/^\{"kind":"setBandHeight","version":1,"band":"pageHeader","height":[0-9.]+,"snap":true\}$/)
   })
 
   // MATRIX ROW 14. A right-button press fires pointerdown like any other, and

@@ -127,6 +127,8 @@ context:
 
 ## Spec Change Log
 
+- **2026-09-15, owner follow-up after delivery.** "The band boundary handle stays on sheet 0" (Code Map) is reversed. The owner needs to resize the header and footer heights from any page. Every sheet now draws the header and footer boundary handles, and the drag math is clientY-only, so any copy sends today's `setBandHeight`. Following this story's one-named-copy rule, the named, tabbable handles sit on the current page's first sheet; every other copy is aria-hidden with `tabIndex=-1`. A live proposal shows on every sheet, and placing still passes through every handle.
+
 ## Review Triage Log
 
 | # | Source | Finding | Verdict | Route | Evidence |
