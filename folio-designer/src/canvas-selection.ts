@@ -1,5 +1,5 @@
 import type { CanvasProjection } from './engine-protocol'
-import { componentPage, sheetPitch, sheetStack } from './sheet-stack'
+import { columnForStackY, componentPage, sheetPitch, sheetStack } from './sheet-stack'
 
 export type SelectionPoint = Readonly<{ x: number; y: number }>
 export type SelectionRectangle = Readonly<{ left: number; top: number; right: number; bottom: number }>
@@ -37,11 +37,29 @@ export function enclosedComponents(canvas: CanvasProjection, zoom: number, rect:
 
 // Move paint's absolute coordinates with the box while retaining its offsets.
 // Geometry remains a captured projection plus the engine's accepted delta.
-export function translatedCanvas(canvas: CanvasProjection, ids: ReadonlyArray<string>, dx: number, dy: number): CanvasProjection {
+// SPEC-multi-pages story 3: with `page`, the moving components are drawn in
+// that page's column, so the preview sits on the sheet under the pointer.
+export function translatedCanvas(canvas: CanvasProjection, ids: ReadonlyArray<string>, dx: number, dy: number, page?: number): CanvasProjection {
   const targets = new Set(ids)
   return { ...canvas, components: canvas.components.map((component) => targets.has(component.id) ? {
-    ...component, x: component.x + dx, y: component.y + dy,
+    ...component, x: component.x + dx, y: component.y + dy, ...(page === undefined ? {} : { page }),
     ...(component.image ? { image: { ...component.image, drawX: component.image.drawX + dx, drawY: component.image.drawY + dy } } : {}),
     ...(component.textPaint ? { textPaint: { ...component.textPaint, lines: component.textPaint.lines.map((line) => ({ ...line, top: line.top + dy, baseline: line.baseline + dy, fragments: line.fragments.map((fragment) => ({ ...fragment, x: fragment.x + dx })) })) } } : {}),
   } : component) }
+}
+
+// SPEC-multi-pages story 3: the designed page whose CONTENT BAND holds a point
+// down the whole stack (millipoints from the top of sheet one), and that
+// point's offset in that page's column. Undefined off every drawn sheet's
+// content band — over a header, a footer, a gap or past the stack.
+export function contentPageAt(canvas: CanvasProjection, zoom: number, stackY: number): Readonly<{ page: number; columnY: number }> | undefined {
+  const stack = sheetStack(canvas)
+  const pitch = sheetPitch(canvas, zoom)
+  const index = Math.floor(stackY / pitch)
+  const sheet = stack.sheets[index]
+  const content = canvas.bands.find((band) => band.name === 'content')
+  if (!sheet || !content) return undefined
+  const within = stackY - index * pitch - content.y
+  if (within < 0 || within >= content.height) return undefined
+  return { page: sheet.page, columnY: columnForStackY(stack, canvas, zoom, stackY).columnY }
 }

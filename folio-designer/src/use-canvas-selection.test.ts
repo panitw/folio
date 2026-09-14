@@ -159,3 +159,45 @@ describe('rectangle ownership', () => {
     expect(h.props.onSelection).not.toHaveBeenCalled()
   })
 })
+
+// SPEC-multi-pages story 3: two one-sheet pages. Pitch at zoom 1 is 824pt; the
+// content band runs 100pt to 700pt down each sheet.
+describe('moving a selection to another page (story 3)', () => {
+  const twoPages: CanvasProjection = { ...canvas, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], contentWindowCount: 2, components: [{ ...canvas.components[0]!, page: 0 }, { ...canvas.components[1]!, page: 0 }, { id: 'e3', type: 'rect', band: 'content', x: 10000, y: 10000, width: 20000, height: 20000, resizable: true, page: 1 }] }
+  const decode = (payload: ArrayBuffer) => JSON.parse(new TextDecoder().decode(payload))
+  it('targets the page under the pointer, measured in that page column, and draws the preview there', async () => {
+    const h = harness()
+    h.rerender({ ...h.props, snap: false, canvas: twoPages })
+    // Pressed on e1's top at page 1's column y 10pt: stack y 110pt.
+    act(() => h.result.current.beginGroup(input(), ['e1', 'e2'], 'e1', 110000))
+    // 1,014px down: stack y 1,124pt is page 2's sheet at column y 200pt.
+    act(() => h.result.current.move(input(0, 1014)))
+    expect(decode(h.pending[0]!.payload)).toMatchObject({ ids: ['e1', 'e2'], dy: 190, constrainToWindow: true, page: 1 })
+    await h.reply(0, 0, 190000)
+    expect(h.result.current.group).toEqual({ ids: ['e1', 'e2'], dx: 0, dy: 190000, page: 1 })
+    act(() => h.result.current.finish(input(0, 1014)))
+    await act(async () => {})
+    expect(decode(h.props.onCommit.mock.calls[0]![0])).toMatchObject({ kind: 'moveComponents', dy: 190, page: 1 })
+  })
+  it('commits a move to another page even when its delta is zero', async () => {
+    const h = harness()
+    h.rerender({ ...h.props, snap: false, canvas: twoPages })
+    act(() => h.result.current.beginGroup(input(), ['e1', 'e2'], 'e1', 110000))
+    act(() => h.result.current.move(input(0, 824)))
+    await h.reply(0, 0, 0)
+    act(() => h.result.current.finish(input(0, 824)))
+    await act(async () => {})
+    expect(decode(h.props.onCommit.mock.calls[0]![0])).toMatchObject({ dx: 0, dy: 0, page: 1 })
+  })
+  it('keeps today bytes over its own page, a page gap, or for a selection spanning pages', () => {
+    for (const [ids, travel] of [[['e1', 'e2'], 100], [['e1', 'e2'], 650], [['e1', 'e3'], 1014]] as const) {
+      const h = harness()
+      h.rerender({ ...h.props, snap: false, canvas: twoPages, selection: [...ids] })
+      act(() => h.result.current.beginGroup(input(), ids, 'e1', 110000))
+      act(() => h.result.current.move(input(0, travel)))
+      expect(decode(h.pending[0]!.payload)).not.toHaveProperty('page')
+      expect(decode(h.pending[0]!.payload)).toMatchObject({ dy: travel, constrainToWindow: true })
+      h.unmount()
+    }
+  })
+})

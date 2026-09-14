@@ -199,7 +199,14 @@ func refuseSectionBreakStraddle(t *Template, bandName string, candidate template
 	// SPEC-multi-pages: the break is page 1's, so it constrains only page 1's
 	// elements. An id not yet in the index is a new element, created into
 	// page 1.
-	if page, ok := contentPageIndex(t)[string(candidate.ID)]; ok && page != 0 {
+	return refuseSectionBreakStraddleOnPage(t, bandName, contentPageIndex(t)[string(candidate.ID)], candidate, path)
+}
+
+// refuseSectionBreakStraddleOnPage is refuseSectionBreakStraddle for a
+// candidate that will sit on `page` — a create onto a page, or a move to one
+// (story 3). Only page 1 has a break, so any other page is never refused.
+func refuseSectionBreakStraddleOnPage(t *Template, bandName string, page int, candidate template.Element, path string) error {
+	if bandName != bandContent || page != 0 {
 		return nil
 	}
 	offset, ok := declaredSectionBreak(t)

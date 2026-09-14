@@ -2,14 +2,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { EngineClient } from './engine-client'
 import type { CanvasProjection } from './engine-protocol'
 import { moveComponentsCommand } from './component-command'
-import { enclosedComponents, selectionRectangle, type SelectionPoint, type SelectionRectangle } from './canvas-selection'
+import { contentPageAt, enclosedComponents, selectionRectangle, type SelectionPoint, type SelectionRectangle } from './canvas-selection'
+import { columnForStackY, componentPage, sheetStack } from './sheet-stack'
 
 type PointerInput = Readonly<{ pointerId: number; clientX: number; clientY: number }>
 type GestureBase = { pointerId: number; clientX: number; clientY: number; canvas: CanvasProjection; revision: number; generation: number; zoom: number; selectionKey: string; ids: ReadonlyArray<string>; changed: boolean }
 type RectangleGesture = GestureBase & { kind: 'rectangle'; start: SelectionPoint; end: SelectionPoint; additive: boolean; clearOnClick: boolean }
-type GroupGesture = GestureBase & { kind: 'group'; referenceId: string; snap: boolean; dx: number; dy: number; sequence: number; acceptedSequence: number; acceptedDX: number; acceptedDY: number; inFlight: boolean; released: boolean; committing: boolean }
+// SPEC-multi-pages story 3: `grab` is the pressed point, down the stack and in
+// its page's column; `sourcePage` is the one page every member is on (absent
+// for a selection spanning pages or holding header/footer elements, which never
+// changes page). `page` is set while the pointer is over ANOTHER page's content
+// band, and the move then targets that page.
+type GroupGesture = GestureBase & { kind: 'group'; referenceId: string; snap: boolean; dx: number; dy: number; page: number | undefined; sequence: number; acceptedSequence: number; acceptedDX: number; acceptedDY: number; acceptedPage: number | undefined; inFlight: boolean; released: boolean; committing: boolean; grab: Readonly<{ stackY: number; columnY: number }> | undefined; sourcePage: number | undefined }
 type Gesture = RectangleGesture | GroupGesture
-export type GroupPreview = Readonly<{ ids: ReadonlyArray<string>; dx: number; dy: number }>
+export type GroupPreview = Readonly<{ ids: ReadonlyArray<string>; dx: number; dy: number; page?: number }>
+const preview = (ids: ReadonlyArray<string>, dx: number, dy: number, page: number | undefined): GroupPreview => page === undefined ? { ids, dx, dy } : { ids, dx, dy, page }
 type Context = Readonly<{ engine?: EngineClient; canvas?: CanvasProjection; revision: number; generation: number; zoom: number; selection: ReadonlyArray<string>; enabled: boolean; snap: boolean; documentDelta: (pixels: number, zoom: number) => number; capture: (id: number) => void; release: (id: number) => void; onSelection: (ids: ReadonlyArray<string>) => void; onCommit: (payload: ArrayBuffer) => Promise<unknown>; onError: (error: unknown) => void }>
 
 // One stable ancestor owns pointer capture. One preview query may be in flight;
@@ -66,16 +73,24 @@ export function useCanvasSelection(context: Context) {
     gesture.current = { ...captured, kind: 'rectangle', start, end: start, additive, clearOnClick }
     current.current.capture(input.pointerId)
   }
-  const beginGroup = (input: PointerInput, ids: ReadonlyArray<string>, referenceId: string) => {
+  // `grabStackY` is the pressed point down the whole stack, in millipoints;
+  // without it (a header or footer press) the gesture never changes page.
+  const beginGroup = (input: PointerInput, ids: ReadonlyArray<string>, referenceId: string, grabStackY?: number) => {
     const captured = base(input, ids)
     if (!captured) return
-    gesture.current = { ...captured, kind: 'group', referenceId, snap: current.current.snap, dx: 0, dy: 0, sequence: 0, acceptedSequence: 0, acceptedDX: 0, acceptedDY: 0, inFlight: false, released: false, committing: false }
+    const members = ids.map((id) => captured.canvas.components.find((component) => component.id === id))
+    const pagesOf = new Set(members.map((member) => member && member.band === 'content' ? componentPage(member) : -1))
+    const only = pagesOf.size === 1 ? [...pagesOf][0] as number : -1
+    const sourcePage = only >= 0 ? only : undefined
+    const grab = grabStackY !== undefined && sourcePage !== undefined ? { stackY: grabStackY, columnY: columnForStackY(sheetStack(captured.canvas), captured.canvas, captured.zoom, grabStackY).columnY } : undefined
+    gesture.current = { ...captured, kind: 'group', referenceId, snap: current.current.snap, dx: 0, dy: 0, page: undefined, sequence: 0, acceptedSequence: 0, acceptedDX: 0, acceptedDY: 0, acceptedPage: undefined, inFlight: false, released: false, committing: false, grab, sourcePage }
     current.current.capture(input.pointerId)
   }
   const finishGroup = (operation: GroupGesture) => {
     if (!valid(operation) || operation.inFlight || operation.committing || operation.acceptedSequence !== operation.sequence) return
-    const payload = moveComponentsCommand(operation.ids, operation.referenceId, operation.dx, operation.dy, operation.snap, operation.revision, true)
-    const commit = operation.changed && (operation.acceptedDX !== 0 || operation.acceptedDY !== 0)
+    const payload = moveComponentsCommand(operation.ids, operation.referenceId, operation.dx, operation.dy, operation.snap, operation.revision, true, operation.page)
+    // A move to another page commits even at a zero delta: the page changes.
+    const commit = operation.changed && (operation.acceptedPage !== undefined || operation.acceptedDX !== 0 || operation.acceptedDY !== 0)
     if (!commit) { clear(); return }
     operation.committing = true
     commitPending.current = true
@@ -92,15 +107,16 @@ export function useCanvasSelection(context: Context) {
     if (operation.acceptedSequence === operation.sequence) { if (operation.released) finishGroup(operation); return }
     operation.inFlight = true
     const sequence = operation.sequence
+    const page = operation.page
     try {
-      const result = await engine.request('group-move-preview', moveComponentsCommand(operation.ids, operation.referenceId, operation.dx, operation.dy, operation.snap, operation.revision, true))
+      const result = await engine.request('group-move-preview', moveComponentsCommand(operation.ids, operation.referenceId, operation.dx, operation.dy, operation.snap, operation.revision, true, page))
       operation.inFlight = false
       if (!valid(operation)) return
       if (!result.groupMove || result.groupMove.revision !== operation.revision) { cancel(); return }
       if (sequence > operation.acceptedSequence) {
         operation.acceptedSequence = sequence
-        operation.acceptedDX = result.groupMove.dx; operation.acceptedDY = result.groupMove.dy
-        setGroup({ ids: operation.ids, dx: operation.acceptedDX, dy: operation.acceptedDY })
+        operation.acceptedDX = result.groupMove.dx; operation.acceptedDY = result.groupMove.dy; operation.acceptedPage = page
+        setGroup(preview(operation.ids, operation.acceptedDX, operation.acceptedDY, operation.acceptedPage))
       }
       if (operation.acceptedSequence !== operation.sequence) void pump(operation)
       else if (operation.released) finishGroup(operation)
@@ -122,11 +138,16 @@ export function useCanvasSelection(context: Context) {
       operation.end = { x: operation.start.x + dx, y: operation.start.y + travel }
       setRectangle(selectionRectangle(operation.start, operation.end))
     } else {
-      const dy = travel
-      if (dx !== operation.dx || dy !== operation.dy) { operation.dx = dx; operation.dy = dy; operation.sequence++ }
+      let dy = travel
+      let page: number | undefined
+      // SPEC-multi-pages story 3: over another page's content band, the move
+      // targets that page, and dy is measured in ITS column from the grab.
+      const over = operation.grab ? contentPageAt(operation.canvas, operation.zoom, operation.grab.stackY + travel) : undefined
+      if (over && operation.grab && over.page !== operation.sourcePage) { page = over.page; dy = over.columnY - operation.grab.columnY }
+      if (dx !== operation.dx || dy !== operation.dy || page !== operation.page) { operation.dx = dx; operation.dy = dy; operation.page = page; operation.sequence++ }
       // Show zero while the first engine query is pending; geometry controls
       // must be unavailable as soon as movement owns the selection.
-      setGroup({ ids: operation.ids, dx: operation.acceptedDX, dy: operation.acceptedDY })
+      setGroup(preview(operation.ids, operation.acceptedDX, operation.acceptedDY, operation.acceptedPage))
       void pump(operation)
     }
   }

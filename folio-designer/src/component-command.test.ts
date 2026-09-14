@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindComponentScalarCommand, bindTableCollectionCommand, deleteComponentsCommand, dropComponentCommand, duplicateComponentsCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
+import { bindComponentScalarCommand, bindTableCollectionCommand, createComponentCommand, deleteComponentsCommand, dropComponentCommand, duplicateComponentsCommand, moveComponentCommand, moveComponentsCommand, resizeComponentCommand } from './component-command'
 
 const text = (value: ArrayBuffer) => new TextDecoder().decode(value)
 
@@ -38,4 +38,15 @@ it('encodes the current-window constraint only when requested', () => {
   const decode = (value: ArrayBuffer) => JSON.parse(new TextDecoder().decode(value))
   expect(decode(moveComponentsCommand(['e1'], 'e1', 0, 9000, false, 1))).not.toHaveProperty('constrainToWindow')
   expect(decode(moveComponentsCommand(['e1'], 'e1', 0, 9000, false, 1, true))).toHaveProperty('constrainToWindow', true)
+})
+
+// SPEC-multi-pages story 3: the target page is written last, and only when given.
+it('writes the target page last and only when given, so page 1 keeps today bytes', () => {
+  const decode = (value: ArrayBuffer) => new TextDecoder().decode(value)
+  expect(decode(createComponentCommand('text', 'content', 100, 50, true))).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":100,"y":50,"width":72,"height":24,"snap":true}')
+  expect(decode(createComponentCommand('text', 'content', 100, 50, true, 1))).toBe('{"kind":"createComponent","version":1,"type":"text","band":"content","x":100,"y":50,"width":72,"height":24,"snap":true,"page":1}')
+  expect(decode(dropComponentCommand('text', 36, 56, true))).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+  expect(decode(dropComponentCommand('text', 36, 56, true, 2))).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true,"page":2}')
+  expect(decode(moveComponentsCommand(['e1'], 'e1', 0, 200000, false, 3, true))).toBe('{"kind":"moveComponents","version":1,"ids":["e1"],"referenceId":"e1","dx":0,"dy":200,"snap":false,"expectedRevision":3,"constrainToWindow":true}')
+  expect(decode(moveComponentsCommand(['e1'], 'e1', 0, 200000, false, 3, true, 1))).toBe('{"kind":"moveComponents","version":1,"ids":["e1"],"referenceId":"e1","dx":0,"dy":200,"snap":false,"expectedRevision":3,"constrainToWindow":true,"page":1}')
 })

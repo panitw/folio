@@ -1873,7 +1873,11 @@ func bandByName(t *Template, name string) (*template.Band, CanvasBand, error) {
 }
 
 func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 9); err != nil {
+	fields := 9
+	if _, ok := raw["page"]; ok {
+		fields++
+	}
+	if err := componentFields(raw, fields); err != nil {
 		return CanvasProjection{}, err
 	}
 	kind, err := commandString(raw, "type")
@@ -1908,7 +1912,14 @@ func createComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return createComponentInBand(t, elementType, bandName, x, y, width, height)
+	page, hasPage, err := optionalPageField(t, raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if hasPage && bandName != bandContent {
+		return CanvasProjection{}, contentOnlyPage(bandName, "")
+	}
+	return createComponentInBand(t, elementType, bandName, page, x, y, width, height)
 }
 
 // dropComponent resolves a document point in Go. Band rectangles use the
@@ -1959,7 +1970,11 @@ func paletteElementType(elementType template.ElementType) bool {
 }
 
 func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 6); err != nil {
+	fields := 6
+	if _, ok := raw["page"]; ok {
+		fields++
+	}
+	if err := componentFields(raw, fields); err != nil {
 		return CanvasProjection{}, err
 	}
 	kind, err := commandString(raw, "type")
@@ -1982,9 +1997,18 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	// The point is a sheet point of the target page; the band rectangles are
+	// the same on every page, so only which page's column receives it changes.
+	page, hasPage, err := optionalPageField(t, raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
 	_, projected, err := hitTestBand(t, pageX, pageY)
 	if err != nil {
 		return CanvasProjection{}, err
+	}
+	if hasPage && projected.Name != bandContent {
+		return CanvasProjection{}, contentOnlyPage(projected.Name, "")
 	}
 	width, height := dropWidth, dropHeight
 	if elementType == template.ElementImage {
@@ -2034,13 +2058,18 @@ func dropComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		width = min(width, geom.Length(projected.Width)-x)
 		height = min(height, geom.Length(projected.Height)-y)
 	}
-	return createComponentInBand(t, elementType, projected.Name, x, y, width, height)
+	return createComponentInBand(t, elementType, projected.Name, page, x, y, width, height)
 }
 
-func createComponentInBand(t *Template, elementType template.ElementType, bandName string, x, y, width, height geom.Length) (CanvasProjection, error) {
+// createComponentInBand creates into bandName; for content, into page's
+// column (0 is page 1).
+func createComponentInBand(t *Template, elementType template.ElementType, bandName string, page int, x, y, width, height geom.Length) (CanvasProjection, error) {
 	band, projected, err := bandByName(t, bandName)
 	if err != nil {
 		return CanvasProjection{}, err
+	}
+	if bandName == bandContent {
+		band = t.doc.ContentBands()[page]
 	}
 	idsNeeded := int64(1)
 	if elementType == template.ElementTable {
@@ -2113,7 +2142,7 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure("", "component.geometry", err.Error())
 	}
-	if err := refuseSectionBreakStraddle(t, bandName, element, "component.geometry"); err != nil {
+	if err := refuseSectionBreakStraddleOnPage(t, bandName, page, element, "component.geometry"); err != nil {
 		return CanvasProjection{}, err
 	}
 	previousElements, previousID := band.Elements, t.doc.NextID
@@ -2155,7 +2184,8 @@ func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, err
 		case bandPageHeader:
 			return &t.doc.Bands.PageHeader, band, nil
 		case bandContent:
-			// A drop into `content` targets page 1 until drops are per page.
+			// Page 1's band; a drop with a target page is redirected by
+			// createComponentInBand.
 			return firstContentBand(t), band, nil
 		case bandPageFooter:
 			return &t.doc.Bands.PageFooter, band, nil

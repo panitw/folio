@@ -169,3 +169,15 @@ A reader of the file, or an AI agent editing it, sees one list and never has to 
 - the memlog's resolved questions: a 4.x MINOR version; a Delete Page confirmation that names the page; Page Setup plus a page section holding Page Break; the current page's header and footer copy carrying the accessible name
 - Page Break is saved as true or false on every page after page 1, a missing value loads as on, and a value on page 1 is ignored and dropped on save
 - Page Break off follows directly after the previous page's content, like an unanchored section break
+
+## D-3.1 — Selected elements move to another page together (story 3, owner, 2026-09-14)
+
+**Question.** When several selected elements, all on one page, are dragged onto another page, do they all move there, or can only a single element change pages?
+
+**Decision.** They all move together, keeping their spacing. A selection that spans pages keeps today's behaviour: each element stays clamped to its own page.
+
+**Why.** SPEC.md refuses any move that splits a keep-together group across pages. If only single elements could change pages, a group could never move to another page at all.
+
+**Example.** A signature block (a line and a name, grouped with keepTogether) sits on page 1. The author selects both and drags them onto page 3, and both land on page 3 in the same arrangement. Dragging only the line onto page 3 is refused, naming the group.
+
+**Also decided.** The story 3 spec stays whole rather than being split. Placing and moving share one engine field and one way of detecting the page.

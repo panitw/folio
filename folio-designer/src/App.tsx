@@ -1242,7 +1242,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const point = placementPoint(event.nativeEvent, band ?? { name: 'content', x: 0, y: 0, width: canvas.width, height: canvas.height }, zoom)
     canvasSelection.beginRectangle(event, { x: point.x * 1000 - (gutter ? canvasDisplay.documentDelta(CANVAS_GUTTER, zoom) * 1000 : 0), y: point.y * 1000 + pageIndex * sheetPitch(canvas, zoom) }, event.shiftKey, band !== undefined || event.currentTarget.classList.contains('page-surface'))
   }
-  const beginSelectedGroup = (id: string, event: PointerEvent) => {
+  // `grabStackY` is where a content component was pressed, down the whole
+  // stack: story 3 uses it to find the page under the pointer while dragging.
+  const beginSelectedGroup = (id: string, event: PointerEvent, grabStackY?: number) => {
     if (placing || event.button !== 0) return true
     if (event.shiftKey) { select(id, true, event.target); return true }
     event.preventDefault(); event.stopPropagation()
@@ -1253,7 +1255,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     else if (ids.length === 1) select(id, false, event.target)
     setBindingError(undefined); setPropertyError(undefined); revokeTableEditor()
     if (ids.length > 1) setColumnSelection(undefined)
-    canvasSelection.beginGroup(event, ids, id)
+    canvasSelection.beginGroup(event, ids, id, grabStackY)
     return true
   }
   const openTableEditor = async (id: string) => {
@@ -1541,12 +1543,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // coordinate, and Go already handles it. Repeated header/footer image
   // placements use their template page point instead, so Go applies the same
   // image-drop containment on every occurrence.
-  const placeInBand = (band: CanvasProjection['bands'][number]['name'], x: number, y: number) => {
+  // SPEC-multi-pages story 3: `page` is the later page whose content band was
+  // placed on; y is then in that page's own column. Page 1 omits it.
+  const placeInBand = (band: CanvasProjection['bands'][number]['name'], x: number, y: number, page?: number) => {
     if (!placing) return
     // spec-section-break: the break lives in the content band only. A click in
     // a page header or footer places nothing and leaves the entry armed.
     if (placing === 'sectionBreak') {
-      if (band !== 'content') return
+      // A break on a later page is story 5's; that click places nothing either.
+      if (band !== 'content' || page !== undefined) return
       clearInteraction()
       // A break that appeared while armed (undo, redo) is never moved by a click.
       if (snapshotRef.current?.canvas?.sectionBreak !== undefined) return
@@ -1556,7 +1561,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const kind = placing
     const from = document.activeElement
     clearInteraction()
-    void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled)).then((placed) => selectPlaced(placed, from))
+    void commitComponent(createComponentCommand(kind, band, x, y, snapEnabled, page)).then((placed) => selectPlaced(placed, from))
   }
   // STORY 14.10 — THE COLUMN IS READ OFF THE EVENT TARGET, NEVER OFF A
   // COORDINATE.
@@ -3077,7 +3082,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // built in sheet-stack.ts, which is pure arithmetic over Go's numbers: the
   // window origins, the window height and the page geometry. Nothing here
   // measures the DOM and nothing multiplies a window height by an index.
-  const displayCanvas = canvas && canvasSelection.group ? translatedCanvas(canvas, canvasSelection.group.ids, canvasSelection.group.dx, canvasSelection.group.dy) : canvas
+  const displayCanvas = canvas && canvasSelection.group ? translatedCanvas(canvas, canvasSelection.group.ids, canvasSelection.group.dx, canvasSelection.group.dy, canvasSelection.group.page) : canvas
   const stack = displayCanvas ? sheetStack(displayCanvas) : undefined
   // SPEC-multi-pages story 2: ONE reason per disabled page button, fed to its
   // tooltip and its accessible description alike — never a bare grey-out.
@@ -3110,10 +3115,22 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // An empty repeating band has no page hit target; keep its named
         // creation path so the engine refuses it instead of hitting Content.
         const dropOnPage = placing === 'sectionBreak' ? false : placing === 'image' && !content ? band.height > 0 : sheet.index === 0
-        // SPEC-multi-pages story 2: nothing is dropped or created onto a later
-        // page's content band yet (story 3). The engine's create and drop
-        // commands both target page 1's column.
-        const accepts = !(content && sheet.page > 0)
+        // SPEC-multi-pages story 3: a palette element placed on a later page's
+        // content band is created in THAT page's column, so the command names
+        // the page. Page 1 names none and sends today's bytes. Only a section
+        // break is still refused there: a later page's break is story 5's.
+        const targetPage = content && sheet.page > 0 ? sheet.page : undefined
+        const accepts = !(targetPage !== undefined && placing === 'sectionBreak')
+        // Where a content occurrence was pressed, down the whole stack: the
+        // occurrence's top on this sheet plus the press's own offset into it
+        // when the component itself is the target (a local event coordinate,
+        // never a layout query).
+        const grabAt = (occurrence: SheetOccurrence, event: PointerEvent) => {
+          // Read through placementPoint, the one door for a local pointer offset.
+          const pressed = event.target === event.currentTarget ? placementPoint(event.nativeEvent, { ...band, x: 0, y: 0 }, zoom).y * 1000 : 0
+          const offset = Number.isFinite(pressed) ? pressed : 0
+          return content ? sheet.index * sheetPitch(projection, zoom) + band.y + occurrence.y + offset : undefined
+        }
         // The two repeating bands are drawn on every sheet because the engine
         // repeats them — but exactly ONE occurrence of each of their
         // components is interactive and accessibly named, the same rule a
@@ -3123,10 +3140,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && !sheet.pageStart ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta, componentPage(occurrence.component)) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event)} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
-          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event)} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
-        // Body previews stay inside their starting window. Only the existing
-        // resize path lifts the clip while its anchor tracks across sheets.
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && !sheet.pageStart ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta, componentPage(occurrence.component)) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event, grabAt(occurrence, event))} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event, grabAt(occurrence, event))} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+        // Body previews stay inside their starting window, or draw on the
+        // sheet under the pointer when moving to another page (story 3). Only
+        // the existing resize path lifts the clip while its anchor tracks.
         const dragging = occurrences.some((occurrence) => drag?.id === occurrence.component.id)
         // ONE INTERACTIVE BOUNDARY PER DOCUMENT. The canvas draws 3N band
         // sections for an N-page stack and the document has ONE page-header
@@ -3154,7 +3172,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && accepts && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && accepts && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000) } }} onKeyDown={(event) => { if (placing && accepts && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0)) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && accepts && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && accepts && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000, targetPage) } }} onKeyDown={(event) => { if (placing && accepts && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0), targetPage) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}</CanvasSelectionLayer>
     </section>
   }

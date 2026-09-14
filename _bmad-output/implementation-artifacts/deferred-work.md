@@ -13790,3 +13790,9 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/specs/spec-multi-pages/stories/2-pages-on-the-canvas.md`
   summary: While a palette item is armed, a later page's content band ignores the drop without stating why, and the click falls through to select that page.
   evidence: The `accepts` guard in App.tsx sheetSurface is a deliberate temporary block until story 3 adds per-page drops, which replaces this path. Story 3 must remove the guard rather than add feedback to it.
+- source_spec: `_bmad-output/specs/spec-multi-pages/stories/3-elements-on-a-specific-page.md`
+  summary: Pointer placement on any sheet after the first sends createComponent at a fixed 72×24 with no clamping (and no image drop size), where sheet 1 sends dropComponent, which clamps and sizes images.
+  evidence: App.tsx `dropOnPage` is true only for sheet index 0. Page 1's continuation sheets already took this path before story 3, and story 3 extends it to later pages. A click near the right edge of page 2 is refused where page 1 would clamp.
+- source_spec: `_bmad-output/specs/spec-multi-pages/stories/3-elements-on-a-specific-page.md`
+  summary: Moving elements to another page is pointer-only. There is no keyboard or property way to change an element's page, and nothing is announced to assistive technology when a drag moves an element to another page.
+  evidence: Arrow nudges stay within the page (moveComponents is clamped to the window). SPEC CAP-3 names dragging only, so an accessible alternative needs an owner decision.

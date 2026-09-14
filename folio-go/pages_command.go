@@ -91,6 +91,23 @@ func pageIndexField(raw map[string]json.RawMessage, name string, count int) (int
 	return index, nil
 }
 
+// SPEC-multi-pages story 3: createComponent, dropComponent and moveComponents
+// take an optional target `page`. Absent, the command is exactly today's (the
+// designer omits it for page 1), so it is counted as a field only when given.
+func optionalPageField(t *Template, raw map[string]json.RawMessage) (int, bool, error) {
+	if _, ok := raw["page"]; !ok {
+		return 0, false, nil
+	}
+	page, err := pageIndexField(raw, "page", t.doc.PageCount())
+	return page, true, err
+}
+
+// contentOnlyPage refuses a target page on a band other than content: the
+// page header and footer are shared by every page and belong to none.
+func contentOnlyPage(bandName, id string) error {
+	return componentFailure(id, pagesPath, fmt.Sprintf("page applies only to the content band — %s is shared by every page and belongs to none", bandName))
+}
+
 // addPage inserts one empty page with Page Break on: {kind, version, after?}.
 // With `after` it goes directly after that page; without it, at the end.
 func addPage(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {

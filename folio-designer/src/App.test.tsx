@@ -11102,14 +11102,70 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     expect(sent(request)).toEqual([])
   })
 
-  it('accepts no palette drop on a later page content band', async () => {
+  // SPEC-multi-pages story 3: a palette element placed on a later page's content
+  // band is created there, naming the page; page 1 keeps today's bytes.
+  it('places a palette element on a later page content band into that page', async () => {
     const request = open(pages(2))
     fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
     fireEvent.keyDown(screen.getByLabelText('Content on page 2 of 2'), { key: 'Enter' })
-    await settle()
-    expect(sent(request)).toEqual([])
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"createComponent","version":1,"type":"text","band":"content","x":0,"y":0,"width":72,"height":24,"snap":true,"page":1}']))
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
     fireEvent.keyDown(screen.getByLabelText('Content on page 1 of 2'), { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toHaveLength(2))
+    expect(sent(request)[1]).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
+    // A section break on a later page is story 5's: that placement sends nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Place Section Break' }))
+    fireEvent.keyDown(screen.getByLabelText('Content on page 2 of 2'), { key: 'Enter' })
+    await settle()
+    expect(sent(request)).toHaveLength(2)
+  })
+
+  it('places on a later page content band by pointer release into that page, at its page-local y', async () => {
+    // Page 2 has two sheets; its second window begins 600pt down page 2's own
+    // column, so a release 40pt below that sheet's band head is page-local y 640.
+    const request = open(pages(2, { contentWindowCount: 3, contentWindowOrigins: [0, 0, 600_000], contentWindowPages: [0, 1, 1], pageBreaks: [true, true] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
+    const band = screen.getByLabelText('Content on page 3 of 3')
+    const released = createEvent.pointerUp(band)
+    Object.defineProperty(released, ['offset', 'X'].join(''), { value: 120 })
+    Object.defineProperty(released, ['offset', 'Y'].join(''), { value: 40 })
+    fireEvent(band, released)
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"createComponent","version":1,"type":"text","band":"content","x":120,"y":640,"width":72,"height":24,"snap":true,"page":1}']))
+  })
+
+  // One pitch at zoom 1 is 865.89pt (the page plus the 24px gap); the content
+  // band starts 56pt down each sheet. A press on e1's top is stack y 56pt.
+  it('moves a dragged element onto the page under the pointer, previewing it on that sheet', async () => {
+    const request = open(pages(2, { components: [text('e1', 0)] }))
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.pointerDown(screen.getByLabelText('text component e1'), { pointerId: 1, clientX: 10, clientY: 10 })
+    // 1,065.89px down: page 2's sheet, 200pt down its column.
+    fireEvent.pointerMove(region, { pointerId: 1, clientX: 10, clientY: 1075.89 })
+    await waitFor(() => expect(screen.getByLabelText('text component e1').closest('.page-surface')).toBe(surfaces()[1]))
+    expect(screen.getByLabelText('text component e1').style.getPropertyValue('--component-y')).toBe('200px')
+    fireEvent.pointerUp(region, { pointerId: 1, clientX: 10, clientY: 1075.89 })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"moveComponents","version":1,"ids":["e1"],"referenceId":"e1","dx":0,"dy":200,"snap":true,"expectedRevision":1,"constrainToWindow":true,"page":1}']))
+  })
+
+  it('keeps today move bytes for a drag that stays on its own page', async () => {
+    const request = open(pages(2, { components: [text('e2', 1)] }))
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.pointerDown(screen.getByLabelText('text component e2'), { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(region, { pointerId: 1, clientX: 10, clientY: 110 })
+    fireEvent.pointerUp(region, { pointerId: 1, clientX: 10, clientY: 110 })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"moveComponents","version":1,"ids":["e2"],"referenceId":"e2","dx":0,"dy":100,"snap":true,"expectedRevision":1,"constrainToWindow":true}']))
+  })
+
+  it('clears the preview and shows the refusal when a move to another page is refused', async () => {
+    const request = open(pages(2, { components: [text('e1', 0)] }), async (operation) => { if (operation === 'command') throw Object.assign(new Error('keepTogether group "signature" would have members on pages[1] and pages[0]'), { elementId: 'e1', dataPath: 'pages' }); return { snapshot: snapshotOf(pages(2), 1) } })
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.pointerDown(screen.getByLabelText('text component e1'), { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(region, { pointerId: 1, clientX: 10, clientY: 1075.89 })
+    await waitFor(() => expect(screen.getByLabelText('text component e1').closest('.page-surface')).toBe(surfaces()[1]))
+    fireEvent.pointerUp(region, { pointerId: 1, clientX: 10, clientY: 1075.89 })
     await waitFor(() => expect(sent(request)).toHaveLength(1))
+    expect(await screen.findByRole('alert')).toHaveTextContent('keepTogether group "signature"')
+    await waitFor(() => expect(screen.getByLabelText('text component e1').closest('.page-surface')).toBe(surfaces()[0]))
   })
 
   it('selects no page once undo removes the selected page', async () => {

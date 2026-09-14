@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CanvasProjection } from './engine-protocol'
-import { enclosedComponents, selectionRectangle, translatedCanvas } from './canvas-selection'
+import { contentPageAt, enclosedComponents, selectionRectangle, translatedCanvas } from './canvas-selection'
 import { MAX_CANVAS_SHEETS, sheetPitch } from './sheet-stack'
 
 const base: CanvasProjection = {
@@ -66,5 +66,24 @@ describe('rectangle selection across designed pages', () => {
     const pitch = sheetPitch(canvas, 1)
     expect(enclosedComponents(canvas, 1, { left: 0, top: 0, right: 600000, bottom: 800000 })).toEqual(['e1'])
     expect(enclosedComponents(canvas, 1, { left: 0, top: pitch, right: 600000, bottom: pitch + 800000 })).toEqual(['e2'])
+  })
+})
+
+// SPEC-multi-pages story 3: the preview of a move to another page, and the
+// page under a point down the stack.
+describe('moving to another page', () => {
+  const twoPages: CanvasProjection = { ...base, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], contentWindowCount: 2, components: [{ id: 'e1', type: 'rect', band: 'content', x: 0, y: 10000, width: 20000, height: 20000, resizable: true, page: 0 }] }
+  it('draws the moving components in the target page column only when a page is given', () => {
+    expect(translatedCanvas(twoPages, ['e1'], 0, 5000).components[0]).toMatchObject({ y: 15000, page: 0 })
+    expect(translatedCanvas(twoPages, ['e1'], 0, 190000, 1).components[0]).toMatchObject({ y: 200000, page: 1 })
+  })
+  it('names the page whose content band holds a stack point, and nothing off every content band', () => {
+    const pitch = sheetPitch(twoPages, 1)
+    expect(contentPageAt(twoPages, 1, 90000)).toEqual({ page: 0, columnY: 0 })
+    expect(contentPageAt(twoPages, 1, pitch + 290000)).toEqual({ page: 1, columnY: 200000 })
+    expect(contentPageAt(twoPages, 1, pitch + 50000)).toBeUndefined()
+    expect(contentPageAt(twoPages, 1, 750000)).toBeUndefined()
+    expect(contentPageAt(twoPages, 1, 2 * pitch + 290000)).toBeUndefined()
+    expect(contentPageAt(twoPages, 1, -1)).toBeUndefined()
   })
 })

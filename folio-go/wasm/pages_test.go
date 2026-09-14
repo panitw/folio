@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -204,5 +205,91 @@ func TestPageCommandsAreOneUndoEntryEachAndRestoreTheBytes(t *testing.T) {
 	}
 	if _, err := engine.Apply([]byte(`{"kind":"deletePage","version":1,"page":0}`)); err == nil {
 		t.Error("the engine deleted the only page")
+	}
+}
+
+// SPEC-multi-pages story 3: a move to another page, and a create onto one, are
+// one undo entry each, and one undo restores the bytes.
+func TestCrossPageMoveAndPagedCreateAreOneUndoEntryEach(t *testing.T) {
+	input, err := os.ReadFile("../../fixtures/multi-page-statement/input.folio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := NewEngine()
+	loaded, err := engine.Load(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageOf := func(id string) int {
+		t.Helper()
+		saved, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := template.ParseDocument(saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for page, content := range d.Pages {
+			for _, el := range content.Elements {
+				if string(el.ID) == id {
+					return page
+				}
+			}
+		}
+		return -1
+	}
+	positionOf := func(id string) (int64, int64) {
+		t.Helper()
+		saved, _, err := engine.Serialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := template.ParseDocument(saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, content := range d.Pages {
+			for _, el := range content.Elements {
+				if string(el.ID) == id {
+					return int64(el.X), int64(el.Y)
+				}
+			}
+		}
+		t.Fatalf("no element %s", id)
+		return 0, 0
+	}
+	move := fmt.Sprintf(`{"kind":"moveComponents","version":1,"ids":["e5"],"referenceId":"e5","dx":0,"dy":200,"snap":false,"expectedRevision":%d,"constrainToWindow":true,"page":1}`, loaded.Revision)
+	preview, err := engine.GroupMovePreview([]byte(move))
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if preview.Revision != loaded.Revision || preview.DX != 0 || preview.DY != 200000 {
+		t.Fatalf("preview %+v, want revision %d, dx 0, dy 200000", preview, loaded.Revision)
+	}
+	if _, err := engine.Apply([]byte(move)); err != nil {
+		t.Fatal(err)
+	}
+	if pageOf("e5") != 1 {
+		t.Fatal("e5 did not move to page 2")
+	}
+	// The commit applies exactly the previewed translation: e5 was at 0,0.
+	if x, y := positionOf("e5"); int64(x) != preview.DX || int64(y) != preview.DY {
+		t.Fatalf("committed e5 at %d,%d, but the preview accepted dx %d dy %d", x, y, preview.DX, preview.DY)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if undone, _, _ := engine.Serialize(); !bytes.Equal(undone, input) {
+		t.Fatal("one undo did not restore the bytes after a cross-page move")
+	}
+	if _, err := engine.Apply([]byte(`{"kind":"createComponent","version":1,"type":"text","band":"content","x":0,"y":0,"width":72,"height":24,"snap":false,"page":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Undo(); err != nil {
+		t.Fatal(err)
+	}
+	if undone, _, _ := engine.Serialize(); !bytes.Equal(undone, input) {
+		t.Fatal("one undo did not restore the bytes after a create onto page 2")
 	}
 }

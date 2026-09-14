@@ -31,11 +31,16 @@ const point = (value: number): string => jsonNumber(Math.round(value * 1000) / 1
 // boundary rather than accidentally sending projection units to Go.
 const millipoints = (value: number): string => point(value / 1000)
 
-export function createComponentCommand(type: PaletteKind, band: 'pageHeader' | 'content' | 'pageFooter', x: number, y: number, snap: boolean): ArrayBuffer {
-  return commandBytes('createComponent', [['type', jsonString(type)], ['band', jsonString(band)], ['x', point(x)], ['y', point(y)], ['width', jsonNumber(72)], ['height', jsonNumber(24)], ['snap', jsonBoolean(snap)]])
+// SPEC-multi-pages story 3: `page` is the 0-based designed page a content
+// element is placed on or moved to. It is written last and only when given, so
+// a page-1 command keeps today's exact bytes.
+const pageField = (page: number | undefined) => page === undefined ? [] : [['page', jsonNumber(page)] as const]
+
+export function createComponentCommand(type: PaletteKind, band: 'pageHeader' | 'content' | 'pageFooter', x: number, y: number, snap: boolean, page?: number): ArrayBuffer {
+  return commandBytes('createComponent', [['type', jsonString(type)], ['band', jsonString(band)], ['x', point(x)], ['y', point(y)], ['width', jsonNumber(72)], ['height', jsonNumber(24)], ['snap', jsonBoolean(snap)], ...pageField(page)])
 }
-export function dropComponentCommand(type: PaletteKind, pageX: number, pageY: number, snap: boolean): ArrayBuffer {
-  return commandBytes('dropComponent', [['type', jsonString(type)], ['x', point(pageX)], ['y', point(pageY)], ['snap', jsonBoolean(snap)]])
+export function dropComponentCommand(type: PaletteKind, pageX: number, pageY: number, snap: boolean, page?: number): ArrayBuffer {
+  return commandBytes('dropComponent', [['type', jsonString(type)], ['x', point(pageX)], ['y', point(pageY)], ['snap', jsonBoolean(snap)], ...pageField(page)])
 }
 export function moveComponentCommand(id: string, x: number, y: number, snap: boolean): ArrayBuffer {
   return commandBytes('moveComponent', [['id', jsonString(id)], ['x', millipoints(x)], ['y', millipoints(y)], ['snap', jsonBoolean(snap)]])
@@ -79,6 +84,6 @@ export function bindTableCollectionCommand(id: string, segments: ReadonlyArray<s
 }
 
 // The query and final command use the same centrally encoded movement intent.
-export function moveComponentsCommand(ids: ReadonlyArray<string>, referenceId: string, dx: number, dy: number, snap: boolean, expectedRevision: number, constrainToWindow?: boolean): ArrayBuffer {
-  return commandBytes('moveComponents', [['ids', jsonArray(ids.map(jsonString))], ['referenceId', jsonString(referenceId)], ['dx', millipoints(dx)], ['dy', millipoints(dy)], ['snap', jsonBoolean(snap)], ['expectedRevision', jsonNumber(expectedRevision)], ...(constrainToWindow === undefined ? [] : [['constrainToWindow', jsonBoolean(constrainToWindow)] as const])])
+export function moveComponentsCommand(ids: ReadonlyArray<string>, referenceId: string, dx: number, dy: number, snap: boolean, expectedRevision: number, constrainToWindow?: boolean, page?: number): ArrayBuffer {
+  return commandBytes('moveComponents', [['ids', jsonArray(ids.map(jsonString))], ['referenceId', jsonString(referenceId)], ['dx', millipoints(dx)], ['dy', millipoints(dy)], ['snap', jsonBoolean(snap)], ['expectedRevision', jsonNumber(expectedRevision)], ...(constrainToWindow === undefined ? [] : [['constrainToWindow', jsonBoolean(constrainToWindow)] as const]), ...pageField(page)])
 }
