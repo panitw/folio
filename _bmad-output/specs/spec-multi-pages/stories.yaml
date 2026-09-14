@@ -1,0 +1,43 @@
+- id: "1"
+  title: Pages in the engine and file format
+  description: >-
+    Designed pages in the document model, .folio load/save with Page Break persistence, pagination
+    with Page Break on, page count across pages, and a per-page canvas projection (SPEC CAP-5, CAP-7,
+    engine side of CAP-8); one-page documents keep their bytes, version and hash.
+  invoke_dev_with: >-
+    After any folio-go change, run `npm run build:wasm` in folio-designer before designer tests;
+    `npm run dev` never rebuilds the engine.
+- id: "2"
+  title: Pages on the canvas
+  description: >-
+    Draw designed pages with labels, select a page, Add Page and Delete Page (with page-numbered
+    confirmation) in the canvas controls toolbar, and the page section in Page Setup (SPEC CAP-1,
+    CAP-2, CAP-8).
+  invoke_dev_with: >-
+    After any folio-go change, run `npm run build:wasm` in folio-designer before designer tests;
+    `npm run dev` never rebuilds the engine.
+- id: "3"
+  title: Elements on a specific page
+  description: >-
+    Place, move and edit elements on a chosen page, including dragging an element onto another page;
+    keep-together groups cannot span pages (SPEC CAP-3).
+  invoke_dev_with: >-
+    After any folio-go change, run `npm run build:wasm` in folio-designer before designer tests;
+    `npm run dev` never rebuilds the engine.
+- id: "4"
+  title: Header and footer editable from any page
+  description: >-
+    Every page's header and footer copy is selectable and edits the one shared definition; only the
+    current page's copy carries the accessible name (SPEC CAP-4).
+  invoke_dev_with: >-
+    After any folio-go change, run `npm run build:wasm` in folio-designer before designer tests;
+    `npm run dev` never rebuilds the engine.
+- id: "5"
+  title: Section Break per page and Page Break off
+  description: >-
+    One section break per designed page, and the Page Break checkbox's off rule where a page follows
+    directly after the previous page's content, both reusing section-break pagination (SPEC CAP-6,
+    CAP-9).
+  invoke_dev_with: >-
+    After any folio-go change, run `npm run build:wasm` in folio-designer before designer tests;
+    `npm run dev` never rebuilds the engine.
