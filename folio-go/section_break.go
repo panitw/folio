@@ -409,15 +409,19 @@ func paginateWithSectionBreak(g layout.PageGeometry, items []layout.ColumnItem, 
 		return sectionPlan{}, nil, err
 	}
 
-	// spec-section-break CAP-7: an unanchored section whose above-line
-	// content ends below the line moves by D, a translation applied to the
-	// section's items BEFORE they are paginated, so the window rules run on
-	// them unchanged. Pushed on the shared page when its declared extent fits
-	// under E; otherwise lifted so the line is the next window's top.
+	// spec-section-break CAP-7: an unanchored section moves by D, a
+	// translation applied to the section's items BEFORE they are paginated,
+	// so the window rules run on them unchanged. It moves when the above-line
+	// content ends below the line, or when that content reaches a page after
+	// the first — there the line follows E whether E is below or above it.
+	// Pushed onto E's page when its extent fits under E; otherwise lifted so
+	// the line is the next window's top. Page 1 content ending at or above
+	// the line took the fast path above and is never pulled up.
 	var d geom.Length
-	if sb.unanchored && !shared {
+	if sb.unanchored {
 		origins := layout.Origins(g)
 		d = origins.Content - sb.line
+		shared = false
 		if end, clipped := aboveLineEnd(g, above, planA, pagesA, sb.line); !clipped {
 			if extent, ok := sectionExtent(g, below, planS, pagesS, sb.line); ok && end+(extent-sb.line) <= origins.PageFooter {
 				d = end - sb.line

@@ -739,18 +739,19 @@ const sectionBreakUnanchoredAt75 = `, "sectionBreak": 75, "sectionBreakAnchor": 
 func sectionBreakContentBottom(origin geom.Length) geom.Length { return origin + 110000 }
 
 // TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount is CAP-7
-// over every row count from 0 to 20, against the table-only render: not
-// crossed, the legend is at its declared y and the PDF is byte-identical to
-// the anchored one; crossed, it is pushed by exactly E - line on the last
-// page, or it is on an added page with the line at the window top. A push is
-// chosen exactly for the smaller crossings on each page.
+// over every row count from 0 to 20, against the table-only render: ending
+// at or above the line on page 1, the legend is at its declared y and the PDF
+// is byte-identical to the anchored one; otherwise it follows E — moved by
+// exactly E - line on the last page (down, or up when a later page's rows end
+// above the line), or it is on an added page with the line at the window top.
+// A push is chosen exactly for the smaller crossings on each page.
 func TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount(t *testing.T) {
 	doc := sectionBreakTestDoc(sectionBreakUnanchoredAt75, "")
 	anchored := sectionBreakTestDoc(sectionBreakAt75, "")
 	tableOnly := sectionBreakWithout(sectionBreakTestDoc("", ""), "e5")
 	reference, _ := sectionBreakPages(t, sectionBreakTestDoc("", ""), 0)
 	_, declaredY := legendOn(reference, "Legend")
-	var notCrossed, pushed, moved int
+	var notCrossed, pushed, pulled, moved int
 	// The largest pushed crossing and the smallest moved one, per last page.
 	maxPushed, minMoved := map[int]geom.Length{}, map[int]geom.Length{}
 	for rows := 0; rows <= 20; rows++ {
@@ -766,7 +767,7 @@ func TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount(t *testin
 				t.Fatalf("legend drawn on pages %v, want exactly one page", onPages)
 			}
 			switch {
-			case end <= line:
+			case end <= line && last == 0:
 				notCrossed++
 				if onPages[0] != last || y != declaredY || len(pages) != len(oracle) {
 					t.Fatalf("not crossed: legend on page %d at %d of %d pages, want page %d at %d of %d", onPages[0]+1, y, len(pages), last+1, declaredY, len(oracle))
@@ -776,16 +777,20 @@ func TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount(t *testin
 					t.Fatalf("not crossed, yet unanchored differs from anchored at byte %d: %s", off, window)
 				}
 			case onPages[0] == last:
-				pushed++
+				if end <= line {
+					pulled++
+				} else {
+					pushed++
+				}
 				if want := declaredY + (end - line); y != want {
-					t.Fatalf("pushed: legend baseline %d, want %d (declared %d + E %d - line %d)", y, want, declaredY, end, line)
+					t.Fatalf("follows E: legend baseline %d, want %d (declared %d + E %d - line %d)", y, want, declaredY, end, line)
 				}
 				if len(pages) != len(oracle) {
-					t.Fatalf("pushed: %d pages, want %d", len(pages), len(oracle))
+					t.Fatalf("follows E: %d pages, want %d", len(pages), len(oracle))
 				}
 				for _, r := range pages[last].Rects {
 					if r.Y+r.H > end {
-						t.Errorf("a rect on the pushed page ends at %d, below the content above's end %d", r.Y+r.H, end)
+						t.Errorf("a rect on the legend's page ends at %d, below the content above's end %d", r.Y+r.H, end)
 					}
 				}
 				maxPushed[last] = max(maxPushed[last], end)
@@ -807,8 +812,8 @@ func TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount(t *testin
 			requirePageXOfY(t, sectionBreakRender(t, doc, rows).Bytes)
 		})
 	}
-	if notCrossed == 0 || pushed == 0 || moved == 0 {
-		t.Fatalf("coverage witness: not crossed %d, pushed %d, moved %d — each must be reached", notCrossed, pushed, moved)
+	if notCrossed == 0 || pushed == 0 || pulled == 0 || moved == 0 {
+		t.Fatalf("coverage witness: not crossed %d, pushed %d, pulled up on a later page %d, moved %d — each must be reached", notCrossed, pushed, pulled, moved)
 	}
 	for page, most := range maxPushed {
 		if least, ok := minMoved[page]; ok && most >= least {
@@ -831,6 +836,10 @@ func TestSectionBreakUnanchoredNamedCases(t *testing.T) {
 		{"not crossed: five rows end above the line on page 1", 5, 0, 1, false},
 		{"pushed, fits: the seventh row passes the line on page 1", 7, 0, 1, true},
 		{"pushed, no room: rows end near the window bottom", 9, 1, 2, false},
+		// The owner's report: rows fill page 1 and end on page 2 ABOVE the
+		// line's height; the legend follows them up rather than keeping its
+		// page-1 y (asserted exactly by the oracle test).
+		{"later page, follows the rows up: rows end above the line on page 2", 12, 1, 2, true},
 		{"later page, pushed: rows fill page 1 and cross on page 2", 15, 1, 2, true},
 		{"later page, no room: rows end near page 2's bottom", 18, 2, 3, false},
 	} {
@@ -846,8 +855,24 @@ func TestSectionBreakUnanchoredNamedCases(t *testing.T) {
 					hasRow = true
 				}
 			}
+			// pushed means the legend shares its page with the rows.
 			if hasRow != (c.pushed || c.rows == 5) {
 				t.Errorf("the legend's page carries rows = %v, want %v", hasRow, c.pushed || c.rows == 5)
+			}
+			if c.rows == 12 {
+				// The owner's report, pinned exactly: rows ending ABOVE the
+				// line on page 2 put the legend at declared y + (E - line).
+				oracle, _ := sectionBreakPages(t, sectionBreakWithout(sectionBreakTestDoc("", ""), "e5"), c.rows)
+				origin, end := tableEnd(oracle)
+				line := origin + 75000
+				if len(oracle) != 2 || end > line {
+					t.Fatalf("precondition: the rows end at %d on page %d, want above the line %d on page 2", end, len(oracle), line)
+				}
+				reference, _ := sectionBreakPages(t, sectionBreakTestDoc("", ""), 0)
+				_, declaredY := legendOn(reference, "Legend")
+				if _, y := legendOn(pages, "Legend"); y != declaredY+(end-line) {
+					t.Errorf("legend baseline %d, want %d — directly after the rows, not its page-1 y %d", y, declaredY+(end-line), declaredY)
+				}
 			}
 			if got := requirePageXOfY(t, sectionBreakRender(t, doc, c.rows).Bytes); got != c.totalPages {
 				t.Errorf("PDF has %d pages, want %d", got, c.totalPages)

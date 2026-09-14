@@ -13780,3 +13780,7 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-section-break-engine.md`
   summary: Test that warnings raised inside a section-break section (TABLE_HEADER_REPEAT_SUPPRESSED, clipped rows, footer-orphan diagnostics from diagsS) report the document page number after `paginateWithSectionBreak` re-bases them.
   evidence: The verification-gap review found that removing `s.Page += offset`, `c.Page += offset`, or the `diagsS` append in `folio-go/section_break.go` passes every test. A section table suppressed on page 3 would report page 2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-section-break-anchor-follow-pusher.md`
+  summary: SPEC-section-break CAP-7's intent line still says only that the section "is pushed down", though an unanchored section now also moves up to follow content that ends above the line on a later page.
+  evidence: The CAP-7 success criterion and the Unanchored constraint already carry the follow-up rule. Only the one-sentence intent lags. Rewording it is a spec edit, which bmad-build defers to a bmad-spec run.
