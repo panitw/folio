@@ -643,6 +643,7 @@ label.section-break-anchor input[type="checkbox"] { width: 12px; min-height: 12p
 .panel-heading { margin: 0 0 var(--space-5); color: var(--color-ink-high); font: var(--type-body-em); }
 .component-identity { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); padding-bottom: var(--space-3); border-bottom: var(--hairline) solid var(--color-line); }
 .component-identity .palette-icon { color: var(--color-select); }
+.component-identity .tool-icon { flex: none; color: var(--color-select); }
 .component-identity-name { color: var(--color-ink-high); font: var(--type-body-em); font-weight: 500; text-transform: capitalize; }
 .component-identity-meta { min-width: 0; margin-left: auto; overflow: hidden; color: var(--color-ink-ghost); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
 /* STORY 14.10 — THE SELECTED COLUMN'S IDENTITY STRIP. It sits above the table's
