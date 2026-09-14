@@ -446,6 +446,7 @@ func TestAFullyExercisedDocumentIsNotVersionINFLATED(t *testing.T) {
 	// maximal fixture; it requires 4.1, the ceiling, so it is cleared here
 	// for the same reason as the keys below.
 	d.Bands.Content.SectionBreak = Presence[geom.Length]{}
+	d.Bands.Content.SectionBreakAnchor = Presence[bool]{}
 	for _, band := range []*Band{&d.Bands.PageHeader, &d.Bands.Content, &d.Bands.PageFooter} {
 		// spec-barcode-qr-elements added a qrcode (and its `errorCorrection`)
 		// to the maximal fixture; the element type requires 4.0, the ceiling,

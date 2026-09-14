@@ -210,3 +210,82 @@ func TestBandAndPageChangesRefuseToStrandTheSectionBreak(t *testing.T) {
 		t.Fatalf("page-setup refusal = %+v, want one naming the section break", failure)
 	}
 }
+
+// spec-section-break CAP-7: the Anchor toggle is one command, written only as
+// `false`, projected only as `false`, and removed with the break.
+func TestSetSectionBreakAnchor(t *testing.T) {
+	tpl := sectionBreakCommandDoc(t, sectionBreakAt75)
+	anchored, err := Canvas(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if anchored.SectionBreakAnchor != nil {
+		t.Fatalf("an anchored break must project no sectionBreakAnchor, got %v", *anchored.SectionBreakAnchor)
+	}
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"setSectionBreakAnchor","version":1,"anchor":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.SectionBreakAnchor == nil || *projection.SectionBreakAnchor {
+		t.Fatalf("an unanchored break must project sectionBreakAnchor false, got %v", projection.SectionBreakAnchor)
+	}
+	encoded, err := json.Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"sectionBreakAnchor":false`)) {
+		t.Fatalf("the wire does not carry the Anchor: %s", encoded)
+	}
+	saved, _ := SerializeTemplate(tpl)
+	if !strings.Contains(string(saved), `"sectionBreakAnchor": false`) || !strings.Contains(string(saved), `"version": "4.1"`) {
+		t.Fatalf("saved document lacks the Anchor or its version:\n%s", saved)
+	}
+	if _, err := ParseTemplate(saved); err != nil {
+		t.Fatalf("the saved unanchored document does not reload: %v", err)
+	}
+
+	projection, err = ApplyComponentCommand(tpl, []byte(`{"kind":"setSectionBreakAnchor","version":1,"anchor":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.SectionBreakAnchor != nil {
+		t.Fatal("a re-anchored break still projects sectionBreakAnchor")
+	}
+	if saved, _ := SerializeTemplate(tpl); strings.Contains(string(saved), "sectionBreakAnchor") {
+		t.Fatalf("a re-anchored break still writes the key:\n%s", saved)
+	}
+
+	for _, command := range []string{
+		`{"kind":"setSectionBreakAnchor","version":1}`,
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":"false"}`,
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":null}`,
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":false,"offset":75}`,
+	} {
+		failure := sectionBreakRefusal(t, sectionBreakCommandDoc(t, sectionBreakAt75), command, componentApply)
+		if failure.DataPath != sectionBreakAnchorDataPath {
+			t.Errorf("%s: refusal DataPath = %q, want %q", command, failure.DataPath, sectionBreakAnchorDataPath)
+		}
+	}
+	failure := sectionBreakRefusal(t, sectionBreakCommandDoc(t, ""), `{"kind":"setSectionBreakAnchor","version":1,"anchor":false}`, componentApply)
+	if !strings.Contains(failure.Message, "no section break") {
+		t.Errorf("anchoring a document without a break: %q", failure.Message)
+	}
+}
+
+func TestRemoveSectionBreakClearsTheAnchor(t *testing.T) {
+	tpl := sectionBreakCommandDoc(t, `, "sectionBreak": 75, "sectionBreakAnchor": false`)
+	projection, err := ApplyComponentCommand(tpl, []byte(`{"kind":"removeSectionBreak","version":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.SectionBreak != nil || projection.SectionBreakAnchor != nil {
+		t.Fatal("a removed break still projects its offset or Anchor")
+	}
+	saved, _ := SerializeTemplate(tpl)
+	if strings.Contains(string(saved), "sectionBreak") {
+		t.Fatalf("a removed break left a key in the file:\n%s", saved)
+	}
+	if _, err := ParseTemplate(saved); err != nil {
+		t.Fatalf("the document without its break does not reload: %v", err)
+	}
+}

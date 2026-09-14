@@ -123,3 +123,47 @@ test('a drag released onto an element is refused and the line stays put', async 
   await expect(handle(page)).toHaveCount(1)
   await expect(yField(page)).toHaveValue(placed)
 })
+
+// spec-section-break CAP-7: the Anchor checkbox is one engine command, and the
+// tab's anchor icon follows it through undo; removing an unanchored break and
+// undoing restores both.
+test('turns Anchor off and on through undo, and removes an unanchored break', async ({ page }) => {
+  await page.goto('/')
+  await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  const anchor = page.getByRole('checkbox', { name: 'Anchor' })
+  const icon = page.locator('.section-break-tab .section-break-anchor-icon')
+
+  await placeBreak(page, 200)
+  await expect(handle(page)).toHaveCount(1)
+  await expect(anchor).toBeChecked()
+  await expect(icon).toHaveCount(1)
+
+  // UNCHECK. One command: the revision moves once and the icon goes.
+  const anchored = await revisionText(page)
+  // The box is controlled by the engine's answer, so it flips only once the
+  // command lands — a plain click, not uncheck(), which demands it flip at once.
+  await anchor.click()
+  await expect(revision(page)).not.toHaveText(anchored)
+  await expect(icon).toHaveCount(0)
+  await expect(anchor).not.toBeChecked()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  // UNDO restores the icon and the check. The checkbox keeps focus after the
+  // toggle, and the window shortcuts ignore keys from any input, so undo is
+  // pressed from the line's handle — as for every other checkbox.
+  await handle(page).focus()
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(icon).toHaveCount(1)
+  await expect(anchor).toBeChecked()
+
+  // REDO, then REMOVE the unanchored break, then UNDO: the break returns
+  // unanchored.
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(icon).toHaveCount(0)
+  await handle(page).focus()
+  await page.keyboard.press('Delete')
+  await expect(handle(page)).toHaveCount(0)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(handle(page)).toHaveCount(1)
+  await expect(icon).toHaveCount(0)
+})

@@ -1,0 +1,48 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e3", "type": "text", "x": 0, "y": 0, "width": 523, "height": 14, "value": "Customer / ลูกค้า: {{customer.name}}", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "e4", "type": "text", "x": 0, "y": 16, "width": 523, "height": 14, "value": "Account / เลขที่บัญชี: {{account.number}}", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "e5", "type": "table", "x": 0, "y": 38, "bind": "transactions[]", "as": "txn", "headerHeight": 22,
+          "style": {"fontFamily": "body", "fontSize": 7, "padding": {"bottom": 1, "left": 3, "right": 3, "top": 1}},
+          "columns": [
+            {"id": "e6", "label": "Date", "width": 60, "align": "left", "bind": "{{txn.date}}"},
+            {"id": "e7", "label": "Code", "width": 40, "align": "left", "bind": "{{txn.code}}"},
+            {"id": "e8", "label": "Description", "width": 243, "align": "left", "bind": "{{txn.description}}"},
+            {"id": "e9", "label": "Amount", "width": 90, "align": "right", "bind": "{{formatNumber(txn.amount, \"#,##0.00\")}}"},
+            {"id": "ea", "label": "Balance", "width": 90, "align": "right", "bind": "{{formatNumber(txn.balance, \"#,##0.00\")}}"}
+          ]},
+        {"id": "eb", "type": "text", "x": 0, "y": 410, "width": 523, "height": 16, "value": "Transaction codes / รหัสรายการ", "style": {"fontFamily": "body", "fontSize": 10}},
+        {"id": "ec", "type": "text", "x": 0, "y": 430, "width": 523, "height": 14, "value": "DEP  Deposit / ฝากเงิน", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "ed", "type": "text", "x": 0, "y": 446, "width": 523, "height": 14, "value": "WDL  Withdrawal / ถอนเงิน", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "ee", "type": "text", "x": 0, "y": 462, "width": 523, "height": 14, "value": "TRF  Transfer / โอนเงิน", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "ef", "type": "text", "x": 0, "y": 478, "width": 523, "height": 14, "value": "INT  Interest / ดอกเบี้ย", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "eg", "type": "text", "x": 0, "y": 494, "width": 523, "height": 14, "value": "FEE  Service fee / ค่าธรรมเนียม", "style": {"fontFamily": "body", "fontSize": 8}}
+      ],
+      "sectionBreak": 390,
+      "sectionBreakAnchor": false
+    },
+    "pageFooter": {
+      "elements": [
+        {"id": "eh", "type": "text", "x": 0, "y": 8, "width": 380, "height": 12, "value": "Synthetic sample data - not a real account / ข้อมูลตัวอย่าง", "style": {"fontFamily": "body", "fontSize": 7}},
+        {"id": "ei", "type": "text", "x": 400, "y": 8, "width": 123, "height": 12, "value": "Page {{page}} of {{pages}}", "style": {"fontFamily": "body", "fontSize": 7, "align": "right"}}
+      ],
+      "height": 34
+    },
+    "pageHeader": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 10, "width": 523, "height": 16, "value": "STATEMENT OF ACCOUNT / ใบแจ้งยอดบัญชี", "style": {"fontFamily": "body", "fontSize": 12}},
+        {"id": "e2", "type": "text", "x": 0, "y": 30, "width": 523, "height": 14, "value": "Folio Example Bank (synthetic)", "style": {"fontFamily": "body", "fontSize": 9}}
+      ],
+      "height": 54
+    }
+  },
+  "fonts": {"body": ["Noto Sans", "Noto Sans Thai"]},
+  "locale": "th",
+  "nextId": 19,
+  "page": {"margin": {"bottom": 36, "left": 36, "right": 36, "top": 36}, "orientation": "portrait", "size": "A4"},
+  "utcOffset": "+07:00",
+  "version": "4.1"
+}

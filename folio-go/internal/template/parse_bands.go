@@ -127,16 +127,45 @@ func decodeBand(ctx *parseCtx, field string, raw json.RawMessage, hasHeight bool
 		sectionBreak = present(v)
 	}
 
+	// spec-section-break CAP-7: the content band's optional boolean
+	// `sectionBreakAnchor`, refused exactly where `sectionBreak` is, and also
+	// when it is declared without a break to qualify.
+	var anchor Presence[bool]
+	if anRaw, ok := obj[sectionBreakAnchorKey]; ok {
+		consumed[sectionBreakAnchorKey] = true
+		anField := field + "." + sectionBreakAnchorKey
+		if hasHeight {
+			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "a section break's Anchor is valid only on the content band — the page header and page footer are never paginated", diag.CodeSectionBreakInvalid)
+		}
+		if n := countTopLevelKey(raw, sectionBreakAnchorKey); n > 1 {
+			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "declared more than once — a content band has at most one section break Anchor", diag.CodeSectionBreakInvalid)
+		}
+		if rawIsNull(anRaw) {
+			return Band{}, newLoadErrorCoded(anField, "", "null", "must be true or false — remove the key to anchor the section break", diag.CodeSectionBreakInvalid)
+		}
+		v, err := decodeBoolRaw(anRaw)
+		if err != nil {
+			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "must be true or false", diag.CodeSectionBreakInvalid)
+		}
+		if !sectionBreak.Set {
+			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key", diag.CodeSectionBreakInvalid)
+		}
+		anchor = present(v)
+	}
+
 	extra, err := extraFields(obj, consumed)
 	if err != nil {
 		return Band{}, fmt.Errorf("template: %s: %w", field, err)
 	}
 
-	return Band{Elements: elems, Height: height, SectionBreak: sectionBreak, Extra: extra}, nil
+	return Band{Elements: elems, Height: height, SectionBreak: sectionBreak, SectionBreakAnchor: anchor, Extra: extra}, nil
 }
 
 // sectionBreakKey is the content band's section-break key.
 const sectionBreakKey = "sectionBreak"
+
+// sectionBreakAnchorKey is the content band's section-break Anchor key.
+const sectionBreakAnchorKey = "sectionBreakAnchor"
 
 // countTopLevelKey counts how many times key appears as a member name of the
 // JSON object raw, at its top level only. encoding/json keeps the last of a

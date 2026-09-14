@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -22,12 +23,21 @@ import (
 // declared y, so the section's first page carries its own shift (zero), and
 // a section that does not fit continues under the ordinary rules.
 //
+// UNANCHORED (CAP-7, `sectionBreakAnchor: false`). When the content above ends
+// below the line, the section is instead moved as one block by D before it is
+// paginated: down by E - line on that same page when its extent still fits,
+// otherwise up so the line is the top of a new page's window. When the content
+// above ends at or above the line it is exactly the anchored rule.
+//
 // THE BYTE-IDENTITY FAST PATH. When the above-line items fit one page and end
 // at or above the line, the document is paginated exactly as it is without
 // the key — one layout pass over every item — so its PDF is unchanged (CAP-3).
 
 // sectionBreakDataPath locates a band-level section-break diagnostic.
 const sectionBreakDataPath = "bands.content.sectionBreak"
+
+// sectionBreakAnchorDataPath locates a diagnostic about the break's Anchor.
+const sectionBreakAnchorDataPath = "bands.content.sectionBreakAnchor"
 
 // sectionBreakSplit is one document's section break, resolved for pagination.
 // The zero value is "no break", and paginates exactly as before.
@@ -37,6 +47,8 @@ type sectionBreakSplit struct {
 	// members holds the ids of the content-band elements declared at or below
 	// the break. Looked up, never ranged.
 	members map[string]bool
+	// unanchored is spec-section-break CAP-7: `sectionBreakAnchor: false`.
+	unanchored bool
 }
 
 // sectionBreakOf resolves t's section break against g. A document without a
@@ -46,7 +58,7 @@ func sectionBreakOf(t *Template, g layout.PageGeometry) sectionBreakSplit {
 	if !ok {
 		return sectionBreakSplit{}
 	}
-	out := sectionBreakSplit{line: layout.Origins(g).Content + offset}
+	out := sectionBreakSplit{line: layout.Origins(g).Content + offset, unanchored: !sectionBreakAnchored(t)}
 	for _, el := range t.doc.Bands.Content.Elements {
 		if el.Y < offset {
 			continue
@@ -71,6 +83,16 @@ func declaredSectionBreak(t *Template) (geom.Length, bool) {
 	return sb.Value, true
 }
 
+// sectionBreakAnchored reports the break's Anchor setting (CAP-7): true
+// unless the content band declares `sectionBreakAnchor: false`.
+func sectionBreakAnchored(t *Template) bool {
+	if t == nil || t.doc == nil {
+		return true
+	}
+	a := t.doc.Bands.Content.SectionBreakAnchor
+	return !a.Set || a.Null || a.Value
+}
+
 // validateSectionBreak refuses, at load, a break the content band cannot
 // honour (SECTION_BREAK_INVALID, located at the band) and an element whose
 // declared box lies on both sides of it (SECTION_BREAK_STRADDLED, located at
@@ -79,6 +101,12 @@ func declaredSectionBreak(t *Template) (geom.Length, bool) {
 func validateSectionBreak(t *Template) error {
 	offset, ok := declaredSectionBreak(t)
 	if !ok {
+		// The parser already refuses an Anchor with no break; this is the
+		// same rule for a template that reached here some other way.
+		if t != nil && t.doc != nil && t.doc.Bands.Content.SectionBreakAnchor.Set {
+			return newRenderError(DiagCodeSectionBreakInvalid, "", sectionBreakAnchorDataPath,
+				fmt.Errorf("folio: bands.content.sectionBreakAnchor: declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key"))
+		}
 		return nil
 	}
 	if offset <= 0 {
@@ -227,11 +255,46 @@ func removeSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if !t.doc.Bands.Content.SectionBreak.Set {
 		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "this document has no section break to remove")
 	}
-	previous := t.doc.Bands.Content.SectionBreak
+	previous, previousAnchor := t.doc.Bands.Content.SectionBreak, t.doc.Bands.Content.SectionBreakAnchor
 	t.doc.Bands.Content.SectionBreak = template.Presence[geom.Length]{}
+	// The Anchor qualifies the break, so it goes with it (CAP-7).
+	t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{}
 	projection, err := Canvas(t)
 	if err != nil {
-		t.doc.Bands.Content.SectionBreak = previous
+		t.doc.Bands.Content.SectionBreak, t.doc.Bands.Content.SectionBreakAnchor = previous, previousAnchor
+		return CanvasProjection{}, err
+	}
+	return projection, nil
+}
+
+// setSectionBreakAnchor sets the break's Anchor: {kind, version, anchor}. One
+// command, so one undo entry (CAP-7). Anchored is the default and the key's
+// absence, so `true` clears the key and `false` writes it.
+func setSectionBreakAnchor(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 3); err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "setSectionBreakAnchor takes exactly kind, version and anchor")
+	}
+	// json.Unmarshal leaves a bool untouched for null, so null is refused
+	// here rather than read as false.
+	if value, ok := raw["anchor"]; ok && string(bytes.TrimSpace(value)) == "null" {
+		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "anchor must be a boolean")
+	}
+	anchor, err := commandBool(raw, "anchor")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, err.Error())
+	}
+	if _, ok := declaredSectionBreak(t); !ok {
+		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "this document has no section break to anchor — add a Section Break first")
+	}
+	previous := t.doc.Bands.Content.SectionBreakAnchor
+	if anchor {
+		t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{}
+	} else {
+		t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{Set: true, Value: false}
+	}
+	projection, err := Canvas(t)
+	if err != nil {
+		t.doc.Bands.Content.SectionBreakAnchor = previous
 		return CanvasProjection{}, err
 	}
 	return projection, nil
@@ -341,9 +404,37 @@ func paginateWithSectionBreak(g layout.PageGeometry, items []layout.ColumnItem, 
 		return sectionPlan{Pagination: plan}, diags, err
 	}
 
-	planS, _, diagsS, err := paginateWithFooterOrphanFixPages(g, below, footerOrphanTargetsFrom(below))
+	planS, pagesS, diagsS, err := paginateWithFooterOrphanFixPages(g, below, footerOrphanTargetsFrom(below))
 	if err != nil {
 		return sectionPlan{}, nil, err
+	}
+
+	// spec-section-break CAP-7: an unanchored section whose above-line
+	// content ends below the line moves by D, a translation applied to the
+	// section's items BEFORE they are paginated, so the window rules run on
+	// them unchanged. Pushed on the shared page when its declared extent fits
+	// under E; otherwise lifted so the line is the next window's top.
+	var d geom.Length
+	if sb.unanchored && !shared {
+		origins := layout.Origins(g)
+		d = origins.Content - sb.line
+		if end, clipped := aboveLineEnd(g, above, planA, pagesA, sb.line); !clipped {
+			if extent, ok := sectionExtent(g, below, planS, pagesS, sb.line); ok && end+(extent-sb.line) <= origins.PageFooter {
+				d = end - sb.line
+				shared = true
+			}
+		}
+		moved := make([]layout.ColumnItem, len(below))
+		for i, it := range below {
+			it.Top += d
+			it.Bottom += d
+			moved[i] = it
+		}
+		planS, _, diagsS, err = paginateWithFooterOrphanFixPages(g, moved, footerOrphanTargetsFrom(moved))
+		if err != nil {
+			return sectionPlan{}, nil, err
+		}
+		unshiftSectionPages(planS.Pages, d)
 	}
 
 	pages := append([]layout.PageAssignment(nil), planA.Pages...)
@@ -356,12 +447,12 @@ func paginateWithSectionBreak(g layout.PageGeometry, items []layout.ColumnItem, 
 	if shared {
 		offset = len(pages) - 1
 		pages[offset] = mergePageAssignments(pages[offset], planS.Pages[0])
-		shifts[offset] = planS.Pages[0].Shift
+		shifts[offset] = planS.Pages[0].Shift - d
 		first = 1
 	}
 	for _, pa := range planS.Pages[first:] {
 		pages = append(pages, pa)
-		shifts = append(shifts, pa.Shift)
+		shifts = append(shifts, pa.Shift-d)
 	}
 
 	out := sectionPlan{
@@ -390,10 +481,60 @@ func paginateWithSectionBreak(g layout.PageGeometry, items []layout.ColumnItem, 
 // floored slice, is at or above the line. A group clipped on that page ran
 // past the content bottom, so it crosses.
 func aboveLineEndsAtOrAbove(g layout.PageGeometry, items []layout.ColumnItem, plan layout.Pagination, itemPages []int, line geom.Length) bool {
+	end, clipped := aboveLineEnd(g, items, plan, itemPages, line)
+	return !clipped && end <= line
+}
+
+// sectionExtent is the section's declared extent, floor-aware: the lowest
+// page-space bottom of its items when paginated from their declared offset,
+// counting a table's minHeight floor, a floor push and a row displacement —
+// the same measure aboveLineEnd takes of the content above. It is not the
+// straddle rule's declared box (sectionBreakDeclaredBox), which stops at a
+// table's header. ok is false when the section does not fit one window even
+// at its declared offset, so it can fit under no pushed position either.
+func sectionExtent(g layout.PageGeometry, items []layout.ColumnItem, plan layout.Pagination, itemPages []int, line geom.Length) (geom.Length, bool) {
+	if len(plan.Pages) != 1 {
+		return 0, false
+	}
+	end, clipped := aboveLineEnd(g, items, plan, itemPages, line)
+	return end, !clipped
+}
+
+// unshiftSectionPages restates, for an unanchored section paginated after
+// being moved by d, the two per-page quantities that the render applies to
+// the items' UNMOVED coordinates: a repeated header's own Shift and a clipped
+// rect's column-space bottom. TableSlices are page space and already final.
+// With d zero nothing changes.
+func unshiftSectionPages(pages []layout.PageAssignment, d geom.Length) {
+	if d == 0 {
+		return
+	}
+	for p := range pages {
+		if len(pages[p].HeaderRepeats) > 0 {
+			repeats := append([]layout.TableHeaderRepeat(nil), pages[p].HeaderRepeats...)
+			for i := range repeats {
+				repeats[i].Shift -= d
+			}
+			pages[p].HeaderRepeats = repeats
+		}
+		if len(pages[p].ClippedRects) > 0 {
+			clips := append([]layout.RectClip(nil), pages[p].ClippedRects...)
+			for i := range clips {
+				clips[i].Bottom -= d
+			}
+			pages[p].ClippedRects = clips
+		}
+	}
+}
+
+// aboveLineEnd is where content ends on its last page, in page space, and
+// whether a group was clipped there — in which case it ran past the content
+// bottom and has no usable end.
+func aboveLineEnd(g layout.PageGeometry, items []layout.ColumnItem, plan layout.Pagination, itemPages []int, line geom.Length) (geom.Length, bool) {
 	last := len(plan.Pages) - 1
 	for _, c := range plan.Clipped {
 		if c.Page == last {
-			return false
+			return 0, true
 		}
 	}
 	pa := plan.Pages[last]
@@ -415,7 +556,7 @@ func aboveLineEndsAtOrAbove(g layout.PageGeometry, items []layout.ColumnItem, pl
 			end = sl.Bottom
 		}
 	}
-	return end <= line
+	return end, false
 }
 
 // mergePageAssignments puts the section's first page onto the above-line

@@ -880,6 +880,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessSectionBreakUnanchoredEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(sectionBreakUnanchoredTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(sectionBreakUnanchoredDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessSectionBreakStatementEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(sectionBreakStatementTemplateJSON))
 		if err != nil {
@@ -1102,6 +1115,12 @@ const subprocessBarcodeThaiBillPaymentEnvVar = "FOLIO_SUBPROCESS_RENDER_BARCODET
 // fixtures/section-break-statement/ — the first document carrying a section
 // break — in a fresh process, from the committed template const.
 const subprocessSectionBreakStatementEnvVar = "FOLIO_SUBPROCESS_RENDER_SECTIONBREAKSTATEMENT"
+
+// subprocessSectionBreakUnanchoredEnvVar renders
+// fixtures/section-break-unanchored/ — the first document carrying an
+// unanchored section break — in a fresh process, from the committed
+// template const.
+const subprocessSectionBreakUnanchoredEnvVar = "FOLIO_SUBPROCESS_RENDER_SECTIONBREAKUNANCHORED"
 
 // subprocessQRCodePaymentsEnvVar renders fixtures/qrcode-payments/ — the
 // first document carrying a qrcode — in a fresh process, from the committed

@@ -1,4 +1,4 @@
-// spec-section-break CAP-1. The two Section Break commands, as opaque
+// spec-section-break CAP-1 / CAP-7. The three Section Break commands, as opaque
 // Go-defined bytes.
 //
 // In the file the break is the content band's `sectionBreak` key, but on the
@@ -19,4 +19,10 @@ export function setSectionBreakCommand(offset: string, snap: boolean): ArrayBuff
 
 export function removeSectionBreakCommand(): ArrayBuffer {
   return commandBytes('removeSectionBreak', [])
+}
+
+// CAP-7: the Anchor checkbox. One command, so one undo entry; the engine
+// writes `sectionBreakAnchor: false` for false and removes the key for true.
+export function setSectionBreakAnchorCommand(anchor: boolean): ArrayBuffer {
+  return commandBytes('setSectionBreakAnchor', [['anchor', jsonBoolean(anchor)]])
 }

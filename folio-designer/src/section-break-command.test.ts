@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { removeSectionBreakCommand, setSectionBreakCommand } from './section-break-command'
+import { removeSectionBreakCommand, setSectionBreakAnchorCommand, setSectionBreakCommand } from './section-break-command'
 
 // The wire, pinned to the byte and to the key order: Go counts every top-level
-// key (componentFields(raw, 4) and (raw, 2)) and refuses any other arity.
+// key (componentFields(raw, 4), (raw, 3) and (raw, 2)) and refuses any other arity.
 const text = (value: ArrayBuffer): string => new TextDecoder().decode(value)
 
 describe('setSectionBreakCommand', () => {
@@ -21,5 +21,12 @@ describe('setSectionBreakCommand', () => {
 describe('removeSectionBreakCommand', () => {
   it('encodes kind and version only', () => {
     expect(text(removeSectionBreakCommand())).toBe('{"kind":"removeSectionBreak","version":1}')
+  })
+})
+
+describe('setSectionBreakAnchorCommand', () => {
+  it('encodes kind, version and anchor, in order', () => {
+    expect(text(setSectionBreakAnchorCommand(false))).toBe('{"kind":"setSectionBreakAnchor","version":1,"anchor":false}')
+    expect(text(setSectionBreakAnchorCommand(true))).toBe('{"kind":"setSectionBreakAnchor","version":1,"anchor":true}')
   })
 })

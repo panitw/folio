@@ -134,6 +134,76 @@ func TestSectionBreakLoadRefusals(t *testing.T) {
 	}
 }
 
+// spec-section-break CAP-5 / CAP-7: `sectionBreakAnchor: false` round-trips
+// byte-identically at 4.1, and an explicit `true` is dropped on save.
+func TestSectionBreakAnchorRoundTrips(t *testing.T) {
+	src := sectionBreakDoc(`"sectionBreak": 480,
+      "sectionBreakAnchor": false`, "", "", "4.1")
+	d, err := ParseDocument([]byte(src))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if a := d.Bands.Content.SectionBreakAnchor; !a.Set || a.Value {
+		t.Fatalf("SectionBreakAnchor = %+v, want present false", a)
+	}
+	if len(d.Bands.Content.Extra) != 0 {
+		t.Fatalf("sectionBreakAnchor leaked into Extra: %+v", d.Bands.Content.Extra)
+	}
+	out, err := SerializeDocument(d)
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	if string(out) != src {
+		t.Fatalf("round trip is not byte-identical:\n got: %s\nwant: %s", out, src)
+	}
+
+	explicit, err := ParseDocument([]byte(sectionBreakDoc(`"sectionBreak": 480,
+      "sectionBreakAnchor": true`, "", "", "4.1")))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	out, err = SerializeDocument(explicit)
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	if want := sectionBreakDoc(`"sectionBreak": 480`, "", "", "4.1"); string(out) != want {
+		t.Fatalf("an explicit true must be dropped on save:\n got: %s\nwant: %s", out, want)
+	}
+}
+
+func TestSectionBreakAnchorLoadRefusals(t *testing.T) {
+	for _, c := range []struct {
+		label, content, footer, header, field string
+	}{
+		{"without a break", `"sectionBreakAnchor": false`, "", "", "bands.content.sectionBreakAnchor"},
+		{"on the page header", "", "", `"sectionBreakAnchor": false`, "bands.pageHeader.sectionBreakAnchor"},
+		{"on the page footer", "", `"sectionBreakAnchor": false`, "", "bands.pageFooter.sectionBreakAnchor"},
+		{"declared twice", `"sectionBreak": 400,
+      "sectionBreakAnchor": false,
+      "sectionBreakAnchor": true`, "", "", "bands.content.sectionBreakAnchor"},
+		{"null", `"sectionBreak": 400,
+      "sectionBreakAnchor": null`, "", "", "bands.content.sectionBreakAnchor"},
+		{"a string", `"sectionBreak": 400,
+      "sectionBreakAnchor": "no"`, "", "", "bands.content.sectionBreakAnchor"},
+		{"a number", `"sectionBreak": 400,
+      "sectionBreakAnchor": 0`, "", "", "bands.content.sectionBreakAnchor"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			_, err := ParseDocument([]byte(sectionBreakDoc(c.content, c.footer, c.header, "4.1")))
+			var le *LoadError
+			if !errors.As(err, &le) {
+				t.Fatalf("want a *LoadError, got %T %v", err, err)
+			}
+			if le.Code != diag.CodeSectionBreakInvalid {
+				t.Errorf("code = %q, want %q", le.Code, diag.CodeSectionBreakInvalid)
+			}
+			if le.Field != c.field {
+				t.Errorf("field = %q, want the band's %q", le.Field, c.field)
+			}
+		})
+	}
+}
+
 func TestCountTopLevelKeyIgnoresNestedKeys(t *testing.T) {
 	raw := []byte(`{"elements": [{"sectionBreak": 1}], "sectionBreak": 2, "x": {"sectionBreak": 3}}`)
 	if got := countTopLevelKey(raw, "sectionBreak"); got != 1 {

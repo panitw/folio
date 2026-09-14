@@ -78,6 +78,7 @@ jobs:
             folio-go/.matrix-build/hash.darwin-arm64.barcode-thai-bill-payment.txt
             folio-go/.matrix-build/hash.darwin-arm64.qrcode-payments.txt
             folio-go/.matrix-build/hash.darwin-arm64.section-break-statement.txt
+            folio-go/.matrix-build/hash.darwin-arm64.section-break-unanchored.txt
           if-no-files-found: error
 
   render-linux-amd64:
@@ -126,6 +127,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-amd64.barcode-thai-bill-payment.txt
             folio-go/.matrix-build/hash.linux-amd64.qrcode-payments.txt
             folio-go/.matrix-build/hash.linux-amd64.section-break-statement.txt
+            folio-go/.matrix-build/hash.linux-amd64.section-break-unanchored.txt
           if-no-files-found: error
 
   render-linux-arm64:
@@ -174,6 +176,7 @@ jobs:
             folio-go/.matrix-build/hash.linux-arm64.barcode-thai-bill-payment.txt
             folio-go/.matrix-build/hash.linux-arm64.qrcode-payments.txt
             folio-go/.matrix-build/hash.linux-arm64.section-break-statement.txt
+            folio-go/.matrix-build/hash.linux-arm64.section-break-unanchored.txt
           if-no-files-found: error
 
   render-js-wasm:
@@ -222,6 +225,7 @@ jobs:
             folio-go/.matrix-build/hash.js-wasm.barcode-thai-bill-payment.txt
             folio-go/.matrix-build/hash.js-wasm.qrcode-payments.txt
             folio-go/.matrix-build/hash.js-wasm.section-break-statement.txt
+            folio-go/.matrix-build/hash.js-wasm.section-break-unanchored.txt
           if-no-files-found: error
 
   compare-render-hashes:
@@ -280,7 +284,7 @@ jobs:
           # `go test ./...` and not only at the epic boundary gate. Running
           # every story is what makes it worth having; matrix_test.go would
           # have been the wrong home for exactly that reason.
-          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together thai-stacked-marks embedded-font declared-variants barcode-thai-bill-payment qrcode-payments section-break-statement"
+          docs="minimal-rect font-text image-embed multi-script-fallback shaped-text wrapped-text three-band-page multi-page page-count-20 hidden-image statement-1 statement-5 statement-20 statement-50 alternating-rows component-asset-import mandatory-break line-spacing justified-text justified-thai alignment-rounding keep-together thai-stacked-marks embedded-font declared-variants barcode-thai-bill-payment qrcode-payments section-break-statement section-break-unanchored"
           targets="darwin-arm64 linux-amd64 linux-arm64 js-wasm"
 
           overall_fail=0

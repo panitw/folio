@@ -10818,11 +10818,41 @@ describe('spec-section-break: the Section Break on the canvas', () => {
     await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
   })
 
-  it('offers no Delete button in the Section Break Properties, only the Y field', () => {
+  it('offers no Delete button in the Section Break Properties, only the Y field and the Anchor checkbox', () => {
     open(withBreak())
     fireEvent.click(handle())
     expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Anchor' })).toBeChecked()
     expect(screen.queryByRole('button', { name: 'Delete Section Break' })).toBeNull()
+  })
+
+  // spec-section-break CAP-7: the Anchor option.
+  it('shows the anchor icon in the tab while anchored, and none while unanchored', () => {
+    open(withBreak())
+    expect(document.querySelectorAll('.section-break-tab [data-testid="section-break-anchor-icon"]')).toHaveLength(1)
+    expect(document.querySelector('.section-break-tab')!.textContent).toBe('Section Break')
+    cleanup()
+    open(withBreak(400_000, { sectionBreakAnchor: false }))
+    expect(document.querySelector('.section-break-tab')).not.toBeNull()
+    expect(document.querySelectorAll('[data-testid="section-break-anchor-icon"]')).toHaveLength(0)
+  })
+
+  it('unchecking Anchor sends one engine command, and the answer hides the icon and unchecks the box', async () => {
+    const request = open(withBreak(), async () => ({ snapshot: snapshotOf(withBreak(400_000, { sectionBreakAnchor: false }), 2) }))
+    fireEvent.click(handle())
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Anchor' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreakAnchor","version":1,"anchor":false}']))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Anchor' })).not.toBeChecked())
+    expect(document.querySelectorAll('[data-testid="section-break-anchor-icon"]')).toHaveLength(0)
+  })
+
+  it('checking Anchor on an unanchored break sends anchor true', async () => {
+    const request = open(withBreak(400_000, { sectionBreakAnchor: false }), async () => ({ snapshot: snapshotOf(withBreak(), 2) }))
+    fireEvent.click(handle())
+    expect(screen.getByRole('checkbox', { name: 'Anchor' })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Anchor' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreakAnchor","version":1,"anchor":true}']))
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="section-break-anchor-icon"]')).toHaveLength(1))
   })
 
   it('nudges a selected break from the window arrow keys when focus is off the line', async () => {

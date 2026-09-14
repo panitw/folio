@@ -631,6 +631,11 @@ type CanvasProjection struct {
 	// keeps plain pagination; the canvas draws the section only where it is
 	// declared.
 	SectionBreak *int64 `json:"sectionBreak,omitempty"`
+	// SectionBreakAnchor is spec-section-break CAP-7's Anchor setting. It is
+	// PRESENT, and false, only when the document declares a break and that
+	// break is unanchored; absent otherwise, so an anchored break and a
+	// document without one project exactly as before.
+	SectionBreakAnchor *bool `json:"sectionBreakAnchor,omitempty"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -965,9 +970,14 @@ func Canvas(t *Template) (CanvasProjection, error) {
 		return CanvasProjection{}, err
 	}
 	var sectionBreak *int64
+	var sectionBreakAnchor *bool
 	if offset, ok := declaredSectionBreak(t); ok {
 		value := int64(offset)
 		sectionBreak = &value
+		if !sectionBreakAnchored(t) {
+			unanchored := false
+			sectionBreakAnchor = &unanchored
+		}
 		for index := range components {
 			if components[index].Band != bandContent {
 				continue
@@ -976,7 +986,7 @@ func Canvas(t *Template) (CanvasProjection, error) {
 			components[index].BelowSectionBreak = &below
 		}
 	}
-	return CanvasProjection{SectionBreak: sectionBreak, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,

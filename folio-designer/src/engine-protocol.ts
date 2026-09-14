@@ -452,6 +452,10 @@ export type CanvasProjection = Readonly<{
 	// is in). ABSENT when the document declares no break. It comes from Go and
 	// is never derived here; the window count ignores it.
 	sectionBreak?: number
+	// spec-section-break CAP-7: the break's Anchor setting. PRESENT, and false,
+	// only when the document declares a break and that break is unanchored;
+	// absent means anchored (or no break at all). From Go, never derived here.
+	sectionBreakAnchor?: false
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
@@ -746,7 +750,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'headerAlign', 'headerAlignResolved', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && Array.from(column.header).length <= MAX_TABLE_COLUMN_HEADER_CODE_POINTS && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && ['', 'left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.headerAlignResolved as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'sectionBreak', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'sectionBreak', 'sectionBreakAnchor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   // THE TWO DOCUMENT-SETTINGS CLAUSES ARE LOAD-BEARING, and `hasOnly` above
   // cannot stand in for them: it is a SUBSET check, so a key Go simply failed
   // to send passes it and reaches the panel as `undefined` — a locale row with
@@ -822,6 +826,8 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   // snapshot outside it is a channel fault, not a document.
   const contentBand = bands[1] as Record<string, number>
   if (value.sectionBreak !== undefined && !(typeof value.sectionBreak === 'number' && Number.isSafeInteger(value.sectionBreak) && value.sectionBreak > 0 && value.sectionBreak < contentBand.height)) return false
+  // CAP-7: the Anchor key is absent, or exactly `false` beside a break.
+  if (value.sectionBreakAnchor !== undefined && !(value.sectionBreakAnchor === false && value.sectionBreak !== undefined)) return false
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {

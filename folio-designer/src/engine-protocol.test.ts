@@ -76,6 +76,15 @@ describe('canvas projection protocol guard', () => {
     expect(projection({ ...canvas, sectionBreak: 900, components: [rect({ belowSectionBreak: 'yes' })] })).toBeUndefined()
   })
 
+  // spec-section-break CAP-7: the Anchor key is optional, present only as
+  // `false`, and only beside a break.
+  it('accepts sectionBreakAnchor only as false beside a break', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    expect(projection({ ...canvas, sectionBreak: 900, sectionBreakAnchor: false })).toBeDefined()
+    expect(projection({ ...canvas, sectionBreakAnchor: false })).toBeUndefined()
+    for (const anchor of [true, null, 'false', 0]) expect(projection({ ...canvas, sectionBreak: 900, sectionBreakAnchor: anchor })).toBeUndefined()
+  })
+
   it('accepts and deeply freezes the exact three bounded bands', () => {
     const inbound = parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas } })
     expect(inbound).toBeDefined()

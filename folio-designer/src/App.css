@@ -306,7 +306,13 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    clips), and never in the PDF. Below-line elements carry no marking. */
 .section-break-line { position: absolute; left: calc(-1 * var(--band-x) - 14px); width: calc(var(--page-display-width) + 28px); top: var(--section-break-display-y); border-top: var(--hairline) solid var(--color-select); pointer-events: none; }
 .section-break-selected { border-top-color: var(--color-select-bright); }
-.section-break-tab { position: absolute; top: 0; left: 6px; transform: translate(-100%, -50%); padding: 3px 7px; border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); text-transform: uppercase; white-space: nowrap; }
+.section-break-tab { position: absolute; top: 0; left: 6px; transform: translate(-100%, -50%); display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); text-transform: uppercase; white-space: nowrap; }
+/* spec-section-break CAP-7: the anchor icon, shown in the tab only while the
+   break is anchored. It takes the tab's colour and sits before its label. */
+.section-break-anchor-icon { width: 9px; height: 9px; flex: none; }
+/* The Anchor checkbox sits beside its label, as the table header edges do. */
+label.section-break-anchor { display: flex; align-items: center; gap: var(--space-1); margin: 0; }
+label.section-break-anchor input[type="checkbox"] { width: 12px; min-height: 12px; flex: none; margin: 0; accent-color: var(--color-select); }
 .section-break-selected .section-break-tab { color: var(--color-select-bright); border-color: var(--color-select); }
 /* The hit strip, the band boundary handle's shape: transparent, 7px deep,
    straddling the line and reaching the tab. Placement passes through it. */

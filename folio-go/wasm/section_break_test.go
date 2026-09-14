@@ -26,6 +26,12 @@ func TestSectionBreakCommandsUndoAndRedoByteForByte(t *testing.T) {
 		`{"kind":"setSectionBreak","version":1,"offset":370,"snap":true}`,
 		`{"kind":"setSectionBreak","version":1,"offset":371,"snap":false}`,
 		`{"kind":"setSectionBreak","version":1,"offset":405.5,"snap":false}`,
+		// spec-section-break CAP-7: turn Anchor off, on, off again, then
+		// remove the unanchored break (both keys go, and undo restores both).
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":false}`,
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":true}`,
+		`{"kind":"setSectionBreakAnchor","version":1,"anchor":false}`,
+		`{"kind":"removeSectionBreak","version":1}`,
 	} {
 		before, _, err := engine.Serialize()
 		if err != nil {
@@ -55,6 +61,14 @@ func TestSectionBreakCommandsUndoAndRedoByteForByte(t *testing.T) {
 		if !bytes.Equal(redone, after) {
 			t.Fatalf("redo did not restore the bytes after %s", command)
 		}
+	}
+	// The removed unanchored break leaves neither key behind.
+	if final, _, _ := engine.Serialize(); bytes.Contains(final, []byte("sectionBreak")) {
+		t.Fatal("removing an unanchored break left a section-break key in the document")
+	}
+	// Put a break back for the refusal below.
+	if _, err := engine.Apply([]byte(`{"kind":"setSectionBreak","version":1,"offset":400,"snap":false}`)); err != nil {
+		t.Fatal(err)
 	}
 	// A refused command (through the table's header at 38-60pt) records no
 	// history and changes no byte.

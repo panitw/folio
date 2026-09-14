@@ -402,7 +402,13 @@ type Band struct {
 	// the content above it. Never set on the page header or page footer —
 	// parse_bands.go refuses the key there.
 	SectionBreak Presence[geom.Length]
-	Extra        []Field
+	// SectionBreakAnchor is the content band's optional boolean
+	// `sectionBreakAnchor` (spec-section-break CAP-7). Absent means anchored,
+	// the default; only an explicit `false` is written on save. Valid only
+	// beside SectionBreak — parse_bands.go refuses it without one, and on the
+	// page header or page footer.
+	SectionBreakAnchor Presence[bool]
+	Extra              []Field
 }
 
 // ElementType is the closed set of element kinds (FR4).

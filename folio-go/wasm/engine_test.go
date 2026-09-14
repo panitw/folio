@@ -324,6 +324,9 @@ func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 		// spec-section-break CAP-6: the golden statement whose legend moves to
 		// an added page. Preview (the wasm engine) must equal the native render.
 		{"section-break-statement", "../../fixtures/section-break-statement/input.folio", "../../fixtures/section-break-statement/data.json", `{}`},
+		// spec-section-break CAP-7: the unanchored golden, whose legend is
+		// pushed down on page 1. Preview must equal the native render.
+		{"section-break-unanchored", "../../fixtures/section-break-unanchored/input.folio", "../../fixtures/section-break-unanchored/data.json", `{}`},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

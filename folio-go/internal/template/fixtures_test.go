@@ -414,7 +414,8 @@ var maximalFixture = []byte(`{
           "y": 200
         }
       ],
-      "sectionBreak": 600
+      "sectionBreak": 600,
+      "sectionBreakAnchor": false
     },
     "pageFooter": {
       "elements": [

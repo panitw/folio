@@ -331,6 +331,11 @@ func writeBand(dst []byte, depth int, band Band) []byte {
 	if band.SectionBreak.Set {
 		fields = append(fields, kv{"sectionBreak", writePoints(band.SectionBreak.Value)})
 	}
+	// spec-section-break CAP-7: anchored is the default, so only `false` is
+	// written, and an explicit `true` is dropped.
+	if band.SectionBreakAnchor.Set && !band.SectionBreakAnchor.Value {
+		fields = append(fields, kv{"sectionBreakAnchor", writeBool(false)})
+	}
 	fields = append(fields, extraKVs(band.Extra)...)
 	return writeObject(dst, depth, fields)
 }

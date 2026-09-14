@@ -728,3 +728,335 @@ func TestSectionBreakHeaderRepeatAndFooterOrphanWarningsInTheSection(t *testing.
 		t.Errorf("want one %s Warning for e6 from the section's pagination, got %+v", DiagCodeTableFooterOrphanSuppressed, diags)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// spec-section-break CAP-7: THE UNANCHORED BREAK.
+
+const sectionBreakUnanchoredAt75 = `, "sectionBreak": 75, "sectionBreakAnchor": false`
+
+// sectionBreakContentBottom is the content window's bottom in page space for
+// sectionBreakTestDoc: its content band is 110pt tall.
+func sectionBreakContentBottom(origin geom.Length) geom.Length { return origin + 110000 }
+
+// TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount is CAP-7
+// over every row count from 0 to 20, against the table-only render: not
+// crossed, the legend is at its declared y and the PDF is byte-identical to
+// the anchored one; crossed, it is pushed by exactly E - line on the last
+// page, or it is on an added page with the line at the window top. A push is
+// chosen exactly for the smaller crossings on each page.
+func TestSectionBreakUnanchoredLandingMatchesTheOracleForEveryRowCount(t *testing.T) {
+	doc := sectionBreakTestDoc(sectionBreakUnanchoredAt75, "")
+	anchored := sectionBreakTestDoc(sectionBreakAt75, "")
+	tableOnly := sectionBreakWithout(sectionBreakTestDoc("", ""), "e5")
+	reference, _ := sectionBreakPages(t, sectionBreakTestDoc("", ""), 0)
+	_, declaredY := legendOn(reference, "Legend")
+	var notCrossed, pushed, moved int
+	// The largest pushed crossing and the smallest moved one, per last page.
+	maxPushed, minMoved := map[int]geom.Length{}, map[int]geom.Length{}
+	for rows := 0; rows <= 20; rows++ {
+		t.Run(fmt.Sprintf("rows=%d", rows), func(t *testing.T) {
+			oracle, _ := sectionBreakPages(t, tableOnly, rows)
+			origin, end := tableEnd(oracle)
+			line := origin + 75000
+			last := len(oracle) - 1
+
+			pages, _ := sectionBreakPages(t, doc, rows)
+			onPages, y := legendOn(pages, "Legend")
+			if len(onPages) != 1 {
+				t.Fatalf("legend drawn on pages %v, want exactly one page", onPages)
+			}
+			switch {
+			case end <= line:
+				notCrossed++
+				if onPages[0] != last || y != declaredY || len(pages) != len(oracle) {
+					t.Fatalf("not crossed: legend on page %d at %d of %d pages, want page %d at %d of %d", onPages[0]+1, y, len(pages), last+1, declaredY, len(oracle))
+				}
+				if a, b := sectionBreakRender(t, doc, rows).Bytes, sectionBreakRender(t, anchored, rows).Bytes; !bytes.Equal(a, b) {
+					off, window := firstDivergence(a, b)
+					t.Fatalf("not crossed, yet unanchored differs from anchored at byte %d: %s", off, window)
+				}
+			case onPages[0] == last:
+				pushed++
+				if want := declaredY + (end - line); y != want {
+					t.Fatalf("pushed: legend baseline %d, want %d (declared %d + E %d - line %d)", y, want, declaredY, end, line)
+				}
+				if len(pages) != len(oracle) {
+					t.Fatalf("pushed: %d pages, want %d", len(pages), len(oracle))
+				}
+				for _, r := range pages[last].Rects {
+					if r.Y+r.H > end {
+						t.Errorf("a rect on the pushed page ends at %d, below the content above's end %d", r.Y+r.H, end)
+					}
+				}
+				maxPushed[last] = max(maxPushed[last], end)
+			default:
+				moved++
+				if onPages[0] != last+1 || y != declaredY-75000 || len(pages) != len(oracle)+1 {
+					t.Fatalf("moved: legend on page %d at %d of %d pages, want page %d at %d (line at the window top) of %d", onPages[0]+1, y, len(pages), last+2, declaredY-75000, len(oracle)+1)
+				}
+				for _, r := range pages[last+1].Rects {
+					t.Errorf("the added page carries a rect at %d above the section", r.Y)
+				}
+				if v, ok := minMoved[last]; !ok || end < v {
+					minMoved[last] = end
+				}
+			}
+			if y > sectionBreakContentBottom(origin) {
+				t.Errorf("legend baseline %d is below the content bottom %d", y, sectionBreakContentBottom(origin))
+			}
+			requirePageXOfY(t, sectionBreakRender(t, doc, rows).Bytes)
+		})
+	}
+	if notCrossed == 0 || pushed == 0 || moved == 0 {
+		t.Fatalf("coverage witness: not crossed %d, pushed %d, moved %d — each must be reached", notCrossed, pushed, moved)
+	}
+	for page, most := range maxPushed {
+		if least, ok := minMoved[page]; ok && most >= least {
+			t.Errorf("on last page %d a crossing ending at %d was pushed but one ending at %d was moved", page+1, most, least)
+		}
+	}
+}
+
+// TestSectionBreakUnanchoredNamedCases pins the I/O matrix rows at measured
+// row counts.
+func TestSectionBreakUnanchoredNamedCases(t *testing.T) {
+	doc := sectionBreakTestDoc(sectionBreakUnanchoredAt75, "")
+	for _, c := range []struct {
+		label      string
+		rows       int
+		legendPage int
+		totalPages int
+		pushed     bool
+	}{
+		{"not crossed: five rows end above the line on page 1", 5, 0, 1, false},
+		{"pushed, fits: the seventh row passes the line on page 1", 7, 0, 1, true},
+		{"pushed, no room: rows end near the window bottom", 9, 1, 2, false},
+		{"later page, pushed: rows fill page 1 and cross on page 2", 15, 1, 2, true},
+		{"later page, no room: rows end near page 2's bottom", 18, 2, 3, false},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			pages, _ := sectionBreakPages(t, doc, c.rows)
+			onPages, _ := legendOn(pages, "Legend")
+			if len(pages) != c.totalPages || len(onPages) != 1 || onPages[0] != c.legendPage {
+				t.Fatalf("pages %d, legend on %v; want %d pages with the legend on page %d", len(pages), onPages, c.totalPages, c.legendPage+1)
+			}
+			hasRow := false
+			for _, r := range pages[c.legendPage].Runs {
+				if strings.Contains(r.SourceText, "W-") {
+					hasRow = true
+				}
+			}
+			if hasRow != (c.pushed || c.rows == 5) {
+				t.Errorf("the legend's page carries rows = %v, want %v", hasRow, c.pushed || c.rows == 5)
+			}
+			if got := requirePageXOfY(t, sectionBreakRender(t, doc, c.rows).Bytes); got != c.totalPages {
+				t.Errorf("PDF has %d pages, want %d", got, c.totalPages)
+			}
+		})
+	}
+}
+
+// TestSectionBreakUnanchoredNotCrossedIsByteIdentical is CAP-3 for Anchor
+// off: the unanchored break, the anchored break and no break render the same
+// PDF when nothing crosses the line.
+func TestSectionBreakUnanchoredNotCrossedIsByteIdentical(t *testing.T) {
+	for _, rows := range []int{0, 1, 5} {
+		plain := sectionBreakRender(t, sectionBreakTestDoc("", ""), rows).Bytes
+		for _, keys := range []string{sectionBreakAt75, sectionBreakUnanchoredAt75} {
+			if with := sectionBreakRender(t, sectionBreakTestDoc(keys, ""), rows).Bytes; !bytes.Equal(with, plain) {
+				t.Errorf("rows=%d %s: the break changed a document nothing crosses", rows, keys)
+			}
+		}
+	}
+}
+
+// TestSectionBreakUnanchoredFloorCrosses: a minHeight floor past the line
+// pushes the section from the floor's bottom, though no row crosses.
+func TestSectionBreakUnanchoredFloorCrosses(t *testing.T) {
+	doc := sectionBreakTestDoc(sectionBreakUnanchoredAt75, "")
+	doc = strings.Replace(doc, `"headerHeight": 10,`, `"headerHeight": 10, "minHeight": 88,`, 1)
+	doc = strings.Replace(doc, `"x": 0, "y": 80, "width": 180`, `"x": 165, "y": 80, "width": 15`, 1)
+	reference, _ := sectionBreakPages(t, strings.Replace(doc, `, "sectionBreakAnchor": false`, "", 1), 0)
+	_, declaredY := legendOn(reference, "Legend")
+	pages, _ := sectionBreakPages(t, doc, 1)
+	onPages, y := legendOn(pages, "Legend")
+	if len(pages) != 1 || len(onPages) != 1 || onPages[0] != 0 {
+		t.Fatalf("pages %d, legend on %v; want the legend pushed on page 1", len(pages), onPages)
+	}
+	// The floor runs 88pt from the table's top at 0, 13pt past the line at
+	// 75, and the legend (80..92) pushed by 13pt still ends above 110.
+	if y != declaredY+13000 {
+		t.Fatalf("legend baseline %d, want %d — pushed 13pt from the floor's bottom", y, declaredY+13000)
+	}
+}
+
+// TestSectionBreakUnanchoredTallSectionStartsAtTheWindowTop: a section holding
+// a growing table, moved to a new page, starts at the top of that page's
+// content window and continues onto later pages, each row drawn once.
+func TestSectionBreakUnanchoredTallSectionStartsAtTheWindowTop(t *testing.T) {
+	second := `,
+      {"id": "e6", "type": "table", "x": 0, "y": 95, "bind": "items[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8, "border": {"width": 1}},
+        "columns": [
+          {"id": "e7", "label": "C", "width": 80, "bind": "{{row.a}}"},
+          {"id": "e8", "label": "D", "width": 80, "bind": "{{row.b}}"}
+        ]}`
+	doc := sectionBreakTestDoc(sectionBreakUnanchoredAt75, second)
+	// Nine rows cross the line on page 1, and the section's table (its
+	// header 20pt below the line, then nine rows) is taller than what is left.
+	const rows = 9
+	pages, _ := sectionBreakPages(t, doc, rows)
+	if len(pages) < 3 {
+		t.Fatalf("presence precondition: %d pages — the section table must run onto later pages", len(pages))
+	}
+	origin, _ := tableEnd(pages)
+	onPages, legendY := legendOn(pages, "Legend")
+	if len(onPages) != 1 {
+		t.Fatalf("legend on %v", onPages)
+	}
+	reference, _ := sectionBreakPages(t, sectionBreakTestDoc("", ""), 0)
+	_, declaredY := legendOn(reference, "Legend")
+	if legendY != declaredY-75000 {
+		t.Errorf("legend baseline %d, want %d — the line at the window top", legendY, declaredY-75000)
+	}
+	count := 0
+	for p, pg := range pages {
+		for _, r := range pg.Runs {
+			if strings.Contains(r.SourceText, "W-") {
+				count++
+			}
+		}
+		for _, r := range pg.Rects {
+			if r.Y < origin || r.Y+r.H > sectionBreakContentBottom(origin) {
+				t.Errorf("page %d: a rect runs from %d to %d, outside the content window %d..%d", p+1, r.Y, r.Y+r.H, origin, sectionBreakContentBottom(origin))
+			}
+		}
+	}
+	if count != 4*rows {
+		t.Errorf("%d row cells drawn, want %d — each of two tables' rows exactly once", count, 4*rows)
+	}
+	// The section's table header ("C"/"D"): on the legend's page it is 20pt
+	// below the window top (declared 95, line 75, line at the window top); on
+	// every continuation page its repeat sits at the window top, so its
+	// baseline is exactly 20pt higher than on the first page.
+	headerBaseline := func(pg pagemodel.Page) (c, d geom.Length, ok bool) {
+		var okC, okD bool
+		for _, r := range pg.Runs {
+			if r.SourceText == "C" {
+				c, okC = r.Y, true
+			}
+			if r.SourceText == "D" {
+				d, okD = r.Y, true
+			}
+		}
+		return c, d, okC && okD
+	}
+	firstC, firstD, ok := headerBaseline(pages[onPages[0]])
+	if !ok {
+		t.Fatal("presence precondition: the section table's header is not on the legend's page")
+	}
+	continuations := 0
+	for p := onPages[0] + 1; p < len(pages); p++ {
+		c, d, ok := headerBaseline(pages[p])
+		if !ok {
+			t.Errorf("continuation page %d draws no repeated C/D header", p+1)
+			continue
+		}
+		continuations++
+		if c != firstC-20000 || d != firstD-20000 {
+			t.Errorf("continuation page %d: repeated header baselines %d/%d, want %d/%d — the window top, as on the first page", p+1, c, d, firstC-20000, firstD-20000)
+		}
+	}
+	if continuations == 0 {
+		t.Fatal("presence precondition: the section table has no continuation page")
+	}
+	requirePageXOfY(t, sectionBreakRender(t, doc, rows).Bytes)
+}
+
+// TestSectionBreakUnanchoredClippedAboveLineMovesToANewPage: when the content
+// above the line is clipped on its last page it has no usable end, so an
+// unanchored section finds no room there and starts a new page with the line
+// at the window top.
+func TestSectionBreakUnanchoredClippedAboveLineMovesToANewPage(t *testing.T) {
+	var long strings.Builder
+	for w := 0; w < 600; w++ {
+		fmt.Fprintf(&long, "Q%03d ", w)
+	}
+	data, err := json.Marshal(map[string]any{"items": []tableRowJSON{{A: long.String(), B: "R0W-b"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := ParseTemplate([]byte(sectionBreakTestDoc(sectionBreakUnanchoredAt75, "")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, diags := barcodePages(t, tpl, string(data))
+	if got := sectionBreakDiagsWithCode(diags, DiagCodeTableRowClippedHeight); len(got) != 1 {
+		t.Fatalf("want one %s, got %+v", DiagCodeTableRowClippedHeight, diags)
+	}
+	clippedOn := -1
+	for p, pg := range pages {
+		for _, r := range pg.Runs {
+			if strings.HasPrefix(r.SourceText, "Q000") {
+				clippedOn = p
+			}
+		}
+	}
+	if clippedOn < 0 {
+		t.Fatal("presence precondition: the clipped row is not drawn")
+	}
+	reference, _ := sectionBreakPages(t, sectionBreakTestDoc("", ""), 0)
+	origin, _ := tableEnd(reference)
+	_, declaredY := legendOn(reference, "Legend")
+	onPages, y := legendOn(pages, "Legend")
+	if len(onPages) != 1 || onPages[0] != clippedOn+1 {
+		t.Fatalf("legend on pages %v, want only page %d, the page after the clipped row", onPages, clippedOn+2)
+	}
+	if y != declaredY-75000 {
+		t.Errorf("legend baseline %d, want %d — the line at the window top", y, declaredY-75000)
+	}
+	if y < origin {
+		t.Errorf("legend baseline %d is above the content origin %d", y, origin)
+	}
+	res, err := Render(tpl, Data(string(data)), nil, testShippedFontSet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requirePageXOfY(t, res.Bytes); got != len(pages) {
+		t.Errorf("PDF has %d pages, page model %d", got, len(pages))
+	}
+}
+
+// TestSectionBreakUnanchoredClippedRowIsCutAtTheContentBottom: a row clipped
+// inside a section moved to a new page is cut at the window's bottom, not at
+// a bottom still carrying the section's move.
+func TestSectionBreakUnanchoredClippedRowIsCutAtTheContentBottom(t *testing.T) {
+	for _, keys := range []string{sectionBreakAt75, sectionBreakUnanchoredAt75} {
+		doc := strings.Replace(sectionBreakWarningDoc(false), sectionBreakAt75, keys, 1)
+		doc = strings.Replace(doc, `"style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [
+          {"id": "e7"`, `"style": {"fontFamily": "latin", "fontSize": 8, "background": "#EEEEEE"},
+        "columns": [
+          {"id": "e7"`, 1)
+		tpl, err := ParseTemplate([]byte(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, diags := barcodePages(t, tpl, sectionBreakWarningData(60))
+		if len(sectionBreakDiagsWithCode(diags, DiagCodeTableRowClippedHeight)) != 1 {
+			t.Fatalf("%s: precondition: want one clipped row, got %+v", keys, diags)
+		}
+		origin, _ := tableEnd(pages)
+		bottom, found := geom.Length(0), false
+		for _, pg := range pages[1:] {
+			for _, r := range pg.Rects {
+				if r.Y+r.H > bottom {
+					bottom, found = r.Y+r.H, true
+				}
+			}
+		}
+		if !found || bottom != sectionBreakContentBottom(origin) {
+			t.Errorf("%s: the section's lowest rect ends at %d, want the content bottom %d", keys, bottom, sectionBreakContentBottom(origin))
+		}
+	}
+}
