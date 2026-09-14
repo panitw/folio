@@ -1,6 +1,7 @@
 package folio
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -116,6 +117,124 @@ func sectionBreakDeclaredBox(el template.Element) (top, bottom geom.Length) {
 		bottom = el.Y + el.Height.Value
 	}
 	return top, bottom
+}
+
+// ---------------------------------------------------------------------------
+// spec-section-break CAP-1 / CAP-6: THE DESIGNER'S COMMANDS AND REFUSALS.
+//
+// In the file the break stays the content band's `sectionBreak` key; on the
+// canvas it is placed, dragged, nudged, typed and deleted like an element.
+// Every one of those gestures is ONE command below, so each is one undo entry.
+// Every geometry command that could leave an element across the line asks
+// refuseSectionBreakStraddle before it installs anything, so a refused edit
+// names the element in the way and leaves the document unchanged.
+
+// sectionBreakStraddles reports whether el's declared box would lie on both
+// sides of a break at offset — the load rule, asked of a candidate.
+func sectionBreakStraddles(el template.Element, offset geom.Length) bool {
+	top, bottom := sectionBreakDeclaredBox(el)
+	return top < offset && bottom > offset
+}
+
+// refuseSectionBreakStraddle refuses a candidate content-band element whose
+// declared box would lie across the document's break. It is a no-op for a
+// document without a break and for an element of any other band.
+func refuseSectionBreakStraddle(t *Template, bandName string, candidate template.Element, path string) error {
+	if bandName != bandContent {
+		return nil
+	}
+	offset, ok := declaredSectionBreak(t)
+	if !ok || !sectionBreakStraddles(candidate, offset) {
+		return nil
+	}
+	top, bottom := sectionBreakDeclaredBox(candidate)
+	return componentFailure(string(candidate.ID), path, fmt.Sprintf("%s would run from %spt to %spt, across the section break at %spt — every element must lie wholly above or wholly below the break; move or resize the element, or move the break", candidate.ID, template.FormatPoints(top), template.FormatPoints(bottom), template.FormatPoints(offset)))
+}
+
+// refuseSectionBreakBeyondContent refuses a page or band change that leaves
+// the break at or below the bottom of the content band. The refusal names the
+// break, because the break is what no longer fits.
+func refuseSectionBreakBeyondContent(t *Template) error {
+	offset, ok := declaredSectionBreak(t)
+	if !ok {
+		return nil
+	}
+	g, err := canvasPageGeometry(t)
+	if err != nil {
+		return nil
+	}
+	if height := layout.ContentHeight(g); offset >= height {
+		return componentFailure("", sectionBreakDataPath, fmt.Sprintf("this leaves a content band %spt tall, and the section break at %spt would lie at or below its bottom — move the section break up first", template.FormatPoints(height), template.FormatPoints(offset)))
+	}
+	return nil
+}
+
+// setSectionBreak places or moves the break: {kind, version, offset, snap}.
+// The engine snaps (the canvas drag passes true; a typed Y passes false), and
+// snapping happens before every check, so a refusal names the offset that
+// would actually have been written.
+func setSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 4); err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "setSectionBreak takes exactly kind, version, offset and snap")
+	}
+	proposed, err := lengthField(raw, "offset")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, err.Error())
+	}
+	snap, err := commandBool(raw, "snap")
+	if err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, err.Error())
+	}
+	if snap {
+		snapped, valid := SnapToGrid(proposed)
+		if !valid {
+			return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "the section break offset overflows grid snapping")
+		}
+		proposed = snapped
+	}
+	if proposed <= 0 {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, fmt.Sprintf("a section break at %spt is at or above the content band's top — it must lie inside the content band", template.FormatPoints(proposed)))
+	}
+	g, err := canvasPageGeometry(t)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	if height := layout.ContentHeight(g); proposed >= height {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, fmt.Sprintf("a section break at %spt is at or below the bottom of the content band (a content height of %spt) — move it up", template.FormatPoints(proposed), template.FormatPoints(height)))
+	}
+	for _, el := range t.doc.Bands.Content.Elements {
+		if sectionBreakStraddles(el, proposed) {
+			top, bottom := sectionBreakDeclaredBox(el)
+			return CanvasProjection{}, componentFailure(string(el.ID), sectionBreakDataPath, fmt.Sprintf("a section break at %spt would run through %s, which runs from %spt to %spt — every element must lie wholly above or wholly below the break", template.FormatPoints(proposed), el.ID, template.FormatPoints(top), template.FormatPoints(bottom)))
+		}
+	}
+	previous := t.doc.Bands.Content.SectionBreak
+	t.doc.Bands.Content.SectionBreak = template.Presence[geom.Length]{Set: true, Value: proposed}
+	projection, err := Canvas(t)
+	if err != nil {
+		t.doc.Bands.Content.SectionBreak = previous
+		return CanvasProjection{}, err
+	}
+	return projection, nil
+}
+
+// removeSectionBreak deletes the break: {kind, version}. "No break" is the
+// key's absence, so it is cleared to the zero Presence, never to null.
+func removeSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	if err := componentFields(raw, 2); err != nil {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "removeSectionBreak takes exactly kind and version")
+	}
+	if !t.doc.Bands.Content.SectionBreak.Set {
+		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "this document has no section break to remove")
+	}
+	previous := t.doc.Bands.Content.SectionBreak
+	t.doc.Bands.Content.SectionBreak = template.Presence[geom.Length]{}
+	projection, err := Canvas(t)
+	if err != nil {
+		t.doc.Bands.Content.SectionBreak = previous
+		return CanvasProjection{}, err
+	}
+	return projection, nil
 }
 
 // sectionBreakSplitTags returns, in authored order of first appearance, the

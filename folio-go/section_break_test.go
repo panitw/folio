@@ -541,11 +541,14 @@ func TestSectionBreakDocumentRoundTripsThroughThePublicDoor(t *testing.T) {
 	}
 }
 
-// TestSectionBreakLeavesTheCanvasProjectionUnchanged: the canvas keeps plain
+// TestSectionBreakLeavesTheCanvasPaginationUnchanged: the canvas keeps plain
 // pagination, so a document's projection with a break equals its projection
-// without one when no keepTogether group is split.
-func TestSectionBreakLeavesTheCanvasProjectionUnchanged(t *testing.T) {
-	project := func(doc string) []byte {
+// without one in every pagination-derived field. UPDATED ON PURPOSE by the
+// designer story (CAP-6): the projection now CARRIES the break — its offset
+// and each content component's membership — and those two additions are the
+// only difference allowed.
+func TestSectionBreakLeavesTheCanvasPaginationUnchanged(t *testing.T) {
+	project := func(doc string) CanvasProjection {
 		t.Helper()
 		tpl, err := ParseTemplate([]byte(doc))
 		if err != nil {
@@ -555,16 +558,49 @@ func TestSectionBreakLeavesTheCanvasProjectionUnchanged(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CanvasWithTextPaint: %v", err)
 		}
-		b, err := json.Marshal(projection)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return b
+		return projection
 	}
 	with, without := project(sectionBreakTestDoc(sectionBreakAt75, "")), project(sectionBreakTestDoc("", ""))
-	if len(with) == 0 || !bytes.Equal(with, without) {
-		off, window := firstDivergence(with, without)
-		t.Fatalf("the break changed the canvas projection (first difference at byte %d: %s)", off, window)
+	if with.SectionBreak == nil || *with.SectionBreak != 75000 {
+		t.Fatalf("the projection must carry the break offset 75000, got %v", with.SectionBreak)
+	}
+	if without.SectionBreak != nil {
+		t.Fatalf("a document without a break must project no sectionBreak, got %v", *without.SectionBreak)
+	}
+	members := map[string]bool{}
+	for index, component := range with.Components {
+		if component.Band != bandContent {
+			if component.BelowSectionBreak != nil {
+				t.Fatalf("%s is not a content component and must carry no membership", component.ID)
+			}
+			continue
+		}
+		if component.BelowSectionBreak == nil {
+			t.Fatalf("content component %s carries no membership in a document with a break", component.ID)
+		}
+		members[component.ID] = *component.BelowSectionBreak
+		with.Components[index].BelowSectionBreak = nil
+	}
+	if members["e1"] || !members["e5"] {
+		t.Fatalf("membership = %v, want the table above and the legend below", members)
+	}
+	for _, component := range without.Components {
+		if component.BelowSectionBreak != nil {
+			t.Fatalf("a document without a break projected membership on %s", component.ID)
+		}
+	}
+	with.SectionBreak = nil
+	a, err := json.Marshal(with)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(without)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		off, window := firstDivergence(a, b)
+		t.Fatalf("the break changed the canvas projection beyond its offset and membership (first difference at byte %d: %s)", off, window)
 	}
 }
 

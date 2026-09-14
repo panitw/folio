@@ -298,6 +298,23 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
    is the one thing AD-17 and this story's R1 forbid outright.
    Mono, because it is a number the author could type into the Page Setup box. */
 .band-boundary-readout { position: absolute; right: 0; top: var(--boundary-display-y); padding: 2px 0 0; color: var(--color-select); font: var(--type-page-mono); white-space: nowrap; pointer-events: none; }
+/* spec-section-break: THE SECTION BREAK LINE. DESIGN.md's fixed-meaning table
+   gives it a SOLID cyan rule — the band boundary is dashed — with the band
+   boundary's 14px overhang and a mono SECTION BREAK tab in the band tab's
+   colours, outside the page's left edge. Drawn once, on the sheet that holds
+   it, as a direct child of the content band (never inside .band-window, which
+   clips), and never in the PDF. Below-line elements carry no marking. */
+.section-break-line { position: absolute; left: calc(-1 * var(--band-x) - 14px); width: calc(var(--page-display-width) + 28px); top: var(--section-break-display-y); border-top: var(--hairline) solid var(--color-select); pointer-events: none; }
+.section-break-selected { border-top-color: var(--color-select-bright); }
+.section-break-tab { position: absolute; top: 0; left: 6px; transform: translate(-100%, -50%); padding: 3px 7px; border: var(--hairline) solid var(--color-select-edge); background: var(--color-select-tint); color: var(--color-select); font: var(--type-band-tab); letter-spacing: var(--tracking-band-tab); text-transform: uppercase; white-space: nowrap; }
+.section-break-selected .section-break-tab { color: var(--color-select-bright); border-color: var(--color-select); }
+/* The hit strip, the band boundary handle's shape: transparent, 7px deep,
+   straddling the line and reaching the tab. Placement passes through it. */
+.section-break-handle { position: absolute; top: calc(var(--section-break-display-y) - 3px); height: 7px; left: calc(-1 * var(--band-x) - 104px); width: calc(var(--page-display-width) + 118px); background: transparent; border: 0; padding: 0; cursor: ns-resize; touch-action: none; }
+.section-break-handle:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+.canvas-region-placing .section-break-handle { pointer-events: none; }
+.section-break-proposal { position: absolute; left: calc(-1 * var(--band-x) - 14px); width: calc(var(--page-display-width) + 28px); top: var(--section-break-display-y); border-top: var(--hairline) solid var(--color-select-bright); pointer-events: none; }
+.section-break-readout { position: absolute; right: 0; top: var(--section-break-display-y); padding: 2px 0 0; color: var(--color-select); font: var(--type-page-mono); white-space: nowrap; pointer-events: none; }
 .canvas-component { position: absolute; left: var(--component-x); top: var(--component-y); width: max(2px, var(--component-width)); height: max(2px, var(--component-height)); overflow: visible; background: transparent; color: var(--color-page-ink); font: var(--type-page-mono); cursor: move; user-select: none; }
 .canvas-component::after { content: ''; position: absolute; inset: 0; border: var(--hairline) dotted var(--color-page-outline-dot); pointer-events: none; }
 .canvas-component:not(.canvas-component-selected):has(.canvas-image-placeholder)::after { border-style: dashed; border-color: var(--color-page-outline-dash); }

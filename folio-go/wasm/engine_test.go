@@ -321,6 +321,9 @@ func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 		// document. A one-page ASCII fixture cannot detect pagination or font
 		// path divergence, so both inputs remain required parity subjects.
 		{"multipage-text-font", "../../fixtures/statement-5/input.folio", "../../fixtures/statement-5/data.json", "../../fixtures/statement-5/params.json"},
+		// spec-section-break CAP-6: the golden statement whose legend moves to
+		// an added page. Preview (the wasm engine) must equal the native render.
+		{"section-break-statement", "../../fixtures/section-break-statement/input.folio", "../../fixtures/section-break-statement/data.json", `{}`},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -329,11 +332,13 @@ func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 				t.Fatal(err)
 			}
 			data, params := []byte(fixture.data), []byte(fixture.params)
-			if fixture.name != "simple" {
+			if strings.HasSuffix(fixture.data, ".json") {
 				data, err = os.ReadFile(fixture.data)
 				if err != nil {
 					t.Fatal(err)
 				}
+			}
+			if strings.HasSuffix(fixture.params, ".json") {
 				params, err = os.ReadFile(fixture.params)
 				if err != nil {
 					t.Fatal(err)

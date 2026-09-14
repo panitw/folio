@@ -1944,10 +1944,10 @@ describe('application shell', () => {
   const ruleLines = (predicate: (selector: string) => boolean) => sheetWithoutComments().split('\n')
     .filter((line) => line.includes('{') && predicate(line.slice(0, line.indexOf('{'))))
 
-  it('offers only the seven fixed palette components and sends an opaque Go placement command', async () => {
+  it('offers only the seven fixed palette components, plus the Section Break, and sends an opaque Go placement command', async () => {
     const request = vi.fn(async () => ({ snapshot: placedTextSnapshot }))
     render(<App engine={engine(request)} initialSnapshot={snapshot(1)} />)
-    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code'])
+    expect(screen.getAllByRole('button', { name: /Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code', 'Place Section Break'])
     // THE POSITIVE CONTROL for the absence asserted further down: this is what
     // an empty selection puts in the inspector, and it is what placing used to
     // leave standing.
@@ -8993,7 +8993,7 @@ describe('Story 13.6: the preview navigates by page thumbnails', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     await waitFor(() => expect(screen.getByLabelText('Canvas region')).toBeInTheDocument())
     expect(screen.getByLabelText('Component palette')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code'])
+    expect(screen.getAllByRole('button', { name: /^Place / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Place Text', 'Place Image', 'Place Table', 'Place Line', 'Place Rectangle', 'Place Barcode', 'Place QR Code', 'Place Section Break'])
     expect(screen.queryByLabelText('Page thumbnails')).toBeNull()
     expect(screen.queryByText('PAGES')).toBeNull()
   })
@@ -10675,5 +10675,186 @@ describe('common property selection scope', () => {
     await act(async () => resolveCommit({ snapshot: { ...snapshot, revision: 99 } }))
     expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3')
     expect(screen.queryByLabelText('text component e1')).not.toBeInTheDocument()
+  })
+})
+
+
+// spec-section-break CAP-1 / CAP-6: the Section Break on the design canvas. It
+// behaves like an element — placed from the palette, selected with its own
+// state, dragged, nudged, typed and deleted — and every gesture is ONE engine
+// command. The engine snaps and refuses; these rows pin what the canvas sends
+// and what it draws from the projection.
+describe('spec-section-break: the Section Break on the canvas', () => {
+  const withBreak = (offset = 400_000, patch: Partial<CanvasProjection> = {}): CanvasProjection => ({ ...canvas, sectionBreak: offset, ...patch })
+  const snapshotOf = (projection: CanvasProjection, revision = 1) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection })
+  const open = (projection: CanvasProjection = canvas, answer: (operation: string) => Promise<unknown> = async () => ({ snapshot: snapshotOf(projection, 2) })) => {
+    const request = vi.fn(answer)
+    render(<App engine={engine(request as never)} initialSnapshot={snapshotOf(projection)} />)
+    return request
+  }
+  const sent = (request: ReturnType<typeof vi.fn>) => (request.mock.calls as unknown as ReadonlyArray<[string, ArrayBuffer]>).filter(([operation]) => operation === 'command').map(([, payload]) => new TextDecoder().decode(payload))
+  const handle = () => screen.getByRole('button', { name: 'Section Break' })
+  const entry = () => screen.getByRole('button', { name: 'Place Section Break' })
+  const settle = async () => { await act(async () => { await Promise.resolve() }) }
+
+  it('has no break by default, and placing one sends one snapped command and selects the line', async () => {
+    const request = open(canvas, async () => ({ snapshot: snapshotOf(withBreak(), 2) }))
+    expect(screen.queryByRole('button', { name: 'Section Break' })).toBeNull()
+    expect(entry()).toBeEnabled()
+    fireEvent.click(entry())
+    expect(entry()).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":364.945,"snap":true}']))
+    await waitFor(() => expect(handle()).toHaveAttribute('aria-pressed', 'true'))
+    expect(entry()).toBeDisabled()
+    expect(screen.getByText('This document already has its one Section Break.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toHaveValue('400')
+    await waitFor(() => expect(document.activeElement).toBe(handle()))
+  })
+
+  it('places nothing when the armed entry is aimed at the page header or footer', async () => {
+    const request = open()
+    fireEvent.click(entry())
+    fireEvent.keyDown(screen.getByLabelText('Page Header'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByLabelText('Page Footer'), { key: 'Enter' })
+    await settle()
+    expect(sent(request)).toEqual([])
+  })
+
+  it('draws the projected line once, selects it with its own state, and deletes it with one command', async () => {
+    const request = open(withBreak(), async () => ({ snapshot: snapshotOf(canvas, 2) }))
+    expect(document.querySelectorAll('.section-break-line')).toHaveLength(1)
+    expect((document.querySelector('.section-break-line') as HTMLElement).style.getPropertyValue('--section-break-display-y')).toBe('400px')
+    expect(handle()).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(handle())
+    expect(handle()).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('SECTION BREAK')).toBeInTheDocument()
+    fireEvent.keyDown(handle(), { key: 'Delete' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Section Break' })).toBeNull())
+    expect(entry()).toBeEnabled()
+  })
+
+  it('deletes a selected break from the window Backspace too, and never through the component delete', async () => {
+    const request = open(withBreak())
+    fireEvent.click(handle())
+    fireEvent.keyDown(document.body, { key: 'Backspace' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
+  })
+
+  it('drags by clientY with a proposal, sending one snapped command on release', async () => {
+    const request = open(withBreak())
+    const strip = handle()
+    fireEvent.pointerDown(strip, { pointerId: 1, button: 0, buttons: 1, clientY: 100 })
+    fireEvent.pointerMove(strip, { pointerId: 1, buttons: 1, clientY: 140 })
+    expect(document.querySelector('.section-break-readout')?.textContent).toBe('440')
+    expect((document.querySelector('.section-break-proposal') as HTMLElement).style.getPropertyValue('--section-break-display-y')).toBe('440px')
+    expect(sent(request)).toEqual([])
+    fireEvent.pointerUp(strip, { pointerId: 1, buttons: 0, clientY: 140 })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":440,"snap":true}']))
+    expect(document.querySelector('.section-break-proposal')).toBeNull()
+  })
+
+  it('sends nothing when Escape aborts a drag', async () => {
+    const request = open(withBreak())
+    const strip = handle()
+    fireEvent.pointerDown(strip, { pointerId: 1, button: 0, buttons: 1, clientY: 100 })
+    fireEvent.pointerMove(strip, { pointerId: 1, buttons: 1, clientY: 160 })
+    fireEvent.keyDown(strip, { key: 'Escape' })
+    expect(document.querySelector('.section-break-proposal')).toBeNull()
+    fireEvent.pointerUp(strip, { pointerId: 1, buttons: 0, clientY: 160 })
+    await settle()
+    expect(sent(request)).toEqual([])
+  })
+
+  it('nudges 1pt with an arrow and 10pt with Shift, one unsnapped command per press', async () => {
+    const request = open(withBreak())
+    fireEvent.keyDown(handle(), { key: 'ArrowDown' })
+    fireEvent.keyDown(handle(), { key: 'ArrowUp', shiftKey: true })
+    await waitFor(() => expect(sent(request)).toEqual([
+      '{"kind":"setSectionBreak","version":1,"offset":401,"snap":false}',
+      '{"kind":"setSectionBreak","version":1,"offset":390,"snap":false}',
+    ]))
+  })
+
+  it('commits a typed Y exactly, unsnapped, on Enter', async () => {
+    const request = open(withBreak())
+    fireEvent.click(handle())
+    const field = screen.getByRole('textbox', { name: 'Y (pt)' })
+    fireEvent.change(field, { target: { value: '520' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":520,"snap":false}']))
+  })
+
+  it('shows the engine refusal naming the blocking element, and the Y field reverts', async () => {
+    open(withBreak(), async (operation) => {
+      if (operation === 'command') throw Object.assign(new Error('a section break at 520pt would run through e5'), { code: 'COMPONENT_INVALID', elementId: 'e5' })
+      return { snapshot: snapshotOf(withBreak(), 1) }
+    })
+    fireEvent.click(handle())
+    const field = screen.getByRole('textbox', { name: 'Y (pt)' })
+    fireEvent.change(field, { target: { value: '520' } })
+    fireEvent.blur(field)
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('e5: a section break at 520pt would run through e5'))
+    expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toHaveValue('400')
+  })
+
+  it('draws the line on the sheet whose window holds the offset, and on no other', () => {
+    open(withBreak(650_000, { contentWindowCount: 2, contentWindowOrigins: [0, 600_000] }))
+    const pages = document.querySelectorAll('.page-surface')
+    expect(pages).toHaveLength(2)
+    expect(pages[0]!.querySelectorAll('.section-break-line')).toHaveLength(0)
+    expect(pages[1]!.querySelectorAll('.section-break-line')).toHaveLength(1)
+    expect((pages[1]!.querySelector('.section-break-line') as HTMLElement).style.getPropertyValue('--section-break-display-y')).toBe('50px')
+    expect(screen.getAllByRole('button', { name: 'Section Break' })).toHaveLength(1)
+  })
+
+  it('deletes a selected break through the canvas toolbar Delete button', async () => {
+    const request = open(withBreak())
+    fireEvent.click(handle())
+    const toolbarDelete = screen.getByRole('button', { name: 'Delete' })
+    expect(toolbarDelete).toBeEnabled()
+    fireEvent.click(toolbarDelete)
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
+  })
+
+  it('deletes a selected break through the Properties Delete Section Break button', async () => {
+    const request = open(withBreak())
+    fireEvent.click(handle())
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Section Break' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
+  })
+
+  it('nudges a selected break from the window arrow keys when focus is off the line', async () => {
+    const request = open(withBreak())
+    fireEvent.click(handle())
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":401,"snap":false}']))
+  })
+
+  it('places nothing and moves nothing when a break appeared while the entry was armed', async () => {
+    const component = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true }
+    const plain = { ...canvas, components: [component] }
+    const broken = withBreak(400_000, { components: [{ ...component, belowSectionBreak: false }] })
+    const request = vi.fn(async (operation: string) => ({ snapshot: operation === 'undo' ? { ...snapshotOf(broken, 3), canUndo: false, canRedo: true } : { ...snapshotOf(plain, 2), canUndo: true } }))
+    render(<App engine={engine(request as never)} initialSnapshot={snapshotOf(plain)} />)
+    // One accepted command, so undo is available.
+    fireEvent.click(screen.getByLabelText(/text component e1/))
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    await waitFor(() => expect(sent(request)).toHaveLength(1))
+    fireEvent.click(entry())
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(document.querySelectorAll('.section-break-line')).toHaveLength(1))
+    fireEvent.keyDown(screen.getByLabelText('Content'), { key: 'Enter' })
+    await settle()
+    expect(sent(request).filter((command) => command.includes('SectionBreak'))).toEqual([])
+  })
+
+  it('selecting a component clears the break selection', () => {
+    open(withBreak(400_000, { components: [{ id: 'e1', type: 'text', band: 'content', x: 0, y: 0, width: 72_000, height: 12_000, resizable: true, belowSectionBreak: false }] }))
+    fireEvent.click(handle())
+    expect(handle()).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByLabelText(/text component e1/))
+    expect(handle()).toHaveAttribute('aria-pressed', 'false')
   })
 })

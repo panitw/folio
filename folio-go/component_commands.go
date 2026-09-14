@@ -302,6 +302,10 @@ func ApplyComponentCommand(t *Template, command []byte, fonts ...FontSet) (Canva
 		return applyFontChainCommand(t, raw, embedFontFamily)
 	case "setBandHeight":
 		return setBandHeight(t, raw)
+	case "setSectionBreak":
+		return setSectionBreak(t, raw)
+	case "removeSectionBreak":
+		return removeSectionBreak(t, raw)
 	case "setDocumentLocale":
 		return setDocumentLocale(t, raw)
 	case "setDocumentUTCOffset":
@@ -1310,6 +1314,9 @@ func updateComponentPropertiesInPlace(t *Template, raw map[string]json.RawMessag
 		if err := containComponent(band, element.X, element.Y, width, height); err != nil {
 			return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 		}
+		if err := refuseSectionBreakStraddle(t, band.Name, *element, "component."+propertyPath(changes)); err != nil {
+			return CanvasProjection{}, err
+		}
 	}
 	// Validate authored expressions before projection bounds can mask their
 	// located cause. The caller still installs this copy only after reparse.
@@ -2097,6 +2104,9 @@ func createComponentInBand(t *Template, elementType template.ElementType, bandNa
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure("", "component.geometry", err.Error())
 	}
+	if err := refuseSectionBreakStraddle(t, bandName, element, "component.geometry"); err != nil {
+		return CanvasProjection{}, err
+	}
 	previousElements, previousID := band.Elements, t.doc.NextID
 	band.Elements = append(band.Elements, element)
 	t.doc.NextID = ids.NextID
@@ -2200,6 +2210,11 @@ func moveComponent(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 	}
+	candidate := *element
+	candidate.X, candidate.Y = x, y
+	if err := refuseSectionBreakStraddle(t, projected.Name, candidate, "component.geometry"); err != nil {
+		return CanvasProjection{}, err
+	}
 	element.X, element.Y = x, y
 	return Canvas(t)
 }
@@ -2236,6 +2251,12 @@ func resizeComponent(t *Template, raw map[string]json.RawMessage) (CanvasProject
 	}
 	if err := containComponent(projected, element.X, element.Y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
+	}
+	candidate := *element
+	candidate.Width = template.Presence[geom.Length]{Set: true, Value: width}
+	candidate.Height = template.Presence[geom.Length]{Set: true, Value: height}
+	if err := refuseSectionBreakStraddle(t, projected.Name, candidate, "component.geometry"); err != nil {
+		return CanvasProjection{}, err
 	}
 	element.Width = template.Presence[geom.Length]{Set: true, Value: width}
 	element.Height = template.Presence[geom.Length]{Set: true, Value: height}
@@ -2333,6 +2354,13 @@ func setComponentBounds(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	if err := containComponent(projected, x, y, width, height); err != nil {
 		return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 	}
+	candidate := *element
+	candidate.X, candidate.Y = x, y
+	candidate.Width = template.Presence[geom.Length]{Set: true, Value: width}
+	candidate.Height = template.Presence[geom.Length]{Set: true, Value: height}
+	if err := refuseSectionBreakStraddle(t, projected.Name, candidate, "component.geometry"); err != nil {
+		return CanvasProjection{}, err
+	}
 	element.X, element.Y = x, y
 	element.Width = template.Presence[geom.Length]{Set: true, Value: width}
 	element.Height = template.Presence[geom.Length]{Set: true, Value: height}
@@ -2376,6 +2404,9 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	}
 	ids := template.Document{NextID: t.doc.NextID}
 	clone := cloneComponent(*element, projected, snap, &ids)
+	if err := refuseSectionBreakStraddle(t, projected.Name, clone, "component.geometry"); err != nil {
+		return CanvasProjection{}, err
+	}
 	previousElements, previousID := band.Elements, t.doc.NextID
 	band.Elements = append(band.Elements, clone)
 	t.doc.NextID = ids.NextID
@@ -2557,7 +2588,11 @@ func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasPro
 	}
 	counter := template.Document{NextID: working.doc.NextID}
 	for _, src := range sources {
-		src.band.Elements = append(src.band.Elements, cloneComponent(src.element, src.projected, snap, &counter))
+		clone := cloneComponent(src.element, src.projected, snap, &counter)
+		if err := refuseSectionBreakStraddle(working, src.projected.Name, clone, "component.geometry"); err != nil {
+			return CanvasProjection{}, err
+		}
+		src.band.Elements = append(src.band.Elements, clone)
 	}
 	working.doc.NextID = counter.NextID
 	return installComponentCopy(t, working)
@@ -2915,6 +2950,12 @@ func setBandHeight(t *Template, raw map[string]json.RawMessage) (CanvasProjectio
 		band.Height = previous
 		return CanvasProjection{}, err
 	}
+	// spec-section-break: a taller band must not leave the break at or below
+	// the content band's bottom.
+	if err := refuseSectionBreakBeyondContent(t); err != nil {
+		band.Height = previous
+		return CanvasProjection{}, err
+	}
 	updated, err := Canvas(t)
 	if err != nil {
 		band.Height = previous
@@ -3212,6 +3253,9 @@ func setTableHeaderHeight(t *Template, raw map[string]json.RawMessage) (CanvasPr
 	width, projected := projectedSize(*element)
 	if err := containComponent(band, element.X, element.Y, width, projected); err != nil {
 		return CanvasProjection{}, componentFailure(id, "table.headerHeight", err.Error())
+	}
+	if err := refuseSectionBreakStraddle(t, band.Name, *element, "table.headerHeight"); err != nil {
+		return CanvasProjection{}, err
 	}
 	return Canvas(t)
 }

@@ -77,7 +77,7 @@ const contentComponents = (canvas: CanvasProjection): ReadonlyArray<CanvasCompon
 // own top. origins[0] is 0 and a component's y is non-negative, so this always
 // answers, and for every component the engine actually paginated it answers
 // the window that contains the component's top.
-function homeWindow(origins: ReadonlyArray<number>, y: number): number {
+export function homeWindow(origins: ReadonlyArray<number>, y: number): number {
   let home = 0
   for (let index = 1; index < origins.length; index += 1) {
     if ((origins[index] as number) <= y) home = index

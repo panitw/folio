@@ -70,6 +70,14 @@ var canvasProjectionWireKeys = []string{
 	"width",
 }
 
+// canvasProjectionOptionalWireKeys are the top-level keys the designer's guard
+// accepts that a projection carries only SOMETIMES — spec-section-break's
+// `sectionBreak`, present exactly when the document declares a break. They are
+// recorded apart from the always-present set above so that the zero-value
+// identity check keeps its meaning for every other key, and each one has its
+// own typed clause in isCanvas (hasOnly cannot see an absent key).
+var canvasProjectionOptionalWireKeys = []string{"sectionBreak"}
+
 // canvasFontChainWireKeys is the recorded key set of the NESTED object, sorted.
 // fontChains is the first nested object this projection carries, and the
 // browser checks it with hasExactKeys — a check that is BOTH ways, so a field
@@ -385,8 +393,9 @@ func TestCanvasProjectionWireKeysAreTheOnesTheDesignerAccepts(t *testing.T) {
 		t.Fatal("engine-protocol.ts no longer has an isCanvas guard whose hasOnly list this test can read; if the guard was restructured, re-derive this extraction rather than deleting the check")
 	}
 	keys := extractedKeyList(string(match[1]))
-	if !reflect.DeepEqual(keys, canvasProjectionWireKeys) {
-		t.Errorf("the designer's isCanvas guard accepts the keys\n\t%v\nand the recorded protocol set is\n\t%v — one side of this seam has been renamed and the other has not, and the symptom is a blank canvas with nothing to attribute it to", keys, canvasProjectionWireKeys)
+	accepted := slices.Sorted(slices.Values(append(slices.Clone(canvasProjectionWireKeys), canvasProjectionOptionalWireKeys...)))
+	if !reflect.DeepEqual(keys, accepted) {
+		t.Errorf("the designer's isCanvas guard accepts the keys\n\t%v\nand the recorded protocol set (always-present plus optional) is\n\t%v — one side of this seam has been renamed and the other has not, and the symptom is a blank canvas with nothing to attribute it to", keys, accepted)
 	}
 	// The NESTED object, whose guard is hasExactKeys rather than hasOnly and
 	// so rejects in both directions: a key Go stops sending fails it as surely
@@ -680,6 +689,7 @@ var canvasComponentWireKeys = []string{
 	"band",
 	"barcode",
 	"barcodeUnavailable",
+	"belowSectionBreak",
 	"binding",
 	"bold",
 	"borderColor",

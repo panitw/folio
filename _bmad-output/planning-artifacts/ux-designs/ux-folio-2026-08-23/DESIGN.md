@@ -505,6 +505,7 @@ around inputs, `{colors.edge}` around floating surfaces and mode switches.
 | Style | Meaning |
 |---|---|
 | Dashed cyan | A band boundary on the page |
+| Solid cyan, with a mono **SECTION BREAK** tab | The content band's Section Break: the line below which content moves to the page where the content above it ends. Canvas only — never printed |
 | Dashed amber | A diagnostic — render completed with a caveat |
 | Dotted grey on page | An unselected component's bounds |
 | Dashed grey on page | A placeholder with no content yet |
@@ -530,6 +531,11 @@ authority and should not look like a peer of the canvas.
 **Property field** — `{colors.raised}` on a `{colors.line-strong}` border. Prefix label in
 mono at `{colors.ink-ghost}`, value in `{typography.mono-em}` at `{colors.ink-high}`, unit
 suffix at `{colors.ink-ghost}`. Numeric values right-align; text values left-align.
+
+**Section Break line** — a solid 1 px `{colors.select}` rule with the band boundary's 14 px
+overhang on both sides, and a `{typography.band-tab}` **SECTION BREAK** tab beside it in
+the band tab's colours. Drawn once, on the sheet that holds it; never printed. Selected, it
+brightens to `{colors.select-bright}`. Elements below it carry no marking.
 
 **Band tab** — `{typography.band-tab}` in `{colors.select}` on `{colors.select-tint}` with a
 `{colors.select-edge}` border, positioned *outside* the page's left edge at 104 px. Paired

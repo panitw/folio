@@ -58,6 +58,24 @@ describe('canvas projection protocol guard', () => {
     expect(projection({ ...canvas, timeZone: 'Asia/Bangkok' })).toBeUndefined()
   })
 
+  // spec-section-break CAP-6: an OPTIONAL offset and per-content-component
+  // membership, both from Go. hasOnly cannot see an absent key, so each has a
+  // typed clause, and the pair must agree about whether there is a break.
+  it('accepts the section break offset and membership only in the shapes Go projects', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const rect = (patch: object) => ({ id: 'e1', type: 'rect', band: 'content', x: 0, y: 0, width: 100, height: 10, resizable: true, ...patch })
+    expect(projection({ ...canvas, sectionBreak: 900 })).toBeDefined()
+    expect(projection({ ...canvas, sectionBreak: 900, components: [rect({ belowSectionBreak: false })] })).toBeDefined()
+    expect(projection({ ...canvas, sectionBreak: 900, components: [rect({ belowSectionBreak: true, y: 950 })] })).toBeDefined()
+    // Out of the content band, or not a safe integer.
+    for (const offset of [0, -1, 1800, 2000, 12.5, '900', null]) expect(projection({ ...canvas, sectionBreak: offset })).toBeUndefined()
+    // Membership without a break, a break without membership, membership off the content band.
+    expect(projection({ ...canvas, components: [rect({ belowSectionBreak: false })] })).toBeUndefined()
+    expect(projection({ ...canvas, sectionBreak: 900, components: [rect({})] })).toBeUndefined()
+    expect(projection({ ...canvas, sectionBreak: 900, components: [rect({ band: 'pageHeader', belowSectionBreak: false })] })).toBeUndefined()
+    expect(projection({ ...canvas, sectionBreak: 900, components: [rect({ belowSectionBreak: 'yes' })] })).toBeUndefined()
+  })
+
   it('accepts and deeply freezes the exact three bounded bands', () => {
     const inbound = parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas } })
     expect(inbound).toBeDefined()

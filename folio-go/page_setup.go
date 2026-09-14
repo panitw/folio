@@ -321,6 +321,13 @@ type CanvasComponent struct {
 	// absent — never an empty array — for a table that declares none, and for
 	// every non-table component. See CanvasTableColumn below.
 	Columns []CanvasTableColumn `json:"columns,omitempty"`
+	// BelowSectionBreak is spec-section-break CAP-6's section membership: set,
+	// for every CONTENT component, only when the document declares a break —
+	// true when the element is declared at or below it (it moves with the
+	// section), false when above. Absent on every other component and on every
+	// component of a document without a break, so such a document projects
+	// exactly as before. The designer derives membership from nothing else.
+	BelowSectionBreak *bool `json:"belowSectionBreak,omitempty"`
 }
 
 // imageUnavailableMissing / imageUnavailableUndecodable are
@@ -616,6 +623,14 @@ type CanvasProjection struct {
 	// can be derived there without this flag re-acquiring a claim. The
 	// projection carries only the boolean today.
 	ContentWindowCountIsExact bool `json:"contentWindowCountIsExact"`
+	// SectionBreak is spec-section-break CAP-6's break offset, in the content
+	// column's band-relative millipoints — the same frame a content component's
+	// Y is in. ABSENT when the document declares no break, which is why this
+	// one key carries omitempty: a document without a break projects exactly
+	// the key set it always did. The canvas window count is untouched by it and
+	// keeps plain pagination; the canvas draws the section only where it is
+	// declared.
+	SectionBreak *int64 `json:"sectionBreak,omitempty"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -949,7 +964,19 @@ func Canvas(t *Template) (CanvasProjection, error) {
 	if err != nil {
 		return CanvasProjection{}, err
 	}
-	return CanvasProjection{Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	var sectionBreak *int64
+	if offset, ok := declaredSectionBreak(t); ok {
+		value := int64(offset)
+		sectionBreak = &value
+		for index := range components {
+			if components[index].Band != bandContent {
+				continue
+			}
+			below := components[index].Y >= value
+			components[index].BelowSectionBreak = &below
+		}
+	}
+	return CanvasProjection{SectionBreak: sectionBreak, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -2419,6 +2446,11 @@ func ApplyPageSetupCommand(t *Template, command []byte) (CanvasProjection, error
 	// SPEC-table-rules review item 1: a page size, margin or orientation
 	// that shrinks the content window must not strand a table's minHeight.
 	if err := refuseStrandedFloor(t, "table.minHeight"); err != nil {
+		restorePage(t, before)
+		return CanvasProjection{}, err
+	}
+	// spec-section-break: nor the section break.
+	if err := refuseSectionBreakBeyondContent(t); err != nil {
 		restorePage(t, before)
 		return CanvasProjection{}, err
 	}

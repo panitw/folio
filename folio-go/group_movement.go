@@ -216,6 +216,13 @@ func moveComponents(t *Template, raw map[string]json.RawMessage, fonts ...FontSe
 		if err := containComponent(band, x, y, width, height); err != nil {
 			return CanvasProjection{}, componentFailure(id, "component.geometry", err.Error())
 		}
+		// spec-section-break: any member across the break refuses the whole
+		// group, before anything is installed.
+		candidate := *element
+		candidate.X, candidate.Y = x, y
+		if err := refuseSectionBreakStraddle(working, band.Name, candidate, "component.geometry"); err != nil {
+			return CanvasProjection{}, err
+		}
 		element.X, element.Y = x, y
 	}
 	canonical, err := SerializeTemplate(working)
