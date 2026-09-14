@@ -619,3 +619,112 @@ func TestSectionBreakStatementRendersIdenticallyInAFreshProcess(t *testing.T) {
 		t.Fatalf("fresh-process render differs at byte %d: %s", off, window)
 	}
 }
+
+// sectionBreakWarningDoc is sectionBreakTestDoc with a second table, e6, at
+// y 95 — below the break, so it belongs to the section with the legend —
+// bound to wall[]. footer adds a count footer to its first column.
+func sectionBreakWarningDoc(footer bool) string {
+	foot := ""
+	if footer {
+		foot = `, "footer": "count"`
+	}
+	return sectionBreakTestDoc(sectionBreakAt75, `,
+      {"id": "e6", "type": "table", "x": 0, "y": 95, "bind": "wall[]", "headerHeight": 10,
+        "style": {"fontFamily": "latin", "fontSize": 8},
+        "columns": [
+          {"id": "e7", "label": "C", "width": 80, "bind": "{{row.a}}"`+foot+`},
+          {"id": "e8", "label": "D", "width": 80, "bind": "{{row.b}}"}
+        ]}`)
+}
+
+// sectionBreakWarningData binds six items[] rows (enough to cross the line,
+// so the section moves to an added page) and one wall[] row whose first cell
+// holds `words` short words.
+func sectionBreakWarningData(words int) string {
+	items := make([]tableRowJSON, 6)
+	for i := range items {
+		items[i] = tableRowJSON{A: fmt.Sprintf("R%dW-x", i), B: fmt.Sprintf("R%dW-b", i)}
+	}
+	var wall strings.Builder
+	for w := 0; w < words; w++ {
+		fmt.Fprintf(&wall, "Q%02d ", w)
+	}
+	b, err := json.Marshal(map[string]any{"items": items, "wall": []tableRowJSON{{A: wall.String(), B: "wall"}}})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// sectionBreakWarningPages renders doc against data, requires the section to
+// have moved to document page 2 and the wall row to start on document page 3
+// (the section's own SECOND page), and returns the page count and diagnostics.
+func sectionBreakWarningPages(t *testing.T, doc, data string) (int, []Diagnostic) {
+	t.Helper()
+	tpl, err := ParseTemplate([]byte(doc))
+	if err != nil {
+		t.Fatalf("ParseTemplate: %v", err)
+	}
+	pages, diags := barcodePages(t, tpl, data)
+	if on, _ := legendOn(pages, "Legend"); len(on) != 1 || on[0] != 1 {
+		t.Fatalf("presence precondition: the legend is on pages %v, want only index 1 — the section must start on an added page so its own page index differs from the document's", on)
+	}
+	wallOn := -1
+	for p, pg := range pages {
+		for _, r := range pg.Runs {
+			if strings.Contains(r.SourceText, "Q00") {
+				wallOn = p
+				break
+			}
+		}
+		if wallOn >= 0 {
+			break
+		}
+	}
+	if wallOn != 2 {
+		t.Fatalf("presence precondition: the wall row starts on page index %d, want 2 (document page 3, the section's own page 2)", wallOn)
+	}
+	return len(pages), diags
+}
+
+func sectionBreakDiagsWithCode(diags []Diagnostic, code string) []Diagnostic {
+	var out []Diagnostic
+	for _, d := range diags {
+		if d.Code == code {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// TestSectionBreakClippedRowWarningNamesTheDocumentPage: a row clipped inside
+// a moved section is reported on the DOCUMENT page it is drawn on (3), not
+// the section's own page number (2).
+func TestSectionBreakClippedRowWarningNamesTheDocumentPage(t *testing.T) {
+	_, diags := sectionBreakWarningPages(t, sectionBreakWarningDoc(false), sectionBreakWarningData(60))
+	got := sectionBreakDiagsWithCode(diags, DiagCodeTableRowClippedHeight)
+	if len(got) != 1 {
+		t.Fatalf("want one %s, got %+v", DiagCodeTableRowClippedHeight, diags)
+	}
+	if got[0].ElementID != "e6" || !strings.Contains(got[0].Message, "placed alone on page 3 and CLIPPED") {
+		t.Errorf("clipped-row warning does not name document page 3 for e6: %+v", got[0])
+	}
+}
+
+// TestSectionBreakHeaderRepeatAndFooterOrphanWarningsInTheSection: the
+// section's header-repeat suppression names the DOCUMENT page (3), and the
+// section's own footer-orphan diagnostics are reported at all.
+func TestSectionBreakHeaderRepeatAndFooterOrphanWarningsInTheSection(t *testing.T) {
+	_, diags := sectionBreakWarningPages(t, sectionBreakWarningDoc(true), sectionBreakWarningData(40))
+	sup := sectionBreakDiagsWithCode(diags, DiagCodeTableHeaderRepeatSuppressed)
+	if len(sup) != 1 {
+		t.Fatalf("want one %s, got %+v", DiagCodeTableHeaderRepeatSuppressed, diags)
+	}
+	if sup[0].ElementID != "e6" || !strings.Contains(sup[0].Message, "could not be drawn on page 3 —") {
+		t.Errorf("header-repeat warning does not name document page 3 for e6: %+v", sup[0])
+	}
+	orphan := sectionBreakDiagsWithCode(diags, DiagCodeTableFooterOrphanSuppressed)
+	if len(orphan) != 1 || orphan[0].ElementID != "e6" || orphan[0].Severity != SeverityWarning {
+		t.Errorf("want one %s Warning for e6 from the section's pagination, got %+v", DiagCodeTableFooterOrphanSuppressed, diags)
+	}
+}
