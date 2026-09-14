@@ -1,0 +1,309 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": []
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "e3",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Synthetic sample data - not a real account",
+          "width": 380,
+          "x": 0,
+          "y": 8
+        },
+        {
+          "height": 12,
+          "id": "e4",
+          "style": {
+            "align": "right",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Page {{page}} of {{pages}}",
+          "width": 123,
+          "x": 400,
+          "y": 8
+        }
+      ],
+      "height": 34
+    },
+    "pageHeader": {
+      "elements": [
+        {
+          "height": 16,
+          "id": "e1",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "STATEMENT OF ACCOUNT",
+          "width": 523,
+          "x": 0,
+          "y": 10
+        },
+        {
+          "height": 14,
+          "id": "e2",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Folio Example Bank (synthetic)",
+          "width": 523,
+          "x": 0,
+          "y": 30
+        }
+      ],
+      "height": 54
+    }
+  },
+  "fonts": {
+    "body": [
+      "Noto Sans"
+    ]
+  },
+  "locale": "en",
+  "nextId": 23,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "pages": [
+    {
+      "elements": [
+        {
+          "height": 14,
+          "id": "e5",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "Customer: {{customer.name}}",
+          "width": 523,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 14,
+          "id": "e6",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "Account: {{account.number}}",
+          "width": 523,
+          "x": 0,
+          "y": 16
+        },
+        {
+          "as": "txn",
+          "bind": "transactions[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{txn.date}}",
+              "id": "e8",
+              "label": "Date",
+              "width": 60
+            },
+            {
+              "align": "left",
+              "bind": "{{txn.code}}",
+              "id": "e9",
+              "label": "Code",
+              "width": 40
+            },
+            {
+              "align": "left",
+              "bind": "{{txn.description}}",
+              "id": "ea",
+              "label": "Description",
+              "width": 243
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(txn.amount, \"#,##0.00\")}}",
+              "id": "eb",
+              "label": "Amount",
+              "width": 90
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(txn.balance, \"#,##0.00\")}}",
+              "id": "ec",
+              "label": "Balance",
+              "width": 90
+            }
+          ],
+          "headerHeight": 22,
+          "id": "e7",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 7,
+            "padding": {
+              "bottom": 1,
+              "left": 3,
+              "right": 3,
+              "top": 1
+            }
+          },
+          "type": "table",
+          "x": 0,
+          "y": 38
+        },
+        {
+          "height": 14,
+          "id": "ed",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Codes: DEP deposit, WDL withdrawal, TRF transfer, FEE fee, INT interest",
+          "width": 523,
+          "x": 0,
+          "y": 610
+        }
+      ],
+      "sectionBreak": 600,
+      "sectionBreakAnchor": false
+    },
+    {
+      "elements": [
+        {
+          "height": 18,
+          "id": "ee",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "Service charges",
+          "width": 523,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "as": "fee",
+          "bind": "charges[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{fee.date}}",
+              "id": "eg",
+              "label": "Date",
+              "width": 60
+            },
+            {
+              "align": "left",
+              "bind": "{{fee.description}}",
+              "id": "eh",
+              "label": "Description",
+              "width": 373
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(fee.amount, \"#,##0.00\")}}",
+              "id": "ei",
+              "label": "Amount",
+              "width": 90
+            }
+          ],
+          "headerHeight": 22,
+          "id": "ef",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 7,
+            "padding": {
+              "bottom": 1,
+              "left": 3,
+              "right": 3,
+              "top": 1
+            }
+          },
+          "type": "table",
+          "x": 0,
+          "y": 24
+        },
+        {
+          "height": 14,
+          "id": "ej",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Charges are debited on the last business day of the month.",
+          "width": 523,
+          "x": 0,
+          "y": 410
+        }
+      ],
+      "pageBreak": false,
+      "sectionBreak": 400
+    },
+    {
+      "elements": [
+        {
+          "height": 14,
+          "id": "ek",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Acknowledged by the account holder",
+          "width": 523,
+          "x": 0,
+          "y": 12
+        },
+        {
+          "height": 1,
+          "id": "el",
+          "style": {
+            "background": "#000000"
+          },
+          "type": "rect",
+          "width": 200,
+          "x": 0,
+          "y": 60
+        },
+        {
+          "height": 14,
+          "id": "em",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Account holder signature",
+          "width": 200,
+          "x": 0,
+          "y": 64
+        }
+      ],
+      "pageBreak": false
+    }
+  ],
+  "utcOffset": "+07:00",
+  "version": "4.1"
+}

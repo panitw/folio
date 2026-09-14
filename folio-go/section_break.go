@@ -39,10 +39,16 @@ const sectionBreakDataPath = "bands.content.sectionBreak"
 // sectionBreakAnchorDataPath locates a diagnostic about the break's Anchor.
 const sectionBreakAnchorDataPath = "bands.content.sectionBreakAnchor"
 
-// sectionBreakPath locates a load diagnostic about page 1's key: under
-// `bands.content` for a one-page document, `pages[0]` otherwise.
-func sectionBreakPath(t *Template, key string) string {
-	return t.doc.PageField(0) + "." + key
+// sectionBreakPath locates a diagnostic about page's key: under
+// `bands.content` for a one-page document, `pages[i]` otherwise
+// (SPEC-multi-pages CAP-6: every designed page holds its own break).
+func sectionBreakPath(t *Template, page int, key string) string {
+	return t.doc.PageField(page) + "." + key
+}
+
+// contentBandOf is designed page's content band.
+func contentBandOf(t *Template, page int) *template.Band {
+	return t.doc.ContentBands()[page]
 }
 
 // sectionBreakSplit is one document's section break, resolved for pagination.
@@ -57,15 +63,15 @@ type sectionBreakSplit struct {
 	unanchored bool
 }
 
-// sectionBreakOf resolves t's section break against g. A document without a
-// break, or whose section is empty, gets the zero value.
-func sectionBreakOf(t *Template, g layout.PageGeometry) sectionBreakSplit {
-	offset, ok := declaredSectionBreak(t)
+// sectionBreakOf resolves designed page's section break against g. A page
+// without a break, or whose section is empty, gets the zero value.
+func sectionBreakOf(t *Template, g layout.PageGeometry, page int) sectionBreakSplit {
+	offset, ok := declaredSectionBreak(t, page)
 	if !ok {
 		return sectionBreakSplit{}
 	}
-	out := sectionBreakSplit{line: layout.Origins(g).Content + offset, unanchored: !sectionBreakAnchored(t)}
-	for _, el := range firstContentBand(t).Elements {
+	out := sectionBreakSplit{line: layout.Origins(g).Content + offset, unanchored: !sectionBreakAnchored(t, page)}
+	for _, el := range contentBandOf(t, page).Elements {
 		if el.Y < offset {
 			continue
 		}
@@ -77,58 +83,57 @@ func sectionBreakOf(t *Template, g layout.PageGeometry) sectionBreakSplit {
 	return out
 }
 
-// declaredSectionBreak returns the content band's break offset, if it has one.
-func declaredSectionBreak(t *Template) (geom.Length, bool) {
-	if t == nil || t.doc == nil {
+// declaredSectionBreak returns designed page's break offset, if it has one.
+func declaredSectionBreak(t *Template, page int) (geom.Length, bool) {
+	if t == nil || t.doc == nil || page < 0 || page >= t.doc.PageCount() {
 		return 0, false
 	}
-	sb := firstContentBand(t).SectionBreak
+	sb := contentBandOf(t, page).SectionBreak
 	if !sb.Set || sb.Null {
 		return 0, false
 	}
 	return sb.Value, true
 }
 
-// sectionBreakAnchored reports the break's Anchor setting (CAP-7): true
-// unless the content band declares `sectionBreakAnchor: false`.
-func sectionBreakAnchored(t *Template) bool {
-	if t == nil || t.doc == nil {
+// sectionBreakAnchored reports designed page's break Anchor setting (CAP-7):
+// true unless the page declares `sectionBreakAnchor: false`.
+func sectionBreakAnchored(t *Template, page int) bool {
+	if t == nil || t.doc == nil || page < 0 || page >= t.doc.PageCount() {
 		return true
 	}
-	a := firstContentBand(t).SectionBreakAnchor
+	a := contentBandOf(t, page).SectionBreakAnchor
 	return !a.Set || a.Null || a.Value
 }
 
-// validateSectionBreak refuses, at load, a break the content band cannot
-// honour (SECTION_BREAK_INVALID, located at the band) and an element whose
-// declared box lies on both sides of it (SECTION_BREAK_STRADDLED, located at
-// the element). It lives here, not in internal/template, because the range
-// check needs layout.ContentHeight — validateTableMinHeights' reason.
+// validateSectionBreak refuses, at load, a break a page's content band cannot
+// honour (SECTION_BREAK_INVALID, located at the page's key) and an element
+// whose declared box lies on both sides of its own page's break
+// (SECTION_BREAK_STRADDLED, located at the element). Every designed page is
+// checked against its own elements, in page order. It lives here, not in
+// internal/template, because the range check needs layout.ContentHeight —
+// validateTableMinHeights' reason.
 func validateSectionBreak(t *Template) error {
 	if t == nil || t.doc == nil {
 		return nil
 	}
-	// SPEC-multi-pages: a section break on a later page belongs to story 5;
-	// the parser refuses it, and this is the same rule for a template that
-	// reached here some other way.
-	for page, band := range t.doc.ContentBands() {
-		if page > 0 && (band.SectionBreak.Set || band.SectionBreakAnchor.Set) {
-			key := "sectionBreak"
-			if !band.SectionBreak.Set {
-				key = "sectionBreakAnchor"
-			}
-			path := t.doc.PageField(page) + "." + key
-			return newRenderError(DiagCodeSectionBreakInvalid, "", path,
-				fmt.Errorf("folio: %s: a section break is supported only on the first page", path))
+	for page := range t.doc.ContentBands() {
+		if err := validatePageSectionBreak(t, page); err != nil {
+			return err
 		}
 	}
-	breakPath := sectionBreakPath(t, "sectionBreak")
-	offset, ok := declaredSectionBreak(t)
+	return nil
+}
+
+// validatePageSectionBreak is validateSectionBreak for one designed page.
+func validatePageSectionBreak(t *Template, page int) error {
+	band := contentBandOf(t, page)
+	breakPath := sectionBreakPath(t, page, "sectionBreak")
+	offset, ok := declaredSectionBreak(t, page)
 	if !ok {
 		// The parser already refuses an Anchor with no break; this is the
 		// same rule for a template that reached here some other way.
-		if firstContentBand(t).SectionBreakAnchor.Set {
-			anchorPath := sectionBreakPath(t, "sectionBreakAnchor")
+		if band.SectionBreakAnchor.Set {
+			anchorPath := sectionBreakPath(t, page, "sectionBreakAnchor")
 			return newRenderError(DiagCodeSectionBreakInvalid, "", anchorPath,
 				fmt.Errorf("folio: %s: declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key", anchorPath))
 		}
@@ -144,11 +149,17 @@ func validateSectionBreak(t *Template) error {
 				fmt.Errorf("folio: %s: %spt is at or below the bottom of the content band (a content height of %spt) — move the break up, or give the content band more room", breakPath, template.FormatPoints(offset), template.FormatPoints(height)))
 		}
 	}
-	for _, el := range firstContentBand(t).Elements {
+	for _, el := range band.Elements {
 		top, bottom := sectionBreakDeclaredBox(el)
 		if top < offset && bottom > offset {
-			return newRenderError(DiagCodeSectionBreakStraddled, string(el.ID), "",
-				fmt.Errorf("folio: element %s: its declared box runs from %spt to %spt, across the section break at %spt — every element must lie wholly above or wholly below the break; move or resize the element, or move the break", el.ID, template.FormatPoints(top), template.FormatPoints(bottom), template.FormatPoints(offset)))
+			// A one-page document keeps today's located result; a later
+			// page's straddle also names the page's break path.
+			dataPath, where := "", ""
+			if t.doc.PageCount() > 1 {
+				dataPath, where = breakPath, " ("+breakPath+")"
+			}
+			return newRenderError(DiagCodeSectionBreakStraddled, string(el.ID), dataPath,
+				fmt.Errorf("folio: element %s: its declared box runs from %spt to %spt, across the section break at %spt%s — every element must lie wholly above or wholly below the break; move or resize the element, or move the break", el.ID, template.FormatPoints(top), template.FormatPoints(bottom), template.FormatPoints(offset), where))
 		}
 	}
 	return nil
@@ -190,159 +201,222 @@ func sectionBreakStraddles(el template.Element, offset geom.Length) bool {
 }
 
 // refuseSectionBreakStraddle refuses a candidate content-band element whose
-// declared box would lie across the document's break. It is a no-op for a
-// document without a break and for an element of any other band.
+// declared box would lie across its own page's break. It is a no-op for a
+// page without a break and for an element of any other band.
 func refuseSectionBreakStraddle(t *Template, bandName string, candidate template.Element, path string) error {
 	if bandName != bandContent {
 		return nil
 	}
-	// SPEC-multi-pages: the break is page 1's, so it constrains only page 1's
-	// elements. An id not yet in the index is a new element, created into
-	// page 1.
+	// SPEC-multi-pages: a page's break constrains only that page's elements.
+	// An id not yet in the index is a new element, created into page 1.
 	return refuseSectionBreakStraddleOnPage(t, bandName, contentPageIndex(t)[string(candidate.ID)], candidate, path)
 }
 
 // refuseSectionBreakStraddleOnPage is refuseSectionBreakStraddle for a
 // candidate that will sit on `page` — a create onto a page, or a move to one
-// (story 3). Only page 1 has a break, so any other page is never refused.
+// (story 3). The page it lands on is the page whose break judges it.
 func refuseSectionBreakStraddleOnPage(t *Template, bandName string, page int, candidate template.Element, path string) error {
-	if bandName != bandContent || page != 0 {
+	if bandName != bandContent {
 		return nil
 	}
-	offset, ok := declaredSectionBreak(t)
+	offset, ok := declaredSectionBreak(t, page)
 	if !ok || !sectionBreakStraddles(candidate, offset) {
 		return nil
 	}
 	top, bottom := sectionBreakDeclaredBox(candidate)
-	return componentFailure(string(candidate.ID), path, fmt.Sprintf("%s would run from %spt to %spt, across the section break at %spt — every element must lie wholly above or wholly below the break; move or resize the element, or move the break", candidate.ID, template.FormatPoints(top), template.FormatPoints(bottom), template.FormatPoints(offset)))
+	return componentFailure(string(candidate.ID), path, fmt.Sprintf("%s would run from %spt to %spt, across the section break at %spt%s — every element must lie wholly above or wholly below the break; move or resize the element, or move the break", candidate.ID, template.FormatPoints(top), template.FormatPoints(bottom), template.FormatPoints(offset), onPageSuffix(t, page)))
+}
+
+// onPageSuffix names a page in a refusal sentence, only when the document has
+// more than one, so a one-page document's sentences are unchanged.
+func onPageSuffix(t *Template, page int) string {
+	if t.doc.PageCount() < 2 {
+		return ""
+	}
+	return fmt.Sprintf(" on page %d", page+1)
 }
 
 // refuseSectionBreakBeyondContent refuses a page or band change that leaves
-// the break at or below the bottom of the content band. The refusal names the
-// break, because the break is what no longer fits.
+// any page's break at or below the bottom of the content band. The refusal
+// names the first such break, because the break is what no longer fits.
 func refuseSectionBreakBeyondContent(t *Template) error {
-	offset, ok := declaredSectionBreak(t)
-	if !ok {
-		return nil
-	}
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return nil
 	}
-	if height := layout.ContentHeight(g); offset >= height {
-		return componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("this leaves a content band %spt tall, and the section break at %spt would lie at or below its bottom — move the section break up first", template.FormatPoints(height), template.FormatPoints(offset)))
+	height := layout.ContentHeight(g)
+	for page := range t.doc.ContentBands() {
+		offset, ok := declaredSectionBreak(t, page)
+		if !ok || offset < height {
+			continue
+		}
+		return componentFailure("", sectionBreakPath(t, page, "sectionBreak"), fmt.Sprintf("this leaves a content band %spt tall, and the section break%s at %spt would lie at or below its bottom — move the section break up first", template.FormatPoints(height), onPageSuffix(t, page), template.FormatPoints(offset)))
 	}
 	return nil
 }
 
-// setSectionBreak places or moves the break: {kind, version, offset, snap}.
-// The engine snaps (the canvas drag passes true; a typed Y passes false), and
-// snapping happens before every check, so a refusal names the offset that
-// would actually have been written.
-func setSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 4); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "setSectionBreak takes exactly kind, version, offset and snap")
+// sectionBreakCommandPage reads a section-break command's optional 0-based
+// `page` (SPEC-multi-pages story 5). Absent, the command is page 1's with
+// today's field count, so `fields` counts it only when given. A wrong field
+// count is refused at page 1's key with usage; an unknown page at `pages`.
+func sectionBreakCommandPage(t *Template, raw map[string]json.RawMessage, fields int, key, usage string) (int, error) {
+	_, hasPage := raw["page"]
+	if hasPage {
+		fields++
 	}
+	if err := componentFields(raw, fields); err != nil {
+		return 0, componentFailure("", sectionBreakPath(t, 0, key), usage)
+	}
+	if !hasPage {
+		return 0, nil
+	}
+	return pageIndexField(raw, "page", t.doc.PageCount())
+}
+
+// setSectionBreak places or moves a page's break: {kind, version, offset,
+// snap, page?}. The engine snaps (the canvas drag passes true; a typed Y
+// passes false), and snapping happens before every check, so a refusal names
+// the offset that would actually have been written.
+func setSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
+	page, err := sectionBreakCommandPage(t, raw, 4, "sectionBreak", "setSectionBreak takes exactly kind, version, offset and snap, and optionally page")
+	if err != nil {
+		return CanvasProjection{}, err
+	}
+	path := sectionBreakPath(t, page, "sectionBreak")
 	proposed, err := lengthField(raw, "offset")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), err.Error())
+		return CanvasProjection{}, componentFailure("", path, err.Error())
 	}
 	snap, err := commandBool(raw, "snap")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), err.Error())
+		return CanvasProjection{}, componentFailure("", path, err.Error())
 	}
 	if snap {
 		snapped, valid := SnapToGrid(proposed)
 		if !valid {
-			return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "the section break offset overflows grid snapping")
+			return CanvasProjection{}, componentFailure("", path, "the section break offset overflows grid snapping")
 		}
 		proposed = snapped
 	}
 	if proposed <= 0 {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt is at or above the content band's top — it must lie inside the content band", template.FormatPoints(proposed)))
+		return CanvasProjection{}, componentFailure("", path, fmt.Sprintf("a section break at %spt is at or above the content band's top — it must lie inside the content band", template.FormatPoints(proposed)))
 	}
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
 	if height := layout.ContentHeight(g); proposed >= height {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt is at or below the bottom of the content band (a content height of %spt) — move it up", template.FormatPoints(proposed), template.FormatPoints(height)))
+		return CanvasProjection{}, componentFailure("", path, fmt.Sprintf("a section break at %spt is at or below the bottom of the content band (a content height of %spt) — move it up", template.FormatPoints(proposed), template.FormatPoints(height)))
 	}
-	for _, el := range firstContentBand(t).Elements {
+	band := contentBandOf(t, page)
+	for _, el := range band.Elements {
 		if sectionBreakStraddles(el, proposed) {
 			top, bottom := sectionBreakDeclaredBox(el)
-			return CanvasProjection{}, componentFailure(string(el.ID), sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt would run through %s, which runs from %spt to %spt — every element must lie wholly above or wholly below the break", template.FormatPoints(proposed), el.ID, template.FormatPoints(top), template.FormatPoints(bottom)))
+			return CanvasProjection{}, componentFailure(string(el.ID), path, fmt.Sprintf("a section break at %spt would run through %s, which runs from %spt to %spt — every element must lie wholly above or wholly below the break", template.FormatPoints(proposed), el.ID, template.FormatPoints(top), template.FormatPoints(bottom)))
 		}
 	}
-	previous := firstContentBand(t).SectionBreak
-	firstContentBand(t).SectionBreak = template.Presence[geom.Length]{Set: true, Value: proposed}
+	previous := band.SectionBreak
+	band.SectionBreak = template.Presence[geom.Length]{Set: true, Value: proposed}
 	projection, err := Canvas(t)
 	if err != nil {
-		firstContentBand(t).SectionBreak = previous
+		band.SectionBreak = previous
 		return CanvasProjection{}, err
 	}
 	return projection, nil
 }
 
-// removeSectionBreak deletes the break: {kind, version}. "No break" is the
-// key's absence, so it is cleared to the zero Presence, never to null.
+// removeSectionBreak deletes a page's break: {kind, version, page?}. "No
+// break" is the key's absence, so it is cleared to the zero Presence, never to
+// null.
 func removeSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 2); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "removeSectionBreak takes exactly kind and version")
+	page, err := sectionBreakCommandPage(t, raw, 2, "sectionBreak", "removeSectionBreak takes exactly kind and version, and optionally page")
+	if err != nil {
+		return CanvasProjection{}, err
 	}
-	if !firstContentBand(t).SectionBreak.Set {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "this document has no section break to remove")
+	band := contentBandOf(t, page)
+	if !band.SectionBreak.Set {
+		message := "this document has no section break to remove"
+		if t.doc.PageCount() > 1 {
+			message = fmt.Sprintf("page %d has no section break to remove", page+1)
+		}
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, page, "sectionBreak"), message)
 	}
-	previous, previousAnchor := firstContentBand(t).SectionBreak, firstContentBand(t).SectionBreakAnchor
-	firstContentBand(t).SectionBreak = template.Presence[geom.Length]{}
+	previous, previousAnchor := band.SectionBreak, band.SectionBreakAnchor
+	band.SectionBreak = template.Presence[geom.Length]{}
 	// The Anchor qualifies the break, so it goes with it (CAP-7).
-	firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{}
+	band.SectionBreakAnchor = template.Presence[bool]{}
 	projection, err := Canvas(t)
 	if err != nil {
-		firstContentBand(t).SectionBreak, firstContentBand(t).SectionBreakAnchor = previous, previousAnchor
+		band.SectionBreak, band.SectionBreakAnchor = previous, previousAnchor
 		return CanvasProjection{}, err
 	}
 	return projection, nil
 }
 
-// setSectionBreakAnchor sets the break's Anchor: {kind, version, anchor}. One
-// command, so one undo entry (CAP-7). Anchored is the default and the key's
-// absence, so `true` clears the key and `false` writes it.
+// setSectionBreakAnchor sets a page's break Anchor: {kind, version, anchor,
+// page?}. One command, so one undo entry (CAP-7). Anchored is the default and
+// the key's absence, so `true` clears the key and `false` writes it.
 func setSectionBreakAnchor(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 3); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "setSectionBreakAnchor takes exactly kind, version and anchor")
+	page, err := sectionBreakCommandPage(t, raw, 3, "sectionBreakAnchor", "setSectionBreakAnchor takes exactly kind, version and anchor, and optionally page")
+	if err != nil {
+		return CanvasProjection{}, err
 	}
+	path := sectionBreakPath(t, page, "sectionBreakAnchor")
 	// json.Unmarshal leaves a bool untouched for null, so null is refused
 	// here rather than read as false.
 	if value, ok := raw["anchor"]; ok && string(bytes.TrimSpace(value)) == "null" {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "anchor must be a boolean")
+		return CanvasProjection{}, componentFailure("", path, "anchor must be a boolean")
 	}
 	anchor, err := commandBool(raw, "anchor")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), err.Error())
+		return CanvasProjection{}, componentFailure("", path, err.Error())
 	}
-	if _, ok := declaredSectionBreak(t); !ok {
-		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "this document has no section break to anchor — add a Section Break first")
+	if _, ok := declaredSectionBreak(t, page); !ok {
+		message := "this document has no section break to anchor — add a Section Break first"
+		if t.doc.PageCount() > 1 {
+			message = fmt.Sprintf("page %d has no section break to anchor — add a Section Break first", page+1)
+		}
+		return CanvasProjection{}, componentFailure("", path, message)
 	}
-	previous := firstContentBand(t).SectionBreakAnchor
+	band := contentBandOf(t, page)
+	previous := band.SectionBreakAnchor
 	if anchor {
-		firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{}
+		band.SectionBreakAnchor = template.Presence[bool]{}
 	} else {
-		firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{Set: true, Value: false}
+		band.SectionBreakAnchor = template.Presence[bool]{Set: true, Value: false}
 	}
 	projection, err := Canvas(t)
 	if err != nil {
-		firstContentBand(t).SectionBreakAnchor = previous
+		band.SectionBreakAnchor = previous
 		return CanvasProjection{}, err
 	}
 	return projection, nil
 }
 
-// sectionBreakSplitTags returns, in authored order of first appearance, the
-// keepTogether tags whose members lie on both sides of the break, with the
-// first member of each.
+// sectionBreakSplitTags returns, in page order and then authored order of
+// first appearance, the keepTogether tags whose members lie on both sides of
+// their own page's break, with the first member of each. A tag never spans
+// pages (the loader refuses it), so each page is judged alone.
 func sectionBreakSplitTags(t *Template) (tags []string, firstMember map[string]string) {
-	offset, ok := declaredSectionBreak(t)
+	for page := range t.doc.ContentBands() {
+		pageTags, pageFirst := pageSectionBreakSplitTags(t, page)
+		if len(pageTags) == 0 {
+			continue
+		}
+		if firstMember == nil {
+			firstMember = map[string]string{}
+		}
+		for _, tag := range pageTags {
+			tags = append(tags, tag)
+			firstMember[tag] = pageFirst[tag]
+		}
+	}
+	return tags, firstMember
+}
+
+// pageSectionBreakSplitTags is sectionBreakSplitTags for one designed page.
+func pageSectionBreakSplitTags(t *Template, page int) (tags []string, firstMember map[string]string) {
+	offset, ok := declaredSectionBreak(t, page)
 	if !ok {
 		return nil, nil
 	}
@@ -350,7 +424,7 @@ func sectionBreakSplitTags(t *Template) (tags []string, firstMember map[string]s
 	below := map[string]bool{}
 	firstMember = map[string]string{}
 	var order []string
-	for _, el := range firstContentBand(t).Elements {
+	for _, el := range contentBandOf(t, page).Elements {
 		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
 			continue
 		}

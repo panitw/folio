@@ -208,3 +208,15 @@ A reader of the file, or an AI agent editing it, sees one list and never has to 
 **Example.** Page 1's clause table spills onto a second sheet, and page 2 follows. The three content bands are announced as "Content on page 1 of 2", "Content on page 1 of 2, sheet 2 of 3" and "Content on page 2 of 2".
 
 **Also decided.** The story 4 spec stays whole rather than being split.
+
+## D-5.1 — Place Section Break follows the current page (story 5, owner, 2026-09-15)
+
+**Question.** Now that every page can have a section break, when should the palette's Place Section Break entry be disabled?
+
+**Decision.** When the current page (D-G.2) already has a break. While placing, a content band on a page that already has a break is not a drop target. A one-page document keeps today's note, "This document already has its one Section Break."; otherwise the note reads "This page already has its Section Break."
+
+**Why.** The entry then reflects the page the author is working on, so it is enabled exactly when a click on that page can place a break.
+
+**Example.** Page 2 has a break and page 1 doesn't. With page 2 current the entry is disabled. After the author clicks page 1, it is enabled, and a break can then be placed on page 1 only.
+
+**Also decided (owner).** Story 5 stays one story, section break per page and Page Break off together, even though it is about twice the spec size limit.

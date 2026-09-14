@@ -373,7 +373,7 @@ count:
 |---|---|
 | `pages[].elements` | *Required.* The page's content elements, exactly as `content`'s. Their `x` and `y` are relative to the page's content band. |
 | `pages[].pageBreak` | A boolean, the page's **Page Break** setting. It is written as `true` or `false` on every page after the first; a later page with no value loads as `true`. On the first page it does not apply: a value there loads without error and is dropped on save. |
-| `pages[].sectionBreak`, `pages[].sectionBreakAnchor` | *Optional.* The page's section break, as `content`'s. Only the first page may declare one; on a later page it is a load error (`SECTION_BREAK_INVALID`) naming the page. |
+| `pages[].sectionBreak`, `pages[].sectionBreakAnchor` | *Optional.* The page's own section break, as `content`'s, on any page. Each page has at most one. Its range, its Anchor and its straddle rule are checked against that page's own elements only, and a problem is a load error located at that page's key (`pages[i].sectionBreak` or `pages[i].sectionBreakAnchor`; `SECTION_BREAK_INVALID`, or `SECTION_BREAK_STRADDLED` naming the element). It affects only that page's own content and overflow. |
 
 Element ids are unique across the whole document, and a `keepTogether` group cannot span pages. Each
 of the following is a load error (`PAGES_INVALID`) naming where it is: a `pages` array with fewer
@@ -407,7 +407,8 @@ statement cannot ship a half-line, and there is no setting that trades this away
 
 **Nothing moves sideways and nothing reflows to close a gap.** Every element keeps exactly the
 position its author gave it within the column, so no element is ever displaced because a neighbour
-grew (AD-24) — **with one exception, the below-line section of a `sectionBreak`, described below.**
+grew (AD-24) — **with two exceptions, the below-line section of a `sectionBreak` and a designed page
+with Page Break off, both described below; each moves as one rigid block.**
 One consequence follows directly and an author should know it before designing a report rather
 than finding it in a diff:
 
@@ -436,16 +437,23 @@ header and page footer, and `{{pages}}` and `{{page}}` count it. A document whos
 content fits on the first page and ends at or above the break renders exactly as it would without
 the key — unless a `keepTogether` group has members on both sides of the break, since that group is split on every render and so can paginate differently. Such a group is split at the line; each
 side is kept together on its own, and every render returns the Warning
-`SECTION_BREAK_SPLITS_KEEP_TOGETHER` naming the group. There is at most one break, and it is never
-drawn.
+`SECTION_BREAK_SPLITS_KEEP_TOGETHER` naming the group. There is at most one break per designed page,
+and it is never drawn. In a document with several designed pages, each page's break applies to that
+page's own content column and overflow exactly as above, and to no other page; a group split by a
+page's break is reported once per render, naming that page's group.
 
 **Designed pages follow one another in page order.** Each designed page is paginated as its own
-column under every rule above, including its own section break. Page Break on: a page starts a new
-output page after the previous designed page's last output page, overflow included, with its content
-at its declared positions. The page header and page footer are drawn on every output page, and
-`{{pages}}` and `{{page}}` count the output pages of all designed pages together. (Page Break off, a
-page following directly after the previous page's content, is not yet honoured: every page renders
-as if its Page Break were on.)
+column under every rule above, including its own section break. How a page follows the page before it
+is its Page Break setting (page 1 always starts the document):
+
+| | rule |
+|---|---|
+| **On** | The page starts a new output page after the previous designed page's last output page, overflow included, with its content at its declared positions. |
+| **Off** | Let *E* be where the previous page's content ends on its last output page, measured as in section-break rule 1, its below-line section included. The page's content is paginated alone, with its own break, as one block. If the previous page occupies **more than one** output page, nothing was clipped on its last output page, and the block paginates to exactly one output page with nothing clipped whose extent below the content window's top fits between *E* and the content window's bottom, the block is moved down as one rigid block so that its window top sits at *E*, every item keeping its offset, and it is drawn on that same output page. Otherwise the page starts a new output page exactly as with Page Break on. The block never moves up onto an earlier output page: when the previous page fits on a single output page, a Page Break off page still starts a new output page. A page with Page Break off and no elements, after a page that occupies more than one output page, adds no output page. |
+
+The page header and page footer are drawn on every output page, and `{{pages}}` and `{{page}}` count
+the output pages of all designed pages together. The design canvas draws every page at its declared
+positions only; Page Break off changes the rendered output, never the canvas.
 
 **No page is ever blank, except an empty designed page.** Because a window begins at the first item
 that did not fit rather than at a fixed multiple of the content height, an element declared far

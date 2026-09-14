@@ -655,6 +655,16 @@ type CanvasProjection struct {
 	// break is unanchored; absent otherwise, so an anchored break and a
 	// document without one project exactly as before.
 	SectionBreakAnchor *bool `json:"sectionBreakAnchor,omitempty"`
+	// SectionBreaks is SPEC-multi-pages CAP-6's per-page break: on a projection
+	// with more than one designed page, one entry per page in page order, the
+	// page's break offset (in its own column's band-relative millipoints) or
+	// null. SectionBreak and SectionBreakAnchor are then absent. ABSENT on a
+	// one-page projection, which keeps exactly the key set it always had.
+	SectionBreaks []*int64 `json:"sectionBreaks,omitempty"`
+	// SectionBreakAnchors is SectionBreaks' Anchor, one entry per page: false
+	// only where that page's break is unanchored, true otherwise (anchored, or
+	// no break). Present exactly when SectionBreaks is.
+	SectionBreakAnchors []bool `json:"sectionBreakAnchors,omitempty"`
 }
 
 // maxCanvasFontFamilies bounds the projected name list the way every other
@@ -1001,27 +1011,55 @@ func Canvas(t *Template) (CanvasProjection, error) {
 			}
 		}
 	}
+	// spec-section-break CAP-6, per designed page (SPEC-multi-pages CAP-6). A
+	// one-page projection keeps sectionBreak and sectionBreakAnchor exactly; a
+	// multi-page projection carries one entry per page in sectionBreaks and
+	// sectionBreakAnchors instead. belowSectionBreak is set exactly on the
+	// content components whose own page has a break.
 	var sectionBreak *int64
 	var sectionBreakAnchor *bool
-	if offset, ok := declaredSectionBreak(t); ok {
-		value := int64(offset)
-		sectionBreak = &value
-		if !sectionBreakAnchored(t) {
+	var sectionBreaks []*int64
+	var sectionBreakAnchors []bool
+	pageCount := t.doc.PageCount()
+	offsets := make([]*int64, pageCount)
+	for page := range offsets {
+		if offset, ok := declaredSectionBreak(t, page); ok {
+			value := int64(offset)
+			offsets[page] = &value
+		}
+	}
+	if pageCount == 1 {
+		sectionBreak = offsets[0]
+		if sectionBreak != nil && !sectionBreakAnchored(t, 0) {
 			unanchored := false
 			sectionBreakAnchor = &unanchored
 		}
-		pageOf := contentPageIndex(t)
-		for index := range components {
-			// The break is page 1's, so only page 1's components are placed
-			// relative to it.
-			if components[index].Band != bandContent || pageOf[components[index].ID] != 0 {
-				continue
-			}
-			below := components[index].Y >= value
-			components[index].BelowSectionBreak = &below
+	} else {
+		sectionBreaks = offsets
+		sectionBreakAnchors = make([]bool, pageCount)
+		for page := range sectionBreakAnchors {
+			sectionBreakAnchors[page] = offsets[page] == nil || sectionBreakAnchored(t, page)
 		}
 	}
-	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: int64(t.doc.PageCount()), ContentWindowOrigins: canvasOnePerPageOrigins(t.doc.PageCount()), ContentWindowPages: canvasOnePerPagePages(t.doc.PageCount()), PageBreaks: pageBreaks, ContentWindowCountIsExact: false}, nil
+	var pageOf map[string]int
+	for index := range components {
+		if components[index].Band != bandContent {
+			continue
+		}
+		page := 0
+		if pageCount > 1 {
+			if pageOf == nil {
+				pageOf = contentPageIndex(t)
+			}
+			page = pageOf[components[index].ID]
+		}
+		if offsets[page] == nil {
+			continue
+		}
+		below := components[index].Y >= *offsets[page]
+		components[index].BelowSectionBreak = &below
+	}
+	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, SectionBreaks: sectionBreaks, SectionBreakAnchors: sectionBreakAnchors, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: int64(t.doc.PageCount()), ContentWindowOrigins: canvasOnePerPageOrigins(t.doc.PageCount()), ContentWindowPages: canvasOnePerPagePages(t.doc.PageCount()), PageBreaks: pageBreaks, ContentWindowCountIsExact: false}, nil
 }
 
 // canvasOnePerPageOrigins and canvasOnePerPagePages are the window sequence

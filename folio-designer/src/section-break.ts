@@ -30,14 +30,30 @@ export function proposedSectionBreak(original: number, dy: number, contentHeight
   return clamp(Math.round(original + dy), 1, contentHeight - 1)
 }
 
-// The sheet the line is drawn on, once and with no echoes: the window that
-// holds the offset (`homeWindow`), and the line's offset within that sheet.
-export function sectionBreakPlacement(canvas: CanvasProjection): Readonly<{ sheet: number; y: number }> | undefined {
-  const offset = canvas.sectionBreak
+// SPEC-multi-pages story 5: ONE DESIGNED PAGE'S BREAK, as Go projected it. A
+// one-page projection carries `sectionBreak` / `sectionBreakAnchor`; a
+// multi-page one carries `sectionBreaks` / `sectionBreakAnchors`, one entry per
+// page. This is the one place that reads either shape.
+export type PageSectionBreak = Readonly<{ offset: number; anchored: boolean }>
+
+export function sectionBreakOnPage(canvas: CanvasProjection, page: number): PageSectionBreak | undefined {
+  if (canvas.sectionBreaks !== undefined) {
+    const offset = canvas.sectionBreaks[page]
+    if (offset === null || offset === undefined) return undefined
+    return { offset, anchored: canvas.sectionBreakAnchors?.[page] !== false }
+  }
+  if (page !== 0 || canvas.sectionBreak === undefined) return undefined
+  return { offset: canvas.sectionBreak, anchored: canvas.sectionBreakAnchor === undefined }
+}
+
+// The sheet a page's line is drawn on, once and with no echoes: the window of
+// THAT page which holds the offset (`homeWindow`), and the line's offset within
+// that sheet. A later page's page-local origin of 0 never claims another
+// page's break.
+export function sectionBreakPlacement(canvas: CanvasProjection, page = 0): Readonly<{ sheet: number; y: number }> | undefined {
+  const offset = sectionBreakOnPage(canvas, page)?.offset
   if (offset === undefined) return undefined
-  // SPEC-multi-pages: the break is page 1's, so it is placed among page 1's
-  // windows only — they are the stack's first — and never on a later page.
-  const own = pageWindows(canvas, 0)
+  const own = pageWindows(canvas, page)
   const sheet = own.first + homeWindow(own.origins, offset)
   return { sheet, y: offset - (canvas.contentWindowOrigins[sheet] ?? 0) }
 }

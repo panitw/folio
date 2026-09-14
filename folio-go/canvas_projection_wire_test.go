@@ -78,7 +78,10 @@ var canvasProjectionWireKeys = []string{
 // recorded apart from the always-present set above so that the zero-value
 // identity check keeps its meaning for every other key, and each one has its
 // own typed clause in isCanvas (hasOnly cannot see an absent key).
-var canvasProjectionOptionalWireKeys = []string{"sectionBreak", "sectionBreakAnchor"}
+// SPEC-multi-pages story 5 adds the per-page pair, `sectionBreaks` and
+// `sectionBreakAnchors`, present exactly on a projection with more than one
+// designed page, in place of the one-page pair.
+var canvasProjectionOptionalWireKeys = []string{"sectionBreak", "sectionBreakAnchor", "sectionBreakAnchors", "sectionBreaks"}
 
 // canvasFontChainWireKeys is the recorded key set of the NESTED object, sorted.
 // fontChains is the first nested object this projection carries, and the

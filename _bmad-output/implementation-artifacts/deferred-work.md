@@ -13796,3 +13796,6 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/specs/spec-multi-pages/stories/3-elements-on-a-specific-page.md`
   summary: Moving elements to another page is pointer-only. There is no keyboard or property way to change an element's page, and nothing is announced to assistive technology when a drag moves an element to another page.
   evidence: Arrow nudges stay within the page (moveComponents is clamped to the window). SPEC CAP-3 names dragging only, so an accessible alternative needs an owner decision.
+- source_spec: `_bmad-output/specs/spec-multi-pages/stories/5-section-break-per-page-and-page-break-off.md`
+  summary: No test renders a Page Break off block that fits and contains a framed, ruled or floored table, so the move of its `TableSlices` Top/Bottom by the block offset is unverified.
+  evidence: `translateSinglePagePlan` (content_pages.go) moves each TableSlice by d. The multi-page-flow fixture's tables declare no frame, rules or floor, and every fitting block in the tests is a probe rect or text, so dropping that loop would draw frames at declared positions under moved rows without any failure.

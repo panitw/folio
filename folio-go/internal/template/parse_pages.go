@@ -105,16 +105,9 @@ func decodeContentPage(ctx *parseCtx, i int, raw json.RawMessage) (ContentPage, 
 		}
 	}
 
-	if i > 0 {
-		// Story 5 owns a section break on a later page; until then it is
-		// refused, naming the page.
-		for _, key := range []string{sectionBreakKey, sectionBreakAnchorKey} {
-			if v, ok := obj[key]; ok {
-				return ContentPage{}, newLoadErrorCoded(field+"."+key, "", string(v), "a section break is supported only on the first page", diag.CodeSectionBreakInvalid)
-			}
-		}
-		return page, nil
-	}
+	// SPEC-multi-pages CAP-6: every page may declare its own section break,
+	// decoded exactly as page 1's; its range and straddle checks run per page
+	// in package folio (validateSectionBreak).
 	sectionBreak, anchor, err := decodeSectionBreakKeys(obj, raw, field, map[string]bool{}, false)
 	if err != nil {
 		return ContentPage{}, err

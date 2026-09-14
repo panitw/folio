@@ -2867,21 +2867,25 @@ func keepTogetherTags(t *Template) keepTogetherIndex {
 	if t == nil || t.doc == nil {
 		return nil
 	}
-	split, _ := sectionBreakSplitTags(t)
-	offset, _ := declaredSectionBreak(t)
+	// SPEC-multi-pages CAP-6: each designed page's group is split by that
+	// page's own break, and by no other page's.
 	var idx keepTogetherIndex
-	for _, el := range contentElements(t) {
-		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
-			continue
+	for page, band := range t.doc.ContentBands() {
+		split, _ := pageSectionBreakSplitTags(t, page)
+		offset, _ := declaredSectionBreak(t, page)
+		for _, el := range band.Elements {
+			if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
+				continue
+			}
+			if idx == nil {
+				idx = keepTogetherIndex{}
+			}
+			member := keepTogetherMember{tag: el.KeepTogether.Value}
+			if el.Y >= offset && slices.Contains(split, member.tag) {
+				member.belowBreak = true
+			}
+			idx[string(el.ID)] = member
 		}
-		if idx == nil {
-			idx = keepTogetherIndex{}
-		}
-		member := keepTogetherMember{tag: el.KeepTogether.Value}
-		if el.Y >= offset && slices.Contains(split, member.tag) {
-			member.belowBreak = true
-		}
-		idx[string(el.ID)] = member
 	}
 	return idx
 }

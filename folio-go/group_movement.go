@@ -332,7 +332,7 @@ func moveComponentsToPage(working *Template, members map[string]groupMember, ids
 		if y > bound-height {
 			return componentFailure(id, "component.geometry", "component exceeds safe geometry")
 		}
-		// The break is page 1's: only a move onto page 1 can straddle it.
+		// The target page's own break judges a move onto that page.
 		candidate := *element
 		candidate.X, candidate.Y = x, y
 		if err := refuseSectionBreakStraddleOnPage(working, bandContent, target, candidate, "component.geometry"); err != nil {

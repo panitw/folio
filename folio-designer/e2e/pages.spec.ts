@@ -133,6 +133,53 @@ test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it
   expect(saved.pages[1].elements).toHaveLength(2)
 })
 
+// SPEC-multi-pages story 5 — A SECTION BREAK ON PAGE 2, THROUGH THE REAL GO
+// WORKER. Place a break on page 2's content band: its handle is named for page
+// 2 and drawn on page 2's sheet, the palette entry is disabled while page 2 is
+// current and enabled on page 1, and the saved bytes hold pages[1].sectionBreak.
+test('places a section break on page 2, follows the current page in the palette, and saves it under pages[1]', async ({ page }) => {
+  await page.addInitScript(() => {
+    const handle = {
+      name: 'breaks.folio',
+      getFile: async () => new File([], 'breaks.folio', { type: 'application/json' }),
+      createWritable: async () => ({ write: async (written: ArrayBuffer) => { (window as typeof window & { __folioWrites?: number[][] }).__folioWrites = [Array.from(new Uint8Array(written))] }, close: async () => undefined }),
+    }
+    Object.assign(window, { showSaveFilePicker: async () => handle })
+  })
+  await page.goto('/')
+  await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  await page.getByRole('button', { name: 'Start blank' }).click()
+  await tools(page).getByRole('button', { name: 'Add page' }).click()
+  await expect(labels(page)).toHaveText(['Page 1', 'Page 2'])
+  const sheets = page.locator('.page-surface')
+  const entry = page.getByRole('button', { name: 'Place Section Break' })
+
+  // PLACE on page 2 from the keyboard: the handle is page 2's, on page 2's sheet.
+  await page.getByRole('button', { name: 'Page 2' }).click()
+  await expect(entry).toBeEnabled()
+  await entry.click()
+  await page.getByLabel('Content on page 2 of 2').press('Enter')
+  const pageTwoBreak = page.getByRole('button', { name: 'Section Break on page 2' })
+  await expect(pageTwoBreak).toHaveAttribute('aria-pressed', 'true')
+  await expect(sheets.nth(1).locator('.section-break-line')).toHaveCount(1)
+  await expect(sheets.nth(0).locator('.section-break-line')).toHaveCount(0)
+
+  // THE PALETTE FOLLOWS THE CURRENT PAGE (D-5.1).
+  await expect(entry).toBeDisabled()
+  await expect(page.getByText('This page already has its Section Break.')).toBeVisible()
+  await page.getByRole('button', { name: 'Page 1' }).click()
+  await expect(entry).toBeEnabled()
+  await page.getByRole('button', { name: 'Page 2' }).click()
+  await expect(entry).toBeDisabled()
+
+  // SAVE. The break is page 2's key, and page 1 has none.
+  await page.getByRole('button', { name: 'Save As' }).click()
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __folioWrites?: number[][] }).__folioWrites?.[0]?.length ?? 0)).toBeGreaterThan(0)
+  const saved = JSON.parse(await page.evaluate(() => new TextDecoder().decode(new Uint8Array((window as typeof window & { __folioWrites?: number[][] }).__folioWrites![0]!))))
+  expect(typeof saved.pages[1].sectionBreak).toBe('number')
+  expect(saved.pages[0].sectionBreak).toBeUndefined()
+})
+
 // SPEC-multi-pages story 4 — THE HEADER, EDITABLE FROM ANY PAGE, THROUGH THE REAL
 // GO WORKER. A three-page document with one header text: press page 3's header
 // copy (a real hit test on an aria-hidden echo), edit the text there, see every

@@ -2452,7 +2452,9 @@ func duplicateComponent(t *Template, raw map[string]json.RawMessage) (CanvasProj
 	}
 	ids := template.Document{NextID: t.doc.NextID}
 	clone := cloneComponent(*element, projected, snap, &ids)
-	if err := refuseSectionBreakStraddle(t, projected.Name, clone, "component.geometry"); err != nil {
+	// The copy lands on its source's page, so that page's break judges it (the
+	// clone's new id is in no page index yet).
+	if err := refuseSectionBreakStraddleOnPage(t, projected.Name, contentPageIndex(t)[id], clone, "component.geometry"); err != nil {
 		return CanvasProjection{}, err
 	}
 	previousElements, previousID := band.Elements, t.doc.NextID
@@ -2660,7 +2662,7 @@ func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasPro
 			}
 			page = target
 		}
-		// The copy is judged on the page it lands on: only page 1 has a break.
+		// The copy is judged by the break of the page it lands on.
 		if err := refuseSectionBreakStraddleOnPage(working, src.projected.Name, page, clone, "component.geometry"); err != nil {
 			return CanvasProjection{}, err
 		}

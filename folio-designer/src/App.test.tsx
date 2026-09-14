@@ -10919,7 +10919,7 @@ describe('spec-section-break: the Section Break on the canvas', () => {
 describe('SPEC-multi-pages: pages on the canvas', () => {
   const snapshotOf = (projection: CanvasProjection, revision = 1, extra: object = {}) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection, ...extra })
   const text = (id: string, page: number, y = 0, band: 'content' | 'pageHeader' | 'pageFooter' = 'content') => ({ id, type: 'text' as const, band, x: 0, y, width: 72_000, height: 24_000, resizable: true, page })
-  const pages = (count: number, patch: Partial<CanvasProjection> = {}): CanvasProjection => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, () => 0), contentWindowPages: Array.from({ length: count }, (_value, index) => index), pageBreaks: Array.from({ length: count }, (_value, index) => index !== 1), ...patch })
+  const pages = (count: number, patch: Partial<CanvasProjection> = {}): CanvasProjection => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, () => 0), contentWindowPages: Array.from({ length: count }, (_value, index) => index), pageBreaks: Array.from({ length: count }, (_value, index) => index !== 1), ...(count > 1 ? { sectionBreaks: Array.from({ length: count }, () => null), sectionBreakAnchors: Array.from({ length: count }, () => true) } : {}), ...patch })
   const open = (projection: CanvasProjection, answer: (operation: string) => Promise<unknown> = async () => ({ snapshot: snapshotOf(projection, 2) }), extra: object = {}) => {
     const request = vi.fn(answer)
     render(<App engine={engine(request as never)} initialSnapshot={snapshotOf(projection, 1, extra)} />)
@@ -10942,8 +10942,8 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     expect(tools().getByRole('button', { name: 'Delete page' })).toHaveAttribute('data-tip', 'Delete page: a document keeps at least one page')
   })
 
-  it('draws each page component only on its own page sheets, labels each page, and the break only on page 1', () => {
-    open(pages(2, { sectionBreak: 400_000, components: [text('e1', 0, 0), text('e2', 1, 0)].map((component) => component.page === 0 ? { ...component, belowSectionBreak: false } : component) }))
+  it('draws each page component only on its own page sheets, labels each page, and page 1 break only on page 1 sheets', () => {
+    open(pages(2, { sectionBreaks: [400_000, null], components: [text('e1', 0, 0), text('e2', 1, 0)].map((component) => component.page === 0 ? { ...component, belowSectionBreak: false } : component) }))
     expect(Array.from(document.querySelectorAll('.page-label')).map((node) => node.textContent)).toEqual(['Page 1', 'Page 2'])
     const [first, second] = surfaces()
     expect(within(first!).getByLabelText('text component e1')).toBeInTheDocument()
@@ -10952,6 +10952,116 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(0)
     expect(first!.querySelectorAll('.section-break-line')).toHaveLength(1)
     expect(second!.querySelectorAll('.section-break-line')).toHaveLength(0)
+    expect(within(first!).getByRole('button', { name: 'Section Break on page 1' })).toBeInTheDocument()
+  })
+
+  // SPEC-multi-pages story 5: a section break on every page. Each page's line
+  // is drawn among its own sheets and named by its page; every gesture on it
+  // names that page, and page 1's sends today's bytes.
+  it('draws each page break on its own sheets, named by page, and edits page 2 break with page 1', async () => {
+    const request = open(pages(2, { sectionBreaks: [400_000, 300_000], sectionBreakAnchors: [true, false], components: [{ ...text('e1', 0), belowSectionBreak: false }, { ...text('e2', 1), belowSectionBreak: false }] }))
+    const [first, second] = surfaces()
+    const breakOn = (n: number) => screen.getByRole('button', { name: `Section Break on page ${n}` })
+    expect(first!.querySelectorAll('.section-break-line')).toHaveLength(1)
+    expect(second!.querySelectorAll('.section-break-line')).toHaveLength(1)
+    expect(first!.contains(breakOn(1))).toBe(true)
+    expect(second!.contains(breakOn(2))).toBe(true)
+    expect((second!.querySelector('.section-break-line') as HTMLElement).style.getPropertyValue('--section-break-display-y')).toBe('300px')
+    // Page 2's break is unanchored, so only page 1's tab shows the anchor.
+    expect(first!.querySelectorAll('[data-testid="section-break-anchor-icon"]')).toHaveLength(1)
+    expect(second!.querySelectorAll('[data-testid="section-break-anchor-icon"]')).toHaveLength(0)
+    fireEvent.click(breakOn(2))
+    expect(breakOn(2)).toHaveAttribute('aria-pressed', 'true')
+    expect(breakOn(1)).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toHaveValue('300')
+    expect(screen.getByRole('checkbox', { name: 'Anchor' })).not.toBeChecked()
+    // Selecting it made page 2 current: its Place Section Break is disabled.
+    expect(screen.getByRole('button', { name: 'Place Section Break' })).toBeDisabled()
+    expect(screen.getByText('This page already has its Section Break.')).toBeInTheDocument()
+    fireEvent.keyDown(breakOn(2), { key: 'ArrowDown' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":301,"snap":false,"page":1}']))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Anchor' }))
+    await waitFor(() => expect(sent(request)).toHaveLength(2))
+    expect(sent(request)[1]).toBe('{"kind":"setSectionBreakAnchor","version":1,"anchor":true,"page":1}')
+    const field = screen.getByRole('textbox', { name: 'Y (pt)' })
+    fireEvent.change(field, { target: { value: '320' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toHaveLength(3))
+    expect(sent(request)[2]).toBe('{"kind":"setSectionBreak","version":1,"offset":320,"snap":false,"page":1}')
+    fireEvent.keyDown(breakOn(2), { key: 'Delete' })
+    await waitFor(() => expect(sent(request)).toHaveLength(4))
+    expect(sent(request)[3]).toBe('{"kind":"removeSectionBreak","version":1,"page":1}')
+    // Page 1's break keeps today's bytes.
+    fireEvent.keyDown(breakOn(1), { key: 'ArrowUp' })
+    await waitFor(() => expect(sent(request)).toHaveLength(5))
+    expect(sent(request)[4]).toBe('{"kind":"setSectionBreak","version":1,"offset":399,"snap":false}')
+  })
+
+  it('deletes page 2 break from the toolbar Delete, naming page 2', async () => {
+    const request = open(pages(2, { sectionBreaks: [null, 300_000] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Section Break on page 2' }))
+    fireEvent.click(tools().getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1,"page":1}']))
+  })
+
+  it('nudges a selected page 2 break from the window arrow keys, naming page 2', async () => {
+    const request = open(pages(2, { sectionBreaks: [null, 300_000] }))
+    const handle = screen.getByRole('button', { name: 'Section Break on page 2' })
+    fireEvent.click(handle)
+    handle.blur()
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":301,"snap":false,"page":1}']))
+  })
+
+  it('drops the break selection when undo changes the page count, so Delete never hits another page break', async () => {
+    // Undoing a page delete brings a page back before page 2: page 2's break is
+    // now page 3's, and the new page 2 has a break of its own.
+    const restored = pages(3, { sectionBreaks: [null, 200_000, 300_000] })
+    const request = open(pages(2, { sectionBreaks: [null, 300_000] }), async () => ({ snapshot: snapshotOf(restored, 2, { canUndo: false, canRedo: true }) }), { canUndo: true, canRedo: false })
+    fireEvent.click(screen.getByRole('button', { name: 'Section Break on page 2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Section Break on page 3' })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Section Break on page 2' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.keyDown(document.body, { key: 'Delete' })
+    await settle()
+    expect(sent(request)).toEqual([])
+  })
+
+  it('drags page 2 break by clientY and sends one snapped command naming page 2', async () => {
+    const request = open(pages(2, { sectionBreaks: [null, 300_000] }))
+    const strip = screen.getByRole('button', { name: 'Section Break on page 2' })
+    fireEvent.pointerDown(strip, { pointerId: 1, button: 0, buttons: 1, clientY: 100 })
+    fireEvent.pointerMove(strip, { pointerId: 1, buttons: 1, clientY: 140 })
+    expect(surfaces()[1]!.querySelector('.section-break-readout')?.textContent).toBe('340')
+    expect(surfaces()[0]!.querySelector('.section-break-readout')).toBeNull()
+    fireEvent.pointerUp(strip, { pointerId: 1, buttons: 0, clientY: 140 })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":340,"snap":true,"page":1}']))
+  })
+
+  // D-5.1: Place Section Break follows the current page.
+  it('disables Place Section Break only while the current page has a break, and skips such a band while armed', async () => {
+    const withBoth = pages(2, { sectionBreaks: [364_945, 300_000], components: [text('e1', 0, 500_000), text('e2', 1, 0)].map((component) => ({ ...component, belowSectionBreak: component.page === 0 })) })
+    const request = open(pages(2, { sectionBreaks: [null, 300_000], components: [text('e1', 0, 500_000), { ...text('e2', 1, 0), belowSectionBreak: false }] }), async () => ({ snapshot: snapshotOf(withBoth, 2) }))
+    const entry = () => screen.getByRole('button', { name: 'Place Section Break' })
+    expect(entry()).toBeEnabled()
+    fireEvent.click(label(2))
+    expect(entry()).toBeDisabled()
+    expect(screen.getByText('This page already has its Section Break.')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+    expect(entry()).toBeEnabled()
+    expect(screen.queryByText('This page already has its Section Break.')).toBeNull()
+    fireEvent.click(label(1))
+    fireEvent.click(entry())
+    expect(entry()).toHaveAttribute('aria-pressed', 'true')
+    // Page 2's content band already has its break: no target, nothing sent.
+    fireEvent.keyDown(screen.getByLabelText('Content on page 2 of 2'), { key: 'Enter' })
+    await settle()
+    expect(sent(request)).toEqual([])
+    fireEvent.keyDown(screen.getByLabelText('Content on page 1 of 2'), { key: 'Enter' })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"setSectionBreak","version":1,"offset":364.945,"snap":true}']))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Section Break on page 1' })).toHaveAttribute('aria-pressed', 'true'))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Section Break on page 1' })))
+    expect(entry()).toBeDisabled()
   })
 
   it('selects a page from its empty space or its label, outlines it, and shows its Page Break', async () => {
@@ -11132,11 +11242,11 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     fireEvent.keyDown(screen.getByLabelText('Content on page 1 of 2'), { key: 'Enter' })
     await waitFor(() => expect(sent(request)).toHaveLength(2))
     expect(sent(request)[1]).toBe('{"kind":"dropComponent","version":1,"type":"text","x":36,"y":56,"snap":true}')
-    // A section break on a later page is story 5's: that placement sends nothing.
+    // Story 5: a section break placed on page 2's content band names page 2.
     fireEvent.click(screen.getByRole('button', { name: 'Place Section Break' }))
     fireEvent.keyDown(screen.getByLabelText('Content on page 2 of 2'), { key: 'Enter' })
-    await settle()
-    expect(sent(request)).toHaveLength(2)
+    await waitFor(() => expect(sent(request)).toHaveLength(3))
+    expect(sent(request)[2]).toBe('{"kind":"setSectionBreak","version":1,"offset":364.945,"snap":true,"page":1}')
   })
 
   it('places on a later page content band by pointer release into that page, at its page-local y', async () => {

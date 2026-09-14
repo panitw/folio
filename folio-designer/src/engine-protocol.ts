@@ -465,6 +465,13 @@ export type CanvasProjection = Readonly<{
 	// only when the document declares a break and that break is unanchored;
 	// absent means anchored (or no break at all). From Go, never derived here.
 	sectionBreakAnchor?: false
+	// SPEC-multi-pages story 5: on a projection with more than one designed
+	// page, INSTEAD of the pair above, each page's break offset (in its own
+	// column's band-relative millipoints) or null, and each page's Anchor —
+	// false only where that page's break is unanchored. Absent on a one-page
+	// projection. Read through section-break.ts's sectionBreakOnPage.
+	sectionBreaks?: ReadonlyArray<number | null>
+	sectionBreakAnchors?: ReadonlyArray<boolean>
 	// fontFamilies is the closed set style.fontFamily may name in THIS
 	// document, from Go, sorted; defaultFontSize is the size the producer
 	// draws an element that commits none at. Neither is restated here.
@@ -759,7 +766,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'headerAlign', 'headerAlignResolved', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && Array.from(column.header).length <= MAX_TABLE_COLUMN_HEADER_CODE_POINTS && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && ['', 'left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.headerAlignResolved as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowPages', 'pageBreaks', 'contentWindowCountIsExact', 'sectionBreak', 'sectionBreakAnchor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowPages', 'pageBreaks', 'contentWindowCountIsExact', 'sectionBreak', 'sectionBreakAnchor', 'sectionBreaks', 'sectionBreakAnchors', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   // THE TWO DOCUMENT-SETTINGS CLAUSES ARE LOAD-BEARING, and `hasOnly` above
   // cannot stand in for them: it is a SUBSET check, so a key Go simply failed
   // to send passes it and reaches the panel as `undefined` — a locale row with
@@ -846,24 +853,38 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   // inside the content band — the range Go's loader already enforces, so a
   // snapshot outside it is a channel fault, not a document.
   const contentBand = bands[1] as Record<string, number>
-  if (value.sectionBreak !== undefined && !(typeof value.sectionBreak === 'number' && Number.isSafeInteger(value.sectionBreak) && value.sectionBreak > 0 && value.sectionBreak < contentBand.height)) return false
-  // CAP-7: the Anchor key is absent, or exactly `false` beside a break.
-  if (value.sectionBreakAnchor !== undefined && !(value.sectionBreakAnchor === false && value.sectionBreak !== undefined)) return false
+  const breakInBand = (offset: unknown) => typeof offset === 'number' && Number.isSafeInteger(offset) && offset > 0 && offset < contentBand.height
+  // SPEC-multi-pages story 5: a ONE-PAGE projection carries the one-page pair
+  // and never the per-page pair; a MULTI-PAGE projection carries the per-page
+  // pair, one entry per designed page (an offset or null; Anchor false only
+  // beside a break), and never the one-page pair. Go always sends the
+  // per-page pair on a multi-page projection.
+  const breaks = value.sectionBreaks
+  const anchors = value.sectionBreakAnchors
+  if (pageCount === 1) {
+    if (breaks !== undefined || anchors !== undefined) return false
+    if (value.sectionBreak !== undefined && !breakInBand(value.sectionBreak)) return false
+    // CAP-7: the Anchor key is absent, or exactly `false` beside a break.
+    if (value.sectionBreakAnchor !== undefined && !(value.sectionBreakAnchor === false && value.sectionBreak !== undefined)) return false
+  } else {
+    if (value.sectionBreak !== undefined || value.sectionBreakAnchor !== undefined) return false
+    if (!Array.isArray(breaks) || breaks.length !== pageCount || !breaks.every((offset) => offset === null || breakInBand(offset))) return false
+    if (!Array.isArray(anchors) || anchors.length !== pageCount || !anchors.every((anchor, index) => anchor === true || (anchor === false && breaks[index] !== null))) return false
+  }
+  const pageHasBreak = (page: number) => pageCount === 1 ? value.sectionBreak !== undefined : (breaks as ReadonlyArray<unknown>)[page] !== null
   const ids = new Set<string>()
   let priorBand = -1
 	return components.every((component) => {
 	if (!isRecord(component) || !hasOnly(component, ['id', 'type', 'band', 'x', 'y', 'width', 'height', 'resizable', 'authored', 'value', 'binding', 'visibleIf', 'fontFamily', 'fontSize', 'lineSpacing', 'bold', 'italic', 'align', 'valign', 'color', 'background', 'borderWidth', 'borderColor', 'borderEdges', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tableBind', 'columns', 'textPaint', 'image', 'imageUnavailable', 'barcode', 'barcodeUnavailable', 'qrcode', 'qrcodeUnavailable', 'belowSectionBreak', 'page']) || typeof component.id !== 'string' || component.id.length === 0 || component.id.length > MAX_ENGINE_ELEMENT_ID_LENGTH || ids.has(component.id) || !componentTypes.includes(component.type as string) || !bandNames.includes(component.band as string) || typeof component.resizable !== 'boolean' || !['x', 'y', 'width', 'height'].every((key) => typeof component[key] === 'number' && Number.isSafeInteger(component[key]) && (component[key] as number) >= 0)) return false
     if (component.authored !== undefined && !isAuthoredProperties(component.authored)) return false
-    // Section membership is Go's: carried by every CONTENT component exactly
-    // when the projection carries a break, and by nothing else.
-    // SPEC-multi-pages: the break is page 1's, so Go sends membership only for
-    // page 1's content components and never for a later page's.
-    const firstPageContent = component.band === 'content' && (component.page === undefined || component.page === 0)
-    if (component.belowSectionBreak === undefined ? value.sectionBreak !== undefined && firstPageContent : typeof component.belowSectionBreak !== 'boolean' || value.sectionBreak === undefined || !firstPageContent) return false
     // SPEC-multi-pages story 2: the designed page a content component belongs
     // to, indexing an existing page; 0 for the page header and footer. Go
     // always sends it; absent is admitted only on a one-page projection.
     if (component.page === undefined ? pageCount !== 1 : typeof component.page !== 'number' || !Number.isSafeInteger(component.page) || component.page < 0 || component.page >= pageCount || (component.band !== 'content' && component.page !== 0)) return false
+    // Section membership is Go's: carried by every CONTENT component exactly
+    // when ITS OWN PAGE has a break (story 5), and by nothing else.
+    const withBreak = component.band === 'content' && pageHasBreak((component.page as number | undefined) ?? 0)
+    if (component.belowSectionBreak === undefined ? withBreak : typeof component.belowSectionBreak !== 'boolean' || !withBreak) return false
     ids.add(component.id)
     const bandIndex = bandNames.indexOf(component.band as string)
     if (bandIndex < priorBand) return false

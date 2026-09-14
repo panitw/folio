@@ -211,7 +211,10 @@ func TestInvalidPagesAreRefusedNamingTheirLocation(t *testing.T) {
 		{"duplicate id", replaceOnce(t, base, `"id": "e3"`, `"id": "e1"`), diag.CodeTemplateFieldInvalid, "pages[1].elements[].id", []string{"duplicate id"}},
 		{"tag spans pages", replaceOnce(t, base, `"id": "e3",`, `"id": "e3",
           "keepTogether": "clause",`), diag.CodePagesInvalid, "pages[1]", []string{"pages[0]", "pages[1]"}},
-		{"later-page break", replaceOnce(t, base, `"pageBreak": false`, `"pageBreak": false, "sectionBreak": 100`), diag.CodeSectionBreakInvalid, "pages[1].sectionBreak", nil},
+		// SPEC-multi-pages story 5: a later page may declare a break; a
+		// malformed one is refused at that page's key.
+		{"later-page null break", replaceOnce(t, base, `"pageBreak": false`, `"pageBreak": false, "sectionBreak": null`), diag.CodeSectionBreakInvalid, "pages[1].sectionBreak", nil},
+		{"later-page anchor without break", replaceOnce(t, base, `"pageBreak": false`, `"pageBreak": false, "sectionBreakAnchor": false`), diag.CodeSectionBreakInvalid, "pages[1].sectionBreakAnchor", nil},
 		{"break on bands.content beside pages", replaceOnce(t, base, `"content": {
       "elements": []`, `"content": {
       "elements": [], "sectionBreak": 100`), diag.CodePagesInvalid, "bands.content.sectionBreak", nil},

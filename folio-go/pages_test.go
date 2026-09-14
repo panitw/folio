@@ -125,17 +125,18 @@ func TestAnEmptyDesignedPageIsOneHeaderAndFooterOnlyPage(t *testing.T) {
 	}
 }
 
-// In this story Page Break off is saved but not honoured: the page still
-// starts a new output page.
-func TestAPageBreakOffStillStartsANewOutputPageInThisStory(t *testing.T) {
+// SPEC-multi-pages story 5 (CAP-9): Page Break off is honoured. The fixture's
+// page 2 is 128pt tall and page 1's rows leave room for it on output page 3,
+// so it joins that page and the PDF has three pages.
+func TestAPageBreakOffPageFollowsThePreviousPagesContent(t *testing.T) {
 	tpl := multiPageTemplate(t, replaceMultiPage(t, `"pageBreak": true`, `"pageBreak": false`))
 	if tpl.doc.Pages[1].PageBreak {
 		t.Fatal("precondition: page 2 loaded with Page Break on")
 	}
 	pages, diags := barcodePages(t, tpl, multiPageStatementDataJSON)
 	onPages, _ := headingBaseline(pages, multiPageStatementPage2Heading)
-	if len(diags) != 0 || len(pages) != 4 || len(onPages) != 1 || onPages[0] != 3 {
-		t.Fatalf("pages %d, page 2's heading on %v, diags %+v; want 4 pages with the heading on page 4", len(pages), onPages, diags)
+	if len(diags) != 0 || len(pages) != 3 || len(onPages) != 1 || onPages[0] != 2 {
+		t.Fatalf("pages %d, page 2's heading on %v, diags %+v; want 3 pages with the heading on page 3", len(pages), onPages, diags)
 	}
 }
 
@@ -203,7 +204,10 @@ func TestPageLoadErrorsNameThePage(t *testing.T) {
     {
       "sectionBreak": 0,
       "elements": [`), DiagCodeSectionBreakInvalid, "pages[0].sectionBreak", ""},
-		{"later-page break", replaceMultiPage(t, `"pageBreak": true`, `"pageBreak": true, "sectionBreak": 100`), DiagCodeSectionBreakInvalid, "pages[1].sectionBreak", ""},
+		// Story 5: a later page's break is checked against that page alone.
+		{"later-page break out of range", replaceMultiPage(t, `"pageBreak": true`, `"pageBreak": true, "sectionBreak": 5000`), DiagCodeSectionBreakInvalid, "pages[1].sectionBreak", "at or below the bottom"},
+		// ee runs 24–38pt, across a page-2 break at 30.
+		{"later-page straddle", replaceMultiPage(t, `"pageBreak": true`, `"pageBreak": true, "sectionBreak": 30`), DiagCodeSectionBreakStraddled, "pages[1].sectionBreak", "element ee"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := ParseTemplate([]byte(c.src))

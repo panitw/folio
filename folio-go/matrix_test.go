@@ -767,6 +767,23 @@ func requireMultiPageStatementPages(t *testing.T, target matrixTarget, raw []byt
 	})
 }
 
+// captureMultiPageFlowRender renders fixtures/multi-page-flow/ in a FRESH
+// process.
+func captureMultiPageFlowRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiPageFlowEnvVar: "1"})
+}
+
+// requireMultiPageFlowPages is the section-break-per-page and Page Break off
+// document's per-leg feature guard: four pages, the header and "Page N of 4"
+// on each, and each part of the flow on its own output page.
+func requireMultiPageFlowPages(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	multiPageFlowAssertPages(t, raw, func(format string, args ...any) {
+		t.Fatalf("%s: multi-page-flow leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureSectionBreakStatementRender renders fixtures/section-break-statement/
 // in a FRESH process.
 func captureSectionBreakStatementRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -2099,6 +2116,20 @@ var matrixDocuments = []matrixDocument{
 		fixtureRelPath:   []string{"fixtures", "multi-page-statement", "expected.json"},
 		requireFontFile2: true,
 		extraGuard:       requireMultiPageStatementPages,
+		wantPages:        4,
+	},
+	{
+		// SPEC-multi-pages CAP-6 and CAP-9: the first cross-target artifact
+		// with a section break on a later page and Page Break off. Page 2 does
+		// not fit after page 1 and starts a new output page; page 3 fits under
+		// page 2's note, moved down by a sub-page shift the four legs must
+		// agree on.
+		label:            "multi-page-flow (a section break per page, and pages that follow one another)",
+		slug:             "multi-page-flow",
+		capture:          captureMultiPageFlowRender,
+		fixtureRelPath:   []string{"fixtures", "multi-page-flow", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireMultiPageFlowPages,
 		wantPages:        4,
 	},
 	{

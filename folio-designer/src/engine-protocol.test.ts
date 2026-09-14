@@ -216,10 +216,10 @@ describe('canvas projection protocol guard', () => {
   // restart at 0 at each page's first window.
   it('accepts page-local window origins grouped by designed page', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
-    const pages = { ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 0], contentWindowPages: [0, 0, 0, 1], pageBreaks: [true, true] }
+    const pages = { ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 0], contentWindowPages: [0, 0, 0, 1], pageBreaks: [true, true], sectionBreaks: [null, null], sectionBreakAnchors: [true, true] }
     expect(projection(pages)).toBeDefined()
     // An empty later page is one window of its own.
-    expect(projection({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 0, 0], contentWindowPages: [0, 1, 2], pageBreaks: [true, false, true] })).toBeDefined()
+    expect(projection({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 0, 0], contentWindowPages: [0, 1, 2], pageBreaks: [true, false, true], sectionBreaks: [null, null, null], sectionBreakAnchors: [true, true, true] })).toBeDefined()
     const { contentWindowPages: _pages, ...noPages } = canvas
     expect(projection(noPages)).toBeUndefined()
     expect(projection({ ...pages, contentWindowPages: null })).toBeUndefined()
@@ -240,7 +240,7 @@ describe('canvas projection protocol guard', () => {
   // SPEC-multi-pages story 2: each page's Page Break and each component's page.
   it('accepts one Page Break per designed page and a component page that names an existing page', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
-    const two = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, false] }
+    const two = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, false], sectionBreaks: [null, null], sectionBreakAnchors: [true, true] }
     const content = (page: unknown) => ({ id: 'e1', type: 'rect', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, page })
     expect(projection(two)).toBeDefined()
     expect(projection({ ...two, components: [content(1)] })).toBeDefined()
@@ -259,16 +259,31 @@ describe('canvas projection protocol guard', () => {
     expect(projection({ ...two, components: [{ ...content(0), band: 'pageHeader' }] })).toBeDefined()
   })
 
-  // The projection Add page produces on a document with a section break: Go
-  // sends belowSectionBreak for page 1's content components only.
-  it('requires section membership on page 1 content components only when page 1 has a break', () => {
+  // SPEC-multi-pages story 5: a multi-page projection carries one break per
+  // page instead of the one-page pair, and membership follows each content
+  // component's OWN page.
+  it('accepts per-page breaks only on a multi-page projection, with membership on the pages that have one', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
     const rect = (id: string, page: number, extra: object = {}) => ({ id, type: 'rect', band: 'content', x: 0, y: 0, width: 10, height: 10, resizable: true, page, ...extra })
-    const withBreak = (components: ReadonlyArray<object>) => ({ ...canvas, sectionBreak: 400, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, true], components })
-    expect(projection(withBreak([rect('e1', 0, { belowSectionBreak: false }), rect('e2', 1)]))).toBeDefined()
-    // A later page's component must not carry it; page 1's must.
-    expect(projection(withBreak([rect('e1', 0, { belowSectionBreak: false }), rect('e2', 1, { belowSectionBreak: false })]))).toBeUndefined()
-    expect(projection(withBreak([rect('e1', 0), rect('e2', 1)]))).toBeUndefined()
+    const two = (patch: object = {}) => ({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 0], contentWindowPages: [0, 1], pageBreaks: [true, true], sectionBreaks: [null, 400], sectionBreakAnchors: [true, false], components: [], ...patch })
+    expect(projection(two())).toBeDefined()
+    expect(projection(two({ components: [rect('e1', 0), rect('e2', 1, { belowSectionBreak: true, y: 500 })] }))).toBeDefined()
+    // Membership on a page without a break, or missing on a page with one.
+    expect(projection(two({ components: [rect('e1', 0, { belowSectionBreak: false })] }))).toBeUndefined()
+    expect(projection(two({ components: [rect('e2', 1)] }))).toBeUndefined()
+    // Both per-page lists are required on a multi-page projection.
+    const { sectionBreaks: _breaks, ...noBreaks } = two()
+    expect(projection(noBreaks)).toBeUndefined()
+    const { sectionBreakAnchors: _anchors, ...noAnchors } = two()
+    expect(projection(noAnchors)).toBeUndefined()
+    // One entry per page, each null or strictly inside the content band.
+    for (const bad of [[null], [null, null, null], [0, null], [null, 1800], [null, 12.5], [null, '400'], null]) expect(projection(two({ sectionBreaks: bad }))).toBeUndefined()
+    // One boolean per page, false only beside a break.
+    for (const bad of [[false, true], [true], [true, 'false'], [true, null], null]) expect(projection(two({ sectionBreakAnchors: bad }))).toBeUndefined()
+    // Never the one-page pair on a multi-page projection, nor the reverse.
+    expect(projection(two({ sectionBreak: 400 }))).toBeUndefined()
+    expect(projection(two({ sectionBreakAnchor: false }))).toBeUndefined()
+    expect(projection({ ...canvas, sectionBreaks: [null], sectionBreakAnchors: [true] })).toBeUndefined()
   })
 
   // STORY 8.1. fontChains is the first projection field that carries the

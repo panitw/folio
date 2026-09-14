@@ -518,6 +518,19 @@ var goldenDigestRecord = []struct {
 		},
 	},
 	{
+		// RECORDED by SPEC-multi-pages (CAP-6, CAP-9): the first committed
+		// document with a section break on a later page and Page Break off.
+		// Page 2 starts a new output page because it needs two; page 3 follows
+		// page 2's note on output page 4. Its README quotes the digest.
+		dir:    "multi-page-flow",
+		sha256: "787d4707423f67975f1c26cee7d29002561b2ae5494e1f6f4acb50a12299cb07",
+		sites: []goldenDigestSite{
+			{kind: "expected.json", relPath: "fixtures/multi-page-flow/expected.json"},
+			{kind: "second-literal"},
+			{kind: "readme", relPath: "fixtures/multi-page-flow/README.md"},
+		},
+	},
+	{
 		// RECORDED by spec-section-break (CAP-2): the first committed document
 		// carrying a section break, and the first declaring 4.1. Forty
 		// synthetic rows cross the break, so the legend lands on an added
@@ -1098,6 +1111,7 @@ var declaredEpic2GateObligations = []string{
 	"matrix-document: declared-variants",         // Story 11.5 (DW-237) — the first cross-target artifact that declares bold or italic at all, and therefore the first whose recorded bytes depend on a chain entry's DECLARED cuts being read (Story 11.2's chainFaceNames). Measured at 11.5's baseline, twice and by two independent mechanisms, no committed fixture contained the string "bold" or "italic" anywhere — so a resolver that silently answered every declared variant with the entry's base face would have moved no golden, reddened no test and raised no diagnostic. THE AUTHORISING RULING IS THIS STORY'S OWN ACCEPTANCE CRITERION (D-11.5.1, Q2): "Given the fixture rendered on all four targets, when TestCrossTargetByteIdentity runs, then all four legs agree with each other and with expected.pdf." Four cuts also mean four subset operations and four embedded programs per leg, which is four times the surface AD-21's four targets exist to hold to one answer. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error) AND run in-story
 	"matrix-document: barcode-thai-bill-payment", // spec-barcode-qr-elements CAP-1 — the first cross-target artifact carrying a barcode and declaring 4.0; its bytes are integer bar geometry alone. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: multi-page-statement",      // SPEC-multi-pages CAP-5 — the first cross-target artifact written in the `pages` shape; page 1's table runs three output pages and page 2 starts on output page 4, so Page X of Y sums every designed page. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
+	"matrix-document: multi-page-flow",           // SPEC-multi-pages CAP-6 and CAP-9 — the first cross-target artifact with a section break on a later page and Page Break off; page 2 starts a new output page because it needs two, and page 3 follows page 2's note on output page 4. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: section-break-unanchored",  // spec-section-break CAP-7 — the first cross-target artifact carrying an unanchored section break; thirty-five rows end past the line and the legend is pushed down on page 1. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: section-break-statement",   // spec-section-break CAP-2 — the first cross-target artifact carrying a section break and declaring 4.1; forty rows cross the break, so the legend lands on an added page. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
 	"matrix-document: qrcode-payments",           // spec-barcode-qr-elements CAP-2 — the first cross-target artifact carrying a qrcode (one per error-correction level); its bytes are integer module geometry alone. Legs wired in .github/workflows/matrix.yml (docs list + an upload path per target under if-no-files-found: error); the four-target run itself is NOT performed in-story and is owed at the next matrix gate
