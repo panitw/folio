@@ -401,3 +401,40 @@ func TestMoveToAnotherPageKeepsAKeepTogetherGroupWhole(t *testing.T) {
 		t.Fatalf("group on pages %d,%d at %d,%d; want both on page index 0, eg at 410000, 4pt apart", gPage, hPage, g.Y, h.Y)
 	}
 }
+
+// SPEC-multi-pages: paste onto the page under the pointer. duplicateComponents
+// takes an optional target `page`.
+func TestDuplicateComponentsPastesOntoTheTargetPage(t *testing.T) {
+	tpl := multiPageTemplate(t, multiPageStatementTemplateJSON)
+	before := reparse(t, tpl)
+	sourcePage, source := pageOfElement(before, "e5")
+	if sourcePage != 0 {
+		t.Fatalf("fixture: e5 is on page %d, want page 1", sourcePage+1)
+	}
+	applyPageCommand(t, tpl, `{"kind":"duplicateComponents","version":1,"ids":["e5","e1"],"snap":false,"page":1}`)
+	d := reparse(t, tpl)
+	if len(d.Pages[0].Elements) != len(before.Pages[0].Elements) || len(d.Pages[1].Elements) != len(before.Pages[1].Elements)+1 {
+		t.Fatalf("paste did not land on page 2 alone: page 1 %v, page 2 %v", elementIDs(d.Pages[0].Elements), elementIDs(d.Pages[1].Elements))
+	}
+	// Another page keeps the source's page-local position: no stair-step.
+	if pasted := d.Pages[1].Elements[len(d.Pages[1].Elements)-1]; pasted.X != source.X || pasted.Y != source.Y {
+		t.Errorf("pasted at %d,%d, want the source's %d,%d", pasted.X, pasted.Y, source.X, source.Y)
+	}
+	// A header or footer copy ignores the page and stays in its band.
+	if header, footer := len(d.Bands.PageHeader.Elements)+len(d.Bands.PageFooter.Elements), len(before.Bands.PageHeader.Elements)+len(before.Bands.PageFooter.Elements); header != footer+1 {
+		t.Errorf("header and footer hold %d elements, want %d", header, footer+1)
+	}
+
+	// Pasting onto the source's own page is exactly today's duplicate.
+	paged := multiPageTemplate(t, multiPageStatementTemplateJSON)
+	plain := multiPageTemplate(t, multiPageStatementTemplateJSON)
+	applyPageCommand(t, paged, `{"kind":"duplicateComponents","version":1,"ids":["e5"],"snap":true,"page":0}`)
+	applyPageCommand(t, plain, `{"kind":"duplicateComponents","version":1,"ids":["e5"],"snap":true}`)
+	pagedBytes, _ := SerializeTemplate(paged)
+	plainBytes, _ := SerializeTemplate(plain)
+	if !bytes.Equal(pagedBytes, plainBytes) {
+		t.Error("a paste onto the source's own page differs from today's duplicate")
+	}
+
+	refusePageCommand(t, multiPageTemplate(t, multiPageStatementTemplateJSON), `{"kind":"duplicateComponents","version":1,"ids":["e5"],"snap":false,"page":5}`, pagesPath)
+}

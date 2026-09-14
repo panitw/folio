@@ -30,6 +30,7 @@ it('encodes a captured group movement as one relative, revision-fenced command',
 it('encodes a group delete and a group duplicate as one command each', () => {
   expect(new TextDecoder().decode(deleteComponentsCommand(['e1', 'e9']))).toBe('{"kind":"deleteComponents","version":1,"ids":["e1","e9"]}')
   expect(new TextDecoder().decode(duplicateComponentsCommand(['e1', 'e9'], true))).toBe('{"kind":"duplicateComponents","version":1,"ids":["e1","e9"],"snap":true}')
+  expect(new TextDecoder().decode(duplicateComponentsCommand(['e1'], false, 2))).toBe('{"kind":"duplicateComponents","version":1,"ids":["e1"],"snap":false,"page":2}')
   expect(JSON.parse(new TextDecoder().decode(deleteComponentsCommand(['e"1'])))).toEqual({ kind: 'deleteComponents', version: 1, ids: ['e"1'] })
 })
 

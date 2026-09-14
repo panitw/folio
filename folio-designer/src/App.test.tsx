@@ -11133,6 +11133,33 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     await waitFor(() => expect(sent(request)).toEqual(['{"kind":"createComponent","version":1,"type":"text","band":"content","x":120,"y":640,"width":72,"height":24,"snap":true,"page":1}']))
   })
 
+  // A paste lands on the page whose sheet the pointer is over; off every sheet
+  // it is today's command and each copy stays on its source's page.
+  it('pastes copied elements onto the page the pointer is over', async () => {
+    const request = open(pages(2, { components: [text('e1', 0)] }))
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+    fireEvent.pointerMove(surfaces()[1]!)
+    fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e1"],"snap":true,"page":1}']))
+    await settle()
+    fireEvent.pointerLeave(region)
+    fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+    await waitFor(() => expect(sent(request)).toHaveLength(2))
+    expect(sent(request)[1]).toBe('{"kind":"duplicateComponents","version":1,"ids":["e1"],"snap":true}')
+  })
+
+  it('keeps today paste bytes in a one-page document with the pointer on its sheet', async () => {
+    const request = open({ ...canvas, components: [text('e1', 0)] })
+    fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+    const region = screen.getByLabelText('Canvas region')
+    fireEvent.keyDown(region, { key: 'c', ctrlKey: true })
+    fireEvent.pointerMove(surfaces()[0]!)
+    fireEvent.keyDown(region, { key: 'v', ctrlKey: true })
+    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"duplicateComponents","version":1,"ids":["e1"],"snap":true}']))
+  })
+
   // One pitch at zoom 1 is 865.89pt (the page plus the 24px gap); the content
   // band starts 56pt down each sheet. A press on e1's top is stack y 56pt.
   it('moves a dragged element onto the page under the pointer, previewing it on that sheet', async () => {

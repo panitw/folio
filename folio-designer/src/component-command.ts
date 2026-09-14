@@ -65,8 +65,10 @@ export function duplicateComponentCommand(id: string, snap: boolean): ArrayBuffe
 export function deleteComponentsCommand(ids: ReadonlyArray<string>): ArrayBuffer {
   return commandBytes('deleteComponents', [['ids', jsonArray(ids.map(jsonString))]])
 }
-export function duplicateComponentsCommand(ids: ReadonlyArray<string>, snap: boolean): ArrayBuffer {
-  return commandBytes('duplicateComponents', [['ids', jsonArray(ids.map(jsonString))], ['snap', jsonBoolean(snap)]])
+// SPEC-multi-pages: `page` pastes the content copies onto that page; omitted,
+// every copy stays in its source's band and page (today's bytes).
+export function duplicateComponentsCommand(ids: ReadonlyArray<string>, snap: boolean, page?: number): ArrayBuffer {
+  return commandBytes('duplicateComponents', [['ids', jsonArray(ids.map(jsonString))], ['snap', jsonBoolean(snap)], ...pageField(page)])
 }
 
 // The tree supplies decoded JSON object-key segments only. Go owns the

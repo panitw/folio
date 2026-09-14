@@ -63,3 +63,12 @@ export function contentPageAt(canvas: CanvasProjection, zoom: number, stackY: nu
   if (within < 0 || within >= content.height) return undefined
   return { page: sheet.page, columnY: columnForStackY(stack, canvas, zoom, stackY).columnY }
 }
+
+// SPEC-multi-pages: the designed page of the sheet an event target sits on,
+// read off the sheet's `data-page` attribute — a DOM identity, never geometry.
+// Undefined off every sheet.
+export function pageUnder(target: EventTarget | null): number | undefined {
+  const sheet = target instanceof Element ? target.closest('[data-page]') : null
+  const page = sheet?.getAttribute('data-page')
+  return page === null || page === undefined ? undefined : Number(page)
+}

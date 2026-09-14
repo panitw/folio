@@ -181,3 +181,14 @@ A reader of the file, or an AI agent editing it, sees one list and never has to 
 **Example.** A signature block (a line and a name, grouped with keepTogether) sits on page 1. The author selects both and drags them onto page 3, and both land on page 3 in the same arrangement. Dragging only the line onto page 3 is refused, naming the group.
 
 **Also decided.** The story 3 spec stays whole rather than being split. Placing and moving share one engine field and one way of detecting the page.
+
+## D-3.2 — Paste lands on the page under the mouse (owner, 2026-09-14)
+
+**Question.** When the author copies elements from page 1 and pastes, which page gets the copies?
+
+**Decision.** The page whose sheet the mouse pointer is over when Ctrl/Cmd+V is pressed. This replaces story 3's "paste keeps copies on the source's page".
+- **Position:** a copy pasted onto a different page keeps the original's position on its page. A paste onto the same page keeps today's small offset, so repeated pastes still stair-step.
+- **Header and footer:** copies of header or footer elements stay in their band.
+- **Fallbacks:** with the pointer off every page, or in a one-page document, paste behaves exactly as before. Duplicate is unchanged.
+
+**Example.** The author selects a clause on page 1, copies it, moves the mouse over page 2 and presses Ctrl+V. The copy appears on page 2 at the same spot the clause occupies on page 1.

@@ -154,6 +154,8 @@ context:
 
 ## Spec Change Log
 
+- **2026-09-14, owner follow-up after delivery (D-3.2).** The owner renegotiated "Duplicate and paste keep copies on the source's page". Paste (Ctrl/Cmd+V) now lands on the page whose sheet the pointer is over. `duplicateComponents` takes an optional `page`, and a copy pasted onto a different page keeps its source's page-local position. The pointer page is read off each sheet's `data-page` attribute. With the pointer off every sheet, or in a one-page document, the paste is today's command. Duplicate (the toolbar button) is unchanged.
+
 ## Review Triage Log
 
 | # | Source | Finding | Verdict | Route | Evidence |

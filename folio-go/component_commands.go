@@ -2598,8 +2598,17 @@ func deleteComponents(t *Template, raw map[string]json.RawMessage) (CanvasProjec
 // duplicateComponents copies a whole selection in one command. Each copy obeys
 // duplicateComponent's rules, in its source's band, and every copy's ids come
 // from one counter in the order the ids were given.
+//
+// SPEC-multi-pages: an optional `page` pastes every content copy onto that
+// page. A copy landing on a page other than its source's keeps the source's
+// page-local position (there is nothing there to stair-step away from); a copy
+// on its own page is offset as always. Header and footer copies ignore it.
 func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
-	if err := componentFields(raw, 4); err != nil {
+	fields := 4
+	if _, ok := raw["page"]; ok {
+		fields++
+	}
+	if err := componentFields(raw, fields); err != nil {
 		return CanvasProjection{}, err
 	}
 	ids, err := commandComponentIDs(raw)
@@ -2610,14 +2619,20 @@ func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasPro
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	target, hasPage, err := optionalPageField(t, raw)
+	if err != nil {
+		return CanvasProjection{}, err
+	}
 	working, err := workingComponentCopy(t)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
+	pageOf := contentPageIndex(working)
 	type source struct {
 		band      *template.Band
 		projected CanvasBand
 		element   template.Element
+		page      int
 	}
 	sources := make([]source, 0, len(ids))
 	idsNeeded := int64(0)
@@ -2628,7 +2643,7 @@ func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasPro
 		}
 		// Copy the element value now: appending clones below may move the
 		// band's backing array out from under a pointer.
-		sources = append(sources, source{band: band, projected: projected, element: *element})
+		sources = append(sources, source{band: band, projected: projected, element: *element, page: pageOf[id]})
 		idsNeeded += componentIDsNeeded(*element)
 	}
 	if working.doc.NextID <= 0 || working.doc.NextID > (1<<63-1)-idsNeeded {
@@ -2636,14 +2651,39 @@ func duplicateComponents(t *Template, raw map[string]json.RawMessage) (CanvasPro
 	}
 	counter := template.Document{NextID: working.doc.NextID}
 	for _, src := range sources {
+		band, page := src.band, src.page
 		clone := cloneComponent(src.element, src.projected, snap, &counter)
-		if err := refuseSectionBreakStraddle(working, src.projected.Name, clone, "component.geometry"); err != nil {
+		if hasPage && src.projected.Name == bandContent {
+			band = working.doc.ContentBands()[target]
+			if target != page {
+				clone.X, clone.Y = pastedPosition(src.element, src.projected, snap)
+			}
+			page = target
+		}
+		// The copy is judged on the page it lands on: only page 1 has a break.
+		if err := refuseSectionBreakStraddleOnPage(working, src.projected.Name, page, clone, "component.geometry"); err != nil {
 			return CanvasProjection{}, err
 		}
-		src.band.Elements = append(src.band.Elements, clone)
+		band.Elements = append(band.Elements, clone)
 	}
 	working.doc.NextID = counter.NextID
 	return installComponentCopy(t, working)
+}
+
+// pastedPosition is where a copy pasted onto another page lands: the source's
+// own page-local position, snapped when that still fits the band.
+func pastedPosition(element template.Element, projected CanvasBand, snap bool) (geom.Length, geom.Length) {
+	x, y := element.X, element.Y
+	if !snap {
+		return x, y
+	}
+	width, height := projectedSize(element)
+	sx, _ := SnapToGrid(x)
+	sy, _ := SnapToGrid(y)
+	if containComponent(projected, sx, sy, width, height) != nil {
+		return x, y
+	}
+	return sx, sy
 }
 
 func projectedSize(element template.Element) (geom.Length, geom.Length) {
