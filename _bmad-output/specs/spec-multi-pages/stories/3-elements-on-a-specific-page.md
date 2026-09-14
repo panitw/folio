@@ -26,7 +26,7 @@ context:
 **What it does not do.**
 - **Header and footer from any page** (story 4): editing them there isn't part of this story.
 - **Section breaks on later pages** (story 5): not part of this story either.
-- **Duplicate and paste:** they still put the copy on the same page as the original.
+- **Duplicate:** it still puts the copy on the same page as the original. (Paste was changed after delivery to land on the page under the mouse, D-3.2.)
 - **Select all:** it still selects across every page.
 
 **What done looks like.** In a three-page contract, an author places a signature line on page 3. They drag a clause from page 1 onto page 2, then undo, and the clause is back on page 1. The saved file lists each element under the page it's on.
