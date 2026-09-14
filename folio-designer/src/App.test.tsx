@@ -10818,11 +10818,11 @@ describe('spec-section-break: the Section Break on the canvas', () => {
     await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
   })
 
-  it('deletes a selected break through the Properties Delete Section Break button', async () => {
-    const request = open(withBreak())
+  it('offers no Delete button in the Section Break Properties, only the Y field', () => {
+    open(withBreak())
     fireEvent.click(handle())
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Section Break' }))
-    await waitFor(() => expect(sent(request)).toEqual(['{"kind":"removeSectionBreak","version":1}']))
+    expect(screen.getByRole('textbox', { name: 'Y (pt)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete Section Break' })).toBeNull()
   })
 
   it('nudges a selected break from the window arrow keys when focus is off the line', async () => {
