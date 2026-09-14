@@ -10899,7 +10899,7 @@ describe('spec-section-break: the Section Break on the canvas', () => {
 // confirms in-app first. These rows pin what the canvas sends and draws.
 describe('SPEC-multi-pages: pages on the canvas', () => {
   const snapshotOf = (projection: CanvasProjection, revision = 1, extra: object = {}) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas: projection, ...extra })
-  const text = (id: string, page: number, y = 0, band: 'content' | 'pageHeader' = 'content') => ({ id, type: 'text' as const, band, x: 0, y, width: 72_000, height: 24_000, resizable: true, page })
+  const text = (id: string, page: number, y = 0, band: 'content' | 'pageHeader' | 'pageFooter' = 'content') => ({ id, type: 'text' as const, band, x: 0, y, width: 72_000, height: 24_000, resizable: true, page })
   const pages = (count: number, patch: Partial<CanvasProjection> = {}): CanvasProjection => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, () => 0), contentWindowPages: Array.from({ length: count }, (_value, index) => index), pageBreaks: Array.from({ length: count }, (_value, index) => index !== 1), ...patch })
   const open = (projection: CanvasProjection, answer: (operation: string) => Promise<unknown> = async () => ({ snapshot: snapshotOf(projection, 2) }), extra: object = {}) => {
     const request = vi.fn(answer)
@@ -11125,7 +11125,8 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     // column, so a release 40pt below that sheet's band head is page-local y 640.
     const request = open(pages(2, { contentWindowCount: 3, contentWindowOrigins: [0, 0, 600_000], contentWindowPages: [0, 1, 1], pageBreaks: [true, true] }))
     fireEvent.click(screen.getByRole('button', { name: 'Place Text' }))
-    const band = screen.getByLabelText('Content on page 3 of 3')
+    // D-4.1 (story 4): page 2's continuation sheet names its designed page and its sheet.
+    const band = screen.getByLabelText('Content on page 2 of 2, sheet 3 of 3')
     const released = createEvent.pointerUp(band)
     Object.defineProperty(released, ['offset', 'X'].join(''), { value: 120 })
     Object.defineProperty(released, ['offset', 'Y'].join(''), { value: 40 })
@@ -11202,5 +11203,225 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Page 2' })).toBeNull())
     expect(label(1)).toHaveAttribute('aria-pressed', 'false')
     expect(screen.queryByRole('checkbox', { name: 'Page Break' })).toBeNull()
+  })
+
+  // SPEC-multi-pages story 4: the shared header and footer are editable from any
+  // page. The one named, interactive copy sits on the CURRENT page's first sheet;
+  // every other copy is an aria-hidden echo that still takes a press.
+  describe('header and footer from any page', () => {
+    const h1 = text('h1', 0, 0, 'pageHeader')
+    const f1 = text('f1', 0, 0, 'pageFooter')
+    const named = (id: string) => Array.from(document.querySelectorAll(`[data-component-id="${id}"]`)) as HTMLElement[]
+    const echoOn = (sheet: number, band = 'pageHeader') => surfaces()[sheet]!.querySelector(`.page-band-${band} .canvas-component-echo`) as HTMLElement
+    const press = (node: HTMLElement, init: object = {}) => {
+      fireEvent.pointerDown(node, { pointerId: 1, button: 0, clientX: 10, clientY: 10, ...init })
+      fireEvent.pointerUp(screen.getByLabelText('Canvas region'), { pointerId: 1, clientX: 10, clientY: 10 })
+      // A browser follows the release with a click, which the gesture consumes;
+      // jsdom does not, so send it here or the NEXT click would be swallowed.
+      fireEvent.click(screen.getByLabelText('Canvas region'))
+    }
+    const namedOn = (id: string, sheet: number) => { expect(named(id)).toHaveLength(1); expect(surfaces()[sheet]!.contains(named(id)[0]!)).toBe(true) }
+    // Page 1 spans sheets 1–2; page 2 is sheet 3.
+    const continued = (components: CanvasProjection['components']): CanvasProjection => ({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 600_000, 0], contentWindowPages: [0, 0, 1], pageBreaks: [true, true], components })
+
+    it('selects from page 3: one named copy of each component, moved to page 3, focused, nothing sent', async () => {
+      const request = open(pages(3, { components: [h1, f1] }))
+      namedOn('h1', 0); namedOn('f1', 0)
+      expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(4)
+      press(echoOn(2))
+      namedOn('h1', 2); namedOn('f1', 2)
+      expect(screen.getAllByLabelText('text component h1')).toHaveLength(1)
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+      expect(document.querySelectorAll('.canvas-component-echo')).toHaveLength(4)
+      expect(Array.from(document.querySelectorAll('.canvas-component-echo')).every((echo) => echo.getAttribute('aria-hidden') === 'true' && !echo.hasAttribute('data-component-id') && !echo.hasAttribute('role'))).toBe(true)
+      await waitFor(() => expect(document.activeElement).toBe(named('h1')[0]))
+      await settle()
+      expect(sent(request)).toEqual([])
+    })
+
+    it('edits from page 3 with today updateComponentProperties bytes, the named copy staying on page 3', async () => {
+      const edited = pages(3, { components: [{ ...h1, value: 'Beta' }] })
+      const request = open(pages(3, { components: [{ ...h1, value: 'Acme' }] }), async () => ({ snapshot: snapshotOf(edited, 2) }))
+      press(echoOn(2))
+      const field = screen.getByRole('textbox', { name: 'Text' })
+      fireEvent.change(field, { target: { value: 'Beta' } })
+      fireEvent.blur(field)
+      await waitFor(() => expect(sent(request)).toEqual(['{"kind":"updateComponentProperties","version":1,"ids":["h1"],"changes":{"value":{"op":"set","value":"Beta"}}}']))
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Text' })).toHaveValue('Beta'))
+      namedOn('h1', 2)
+    })
+
+    it('drags an unselected echo on page 2 with the same moveComponents bytes as the named copy, and no page', async () => {
+      const drag = async (node: () => HTMLElement) => {
+        const request = open(pages(2, { components: [h1] }))
+        const region = screen.getByLabelText('Canvas region')
+        fireEvent.pointerDown(node(), { pointerId: 1, button: 0, clientX: 10, clientY: 10 })
+        fireEvent.pointerMove(region, { pointerId: 1, clientX: 10, clientY: 20 })
+        fireEvent.pointerUp(region, { pointerId: 1, clientX: 10, clientY: 20 })
+        await waitFor(() => expect(sent(request)).toHaveLength(1))
+        const [command] = sent(request)
+        cleanup()
+        return command!
+      }
+      const fromNamed = await drag(() => screen.getByLabelText('text component h1'))
+      const fromEcho = await drag(() => echoOn(1))
+      expect(fromNamed).toContain('"kind":"moveComponents"')
+      expect(fromEcho).toBe(fromNamed)
+      expect(fromEcho).not.toContain('"page"')
+    })
+
+    it('moves the current page with content selection, page selection and Escape', () => {
+      open(pages(3, { components: [h1, text('e1', 0)] }))
+      press(echoOn(2))
+      namedOn('h1', 2)
+      fireEvent.keyDown(screen.getByLabelText('text component e1'), { key: 'Enter' })
+      namedOn('h1', 0)
+      fireEvent.click(label(2))
+      namedOn('h1', 1)
+      press(echoOn(2))
+      namedOn('h1', 2)
+      fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'Escape' })
+      namedOn('h1', 0)
+    })
+
+    it('clamps the current page to the last page when its page goes away under a live selection, keeping one named copy', async () => {
+      // The answer drops page 3 while h1 stays selected: current clamps to page 2.
+      const request = open(pages(3, { components: [{ ...h1, value: 'Acme' }] }), async () => ({ snapshot: snapshotOf(pages(2, { components: [{ ...h1, value: 'Beta' }] }), 2) }))
+      press(echoOn(2))
+      namedOn('h1', 2)
+      const field = screen.getByRole('textbox', { name: 'Text' })
+      fireEvent.change(field, { target: { value: 'Beta' } })
+      fireEvent.blur(field)
+      await waitFor(() => expect(sent(request)).toHaveLength(1))
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Page 3' })).toBeNull())
+      namedOn('h1', 1)
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+    })
+
+    it('returns the named copy to page 1 when undo clears the selection', async () => {
+      open(pages(3, { components: [h1] }), async () => ({ snapshot: snapshotOf(pages(2, { components: [h1] }), 2, { canUndo: false, canRedo: true }) }), { canUndo: true, canRedo: false })
+      press(echoOn(2))
+      namedOn('h1', 2)
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Page 3' })).toBeNull())
+      namedOn('h1', 0)
+    })
+
+    it('keeps the current page when the named header copy is clicked after an echo press', () => {
+      open(pages(3, { components: [h1] }))
+      press(echoOn(2))
+      namedOn('h1', 2)
+      fireEvent.click(screen.getByLabelText('text component h1'))
+      namedOn('h1', 2)
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+    })
+
+    it('keeps the current page when a Shift-click adds content on another page', () => {
+      open(pages(2, { components: [h1, text('e1', 0), text('e2', 1)] }))
+      fireEvent.click(screen.getByLabelText('text component e1'))
+      fireEvent.click(screen.getByLabelText('text component e2'), { shiftKey: true })
+      expect(screen.getByLabelText('text component e2')).toHaveClass('canvas-component-selected')
+      namedOn('h1', 0)
+    })
+
+    it('Shift-pressing an echo of the only selected header clears the selection back to page 1, and a click there keeps page 1', () => {
+      open(pages(3, { components: [h1] }))
+      press(echoOn(1))
+      namedOn('h1', 1)
+      press(echoOn(2), { shiftKey: true })
+      expect(document.querySelectorAll('.canvas-component-selected')).toHaveLength(0)
+      namedOn('h1', 0)
+      fireEvent.click(screen.getByLabelText('text component h1'))
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+      namedOn('h1', 0)
+    })
+
+    it('Return to Design on a located failure outranks a stale page selection', async () => {
+      const projection = pages(3, { components: [h1, text('e3', 2)] })
+      const located = snapshotOf(projection)
+      const failure = Object.assign(new Error('The template could not be processed'), { code: 'RENDER_INVALID', elementId: 'e3', producerRenderFailure: true as const })
+      const request = vi.fn(async (operation: string) => {
+        if (operation === 'identity') return { snapshot: located, preview: { revision: 1, identity: 'b'.repeat(64) } }
+        if (operation === 'serialize') return { snapshot: located, bytes }
+        if (operation === 'render') throw failure
+        return { snapshot: located }
+      })
+      render(<App engine={engine(request as never)} initialSnapshot={located} initialSampleData={sample} />)
+      fireEvent.click(label(2))
+      fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
+      const card = await screen.findByLabelText('Local render failure')
+      fireEvent.click(within(card).getByRole('button', { name: 'Return to Design' }))
+      expect(await screen.findByLabelText('text component e3')).toHaveClass('canvas-component-selected')
+      namedOn('h1', 2)
+    })
+
+    it('selects an unselected footer echo on page 2 and names it there', () => {
+      open(pages(2, { components: [h1, f1] }))
+      press(echoOn(1, 'pageFooter'))
+      namedOn('f1', 1)
+      expect(named('f1')[0]).toHaveClass('canvas-component-selected')
+    })
+
+    it('keeps keyboard focus on the header when Escape moves its named copy back to page 1', async () => {
+      open(pages(3, { components: [h1] }))
+      press(echoOn(2))
+      await waitFor(() => expect(document.activeElement).toBe(named('h1')[0]))
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+      namedOn('h1', 0)
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('text component h1')))
+    })
+
+    it('selects from a continuation sheet while the named copy stays on that page first sheet', () => {
+      open(continued([h1]))
+      press(echoOn(1))
+      namedOn('h1', 0)
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+    })
+
+    it('Shift+press on an echo removes the component from the selection, leaving the current page to the remaining selection', () => {
+      open(pages(2, { components: [h1, text('e1', 0)] }))
+      fireEvent.click(screen.getByLabelText('text component e1'))
+      fireEvent.click(screen.getByLabelText('text component h1'), { shiftKey: true })
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+      press(echoOn(1), { shiftKey: true })
+      expect(named('h1')[0]).not.toHaveClass('canvas-component-selected')
+      expect(screen.getByLabelText('text component e1')).toHaveClass('canvas-component-selected')
+      // Toggled out, so the press does not move the current page: e1's page stays.
+      namedOn('h1', 0)
+    })
+
+    it('leaves the selection alone when an echo is pressed while placing', async () => {
+      const request = open(pages(2, { components: [h1] }))
+      fireEvent.click(screen.getByRole('button', { name: 'Place Rectangle' }))
+      fireEvent.pointerDown(echoOn(1), { pointerId: 1, button: 0, clientX: 10, clientY: 10 })
+      await settle()
+      expect(named('h1')[0]).not.toHaveClass('canvas-component-selected')
+      namedOn('h1', 0)
+      expect(sent(request)).toEqual([])
+    })
+
+    it('keeps one-page names while an overflow-sheet echo selects its component', () => {
+      open({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 700_000], contentWindowPages: [0, 0], components: [h1] })
+      const names = () => [...surfaces().map((surface) => surface.getAttribute('aria-label')), ...Array.from(document.querySelectorAll('.page-band')).map((band) => band.getAttribute('aria-label'))]
+      const before = names()
+      expect(before).toContain('Report page 2 of 2 with Page Header, Content, and Page Footer')
+      expect(before).toContain('Page Header on page 2 of 2')
+      press(echoOn(1))
+      namedOn('h1', 0)
+      expect(named('h1')[0]).toHaveClass('canvas-component-selected')
+      expect(names()).toEqual(before)
+    })
+
+    it('names sheets and bands by designed page, adding the sheet on a continuation (D-4.1)', () => {
+      open(continued([h1, text('e1', 0, 610_000)]))
+      expect(surfaces().map((surface) => surface.getAttribute('aria-label'))).toEqual([
+        'Report page 1 of 2 with Page Header, Content, and Page Footer',
+        'Report page 1 of 2, sheet 2 of 3 with Page Header, Content, and Page Footer',
+        'Report page 2 of 2 with Page Header, Content, and Page Footer',
+      ])
+      expect(Array.from(document.querySelectorAll('.page-band-content')).map((band) => band.getAttribute('aria-label'))).toEqual(['Content on page 1 of 2', 'Content on page 1 of 2, sheet 2 of 3', 'Content on page 2 of 2'])
+      expect(screen.getByLabelText('Page Header on page 2 of 2')).toBeInTheDocument()
+      expect(screen.getByLabelText('text component e1; on canvas sheet 2 of 3, which is a consequence of the content above it and can change when the data does — a column position, not a pin to sheet 2')).toBeInTheDocument()
+    })
   })
 })

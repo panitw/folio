@@ -192,3 +192,19 @@ A reader of the file, or an AI agent editing it, sees one list and never has to 
 - **Fallbacks:** with the pointer off every page, or in a one-page document, paste behaves exactly as before. Duplicate is unchanged.
 
 **Example.** The author selects a clause on page 1, copies it, moves the mouse over page 2 and presses Ctrl+V. The copy appears on page 2 at the same spot the clause occupies on page 1.
+
+## D-4.1 — Screen-reader names count designed pages (story 4, owner, 2026-09-14)
+
+**Question.** Sheet and band names count sheets ("Content on page 3 of 3"), while the visible page labels count designed pages ("Page 2"). Which numbering should the names use?
+
+**Decision.** In documents with more than one designed page, names use designed page numbers.
+- **Page and band names:** "Report page 2 of 3 with …" and "Page Header on page 2 of 3".
+- **Continuation sheets:** a sheet that isn't its page's first adds ", sheet K of M", counting every sheet, so names stay unique.
+- **Column position notice:** it names the sheet.
+- **One designed page:** documents with a single designed page, including overflow sheets, keep today's names exactly.
+
+**Why.** A screen reader should hear the same page number the author sees on the page label. Keeping one-page names unchanged protects the existing single-page behaviour and its tests.
+
+**Example.** Page 1's clause table spills onto a second sheet, and page 2 follows. The three content bands are announced as "Content on page 1 of 2", "Content on page 1 of 2, sheet 2 of 3" and "Content on page 2 of 2".
+
+**Also decided.** The story 4 spec stays whole rather than being split.

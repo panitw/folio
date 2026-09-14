@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
 // SPEC-multi-pages story 2 — PAGES ON THE CANVAS, THROUGH THE REAL GO WORKER.
@@ -130,4 +131,71 @@ test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it
   const saved = JSON.parse(await page.evaluate(() => new TextDecoder().decode(new Uint8Array((window as typeof window & { __folioWrites?: number[][] }).__folioWrites![0]!))))
   expect(saved.pages[0].elements).toHaveLength(0)
   expect(saved.pages[1].elements).toHaveLength(2)
+})
+
+// SPEC-multi-pages story 4 — THE HEADER, EDITABLE FROM ANY PAGE, THROUGH THE REAL
+// GO WORKER. A three-page document with one header text: press page 3's header
+// copy (a real hit test on an aria-hidden echo), edit the text there, see every
+// copy change, undo once, then press page 2's echo.
+test('edits the shared header from page 3, every copy changes, one undo reverts it, and page 2 echo takes a press', async ({ page }) => {
+  await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
+  await page.goto('/')
+  await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
+  fixture.bands.pageHeader.elements = [{ id: 'h1', type: 'text', x: 0, y: 0, width: 200, height: 24, value: 'Acme', style: { fontFamily: 'Roboto', fontSize: 12 } }]
+  fixture.nextId = 2
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Open local template' }).click()
+  await (await chooser).setFiles({ name: 'header.folio', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
+  await expect(labels(page)).toHaveText(['Page 1'])
+  await tools(page).getByRole('button', { name: 'Add page' }).click()
+  await expect(labels(page)).toHaveText(['Page 1', 'Page 2'])
+  await tools(page).getByRole('button', { name: 'Add page' }).click()
+  await expect(labels(page)).toHaveText(['Page 1', 'Page 2', 'Page 3'])
+  // Page 1 current: its copy is the named one, and page 3's is an echo.
+  await page.getByRole('button', { name: 'Page 1' }).click()
+  const sheets = page.locator('.page-surface')
+  const named = page.locator('[data-component-id="h1"]')
+  const copies = page.locator('.page-band-pageHeader .canvas-component-text')
+  await expect(named).toHaveCount(1)
+  await expect(sheets.nth(0).locator('[data-component-id="h1"]')).toHaveCount(1)
+  await expect(copies).toHaveCount(3)
+
+  const pressEcho = async (sheet: number) => {
+    const echo = sheets.nth(sheet).locator('.page-band-pageHeader .canvas-component-echo')
+    await echo.scrollIntoViewIfNeeded()
+    const at = await echo.boundingBox()
+    if (!at) throw new Error('header echo is not visible')
+    const point = { x: at.x + 5, y: at.y + 3 }
+    // The echo itself is under the pointer, not the band beneath it.
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.canvas-component')?.className ?? '', point)
+    expect(hit).toContain('canvas-component-echo')
+    await page.mouse.click(point.x, point.y)
+  }
+
+  // SELECT FROM PAGE 3. The named copy, its selection and focus move there.
+  await pressEcho(2)
+  await expect(named).toHaveCount(1)
+  await expect(sheets.nth(2).locator('[data-component-id="h1"]')).toHaveCount(1)
+  await expect(named).toHaveClass(/canvas-component-selected/)
+  await expect(named).toBeFocused()
+
+  // EDIT THERE. Every copy shows the new text.
+  const before = (await revision(page).innerText()).trim()
+  const field = page.getByRole('textbox', { name: 'Text', exact: true })
+  await field.fill('Beta')
+  await field.blur()
+  await expect(revision(page)).not.toHaveText(before)
+  await expect(copies).toHaveText([/Beta/, /Beta/, /Beta/])
+  await expect(sheets.nth(2).locator('[data-component-id="h1"]')).toHaveCount(1)
+
+  // ONE UNDO reverts every copy.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(copies).toHaveText([/Acme/, /Acme/, /Acme/])
+
+  // PAGE 2's echo takes a press and becomes the named copy.
+  await pressEcho(1)
+  await expect(named).toHaveCount(1)
+  await expect(sheets.nth(1).locator('[data-component-id="h1"]')).toHaveCount(1)
+  await expect(named).toHaveClass(/canvas-component-selected/)
 })

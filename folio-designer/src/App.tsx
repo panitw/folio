@@ -375,6 +375,19 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // state only, never saved: selecting an element or the section break,
   // Escape, and undo, redo or a replaced document all clear it.
   const [selectedPage, setSelectedPage] = useState<number>()
+  // SPEC-multi-pages story 4 (D-G.2): THE CURRENT PAGE, 0-based — the page the
+  // author last selected something on. The shared header and footer draw their
+  // one interactive, accessibly named copy on this page's first sheet. Designer
+  // state only; the ref lets installSelection read it without a stale closure.
+  const [currentPageState, setCurrentPageState] = useState(0)
+  const currentPageRef = useRef(0)
+  const setCurrentPage = (page: number) => {
+    // A header or footer copy holding focus unmounts when the current page
+    // moves; focus follows it to its new named copy.
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>('.page-band-pageHeader [data-component-id], .page-band-pageFooter [data-component-id]') : null
+    if (page !== currentPageRef.current && focused?.dataset.componentId) setPendingFocus({ id: focused.dataset.componentId, from: document.activeElement, preventScroll: true })
+    currentPageRef.current = page; setCurrentPageState(page)
+  }
   // The page a Delete page confirmation is open for.
   const [pageDeleteConfirm, setPageDeleteConfirm] = useState<number>()
   const deletePageButtonRef = useRef<HTMLButtonElement>(null)
@@ -388,7 +401,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // state, sends nothing, and is dropped the moment the claim is honoured,
   // withdrawn, or outlived by its component. See the effect beside
   // `selectPlaced` for why this is state and not a timer.
-  const [pendingFocus, setPendingFocus] = useState<Readonly<{ id: string; from: Element | null }>>()
+  const [pendingFocus, setPendingFocus] = useState<Readonly<{ id: string; from: Element | null; preventScroll?: boolean }>>()
   // Where the armed palette kind is following the pointer. One transient
   // client coordinate for chrome that never touches document geometry: it
   // places no component and proposes nothing to Go.
@@ -619,6 +632,9 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // A selected page exists only while the document still has it.
   const pageCount = canvas ? pageCountOf(canvas) : 1
   const pageSelection = selectedPage !== undefined && canvas && selectedPage < pageCount ? selectedPage : undefined
+  // The current page (D-G.2), clamped to the pages the document still has; with
+  // nothing selected and no page selected it is page 1.
+  const currentPage = pageSelection ?? (selected.length === 0 ? 0 : Math.min(currentPageState, pageCount - 1))
   // WHICH PAGE DELETE PAGE TARGETS (D-2.1): the selected page, else the one page
   // every selected CONTENT element is on. Otherwise the reason it is disabled.
   const deletePageTarget: Readonly<{ page: number } | { reason: string }> = (() => {
@@ -1231,8 +1247,16 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const installSelection = (ids: ReadonlyArray<string>) => {
     setBindingError(undefined); setPropertyError(undefined); setCommitError(undefined); revokeTableEditor(); setColumnSelection(undefined); setSectionBreakSelected(false); setSelectedPage(undefined)
     selectedRef.current = ids; setSelected(ids)
-    const band = (snapshotRef.current?.canvas?.components ?? []).find((component) => component.id === ids.at(-1))?.band
+    const components = snapshotRef.current?.canvas?.components ?? []
+    const band = components.find((component) => component.id === ids.at(-1))?.band
     if (band) focusBandRef.current = band
+    // Selecting content makes its page current: kept when the selection still
+    // has content on the current page, otherwise the page of the last selected
+    // content element. A header- or footer-only selection keeps the current
+    // page, and nothing selected is page 1.
+    if (ids.length === 0) { setCurrentPage(0); return }
+    const content = ids.map((id) => components.find((component) => component.id === id)).filter((component) => component?.band === 'content') as CanvasProjection['components'][number][]
+    if (content.length > 0 && !content.some((component) => componentPage(component) === currentPageRef.current)) setCurrentPage(componentPage(content.at(-1)!))
   }
   const canvasSelection = useCanvasSelection({ engine, canvas, revision: snapshot?.revision ?? 0, generation: documentGenerationValue, zoom, selection: selected, enabled: mode === 'design' && !placing && !fileBusy, snap: snapEnabled, documentDelta: canvasDisplay.documentDelta,
     capture: (id) => canvasRegionRef.current?.setPointerCapture?.(id),
@@ -1662,14 +1686,15 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // sequence that. Read the two guards above as covered and this one as not.
   useEffect(() => {
     if (!pendingFocus) return
-    const { id, from } = pendingFocus
+    const { id, from, preventScroll } = pendingFocus
     if (!snapshotRef.current?.canvas?.components.some((component) => component.id === id)) { setPendingFocus(undefined); return }
     if (document.activeElement !== from && document.activeElement !== document.body && from?.isConnected === true) { setPendingFocus(undefined); return }
     const placed = Array.from(canvasRegionRef.current?.querySelectorAll<HTMLElement>('[data-component-id]') ?? []).find((element) => element.dataset.componentId === id)
     // Not mounted yet. Keep the claim; the next render runs this again.
     if (!placed) return
     setPendingFocus(undefined)
-    placed.focus()
+    // An echo press focuses mid-gesture: a scroll would cancel the drag.
+    placed.focus(preventScroll ? { preventScroll: true } : undefined)
   }, [pendingFocus, snapshot])
   useEffect(() => {
     if (!pendingBreakFocus) return
@@ -1685,7 +1710,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const ids = selectedRef.current
     if (ids.length === 0 || mutationInFlight.current) return
     mutationInFlight.current = true
-    void commitComponent(ids.length === 1 ? deleteComponentCommand(ids[0]!) : deleteComponentsCommand(ids), () => { revokeTableEditor(); selectedRef.current = []; setSelected([]); setColumnSelection(undefined) }).finally(() => { mutationInFlight.current = false })
+    void commitComponent(ids.length === 1 ? deleteComponentCommand(ids[0]!) : deleteComponentsCommand(ids), () => { revokeTableEditor(); selectedRef.current = []; setSelected([]); setCurrentPage(0); setColumnSelection(undefined) }).finally(() => { mutationInFlight.current = false })
   }
   // THE ONE OWNERSHIP CHECK for canvas keys, shared by the window arm and a
   // focused component's own Delete. Design mode, no modal, nothing else owning
@@ -1862,7 +1887,22 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // SPEC-multi-pages story 2: PAGES ON THE CANVAS. Selecting a page is designer
   // state; adding, deleting and Page Break are each ONE engine command, so one
   // undo entry, and the engine refuses what cannot be done.
-  const selectPage = (page: number) => { installSelection([]); setSelectedPage(page) }
+  const selectPage = (page: number) => { installSelection([]); setSelectedPage(page); setCurrentPage(page) }
+  // SPEC-multi-pages story 4: a press on a header or footer ECHO acts like a
+  // press on the component itself, makes the echo's page current, and sends
+  // keyboard focus to the component's one interactive copy on that page (it
+  // remounts there, so the focus waits for it). While placing, echoes are
+  // pass-through and this never runs.
+  const pressRepeatingEcho = (id: string, page: number, event: PointerEvent) => {
+    if (placing || event.button !== 0) return
+    event.stopPropagation()
+    if (event.shiftKey) { event.preventDefault(); select(id, true, event.target) }
+    else beginSelectedGroup(id, event)
+    // A Shift-press that toggled it OUT leaves what installSelection set.
+    if (!selectedRef.current.includes(id)) return
+    setCurrentPage(page)
+    setPendingFocus({ id, from: document.activeElement, preventScroll: true })
+  }
   // After the selected page, or at the end; the new page arrives selected.
   const addPage = () => {
     const projection = snapshotRef.current?.canvas
@@ -2687,7 +2727,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const setHistoryAvailability = (next: EngineSnapshot | undefined) => { setUndoAvailable(next?.canUndo === true); setRedoAvailable(next?.canRedo === true) }
-  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setSelectedPage(undefined); setPageDeleteConfirm(undefined); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
+  const setCurrentSnapshot = (next: EngineSnapshot | undefined, keepNewerDraft = false, clearDocumentInteraction = false) => { snapshotRef.current = next; setSnapshot(next); setHistoryAvailability(next); if (clearDocumentInteraction) { documentGeneration.current++; tableEditorSession.current++; setTableEditorEdits(0); setTableEditorDiscarded(undefined); setTableEditorDiscarding(false); setDocumentGenerationValue(documentGeneration.current); setSelected([]); setSelectedPage(undefined); setCurrentPage(0); setPageDeleteConfirm(undefined); setColumnSelection(undefined); setBindingError(undefined); setBindingBusy(false); setTableEditor(undefined); setTableEditorError(undefined); setFontBrowserOpen(false); setAssetError(undefined); setAssetBusy(false); setFontChainError(undefined); holdFontChain(false); clearInteraction() }; if (next?.canvas) { setPreset(next.canvas.preset); setOrientation(next.canvas.orientation); if (!keepNewerDraft) setDraft(draftFor(next.canvas)) } }
   const updateDraft = (key: keyof Draft, value: string) => { draftGeneration.current++; setDraft((current) => ({ ...current, [key]: value })) }
   const announceFailure = (message: string) => { setFileStatus(undefined); setFileError(message) }
   // Retire a settled status. Re-armed on every change to either input, so a new
@@ -2830,7 +2870,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const id = location?.elementId
     const current = snapshotRef.current?.canvas?.components
     clearInteraction()
-    if (id && current?.some((component) => component.id === id)) { revokeTableEditor(); setSelected([id]); setColumnSelection(undefined); setLocateStatus(`Selected ${id} in Design.`) }
+    if (id && current?.some((component) => component.id === id)) { revokeTableEditor(); setSelected([id]); setSelectedPage(undefined); const located = current.find((component) => component.id === id); if (located?.band === 'content') setCurrentPage(componentPage(located)); setColumnSelection(undefined); setLocateStatus(`Selected ${id} in Design.`) }
     else if (id && announceUnavailable) setLocateStatus('Locate unavailable: the authoritative element is no longer present.')
     else setLocateStatus(undefined)
     returnToDesign()
@@ -3105,7 +3145,17 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const many = sheets > 1
     // Drawn ONCE, on the sheet whose window holds the offset, with no echoes.
     const breakAt = sectionBreakPlacement(projection)
-    const pageOf = many ? ` ${sheet.index + 1} of ${sheets}` : ''
+    // D-4.1: with more than one DESIGNED page, names count designed pages, and a
+    // sheet that is not its page's first adds its sheet number so every name
+    // stays unique. A one-page document, overflow sheets included, keeps today's
+    // sheet-counted names exactly.
+    const designedPages = pageCountOf(projection)
+    const multiPage = designedPages > 1
+    const pageNumber = multiPage ? ` ${sheet.page + 1} of ${designedPages}${sheet.pageStart ? '' : `, sheet ${sheet.index + 1} of ${sheets}`}` : ` ${sheet.index + 1} of ${sheets}`
+    const pageOf = many ? pageNumber : ''
+    // Story 4: the shared header and footer draw their one interactive copy on
+    // the current page's first sheet (sheet 0 if the cap truncated it away).
+    const repeatingHome = model.sheets.find((candidate) => candidate.page === currentPage && candidate.pageStart)?.index ?? 0
     // SPEC-multi-pages story 2: clicking a sheet's empty space selects ITS
     // designed page, every sheet of which is outlined; the page's first sheet
     // carries the page label, which selects the page too.
@@ -3144,11 +3194,11 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // content component spanning two windows obeys (Ruling G). Two
         // identical accessible names for one component would break selection,
         // getByLabelText and Playwright's strict mode alike.
-        const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === 0 }))
+        const occurrences = content ? sheet.content : projection.components.filter((component) => component.band === band.name).map((component) => ({ component, y: component.y, home: sheet.index === repeatingHome }))
         const target = `${sheet.index}:${band.name}`
         const paint = (occurrence: SheetOccurrence) => occurrence.home
-          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && !sheet.pageStart ? canvasColumnPositionNotice(sheet.index + 1, sheets) : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta, componentPage(occurrence.component)) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event, grabAt(occurrence, event))} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
-          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event, grabAt(occurrence, event))} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
+          ? <CanvasComponent key={occurrence.component.id} component={occurrence.component} carriedFaces={paintableFaces} chromeOffset={{ x: band.x, y: band.y }} origin={occurrence.component.y - occurrence.y} note={content && !sheet.pageStart ? canvasColumnPositionNotice(sheet.index + 1, sheets, multiPage ? 'sheet' : 'page') : undefined} limit={{ band: band.name, width: band.width, height: band.height }} zoom={zoom} selected={selected.includes(occurrence.component.id)} selectedColumnId={selectedTableColumn?.tableId === occurrence.component.id ? selectedTableColumn.columnId : undefined} preview={drag?.id === occurrence.component.id ? drag : undefined} engine={engine} generation={documentGenerationValue} trackColumn={content && many ? (edge: number, delta: number) => columnEdgeAfterDrag(model, projection, zoom, edge, delta, componentPage(occurrence.component)) : undefined} onSelect={select} onBodyPress={(id, event) => beginSelectedGroup(id, event, grabAt(occurrence, event))} onDelete={keyboardDelete} onDragStart={setDrag} onDragEnd={(finished) => { if (!finished.changed) { setDrag(undefined); return } const command = finished.mode === 'move' ? moveComponentCommand(occurrence.component.id, finished.x, finished.y, snapEnabled) : setComponentBoundsCommand(occurrence.component.id, finished.x, finished.y, finished.width, finished.height, snapEnabled); setDrag({ ...finished, released: true }); void commitComponent(command, () => setDrag(undefined)).finally(() => setDrag(undefined)) }} />
+          : <ComponentEcho key={`${occurrence.component.id}@${sheet.index}`} component={occurrence.component} carriedFaces={paintableFaces} selected={selected.includes(occurrence.component.id)} onSelect={select} onBodyPress={(event) => beginSelectedGroup(occurrence.component.id, event, grabAt(occurrence, event))} onPress={content ? undefined : (event) => pressRepeatingEcho(occurrence.component.id, sheet.page, event)} y={occurrence.y} zoom={zoom} engine={engine} generation={documentGenerationValue} />
         // Body previews stay inside their starting window, or draw on the
         // sheet under the pointer when moving to another page (story 3). Only
         // the existing resize path lifts the clip while its anchor tracks.
@@ -3179,7 +3229,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         // press-and-release — puts no line and no readout on the canvas that
         // the gesture has already decided to discard.
         const proposal = boundary && boundaryDrag?.band === boundary && boundaryDrag.changed && sheet.index === 0 ? boundaryDrag : undefined
-        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page ${sheet.index + 1} of ${sheets}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && accepts && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && accepts && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000, targetPage) } }} onKeyDown={(event) => { if (placing && accepts && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0), targetPage) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
+        return <section key={band.name} className={`page-band page-band-${band.name}${hoverBand === target ? ' page-band-target' : ''}`} aria-label={many ? `${bandName(band.name)} on page${pageNumber}` : bandName(band.name)} aria-current={hoverBand === target ? 'true' : undefined} style={bandStyle(band, zoom, origin, projection.gridIncrement)} onPointerDownCapture={() => { focusBandRef.current = band.name }} onFocus={() => { focusBandRef.current = band.name }} onPointerDown={(event) => beginRectangle(event, band, sheet.index)} tabIndex={0} onPointerEnter={() => placing && accepts && setHoverBand(target)} onPointerLeave={() => setHoverBand((current) => current === target ? undefined : current)} onPointerUp={(event) => { if (placing && accepts && event.currentTarget === event.target) { const point = placementPoint(event.nativeEvent, band, zoom); if (dropOnPage) place(point.x, point.y); else placeInBand(band.name, point.x - band.x / 1000, origin / 1000 + point.y - band.y / 1000, targetPage) } }} onKeyDown={(event) => { if (placing && accepts && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (dropOnPage) place(band.x / 1000, band.y / 1000); else placeInBand(band.name, 0, origin / 1000 + (placing === 'sectionBreak' ? contentBandHeight(projection) / 2000 : 0), targetPage) } }}><span>{bandName(band.name)}</span>{boundary && sheet.index === 0 ? <button type="button" className="band-boundary-handle" aria-label={boundaryLabel(boundary)} onPointerDown={(event) => beginBoundaryDrag(boundary, event)} onPointerMove={moveBoundaryDrag} onPointerUp={finishBoundaryDrag} onPointerCancel={cancelBoundaryDrag} onKeyDown={(event) => nudgeBoundary(boundary, event)} /> : undefined}{proposal ? <><div className="band-boundary-proposal" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties} /><div className="band-boundary-readout" aria-hidden="true" style={{ '--boundary-display-y': canvasDisplay.css(boundaryOffset(proposal.band, proposal.original, proposal.proposed), zoom) } as CSSProperties}>{points(proposal.proposed)}</div></> : undefined}{content && breakAt?.sheet === sheet.index ? sectionBreakMarker(breakAt.y) : undefined}{many || content ? <div className={`band-window${dragging ? ' band-window-open' : ''}`}>{occurrences.map(paint)}</div> : occurrences.map(paint)}{content && sheet.seam !== undefined ? <span className="page-seam" aria-hidden="true" style={{ '--seam-display-y': canvasDisplay.css(sheet.seam, zoom) } as CSSProperties} /> : undefined}</section>
       })}</CanvasSelectionLayer>
     </section>
   }
@@ -5862,7 +5912,9 @@ const canvasTruncationNotice = 'Canvas preview cut short. The whole text is in t
 // later sheet is not pinned there: the sheet it lands on is a consequence of
 // everything above it in the column, and the canvas has no data, so the page
 // it prints on can differ from the page drawn here.
-const canvasColumnPositionNotice = (page: number, pages: number): string => `on canvas page ${page} of ${pages}, which is a consequence of the content above it and can change when the data does — a column position, not a pin to page ${page}`
+// D-4.1: a multi-page document names the SHEET here, since its page names count
+// designed pages.
+const canvasColumnPositionNotice = (page: number, pages: number, noun: 'page' | 'sheet' = 'page'): string => `on canvas ${noun} ${page} of ${pages}, which is a consequence of the content above it and can change when the data does — a column position, not a pin to ${noun} ${page}`
 function componentAccessibleName(component: CanvasProjection['components'][number], note?: string): string {
   const page = note ? `; ${note}` : ''
   if (component.type !== 'text') return `${component.type} component ${component.id}${page}`
@@ -5877,9 +5929,14 @@ function componentAccessibleName(component: CanvasProjection['components'][numbe
 // the tab stop and the name; selected echoes accept body drags and Shift
 // toggles but have no handles, so one component never presents two identical
 // accessible names (Ruling G).
-function ComponentEcho({ component, carriedFaces, selected, onSelect, onBodyPress, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; selected?: boolean; onSelect?: (id: string, extend: boolean) => void; onBodyPress?: (event: PointerEvent) => void; y: number; zoom: number; engine?: EngineClient; generation: number }) {
+//
+// SPEC-multi-pages story 4: a header or footer echo takes `onPress`, and then
+// responds to a press whether selected or not (a repeating band's copies are
+// one component, editable from any page). Content echoes never take it.
+function ComponentEcho({ component, carriedFaces, selected, onSelect, onBodyPress, onPress, y, zoom, engine, generation }: { component: CanvasProjection['components'][number]; carriedFaces: ReadonlySet<string>; selected?: boolean; onSelect?: (id: string, extend: boolean) => void; onBodyPress?: (event: PointerEvent) => void; onPress?: (event: PointerEvent) => void; y: number; zoom: number; engine?: EngineClient; generation: number }) {
   const paint = component.textPaint
-  return <span className={`canvas-component canvas-component-echo canvas-component-${component.type}${selected ? ' canvas-component-selected' : ''}`} aria-hidden="true" onPointerDown={selected ? (event) => { if (event.button !== 0) return; event.stopPropagation(); if (event.shiftKey) onSelect?.(component.id, true); else onBodyPress?.(event) } : undefined} onClick={selected ? (event) => event.stopPropagation() : undefined} style={{ ...componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom), '--echo-clip-top': canvasDisplay.css(Math.max(0, -y), zoom) } as CSSProperties}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : component.type === 'barcode' ? <BarcodePaint component={component} zoom={zoom} /> : component.type === 'qrcode' ? <QRCodePaint component={component} zoom={zoom} /> : ''}</span>
+  const pressable = onPress !== undefined || selected
+  return <span className={`canvas-component canvas-component-echo${onPress ? ' canvas-component-echo-repeating' : ''} canvas-component-${component.type}${selected ? ' canvas-component-selected' : ''}`} aria-hidden="true" onPointerDown={onPress ?? (selected ? (event) => { if (event.button !== 0) return; event.stopPropagation(); if (event.shiftKey) onSelect?.(component.id, true); else onBodyPress?.(event) } : undefined)} onClick={pressable ? (event) => event.stopPropagation() : undefined} style={{ ...componentStyle({ x: component.x, y, width: component.width, height: component.height }, zoom), '--echo-clip-top': canvasDisplay.css(Math.max(0, -y), zoom) } as CSSProperties}><ComponentBox component={component} zoom={zoom} />{paint ? <TextPaint component={component} carriedFaces={carriedFaces} zoom={zoom} /> : component.type === 'image' ? <ImagePaint component={component} zoom={zoom} engine={engine} generation={generation} /> : component.type === 'table' ? <TablePaint component={component} zoom={zoom} /> : component.type === 'barcode' ? <BarcodePaint component={component} zoom={zoom} /> : component.type === 'qrcode' ? <QRCodePaint component={component} zoom={zoom} /> : ''}</span>
 }
 // Story 9.2: the box the engine paints — style.background and
 // style.border — drawn on the canvas from the ENGINE's own projection, so

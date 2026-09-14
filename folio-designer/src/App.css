@@ -1342,6 +1342,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .page-band > span { pointer-events: none; }
 
 .canvas-region:not(.canvas-region-placing) .canvas-component-echo.canvas-component-selected { pointer-events: auto; }
+/* SPEC-multi-pages story 4: a header or footer echo is the one shared component
+   drawn on another page, so it takes a press whether selected or not — except
+   while placing, when it stays pass-through like every other echo. */
+.canvas-region:not(.canvas-region-placing) .canvas-component-echo.canvas-component-echo-repeating { pointer-events: auto; cursor: move; }
 
 /* Selection chrome uses projected sheet coordinates outside band-window.
    Its transparent layer cannot intercept body selection or armed placement. */
