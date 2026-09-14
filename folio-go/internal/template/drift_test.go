@@ -432,6 +432,20 @@ func TestDriftASTMatchesRuntimeEmission(t *testing.T) {
 	for key := range proportionalKeys {
 		runtimeKeys[key] = true
 	}
+	// SPEC-multi-pages: `pages` and `pageBreak` exist only in the multi-page
+	// shape, which maximalFixture (a one-page document) cannot carry.
+	multiPage, err := ParseDocument(multiPageFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multiPageBytes, err := SerializeDocument(multiPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	multiPageKeys, _ := extractRuntimeKeys(t, multiPageBytes)
+	for key := range multiPageKeys {
+		runtimeKeys[key] = true
+	}
 	if tokensExtracted == 0 {
 		t.Fatal("coverage witness: zero keys extracted from the runtime emission")
 	}

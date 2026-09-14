@@ -50,7 +50,7 @@ func expressionMinimumVersion(doc *template.Document) string {
 		return false
 	}
 	usesFormula := false
-	for _, band := range []template.Band{doc.Bands.PageHeader, doc.Bands.Content, doc.Bands.PageFooter} {
+	for _, band := range doc.ElementBands() {
 		for _, el := range band.Elements {
 			if el.VisibleIf.Set && !el.VisibleIf.Null && formula(el.VisibleIf.Value) {
 				usesFormula = true

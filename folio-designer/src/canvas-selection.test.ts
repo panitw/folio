@@ -7,7 +7,7 @@ const base: CanvasProjection = {
   width: 600000, height: 800000, orientation: 'portrait', preset: 'A4', locale: 'en', utcOffset: '+00:00',
   marginTop: 30000, marginBottom: 30000, marginLeft: 40000, marginRight: 40000,
   gridIncrement: 6000, commandWidth: 600000, commandHeight: 800000, fontFamilies: [], fontChains: [], defaultFontSize: 12000, defaultLineSpacing: 1000,
-  contentWindowHeight: 620000, contentWindowOrigins: [0], contentWindowCount: 1, contentWindowCountIsExact: true,
+  contentWindowHeight: 620000, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCount: 1, contentWindowCountIsExact: true,
   bands: [{ name: 'pageHeader', x: 40000, y: 30000, width: 520000, height: 60000 }, { name: 'content', x: 40000, y: 90000, width: 520000, height: 620000 }, { name: 'pageFooter', x: 40000, y: 710000, width: 520000, height: 60000 }], components: [],
 }
 const box = (id: string, x: number, y: number, type: CanvasProjection['components'][number]['type'] = 'rect', height = 20000): CanvasProjection['components'][number] => ({ id, type, band: 'content', x, y, width: 30000, height, resizable: type !== 'table' })
@@ -23,15 +23,15 @@ describe('rectangle selection geometry (AC-1, AC-2, AC-4, AC-5)', () => {
     expect(enclosedComponents({ ...base, components: [components[0]!] }, zoom, { left: 45000, top: 95000, right: 65000, bottom: 100000 })).toEqual([])
   })
   it('deduplicates repeated bands and requires every visible portion of split content', () => {
-    const canvas = { ...base, contentWindowOrigins: [0, 600000], contentWindowCount: 2, components: [{ ...box('e1', 0, 0), band: 'pageHeader' as const }, box('e2', 0, 590000, 'text', 40000)] }
+    const canvas = { ...base, contentWindowOrigins: [0, 600000], contentWindowPages: [0, 0], contentWindowCount: 2, components: [{ ...box('e1', 0, 0), band: 'pageHeader' as const }, box('e2', 0, 590000, 'text', 40000)] }
     const pitch = sheetPitch(canvas, 1)
     expect(enclosedComponents(canvas, 1, { left: 0, top: pitch, right: 600000, bottom: pitch + 800000 })).toEqual(['e1'])
     expect(enclosedComponents(canvas, 1, { left: 0, top: 0, right: 600000, bottom: pitch + 800000 })).toEqual(['e1', 'e2'])
   })
   it('excludes undrawn column gaps and portions beyond the drawing cap', () => {
-    const gap = { ...base, contentWindowOrigins: [0, 900000], contentWindowCount: 2, components: [box('e1', 0, 600000, 'text', 400000)] }
+    const gap = { ...base, contentWindowOrigins: [0, 900000], contentWindowPages: [0, 0], contentWindowCount: 2, components: [box('e1', 0, 600000, 'text', 400000)] }
     expect(enclosedComponents(gap, 1, { left: 0, top: 0, right: 600000, bottom: 2000000 })).toEqual([])
-    const capped = { ...base, contentWindowOrigins: Array.from({ length: MAX_CANVAS_SHEETS + 1 }, (_, i) => i * 600000), contentWindowCount: MAX_CANVAS_SHEETS + 1, components: [box('e1', 0, 600000 * MAX_CANVAS_SHEETS - 10000, 'text', 30000)] }
+    const capped = { ...base, contentWindowOrigins: Array.from({ length: MAX_CANVAS_SHEETS + 1 }, (_, i) => i * 600000), contentWindowPages: Array.from({ length: MAX_CANVAS_SHEETS + 1 }, () => 0), contentWindowCount: MAX_CANVAS_SHEETS + 1, components: [box('e1', 0, 600000 * MAX_CANVAS_SHEETS - 10000, 'text', 30000)] }
     expect(enclosedComponents(capped, 1, { left: 0, top: 0, right: 600000, bottom: 1000000000 })).toEqual([])
   })
   it('translates paint offsets without altering dimensions, source geometry, or unselected members', () => {

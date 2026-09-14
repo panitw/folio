@@ -7,7 +7,7 @@ import { ENGINE_PROTOCOL_VERSION, LOCALE_TAGS, MAX_CANVAS_BODY_TEXT_LINES, MAX_E
 // family and no style — its name is its identity.
 const face = (name: string, variants: Partial<Readonly<{ bold: string; italic: string; boldItalic: string }>> = {}) => ({ face: name, assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '', ...variants })
 
-const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', locale: 'th', utcOffset: '+07:00', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
+const canvas = { width: 1000, height: 2000, orientation: 'portrait', preset: 'custom', locale: 'th', utcOffset: '+07:00', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 100, commandWidth: 1000, commandHeight: 2000, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 1800, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 0, y: 0, width: 1000, height: 100 }, { name: 'content', x: 0, y: 100, width: 1000, height: 1800 }, { name: 'pageFooter', x: 0, y: 1900, width: 1000, height: 100 }], components: [] }
 
 describe('canvas projection protocol guard', () => {
   // STORY 12.2: THE DOCUMENT'S TWO DECLARED FORMATTING AUTHORITIES.
@@ -153,7 +153,7 @@ describe('canvas projection protocol guard', () => {
       expect(projection({ ...canvas, contentWindowCount: bad })).toBeUndefined()
       expect(projection({ ...canvas, contentWindowHeight: bad })).toBeUndefined()
     }
-    expect(projection({ ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 5400] })).toBeDefined()
+    expect(projection({ ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 5400], contentWindowPages: [0, 0, 0, 0] })).toBeDefined()
   })
 
   // Story 7.6. The origins are what the canvas draws every sheet boundary
@@ -165,7 +165,7 @@ describe('canvas projection protocol guard', () => {
   // only way to get a drawing at all.
   it('requires one window origin per window, starting at zero and strictly increasing', () => {
     const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
-    const three = { ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 1800, 5400] }
+    const three = { ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 1800, 5400], contentWindowPages: [0, 0, 0] }
     // The positive case first, so every rejection below is a discrimination
     // rather than a fixture that never parsed.
     expect(projection(three)).toBeDefined()
@@ -173,7 +173,7 @@ describe('canvas projection protocol guard', () => {
     // top of the first item that did not fit, so a declared gap is a legal
     // and expected sequence. A validator that required a fixed stride would
     // be the forbidden closed form wearing a guard's clothes.
-    expect(projection({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] })).toBeDefined()
+    expect(projection({ ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000], contentWindowPages: [0, 0] })).toBeDefined()
     const { contentWindowOrigins: _origins, ...noOrigins } = canvas
     const { contentWindowCountIsExact: _exact, ...noExact } = canvas
     // Absent entirely. `hasOnly` is a subset check and says nothing about a
@@ -183,19 +183,19 @@ describe('canvas projection protocol guard', () => {
     // A nil Go slice marshals to null, not to [].
     expect(projection({ ...canvas, contentWindowOrigins: null })).toBeUndefined()
     expect(projection({ ...canvas, contentWindowOrigins: 1 })).toBeUndefined()
-    expect(projection({ ...canvas, contentWindowOrigins: [] })).toBeUndefined()
+    expect(projection({ ...canvas, contentWindowOrigins: [], contentWindowPages: [] })).toBeUndefined()
     // Wrong length, both directions.
-    expect(projection({ ...three, contentWindowOrigins: [0, 1800] })).toBeUndefined()
-    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 5400, 9000] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800], contentWindowPages: [0, 0] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 5400, 9000], contentWindowPages: [0, 0, 0, 0] })).toBeUndefined()
     // Not starting at zero: window one begins at the top of the column,
     // unconditionally, and internal/layout guarantees it.
-    expect(projection({ ...three, contentWindowOrigins: [900, 1800, 5400] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [900, 1800, 5400], contentWindowPages: [0, 0, 0] })).toBeUndefined()
     // Not increasing, and not strictly increasing.
-    expect(projection({ ...three, contentWindowOrigins: [0, 5400, 1800] })).toBeUndefined()
-    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 1800] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 5400, 1800], contentWindowPages: [0, 0, 0] })).toBeUndefined()
+    expect(projection({ ...three, contentWindowOrigins: [0, 1800, 1800], contentWindowPages: [0, 0, 0] })).toBeUndefined()
     // Entries that are not safe non-negative integers.
     for (const bad of [-1, 1.5, '1800', null, Number.MAX_SAFE_INTEGER + 1]) {
-      expect(projection({ ...three, contentWindowOrigins: [0, 1800, bad] })).toBeUndefined()
+      expect(projection({ ...three, contentWindowOrigins: [0, 1800, bad], contentWindowPages: [0, 0, 0] })).toBeUndefined()
     }
     // The honesty flag is a boolean and nothing else — never a truthy string
     // a disclosure would then render. 0 and '' matter twice over here: the
@@ -207,9 +207,34 @@ describe('canvas projection protocol guard', () => {
     }
     expect(projection({ ...canvas, contentWindowCountIsExact: false })).toBeDefined()
     // The declared cap, at its edge on both sides.
-    const long = (count: number) => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, (_value, index) => index * 1800) })
+    const long = (count: number) => ({ ...canvas, contentWindowCount: count, contentWindowOrigins: Array.from({ length: count }, (_value, index) => index * 1800), contentWindowPages: Array.from({ length: count }, () => 0) })
     expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS))).toBeDefined()
     expect(projection(long(MAX_ENGINE_CONTENT_WINDOWS + 1))).toBeUndefined()
+  })
+
+  // SPEC-multi-pages CAP-8. Every window names its designed page, and origins
+  // restart at 0 at each page's first window.
+  it('accepts page-local window origins grouped by designed page', () => {
+    const projection = (patch: object) => parseInbound({ protocolVersion: ENGINE_PROTOCOL_VERSION, kind: 'response', requestId: 'canvas-1', ok: true, snapshot: { documentState: 'loaded', revision: 1, byteLength: 1, canvas: patch } })
+    const pages = { ...canvas, contentWindowCount: 4, contentWindowOrigins: [0, 1800, 3600, 0], contentWindowPages: [0, 0, 0, 1] }
+    expect(projection(pages)).toBeDefined()
+    // An empty later page is one window of its own.
+    expect(projection({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 0, 0], contentWindowPages: [0, 1, 2] })).toBeDefined()
+    const { contentWindowPages: _pages, ...noPages } = canvas
+    expect(projection(noPages)).toBeUndefined()
+    expect(projection({ ...pages, contentWindowPages: null })).toBeUndefined()
+    // One entry per window.
+    expect(projection({ ...pages, contentWindowPages: [0, 0, 1] })).toBeUndefined()
+    // Pages start at 0 and never skip or go back.
+    expect(projection({ ...pages, contentWindowPages: [1, 1, 1, 2] })).toBeUndefined()
+    expect(projection({ ...pages, contentWindowPages: [0, 0, 0, 2] })).toBeUndefined()
+    expect(projection({ ...pages, contentWindowOrigins: [0, 0, 1800, 0], contentWindowPages: [0, 1, 0, 1] })).toBeUndefined()
+    // A page's first window starts at 0; a page's later windows rise strictly.
+    expect(projection({ ...pages, contentWindowOrigins: [0, 1800, 3600, 900], contentWindowPages: [0, 0, 0, 1] })).toBeUndefined()
+    expect(projection({ ...pages, contentWindowOrigins: [0, 1800, 1800, 0], contentWindowPages: [0, 0, 0, 1] })).toBeUndefined()
+    for (const bad of [-1, 1.5, '1', null]) {
+      expect(projection({ ...pages, contentWindowPages: [0, 0, 0, bad] })).toBeUndefined()
+    }
   })
 
   // STORY 8.1. fontChains is the first projection field that carries the

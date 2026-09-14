@@ -77,7 +77,7 @@ func omitemptyCheckedTypes() []reflect.Type {
 	return []reflect.Type{
 		reflect.TypeOf(Document{}), reflect.TypeOf(Page{}), reflect.TypeOf(PageSize{}),
 		reflect.TypeOf(Margin{}), reflect.TypeOf(Padding{}), reflect.TypeOf(Bands{}),
-		reflect.TypeOf(Band{}), reflect.TypeOf(Element{}), reflect.TypeOf(TableExt{}),
+		reflect.TypeOf(Band{}), reflect.TypeOf(ContentPage{}), reflect.TypeOf(Element{}), reflect.TypeOf(TableExt{}),
 		reflect.TypeOf(Column{}), reflect.TypeOf(Style{}), reflect.TypeOf(Border{}),
 		reflect.TypeOf(TableRules{}),
 		reflect.TypeOf(Asset{}), reflect.TypeOf(Field{}),

@@ -126,6 +126,16 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			_, err := ParseTemplate([]byte(sectionBreakTestDoc(`, "sectionBreak": 85`, "")))
 			return err
 		},
+		// SPEC-multi-pages CAP-7: LOAD-time — a `pages` array with fewer than
+		// two entries.
+		diag.CodePagesInvalid: func(t *testing.T) error {
+			source := strings.Replace(roundTripGoldenSource(t), `"nextId":`, "\"pages\": [],\n  \"nextId\":", 1)
+			if source == roundTripGoldenSource(t) {
+				t.Fatal("fixture precondition: nextId was not found, so this trigger would exercise nothing")
+			}
+			_, err := ParseTemplate([]byte(source))
+			return err
+		},
 		diag.CodeTableFooterSourceForbidden: func(t *testing.T) error {
 			source := roundTripGoldenSource(t)
 			source = strings.Replace(source, `"footer": "sum",`, "\"footer\": \"count\",\n              \"footerOf\": \"transactions.amount\",", 1)

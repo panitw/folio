@@ -56,7 +56,7 @@ func validateTableMinHeights(t *Template) error {
 // tableFloorAbove returns the first content-band table whose minHeight is
 // taller than window.
 func tableFloorAbove(t *Template, window geom.Length) (template.Element, geom.Length, bool) {
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range contentElements(t) {
 		if el.Type != template.ElementTable || !el.Table.Set || el.Table.Null {
 			continue
 		}

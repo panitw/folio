@@ -357,10 +357,16 @@ func versionRequiredByContent(d *Document) string {
 	// for the same reason — it hangs off no element, so a break over an
 	// empty content band still requires 4.1.
 	// Its Anchor key (CAP-7) joins the same 4.1, with no bump of its own.
-	if (d.Bands.Content.SectionBreak.Set || d.Bands.Content.SectionBreakAnchor.Set) && rankSectionBreak > highest {
+	for _, content := range d.ContentBands() {
+		if (content.SectionBreak.Set || content.SectionBreakAnchor.Set) && rankSectionBreak > highest {
+			highest = rankSectionBreak
+		}
+	}
+	// SPEC-multi-pages: the `pages` shape joins 4.1 with no rank of its own.
+	if d.PageCount() >= 2 && rankSectionBreak > highest {
 		highest = rankSectionBreak
 	}
-	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
+	for _, band := range d.ElementBands() {
 		for _, el := range band.Elements {
 			if el.Type == ElementTable && el.Width.Set && rankProportionalTable > highest {
 				highest = rankProportionalTable

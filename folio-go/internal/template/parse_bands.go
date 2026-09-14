@@ -69,17 +69,9 @@ func decodeBand(ctx *parseCtx, field string, raw json.RawMessage, hasHeight bool
 	if !ok {
 		return Band{}, newLoadError(field+".elements", "", "", "missing required field")
 	}
-	items, err := decodeArrayRaw(elemsRaw)
+	elems, err := decodeElements(ctx, field, elemsRaw)
 	if err != nil {
-		return Band{}, newLoadError(field+".elements", "", string(elemsRaw), "must be an array: "+err.Error())
-	}
-	elems := make([]Element, 0, len(items))
-	for _, it := range items {
-		el, err := decodeElement(ctx, field, it)
-		if err != nil {
-			return Band{}, err
-		}
-		elems = append(elems, el)
+		return Band{}, err
 	}
 
 	var height Presence[geom.Length]
@@ -100,57 +92,9 @@ func decodeBand(ctx *parseCtx, field string, raw json.RawMessage, hasHeight bool
 		return Band{}, newLoadError(field+".height", "", "", "missing required field")
 	}
 
-	// spec-section-break CAP-5: the content band's optional `sectionBreak`.
-	// It is consumed here whatever the band, so it can never fall into
-	// Extra: on the page header or page footer it is refused rather than
-	// carried as opaque passthrough, because a break there could never be
-	// honoured. Its RANGE is checked in package folio (validateSectionBreak),
-	// because the content height is derived by internal/layout, which this
-	// package may not import.
-	var sectionBreak Presence[geom.Length]
-	if sbRaw, ok := obj[sectionBreakKey]; ok {
-		consumed[sectionBreakKey] = true
-		sbField := field + "." + sectionBreakKey
-		if hasHeight {
-			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "a section break is valid only on the content band — the page header and page footer are repeated on every page and are never paginated", diag.CodeSectionBreakInvalid)
-		}
-		if n := countTopLevelKey(raw, sectionBreakKey); n > 1 {
-			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "declared more than once — a content band has at most one section break", diag.CodeSectionBreakInvalid)
-		}
-		if rawIsNull(sbRaw) {
-			return Band{}, newLoadErrorCoded(sbField, "", "null", "must be a number of points from the content band's top — remove the key to have no section break", diag.CodeSectionBreakInvalid)
-		}
-		v, err := decodePointsRaw(sbField, "", sbRaw)
-		if err != nil {
-			return Band{}, newLoadErrorCoded(sbField, "", string(sbRaw), "must be a number of points from the content band's top, with at most three decimal places", diag.CodeSectionBreakInvalid)
-		}
-		sectionBreak = present(v)
-	}
-
-	// spec-section-break CAP-7: the content band's optional boolean
-	// `sectionBreakAnchor`, refused exactly where `sectionBreak` is, and also
-	// when it is declared without a break to qualify.
-	var anchor Presence[bool]
-	if anRaw, ok := obj[sectionBreakAnchorKey]; ok {
-		consumed[sectionBreakAnchorKey] = true
-		anField := field + "." + sectionBreakAnchorKey
-		if hasHeight {
-			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "a section break's Anchor is valid only on the content band — the page header and page footer are never paginated", diag.CodeSectionBreakInvalid)
-		}
-		if n := countTopLevelKey(raw, sectionBreakAnchorKey); n > 1 {
-			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "declared more than once — a content band has at most one section break Anchor", diag.CodeSectionBreakInvalid)
-		}
-		if rawIsNull(anRaw) {
-			return Band{}, newLoadErrorCoded(anField, "", "null", "must be true or false — remove the key to anchor the section break", diag.CodeSectionBreakInvalid)
-		}
-		v, err := decodeBoolRaw(anRaw)
-		if err != nil {
-			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "must be true or false", diag.CodeSectionBreakInvalid)
-		}
-		if !sectionBreak.Set {
-			return Band{}, newLoadErrorCoded(anField, "", string(anRaw), "declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key", diag.CodeSectionBreakInvalid)
-		}
-		anchor = present(v)
+	sectionBreak, anchor, err := decodeSectionBreakKeys(obj, raw, field, consumed, hasHeight)
+	if err != nil {
+		return Band{}, err
 	}
 
 	extra, err := extraFields(obj, consumed)
@@ -159,6 +103,81 @@ func decodeBand(ctx *parseCtx, field string, raw json.RawMessage, hasHeight bool
 	}
 
 	return Band{Elements: elems, Height: height, SectionBreak: sectionBreak, SectionBreakAnchor: anchor, Extra: extra}, nil
+}
+
+// decodeElements decodes a content column's `elements` array at field.
+func decodeElements(ctx *parseCtx, field string, raw json.RawMessage) ([]Element, error) {
+	items, err := decodeArrayRaw(raw)
+	if err != nil {
+		return nil, newLoadError(field+".elements", "", string(raw), "must be an array: "+err.Error())
+	}
+	elems := make([]Element, 0, len(items))
+	for _, it := range items {
+		el, err := decodeElement(ctx, field, it)
+		if err != nil {
+			return nil, err
+		}
+		elems = append(elems, el)
+	}
+	return elems, nil
+}
+
+// decodeSectionBreakKeys decodes an object's optional `sectionBreak` and
+// `sectionBreakAnchor` (spec-section-break CAP-5, CAP-7), shared by the
+// content band and a `pages` entry. forbidden refuses both keys, located at
+// field: the page header and page footer are never paginated.
+//
+// Both keys are consumed whatever the object, so neither can fall into Extra.
+// The break's RANGE is checked in package folio (validateSectionBreak),
+// because the content height is derived by internal/layout, which this
+// package may not import.
+func decodeSectionBreakKeys(obj map[string]json.RawMessage, raw json.RawMessage, field string, consumed map[string]bool, forbidden bool) (Presence[geom.Length], Presence[bool], error) {
+	var sectionBreak Presence[geom.Length]
+	if sbRaw, ok := obj[sectionBreakKey]; ok {
+		consumed[sectionBreakKey] = true
+		sbField := field + "." + sectionBreakKey
+		if forbidden {
+			return sectionBreak, Presence[bool]{}, newLoadErrorCoded(sbField, "", string(sbRaw), "a section break is valid only on the content band — the page header and page footer are repeated on every page and are never paginated", diag.CodeSectionBreakInvalid)
+		}
+		if n := countTopLevelKey(raw, sectionBreakKey); n > 1 {
+			return sectionBreak, Presence[bool]{}, newLoadErrorCoded(sbField, "", string(sbRaw), "declared more than once — a content band has at most one section break", diag.CodeSectionBreakInvalid)
+		}
+		if rawIsNull(sbRaw) {
+			return sectionBreak, Presence[bool]{}, newLoadErrorCoded(sbField, "", "null", "must be a number of points from the content band's top — remove the key to have no section break", diag.CodeSectionBreakInvalid)
+		}
+		v, err := decodePointsRaw(sbField, "", sbRaw)
+		if err != nil {
+			return sectionBreak, Presence[bool]{}, newLoadErrorCoded(sbField, "", string(sbRaw), "must be a number of points from the content band's top, with at most three decimal places", diag.CodeSectionBreakInvalid)
+		}
+		sectionBreak = present(v)
+	}
+
+	// spec-section-break CAP-7: the optional boolean `sectionBreakAnchor`,
+	// refused exactly where `sectionBreak` is, and also when it is declared
+	// without a break to qualify.
+	var anchor Presence[bool]
+	if anRaw, ok := obj[sectionBreakAnchorKey]; ok {
+		consumed[sectionBreakAnchorKey] = true
+		anField := field + "." + sectionBreakAnchorKey
+		if forbidden {
+			return sectionBreak, anchor, newLoadErrorCoded(anField, "", string(anRaw), "a section break's Anchor is valid only on the content band — the page header and page footer are never paginated", diag.CodeSectionBreakInvalid)
+		}
+		if n := countTopLevelKey(raw, sectionBreakAnchorKey); n > 1 {
+			return sectionBreak, anchor, newLoadErrorCoded(anField, "", string(anRaw), "declared more than once — a content band has at most one section break Anchor", diag.CodeSectionBreakInvalid)
+		}
+		if rawIsNull(anRaw) {
+			return sectionBreak, anchor, newLoadErrorCoded(anField, "", "null", "must be true or false — remove the key to anchor the section break", diag.CodeSectionBreakInvalid)
+		}
+		v, err := decodeBoolRaw(anRaw)
+		if err != nil {
+			return sectionBreak, anchor, newLoadErrorCoded(anField, "", string(anRaw), "must be true or false", diag.CodeSectionBreakInvalid)
+		}
+		if !sectionBreak.Set {
+			return sectionBreak, anchor, newLoadErrorCoded(anField, "", string(anRaw), "declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key", diag.CodeSectionBreakInvalid)
+		}
+		anchor = present(v)
+	}
+	return sectionBreak, anchor, nil
 }
 
 // sectionBreakKey is the content band's section-break key.
@@ -346,7 +365,7 @@ func decodeElement(ctx *parseCtx, bandField string, raw json.RawMessage) (Elemen
 	// never do anything. Where the key IS allowed — a content-band
 	// non-table element — null keeps meaning exactly "ungrouped".
 	if ktRaw, ok := obj["keepTogether"]; ok {
-		if bandField != contentBandField {
+		if bandField != contentBandField && !isPageField(bandField) {
 			return Element{}, newLoadError("keepTogether", string(id), string(ktRaw), "valid only on a content-band element (FR51) — a page header or page footer is repeated verbatim on every page and is never paginated, so a keep-together group there could never be honoured")
 		}
 		if el.Type == ElementTable {

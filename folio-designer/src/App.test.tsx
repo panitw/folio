@@ -109,7 +109,7 @@ const twoCarriedFacesCanvas = (first: string, second: string) => {
 const carriedFaceEchoCanvas = (key: string) => {
   const paint = { overflow: false, truncated: false, lines: [{ top: 650_000, baseline: 662_000, advance: 16_000, width: 24_000, fragments: [{ text: 'สัญญา', x: 0, assetKey: key }] }] }
   const spanning = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 650_000, width: 72_000, height: 100_000, resizable: true, value: 'ignored', textPaint: paint }
-  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], components: [spanning] }
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face('Noto Sans'), carried(key)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], contentWindowPages: [0, 0, 0], components: [spanning] }
 }
 
 // ONE SHIPPED-FACE component that CROSSES A WINDOW SEAM, drawing LATIN text
@@ -120,7 +120,7 @@ const carriedFaceEchoCanvas = (key: string) => {
 const shippedFaceEchoCanvas = (name: string) => {
   const paint = { overflow: false, truncated: false, lines: [{ top: 650_000, baseline: 662_000, advance: 16_000, width: 24_000, fragments: [{ text: 'A5', x: 0, face: name }] }] }
   const spanning = { id: 'e1', type: 'text' as const, band: 'content' as const, x: 0, y: 650_000, width: 72_000, height: 100_000, resizable: true, value: 'ignored', textPaint: paint }
-  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face(name)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], components: [spanning] }
+  return { ...canvas, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [face(name)] }], contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], contentWindowPages: [0, 0, 0], components: [spanning] }
 }
 
 // The family sequence a rendered fragment asks for, quotes removed: jsdom
@@ -204,7 +204,7 @@ const declaredOptions = () => {
   return group ? within(group).queryAllByRole('option') : []
 }
 const sample = acceptSampleData('sample.json', new TextEncoder().encode('{"customer":{"name":"Preview customer"},"transactions":[]}').buffer)
-const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas = { width: 595276, height: 841890, orientation: 'portrait' as const, preset: 'A4' as const, locale: 'en' as const, utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body', 'heading'], fontChains: [{ name: 'body', entries: [face('Noto Sans')] }, { name: 'heading', entries: [face('Noto Sans'), face('Noto Sans Thai')] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter' as const, x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 const snapshot = (revision: number) => ({ documentState: 'loaded' as const, revision, byteLength: 3, canvas })
 const engine = (request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: operation === 'command' ? 2 : 1, byteLength: 3 }, ...(operation === 'serialize' ? { bytes } : {}) }))) => ({ request: (operation: string, payload?: ArrayBuffer, ...rest: unknown[]) => {
   if (operation === 'group-move-preview') {
@@ -6152,7 +6152,7 @@ describe('Story 5.13: image asset selection', () => {
 // same drawing would be a test of nothing.
 describe('canvas sheet stack', () => {
   const origins = [0, 700_000, 1_400_000]
-  const threeWindows = { ...canvas, contentWindowCount: 3, contentWindowOrigins: origins }
+  const threeWindows = { ...canvas, contentWindowCount: 3, contentWindowOrigins: origins, contentWindowPages: [0, 0, 0] }
   const header = { id: 'h1', type: 'text' as const, band: 'pageHeader' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true }
   const footer = { id: 'f1', type: 'text' as const, band: 'pageFooter' as const, x: 0, y: 0, width: 72_000, height: 12_000, resizable: true }
   const at = (id: string, y: number, height = 24_000) => ({ id, type: 'text' as const, band: 'content' as const, x: 0, y, width: 72_000, height, resizable: true })
@@ -6195,7 +6195,7 @@ describe('canvas sheet stack', () => {
     // A declared gap: the next window begins far below this sheet, so the
     // band's own foot IS the boundary and the skipped column region is drawn
     // by nobody.
-    const declaredGap = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000] }
+    const declaredGap = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 7_280_000], contentWindowPages: [0, 0] }
     render(<App engine={engine()} initialSnapshot={snapshotOf(declaredGap)} />)
     expect(document.querySelectorAll('.page-surface')).toHaveLength(2)
     expect(document.querySelectorAll('.page-seam')).toHaveLength(0)
@@ -6346,7 +6346,7 @@ describe('canvas sheet stack', () => {
 
   it('draws the first budgeted sheets without the sheet-count banner and never blanks', () => {
     const many = MAX_CANVAS_SHEETS + 5
-    const budgeted = { ...canvas, contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index * 700_000) }
+    const budgeted = { ...canvas, contentWindowCount: many, contentWindowOrigins: Array.from({ length: many }, (_value, index) => index * 700_000), contentWindowPages: Array.from({ length: many }, () => 0) }
     render(<App engine={engine()} initialSnapshot={snapshotOf(budgeted)} />)
     expect(document.querySelectorAll('.page-surface')).toHaveLength(MAX_CANVAS_SHEETS)
     expect(screen.queryByRole('status', { name: 'Canvas sheet disclosure' })).not.toBeInTheDocument()
@@ -7318,7 +7318,7 @@ describe('Story 12.5: a band boundary is dragged on the canvas', () => {
   // MATRIX ROW 13. One interactive boundary per DOCUMENT, on the home sheet,
   // following the occurrence.home idiom the repeating components already use.
   it('draws exactly two handles for a three-sheet stack, both on the home sheet', () => {
-    open({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000] })
+    open({ ...canvas, contentWindowCount: 3, contentWindowOrigins: [0, 700_000, 1_400_000], contentWindowPages: [0, 0, 0] })
     expect(document.querySelectorAll('.page-surface')).toHaveLength(3)
     expect(document.querySelectorAll('.page-band-pageFooter')).toHaveLength(3)
     // getByRole throws on more than one match, so these two calls ARE the
@@ -10800,7 +10800,7 @@ describe('spec-section-break: the Section Break on the canvas', () => {
   })
 
   it('draws the line on the sheet whose window holds the offset, and on no other', () => {
-    open(withBreak(650_000, { contentWindowCount: 2, contentWindowOrigins: [0, 600_000] }))
+    open(withBreak(650_000, { contentWindowCount: 2, contentWindowOrigins: [0, 600_000], contentWindowPages: [0, 0] }))
     const pages = document.querySelectorAll('.page-surface')
     expect(pages).toHaveLength(2)
     expect(pages[0]!.querySelectorAll('.section-break-line')).toHaveLength(0)

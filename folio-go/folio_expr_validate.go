@@ -21,7 +21,7 @@ import (
 // (R2: never written back into doc itself).
 func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementID]expr.DerivedFooter, error) {
 	derived := map[template.ElementID]expr.DerivedFooter{}
-	for _, band := range []template.Band{doc.Bands.PageHeader, doc.Bands.Content, doc.Bands.PageFooter} {
+	for _, band := range doc.ElementBands() {
 		for _, el := range band.Elements {
 			// visibleIf is a common field on every element kind (QA
 			// Finding 12, Minor): the field table (folio-format.md,

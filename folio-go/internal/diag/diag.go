@@ -410,6 +410,14 @@ const (
 	// reach them.
 	CodeSectionBreakInvalid Code = "SECTION_BREAK_INVALID"
 
+	// CodePagesInvalid names a document whose top-level `pages` array
+	// (SPEC-multi-pages CAP-7) cannot be loaded: fewer than two entries, an
+	// entry that is not an object or carries an unknown key, a non-boolean
+	// `pageBreak`, content declared in both `pages` and `bands.content`, or a
+	// keepTogether group spanning pages. A LOAD error located at `pages`,
+	// `pages[i]` (with its key) or `bands.content`.
+	CodePagesInvalid Code = "PAGES_INVALID"
+
 	// CodeSectionBreakStraddled names an element whose declared box lies on
 	// both sides of the content band's `sectionBreak` — a LOAD error located
 	// at the element. Every element must be unambiguously above or below the
@@ -457,6 +465,7 @@ var allCodes = []Code{
 	CodeSectionBreakInvalid,
 	CodeSectionBreakStraddled,
 	CodeSectionBreakSplitsKeepTogether,
+	CodePagesInvalid,
 }
 
 // registry is the CONSTRUCTED value R2 requires (D-1.4.2 `:9118`): a
@@ -503,6 +512,7 @@ var dispositions = map[Code]Disposition{
 	CodeSectionBreakInvalid:            DispositionError,
 	CodeSectionBreakStraddled:          DispositionError,
 	CodeSectionBreakSplitsKeepTogether: DispositionWarning,
+	CodePagesInvalid:                   DispositionError,
 }
 
 // Classified reports the registry-owned disposition for c. A registered code

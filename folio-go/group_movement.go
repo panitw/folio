@@ -37,26 +37,33 @@ func groupMemberIndex(t *Template, fonts ...FontSet) (map[string]groupMember, er
 	if err != nil {
 		return nil, err
 	}
-	bands := map[string]*template.Band{bandPageHeader: &t.doc.Bands.PageHeader, bandContent: &t.doc.Bands.Content, bandPageFooter: &t.doc.Bands.PageFooter}
+	bands := map[string][]*template.Band{bandPageHeader: {&t.doc.Bands.PageHeader}, bandContent: t.doc.ContentBands(), bandPageFooter: {&t.doc.Bands.PageFooter}}
 	members := make(map[string]groupMember, len(projection.Components))
 	for _, band := range projection.Bands {
-		for index := range bands[band.Name].Elements {
-			element := &bands[band.Name].Elements[index]
-			origin := geom.Length(0)
-			windowHeight := geom.Length(projection.ContentWindowHeight)
-			if band.Name == bandContent {
-				for index, candidate := range projection.ContentWindowOrigins {
-					if geom.Length(candidate) > element.Y {
-						break
-					}
-					origin = geom.Length(candidate)
-					windowHeight = geom.Length(projection.ContentWindowHeight)
-					if index+1 < len(projection.ContentWindowOrigins) {
-						windowHeight = min(windowHeight, geom.Length(projection.ContentWindowOrigins[index+1])-origin)
+		for page, source := range bands[band.Name] {
+			for index := range source.Elements {
+				element := &source.Elements[index]
+				origin := geom.Length(0)
+				windowHeight := geom.Length(projection.ContentWindowHeight)
+				if band.Name == bandContent {
+					// SPEC-multi-pages: origins are page-local, so only this
+					// element's own page's windows are its candidates.
+					for index, candidate := range projection.ContentWindowOrigins {
+						if canvasWindowPage(projection, index) != page {
+							continue
+						}
+						if geom.Length(candidate) > element.Y {
+							break
+						}
+						origin = geom.Length(candidate)
+						windowHeight = geom.Length(projection.ContentWindowHeight)
+						if index+1 < len(projection.ContentWindowOrigins) && canvasWindowPage(projection, index+1) == page {
+							windowHeight = min(windowHeight, geom.Length(projection.ContentWindowOrigins[index+1])-origin)
+						}
 					}
 				}
+				members[string(element.ID)] = groupMember{band: band, element: element, windowOrigin: origin, windowHeight: windowHeight}
 			}
-			members[string(element.ID)] = groupMember{band: band, element: element, windowOrigin: origin, windowHeight: windowHeight}
 		}
 	}
 	return members, nil

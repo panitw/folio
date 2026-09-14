@@ -53,6 +53,7 @@ var canvasProjectionWireKeys = []string{
 	"contentWindowCountIsExact",
 	"contentWindowHeight",
 	"contentWindowOrigins",
+	"contentWindowPages",
 	"defaultFontSize",
 	"defaultLineSpacing",
 	"fontChains",

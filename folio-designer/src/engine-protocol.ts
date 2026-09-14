@@ -447,6 +447,11 @@ export type CanvasProjection = Readonly<{
 	// carried, because neither side is safe to act on. Both are engine facts,
 	// and neither is a rule this side gets to restate.
 	contentWindowOrigins: ReadonlyArray<number>; contentWindowCountIsExact: boolean
+	// SPEC-multi-pages CAP-8: the designed page each window belongs to, one
+	// entry per window, grouped by page in page order. Origins are PAGE-LOCAL:
+	// 0 at each page's first window, strictly rising within a page. A one-page
+	// document projects all zeros.
+	contentWindowPages: ReadonlyArray<number>
 	// spec-section-break CAP-6: the content band's break offset, in the content
 	// column's band-relative millipoints (the frame a content component's `y`
 	// is in). ABSENT when the document declares no break. It comes from Go and
@@ -750,7 +755,7 @@ const isTableColumns = (value: unknown): value is TableColumns => {
   return typeof table.tableId === 'string' && table.tableId.length > 0 && table.tableId.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof table.collection === 'string' && table.collection.length > 0 && table.collection.length <= MAX_ENGINE_BINDING_LENGTH && typeof table.alias === 'string' && table.alias.length > 0 && table.alias.length <= 64 && Array.isArray(table.columns) && table.columns.length <= 128 && table.columns.every((column) => isRecord(column) && hasExactKeys(column, ['id', 'header', 'width', 'proportion', 'align', 'headerAlign', 'headerAlignResolved', 'binding', 'rowField', 'rowFieldEditable', 'footer', 'footerOf', 'footerFormat']) && typeof column.id === 'string' && column.id.length > 0 && column.id.length <= MAX_ENGINE_ELEMENT_ID_LENGTH && typeof column.header === 'string' && Array.from(column.header).length <= MAX_TABLE_COLUMN_HEADER_CODE_POINTS && typeof column.width === 'number' && Number.isSafeInteger(column.width) && column.width > 0 && typeof column.proportion === 'string' && (table.sizing === 'points' ? column.proportion === '' : isProportionString(column.proportion)) && ['left', 'center', 'right'].includes(column.align as string) && ['', 'left', 'center', 'right'].includes(column.headerAlign as string) && ['left', 'center', 'right'].includes(column.headerAlignResolved as string) && typeof column.binding === 'string' && column.binding.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowField === 'string' && column.rowField.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.rowFieldEditable === 'boolean' && ['','sum','avg','count'].includes(column.footer as string) && typeof column.footerOf === 'string' && column.footerOf.length <= MAX_ENGINE_BINDING_LENGTH && typeof column.footerFormat === 'string' && column.footerFormat.length <= 256) && new Set(table.columns.map((item) => (item as Record<string, unknown>).id)).size === table.columns.length
 }
 const isCanvas = (value: unknown): value is CanvasProjection => {
-  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowCountIsExact', 'sectionBreak', 'sectionBreakAnchor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
+  if (!isRecord(value) || !hasOnly(value, ['width', 'height', 'orientation', 'preset', 'locale', 'utcOffset', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'gridIncrement', 'commandWidth', 'commandHeight', 'fontFamilies', 'fontChains', 'defaultFontSize', 'defaultLineSpacing', 'contentWindowHeight', 'contentWindowCount', 'contentWindowOrigins', 'contentWindowPages', 'contentWindowCountIsExact', 'sectionBreak', 'sectionBreakAnchor', 'bands', 'components']) || !['A4', 'Letter', 'custom'].includes(value.preset as string) || (value.orientation !== 'portrait' && value.orientation !== 'landscape')) return false
   // THE TWO DOCUMENT-SETTINGS CLAUSES ARE LOAD-BEARING, and `hasOnly` above
   // cannot stand in for them: it is a SUBSET check, so a key Go simply failed
   // to send passes it and reaches the panel as `undefined` — a locale row with
@@ -800,7 +805,14 @@ const isCanvas = (value: unknown): value is CanvasProjection => {
   // slice, which marshals to null and is not an array.
   const origins = value.contentWindowOrigins
   if (!Array.isArray(origins) || origins.length === 0 || origins.length > MAX_ENGINE_CONTENT_WINDOWS || origins.length !== value.contentWindowCount) return false
-  if (!origins.every((origin) => typeof origin === 'number' && Number.isSafeInteger(origin) && origin >= 0) || origins[0] !== 0 || origins.some((origin, index) => index > 0 && (origins[index - 1] as number) >= (origin as number))) return false
+  // SPEC-multi-pages CAP-8: every window names its designed page. Pages start
+  // at 0 and step by at most one, so windows are grouped by page in page
+  // order; origins are page-local — 0 at each page's first window and
+  // strictly rising within a page.
+  const windowPages = value.contentWindowPages
+  if (!Array.isArray(windowPages) || windowPages.length !== origins.length || !windowPages.every((page) => typeof page === 'number' && Number.isSafeInteger(page) && page >= 0) || windowPages[0] !== 0 || windowPages.some((page, index) => index > 0 && (page as number) !== (windowPages[index - 1] as number) && (page as number) !== (windowPages[index - 1] as number) + 1)) return false
+  const pageStart = (index: number) => index === 0 || windowPages[index] !== windowPages[index - 1]
+  if (!origins.every((origin) => typeof origin === 'number' && Number.isSafeInteger(origin) && origin >= 0) || origins.some((origin, index) => pageStart(index) ? origin !== 0 : (origins[index - 1] as number) >= (origin as number))) return false
   if (typeof value.contentWindowCountIsExact !== 'boolean') return false
   const bands = value.bands
   const components = value.components

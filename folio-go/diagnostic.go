@@ -339,6 +339,11 @@ const DiagCodeSectionBreakInvalid = string(diag.CodeSectionBreakInvalid)
 const DiagCodeSectionBreakStraddled = string(diag.CodeSectionBreakStraddled)
 const DiagCodeSectionBreakSplitsKeepTogether = string(diag.CodeSectionBreakSplitsKeepTogether)
 
+// DiagCodePagesInvalid names a `pages` array (SPEC-multi-pages CAP-7) that
+// cannot be loaded. The load error's data path names `pages`, `pages[i]` with
+// its key, or `bands.content`.
+const DiagCodePagesInvalid = string(diag.CodePagesInvalid)
+
 // DiagCodeTableHeaderRepeatSuppressed names Story 4.4's own new condition
 // (FR26, DECISION-2 as ruled by the engineering lead): a table's repeated
 // header could not be honoured on one continuation page because the next

@@ -173,6 +173,17 @@ func ParseDocument(b []byte) (*Document, error) {
 		return nil, newLoadError("bands", "", "", "missing required field")
 	}
 
+	// pages (SPEC-multi-pages, D-G.1) — optional; decoded after bands so
+	// its ids are claimed after the three bands', through the same ctx.
+	if raw, ok := top[pagesKey]; ok {
+		consumed[pagesKey] = true
+		pages, err := decodePages(ctx, raw, doc.Bands.Content)
+		if err != nil {
+			return nil, err
+		}
+		doc.Pages = pages
+	}
+
 	// unbreakableValues (Story 2.4; D-2.1.6 OWNER, D-2.4.1) — optional,
 	// a list of bare root-relative dotted data paths. Absent stays
 	// absent: the field is not defaulted to an empty list, because a

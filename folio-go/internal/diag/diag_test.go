@@ -55,6 +55,7 @@ var codePins = []struct {
 	{"CodeSectionBreakInvalid", CodeSectionBreakInvalid, "SECTION_BREAK_INVALID"},
 	{"CodeSectionBreakStraddled", CodeSectionBreakStraddled, "SECTION_BREAK_STRADDLED"},
 	{"CodeSectionBreakSplitsKeepTogether", CodeSectionBreakSplitsKeepTogether, "SECTION_BREAK_SPLITS_KEEP_TOGETHER"},
+	{"CodePagesInvalid", CodePagesInvalid, "PAGES_INVALID"},
 }
 
 // TestRegistryIsAdditiveOnly is AC5: additive-only is enforced by

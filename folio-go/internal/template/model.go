@@ -10,7 +10,11 @@
 // belongs to Story 1.6 (D-1.4.3: "1.4 must not build it").
 package template
 
-import "github.com/panitw/folio/folio-go/internal/geom"
+import (
+	"fmt"
+
+	"github.com/panitw/folio/folio-go/internal/geom"
+)
 
 // Document is the parsed, canonicalised form of a `.folio` file. Every
 // slice and map field is initialised to non-nil empty by the parser and
@@ -33,6 +37,13 @@ type Document struct {
 
 	// Bands has exactly the three keys content/pageFooter/pageHeader.
 	Bands Bands
+
+	// Pages is SPEC-multi-pages' designed pages (D-G.1). Nil for a one-page
+	// document, whose content lives in Bands.Content. When set it holds
+	// EVERY page, page 1 included, and Bands.Content carries no elements and
+	// no section break. Read content through ContentBands, never through
+	// Bands.Content directly.
+	Pages []ContentPage
 
 	// Assets is keyed by lowercase hex SHA-256 of the raw bytes.
 	Assets map[string]Asset
@@ -388,6 +399,55 @@ type Bands struct {
 	Content    Band
 	PageFooter Band
 	PageHeader Band
+}
+
+// ContentPage is one entry of the top-level `pages` array (SPEC-multi-pages):
+// one designed page's content column. Its Band carries Elements, SectionBreak
+// and SectionBreakAnchor; Height and Extra are never set, because a page
+// entry is a closed key set.
+type ContentPage struct {
+	Band
+	// PageBreak is the page's Page Break setting. A missing value loads as
+	// true; page 1's value is ignored and always held as true.
+	PageBreak bool
+}
+
+// ContentBands returns every designed page's content band in page order:
+// the one content band of a one-page document, or each entry of Pages.
+func (d *Document) ContentBands() []*Band {
+	if len(d.Pages) == 0 {
+		return []*Band{&d.Bands.Content}
+	}
+	out := make([]*Band, len(d.Pages))
+	for i := range d.Pages {
+		out[i] = &d.Pages[i].Band
+	}
+	return out
+}
+
+// ElementBands returns every band that holds elements, in document order:
+// the page header, each page's content band, then the page footer.
+func (d *Document) ElementBands() []*Band {
+	out := []*Band{&d.Bands.PageHeader}
+	out = append(out, d.ContentBands()...)
+	return append(out, &d.Bands.PageFooter)
+}
+
+// PageCount is the number of designed pages, at least 1.
+func (d *Document) PageCount() int {
+	if len(d.Pages) == 0 {
+		return 1
+	}
+	return len(d.Pages)
+}
+
+// PageField is the file location of page i's content: `bands.content` for
+// a document written in the one-page shape, `pages[i]` otherwise.
+func (d *Document) PageField(i int) string {
+	if len(d.Pages) < 2 {
+		return contentBandField
+	}
+	return fmt.Sprintf("pages[%d]", i)
 }
 
 // Band is one of the three template bands. Height is a presence flag:

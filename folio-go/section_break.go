@@ -39,6 +39,12 @@ const sectionBreakDataPath = "bands.content.sectionBreak"
 // sectionBreakAnchorDataPath locates a diagnostic about the break's Anchor.
 const sectionBreakAnchorDataPath = "bands.content.sectionBreakAnchor"
 
+// sectionBreakPath locates a load diagnostic about page 1's key: under
+// `bands.content` for a one-page document, `pages[0]` otherwise.
+func sectionBreakPath(t *Template, key string) string {
+	return t.doc.PageField(0) + "." + key
+}
+
 // sectionBreakSplit is one document's section break, resolved for pagination.
 // The zero value is "no break", and paginates exactly as before.
 type sectionBreakSplit struct {
@@ -59,7 +65,7 @@ func sectionBreakOf(t *Template, g layout.PageGeometry) sectionBreakSplit {
 		return sectionBreakSplit{}
 	}
 	out := sectionBreakSplit{line: layout.Origins(g).Content + offset, unanchored: !sectionBreakAnchored(t)}
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range firstContentBand(t).Elements {
 		if el.Y < offset {
 			continue
 		}
@@ -76,7 +82,7 @@ func declaredSectionBreak(t *Template) (geom.Length, bool) {
 	if t == nil || t.doc == nil {
 		return 0, false
 	}
-	sb := t.doc.Bands.Content.SectionBreak
+	sb := firstContentBand(t).SectionBreak
 	if !sb.Set || sb.Null {
 		return 0, false
 	}
@@ -89,7 +95,7 @@ func sectionBreakAnchored(t *Template) bool {
 	if t == nil || t.doc == nil {
 		return true
 	}
-	a := t.doc.Bands.Content.SectionBreakAnchor
+	a := firstContentBand(t).SectionBreakAnchor
 	return !a.Set || a.Null || a.Value
 }
 
@@ -99,27 +105,46 @@ func sectionBreakAnchored(t *Template) bool {
 // the element). It lives here, not in internal/template, because the range
 // check needs layout.ContentHeight — validateTableMinHeights' reason.
 func validateSectionBreak(t *Template) error {
+	if t == nil || t.doc == nil {
+		return nil
+	}
+	// SPEC-multi-pages: a section break on a later page belongs to story 5;
+	// the parser refuses it, and this is the same rule for a template that
+	// reached here some other way.
+	for page, band := range t.doc.ContentBands() {
+		if page > 0 && (band.SectionBreak.Set || band.SectionBreakAnchor.Set) {
+			key := "sectionBreak"
+			if !band.SectionBreak.Set {
+				key = "sectionBreakAnchor"
+			}
+			path := t.doc.PageField(page) + "." + key
+			return newRenderError(DiagCodeSectionBreakInvalid, "", path,
+				fmt.Errorf("folio: %s: a section break is supported only on the first page", path))
+		}
+	}
+	breakPath := sectionBreakPath(t, "sectionBreak")
 	offset, ok := declaredSectionBreak(t)
 	if !ok {
 		// The parser already refuses an Anchor with no break; this is the
 		// same rule for a template that reached here some other way.
-		if t != nil && t.doc != nil && t.doc.Bands.Content.SectionBreakAnchor.Set {
-			return newRenderError(DiagCodeSectionBreakInvalid, "", sectionBreakAnchorDataPath,
-				fmt.Errorf("folio: bands.content.sectionBreakAnchor: declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key"))
+		if firstContentBand(t).SectionBreakAnchor.Set {
+			anchorPath := sectionBreakPath(t, "sectionBreakAnchor")
+			return newRenderError(DiagCodeSectionBreakInvalid, "", anchorPath,
+				fmt.Errorf("folio: %s: declared without a sectionBreak — the Anchor setting qualifies a section break; add the break or remove this key", anchorPath))
 		}
 		return nil
 	}
 	if offset <= 0 {
-		return newRenderError(DiagCodeSectionBreakInvalid, "", sectionBreakDataPath,
-			fmt.Errorf("folio: bands.content.sectionBreak: %spt is at or above the content band's top — a section break must lie inside the content band, greater than 0", template.FormatPoints(offset)))
+		return newRenderError(DiagCodeSectionBreakInvalid, "", breakPath,
+			fmt.Errorf("folio: %s: %spt is at or above the content band's top — a section break must lie inside the content band, greater than 0", breakPath, template.FormatPoints(offset)))
 	}
 	if g, err := pageGeometryOf(t); err == nil {
 		if height := layout.ContentHeight(g); offset >= height {
-			return newRenderError(DiagCodeSectionBreakInvalid, "", sectionBreakDataPath,
-				fmt.Errorf("folio: bands.content.sectionBreak: %spt is at or below the bottom of the content band (a content height of %spt) — move the break up, or give the content band more room", template.FormatPoints(offset), template.FormatPoints(height)))
+			return newRenderError(DiagCodeSectionBreakInvalid, "", breakPath,
+				fmt.Errorf("folio: %s: %spt is at or below the bottom of the content band (a content height of %spt) — move the break up, or give the content band more room", breakPath, template.FormatPoints(offset), template.FormatPoints(height)))
 		}
 	}
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range firstContentBand(t).Elements {
 		top, bottom := sectionBreakDeclaredBox(el)
 		if top < offset && bottom > offset {
 			return newRenderError(DiagCodeSectionBreakStraddled, string(el.ID), "",
@@ -171,6 +196,12 @@ func refuseSectionBreakStraddle(t *Template, bandName string, candidate template
 	if bandName != bandContent {
 		return nil
 	}
+	// SPEC-multi-pages: the break is page 1's, so it constrains only page 1's
+	// elements. An id not yet in the index is a new element, created into
+	// page 1.
+	if page, ok := contentPageIndex(t)[string(candidate.ID)]; ok && page != 0 {
+		return nil
+	}
 	offset, ok := declaredSectionBreak(t)
 	if !ok || !sectionBreakStraddles(candidate, offset) {
 		return nil
@@ -192,7 +223,7 @@ func refuseSectionBreakBeyondContent(t *Template) error {
 		return nil
 	}
 	if height := layout.ContentHeight(g); offset >= height {
-		return componentFailure("", sectionBreakDataPath, fmt.Sprintf("this leaves a content band %spt tall, and the section break at %spt would lie at or below its bottom — move the section break up first", template.FormatPoints(height), template.FormatPoints(offset)))
+		return componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("this leaves a content band %spt tall, and the section break at %spt would lie at or below its bottom — move the section break up first", template.FormatPoints(height), template.FormatPoints(offset)))
 	}
 	return nil
 }
@@ -203,44 +234,44 @@ func refuseSectionBreakBeyondContent(t *Template) error {
 // would actually have been written.
 func setSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 4); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "setSectionBreak takes exactly kind, version, offset and snap")
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "setSectionBreak takes exactly kind, version, offset and snap")
 	}
 	proposed, err := lengthField(raw, "offset")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, err.Error())
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), err.Error())
 	}
 	snap, err := commandBool(raw, "snap")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, err.Error())
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), err.Error())
 	}
 	if snap {
 		snapped, valid := SnapToGrid(proposed)
 		if !valid {
-			return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "the section break offset overflows grid snapping")
+			return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "the section break offset overflows grid snapping")
 		}
 		proposed = snapped
 	}
 	if proposed <= 0 {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, fmt.Sprintf("a section break at %spt is at or above the content band's top — it must lie inside the content band", template.FormatPoints(proposed)))
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt is at or above the content band's top — it must lie inside the content band", template.FormatPoints(proposed)))
 	}
 	g, err := canvasPageGeometry(t)
 	if err != nil {
 		return CanvasProjection{}, err
 	}
 	if height := layout.ContentHeight(g); proposed >= height {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, fmt.Sprintf("a section break at %spt is at or below the bottom of the content band (a content height of %spt) — move it up", template.FormatPoints(proposed), template.FormatPoints(height)))
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt is at or below the bottom of the content band (a content height of %spt) — move it up", template.FormatPoints(proposed), template.FormatPoints(height)))
 	}
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range firstContentBand(t).Elements {
 		if sectionBreakStraddles(el, proposed) {
 			top, bottom := sectionBreakDeclaredBox(el)
-			return CanvasProjection{}, componentFailure(string(el.ID), sectionBreakDataPath, fmt.Sprintf("a section break at %spt would run through %s, which runs from %spt to %spt — every element must lie wholly above or wholly below the break", template.FormatPoints(proposed), el.ID, template.FormatPoints(top), template.FormatPoints(bottom)))
+			return CanvasProjection{}, componentFailure(string(el.ID), sectionBreakPath(t, "sectionBreak"), fmt.Sprintf("a section break at %spt would run through %s, which runs from %spt to %spt — every element must lie wholly above or wholly below the break", template.FormatPoints(proposed), el.ID, template.FormatPoints(top), template.FormatPoints(bottom)))
 		}
 	}
-	previous := t.doc.Bands.Content.SectionBreak
-	t.doc.Bands.Content.SectionBreak = template.Presence[geom.Length]{Set: true, Value: proposed}
+	previous := firstContentBand(t).SectionBreak
+	firstContentBand(t).SectionBreak = template.Presence[geom.Length]{Set: true, Value: proposed}
 	projection, err := Canvas(t)
 	if err != nil {
-		t.doc.Bands.Content.SectionBreak = previous
+		firstContentBand(t).SectionBreak = previous
 		return CanvasProjection{}, err
 	}
 	return projection, nil
@@ -250,18 +281,18 @@ func setSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProject
 // key's absence, so it is cleared to the zero Presence, never to null.
 func removeSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 2); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "removeSectionBreak takes exactly kind and version")
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "removeSectionBreak takes exactly kind and version")
 	}
-	if !t.doc.Bands.Content.SectionBreak.Set {
-		return CanvasProjection{}, componentFailure("", sectionBreakDataPath, "this document has no section break to remove")
+	if !firstContentBand(t).SectionBreak.Set {
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreak"), "this document has no section break to remove")
 	}
-	previous, previousAnchor := t.doc.Bands.Content.SectionBreak, t.doc.Bands.Content.SectionBreakAnchor
-	t.doc.Bands.Content.SectionBreak = template.Presence[geom.Length]{}
+	previous, previousAnchor := firstContentBand(t).SectionBreak, firstContentBand(t).SectionBreakAnchor
+	firstContentBand(t).SectionBreak = template.Presence[geom.Length]{}
 	// The Anchor qualifies the break, so it goes with it (CAP-7).
-	t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{}
+	firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{}
 	projection, err := Canvas(t)
 	if err != nil {
-		t.doc.Bands.Content.SectionBreak, t.doc.Bands.Content.SectionBreakAnchor = previous, previousAnchor
+		firstContentBand(t).SectionBreak, firstContentBand(t).SectionBreakAnchor = previous, previousAnchor
 		return CanvasProjection{}, err
 	}
 	return projection, nil
@@ -272,29 +303,29 @@ func removeSectionBreak(t *Template, raw map[string]json.RawMessage) (CanvasProj
 // absence, so `true` clears the key and `false` writes it.
 func setSectionBreakAnchor(t *Template, raw map[string]json.RawMessage) (CanvasProjection, error) {
 	if err := componentFields(raw, 3); err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "setSectionBreakAnchor takes exactly kind, version and anchor")
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "setSectionBreakAnchor takes exactly kind, version and anchor")
 	}
 	// json.Unmarshal leaves a bool untouched for null, so null is refused
 	// here rather than read as false.
 	if value, ok := raw["anchor"]; ok && string(bytes.TrimSpace(value)) == "null" {
-		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "anchor must be a boolean")
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "anchor must be a boolean")
 	}
 	anchor, err := commandBool(raw, "anchor")
 	if err != nil {
-		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, err.Error())
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), err.Error())
 	}
 	if _, ok := declaredSectionBreak(t); !ok {
-		return CanvasProjection{}, componentFailure("", sectionBreakAnchorDataPath, "this document has no section break to anchor — add a Section Break first")
+		return CanvasProjection{}, componentFailure("", sectionBreakPath(t, "sectionBreakAnchor"), "this document has no section break to anchor — add a Section Break first")
 	}
-	previous := t.doc.Bands.Content.SectionBreakAnchor
+	previous := firstContentBand(t).SectionBreakAnchor
 	if anchor {
-		t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{}
+		firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{}
 	} else {
-		t.doc.Bands.Content.SectionBreakAnchor = template.Presence[bool]{Set: true, Value: false}
+		firstContentBand(t).SectionBreakAnchor = template.Presence[bool]{Set: true, Value: false}
 	}
 	projection, err := Canvas(t)
 	if err != nil {
-		t.doc.Bands.Content.SectionBreakAnchor = previous
+		firstContentBand(t).SectionBreakAnchor = previous
 		return CanvasProjection{}, err
 	}
 	return projection, nil
@@ -312,7 +343,7 @@ func sectionBreakSplitTags(t *Template) (tags []string, firstMember map[string]s
 	below := map[string]bool{}
 	firstMember = map[string]string{}
 	var order []string
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range firstContentBand(t).Elements {
 		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
 			continue
 		}

@@ -113,9 +113,10 @@ func wrapTemplateError(err error) error {
 		if le.Code != "" {
 			code = string(le.Code)
 		}
-		if code == DiagCodeSectionBreakInvalid {
-			// spec-section-break: located at the band, which has no
-			// element id — the field path is its location.
+		if code == DiagCodeSectionBreakInvalid || code == DiagCodePagesInvalid {
+			// spec-section-break and SPEC-multi-pages: located at the band or
+			// the page, which has no element id — the field path is its
+			// location.
 			return newRenderError(code, le.ElementID, le.Field, err)
 		}
 		return newRenderError(code, le.ElementID, "", err)

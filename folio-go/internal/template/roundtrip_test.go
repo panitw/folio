@@ -54,6 +54,7 @@ func canonicalFixtures(t *testing.T) map[string][]byte {
 	return map[string][]byte{
 		"worked-example": golden,
 		"minimal":        minimal,
+		"multi-page":     multiPageFixture,
 		"unknown-keys":   unknownKeysFixture,
 		"html-trap":      htmlEscapeTrapFixture,
 		"utf8-trap":      utf8TrapFixture,

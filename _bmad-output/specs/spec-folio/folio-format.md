@@ -44,12 +44,13 @@ Points rather than raw millipoints because a hand-editor writes `"x": 36`, not `
 
 | Field | Meaning |
 |---|---|
-| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.1` if the content band declares `sectionBreak` or `sectionBreakAnchor` (see *Pagination*), else `4.0` if any element is a `barcode` or a `qrcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
+| `version` | `"MAJOR.MINOR"`. A higher `MAJOR` than the library supports is a load error, never a best-effort render (FR13). **It describes the document, not the writer**: a file declares the lowest version its own content requires — `4.1` if the document lists `pages` (see *Designed pages*) or a content band or page declares `sectionBreak` or `sectionBreakAnchor` (see *Pagination*), else `4.0` if any element is a `barcode` or a `qrcode`, else `3.3` if any text expression (a text element's `value` or a column's `bind`) is statically known to be able to return a number (see *Expressions*), else `3.2` if any table column declares `headerAlign`, else `3.1` if a table declares `rules` or `minHeight`, else `3.0` if a table declares a total `width` with proportional columns, else `2.0` if any style sets `align: "justify"` (which only a **non-table** element's `style` can, see *Alignment is four closed sets* below) **or any expression container uses formula syntax or boolean/null literals** (see *Expressions*) **or any chain in `fonts` declares an entry that serialises as an OBJECT** — an embedded face, or a face carrying style variants (see *`fonts`* below), else `1.2` if any element sets `keepTogether`, else `1.1` if any style sets `lineSpacing` or `color`, else `1.0` — and the rule is applied **on save**, in terms of what the document SERIALISES to: saving raises the version to the **highest** requirement the document's own written form actually carries, never lowers it, and never stamps the library's own ceiling on a document that does not need it. (So `{"face": "X"}` with no variants, which canonicalises back to the bare string `"X"`, raises nothing.) They coexist: a document using none of those keys still declares `1.0` however new the library that wrote it. |
 | `locale` | One tag from the closed set `en`, `th`, `zh-Hans`, `ja`. An unlisted tag is a load error (AD-12). |
 | `utcOffset` | Fixed offset, `±HH:MM`. The engine reads no host time zone. |
 | `page` | Page setup (below). |
 | `fonts` | Named font stacks (below). |
 | `bands` | Exactly three bands (below). |
+| `pages` | *Optional.* The designed pages of a document with two or more pages (see *Designed pages* below). Absent from a one-page document. |
 | `assets` | Embedded binary assets, keyed by content hash (below). |
 | `nextId` | The next element-id counter value. Persisted so ids survive a save without renumbering (AD-10). |
 | `unbreakableValues` | *Optional.* A list of **bare root-relative dotted value paths** (e.g. `"customer.name"`) whose bound values must never be split across a line break — the same path convention `columns[].footerOf` uses: no `{{ }}`, no function call, no `[]`. Row-scoped paths are written root-relative under that same convention. The engine **never infers** membership; see *Line breaking* below. Declared once for the document because the property belongs to the data, not to a box. Absent means no value is protected. |
@@ -350,6 +351,39 @@ function (AD-13's sibling rule). Storing it would be a second source of truth.
 Every element's `x` and `y` are relative to **its band's** top-left corner, never to the page
 (AD-24).
 
+### Designed pages
+
+A document may have several **designed pages**, each its own content column. The page header, the
+page footer and the page setup are shared by every page. The file has **two shapes**, chosen by page
+count:
+
+- **One page.** The content is `bands.content`, and there is no `pages` key. This is every document
+  written before designed pages existed, unchanged.
+- **Two or more pages.** Every page, page 1 included, is an entry of the top-level `pages` array,
+  in page order, and `bands.content` is `{ "elements": [] }` with no section break.
+
+```json
+"pages": [
+  { "elements": [], "sectionBreak": 300 },
+  { "elements": [], "pageBreak": true }
+]
+```
+
+| Page key | Meaning |
+|---|---|
+| `pages[].elements` | *Required.* The page's content elements, exactly as `content`'s. Their `x` and `y` are relative to the page's content band. |
+| `pages[].pageBreak` | A boolean, the page's **Page Break** setting. It is written as `true` or `false` on every page after the first; a later page with no value loads as `true`. On the first page it does not apply: a value there loads without error and is dropped on save. |
+| `pages[].sectionBreak`, `pages[].sectionBreakAnchor` | *Optional.* The page's section break, as `content`'s. Only the first page may declare one; on a later page it is a load error (`SECTION_BREAK_INVALID`) naming the page. |
+
+Element ids are unique across the whole document, and a `keepTogether` group cannot span pages. Each
+of the following is a load error (`PAGES_INVALID`) naming where it is: a `pages` array with fewer
+than two entries or that is not an array (`pages`); elements in `bands.content` beside `pages`
+(`bands.content`); a section break in `bands.content` beside `pages` (the key's path,
+`bands.content.sectionBreak` or `bands.content.sectionBreakAnchor`); an entry that is not an object, carries a key other than those
+above, or has a non-boolean `pageBreak` (`pages[i]`, with the key); a `keepTogether` tag used on two
+pages (naming both). A duplicate id on a later page is the ordinary duplicate-id load error, located
+at that page. A document with `pages` declares `4.1`.
+
 ### Pagination
 
 A document whose content is taller than one content band becomes **several pages**. The page header
@@ -405,9 +439,19 @@ side is kept together on its own, and every render returns the Warning
 `SECTION_BREAK_SPLITS_KEEP_TOGETHER` naming the group. There is at most one break, and it is never
 drawn.
 
-**No page is ever blank.** Because a window begins at the first item that did not fit rather than at
-a fixed multiple of the content height, an element declared far below the preceding content starts
-the next page instead of generating empty pages in front of it.
+**Designed pages follow one another in page order.** Each designed page is paginated as its own
+column under every rule above, including its own section break. Page Break on: a page starts a new
+output page after the previous designed page's last output page, overflow included, with its content
+at its declared positions. The page header and page footer are drawn on every output page, and
+`{{pages}}` and `{{page}}` count the output pages of all designed pages together. (Page Break off, a
+page following directly after the previous page's content, is not yet honoured: every page renders
+as if its Page Break were on.)
+
+**No page is ever blank, except an empty designed page.** Because a window begins at the first item
+that did not fit rather than at a fixed multiple of the content height, an element declared far
+below the preceding content starts the next page instead of generating empty pages in front of it.
+A designed page with no elements is still one output page, carrying only the page header and page
+footer.
 
 **An item that fits in no window is an error, not a surprise.** If a single line is taller than the
 content band — a font size larger than the space available — or an image's **declared box** is, then

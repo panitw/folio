@@ -750,6 +750,23 @@ func requireSectionBreakUnanchoredLegend(t *testing.T, target matrixTarget, raw 
 	})
 }
 
+// captureMultiPageStatementRender renders fixtures/multi-page-statement/ in a
+// FRESH process.
+func captureMultiPageStatementRender(t *testing.T, target matrixTarget, binPath string) []byte {
+	t.Helper()
+	return runOnTarget(t, target, binPath, map[string]string{subprocessMultiPageStatementEnvVar: "1"})
+}
+
+// requireMultiPageStatementPages is the multi-page document's per-leg feature
+// guard: four pages, the header and "Page N of 4" on each, and page 2's
+// heading on page 4 only.
+func requireMultiPageStatementPages(t *testing.T, target matrixTarget, raw []byte) {
+	t.Helper()
+	multiPageStatementAssertPages(t, raw, func(format string, args ...any) {
+		t.Fatalf("%s: multi-page-statement leg: "+format, append([]any{target.name}, args...)...)
+	})
+}
+
 // captureSectionBreakStatementRender renders fixtures/section-break-statement/
 // in a FRESH process.
 func captureSectionBreakStatementRender(t *testing.T, target matrixTarget, binPath string) []byte {
@@ -2071,6 +2088,18 @@ var matrixDocuments = []matrixDocument{
 		requireFontFile2: true,
 		extraGuard:       requireSectionBreakUnanchoredLegend,
 		wantPages:        1,
+	},
+	{
+		// SPEC-multi-pages CAP-5: the first cross-target artifact written in
+		// the `pages` shape. Page 1's table runs three output pages and page 2
+		// starts on output page 4; Page X of Y sums every designed page.
+		label:            "multi-page-statement (a second designed page after a statement that overflows)",
+		slug:             "multi-page-statement",
+		capture:          captureMultiPageStatementRender,
+		fixtureRelPath:   []string{"fixtures", "multi-page-statement", "expected.json"},
+		requireFontFile2: true,
+		extraGuard:       requireMultiPageStatementPages,
+		wantPages:        4,
 	},
 	{
 		// spec-barcode-qr-elements CAP-1: the first cross-target artifact

@@ -554,6 +554,14 @@ type CanvasProjection struct {
 	// snapshot — which blanks the canvas with nothing to attribute the blank
 	// to.
 	ContentWindowOrigins []int64 `json:"contentWindowOrigins"`
+	// ContentWindowPages is SPEC-multi-pages CAP-8's engine half: the designed
+	// page each window belongs to, one entry per window, so
+	// len(ContentWindowPages) == ContentWindowCount. Windows are grouped by
+	// page in page order, and ContentWindowOrigins are PAGE-LOCAL: each
+	// page's first window has origin 0 and its later windows rise strictly
+	// from there, in that page's own band-relative frame. A one-page document
+	// projects all zeros. Always non-empty, for ContentWindowOrigins' reason.
+	ContentWindowPages []int `json:"contentWindowPages"`
 	// ContentWindowCountIsExact states, as a value rather than only in the
 	// comment above, whether ContentWindowCount can be TRUSTED as the number
 	// of pages this content column occupies. The ENGINE reports it, because
@@ -978,15 +986,42 @@ func Canvas(t *Template) (CanvasProjection, error) {
 			unanchored := false
 			sectionBreakAnchor = &unanchored
 		}
+		pageOf := contentPageIndex(t)
 		for index := range components {
-			if components[index].Band != bandContent {
+			// The break is page 1's, so only page 1's components are placed
+			// relative to it.
+			if components[index].Band != bandContent || pageOf[components[index].ID] != 0 {
 				continue
 			}
 			below := components[index].Y >= value
 			components[index].BelowSectionBreak = &below
 		}
 	}
-	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: 1, ContentWindowOrigins: []int64{0}, ContentWindowCountIsExact: false}, nil
+	return CanvasProjection{SectionBreak: sectionBreak, SectionBreakAnchor: sectionBreakAnchor, Width: int64(w), Height: int64(h), Locale: t.doc.Locale, UTCOffset: t.doc.UTCOffset, Orientation: t.doc.Page.Orientation, Preset: preset, MarginTop: int64(m.Top), MarginRight: int64(m.Right), MarginBottom: int64(m.Bottom), MarginLeft: int64(m.Left), GridIncrement: GridIncrement, CommandWidth: int64(commandW), CommandHeight: int64(commandH), Bands: bands, Components: components, FontFamilies: canvasFontFamilyNames(chains), FontChains: chains, DefaultFontSize: int64(defaultFontSizePt), DefaultLineSpacing: defaultLineSpacing, ContentWindowHeight: int64(window), ContentWindowCount: int64(t.doc.PageCount()), ContentWindowOrigins: canvasOnePerPageOrigins(t.doc.PageCount()), ContentWindowPages: canvasOnePerPagePages(t.doc.PageCount()), ContentWindowCountIsExact: false}, nil
+}
+
+// canvasOnePerPageOrigins and canvasOnePerPagePages are the window sequence
+// of a projection that has not paginated: one window per designed page, each
+// beginning at its page's top. For a one-page document, [0] and [0].
+func canvasOnePerPageOrigins(pages int) []int64 {
+	return make([]int64, pages)
+}
+
+func canvasOnePerPagePages(pages int) []int {
+	out := make([]int, pages)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+// canvasWindowPage is window index's designed page, 0 when the projection
+// carries no page for it.
+func canvasWindowPage(projection CanvasProjection, index int) int {
+	if index < 0 || index >= len(projection.ContentWindowPages) {
+		return 0
+	}
+	return projection.ContentWindowPages[index]
 }
 
 // CanvasWithTextPaint returns Canvas geometry augmented with a read-only,
@@ -1080,7 +1115,7 @@ func canvasWindowOrigins(plan layout.Pagination) ([]int64, bool) {
 // never been given the data — so the column being counted is one header tall
 // however many hundred rows the finished document runs to.
 func canvasContentBandHasBoundTable(t *Template) bool {
-	for _, element := range t.doc.Bands.Content.Elements {
+	for _, element := range contentElements(t) {
 		if element.Type == template.ElementTable && element.Table.Set && !element.Table.Null && element.Table.Value.Bind != "" {
 			return true
 		}
@@ -1166,7 +1201,7 @@ func canvasElementIsPlaced(element template.Element) bool {
 // for an element whose placement the canvas cannot decide. A hazard test
 // does not need an escape hatch for a document the loader cannot produce.
 func canvasContentBandHasConditionalVisibility(t *Template) bool {
-	for _, element := range t.doc.Bands.Content.Elements {
+	for _, element := range contentElements(t) {
 		if element.VisibleIf.Set && !element.VisibleIf.Null {
 			return true
 		}
@@ -1251,9 +1286,9 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 	// wrong about it is a defect rather than a cause to register beside the
 	// causes above.
 	keepTogether := keepTogetherTags(t)
-	items := make([]layout.ColumnItem, 0, len(column.Items)+len(t.doc.Bands.Content.Elements))
+	items := make([]layout.ColumnItem, 0, len(column.Items)+len(contentElements(t)))
 	items = append(items, column.Items...)
-	for _, element := range t.doc.Bands.Content.Elements {
+	for _, element := range contentElements(t) {
 		if element.Type == template.ElementText {
 			// Text contributes one item PER SHAPED LINE, never its box: a
 			// paragraph splits between windows at a line, which is what
@@ -1302,38 +1337,57 @@ func addCanvasWindowCount(t *Template, projection *CanvasProjection, column canv
 		items[i].Top += origin
 		items[i].Bottom += origin
 	}
-	plan, err := layout.Paginate(g, items)
-	if err != nil {
+	// SPEC-multi-pages CAP-8: each designed page is its own column, paginated
+	// on its own, with page-local origins. A one-page document's items are
+	// paginated exactly as before.
+	pageCount := t.doc.PageCount()
+	degrade := func() {
 		// A pagination failure DEGRADES THE COUNT; it never fails the
 		// projection. The reachable case is a content component taller than
 		// one window, which this story newly makes authorable — turning the
 		// render path's overflow into a canvas refusal would make a
-		// canvas bound into a document validity rule. One window is
+		// canvas bound into a document validity rule. One window per page is
 		// Paginate's own answer for a column it cannot place, and it is the
 		// same shape as this file's other degradations: dispose of the
 		// number, keep the canvas.
 		//
 		// The origins degrade with the count they describe — one window
-		// beginning at the top of the column — and the flag says the number
-		// is NOT EXACT, because a column Paginate could not place is
-		// emphatically not a prediction of the document's length.
-		projection.ContentWindowCount = 1
-		projection.ContentWindowOrigins = []int64{0}
+		// beginning at the top of each page's column — and the flag says the
+		// number is NOT EXACT, because a column Paginate could not place is
+		// emphatically not a prediction of the document's length. A sequence
+		// that would not survive the browser's own validation degrades the
+		// same way: discarding the number is cheaper than discarding the
+		// snapshot.
+		projection.ContentWindowCount = int64(pageCount)
+		projection.ContentWindowOrigins = canvasOnePerPageOrigins(pageCount)
+		projection.ContentWindowPages = canvasOnePerPagePages(pageCount)
 		projection.ContentWindowCountIsExact = false
-		return nil
 	}
-	origins, ok := canvasWindowOrigins(plan)
-	if !ok {
-		// The same degradation, for the same reason: a sequence that would
-		// not survive the browser's own validation must never be sent, and
-		// discarding the number is cheaper than discarding the snapshot.
-		projection.ContentWindowCount = 1
-		projection.ContentWindowOrigins = []int64{0}
-		projection.ContentWindowCountIsExact = false
-		return nil
+	split := contentPagesSplit{breaks: make([]sectionBreakSplit, pageCount)}
+	if pageCount > 1 {
+		split.pageOf = contentPageIndex(t)
 	}
-	projection.ContentWindowCount = int64(len(plan.Pages))
+	origins := make([]int64, 0, pageCount)
+	pages := make([]int, 0, pageCount)
+	for page, pageItems := range split.partition(items) {
+		plan, err := layout.Paginate(g, pageItems)
+		if err != nil {
+			degrade()
+			return nil
+		}
+		pageOrigins, ok := canvasWindowOrigins(plan)
+		if !ok {
+			degrade()
+			return nil
+		}
+		origins = append(origins, pageOrigins...)
+		for range pageOrigins {
+			pages = append(pages, page)
+		}
+	}
+	projection.ContentWindowCount = int64(len(origins))
 	projection.ContentWindowOrigins = origins
+	projection.ContentWindowPages = pages
 	projection.ContentWindowCountIsExact = exact
 	return nil
 }
@@ -1370,7 +1424,7 @@ func addCanvasImagePaint(t *Template, projection *CanvasProjection) error {
 		elements []template.Element
 	}{
 		{bandPageHeader, t.doc.Bands.PageHeader.Elements},
-		{bandContent, t.doc.Bands.Content.Elements},
+		{bandContent, contentElements(t)},
 		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
@@ -1498,7 +1552,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 		elements []template.Element
 	}{
 		{bandPageHeader, t.doc.Bands.PageHeader.Elements},
-		{bandContent, t.doc.Bands.Content.Elements},
+		{bandContent, contentElements(t)},
 		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
@@ -1886,7 +1940,7 @@ func canvasComponents(t *Template, bands []CanvasBand) ([]CanvasComponent, error
 		case bandPageHeader:
 			elements = t.doc.Bands.PageHeader.Elements
 		case bandContent:
-			elements = t.doc.Bands.Content.Elements
+			elements = contentElements(t)
 		case bandPageFooter:
 			elements = t.doc.Bands.PageFooter.Elements
 		}
@@ -2098,7 +2152,7 @@ func addCanvasTableLabelLines(t *Template, projection *CanvasProjection, fs Font
 	for i := range projection.Components {
 		components[projection.Components[i].ID] = &projection.Components[i]
 	}
-	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements} {
+	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, contentElements(t), t.doc.Bands.PageFooter.Elements} {
 		for _, el := range elements {
 			if el.Type != template.ElementTable || !el.Table.Set || el.Table.Null {
 				continue

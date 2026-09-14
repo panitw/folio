@@ -1246,7 +1246,7 @@ func setComponentAssetInPlace(t *Template, raw map[string]json.RawMessage) (Canv
 // fontChainReferences, which walks the same map for the same safety reason from
 // the other direction (which elements name a chain).
 func assetKeyReferenced(t *Template, key string) bool {
-	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements} {
+	for _, elements := range [][]template.Element{t.doc.Bands.PageHeader.Elements, contentElements(t), t.doc.Bands.PageFooter.Elements} {
 		for _, el := range elements {
 			if el.Type == template.ElementImage && el.Asset.Set && !el.Asset.Null && el.Asset.Value == key {
 				return true
@@ -1857,7 +1857,8 @@ func bandByName(t *Template, name string) (*template.Band, CanvasBand, error) {
 		case bandPageHeader:
 			return &t.doc.Bands.PageHeader, projected, nil
 		case bandContent:
-			return &t.doc.Bands.Content, projected, nil
+			// Commands that create into `content` target page 1.
+			return firstContentBand(t), projected, nil
 		case bandPageFooter:
 			return &t.doc.Bands.PageFooter, projected, nil
 		}
@@ -2148,7 +2149,8 @@ func hitTestBand(t *Template, x, y geom.Length) (*template.Band, CanvasBand, err
 		case bandPageHeader:
 			return &t.doc.Bands.PageHeader, band, nil
 		case bandContent:
-			return &t.doc.Bands.Content, band, nil
+			// A drop into `content` targets page 1 until drops are per page.
+			return firstContentBand(t), band, nil
 		case bandPageFooter:
 			return &t.doc.Bands.PageFooter, band, nil
 		}
@@ -2162,9 +2164,17 @@ func findComponent(t *Template, id string) (*template.Band, CanvasBand, int, *te
 		if err != nil {
 			return nil, CanvasBand{}, 0, nil, err
 		}
-		for index := range band.Elements {
-			if string(band.Elements[index].ID) == id {
-				return band, projected, index, &band.Elements[index], nil
+		// SPEC-multi-pages: an element is found on whichever designed page
+		// holds it, and returned with that page's band.
+		candidates := []*template.Band{band}
+		if name == bandContent {
+			candidates = t.doc.ContentBands()
+		}
+		for _, band := range candidates {
+			for index := range band.Elements {
+				if string(band.Elements[index].ID) == id {
+					return band, projected, index, &band.Elements[index], nil
+				}
 			}
 		}
 	}
@@ -4726,7 +4736,14 @@ func boundedChainFaceName(face string, refuse func(string) error) error {
 // (pageHeader, content, pageFooter) — the order the orphaning-delete refusal
 // names its ids in.
 func fontChainBands(t *Template) [][]template.Element {
-	return [][]template.Element{t.doc.Bands.PageHeader.Elements, t.doc.Bands.Content.Elements, t.doc.Bands.PageFooter.Elements}
+	// One slice per band, each sharing its band's storage, so renameFontChain
+	// writes through to every designed page.
+	bands := t.doc.ElementBands()
+	out := make([][]template.Element, 0, len(bands))
+	for _, band := range bands {
+		out = append(out, band.Elements)
+	}
+	return out
 }
 
 func fontChainNamedBy(style template.Presence[template.Style], name string) bool {

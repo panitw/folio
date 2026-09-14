@@ -29,7 +29,7 @@ func SerializeDocument(d *Document) ([]byte, error) {
 // SerializeDocumentWithMinimumVersion accepts requirements derived above this
 // package dependency rank, without changing the document or loaded version.
 func SerializeDocumentWithMinimumVersion(d *Document, minimum string) ([]byte, error) {
-	for _, band := range []Band{d.Bands.PageHeader, d.Bands.Content, d.Bands.PageFooter} {
+	for _, band := range d.ElementBands() {
 		for _, el := range band.Elements {
 			if el.Type == ElementTable {
 				if _, err := TableColumnWidths(el); err != nil {
@@ -135,7 +135,7 @@ func writeDocument(dst []byte, d *Document, minimum ...string) []byte {
 		{"utcOffset", writeString(d.UTCOffset)},
 		{"page", func(dst []byte, depth int) []byte { return writePage(dst, depth, d.Page) }},
 		{"fonts", func(dst []byte, depth int) []byte { return writeFonts(dst, depth, d.Fonts) }},
-		{"bands", func(dst []byte, depth int) []byte { return writeBands(dst, depth, d.Bands) }},
+		{"bands", func(dst []byte, depth int) []byte { return writeBands(dst, depth, bandsForSave(d)) }},
 		{"assets", func(dst []byte, depth int) []byte { return writeAssets(dst, depth, d.Assets) }},
 		{"nextId", writePlainInt(d.NextID)},
 	}
@@ -152,8 +152,57 @@ func writeDocument(dst []byte, d *Document, minimum ...string) []byte {
 			return writeStringArray(dst, depth, paths)
 		}})
 	}
+	// SPEC-multi-pages (D-G.1): the shape is chosen by page count. Two or more
+	// pages write every page in `pages`; one page keeps `bands.content`.
+	if d.PageCount() >= 2 {
+		pages := d.Pages
+		fields = append(fields, kv{"pages", func(dst []byte, depth int) []byte { return writeContentPages(dst, depth, pages) }})
+	}
 	fields = append(fields, extraKVs(d.Extra)...)
 	return writeObject(dst, 0, fields)
+}
+
+// bandsForSave is the three bands as written. A document holding exactly one
+// entry in Pages writes that page's content into `bands.content`.
+func bandsForSave(d *Document) Bands {
+	b := d.Bands
+	if len(d.Pages) == 1 {
+		page := d.Pages[0].Band
+		b.Content.Elements = page.Elements
+		b.Content.SectionBreak = page.SectionBreak
+		b.Content.SectionBreakAnchor = page.SectionBreakAnchor
+	}
+	return b
+}
+
+// writeContentPages writes the `pages` array. pageBreak is written explicitly
+// on every page after the first and never on the first.
+func writeContentPages(dst []byte, depth int, pages []ContentPage) []byte {
+	dst = append(dst, '[')
+	for i, page := range pages {
+		if i > 0 {
+			dst = append(dst, ',')
+		}
+		dst = append(dst, '\n')
+		dst = appendIndent(dst, depth+1)
+		elems := page.Elements
+		fields := []kv{
+			{"elements", func(dst []byte, depth int) []byte { return writeElements(dst, depth, elems) }},
+		}
+		if i > 0 {
+			fields = append(fields, kv{"pageBreak", writeBool(page.PageBreak)})
+		}
+		if page.SectionBreak.Set {
+			fields = append(fields, kv{"sectionBreak", writePoints(page.SectionBreak.Value)})
+		}
+		if page.SectionBreakAnchor.Set && !page.SectionBreakAnchor.Value {
+			fields = append(fields, kv{"sectionBreakAnchor", writeBool(false)})
+		}
+		dst = writeObject(dst, depth+1, fields)
+	}
+	dst = append(dst, '\n')
+	dst = appendIndent(dst, depth)
+	return append(dst, ']')
 }
 
 func writePage(dst []byte, depth int, p Page) []byte {

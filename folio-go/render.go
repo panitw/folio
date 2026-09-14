@@ -320,9 +320,16 @@ func documentBands(doc *Template) ([]bandWithOrigin, error) {
 		return nil, err
 	}
 	origins := layout.Origins(g)
+	// SPEC-multi-pages: every designed page's elements travel as the one
+	// content band, in page order, so every collector reads them unchanged;
+	// pagination splits them back by page (paginateContentPages).
+	content := *firstContentBand(doc)
+	if doc.doc.PageCount() > 1 {
+		content = template.Band{Elements: contentElements(doc)}
+	}
 	return []bandWithOrigin{
 		{doc.doc.Bands.PageHeader, origins.PageHeader},
-		{doc.doc.Bands.Content, origins.Content},
+		{content, origins.Content},
 		{doc.doc.Bands.PageFooter, origins.PageFooter},
 	}, nil
 }
@@ -2476,9 +2483,11 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// spec-section-break: both passes paginate through the same
 	// section-aware wrapper, so a page added for the section is counted by
 	// {{pages}} exactly as it is rendered.
-	sectionBreak := sectionBreakOf(t, geometry)
+	// SPEC-multi-pages: each designed page is paginated on its own and the
+	// output pages summed, in both passes.
+	contentPages := contentPagesOf(t, geometry)
 	contentItems := contentColumnItems(contentRuns, imageRuns, tableRects, visible, keepTogether)
-	contentPlan, _, plerr := paginateWithSectionBreak(geometry, contentItems, sectionBreak)
+	contentPlan, _, plerr := paginateContentPages(geometry, contentItems, contentPages)
 	if plerr != nil {
 		return nil, nil, nil, nil, wrapOverflowError(plerr)
 	}
@@ -2752,7 +2761,7 @@ func predictDocument(t *Template, data, params bind.Value, fs FontSet) ([]pagemo
 	// into /Count. Only the middle produced one. Content taller than the
 	// content band was still DRAWN — below the bottom edge of the sheet,
 	// with no error and no warning.
-	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible, keepTogether, sectionBreak)
+	pages, repeatDiags, perr := paginateDocument(geometry, runs, imageRuns, tableRects, pdfRuns, pdfPlacements, visible, keepTogether, contentPages)
 	if perr != nil {
 		return nil, nil, nil, nil, perr
 	}
@@ -2861,7 +2870,7 @@ func keepTogetherTags(t *Template) keepTogetherIndex {
 	split, _ := sectionBreakSplitTags(t)
 	offset, _ := declaredSectionBreak(t)
 	var idx keepTogetherIndex
-	for _, el := range t.doc.Bands.Content.Elements {
+	for _, el := range contentElements(t) {
 		if !el.KeepTogether.Set || el.KeepTogether.Null || el.KeepTogether.Value == "" {
 			continue
 		}
@@ -2985,7 +2994,7 @@ func paginateDocument(
 	pdfPlacements []pagemodel.ImagePlacement,
 	visible visibilityVerdicts,
 	keepTogether keepTogetherIndex,
-	section sectionBreakSplit,
+	contentPages contentPagesSplit,
 ) ([]pagemodel.Page, []Diagnostic, error) {
 	// The two repeated bands, and the content column's atomic items.
 	var header, footer layout.BandContent
@@ -3188,7 +3197,7 @@ func paginateDocument(
 		}
 	}
 
-	plan, footerOrphanDiags, err := paginateWithSectionBreak(geometry, items, section)
+	plan, footerOrphanDiags, err := paginateContentPages(geometry, items, contentPages)
 	if err != nil {
 		return nil, nil, wrapOverflowError(err)
 	}
@@ -3257,7 +3266,7 @@ func paginateDocument(
 			run := pdfRuns[ref]
 			// spec-section-break: a section element on the page it
 			// shares with the above-line content has its own shift.
-			run.Y -= plan.shiftFor(pageIdx, runs[ref].elementID)
+			run.Y -= plan.outputShiftFor(pageIdx, runs[ref].elementID)
 			// Story 4.4: a repeating table's OWN rows are displaced
 			// further down, beyond Shift, to make room for the repeat
 			// above them — scoped to that table's ElementID alone
@@ -3282,7 +3291,7 @@ func paginateDocument(
 		}
 		for _, ref := range assigned.ContentImages {
 			img := pdfPlacements[ref]
-			img.Y -= plan.shiftFor(pageIdx, imageRuns[ref].elementID)
+			img.Y -= plan.outputShiftFor(pageIdx, imageRuns[ref].elementID)
 			img.Y += elementPushFor(assigned.ElementPush, imageRuns[ref].elementID)
 			pageImages = append(pageImages, img)
 		}
@@ -3322,7 +3331,7 @@ func paginateDocument(
 			if bottom, clip := rectClipBottomFor(assigned.ClippedRects, ref); clip && r.Y+r.H > bottom {
 				r.H = bottom - r.Y
 			}
-			r.Y -= plan.shiftFor(pageIdx, rectElementID[ref])
+			r.Y -= plan.outputShiftFor(pageIdx, rectElementID[ref])
 			if rectIsDataRow[ref] {
 				r.Y += rowDisplacementFor(assigned.RowDisplacement, rectElementID[ref])
 			}

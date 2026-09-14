@@ -25,7 +25,7 @@ const cssRule = (selector: string) => {
 // nothing whether the rule holds or the query is broken — and four false greens
 // in this epic were produced exactly that way.
 
-const canvas: CanvasProjection = { width: 595276, height: 841890, orientation: 'portrait', preset: 'A4', locale: 'en', utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [{ face: 'Noto Sans', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content', x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter', x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
+const canvas: CanvasProjection = { width: 595276, height: 841890, orientation: 'portrait', preset: 'A4', locale: 'en', utcOffset: '+07:00', marginTop: 36000, marginRight: 36000, marginBottom: 36000, marginLeft: 36000, gridIncrement: 6000, commandWidth: 595276, commandHeight: 841890, fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [{ face: 'Noto Sans', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }], defaultFontSize: 12000, defaultLineSpacing: 1000, contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCountIsExact: true, bands: [{ name: 'pageHeader', x: 36000, y: 36000, width: 523276, height: 20000 }, { name: 'content', x: 36000, y: 56000, width: 523276, height: 729890 }, { name: 'pageFooter', x: 36000, y: 785890, width: 523276, height: 20000 }], components: [] }
 
 // The projection's OWN column type, imported rather than re-derived here: an
 // alias nothing references cannot keep the painter and the guard naming one
@@ -267,7 +267,7 @@ describe('the canvas draws the table it will print', () => {
   it('repeats the same table body on a later sheet, decorative and unnamed', () => {
     // A component whose extent crosses a window boundary is drawn on every
     // window it intersects. The echo carries no role, no handlers and no name.
-    const tall = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 400_000] }
+    const tall = { ...canvas, contentWindowCount: 2, contentWindowOrigins: [0, 400_000], contentWindowPages: [0, 0] }
     const view = mount([table({ y: 380_000, height: 60_000 })], tall)
     const echo = view.container.querySelector('.canvas-component-echo.canvas-component-table') as HTMLElement
     expect(echo).not.toBeNull()

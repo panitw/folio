@@ -57,6 +57,7 @@ var diagCodeBridgePins = []struct {
 	{"DiagCodeSectionBreakInvalid", DiagCodeSectionBreakInvalid, "SECTION_BREAK_INVALID"},
 	{"DiagCodeSectionBreakStraddled", DiagCodeSectionBreakStraddled, "SECTION_BREAK_STRADDLED"},
 	{"DiagCodeSectionBreakSplitsKeepTogether", DiagCodeSectionBreakSplitsKeepTogether, "SECTION_BREAK_SPLITS_KEEP_TOGETHER"},
+	{"DiagCodePagesInvalid", DiagCodePagesInvalid, "PAGES_INVALID"},
 }
 
 // declaredDiagCodeConstants enumerates every exported DiagCode* CONSTANT

@@ -401,7 +401,7 @@ func StandInData(tpl *Template) ([]byte, error) {
 		return nil, fmt.Errorf("folio: stand-in data requires a template")
 	}
 	g := &standInGenerator{paths: make(map[string]*standInPath)}
-	for _, band := range []template.Band{tpl.doc.Bands.PageHeader, tpl.doc.Bands.Content, tpl.doc.Bands.PageFooter} {
+	for _, band := range tpl.doc.ElementBands() {
 		for _, element := range band.Elements {
 			if err := g.collectElement(tpl, element); err != nil {
 				return nil, err

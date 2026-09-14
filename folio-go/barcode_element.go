@@ -260,7 +260,7 @@ func addCanvasBarcodePaint(t *Template, projection *CanvasProjection) error {
 		elements []template.Element
 	}{
 		{bandPageHeader, t.doc.Bands.PageHeader.Elements},
-		{bandContent, t.doc.Bands.Content.Elements},
+		{bandContent, contentElements(t)},
 		{bandPageFooter, t.doc.Bands.PageFooter.Elements},
 	} {
 		for _, element := range band.elements {
@@ -335,7 +335,7 @@ func canvasBarcodeIsPlaced(element template.Element) bool {
 // whether a bound code element draws depends on data the canvas does not
 // have.
 func canvasContentBandHasBoundBarcode(t *Template) bool {
-	for _, element := range t.doc.Bands.Content.Elements {
+	for _, element := range contentElements(t) {
 		if isCodeElement(element.Type) && element.Value.Set && !element.Value.Null && stringsContainsPlaceholder(element.Value.Value) {
 			return true
 		}

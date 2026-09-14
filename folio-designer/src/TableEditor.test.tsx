@@ -30,7 +30,7 @@ const canvas = {
   commandWidth: 595276, commandHeight: 841890,
   fontFamilies: ['body'], fontChains: [{ name: 'body', entries: [{ face: 'Noto Sans', assetKey: '', family: '', style: '', bold: '', italic: '', boldItalic: '' }] }],
   defaultFontSize: 12000, defaultLineSpacing: 1000,
-  contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowCountIsExact: true,
+  contentWindowHeight: 729890, contentWindowCount: 1, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCountIsExact: true,
   bands: [
     { name: 'pageHeader' as const, x: 36000, y: 36000, width: 523276, height: 20000 },
     { name: 'content' as const, x: 36000, y: 56000, width: 523276, height: 729890 },

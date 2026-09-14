@@ -337,3 +337,27 @@ func TestWindowMoveStopsAtOverlappingNextOrigin(t *testing.T) {
 		}
 	}
 }
+
+// SPEC-multi-pages: a later page's element is placed against its own page's
+// windows. Page 1's second window begins at 670pt, closer than one window
+// height, so an unfiltered walk would cap page 2's first window there.
+func TestGroupMemberWindowsOfALaterPageAreItsOwn(t *testing.T) {
+	tpl := multiPageTemplate(t, editMultiPage(t, func(d *template.Document) {
+		d.Pages[0].Elements = append(d.Pages[0].Elements, multiPageBox("ei", 670, 30))
+	}))
+	projection := shippedProjection(t, tpl)
+	if fmt.Sprint(projection.ContentWindowPages) != "[0 0 1]" || projection.ContentWindowOrigins[1] >= projection.ContentWindowHeight {
+		t.Fatalf("precondition: windows %v on pages %v", projection.ContentWindowOrigins, projection.ContentWindowPages)
+	}
+	members, err := groupMemberIndex(tpl, testShippedFontSet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if members["ei"].windowOrigin == 0 {
+		t.Fatal("precondition: page 1's far element is not in its second window")
+	}
+	later := members["ed"]
+	if later.windowOrigin != 0 || later.windowHeight != geom.Length(projection.ContentWindowHeight) {
+		t.Fatalf("page 2's element: origin %d height %d, want 0 and %d", later.windowOrigin, later.windowHeight, projection.ContentWindowHeight)
+	}
+}

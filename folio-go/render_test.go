@@ -880,6 +880,19 @@ func TestMain(m *testing.M) {
 		}
 		writeToStdoutOrDie(res.Bytes)
 	}
+	if os.Getenv(subprocessMultiPageStatementEnvVar) == "1" {
+		tpl, err := ParseTemplate([]byte(multiPageStatementTemplateJSON))
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		res, err := Render(tpl, Data(multiPageStatementDataJSON), nil, testShippedFontSet())
+		if err != nil {
+			os.Stderr.WriteString(err.Error())
+			os.Exit(1)
+		}
+		writeToStdoutOrDie(res.Bytes)
+	}
 	if os.Getenv(subprocessSectionBreakUnanchoredEnvVar) == "1" {
 		tpl, err := ParseTemplate([]byte(sectionBreakUnanchoredTemplateJSON))
 		if err != nil {
@@ -1121,6 +1134,11 @@ const subprocessSectionBreakStatementEnvVar = "FOLIO_SUBPROCESS_RENDER_SECTIONBR
 // unanchored section break — in a fresh process, from the committed
 // template const.
 const subprocessSectionBreakUnanchoredEnvVar = "FOLIO_SUBPROCESS_RENDER_SECTIONBREAKUNANCHORED"
+
+// subprocessMultiPageStatementEnvVar renders fixtures/multi-page-statement/ —
+// the first document written in the multi-page `pages` shape — in a fresh
+// process, from the committed template const.
+const subprocessMultiPageStatementEnvVar = "FOLIO_SUBPROCESS_RENDER_MULTIPAGESTATEMENT"
 
 // subprocessQRCodePaymentsEnvVar renders fixtures/qrcode-payments/ — the
 // first document carrying a qrcode — in a fresh process, from the committed

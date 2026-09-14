@@ -7,7 +7,7 @@ import { canvasDisplay } from './App'
 
 const canvas: CanvasProjection = {
   orientation: 'portrait', preset: 'A4', locale: 'en', utcOffset: '+00:00', marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, gridIncrement: 6000, commandWidth: 600000, commandHeight: 800000, fontFamilies: [], fontChains: [], defaultFontSize: 12000, defaultLineSpacing: 1000,
-  width: 600000, height: 800000, contentWindowHeight: 600000, contentWindowOrigins: [0], contentWindowCount: 1, contentWindowCountIsExact: true,
+  width: 600000, height: 800000, contentWindowHeight: 600000, contentWindowOrigins: [0], contentWindowPages: [0], contentWindowCount: 1, contentWindowCountIsExact: true,
   bands: [{ name: 'pageHeader', x: 0, y: 0, width: 600000, height: 100000 }, { name: 'content', x: 0, y: 100000, width: 600000, height: 600000 }, { name: 'pageFooter', x: 0, y: 700000, width: 600000, height: 100000 }],
   components: [{ id: 'e1', type: 'rect', band: 'content', x: 10000, y: 10000, width: 20000, height: 20000, resizable: true }, { id: 'e2', type: 'rect', band: 'content', x: 60000, y: 10000, width: 20000, height: 20000, resizable: true }],
 }
@@ -65,7 +65,7 @@ describe('captured group lifecycle (G-5, G-9, AC-13, AC-14)', () => {
   })
   it('sends direct pointer travel with current-window constraints even across page chrome', () => {
     const h = harness()
-    h.rerender({ ...h.props, snap: false, canvas: { ...canvas, contentWindowOrigins: [0, 600000, 1200000], contentWindowCount: 3 } })
+    h.rerender({ ...h.props, snap: false, canvas: { ...canvas, contentWindowOrigins: [0, 600000, 1200000], contentWindowPages: [0, 0, 0], contentWindowCount: 3 } })
     // Press at column 1,190pt near page two's foot, then travel 140px into
     // page three. Go limits direct displacement to the starting window.
     act(() => h.result.current.beginGroup(input(), ['e1', 'e2'], 'e1'))

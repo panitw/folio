@@ -31,7 +31,7 @@ func ParameterReferences(tpl *Template) ([]string, error) {
 		}
 		return collectParameterPaths(e, refs, elementID, field)
 	}
-	for _, band := range []template.Band{tpl.doc.Bands.PageHeader, tpl.doc.Bands.Content, tpl.doc.Bands.PageFooter} {
+	for _, band := range tpl.doc.ElementBands() {
 		for _, element := range band.Elements {
 			// visibleIf belongs to every element, including tables. The table's
 			// own columns/footer bindings remain out of this projection, but a
