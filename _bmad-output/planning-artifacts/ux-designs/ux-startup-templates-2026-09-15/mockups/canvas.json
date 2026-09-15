@@ -1,0 +1,39 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "At launch — example selected",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Reopened.dc.html",
+      "title": "From New… — confirming unsaved changes",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    }
+  ],
+  "annotations": [
+    {
+      "id": "behaviour",
+      "x": 0,
+      "y": -260,
+      "w": 520,
+      "text": "Startup dialog (SPEC-startup-templates)\n\n• Shows on every launch once the engine is ready. No close button at launch; Escape = Blank.\n• Selection is cyan; the sample file name is amber because it is data.\n• Thumbnails are build-time renders of each example (drawn here as sketches).\n• Double-click a card, or Enter, opens it. Examples open in Preview with their sample JSON loaded."
+    },
+    {
+      "id": "reopened",
+      "x": 1540,
+      "y": -260,
+      "w": 520,
+      "text": "Reopened from New… over a document with unsaved changes\n\n• Author picked Invoice and pressed Open example; the footer turns into the confirmation (CAP-6).\n• Keep editing returns to the normal footer, nothing lost. Discard and open replaces the document.\n• Same confirmation for Start blank and Open existing file…; no confirmation when nothing is unsaved.\n• Close button and Escape keep the current document.\n• Save sample data (CAP-7) lives with the existing sample data controls — not drawn here."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

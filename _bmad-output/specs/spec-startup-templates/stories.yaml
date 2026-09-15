@@ -1,0 +1,34 @@
+- id: "1"
+  title: Example bundling pipeline with the Invoice example
+  description: >-
+    Bundle an example as .folio plus sample JSON in the offline release, fail the build unless it renders
+    against its sample with zero diagnostics, and emit its thumbnail from that render; prove it with the
+    Invoice example (SPEC CAP-4 constraints, example-templates.md).
+  spec_checkpoint: true
+- id: "2"
+  title: Bank Statement, Legal Contract and Electricity Bill examples
+  description: >-
+    Author the remaining three examples and their fictional English sample data through the Story 1
+    pipeline, each exercising the features its row in example-templates.md requires (SPEC CAP-4).
+  spec_checkpoint: true
+- id: "3"
+  title: Startup dialog at launch
+  description: >-
+    Show the dialog on every launch with Blank and the four examples and their thumbnails; an example
+    opens with its sample loaded, in Preview, as an unsaved document titled with the example name
+    (SPEC CAP-1, CAP-2, CAP-5; mockups Main.dc.html).
+  spec_checkpoint: true
+- id: "4"
+  title: New…, Open existing file and the unsaved-changes confirmation
+  description: >-
+    Replace Start blank with New… that reopens the dialog, add Open existing file to the dialog, and ask
+    before any dialog choice replaces a document with unsaved changes (SPEC CAP-3, CAP-6, CAP-8; mockups
+    Reopened.dc.html).
+  spec_checkpoint: true
+- id: "5"
+  title: Save sample data
+  description: >-
+    Let the author save the loaded sample JSON to a local file from the sample data controls, byte for
+    byte, so an example's preview can be restored after a reload (SPEC CAP-7).
+  spec_checkpoint: true
+  done_checkpoint: true
