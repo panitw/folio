@@ -2,6 +2,9 @@
 #   - /assets/* is content-addressed: served from its .br sidecar when the client
 #     accepts brotli, and cached as immutable.
 #   - index.html and sw.js are the updateable entries: always revalidated.
+#   - Every response carries no-transform: the service worker checks each asset's
+#     sha256, so a proxy that rewrites bodies (Cloudflare's email obfuscation,
+#     Rocket Loader, minify) breaks the offline precache.
 {
 	admin off
 	auto_https off
@@ -14,10 +17,10 @@
 	header X-Content-Type-Options nosniff
 
 	@immutable path /assets/*
-	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	header @immutable Cache-Control "public, max-age=31536000, immutable, no-transform"
 
 	@updateable path / /index.html /sw.js /offline-release-manifest.json
-	header @updateable Cache-Control "no-cache"
+	header @updateable Cache-Control "no-cache, no-transform"
 
 	file_server {
 		precompressed br
