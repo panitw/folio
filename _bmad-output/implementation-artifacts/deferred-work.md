@@ -13803,3 +13803,9 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/implementation-artifacts/spec-rendering-library-documentation.md`
   summary: The docs-page naming rule in folio-designer/scripts/build-wasm.mjs (one group digest over all three pages, salted per stem, so editing one page renames all three) has no test; a regression to per-page hashing would let an immutable guide URL serve changed bytes across releases.
   evidence: No test compares emitted names across two builds with different page contents (searched src, scripts, e2e); the naming code is inline top-level code with no exported helper, so testing needs a small extraction first.
+- source_spec: `_bmad-output/specs/spec-startup-templates/stories/3-startup-dialog-at-launch.md`
+  summary: Opening a template leaves the engine and the UI out of step when `serialize` fails after a successful `load`.
+  evidence: The shared `installOpenedDocument` path (Open and the startup example load) sends `load`, then `serialize`; a `serialize` rejection or missing bytes throws after the engine already holds the new document while the UI keeps the prior snapshot. Pre-existing in Open; found by story 3's review.
+- source_spec: `_bmad-output/specs/spec-startup-templates/stories/3-startup-dialog-at-launch.md`
+  summary: FontBrowser and TableEditor lose their focus trap and Escape when a click lands on a non-focusable part of the dialog.
+  evidence: Both trap Tab and Escape with `onKeyDownCapture` on the dialog section, which only fires while focus is inside it; a click on non-focusable content moves focus to `body`. Story 3 fixes this for the startup dialog only.

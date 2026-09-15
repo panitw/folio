@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // WHEN THIS FILE ACTUALLY RUNS. `npm run test:e2e` is its own CI job — it
 // executes on every push to main and on every pull request, with no
@@ -19,7 +20,7 @@ import { expect, test } from '@playwright/test'
 // eleven-column matrix could reach by arrow keys is still reachable by arrow
 // keys (UX-DR25); what changed is which cell each one sits in.
 test('table editor is a named keyboard-operable matrix', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.getByRole('button', { name: 'Place Table' }).click()
 	await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 24, y: 24 } })
   await page.getByRole('button', { name: /table component/ }).click()

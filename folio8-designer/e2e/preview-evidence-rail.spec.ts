@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -40,7 +41,7 @@ const HAIRLINE = 1
 
 test('the evidence rail occupies the inspector column, with the whole hash wrapped and the actions at its foot', async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()

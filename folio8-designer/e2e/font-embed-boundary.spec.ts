@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 16.0 — THE PROBE HARNESS, AND IT IS EXECUTED.
 //
@@ -192,7 +193,7 @@ const boundaryAnswers = (rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
   rows.filter((row) => boundarySentences.some((sentence) => row.outcome.includes(sentence)))
 
 async function placeAndSelectText(page: import('@playwright/test').Page) {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const content = page.getByRole('region', { name: 'Content', exact: true })
   await page.getByRole('button', { name: 'Place Text' }).click()

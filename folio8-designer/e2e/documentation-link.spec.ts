@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,7 +45,7 @@ async function editorState(page: Page): Promise<EditorState> {
 // part of the state the new tab must not disturb is actually present.
 async function openEditedTemplate(page: Page): Promise<EditorState> {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
@@ -112,7 +113,7 @@ test('pressing Enter on the focused documentation link opens the guide in a new 
 // this build, and none may still spell a canonical `docs/` name — that would be
 // a link into a file the application does not serve.
 test('the bundled guide links to the bundled format and expression references by emitted names', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   const href = await documentationLink(page).getAttribute('href')
   expect(href).not.toBeNull()
   const guide = await page.context().newPage()

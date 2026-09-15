@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // These scenarios exercise the fallback input/download adapter. Chromium ships
 // the File System Access API, so select the adapter explicitly before the app
@@ -8,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the initial shell exposes desktop landmarks and honest local-file controls', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByLabel('Document bar')).toBeVisible()
   await expect(page.getByLabel('Component palette')).toBeVisible()
   await expect(page.getByLabel('Canvas region')).toBeVisible()
@@ -27,7 +28,7 @@ test('the initial shell exposes desktop landmarks and honest local-file controls
 })
 
 test('Preview renders local identity evidence and marks an edited last-good PDF stale', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
@@ -60,7 +61,7 @@ test('Preview renders local identity evidence and marks an edited last-good PDF 
 })
 
 test('the real worker projects page bands and accepts local page setup without changing transient controls', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const report = page.getByLabel('Report page with Page Header, Content, and Page Footer')
   await expect(report).toBeVisible()
@@ -80,7 +81,7 @@ test('the real worker projects page bands and accepts local page setup without c
 
 test('canvas keeps a keyboard-visible scroll target at a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 700 })
-  await page.goto('/')
+  await openWorkspace(page)
   const canvas = page.getByLabel('Canvas region')
   await expect(canvas).toBeVisible()
   await canvas.focus()

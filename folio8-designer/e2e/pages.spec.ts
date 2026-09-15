@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // SPEC-multi-pages story 2 — PAGES ON THE CANVAS, THROUGH THE REAL GO WORKER.
 //
@@ -24,7 +25,7 @@ test('adds pages, deletes one after confirming, undoes it, and saves Page Break 
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
   })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Start blank' }).click()
   await expect(labels(page)).toHaveText(['Page 1'])
@@ -89,7 +90,7 @@ test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
   })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Start blank' }).click()
   await tools(page).getByRole('button', { name: 'Add page' }).click()
@@ -158,7 +159,7 @@ test('places a section break on page 2, follows the current page in the palette,
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
   })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Start blank' }).click()
   await tools(page).getByRole('button', { name: 'Add page' }).click()
@@ -198,7 +199,7 @@ test('places a section break on page 2, follows the current page in the palette,
 // copy change, undo once, then press page 2's echo.
 test('edits the shared header from page 3, every copy changes, one undo reverts it, and page 2 echo takes a press', async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.elements = [{ id: 'e1', type: 'text', x: 0, y: 0, width: 200, height: 24, value: 'Acme', style: { fontFamily: 'Roboto', fontSize: 12 } }]

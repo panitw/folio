@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
 })
 
 test('loads local sample JSON into the docked navigable discovery panel without opening a destination', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.getByRole('tab', { name: 'DATA' }).click()
   await expect(page.getByLabel('Data panel')).toBeVisible()
   await expect(page.getByText('No sample data loaded.')).toBeVisible()

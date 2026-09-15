@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -34,7 +35,7 @@ type PdfSaveProbe = typeof window & {
 
 test('the fallback tier downloads the current preview as a .pdf without touching the template name', async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
@@ -100,7 +101,7 @@ test('the activation-gated tier writes exactly the bytes the displayed producer 
       showSaveFilePicker: async (options: PdfSaveProbe['__folio8PdfPicker']) => { probe.__folio8PdfPicker = options; return saved },
     })
   }, [[...template], [...sampleData]] as [number[], number[]])
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Open local template' }).click()
   await expect(page.locator('.document-name')).toHaveText('statement.folio')

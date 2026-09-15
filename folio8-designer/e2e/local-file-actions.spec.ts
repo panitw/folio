@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +10,7 @@ const fixture = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta
 // real worker and browser picker/download seams; no TypeScript bytes are made.
 test('the fallback opens a local file, saves worker output as a download, and remains local while offline', async ({ page, context }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await context.setOffline(true)
   const chooser = page.waitForEvent('filechooser')
@@ -32,7 +33,7 @@ test('the activation-gated tier opens, Save As picks before the worker write, an
     }
     Object.assign(window, { showOpenFilePicker: async () => [handle], showSaveFilePicker: async () => handle })
   }, [...fixture])
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Open local template' }).click()
   await expect(page.locator('.document-name')).toHaveText('native.folio')
@@ -49,7 +50,7 @@ test('a native Save As cancellation keeps the opened local identity and unsaved 
       showSaveFilePicker: async () => { throw new DOMException('cancel', 'AbortError') },
     })
   }, [...fixture])
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Open local template' }).click()
   await expect(page.locator('.document-name')).toHaveText('cancelled.folio')

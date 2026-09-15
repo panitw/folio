@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,7 +45,7 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   // `preview-no-data.spec.ts` were the only two that did not, and they were
   // exactly the two that failed the first time the suite was ever run.
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
@@ -207,7 +208,7 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
 
 test('centers navigation above the PDF and keeps the footer readable at narrow desktop width', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT/)
   await page.getByRole('button', { name: 'PREVIEW' }).click()
   const region = page.getByRole('main', { name: 'Preview region' })

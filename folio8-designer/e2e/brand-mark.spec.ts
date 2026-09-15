@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 14.5 — THE ONLY WITNESS FOR THE RENDERED BOX.
 //
@@ -20,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the document bar wears the brand mark at its declared 18px box', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   const bar = page.getByLabel('Document bar')
   await expect(bar).toBeVisible()
 

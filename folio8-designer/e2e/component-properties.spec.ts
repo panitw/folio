@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // THIS FILE IS COMPILED, NEVER EXECUTED. `npm run test:e2e:compile` is
 // `tsc --noEmit` over this directory; `npm run test:e2e` (Playwright) appears
@@ -9,7 +10,7 @@ import { expect, test } from '@playwright/test'
 // Compile-covered at the Epic 5 cadence; Go is the property-validation
 // authority.
 test('a selected component exposes committed properties and a mixed selection omits non-shared size', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const content = page.getByRole('region', { name: 'Content', exact: true })
   await page.getByRole('button', { name: 'Place Text' }).click()

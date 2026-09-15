@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Locator } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 
 test.use({ viewport: { width: 1600, height: 1900 } })
@@ -7,7 +8,7 @@ const revision = async (page: Page) => Number((await page.getByTestId('engine-sn
 async function bounds(locator: Locator) { const value = await locator.boundingBox(); if (!value) throw new Error('Missing box'); return value }
 async function openFixture(page: Page, later = false, orphan: boolean | 'tall' = false) {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
   const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.height = 61.123

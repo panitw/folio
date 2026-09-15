@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 type BandName = 'Page Header' | 'Content' | 'Page Footer'
 
@@ -10,7 +11,7 @@ const idsOf = (locator: Locator): Promise<string[]> => locator.evaluateAll((elem
 const selectedIds = (page: Page): Promise<string[]> => idsOf(page.locator('.canvas-component-selected[data-component-id]'))
 
 async function open(page: Page): Promise<void> {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 }
 

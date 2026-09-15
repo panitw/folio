@@ -56,6 +56,9 @@ import { pdfDigest } from './preview/pdf-digest'
 import { isMacPlatform, primaryModifier, shortcutHintsFor } from './shortcuts'
 import { DataPanel } from './DataPanel'
 import { acceptSampleData, type SampleData, type SampleNode } from './sample-data'
+import { StartupDialog, type StartupCard } from './StartupDialog'
+import { BLANK_CHOICE_ID, DEFAULT_STARTUP_CHOICE_ID, startupChoices } from './startup-examples'
+import type { ExampleAsset } from './generated/example-assets'
 import type { SampleFileAccess } from './sample-file'
 import { assetBytesRequest, setComponentAssetCommand } from './component-asset-command'
 import { embeddedFaceFamily, isCarriedFaceAssetKey } from './embedded-face-family'
@@ -121,6 +124,23 @@ const engineFileStep = (run: (signal: AbortSignal) => Promise<EngineResult>): Pr
   const deadline = new AbortController()
   const handle = setTimeout(() => deadline.abort(), ENGINE_FILE_STEP_TIMEOUT_MS)
   return run(deadline.signal).finally(() => clearTimeout(handle))
+}
+
+// A bundled example's file, from the offline release. Same-origin, never with
+// credentials — the startup sequence fetches `starter.folio` the same way.
+// It carries the file bar's deadline: a fetch that never settles would
+// otherwise hold the dialog busy, with Escape and every action ignored, for ever.
+const fetchExampleFile = async (url: string): Promise<ArrayBuffer> => {
+  const deadline = new AbortController()
+  const handle = setTimeout(() => deadline.abort(), ENGINE_FILE_STEP_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { credentials: 'omit', signal: deadline.signal })
+    if (!response.ok) throw new Error(`its bundled file could not be read (HTTP ${response.status})`)
+    return await response.arrayBuffer()
+  } catch (error) {
+    if (deadline.signal.aborted) throw new Error('its bundled file did not arrive in time')
+    throw error
+  } finally { clearTimeout(handle) }
 }
 
 const paletteItems: ReadonlyArray<readonly [string, PaletteKind]> = [['Text', 'text'], ['Image', 'image'], ['Table', 'table'], ['Line', 'line'], ['Rectangle', 'rect'], ['Barcode', 'barcode'], ['QR Code', 'qrcode']]
@@ -256,7 +276,7 @@ function PaletteIcon({ kind }: { kind: PaletteKind }) {
   return <svg aria-hidden="true" className="palette-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="square">{paletteGlyphs[kind]}</svg>
 }
 
-type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; imageFileAccess?: ImageFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void }>
+type AppProps = Readonly<{ engine?: EngineClient; fileAccess?: FileAccess; sampleFileAccess?: SampleFileAccess; imageFileAccess?: ImageFileAccess; initialSnapshot?: EngineSnapshot; initialSampleData?: SampleData; blankBytes?: ArrayBuffer; initializationError?: string; offlineState?: OfflineLifecycleState; loadState?: OfflineLifecycle; payload?: S1Payload; engineState?: 'waiting' | 'starting' | 'failed'; onRetry?: () => void; examples?: ReadonlyArray<ExampleAsset> }>
 // The document carries no readable face until one is registered, and this is
 // the value that says so. A stable reference, so resetting it between
 // documents is not itself a state change React has to re-render for.
@@ -324,7 +344,7 @@ const scriptsOfSource = (source: FamilySource): ReadonlyArray<string> => {
 type PreviewRecord = Readonly<{ bytes: ArrayBuffer; revision: number; identity: string; digest: string; diagnostics: ReadonlyArray<EngineDiagnostic>; token: number; generation: number; standIn: boolean; elapsedMs: number; version: string; installedAt: number }>
 type PreviewFailureRecord = Readonly<{ error: EngineError; token: number; generation: number; revision: number }>
 
-export default function App({ engine, fileAccess, sampleFileAccess, imageFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined }: AppProps = {}) {
+export default function App({ engine, fileAccess, sampleFileAccess, imageFileAccess, initialSnapshot, initialSampleData, blankBytes, initializationError, offlineState = 'unavailable', loadState, payload, engineState = 'waiting', onRetry = () => undefined, examples }: AppProps = {}) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [commitError, setCommitError] = useState<string>()
   const [propertyError, setPropertyError] = useState<PropertyCommitError>()
@@ -344,6 +364,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [title, setTitle] = useState('Untitled template')
   const [target, setTarget] = useState<FileTarget>()
   const [savedRevision, setSavedRevision] = useState<number>()
+  // THE STARTUP DIALOG (spec-startup-templates, story 3). It opens once per
+  // launch: `main.tsx` hands over the examples only when the engine is ready,
+  // and App is remounted (`key`) at that moment, so this initialiser runs once
+  // with both present. Mounted without examples — every unit test that does not
+  // ask for them — there is no dialog and App behaves as it always has.
+  const [startupOpen, setStartupOpen] = useState(() => examples !== undefined && engine !== undefined)
+  const [startupSelected, setStartupSelected] = useState(DEFAULT_STARTUP_CHOICE_ID)
+  const [startupBusy, setStartupBusy] = useState<string>()
+  const [startupError, setStartupError] = useState<string>()
+  const startupCards: ReadonlyArray<StartupCard> = examples === undefined ? [] : startupChoices.flatMap((choice): StartupCard[] => {
+    if (choice.id === BLANK_CHOICE_ID) return [choice]
+    const asset = examples.find((example) => example.id === choice.id)
+    return asset ? [{ ...choice, thumbnail: asset.thumbnail }] : []
+  })
   const [zoom, setZoom] = useState(1)
   const [gridVisible, setGridVisible] = useState(true)
   const [snapEnabled, setSnapEnabled] = useState(true)
@@ -1733,7 +1767,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // focused component's own Delete. Design mode, no modal, nothing else owning
   // the canvas, and the key aimed at the canvas (or at no control at all).
   const canvasKeyAllowed = (event: Pick<KeyboardEvent, 'target'>): boolean =>
-    modeRef.current === 'design' && engine !== undefined && !fileBusy && tableEditor === undefined && pageDeleteConfirm === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
+    modeRef.current === 'design' && engine !== undefined && !fileBusy && !startupOpen && tableEditor === undefined && pageDeleteConfirm === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
     && (event.target === document.body || (event.target instanceof Node && canvasRegionRef.current?.contains(event.target) === true))
   const keyboardDelete = (event: Pick<KeyboardEvent, 'target' | 'repeat' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean => {
     if (!canvasKeyAllowed(event) || event.repeat || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
@@ -2792,20 +2826,34 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // schedulePreview() call here would be a guard that cannot fail: measured,
     // deleting it reds nothing, because those two tails already cover it.
   }
+  // THE ONE ACCEPT PATH FOR SAMPLE JSON, shared by Load sample JSON and by an
+  // example opened from the startup dialog, so an example's sample is available
+  // to binding exactly as if the author had opened that file. `stillCurrent` is
+  // asked between parsing and installing, because a picker's answer can arrive
+  // after a newer load has taken its place. Returns whether it installed.
+  const acceptSample = (name: string, bytes: ArrayBuffer, stillCurrent: () => boolean = () => true): boolean => {
+    const accepted = acceptSampleData(name, bytes)
+    if (!stillCurrent()) return false
+    installAcceptedSample(accepted)
+    return true
+  }
+  // The install half, for a caller that has to parse BEFORE it replaces
+  // anything: an example's sample is checked before its template is loaded.
+  const installAcceptedSample = (accepted: SampleData) => {
+    // Replacement is atomic: only a fully accepted raw file and its bounded
+    // projection can replace the prior local sample.
+    sampleDataRef.current = accepted; setSampleData(accepted); setBindingError(undefined)
+    clearPreviewParameters()
+    invalidatePreview()
+    schedulePreview()
+  }
   const loadSample = async () => {
     if (!sampleFileAccess || sampleBusy) return
     const authority = ++sampleLoadGeneration.current
     setSampleBusy(true); setSampleError(undefined)
     try {
       const selected = await sampleFileAccess.openSample()
-      const accepted = acceptSampleData(selected.name, selected.bytes)
-      if (authority !== sampleLoadGeneration.current) return
-      // Replacement is atomic: only a fully accepted raw file and its bounded
-      // projection can replace the prior local sample.
-      sampleDataRef.current = accepted; setSampleData(accepted); setBindingError(undefined)
-      clearPreviewParameters()
-      invalidatePreview()
-      schedulePreview()
+      acceptSample(selected.name, selected.bytes, () => authority === sampleLoadGeneration.current)
     } catch (error) {
       if (authority === sampleLoadGeneration.current && !isFileAccessCancelled(error)) setSampleError(error instanceof Error ? error.message : 'Could not read local sample data')
     } finally { if (authority === sampleLoadGeneration.current) setSampleBusy(false) }
@@ -2818,22 +2866,71 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
     try {
       const opened = await fileAccess.open()
-      const loaded = await engineFileStep((signal) => engine.request('load', opened.bytes, signal))
-      const canonical = await engineFileStep((signal) => engine.request('serialize', undefined, signal))
-      if (!canonical.bytes) throw new Error('Local file could not be serialized')
-      const inputWasCanonical = equalBytes(opened.bytes, canonical.bytes)
-      installDocumentIdentity()
-      setCurrentSnapshot(loaded.snapshot, false, true)
-      clearSampleData()
-      setTitle(opened.name)
-      setTarget(opened.target)
-      setSavedRevision(inputWasCanonical ? canonical.snapshot.revision : undefined)
-      setFileStatus(inputWasCanonical ? `Opened local file ${opened.name}` : `Opened local file ${opened.name}; canonical local changes need saving`)
+      const installed = await installOpenedDocument(opened.bytes, opened.name, opened.target)
+      setSavedRevision(installed.inputWasCanonical ? installed.canonicalRevision : undefined)
+      setFileStatus(installed.inputWasCanonical ? `Opened local file ${opened.name}` : `Opened local file ${opened.name}; canonical local changes need saving`)
       if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
       else announceFailure(fileFailureSentence(error, 'Could not open local file'))
     } finally { setFileBusy(false) }
+  }
+  // THE ONE DOCUMENT-REPLACEMENT PATH FOR TEMPLATE BYTES, shared by Open and by
+  // an example opened from the startup dialog: load, canonical serialize, a new
+  // document identity, the snapshot installed with interaction cleared, the
+  // prior sample dropped, and the title and target taken from the caller. The
+  // caller decides what the result means for `savedRevision` and the status.
+  const installOpenedDocument = async (source: ArrayBuffer, name: string, fileTarget: FileTarget | undefined) => {
+    const client = engine
+    if (!client) throw new Error('The local engine is not ready')
+    const loaded = await engineFileStep((signal) => client.request('load', source, signal))
+    const canonical = await engineFileStep((signal) => client.request('serialize', undefined, signal))
+    if (!canonical.bytes) throw new Error('Local file could not be serialized')
+    const inputWasCanonical = equalBytes(source, canonical.bytes)
+    installDocumentIdentity()
+    setCurrentSnapshot(loaded.snapshot, false, true)
+    clearSampleData()
+    setTitle(name)
+    setTarget(fileTarget)
+    return { inputWasCanonical, canonicalRevision: canonical.snapshot.revision }
+  }
+
+  // AN EXAMPLE FROM THE STARTUP DIALOG. Blank (and Escape) is no request at all:
+  // the starter the engine already holds stays, at revision 1. An example
+  // fetches BOTH files before anything is sent, so a failed fetch leaves the
+  // document untouched and the dialog open with the failure in its footer.
+  // Opened, it is an ordinary unsaved document with no file target, titled with
+  // the example's name, and it enters Preview once — rendered from its sample.
+  const chooseStartup = async (id: string) => {
+    if (startupBusy !== undefined) return
+    if (id === BLANK_CHOICE_ID) { setStartupError(undefined); setStartupOpen(false); return }
+    const card = startupCards.find((entry) => entry.id === id)
+    const asset = examples?.find((example) => example.id === id)
+    if (!engine || !card || !asset || fileBusy) return
+    setStartupBusy(card.name); setStartupError(undefined)
+    try {
+      const [template, sampleBytes] = await Promise.all([fetchExampleFile(asset.template), fetchExampleFile(asset.sample)])
+      // Parsed before any engine request or state change, so a sample that is
+      // refused fails with nothing replaced.
+      const accepted = acceptSampleData(card.sample ?? `${card.id}.sample.json`, sampleBytes)
+      revokeSampleLoad()
+      invalidatePreview(true)
+      clearPreviewParameters(true)
+      setFileBusy(true); setFileError(undefined); setFileStatus(`Opening example ${card.name}…`)
+      try {
+        await installOpenedDocument(template, card.name, undefined)
+        installAcceptedSample(accepted)
+        setSavedRevision(undefined)
+        setFileStatus(`Opened example ${card.name}`)
+      } catch (error) {
+        setFileStatus(undefined)
+        throw error
+      } finally { setFileBusy(false) }
+      setStartupOpen(false)
+      enterPreview()
+    } catch (error) {
+      setStartupError(`Could not open ${card.name}: ${error instanceof Error && error.message ? error.message : componentDiagnostic(error)}`)
+    } finally { setStartupBusy(undefined) }
   }
 
   const save = async (saveAs: boolean) => {
@@ -2991,9 +3088,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      const editing = isEditableTarget(event.target) || event.isComposing
+      // THE STARTUP DIALOG OWNS THE KEYBOARD WHILE IT IS OPEN — every shortcut,
+      // Cmd/Ctrl+S included. There is nothing behind it the author has chosen yet.
+      // Save is still claimed from the browser, or it opens Save Page instead.
       const mac = isMacPlatform()
       const modifier = primaryModifier(event, mac)
+      if (startupOpen) { if (modifier && event.key.toLowerCase() === 's') event.preventDefault(); return }
+      const editing = isEditableTarget(event.target) || event.isComposing
       if (modifier && event.key.toLowerCase() === 's' && engine && fileAccess && !fileBusy) {
         event.preventDefault()
         void save(false)
@@ -3544,6 +3645,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         zero. */}
     {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} fileBusy={fileBusy} discarding={tableEditorDiscarding} error={tableEditorError} candidates={sampleCandidateScan.candidates} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onTotalWidth={(value) => commitTableColumn(tableWidthCommand(tableEditor.table.tableId, value))} onBinding={(columnId, binding) => commitTableColumn(updateTableColumnExpressionCommand(tableEditor.table.tableId, columnId, binding))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} onMinHeight={(operation, value) => void commitTableColumn(tableMinHeightCommand(tableEditor.table.tableId, operation, value))} onRules={(field, operation, value) => void commitTableColumn(tableRulesCommand(tableEditor.table.tableId, field, operation, value))} onCellPadding={(field, operation, value) => void commitTableColumn(updateComponentPropertiesCommand([tableEditor.table.tableId], operation === 'clear' ? { field, operation } : { field, operation, value }))} editCount={tableEditorEditCount} onCancel={() => void cancelTableEditor()} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
+    {startupOpen && engine && <StartupDialog cards={startupCards} selected={startupSelected} busy={startupBusy} error={startupError} onSelect={(id) => { setStartupSelected(id); setStartupError(undefined) }} onConfirm={(id) => void chooseStartup(id)} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
         the dropdown's first group and this line teach one model from one

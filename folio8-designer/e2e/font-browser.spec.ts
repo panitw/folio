@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 16.3 — THE FONT BROWSER, IN A REAL BROWSER.
 //
@@ -16,7 +17,7 @@ import { expect, test } from '@playwright/test'
 // move. This file adds names; it renames nothing.
 
 const openBrowser = async (page: import('@playwright/test').Page) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const content = page.getByRole('region', { name: 'Content', exact: true })
   await page.getByRole('button', { name: 'Place Text' }).click()

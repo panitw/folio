@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,7 +14,7 @@ const source = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.
 const parameterTemplate = Buffer.from(source.replace('{{customer.name}}', '{{params.reportDate}}'))
 
 test('discovers reportDate from Go, keeps an absent value as a located engine failure, and makes supplied input stale', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
   await (await templateChooser).setFiles({ name: 'parameter-preview.folio', mimeType: 'application/json', buffer: parameterTemplate })

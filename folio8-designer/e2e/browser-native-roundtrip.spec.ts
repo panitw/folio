@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -329,7 +330,7 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   const goldenContext = await browser.newContext()
   const goldenPage = await goldenContext.newPage()
   await observeOneWorker(goldenPage, 'golden-fresh-session')
-  await goldenPage.goto('/')
+  await openWorkspace(goldenPage)
   await expect(goldenPage.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const goldenStartup = await captured(goldenPage)
   expect(goldenStartup.requests.map(({ operation }) => operation)).toEqual(['initialize', 'serialize'])
@@ -357,7 +358,7 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   const alternateContext = await browser.newContext()
   const alternatePage = await alternateContext.newPage()
   await observeOneWorker(alternatePage, 'alternate-fresh-session')
-  await alternatePage.goto('/')
+  await openWorkspace(alternatePage)
   await expect(alternatePage.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const alternateStartup = await captured(alternatePage)
   expect(alternateStartup.requests.map(({ operation }) => operation)).toEqual(['initialize', 'serialize'])

@@ -6,11 +6,11 @@ import type { EngineSnapshot } from './engine-protocol.ts'
 import { engineMayStart, registerOfflineLifecycle, type OfflineLifecycle } from './offline-lifecycle.ts'
 import { isDevBypassReason, loadS1Payload, payloadForLifecycle, type S1Payload } from './release-payload.ts'
 import { runtimeAssetUrls } from './generated/offline-assets.ts'
-// The bundled example templates (startup templates) ship in the offline release
-// from the bundling story on; the dialog that opens them arrives later. Loading
-// the module from the application entry — never the engine worker — puts their
-// template, sample and thumbnail URLs in Vite's asset graph. No behaviour.
-import './generated/example-assets.ts'
+// The bundled example templates (startup templates). Loading the module from
+// the application entry — never the engine worker — puts their template,
+// sample and thumbnail URLs in Vite's asset graph. App opens the startup dialog
+// only when it is handed them, which happens once the engine is ready.
+import { exampleAssets } from './generated/example-assets.ts'
 import { loadStarterAfterEngineReady } from './startup-sequence.ts'
 import { selectFileAccess, selectImageFileAccess, selectSampleFileAccess } from './file/capability.ts'
 
@@ -27,7 +27,7 @@ let observationInFlight = false
 const fileAccess = selectFileAccess()
 const sampleFileAccess = selectSampleFileAccess()
 const imageFileAccess = selectImageFileAccess()
-const render = () => root.render(<StrictMode><App key={engine ? 'engine-ready' : 'engine-loading'} engine={engine} fileAccess={fileAccess} sampleFileAccess={sampleFileAccess} imageFileAccess={imageFileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} offlineState={lifecycle.state} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
+const render = () => root.render(<StrictMode><App key={engine ? 'engine-ready' : 'engine-loading'} engine={engine} fileAccess={fileAccess} sampleFileAccess={sampleFileAccess} imageFileAccess={imageFileAccess} initialSnapshot={snapshot} blankBytes={blankBytes} examples={engine ? exampleAssets : undefined} offlineState={lifecycle.state} loadState={lifecycle} payload={payload} engineState={engineState} onRetry={startObservation} /></StrictMode>)
 async function startEngine() {
   if (started || !engineMayStart(lifecycle)) return
   started = true; engineState = 'starting'; render()

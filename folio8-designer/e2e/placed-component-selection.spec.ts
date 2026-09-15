@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 14.3 — THE ONLY HONEST WITNESS FOR POINTER GEOMETRY.
 //
@@ -70,7 +71,7 @@ async function boxOf(target: Locator): Promise<{ x: number; y: number; width: nu
 // AC1/AC4 in a real browser, and the precondition for everything below it: a
 // placed component is the selected component, and it is the focused one.
 test('a placed component arrives selected, focused, and showing its own properties', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await expect(page.getByText('Component properties require a selection.')).toBeVisible()
   await placeByKeyboard(page, 'Place Line')
@@ -86,7 +87,7 @@ test('a placed component arrives selected, focused, and showing its own properti
 // `::before` hangs off it. Before this story that press reached the band and
 // selected nothing.
 test('a press beside a thin rule, outside its drawn box, still selects the rule', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await placeByKeyboard(page, 'Place Line')
   const line = page.getByLabel(/line component e/)
@@ -120,7 +121,7 @@ test('a press beside a thin rule, outside its drawn box, still selects the rule'
 // negative z-index escapes to the root stacking context and the pad stops being
 // reachable at all.
 test('a component own paint outranks a later neighbour pad, and the pad still wins over empty canvas', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   // Snap off, so the rule lands where this test puts it rather than on the 6pt
   // grid — the overlap under test is a few pixels wide.
@@ -173,7 +174,7 @@ test('a component own paint outranks a later neighbour pad, and the pad still wi
 // against a build with the padded region reverted, which is what makes it a
 // determinism guard rather than a padding guard.
 test('one spot over two overlapping thin components selects the same one every time', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await placeByKeyboard(page, 'Place Line')
   await expect(page.getByLabel(/line component e/)).toHaveCount(1)
@@ -204,7 +205,7 @@ test('one spot over two overlapping thin components selects the same one every t
 // modelled on it; the pad takes pointer events again the moment the placement is
 // disarmed, which the second half of this test measures.
 test('an armed placement beats the padded region, which takes the pointer back afterwards', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await placeByKeyboard(page, 'Place Line')
   await expect(page.getByLabel(/line component e/)).toHaveCount(1)

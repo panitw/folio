@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,7 +39,7 @@ async function boxOf(target: Locator): Promise<Box> {
 // `e2e/local-file-actions.spec.ts:11` is the model.
 async function openTemplate(page: Page, name: string): Promise<void> {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
@@ -180,7 +181,7 @@ test('control: the same measurement reports an overflow when the bar is genuinel
 // should be the full section width — TWO columns — while the register recorded
 // the question as open. It is a number, not an opinion.
 test('measures the orientation control\'s box against the inspector\'s 1fr 1fr columns', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Place Line' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).press('Enter')

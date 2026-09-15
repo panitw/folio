@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // EPIC 9/10 BOUNDARY GATE — ONE assertion, deliberately.
 //
@@ -50,7 +51,7 @@ const inertVsPainting = JSON.stringify({
 
 test('a border that paints no ink paints no border on the canvas', async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { createHash } from 'node:crypto'
 
 // A real, valid 1x1 grayscale PNG (Go's own internal/template/fixtures_test.go
@@ -70,7 +71,7 @@ async function installNativePickers(page: Page): Promise<void> {
 
 test('the File System Access tier sets a local image through one committed command, paints it, survives save/reopen, and undo/redo restores the prior asset', async ({ page }) => {
   await installNativePickers(page)
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
   const content = page.getByRole('region', { name: 'Content', exact: true })
@@ -175,7 +176,7 @@ test('the File System Access tier sets a local image through one committed comma
 // ever exercising the browser's native drag path this defect lives in.
 test('a placed image component can be dragged on the canvas like any other component', async ({ page }) => {
   await installNativePickers(page)
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
   const content = page.getByRole('region', { name: 'Content', exact: true })
@@ -224,7 +225,7 @@ test('a placed image component can be dragged on the canvas like any other compo
 // fit (AC3).
 test('a placed image component can be resized, and its painted box tracks both the resize and a zoom change', async ({ page }) => {
   await installNativePickers(page)
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
   const content = page.getByRole('region', { name: 'Content', exact: true })

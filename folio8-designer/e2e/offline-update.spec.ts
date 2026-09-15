@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 // @ts-expect-error The source module is executed by Vitest and Node; this
 // browser-only spec is compile-covered through the Epic 5 boundary.
 import { serviceWorkerSource } from '../scripts/offline-service-worker-template.mjs'
@@ -29,7 +30,7 @@ async function withBuiltWorker(source: string, exercise: () => Promise<void>) {
 // is deferred by D-000.4 until Epic 5 closes; local Chromium absence is not a
 // substitute for the unit-level lifecycle proofs in this story.
 test('a complete worker-only update waits behind an old tab and preserves its cache', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.reload()
   await expect(page.getByTestId('offline-status')).toHaveText(usableOfflineState)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
@@ -44,7 +45,7 @@ test('a complete worker-only update waits behind an old tab and preserves its ca
 })
 
 test('a failed replacement keeps the old complete release usable', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.reload()
   await expect(page.getByTestId('offline-status')).toHaveText(usableOfflineState)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)

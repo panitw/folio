@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 14.7 — WHAT jsdom CANNOT SEE, AND THEREFORE WHAT THE UNIT SUITE CANNOT
 // CLAIM. jsdom applies no stylesheet and computes no layout, so four of this
@@ -45,7 +46,7 @@ async function box(locator: Locator, what: string): Promise<Box> {
 }
 
 async function openEditorOverOneColumn(page: import('@playwright/test').Page): Promise<Locator> {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.getByRole('button', { name: 'Place Table' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 24, y: 24 } })
   await page.getByRole('button', { name: /table component/ }).click()

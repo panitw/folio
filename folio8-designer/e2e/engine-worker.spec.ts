@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 const usableOfflineState = /^(Offline ready|Update available; current release remains usable)$/
 
 // This package is compile-covered each story; execution is deferred to the
 // Epic 5 D-000.4 boundary because it needs a real browser SW lifecycle.
 test('the built application loads and commits page setup through the real Go worker', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByLabel('Document bar')).toBeVisible()
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('textbox', { name: 'Top margin (pt)' }).fill('37')
@@ -16,7 +17,7 @@ test('the built application loads and commits page setup through the real Go wor
 test('a complete release reloads through the service worker while offline without a network failure', async ({ page, context }) => {
   const failures: string[] = []
   page.on('requestfailed', (request) => failures.push(request.url()))
-  await page.goto('/')
+  await openWorkspace(page)
   await page.reload() // the first installation must activate before it can control a reload
   await expect(page.getByTestId('offline-status')).toHaveText(usableOfflineState)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)

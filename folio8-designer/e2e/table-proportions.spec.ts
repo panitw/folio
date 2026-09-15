@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -19,7 +20,7 @@ async function open(page: Page): Promise<void> {
 }
 async function start(page: Page): Promise<void> {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Place Table' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 120, y: 96 } })

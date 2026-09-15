@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 13.6 — THE BROWSER WITNESS THAT THE VENDORED PDF.JS CODE ACTUALLY WORKS.
 //
@@ -76,7 +77,7 @@ test('enumerates the render as rasterised page thumbnails, and navigates by them
   // ever: the wait below then times out at 90s on a perfectly working
   // application. `local-file-actions.spec.ts:11` is the model.
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()

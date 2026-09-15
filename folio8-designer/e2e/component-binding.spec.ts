@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // Binding examples provide files through the fallback adapter; force it before
 // the application probes browser picker capabilities.
@@ -9,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 // Compile-covered in Story 6.2. Real browser execution remains deferred to the
 // Epic 6 D-000.4 boundary cadence.
 test('binds a selected text component to a picked root scalar and undoes/redoes the one command', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   const content = page.getByRole('region', { name: 'Content', exact: true })
   await page.getByRole('button', { name: 'Place Text' }).click()
   await content.press('Enter')
@@ -41,7 +42,7 @@ test('binds a selected text component to a picked root scalar and undoes/redoes 
 })
 
 test('offers another golden-report scalar through the tree and has no binding path textbox', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   const content = page.getByRole('region', { name: 'Content', exact: true })
   await page.getByRole('button', { name: 'Place Text' }).click()
   await content.press('Enter')

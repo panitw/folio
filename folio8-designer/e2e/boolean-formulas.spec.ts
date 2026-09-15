@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -60,7 +61,7 @@ async function save(page: Page): Promise<Buffer> {
 test('authored boolean formulas survive real worker history, persistence and native render parity', async ({ page }, testInfo) => {
   test.setTimeout(300_000)
   await observeWorker(page)
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
   const starter = JSON.parse(readFileSync(path.join(root, 'folio8-designer/public/templates/starter.folio'), 'utf8'))
   starter.nextId = 3

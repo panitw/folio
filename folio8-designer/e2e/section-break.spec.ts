@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // spec-section-break CAP-1 — THE SECTION BREAK ON THE CANVAS, THROUGH THE REAL
 // GO WORKER.
@@ -35,7 +36,7 @@ async function placeBreak(page: Page, down: number): Promise<void> {
 }
 
 test('places, selects, drags, undoes and deletes the section break', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await expect(handle(page)).toHaveCount(0)
   const entry = page.getByRole('button', { name: 'Place Section Break' })
@@ -81,7 +82,7 @@ test('places, selects, drags, undoes and deletes the section break', async ({ pa
 // Owner decision: an armed Section Break placed by keyboard lands in the middle
 // of that sheet's content window, which the real engine accepts.
 test('Enter on the content band places the break at the middle of the window', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Place Section Break' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).press('Enter')
@@ -92,7 +93,7 @@ test('Enter on the content band places the break at the middle of the window', a
 })
 
 test('a drag released onto an element is refused and the line stays put', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
 
   // A rectangle well down the content band, then a break above it.
@@ -128,7 +129,7 @@ test('a drag released onto an element is refused and the line stays put', async 
 // tab's anchor icon follows it through undo; removing an unanchored break and
 // undoing restores both.
 test('turns Anchor off and on through undo, and removes an unanchored break', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const anchor = page.getByRole('checkbox', { name: 'Anchor' })
   const icon = page.locator('.section-break-tab .section-break-anchor-icon')

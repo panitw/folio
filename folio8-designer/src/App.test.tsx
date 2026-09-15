@@ -11591,3 +11591,208 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
     })
   })
 })
+
+// STARTUP TEMPLATES, STORY 3 — THE DIALOG AT LAUNCH.
+//
+// App is handed the examples only by `main.tsx`, once the engine is ready. Every
+// row of the story's I/O matrix is here against the fake engine: launch, Blank
+// and Escape, an example opened into Preview from its sample, a failed fetch,
+// and App mounted without examples.
+describe('the startup dialog at launch', () => {
+  const examples = ['invoice', 'bank-statement', 'legal-contract', 'electricity-bill'].map((id) => ({ id, template: `/examples/${id}.folio`, sample: `/examples/${id}.sample.json`, thumbnail: `/examples/${id}.thumbnail.png` }))
+  const TEMPLATE = new Uint8Array([4, 5, 6]).buffer
+  const SAMPLE = '{"customer":{"name":"Ada"},"transactions":[{"amount":1}]}'
+  let restoreFetch: typeof globalThis.fetch
+  let fetchMock: ReturnType<typeof vi.fn>
+  const answer = (body: ArrayBuffer, status = 200) => ({ ok: status >= 200 && status < 300, status, arrayBuffer: async () => body.slice(0) })
+  beforeEach(() => {
+    restoreFetch = globalThis.fetch
+    fetchMock = vi.fn(async (url: string) => url.endsWith('.json') ? answer(new TextEncoder().encode(SAMPLE).buffer) : answer(TEMPLATE))
+    globalThis.fetch = fetchMock as never
+  })
+  afterEach(() => { globalThis.fetch = restoreFetch })
+
+  // The starter at revision 1, and an engine that loads an example at revision 2
+  // and renders it.
+  const launch = (props: Partial<Parameters<typeof App>[0]> = {}) => {
+    const starter = { documentState: 'loaded' as const, revision: 1, byteLength: 3, canvas }
+    const opened = { documentState: 'loaded' as const, revision: 2, byteLength: 3, canvas }
+    let current = starter
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'load') { current = opened; return { snapshot: opened } }
+      if (operation === 'serialize') return { snapshot: current, bytes: TEMPLATE }
+      if (operation === 'stand-in-data') return { snapshot: current, bytes: new TextEncoder().encode('{}').buffer }
+      if (operation === 'identity') return { snapshot: current, preview: { revision: current.revision, identity: 'c'.repeat(64) } }
+      if (operation === 'render') return { snapshot: current, bytes: new Uint8Array([9]).buffer, preview: { revision: current.revision, identity: 'c'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+      return { snapshot: current }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={starter} blankBytes={bytes} examples={examples} {...props} />)
+    return request
+  }
+  const dialog = () => screen.getByRole('dialog', { name: 'New template' })
+  const card = (name: string) => within(dialog()).getByRole('button', { name })
+
+  it('opens at launch with Blank and the four examples, Invoice selected and focused', () => {
+    const request = launch()
+    expect(dialog()).toHaveAttribute('aria-modal', 'true')
+    const cards = within(within(dialog()).getByRole('group', { name: 'Start from' })).getAllByRole('button')
+    expect(cards.map((entry) => entry.getAttribute('aria-label'))).toEqual(['Blank', 'Invoice', 'Bank Statement', 'Legal Contract', 'Electricity Bill'])
+    expect(cards.map((entry) => entry.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false', 'false', 'false'])
+    expect(card('Invoice')).toHaveFocus()
+    expect(Array.from(dialog().querySelectorAll('img')).map((image) => image.getAttribute('src'))).toEqual(examples.map((example) => example.thumbnail))
+    expect(within(dialog()).getByTestId('startup-blank-page')).toBeInTheDocument()
+    expect(card('Invoice')).toHaveAccessibleDescription('Line items, totals, payment QR invoice.sample.json')
+    expect(card('Blank')).toHaveAccessibleDescription('Empty A4 page no sample data')
+    expect(within(dialog()).getByRole('status')).toHaveTextContent('Invoice opens in Preview with invoice.sample.json')
+    expect(within(dialog()).getByRole('button', { name: 'Open example' })).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('does not open when App is mounted without examples', () => {
+    render(<App engine={engine()} initialSnapshot={snapshot(1)} />)
+    expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Start blank', () => { fireEvent.click(card('Blank')); expect(within(dialog()).getByRole('status')).toHaveTextContent('Blank starts an empty A4 page'); fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' })) }],
+    ['Escape', () => { fireEvent.keyDown(card('Invoice'), { key: 'Escape' }) }],
+  ])('%s closes the dialog on the starter at revision 1 with no engine request', async (_, dismiss) => {
+    const request = launch()
+    dismiss()
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    expect(request).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 1')
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it.each([
+    ['the primary action', () => { fireEvent.click(card('Bank Statement')); fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' })) }],
+    ['Enter on the card', () => { fireEvent.keyDown(card('Bank Statement'), { key: 'Enter' }) }],
+    ['a double-click on the card', () => { fireEvent.doubleClick(card('Bank Statement')) }],
+  ])('opens an example through %s: titled, unsaved, untargeted, in Preview from its sample', async (_, confirm) => {
+    const request = launch()
+    confirm()
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith('/examples/bank-statement.folio', expect.objectContaining({ credentials: 'omit' }))
+    expect(fetchMock).toHaveBeenCalledWith('/examples/bank-statement.sample.json', expect.objectContaining({ credentials: 'omit' }))
+    expect(request).toHaveBeenCalledWith('load', TEMPLATE, expect.any(AbortSignal))
+    expect(screen.getByText('Bank Statement', { selector: '.document-name' })).toBeInTheDocument()
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'render')).toHaveLength(1))
+    const rendered = request.mock.calls.find(([operation]) => operation === 'render') as unknown as [string, { data: ArrayBuffer }]
+    expect(new TextDecoder().decode(rendered[1].data)).toBe(SAMPLE)
+    expect(request.mock.calls.some(([operation]) => operation === 'stand-in-data')).toBe(false)
+    expect(screen.queryByRole('note', { name: 'No-data preview notice' })).not.toBeInTheDocument()
+    // The sample tree is the one Load sample JSON would have installed.
+    fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+    expect(screen.getByRole('tree', { name: 'Sample data paths' })).toHaveTextContent('customer')
+  })
+
+  it('an example opens with no file target, so Save asks where to write it', async () => {
+    const acquireSaveTarget = vi.fn(async (_request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { throw new FileAccessCancelled() })
+    launch({ fileAccess: { open: vi.fn(), acquireSaveTarget, writeSave: vi.fn() } })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
+    await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
+    expect(acquireSaveTarget.mock.calls[0]![0]).toMatchObject({ suggestedName: 'Invoice', currentTarget: undefined, saveAs: false })
+  })
+
+  it('keeps the dialog open with the failure named when a fetch fails, loads nothing, and Blank still works', async () => {
+    fetchMock.mockImplementation(async (url: string) => url.includes('bank-statement') ? answer(new ArrayBuffer(0), 404) : answer(TEMPLATE))
+    const request = launch()
+    fireEvent.click(card('Bank Statement'))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
+    const alert = await within(dialog()).findByRole('alert')
+    expect(alert).toHaveTextContent('Could not open Bank Statement')
+    expect(alert).toHaveTextContent('HTTP 404')
+    expect(request).not.toHaveBeenCalled()
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    fireEvent.keyDown(card('Bank Statement'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    expect(request).not.toHaveBeenCalled()
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 1')
+  })
+
+  const expectDismissedOnStarter = async () => {
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 1')
+  }
+
+  it('refuses an example whose sample is not valid JSON with nothing replaced', async () => {
+    fetchMock.mockImplementation(async (url: string) => url.endsWith('.json') ? answer(new TextEncoder().encode('{"customer":').buffer) : answer(TEMPLATE))
+    const request = launch()
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open Invoice')
+    expect(request).not.toHaveBeenCalled()
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    await expectDismissedOnStarter()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('keeps the dialog usable when the engine rejects the example\'s template', async () => {
+    launch({ engine: engine(vi.fn(async (operation: string) => { if (operation === 'load') throw new Error('engine refused'); return { snapshot: snapshot(1) } }) as never) })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open Invoice')
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('Untitled template')).toBeInTheDocument()
+    expect(screen.queryByText(/Opening example/)).not.toBeInTheDocument()
+    await expectDismissedOnStarter()
+  })
+
+  it('gives up on a fetch that never settles, names the failure, and lets Escape close', async () => {
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => new Promise((_, reject) => { init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))) }))
+    vi.useFakeTimers()
+    try {
+      launch()
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
+      expect(dialog()).toHaveAttribute('aria-busy', 'true')
+      await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+      expect(within(dialog()).getByRole('alert')).toHaveTextContent('Could not open Invoice: its bundled file did not arrive in time')
+      fireEvent.keyDown(card('Invoice'), { key: 'Escape' })
+      expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('keeps focus inside the dialog when a non-focusable part of it is clicked', async () => {
+    launch()
+    const title = within(dialog()).getByRole('heading', { name: 'New template' })
+    // What a browser does on that click: focus leaves the card for the nearest
+    // focusable ancestor of the click target — or for the body, if there is none.
+    act(() => { card('Invoice').blur(); fireEvent.mouseDown(title); (title.closest('[tabindex]') as HTMLElement | null)?.focus(); fireEvent.click(title) })
+    expect(dialog()).toHaveFocus()
+    await expectDismissedOnStarter()
+  })
+
+  it('traps Tab inside the dialog in both directions', () => {
+    launch()
+    const first = card('Blank')
+    const last = within(dialog()).getByRole('button', { name: 'Open example' })
+    last.focus()
+    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(first).toHaveFocus()
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(last).toHaveFocus()
+  })
+
+  it('lets no App shortcut fire while it is open, and releases them once it closes', async () => {
+    const acquireSaveTarget = vi.fn(async (_request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { throw new FileAccessCancelled() })
+    launch({ fileAccess: { open: vi.fn(), acquireSaveTarget, writeSave: vi.fn() } })
+    const mac = isMacPlatform()
+    const saveKey = createEvent.keyDown(window, { key: 's', ctrlKey: !mac, metaKey: mac })
+    fireEvent(window, saveKey)
+    expect(saveKey.defaultPrevented, 'the browser must not open Save Page behind the dialog').toBe(true)
+    fireEvent.keyDown(window, { key: 'p', altKey: true })
+    expect(acquireSaveTarget).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.keyDown(card('Invoice'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
+    fireEvent.keyDown(window, { key: 's', ctrlKey: !mac, metaKey: mac })
+    await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
+  })
+})

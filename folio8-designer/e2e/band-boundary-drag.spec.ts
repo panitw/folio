@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 // STORY 12.5 — A BAND BOUNDARY IS DRAGGED ON THE CANVAS.
 //
@@ -62,7 +63,7 @@ const bandGeometry = async (page: import('@playwright/test').Page): Promise<Read
     bands.map((band) => `${(band as HTMLElement).style.getPropertyValue('--band-y')}/${(band as HTMLElement).style.getPropertyValue('--band-height')}`))
 
 test('dragging the header/content boundary proposes, then commits through the real Go worker', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const handle = page.getByRole('button', { name: 'Resize the page header', exact: true })
   await expect(handle).toHaveCount(1)
@@ -108,7 +109,7 @@ test('dragging the header/content boundary proposes, then commits through the re
 })
 
 test('dragging the content/footer boundary upward grows the page footer', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const handle = page.getByRole('button', { name: 'Resize the page footer', exact: true })
   await expect(handle).toHaveCount(1)
@@ -137,7 +138,7 @@ test('dragging the content/footer boundary upward grows the page footer', async 
 // and this is the browser's statement of Matrix row 3: there is no third handle
 // and the three region names are still exactly one each.
 test('exactly two boundary handles exist, and none of them collides with a band name', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await expect(page.locator('.band-boundary-handle')).toHaveCount(2)
   await expect(page.getByRole('region', { name: 'Page Header', exact: true })).toHaveCount(1)

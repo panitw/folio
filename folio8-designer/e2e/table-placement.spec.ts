@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 
 async function revision(page: Page): Promise<number> {
   const text = await page.getByTestId('engine-snapshot').textContent()
@@ -9,7 +10,7 @@ async function revision(page: Page): Promise<number> {
 
 test('maps a freshly placed items table to the sample transactions array from DATA', async ({ page }, testInfo) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Place Table' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 120, y: 96 } })
@@ -87,7 +88,7 @@ test('maps a freshly placed items table to the sample transactions array from DA
 
 for (const snap of [false, true]) {
   test(`a pointer-placed table fills content with one blank editable column (snap=${snap})`, async ({ page }, testInfo) => {
-    await page.goto('/')
+    await openWorkspace(page)
     await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
     if (!snap) await page.getByRole('button', { name: /^Snap on/ }).click()
     const content = page.getByRole('region', { name: 'Content', exact: true })
@@ -172,7 +173,7 @@ for (const snap of [false, true]) {
 }
 
 test('the table bar and selection share the authored height at several zoom levels', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await page.getByRole('button', { name: 'Place Table' }).click()
   await page.getByRole('region', { name: 'Content', exact: true }).click({ position: { x: 120, y: 96 } })
   const table = page.getByRole('button', { name: /table component/ })

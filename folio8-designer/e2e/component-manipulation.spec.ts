@@ -1,8 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 
 test('the five closed palette choices can begin an accessible local placement', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await expect(page.getByRole('button', { name: 'Place Text' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Place Image' })).toBeVisible()
@@ -17,7 +18,7 @@ test('the five closed palette choices can begin an accessible local placement', 
 })
 
 test('a palette pointer drag drops, selects, moves, resizes, and deletes through the local engine', async ({ page }) => {
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const palette = page.getByRole('button', { name: 'Place Rectangle' })
   const content = page.getByRole('region', { name: 'Content', exact: true })
@@ -87,7 +88,7 @@ const expectSelectedImage = async (page: Page, band: Locator, at: ImageDropTarge
 
 const openTwoSheetFixture = async (page: Page, footerHeight: number) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageFooter.height = footerHeight
@@ -104,7 +105,7 @@ test.describe('image palette placement in repeating bands', () => {
 
   for (const at of ['midpoint', 'boundary'] as const) {
     test(`a pointer drop at the header ${at} creates, selects, and disarms without resizing the band`, async ({ page }) => {
-      await page.goto('/')
+      await openWorkspace(page)
       await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
       const header = page.getByRole('region', { name: 'Page Header', exact: true })
       const height = await header.evaluate((band) => (band as HTMLElement).style.getPropertyValue('--band-height'))
@@ -139,7 +140,7 @@ test.describe('image palette placement in repeating bands', () => {
   }
 
   test('a pointer drop inside the footer resize strip fits the image without resizing the band', async ({ page }) => {
-    await page.goto('/')
+    await openWorkspace(page)
     await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
     const footer = page.getByRole('region', { name: 'Page Footer', exact: true })
     const height = await footer.evaluate((band) => (band as HTMLElement).style.getPropertyValue('--band-height'))

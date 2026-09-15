@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Locator } from '@playwright/test'
+import { openWorkspace } from './app.js'
 import { readFileSync } from 'node:fs'
 
 test.use({ viewport: { width: 1600, height: 1900 } })
@@ -11,7 +12,7 @@ const text = (id: string, x: number, y: number, size?: number) => ({ id, type: '
 
 async function openFixture(page: Page, pages = false, continuation: boolean | 'tail' = false, border = false, gap = false) {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
-  await page.goto('/')
+  await openWorkspace(page)
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
   const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.elements = [rect('e8', 20, 12, 30, 12)]
