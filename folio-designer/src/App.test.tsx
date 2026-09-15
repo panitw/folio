@@ -17,6 +17,7 @@ import { LOCALE_TAGS, type CanvasProjection } from './engine-protocol'
 import { acceptSampleData } from './sample-data'
 import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { catalogueFaces } from './generated/font-catalogue'
+import { documentationAssetUrls } from './generated/documentation-assets'
 import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
 import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 
@@ -1198,6 +1199,42 @@ describe('application shell', () => {
       expect(button).toHaveTextContent(/^$/)
       expect(button).not.toHaveAttribute('title')
     }
+  })
+
+  // THE DOCUMENTATION LINK. Its own group, AFTER the mode switch and last in the
+  // bar, so `Local file actions` above stays exactly six. It is a real link to
+  // the bundled guide, opened in a new tab so the editor's state survives, and
+  // it is enabled with no engine, no file access and no template — every one of
+  // the file actions beside it is disabled in this very render.
+  it('offers the bundled rendering library guide as an always-enabled glyph link in its own group after the mode switch', () => {
+    render(<App />)
+    const bar = screen.getByRole('banner', { name: 'Document bar' })
+    const group = within(bar).getByRole('group', { name: 'Documentation' })
+    expect(within(group).queryAllByRole('button')).toEqual([])
+    const links = within(group).getAllByRole('link')
+    expect(links).toHaveLength(1)
+    const link = links[0]!
+    expect(link).toHaveAccessibleName('Rendering library documentation')
+    expect(link).toHaveAttribute('aria-label', 'Rendering library documentation')
+    expect(link).toHaveAttribute('data-tip', 'Documentation')
+    expect(link).not.toHaveAttribute('title')
+    expect(documentationAssetUrls.guide).toMatch(/rendering-library-[a-f0-9]{20}\.html$/)
+    expect(link).toHaveAttribute('href', documentationAssetUrls.guide)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(link).not.toHaveAttribute('aria-disabled')
+    expect(link).not.toHaveAttribute('tabindex')
+    expect(link.querySelector('svg.tool-icon[aria-hidden="true"]')).not.toBeNull()
+    expect(link).toHaveTextContent(/^$/)
+    // Independent of engine and template: the file actions are disabled here.
+    expect(screen.getByRole('button', { name: 'Open local template' })).toBeDisabled()
+    // Placement: immediately after the mode switch, and the bar's last item.
+    expect(within(bar).getByRole('group', { name: 'Designer mode' }).nextElementSibling).toBe(group)
+    expect(bar.lastElementChild).toBe(group)
+    expect(within(screen.getByRole('group', { name: 'Local file actions' })).queryAllByRole('link')).toEqual([])
+    // Keyboard: the link takes focus.
+    link.focus()
+    expect(link).toHaveFocus()
   })
 
   it('draws the canvas toolbar as glyphs whose hover guide names each shortcut', () => {

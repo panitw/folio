@@ -5,6 +5,14 @@ export function isCacheableStaticRequest(request, origin, paths) {
   return request.method === 'GET' && url.origin === origin && paths.has(url.pathname) && request.mode !== 'navigate'
 }
 
+// A same-origin NAVIGATION to a precached `/assets/*.html` entry — the bundled
+// documentation pages, opened in their own tab. Static requests above still
+// refuse every navigation; this admits only exact manifest paths ending in .html.
+export function isCacheableDocumentNavigation(request, origin, paths) {
+  const url = new URL(request.url)
+  return request.method === 'GET' && request.mode === 'navigate' && url.origin === origin && url.pathname.startsWith('/assets/') && url.pathname.endsWith('.html') && paths.has(url.pathname)
+}
+
 export function isStatusRequest(value) {
   return Boolean(value) && typeof value === 'object' && value.version === 1 && value.type === 'get-offline-status' && Object.keys(value).length === 2
 }
@@ -18,6 +26,7 @@ const MARKER = '/__folio-release__/' + RELEASE.id
 const STATIC_PATHS = new Set(RELEASE.assets.map((asset) => asset.url))
 const MESSAGE_VERSION = ${messageVersion}
 const cacheableRequest = ${isCacheableStaticRequest.toString()}
+const documentNavigation = ${isCacheableDocumentNavigation.toString()}
 const statusRequest = ${isStatusRequest.toString()}
 
 async function progress(state, asset) {
@@ -80,6 +89,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (request.mode === 'navigate' && url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html')) {
     event.respondWith(caches.open(CACHE_NAME).then((cache) => cache.match('/index.html')).then((response) => response || Response.error()))
+    return
+  }
+  if (documentNavigation(request, self.location.origin, STATIC_PATHS)) {
+    event.respondWith(caches.open(CACHE_NAME).then((cache) => cache.match(url.pathname)).then((response) => response || Response.error()))
     return
   }
   if (!cacheableRequest(request, self.location.origin, STATIC_PATHS)) return

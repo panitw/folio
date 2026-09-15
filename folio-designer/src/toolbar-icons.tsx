@@ -4,7 +4,7 @@
 // offline release gains no emitted asset (D-14.0.1). The picture is decorative:
 // each control carries its accessible name in `aria-label` and its hover guide
 // — the name plus any shortcut — in `data-tip`, which `.tool-button` paints.
-export type ToolGlyph = 'open' | 'save' | 'save-as' | 'blank' | 'undo' | 'redo' | 'zoom-out' | 'zoom-in' | 'grid' | 'snap' | 'duplicate' | 'delete' | 'add-page' | 'delete-page' | 'nudge'
+export type ToolGlyph = 'open' | 'save' | 'save-as' | 'blank' | 'undo' | 'redo' | 'zoom-out' | 'zoom-in' | 'grid' | 'snap' | 'duplicate' | 'delete' | 'add-page' | 'delete-page' | 'nudge' | 'docs'
 
 const toolGlyphs: Readonly<Record<ToolGlyph, string>> = {
   open: 'M2 4.5h4l1.5 1.5H14v6.5H2z',
@@ -24,6 +24,8 @@ const toolGlyphs: Readonly<Record<ToolGlyph, string>> = {
   'add-page': 'M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M8 7v5 M5.5 9.5h5',
   'delete-page': 'M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 9.5h5',
   nudge: 'M8 2v12 M2 8h12 M6.5 3.5L8 2l1.5 1.5 M6.5 12.5L8 14l1.5-1.5 M3.5 6.5L2 8l1.5 1.5 M12.5 6.5L14 8l-1.5 1.5',
+  // The document bar's documentation link: an open book, two facing pages.
+  docs: 'M8 4.5C6.5 3.3 4.5 3 2.5 3.5v9c2-.5 4-.2 5.5 1 M8 4.5c1.5-1.2 3.5-1.5 5.5-1v9c-2-.5-4-.2-5.5 1z M8 4.5v9',
 }
 
 export function ToolIcon({ glyph }: { glyph: ToolGlyph }) {

@@ -7,6 +7,11 @@ never reads the clock, the filesystem outside the calls you make, the
 network, or the host's locale: everything the document needs — data, runtime
 parameters, and fonts — is handed in explicitly.
 
+**Documentation.** The [rendering library guide](../docs/rendering-library.md) covers installation,
+inputs, warnings and errors, the template features that change output, and every exported API. The
+[`.folio` format reference](../docs/folio-format.md) defines the template file, and the
+[expression reference](../docs/expression-reference.md) the syntax inside `{{ }}`.
+
 ## Your first PDF
 
 Two calls — load a template, render — and the font set the render needs
@@ -239,11 +244,23 @@ instead of handing you a byte slice to copy yourself:
 ```go
 func statementHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/pdf")
-	if err := folio.RenderTo(w, tpl, data, params, fonts); err != nil {
+	diagnostics, err := folio.RenderTo(w, tpl, data, params, fontSet)
+	if err != nil {
+		// A render error is returned before anything is written; a write
+		// error may follow a partially written response.
+		log.Printf("statement: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for _, d := range diagnostics {
+		log.Printf("statement warning %s: %s", d.Code, d.Message)
 	}
 }
 ```
+
+`RenderTo` returns the render's warnings and an error. See
+[Writing to an `io.Writer`](../docs/rendering-library.md#writing-to-an-iowriter) for choosing an
+HTTP status before the response starts.
 
 `RenderTo` takes the exact same arguments as `Render`, in the exact same
 order, with the writer added at the front. There is no options struct — an

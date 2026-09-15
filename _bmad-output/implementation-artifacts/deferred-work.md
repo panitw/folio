@@ -13799,3 +13799,7 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/specs/spec-multi-pages/stories/5-section-break-per-page-and-page-break-off.md`
   summary: No test renders a Page Break off block that fits and contains a framed, ruled or floored table, so the move of its `TableSlices` Top/Bottom by the block offset is unverified.
   evidence: `translateSinglePagePlan` (content_pages.go) moves each TableSlice by d. The multi-page-flow fixture's tables declare no frame, rules or floor, and every fitting block in the tests is a probe rect or text, so dropping that loop would draw frames at declared positions under moved rows without any failure.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-rendering-library-documentation.md`
+  summary: The docs-page naming rule in folio-designer/scripts/build-wasm.mjs (one group digest over all three pages, salted per stem, so editing one page renames all three) has no test; a regression to per-page hashing would let an immutable guide URL serve changed bytes across releases.
+  evidence: No test compares emitted names across two builds with different page contents (searched src, scripts, e2e); the naming code is inline top-level code with no exported helper, so testing needs a small extraction first.

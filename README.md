@@ -32,7 +32,7 @@ approximation of it.
 | [lint/](lint/) | The guardrails that fail the build: architecture/import rules, the float ban, and the third-party licence check ([MANIFEST.md](lint/MANIFEST.md)). A separate Go module. |
 | [hashmatrix/](hashmatrix/) | A deliberately-broken floating-point probe, kept out of the guards' reach, that proves the cross-target matrix can actually *detect* divergence. See its [README](hashmatrix/README.md). |
 | [tools/fontgen/](tools/fontgen/) | Derives the shipped static faces from upstream variable builds. The outputs are committed; this exists so the derivation can be replayed. |
-| [docs/](docs/) | [Expression reference](docs/expression-reference.md) and the original [MVP plan](docs/folio-mvp-plan.md). |
+| [docs/](docs/) | User documentation, the source of truth: the [rendering library guide](docs/rendering-library.md), the [`.folio` format reference](docs/folio-format.md), the [expression reference](docs/expression-reference.md), and the original [MVP plan](docs/folio-mvp-plan.md). |
 | [_bmad-output/](_bmad-output/) | Planning and delivery record: PRD, architecture spine, specs, epics, and [sprint status](_bmad-output/implementation-artifacts/sprint-status.yaml). |
 
 Three independent Go modules (`folio-go`, `lint`, `hashmatrix`) with no
@@ -46,9 +46,24 @@ Three independent Go modules (`folio-go`, `lint`, `hashmatrix`) with no
 
 ```go
 tpl, err := folio.LoadTemplate("statement.folio")
+if err != nil {
+	log.Fatal(err)
+}
 res, err := folio.Render(tpl, folio.Data(dataJSON), folio.Params(paramsJSON), fonts.Shipped())
-os.WriteFile("statement.pdf", res.Bytes, 0o644)
+if err != nil {
+	log.Fatal(err)
+}
+for _, d := range res.Diagnostics {
+	log.Printf("warning %s: %s", d.Code, d.Message)
+}
+if err := os.WriteFile("statement.pdf", res.Bytes, 0o644); err != nil {
+	log.Fatal(err)
+}
 ```
+
+Install with `go get github.com/panitw/folio/folio-go@main`. The
+[rendering library guide](docs/rendering-library.md) walks through installation, a complete first
+PDF, errors and warnings, template features and the full API.
 
 `folio.RenderTo` writes straight to an `io.Writer` for HTTP handlers and large
 documents. The font set arrives as an explicit argument — `fonts.Shipped()` gives

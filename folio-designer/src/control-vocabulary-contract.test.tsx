@@ -630,7 +630,11 @@ const CHECKED_GROUPS: ReadonlySet<string> = new Set([
 // honest reason: it is a labelled group of two TEXT INPUTS and holds no button
 // at all, so R2 returns early on it in every state. Recording it here makes the
 // hole VISIBLE rather than letting the group read as covered.
-const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges', 'Table row scope'])
+// `Documentation` is the third, and it is under arity by design rather than by
+// accident: the group holds ONE LINK and no button at all, so R2 has nothing to
+// compare. It is its own group precisely so that `Local file actions` stays six
+// buttons; the link's own spelling is pinned by name in the row further down.
+const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges', 'Table row scope', 'Documentation'])
 // RE-BASELINED AT STORY 14.2, and the re-baselining is the point rather than
 // bookkeeping. Floors, not equalities, so ordinary growth never churns the
 // guard while any shrink reddens — but a floor left at an old measurement is a
@@ -652,7 +656,11 @@ const UNDER_ARITY_GROUPS: ReadonlySet<string> = new Set(['Border edges', 'Table 
 const PER_STATE_CONTROL_FLOOR = 15
 const CONTROL_FLOOR = 220
 const CLASS_FAMILY_FLOOR = 18
-const GROUP_INSTANCE_FLOOR = 33
+// RE-BASELINED BY THE DOCUMENTATION LINK: its group renders in every declared
+// state, adding one instance per state. The floor moves from 33 to 39 so the
+// shrunk sweep below (38) stays UNDER it; left at 33 the dropped-state clause
+// could no longer fail.
+const GROUP_INSTANCE_FLOOR = 39
 
 // ⚠ THE COVERAGE RECORD IS KEYED BY A FIXTURE-INDEPENDENT NAME. A group whose
 // label carries a row number — `Cell alignment for column 1` — is a name bound
@@ -961,12 +969,12 @@ describe('control vocabulary contract', () => {
     // must stay UNDER the floor, because that is the only condition under which
     // the pinned R0 clause below reports a dropped state rather than nothing.
     const shrunkGroups = shrunk.flatMap((entry) => groupsIn(entry.root)).length
-    expect(shrunkGroups, 'Story 14.8 regrouped the table editor with headings, not groups — a group instance appearing here would clear GROUP_INSTANCE_FLOOR and turn the pinned clause below into a guard that cannot fail').toBe(32)
+    expect(shrunkGroups, 'Story 14.8 regrouped the table editor with headings, not groups — a group instance appearing here would clear GROUP_INSTANCE_FLOOR and turn the pinned clause below into a guard that cannot fail').toBe(38)
     expect(shrunkGroups, `the shrunk sweep must stay under GROUP_INSTANCE_FLOOR (${GROUP_INSTANCE_FLOOR}) or the pinned R0 clause below stops proving that a dropped state is reported`).toBeLessThan(GROUP_INSTANCE_FLOOR)
     expect(shrunk.flatMap((entry) => entry.controls).length).toBeGreaterThanOrEqual(CONTROL_FLOOR)
     expect(new Set(shrunk.flatMap((entry) => entry.controls).flatMap((control) => control.classes)).size).toBeGreaterThanOrEqual(CLASS_FAMILY_FLOOR)
     expect(r0Violations(shrunk)).toEqual([
-      'R0 the sweep visited 32 group instances, under the floor of 33',
+      'R0 the sweep visited 38 group instances, under the floor of 39',
       'R0 the group "PDF navigation" renders in no declared state, so nothing checked it',
       'R0 the group "Render actions" renders in no declared state, so nothing checked it',
     ])
@@ -1007,6 +1015,21 @@ describe('control vocabulary contract', () => {
       { name: 'Undo', treatment: 'glyph', text: '' },
       { name: 'Redo', treatment: 'glyph', text: '' },
     ])
+  })
+
+  // The documentation link joins the bar in the same glyph vocabulary, as a
+  // LINK in a group of its own — never a seventh member of the file actions.
+  it('draws the documentation link as one glyph link in its own named group, outside the six file actions', async () => {
+    const root = await states[0]!.open()
+    const group = screen.getByRole('group', { name: 'Documentation' })
+    expect(root.contains(group)).toBe(true)
+    expect(controlsIn(group), 'the documentation group holds a link, not a button').toEqual([])
+    const links = Array.from(group.querySelectorAll('a[href]'))
+    expect(links.map((element) => ({ name: accessibleName(element), treatment: treatmentOf(element), text: visibleText(element), title: element.getAttribute('title') }))).toEqual([
+      { name: 'Rendering library documentation', treatment: 'glyph', text: '', title: null },
+    ])
+    expect(controlsIn(screen.getByRole('group', { name: 'Local file actions' }))).toHaveLength(6)
+    expect(screen.getByRole('group', { name: 'Local file actions' }).querySelectorAll('a')).toHaveLength(0)
   })
 
   it('draws both TYPOGRAPHY segmented controls in one vocabulary, with every accessible name intact', async () => {

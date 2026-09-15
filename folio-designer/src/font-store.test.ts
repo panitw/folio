@@ -397,7 +397,7 @@ describe('the offline release contract is untouched', () => {
     // `const <name> = <digits>`, so this asserts the value AND the shape that
     // reader depends on.
     expect(releasePayload).toContain('const minimumCacheAssets = 10\n')
-    expect(releasePayload).toContain('const maximumCacheAssets = 64\n')
+    expect(releasePayload).toContain('const maximumCacheAssets = 65\n')
   })
 
   it('adds no release asset of its own, because the store is a database and not a bundle', () => {

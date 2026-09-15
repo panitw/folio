@@ -63,6 +63,8 @@ test('fits the document bar into the shell\'s declared 1024px minimum, in both m
   const actions = bar.getByRole('group', { name: 'Local file actions' })
   const later = bar.locator('.later-control')
   const modes = bar.getByRole('group', { name: 'Designer mode' })
+  const docs = bar.getByRole('group', { name: 'Documentation' })
+  const docsLink = docs.getByRole('link', { name: 'Rendering library documentation' })
   const viewport = page.viewportSize()
   expect(viewport).not.toBeNull()
   const width = viewport!.width
@@ -70,6 +72,8 @@ test('fits the document bar into the shell\'s declared 1024px minimum, in both m
   // THE SIX WORDS ARE REALLY IN THE LAID-OUT BAR. Without this the fit below
   // could be passing because the family is missing rather than because it fits.
   await expect(actions.getByRole('button')).toHaveCount(6)
+  // AND SO IS THE DOCUMENTATION LINK, the bar's last item since it arrived.
+  await expect(docsLink).toHaveCount(1)
 
   // Returns the bar's real spare room. `.later-control` is `margin-left: auto`
   // (`App.css:66`), so it IS the free space: the distance from the actions
@@ -81,22 +85,26 @@ test('fits the document bar into the shell\'s declared 1024px minimum, in both m
     const actionsBox = await boxOf(actions)
     const laterBox = await boxOf(later)
     const modesBox = await boxOf(modes)
+    const docsBox = await boxOf(docs)
 
     // THE BAR STAYS INSIDE THE WINDOW, on both ends. This is the assertion the
     // arithmetic in DW-332 stood in for.
     expect(barBox.x, state).toBeGreaterThanOrEqual(0)
     expect(barBox.width, state).toBeLessThanOrEqual(width)
 
-    // AND SO DOES ITS CONTENT. The mode switch is the last item, so its right
-    // edge is where an overfull bar shows first; the brand lockup's left edge is
-    // the other end of the same claim, and it would move if a future change
-    // reached the fit by pulling content off the left instead.
+    // AND SO DOES ITS CONTENT. The documentation link is now the last item, so
+    // its right edge is where an overfull bar shows first, and it sits after the
+    // mode switch; the brand lockup's left edge is the other end of the same
+    // claim, and it would move if a future change reached the fit by pulling
+    // content off the left instead.
     expect(lockupBox.x, state).toBeGreaterThanOrEqual(0)
     expect(modesBox.x + modesBox.width, state).toBeLessThanOrEqual(width)
+    expect(docsBox.x, `${state} / documentation follows the mode switch`).toBeGreaterThanOrEqual(modesBox.x + modesBox.width)
+    expect(docsBox.x + docsBox.width, state).toBeLessThanOrEqual(width)
 
     // A SINGLE ROW. Nothing in this bar may wrap or stack — the other way an
     // overfull bar hides. Every item shares the bar's own vertical band.
-    for (const [name, box] of [['lockup', lockupBox], ['actions', actionsBox], ['later', laterBox], ['modes', modesBox]] as const) {
+    for (const [name, box] of [['lockup', lockupBox], ['actions', actionsBox], ['later', laterBox], ['modes', modesBox], ['documentation', docsBox]] as const) {
       expect(box.y, `${state} / ${name}`).toBeGreaterThanOrEqual(barBox.y)
       expect(box.y + box.height, `${state} / ${name}`).toBeLessThanOrEqual(barBox.y + barBox.height)
     }
@@ -106,6 +114,13 @@ test('fits the document bar into the shell\'s declared 1024px minimum, in both m
     // what an overfull bar leaves.
     await expect(modes, state).toBeInViewport({ ratio: 1 })
     await expect(lockup, state).toBeInViewport({ ratio: 1 })
+    await expect(docsLink, state).toBeInViewport({ ratio: 1 })
+
+    // THE LINK IS REACHABLE BY KEYBOARD: one Tab from the last mode button.
+    await modes.getByRole('button').last().focus()
+    await page.keyboard.press('Tab')
+    await expect(docsLink, `${state} / Tab reaches the documentation link`).toBeFocused()
+    await docsLink.blur()
 
     const room = laterBox.x - (actionsBox.x + actionsBox.width)
     expect(room, `${state} / spare room`).toBeGreaterThan(0)

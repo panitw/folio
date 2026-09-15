@@ -106,6 +106,14 @@ button:focus-visible { outline: 2px solid var(--color-select); outline-offset: -
 .mode-switch button { min-height: var(--status-bar-height); padding: var(--space-1) var(--space-6); border: 0; background: transparent; color: var(--color-ink); font: var(--type-body); letter-spacing: var(--tracking-brand); }
 .mode-switch .mode-active { background: var(--color-active); color: var(--color-ink-high); font-weight: 500; }
 .mode-switch button:focus-visible, .pdf-preview-scroll:focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
+/* THE DOCUMENTATION LINK — the bar's last item, one `.tool-button` glyph drawn
+   on an `<a>`. Its hover guide is anchored to the RIGHT edge rather than
+   centred, because centred under a control this close to the window edge it
+   would be cut off by the shell. */
+.documentation-actions { display: flex; flex: none; }
+.documentation-actions .tool-button { text-decoration: none; }
+.documentation-actions .tool-button:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; }
+.documentation-actions .tool-button[data-tip]:hover::after, .documentation-actions .tool-button[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
 .workbench { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: var(--palette-width) minmax(0, 1fr) var(--panel-width); }
 .palette-rail { overflow: auto; padding: var(--space-5) var(--space-panel-x); background: var(--color-panel); border-right: var(--hairline) solid var(--color-line); }
 /* STORY 13.6 — PREVIEW'S FIRST COLUMN IS THE PAGES RAIL, AND IT IS NARROWER.

@@ -15,7 +15,7 @@ Produced by Story 13.6 (`13-6-the-preview-navigates-by-page-thumbnails`), under 
 
 `pdfjs-dist` ships the thumbnail code only inside `web/pdf_viewer.mjs`, whose stylesheet
 (`web/pdf_viewer.css`) references 32 unique images. `vite.config.ts` sets `assetsInlineLimit: 0`, and
-folio's offline release budget (`src/release-payload.ts`) caps the payload at `maximumCacheAssets = 64`.
+folio's offline release budget (`src/release-payload.ts`) caps the payload at `maximumCacheAssets = 65` (64 when this measurement was taken).
 Importing the viewer bundle would add its stylesheet and 32 image rows and fails that budget outright.
 
 **What vendoring these two files actually costs, measured — not predicted.** `npx vite build` followed by

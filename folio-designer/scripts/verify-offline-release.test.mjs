@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { declaredCacheAssetWarning } from './offline-release-contract.mjs'
-import { reportCacheAssetApproach } from './verify-offline-release.mjs'
+import { documentationFontHostFinding, reportCacheAssetApproach } from './verify-offline-release.mjs'
+import { FORBIDDEN_FONT_HOSTS } from './forbidden-font-hosts.mjs'
 // THE TYPESCRIPT DECLARATION ITSELF, IMPORTED AS A VALUE. See the tie below for
 // why this import is the point rather than a convenience.
 import { cacheAssetApproachWarning } from '../src/release-payload'
@@ -28,6 +29,18 @@ import { cacheAssetApproachWarning } from '../src/release-payload'
 // ---------------------------------------------------------------------------
 
 const { warnCacheAssets, maximumCacheAssets } = declaredCacheAssetWarning()
+
+// The host is read off the exported list, never spelled here: the source scan
+// would flag a literal host in this file.
+describe('the precached documentation pages', () => {
+  it('fail verification when a page references a forbidden remote font host', () => {
+    const { host } = FORBIDDEN_FONT_HOSTS[0]
+    const clean = { url: '/assets/rendering-library-0123456789abcdef0123.html', html: '<title>Guide</title><p>system fonts</p>' }
+    const remote = { url: '/assets/expression-reference-0123456789abcdef0123.html', html: `<link rel="stylesheet" href="https://${host}/css2">` }
+    expect(documentationFontHostFinding([clean])).toBeNull()
+    expect(documentationFontHostFinding([clean, remote])).toEqual({ url: remote.url, host })
+  })
+})
 
 describe('the offline release approach warning', () => {
   // NON-VACUITY FIRST. Every assertion below is parameterised on the two

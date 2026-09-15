@@ -1,0 +1,1024 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FOLIO8 · The .folio format</title>
+
+<style>
+  /* Documentation site redesign: tokens from the designer's DESIGN.md.
+     Zero radius everywhere; committed dark palette; system fonts only, so the
+     page renders offline with no remote requests. Cyan = structure, amber = data. */
+  :root {
+    --ground: #0D0F12; --base: #15181C; --panel: #1A1E23; --raised: #22272D; --row-focus: #1D2228;
+    --line-faint: #191D21; --line-subtle: #22272D; --line: #272C33; --line-strong: #2F353D; --edge: #3A4048;
+    --ink-high: #E6E9EC; --ink: #AAB2BB; --ink-low: #737C86; --ink-faint: #5E666F; --ink-ghost: #4E565F;
+    --select: #58A6C4; --select-bright: #8FD0E4; --select-fill: #1E3B46; --select-tint: #16232A; --select-edge: #2F4F5C;
+    --bind: #C9A758; --bind-text: #E0C07A; --bind-muted: #8A7440; --bind-tint: #241F14; --bind-tint-warm: #1E1B13; --bind-edge: #4A3D1E; --bind-edge-soft: #3A3118;
+    --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", "Noto Sans Thai", sans-serif;
+    --thai: "Noto Sans Thai", "Thonburi", "Leelawadee UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { background: var(--ground); }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- shell ---- */
+  .shell { display: flex; align-items: flex-start; min-height: 100vh; }
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto; flex: 0 0 292px;
+    background: var(--base); border-right: 1px solid var(--line); padding-bottom: 64px;
+  }
+  .sidebar-head { padding: 22px 24px 16px; border-bottom: 1px solid var(--line-subtle); position: sticky; top: 0; background: var(--base); z-index: 2; }
+  .brand { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  .tagline { margin: 0 0 14px; font-size: 15px; color: var(--ink-high); font-weight: 600; line-height: 1.4; }
+  .filter {
+    width: 100%; padding: 7px 10px; background: var(--ground); border: 1px solid var(--line-strong); border-radius: 0;
+    color: var(--ink-high); font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  .filter::placeholder { color: var(--ink-ghost); }
+  .filter:focus-visible { border-color: var(--select); }
+  .toc { padding: 14px 0 0; }
+  .toc-group { padding: 0 0 18px; margin: 0 0 6px; border-bottom: 1px solid var(--line-faint); }
+  .toc a { display: block; text-decoration: none; border-left: 2px solid transparent; }
+  .toc-doc { padding: 10px 24px 8px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--select); font-weight: 600; }
+  .toc-item { padding: 7px 22px 7px 24px; font-size: 13.5px; font-weight: 500; line-height: 1.45; color: var(--ink); }
+  .toc-item.sub { padding: 3px 22px 3px 16px; margin-left: 26px; font-family: var(--mono); font-size: 12px; letter-spacing: -0.01em; color: var(--ink-faint); border-left-color: var(--line-subtle); }
+  .toc a:hover { color: var(--ink-high); background: var(--row-focus); }
+  .toc-doc[aria-current] { border-left-color: var(--select); }
+  .toc-item[aria-current] { color: var(--select-bright); border-left-color: var(--select); background: var(--select-tint); }
+  .toc a:focus-visible { outline: 2px solid var(--select); outline-offset: -2px; }
+  .toc-empty { margin: 0; padding: 10px 24px; font-size: 13px; color: var(--ink-ghost); }
+
+  main { flex: 1 1 auto; min-width: 0; }
+  .col { max-width: 920px; margin: 0 auto; padding: 52px 44px 140px; }
+  .docbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; padding-bottom: 40px; border-bottom: 1px solid var(--line-subtle); margin-bottom: 44px; }
+  main .docbar .brand { margin: 0; flex: 1 1 100%; max-width: none; }
+  .docbar a {
+    font-family: var(--mono); font-size: 13px; color: var(--bind-text); text-decoration: none;
+    padding: 4px 10px; background: var(--bind-tint-warm); border: 1px solid var(--bind-edge-soft);
+  }
+  .docbar a:hover { border-color: var(--bind); background: var(--bind-tint); }
+  .docbar a[aria-current] { color: var(--select-bright); background: var(--select-tint); border-color: var(--select-edge); }
+
+  .article-head { border-bottom: 1px solid var(--line); padding-bottom: 28px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 12px; font-weight: 500; }
+  .standfirst { margin: 0 0 14px; max-width: 70ch; color: var(--ink); font-size: 16px; line-height: 1.6; }
+
+  /* ---- prose ---- */
+  main section { margin-top: 52px; scroll-margin-top: 24px; }
+  main h1, main h2, main h3, main h4 { scroll-margin-top: 24px; text-wrap: pretty; }
+  main h1 { font-size: 30px; line-height: 1.2; font-weight: 600; color: var(--ink-high); margin: 0 0 14px; letter-spacing: -0.01em; }
+  main h1 code { font-family: var(--mono); font-size: 0.92em; color: var(--bind-text); }
+  main h2 {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--select);
+    font-weight: 600; margin: 0 0 22px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  main h2 code { font-family: var(--mono); font-size: 1.1em; text-transform: none; letter-spacing: 0; color: var(--select-bright); }
+  main h2 em { font-style: italic; border: 0; color: inherit; }
+  main h3 { font-size: 17px; font-weight: 600; color: var(--ink-high); margin: 38px 0 12px; }
+  main h3 code { font-family: var(--mono); font-size: 0.95em; color: var(--bind-text); }
+  main h4 { font-size: 15px; font-weight: 600; color: var(--ink-high); margin: 30px 0 10px; }
+  main h4 code { font-family: var(--mono); font-size: 0.95em; color: var(--bind-text); }
+  main p { margin: 0 0 14px; max-width: 72ch; }
+  main ul, main ol { margin: 0 0 16px; padding-left: 22px; max-width: 72ch; }
+  main li { margin: 0 0 8px; }
+  main li p { margin: 0 0 10px; }
+  main li > ul, main li > ol { margin: 8px 0 0; }
+  strong { color: var(--ink-high); font-weight: 600; }
+  em { color: var(--ink-high); font-style: normal; border-bottom: 1px solid var(--bind-edge); }
+  code { font-family: var(--mono); font-size: 0.9em; color: var(--bind-text); overflow-wrap: anywhere; }
+  a { color: var(--select-bright); text-decoration: underline; text-decoration-color: var(--select-edge); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--select-bright); }
+  a em { border-bottom: 0; color: inherit; }
+  a:focus-visible { outline: 2px solid var(--select); outline-offset: 1px; }
+
+  /* ---- samples ---- */
+  .sample { margin: 16px 0 22px; background: var(--base); border: 1px solid var(--line); overflow-x: auto; }
+  pre { margin: 0; padding: 16px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.75; color: var(--bind-text); white-space: pre; }
+  pre code { font-size: inherit; color: inherit; overflow-wrap: normal; }
+  .sample pre.json, .sample .json { color: var(--ink); }
+  .sample .out { color: var(--ink-low); }
+  .sample .th { font-family: var(--thai); color: var(--ink); }
+  .sample .cmt { color: var(--ink-ghost); }
+  .sample .str { color: var(--ink-high); }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 22px; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 520px; }
+  th {
+    text-align: left; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600; padding: 11px 16px; background: var(--panel);
+    border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+  }
+  th code { text-transform: none; letter-spacing: 0; }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--line-faint); vertical-align: top; color: var(--ink); }
+  td:first-child { min-width: 9em; }
+  td:first-child code { overflow-wrap: normal; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--row-focus); }
+  td .err { color: var(--ink-high); }
+  .roster td:first-child { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+
+  /* ---- callouts ---- */
+  .notice { margin: 26px 0 0; padding: 16px 18px; background: var(--select-tint); border: 1px solid var(--select-edge); border-left-width: 2px; color: var(--ink); font-size: 14px; }
+  .notice strong { color: var(--select-bright); font-weight: 500; }
+  .caution { margin: 22px 0; padding: 16px 18px; background: var(--bind-tint-warm); border: 1px solid var(--bind-edge-soft); border-left: 2px solid var(--bind); font-size: 14px; }
+  .caution p { max-width: none; }
+  .caution strong { color: var(--bind-text); font-weight: 500; }
+
+  /* ---- expression reference function headings ---- */
+  .doc-expressions main h3 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 16px; font-weight: 500; }
+  h3 .args { color: var(--ink-faint); }
+  .pill { font-family: var(--sans); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 8px; border: 1px solid var(--line-strong); color: var(--ink-low); font-weight: 500; white-space: nowrap; }
+  .pill.live { color: var(--select); border-color: var(--select-edge); background: var(--select-tint); }
+
+  .source-note { margin: 56px 0 0; padding-top: 20px; border-top: 1px solid var(--line); color: var(--ink-ghost); font-size: 13px; }
+  .source-note code { color: var(--ink-faint); }
+
+  /* ---- scrollbars ---- */
+  * { scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-track { background: var(--ground); border-left: 1px solid var(--line-faint); }
+  ::-webkit-scrollbar-thumb { background: var(--line-strong); border: 2px solid var(--ground); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--edge); }
+  ::-webkit-scrollbar-corner { background: var(--ground); }
+  .sidebar::-webkit-scrollbar-track { background: var(--base); border-left: 1px solid var(--line-subtle); }
+  .sidebar::-webkit-scrollbar-thumb { border-color: var(--base); }
+  .sample::-webkit-scrollbar-track, .tablewrap::-webkit-scrollbar-track { background: var(--base); border-left: 0; border-top: 1px solid var(--line-faint); }
+  .sample::-webkit-scrollbar-thumb, .tablewrap::-webkit-scrollbar-thumb { border-color: var(--base); }
+
+  @media (max-width: 900px) {
+    .shell { flex-wrap: wrap; }
+    .sidebar { position: static; height: auto; max-height: 44vh; flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+    .col { padding: 36px 20px 96px; }
+  }
+  @media (max-width: 620px) {
+    main h1 { font-size: 25px; }
+    .sidebar-head { padding: 18px 16px 14px; }
+    .toc-doc, .toc-item { padding-left: 16px; }
+  }
+
+  /* ---- syntax highlighting: cyan = language structure, amber = data ---- */
+  .sample pre[data-lang] { color: var(--ink); }
+  .tk-kw { color: var(--select); }
+  .tk-type { color: var(--select-bright); }
+  .tk-fn { color: var(--ink-high); }
+  .tk-str { color: var(--bind-text); }
+  .tk-num, .tk-lit { color: var(--bind); }
+  .tk-key { color: var(--ink-high); }
+  .tk-com { color: var(--ink-ghost); }
+  .tk-punc { color: var(--ink-low); }
+</style>
+
+<!-- docs-shell -->
+<div class="shell doc-format">
+
+  <aside class="sidebar" aria-label="Documentation contents">
+    <div class="sidebar-head">
+      <p class="brand">FOLIO8</p>
+      <p class="tagline">High-performance PDF<br>reporting library</p>
+      <input class="filter" type="search" placeholder="Filter sections" aria-label="Filter sections" autocomplete="off" spellcheck="false">
+    </div>
+    <nav class="toc" aria-label="Sections">
+      <div class="toc-group">
+        <a class="toc-doc" href="rendering-library.html">Rendering library</a>
+        <a class="toc-item" href="rendering-library.html#install">Install</a>
+        <a class="toc-item" href="rendering-library.html#your-first-pdf">Your first PDF</a>
+        <a class="toc-item" href="rendering-library.html#writing-to-an-iowriter">Writing to an io.Writer</a>
+        <a class="toc-item" href="rendering-library.html#inputs">Inputs</a>
+        <a class="toc-item sub" href="rendering-library.html#data-and-params">Data and params</a>
+        <a class="toc-item sub" href="rendering-library.html#fonts">Fonts</a>
+        <a class="toc-item" href="rendering-library.html#warnings-and-errors">Warnings and errors</a>
+        <a class="toc-item" href="rendering-library.html#load-time-versus-render-time">Load time versus render time</a>
+        <a class="toc-item" href="rendering-library.html#reproducible-output">Reproducible output</a>
+        <a class="toc-item" href="rendering-library.html#known-limitations">Known limitations</a>
+        <a class="toc-item" href="rendering-library.html#template-features-that-change-the-pdf">Template features that change the PDF</a>
+        <a class="toc-item sub" href="rendering-library.html#formulas">Formulas</a>
+        <a class="toc-item sub" href="rendering-library.html#barcode-and-qr-code">Barcode and QR code</a>
+        <a class="toc-item sub" href="rendering-library.html#section-break">Section break</a>
+        <a class="toc-item sub" href="rendering-library.html#designed-pages">Designed pages</a>
+        <a class="toc-item sub" href="rendering-library.html#table-frame-rules-and-minheight">Table frame, rules and minHeight</a>
+        <a class="toc-item sub" href="rendering-library.html#other-version-gated-table-features">Other version-gated table features</a>
+        <a class="toc-item" href="rendering-library.html#api-reference">API reference</a>
+        <a class="toc-item sub" href="rendering-library.html#rendering-and-validation">Rendering and validation</a>
+        <a class="toc-item sub" href="rendering-library.html#fonts-1">Fonts</a>
+        <a class="toc-item sub" href="rendering-library.html#diagnostics-and-errors">Diagnostics and errors</a>
+        <a class="toc-item sub" href="rendering-library.html#template-and-asset-helpers">Template and asset helpers</a>
+        <a class="toc-item sub" href="rendering-library.html#authoring-and-canvas-editor-facing">Authoring and canvas (editor-facing)</a>
+        <a class="toc-item sub" href="rendering-library.html#authoring-command-catalog">Authoring command catalog</a>
+        <a class="toc-item sub" href="rendering-library.html#wasm-integration">wasm integration</a>
+        <a class="toc-item" href="rendering-library.html#command-line-tool">Command-line tool</a>
+      </div>
+      <div class="toc-group">
+        <a class="toc-doc" href="expression-reference.html">Expressions</a>
+        <a class="toc-item" href="expression-reference.html#paths">Reading values</a>
+        <a class="toc-item" href="expression-reference.html#upper">Text</a>
+        <a class="toc-item" href="expression-reference.html#formulas">Formulas and visibility</a>
+        <a class="toc-item" href="expression-reference.html#if">Choosing between two values</a>
+        <a class="toc-item" href="expression-reference.html#totals">Totals</a>
+        <a class="toc-item" href="expression-reference.html#format">Dates and numbers</a>
+        <a class="toc-item" href="expression-reference.html#all">The whole list</a>
+      </div>
+      <div class="toc-group" data-current>
+        <a class="toc-doc" href="#top" aria-current="page">The .folio format</a>
+        <a class="toc-item" href="#units">Units</a>
+        <a class="toc-item" href="#document">Document</a>
+        <a class="toc-item sub" href="#alignment-sets">Alignment sets</a>
+        <a class="toc-item" href="#versions">Versions</a>
+        <a class="toc-item sub" href="#compatibility-rules">Compatibility rules</a>
+        <a class="toc-item sub" href="#closed-sets">Closed sets</a>
+        <a class="toc-item" href="#load-errors">Load errors</a>
+        <a class="toc-item" href="#page">page</a>
+        <a class="toc-item" href="#fonts">fonts</a>
+        <a class="toc-item" href="#bands">bands</a>
+        <a class="toc-item sub" href="#designed-pages">Designed pages</a>
+        <a class="toc-item sub" href="#pagination">Pagination</a>
+        <a class="toc-item" href="#elements">Elements</a>
+        <a class="toc-item sub" href="#table">table</a>
+        <a class="toc-item sub" href="#expressions">Expressions</a>
+        <a class="toc-item sub" href="#style">style</a>
+        <a class="toc-item" href="#assets">assets</a>
+        <a class="toc-item sub" href="#a-font-asset">A font asset</a>
+        <a class="toc-item" href="#saving">Saving</a>
+        <a class="toc-item" href="#line-breaking">Line breaking</a>
+        <a class="toc-item sub" href="#inferred-breaks">Inferred breaks</a>
+        <a class="toc-item sub" href="#mandatory-breaks">Mandatory breaks</a>
+        <a class="toc-item sub" href="#vertical-placement">Vertical placement</a>
+        <a class="toc-item sub" href="#values-that-must-never-be-split">Values that must never be split</a>
+        <a class="toc-item" href="#what-is-not-in-the-file">What is not in the file</a>
+        <a class="toc-item" href="#worked-example">Worked example</a>
+      </div>
+      <p class="toc-empty" hidden>No section matches.</p>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="col">
+      <nav class="docbar" aria-label="Documents">
+        <p class="brand">FOLIO8 · High-performance PDF reporting library</p>
+        <a href="rendering-library.html">Rendering library</a>
+        <a href="expression-reference.html">Expressions</a>
+        <a href="#top" aria-current="page">.folio format</a>
+      </nav>
+
+      <article id="top">
+        <div class="article-head">
+          <p class="eyebrow">FOLIO8 · Format reference</p>
+          <h1>The <code>.folio</code> format</h1>
+          <p class="standfirst">
+            This is the canonical reference for the <code>.folio</code> template format: what every field is
+            called, what it means, which values are legal, and what the library does when a file breaks a rule.
+            Format version <strong>4.1</strong> is the highest version this library supports.
+          </p>
+          <p>
+            The format is a public contract, not an implementation detail. A person or a program can write or
+            edit a template by hand, without the designer, and a hand-written template renders exactly as a
+            designer-written one does. The designer never parses <code>.folio</code> itself; the engine owns the
+            document.
+          </p>
+          <ul>
+            <li>To render a template from Go, see the <a href="rendering-library.html">rendering library guide</a>.</li>
+            <li>For expression syntax — paths, functions, formulas — see the <a href="expression-reference.html#formulas">expression reference</a>.</li>
+          </ul>
+        </div>
+        <!-- /article-head -->
+
+<!-- body -->
+  <section id="units">
+    <h2>Units</h2>
+    <p><strong>Coordinates, sizes, margins and font sizes are in PDF points</strong> (1 pt = 1/72 inch), written as JSON numbers with <strong>at most three decimal places</strong>.</p>
+    <p>Three decimals is exactly one millipoint, the engine's internal unit, so the conversion is an exact ×1000 with no rounding. Values are parsed through the same exact-decimal path as report data — never binary floating point. A coordinate with more than three decimal places is a load error, because it cannot be represented exactly.</p>
+    <p>Points rather than raw millipoints because a hand-editor writes <code>"x": 36</code>, not <code>"x": 36000</code>.</p>
+  </section>
+
+  <section id="document">
+    <h2>Document</h2>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
+  <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"fonts"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"locale"</span><span class="tk-punc">:</span> <span class="tk-str">"th"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"nextId"</span><span class="tk-punc">:</span> <span class="tk-num">14</span><span class="tk-punc">,</span>
+  <span class="tk-key">"page"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"unbreakableValues"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-str">"customer.name"</span><span class="tk-punc">]</span><span class="tk-punc">,</span>
+  <span class="tk-key">"utcOffset"</span><span class="tk-punc">:</span> <span class="tk-str">"+07:00"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"version"</span><span class="tk-punc">:</span> <span class="tk-str">"1.0"</span>
+<span class="tk-punc">}</span></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>version</code></td><td><em>Required.</em> <code>"MAJOR.MINOR"</code>. It describes the <strong>document</strong>, not the program that wrote it: a file declares the lowest version its own content requires. See <a href="#versions"><em>Versions</em></a> for the ladder and the load and save rules.</td></tr>
+        <tr><td><code>locale</code></td><td><em>Required.</em> One tag from the closed set <code>en</code>, <code>th</code>, <code>zh-Hans</code>, <code>ja</code>. An unlisted tag is a load error.</td></tr>
+        <tr><td><code>utcOffset</code></td><td><em>Required.</em> A fixed offset, <code>±HH:MM</code>, with hours <code>00</code>–<code>23</code> and minutes <code>00</code>–<code>59</code>. Anything else is a load error. The engine reads no host time zone.</td></tr>
+        <tr><td><code>page</code></td><td><em>Required.</em> Page setup (below).</td></tr>
+        <tr><td><code>fonts</code></td><td>Named font stacks (below).</td></tr>
+        <tr><td><code>bands</code></td><td>Exactly three bands (below).</td></tr>
+        <tr><td><code>pages</code></td><td><em>Optional.</em> The designed pages of a document with two or more pages (see <a href="#designed-pages"><em>Designed pages</em></a>). Absent from a one-page document.</td></tr>
+        <tr><td><code>assets</code></td><td>Embedded binary assets, keyed by content hash (below).</td></tr>
+        <tr><td><code>nextId</code></td><td><em>Required.</em> The next element-id counter value, a plain decimal integer greater than the highest id present. Persisted so ids survive a save without renumbering; it is never repaired or inferred.</td></tr>
+        <tr><td><code>unbreakableValues</code></td><td><em>Optional.</em> A list of <strong>bare root-relative dotted value paths</strong> (e.g. <code>"customer.name"</code>) whose bound values must never be split across a line break — the same path convention <code>columns[].footerOf</code> uses: no <code>{{ }}</code>, no function call, no <code>[]</code>. Row-scoped paths are written root-relative under that same convention. The engine <strong>never infers</strong> membership; see <a href="#line-breaking"><em>Line breaking</em></a>. Declared once for the document because the property belongs to the data, not to a box. Absent means no value is protected.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="caution"><p><code>locale: "ja"</code> renders completely — the shipped font set has every Japanese glyph — but in Simplified-Chinese kanji SHAPES, because a font holds one drawing per codepoint and Chinese and Japanese share codepoints they draw slightly differently. This is legible and correct-content, never a missing-glyph error; it is a typography limitation, not a rendering failure. Supply your own face for Japanese typography — the font set passed to the renderer is a plain map from face name to font bytes, and the font chain is always declared by the document, never inferred from <code>locale</code>.</p></div>
+    <p>Top-level keys appear sorted, as does every object in the file — that is the serializer's job (see <a href="#saving"><em>Saving</em></a>), not something an author maintains by hand.</p>
+    <h3 id="alignment-sets">Alignment sets</h3>
+    <p><code>align</code> is not one closed set, and it is not two. It is <strong>four</strong>, and they are keyed on <strong>the code that consumes the value</strong>, which in this format means <strong>the element type that owns the style block</strong>:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Set</th><th>Where it applies</th><th>Legal values</th></tr></thead>
+      <tbody>
+        <tr><td>Style align</td><td>a <strong>non-table</strong> element's own <code>style.align</code></td><td><code>left</code> · <code>center</code> · <code>right</code> · <code>justify</code></td></tr>
+        <tr><td>Table style align</td><td>a <strong>table</strong>'s <code>style.align</code> and its <code>headerStyle.align</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+        <tr><td>Column align</td><td><code>columns[].align</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+        <tr><td>Column header align</td><td><code>columns[].headerAlign</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>A value outside its own set is a <strong>located load error</strong> naming the element and the field, and the message lists exactly the members of the set that rejected it — so a table's rejection never names <code>justify</code> as legal, and a text element's always does.</p>
+    <p><code>columns[].headerAlign</code> is a fourth, separate declaration of the column triple. It feeds the same cell consumer as the other table sets, so it carries the same three values.</p>
+    <p><strong>Why the partition is by consumer and not by key path.</strong> A table's <code>style.align</code>, its <code>headerStyle.align</code> and its <code>columns[].align</code> are all read into one fallback and drawn by one set of cell switches: they are <strong>one consumer wearing three key paths</strong>. Splitting the set along the JSON key instead would let a table declare <code>justify</code>, load, and render identically to <code>left</code> with no diagnostic. So justified table cells are not supported, and the format <em>refuses</em> the declaration instead of accepting it and ignoring it.</p>
+    <div class="caution"><p><strong>When splitting a closed set, partition it by the code that consumes the value, not by where the value is written in the document.</strong></p></div>
+  </section>
+
+  <section id="versions">
+    <h2>Versions</h2>
+    <p><code>version</code> is <code>"MAJOR.MINOR"</code>. This library supports every version up to and including <strong>4.1</strong>.</p>
+    <p><strong>Loading.</strong></p>
+    <ul>
+      <li>A document whose <code>MAJOR</code> is higher than the library's (<code>4</code>) is a load error (<code>TEMPLATE_MALFORMED</code>), never a best-effort render. So is a <code>version</code> that is not of the form <code>MAJOR.MINOR</code>.</li>
+      <li>A document with a supported <code>MAJOR</code> and a higher <code>MINOR</code> (say <code>4.7</code>) loads. Keys the library does not know are carried through verbatim and written back on save.</li>
+    </ul>
+    <p><strong>The ladder.</strong> A file declares the lowest version its own content requires. The first matching row, from the top, decides:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Version</th><th>Required when the document…</th></tr></thead>
+      <tbody>
+        <tr><td><code>4.1</code></td><td>lists <code>pages</code> (see <a href="#designed-pages"><em>Designed pages</em></a>), or a content band or page declares <code>sectionBreak</code> or <code>sectionBreakAnchor</code> (see <a href="#pagination"><em>Pagination</em></a>)</td></tr>
+        <tr><td><code>4.0</code></td><td>has any element whose <code>type</code> is <code>barcode</code> or <code>qrcode</code></td></tr>
+        <tr><td><code>3.3</code></td><td>has a text expression (a text element's <code>value</code> or a column's <code>bind</code>) statically known to be able to return a number (see <a href="#expressions"><em>Expressions</em></a>)</td></tr>
+        <tr><td><code>3.2</code></td><td>has a table column that declares <code>headerAlign</code></td></tr>
+        <tr><td><code>3.1</code></td><td>has a table that declares <code>rules</code> or <code>minHeight</code></td></tr>
+        <tr><td><code>3.0</code></td><td>has a table that declares a total <code>width</code> with proportional columns</td></tr>
+        <tr><td><code>2.0</code></td><td>has a style that sets <code>align: "justify"</code> (which only a <strong>non-table</strong> element's <code>style</code> can — see <a href="#alignment-sets"><em>Alignment sets</em></a>); <strong>or</strong> any <code>visibleIf</code>, text <code>value</code> or column <code>bind</code> uses formula syntax or boolean/null literals (see <a href="#expressions"><em>Expressions</em></a>); <strong>or</strong> any chain in <code>fonts</code> declares an entry that serialises as an OBJECT — an embedded face, or a face carrying style variants (see <a href="#fonts"><em><code>fonts</code></em></a>)</td></tr>
+        <tr><td><code>1.2</code></td><td>has an element that sets <code>keepTogether</code></td></tr>
+        <tr><td><code>1.1</code></td><td>has a style (including a table's <code>headerStyle</code>) that sets <code>lineSpacing</code> or <code>color</code></td></tr>
+        <tr><td><code>1.0</code></td><td>none of the above</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Saving.</strong> The rule is applied <strong>on save</strong>, in terms of what the document SERIALISES to. Saving raises the version to the <strong>highest</strong> requirement the document's own written form actually carries; it <strong>never lowers</strong> the version the document was loaded with, and it never stamps the library's own ceiling on a document that does not need it. (So <code>{"face": "X"}</code> with no variants, which canonicalises back to the bare string <code>"X"</code>, raises nothing.) A document using none of those keys still declares <code>1.0</code> however new the library that wrote it.</p>
+    <p>A font asset that no chain references raises nothing: it rides through an older reader as ordinary passthrough and renders correctly. The trigger is the chain <strong>entry</strong>, not the asset.</p>
+    <h3 id="compatibility-rules">Compatibility rules</h3>
+    <ul>
+      <li>A MINOR increment may add <strong>new optional keys</strong> only. It may <strong>not</strong> change the meaning of an existing key, and it may <strong>not</strong> extend a closed set of legal values.</li>
+      <li>Extending a closed set is a <strong>MAJOR</strong> change, because every existing library validates those sets as load errors. The same holds for changing the legal <em>shape</em> of an existing value: when a <code>fonts</code> chain entry became allowed to be an object, older readers — which decode an entry as a string — refuse such a file outright, so it requires <code>2.0</code>.</li>
+      <li>A pattern-constrained string (such as <code>utcOffset</code>) is not a closed set. Making a reader stricter about documents it already reads is not a version trigger either, because version describes the document, never the reader.</li>
+    </ul>
+    <h3 id="closed-sets">Closed sets</h3>
+    <p>The format has <strong>thirteen</strong> closed sets of legal values. A value outside any of them is a load error, and adding a member to any of them is a MAJOR change:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Where</th><th>Legal values</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>element <code>type</code></td><td><code>text</code> · <code>image</code> · <code>table</code> · <code>line</code> · <code>rect</code> · <code>barcode</code> · <code>qrcode</code></td></tr>
+        <tr><td>2</td><td><code>locale</code></td><td><code>en</code> · <code>th</code> · <code>zh-Hans</code> · <code>ja</code></td></tr>
+        <tr><td>3</td><td><code>page.size</code> (as a name)</td><td><code>A4</code> · <code>Letter</code></td></tr>
+        <tr><td>4</td><td><code>page.orientation</code></td><td><code>portrait</code> · <code>landscape</code></td></tr>
+        <tr><td>5</td><td>a non-table element's <code>style.align</code></td><td><code>left</code> · <code>center</code> · <code>right</code> · <code>justify</code></td></tr>
+        <tr><td>6</td><td>a table's <code>style.align</code> and <code>headerStyle.align</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+        <tr><td>7</td><td><code>columns[].align</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+        <tr><td>8</td><td><code>columns[].headerAlign</code></td><td><code>left</code> · <code>center</code> · <code>right</code></td></tr>
+        <tr><td>9</td><td><code>style.valign</code></td><td><code>top</code> · <code>middle</code> · <code>bottom</code></td></tr>
+        <tr><td>10</td><td><code>style.border.edges</code> members</td><td><code>top</code> · <code>right</code> · <code>bottom</code> · <code>left</code></td></tr>
+        <tr><td>11</td><td><code>columns[].footer</code></td><td><code>sum</code> · <code>count</code> · <code>avg</code></td></tr>
+        <tr><td>12</td><td>table <code>rules.between</code> members</td><td><code>columns</code> · <code>rows</code></td></tr>
+        <tr><td>13</td><td>qrcode <code>errorCorrection</code></td><td><code>L</code> · <code>M</code> · <code>Q</code> · <code>H</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>Two <strong>key</strong> sets are closed in the same way: the keys a <code>fonts</code> chain entry object may carry (<code>face</code> or <code>asset</code>, plus <code>bold</code>, <code>italic</code>, <code>boldItalic</code>), and the keys a <code>pages</code> entry may carry (<code>elements</code>, <code>pageBreak</code>, <code>sectionBreak</code>, <code>sectionBreakAnchor</code>). An unknown key there is a load error rather than passthrough.</p>
+    <p><code>mediaType</code> on an asset is deliberately <strong>open</strong> (see <a href="#a-font-asset"><em>A font asset</em></a>).</p>
+  </section>
+
+  <section id="load-errors">
+    <h2>Load errors</h2>
+    <p>Loading a template (<code>ParseTemplate</code> or <code>LoadTemplate</code> in the Go library) either returns a template or refuses the file with one error carrying a stable code. A refused file never renders. Match on the code, not on the message text.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Code</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><code>TEMPLATE_MALFORMED</code></td><td>The bytes are not a JSON object, a value under an unknown key cannot be read, the <code>version</code> is not <code>MAJOR.MINOR</code>, or its <code>MAJOR</code> is higher than the library supports.</td></tr>
+        <tr><td><code>TEMPLATE_FIELD_INVALID</code></td><td>The general code for a well-formed file carrying an unacceptable field: a missing required field, a value of the wrong JSON kind, a closed-set value outside its set, a misspelled or duplicate id, a coordinate with more than three decimals, a bad <code>fonts</code> entry, a missing font licence record, a table width or proportion that cannot be allocated, a barcode or QR value that is refused at load, and every other field rule in this document without a more specific code below. The error names the field and, where there is one, the element.</td></tr>
+        <tr><td><code>STYLE_LINE_SPACING_INVALID</code></td><td>A <code>style.lineSpacing</code> or <code>headerStyle.lineSpacing</code> outside its domain (see <a href="#style"><em><code>style</code></em></a>).</td></tr>
+        <tr><td><code>EXPRESSION_INVALID</code></td><td>An expression that does not parse or does not check: syntax, arity, an unknown function, a provably wrong kind, a condition whose statically known outcome is a number or string.</td></tr>
+        <tr><td><code>TABLE_FOOTER_SOURCE_UNRESOLVED</code></td><td>A <code>sum</code>/<code>avg</code> footer with no <code>footerOf</code> whose <code>bind</code> is not one of the two derivable shapes, or a <code>footerOf</code> not under the table's collection path.</td></tr>
+        <tr><td><code>TABLE_FOOTER_SOURCE_FORBIDDEN</code></td><td><code>footerOf</code> beside <code>footer: "count"</code>, or <code>footerOf</code>/<code>footerFormat</code> with no <code>footer</code>.</td></tr>
+        <tr><td><code>TABLE_MIN_HEIGHT_UNPLACEABLE</code></td><td>A table <code>minHeight</code> taller than the content window. Names the element.</td></tr>
+        <tr><td><code>SECTION_BREAK_INVALID</code></td><td>A <code>sectionBreak</code> or <code>sectionBreakAnchor</code> that breaks its rules (see <a href="#bands"><em><code>bands</code></em></a>). Located by field path — the band or page — not by element.</td></tr>
+        <tr><td><code>SECTION_BREAK_STRADDLED</code></td><td>An element whose declared box lies on both sides of a section break. Names the element; on a multi-page document the page's break path too.</td></tr>
+        <tr><td><code>PAGES_INVALID</code></td><td>A <code>pages</code> array or entry that breaks its rules (see <a href="#designed-pages"><em>Designed pages</em></a>). Located by field path.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Render-time codes (warnings such as <code>TABLE_ROW_CLIPPED_HEIGHT</code> or <code>BARCODE_DOES_NOT_FIT</code>, and render errors such as <code>CONTENT_UNLAYOUTABLE</code> or <code>BINDING_PATH_ABSENT</code>) are described where they arise below and listed in full in the <a href="rendering-library.html">rendering library guide</a>.</p>
+  </section>
+
+  <section id="page">
+    <h2><code>page</code></h2>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"page"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"margin"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span> <span class="tk-key">"bottom"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span> <span class="tk-key">"left"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span> <span class="tk-key">"right"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span> <span class="tk-key">"top"</span><span class="tk-punc">:</span> <span class="tk-num">36</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"orientation"</span><span class="tk-punc">:</span> <span class="tk-str">"portrait"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"size"</span><span class="tk-punc">:</span> <span class="tk-str">"A4"</span>
+<span class="tk-punc">}</span></pre></div>
+    <p><code>size</code> is <code>"A4"</code>, <code>"Letter"</code>, or an object <code>{"height": 841.89, "width": 595.28}</code> for a custom page. <code>orientation</code> is <code>"portrait"</code> or <code>"landscape"</code>.</p>
+  </section>
+
+  <section id="fonts">
+    <h2><code>fonts</code></h2>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"fonts"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"body"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-str">"Noto Sans"</span><span class="tk-punc">,</span> <span class="tk-str">"Noto Sans Thai"</span><span class="tk-punc">,</span> <span class="tk-str">"Noto Sans SC"</span><span class="tk-punc">]</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>Each key names an <strong>ordered fallback chain</strong>, tried left to right per glyph. <code>style.fontFamily</code> references a key of this object, never a face name directly — so a chain is declared once and reused, and the chain is part of the render's identity. A glyph covered by no face in the chain produces a diagnostic (<code>TEXT_MISSING_GLYPH</code>) naming the element and the rune; it is never silently blank.</p>
+    <p><strong>A chain entry has exactly three legal shapes</strong>, and they may be mixed in one chain, in any order:</p>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"fonts"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"body"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+    <span class="tk-str">"Noto Sans"</span><span class="tk-punc">,</span>
+    <span class="tk-punc">{</span> <span class="tk-key">"asset"</span><span class="tk-punc">:</span> <span class="tk-str">"9ab1e6c2f0d34b7a5c8e1f20d4b6a839c7e5024f1b8d63a09e4c7512fb3d8a6e"</span> <span class="tk-punc">}</span>
+  <span class="tk-punc">]</span>
+<span class="tk-punc">}</span></pre></div>
+    <ol>
+      <li><strong>A string</strong> — the name of a face the renderer is given at render time (the shipped set, or one the integrator supplies).</li>
+      <li><strong>A one-key object <code>{"asset": "&lt;key&gt;"}</code></strong> — a face carried <em>inside the document</em>, whose value is a key of the top-level <code>assets</code> object. A document declaring one requires <code>2.0</code>.</li>
+      <li><strong>An object carrying STYLE VARIANTS</strong> — either of the two above written as an object, with optional siblings naming the faces this entry is drawn in when an element declares <code>style.bold</code>, <code>style.italic</code>, or both. The object's shape is exactly one discriminant — <code>face</code> <strong>or</strong> <code>asset</code>, never both and never neither — beside any of the three variant keys:</li>
+    </ol>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"fonts"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"body"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+    <span class="tk-str">"Noto Sans Thai"</span><span class="tk-punc">,</span>
+    <span class="tk-punc">{</span> <span class="tk-key">"face"</span><span class="tk-punc">:</span> <span class="tk-str">"Roboto"</span><span class="tk-punc">,</span> <span class="tk-key">"bold"</span><span class="tk-punc">:</span> <span class="tk-str">"Roboto Bold"</span><span class="tk-punc">,</span> <span class="tk-key">"italic"</span><span class="tk-punc">:</span> <span class="tk-str">"Roboto Italic"</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-punc">{</span> <span class="tk-key">"asset"</span><span class="tk-punc">:</span> <span class="tk-str">"9f86d0…"</span><span class="tk-punc">,</span> <span class="tk-key">"bold"</span><span class="tk-punc">:</span> <span class="tk-str">"1b4f0e…"</span> <span class="tk-punc">}</span>
+  <span class="tk-punc">]</span>
+<span class="tk-punc">}</span></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>face</code></td><td>The discriminant of a shipped/supplied face, written as an object so it can carry variants. <code>{"face": "Roboto"}</code> and the bare string <code>"Roboto"</code> are the same entry; the bare string is what a variant-free entry serialises back to.</td></tr>
+        <tr><td><code>asset</code></td><td>The discriminant of a face the document carries — a key of the top-level <code>assets</code> object, exactly as shape 2.</td></tr>
+        <tr><td><code>bold</code>, <code>italic</code>, <code>boldItalic</code></td><td><em>Optional.</em> The face this entry is drawn in for that weight and slope. <strong>This is a CLOSED set of exactly three keys</strong>, and extending it later is a <strong>MAJOR</strong> change, not an additive one — the closure is what keeps an unknown key inside an entry a load error rather than a decoration that rides along. ⚠ <strong>The type differs from <code>style</code>'s keys of the same name</strong>: on a <code>style</code> block <code>bold</code> and <code>italic</code> are <strong>booleans</strong> saying <em>what the author asked for</em>; on a chain entry they are <strong>face names</strong> (or <code>assets</code> keys) saying <em>what to draw it with</em>. A variant may <strong>not name its own entry's base</strong> — see below.</td></tr>
+      </tbody>
+    </table></div>
+    <p>A variant's namespace <strong>matches its entry's discriminant</strong>: a <code>face</code> entry's variants are face names, an <code>asset</code> entry's variants are <code>assets</code> keys. A cross-namespace sibling — <code>{"asset": "&lt;key&gt;", "bold": "Roboto Bold"}</code>, or <code>{"face": "Roboto", "bold": "&lt;assets key&gt;"}</code> — is a <strong>load error naming the sibling</strong>, e.g. <code>fonts.body[1].bold</code>. Nothing is ever <em>inferred</em> from a face name: an entry that declares no variant for the requested style has none, however the renderer's own faces happen to be named.</p>
+    <p><strong>A variant naming its entry's OWN base face is a load error naming the sibling</strong>, on either arm: <code>{"face": "Roboto", "bold": "Roboto"}</code> and <code>{"asset": "&lt;key&gt;", "bold": "&lt;the same key&gt;"}</code> are both refused at <code>fonts.body[1].bold</code>. Such an entry declares nothing — the face drawn at that weight is the face that would have been drawn anyway — and it does so <em>silently</em>, because an entry that declares a variant is not an entry that declares none, so the warning the three absence conditions below all earn never fires. Write <strong>no key at all</strong> to say this entry has no such cut. <strong>The base is the only privileged name:</strong> two <em>different</em> variants of one entry may name the same face — <code>{"face": "Roboto", "bold": "X", "italic": "X"}</code> loads and renders — and that is deliberate, not an oversight.</p>
+    <p>⚠ <strong>The limit of that refusal.</strong> It is <strong>string equality</strong> against the entry's own discriminant, so it cannot see <code>{"face": "Roboto", "bold": "Roboto Copy"}</code> where two distinct face names hold <strong>identical bytes</strong>. That renders bold-as-regular just as silently and the entry looks entirely well-formed. Detecting it would mean comparing what is <em>inside</em> the two faces, and nothing in this format is ever resolved or compared by anything read out of a font binary — the same rule that makes an embedded face's <code>family</code> display identity rather than a resolver. The refusal closes the mistake an author reaches by writing the same name twice; it does not close the case reached by a stranger route.</p>
+    <p><strong>Three conditions all end the same way</strong>, and an author needs all three to predict what a page will look like. In each, the rune is drawn in <strong>that entry's own base face</strong> — never in a later entry's, because losing the weight is a smaller lie than changing the typeface — and a <strong>warning</strong> (<code>TEXT_STYLE_FACE_UNDECLARED</code>) names the element, the rune and the face actually drawn:</p>
+    <ol>
+      <li><strong>The entry declares no variant</strong> for the requested weight and slope.</li>
+      <li><strong>The declared variant names a face the renderer was not given.</strong> The same tolerance a bare chain entry has (above) applies to a variant: it is skipped in silence, never a load or render error, because the same document is correct wherever that face IS supplied.</li>
+      <li><strong>The declared variant does not cover the rune.</strong> Coverage chose the entry on its BASE face, so the variant is not guaranteed to carry the glyph.</li>
+    </ol>
+    <p>A partial match is an absence too: an element declaring both <code>bold</code> and <code>italic</code>, against an entry declaring only <code>bold</code>, draws the base face and warns — choosing the bold cut would be a nearest-fit search, and nothing here searches. No weight or slope is ever synthesized.</p>
+    <p>Anything else — a number, an array, an object with neither <code>face</code> nor <code>asset</code>, an object with both, or an object carrying any key outside that closed set — is a <strong>load error naming the chain and the entry's index</strong>, e.g. <code>fonts.body[1]</code>. An <code>{"asset": …}</code> entry whose key is <strong>not present in <code>assets</code></strong> is likewise a load error, and it names the chain, the index and the key: <code>fonts.body[1].asset</code>. A chain entry is never silently dropped and never coerced.</p>
+    <p><strong>An entry naming an asset that is not a font is ACCEPTED AT LOAD and errors at RENDER.</strong> The load path checks that the key exists in <code>assets</code> and nothing else — it never inspects the asset's <code>mediaType</code> or its bytes to decide whether the entry is legal. That is the same rule the open <code>mediaType</code> set rests on (see <a href="#a-font-asset"><em>A font asset</em></a>), and it applies to a <em>wrong-kind</em> asset exactly as it does to an unrecognised font container: a chain entry naming an <code>image/png</code> asset is a valid <code>.folio</code>. The failure arrives at render, and <strong>only when something must actually draw with that entry</strong> — when a rune reaches it because no earlier entry in the chain covers that rune. It is a located error naming <strong>the chain, the entry's index and the asset key</strong>. A document whose text is covered entirely by the entries ahead of it renders clean and says nothing, because nothing ever asked what those bytes were.</p>
+    <p><strong>Validation returns the identical error.</strong> Validating that document — without rendering it — returns the <em>same</em> error, with the same text and the same coordinates, and no diagnostics alongside it. A validator that accepted a document the renderer refuses would be a second rule system, and the one an author would trust is the one that says yes.</p>
+    <p><strong>Refusing is NOT what happens when a chain names a face nobody supplied, and the difference is deliberate.</strong> Given <code>["Noto Sans", &lt;a non-font asset&gt;, "Noto Sans Thai"]</code>, the render is refused at the middle entry even though the entry after it covers every rune. Given <code>["Noto Sans", "No Such Face", "Noto Sans Thai"]</code>, the middle entry is <strong>skipped in silence</strong> and the third entry draws. The two conditions are not the same kind of thing:</p>
+    <ul>
+      <li>A chain entry naming a <strong>non-font asset</strong> is a defect <em>inside the document</em>. It travels with the file, it is wrong on every machine that will ever open it, and no deployment can make it right — so the moment something must draw with it, it is refused and located.</li>
+      <li>A chain entry naming a <strong>face the renderer was not given</strong> is a property of <em>this</em> render, not of the document. The same file is correct wherever that face is supplied, and a fallback chain exists precisely so a document survives a host that is missing one of its faces.</li>
+    </ul>
+    <p><strong>A face is resolved by ASSET KEY, never by name.</strong> An embedded entry's <code>font.family</code> is display identity — what a chain editor shows a person — and is never used to resolve or substitute a face. Where a document carries a face whose <code>font.family</code> is <code>"Inter"</code> and the renderer is also given a face named <code>"Inter"</code>, the two are <strong>different faces</strong> and neither ever stands in for the other; the chain entry's shape decides which one is meant.</p>
+    <p>The map's keys have <strong>no authored order</strong>: they are sorted on write, like every other object in the file. Only the array <em>inside</em> a chain is ordered, and that order is the author's and is preserved verbatim.</p>
+  </section>
+
+  <section id="bands">
+    <h2><code>bands</code></h2>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"content"</span><span class="tk-punc">:</span>    <span class="tk-punc">{</span> <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">]</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"pageFooter"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span> <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">]</span><span class="tk-punc">,</span> <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">40</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"pageHeader"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span> <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">]</span><span class="tk-punc">,</span> <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">80</span> <span class="tk-punc">}</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>Exactly these three keys. <code>pageHeader</code> and <code>pageFooter</code> declare a <code>height</code>; <strong><code>content</code> does not</strong> — its height is derived as page height minus margins minus header minus footer, by one function. Storing it would be a second source of truth.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Band key</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>sectionBreak</code></td><td><em>Optional, <code>content</code> only.</em> One offset in points from the content band's top. Every element whose <code>y</code> is at or below it forms the <strong>below-line section</strong>, whatever its <code>x</code>; see <a href="#pagination"><em>Pagination</em></a> for where that section lands. It must be greater than 0 and less than the content height, it may appear once, and it is refused on <code>pageHeader</code> and <code>pageFooter</code> — each a load error (<code>SECTION_BREAK_INVALID</code>) naming the band. No element's declared box may lie on both sides of it (for a table the box is <code>y</code> to <code>y + headerHeight</code>; its rows and its <code>minHeight</code> floor may run past the line): that is a load error (<code>SECTION_BREAK_STRADDLED</code>) naming the element. The break is never drawn in the PDF. A document carrying it requires <code>4.1</code>.</td></tr>
+        <tr><td><code>sectionBreakAnchor</code></td><td><em>Optional, <code>content</code> only.</em> A boolean, the section break's <strong>Anchor</strong> setting; absent means <code>true</code> (anchored). <code>false</code> makes the break <strong>unanchored</strong>: see <a href="#pagination"><em>Pagination</em></a> for how an unanchored section follows the content above it. It is valid only beside <code>sectionBreak</code>, it may appear once, and it must be <code>true</code> or <code>false</code> — declaring it without <code>sectionBreak</code>, on <code>pageHeader</code> or <code>pageFooter</code>, twice, as <code>null</code> or as any non-boolean is a load error (<code>SECTION_BREAK_INVALID</code>) naming the band. It is written only when <code>false</code>: an explicit <code>true</code> is dropped on save. It is part of the same <code>4.1</code> as <code>sectionBreak</code>.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Every element's <code>x</code> and <code>y</code> are relative to <strong>its band's</strong> top-left corner, never to the page.</p>
+    <h3 id="designed-pages">Designed pages</h3>
+    <p>A document may have several <strong>designed pages</strong>, each its own content column. The page header, the page footer and the page setup are shared by every page. The file has <strong>two shapes</strong>, chosen by page count:</p>
+    <ul>
+      <li><strong>One page.</strong> The content is <code>bands.content</code>, and there is no <code>pages</code> key.</li>
+      <li><strong>Two or more pages.</strong> Every page, page 1 included, is an entry of the top-level <code>pages</code> array, in page order, and <code>bands.content</code> is <code>{ "elements": [] }</code> with no section break.</li>
+    </ul>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"pages"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+  <span class="tk-punc">{</span> <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">]</span><span class="tk-punc">,</span> <span class="tk-key">"sectionBreak"</span><span class="tk-punc">:</span> <span class="tk-num">300</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-punc">{</span> <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">]</span><span class="tk-punc">,</span> <span class="tk-key">"pageBreak"</span><span class="tk-punc">:</span> <span class="tk-lit">true</span> <span class="tk-punc">}</span>
+<span class="tk-punc">]</span></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Page key</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>pages[].elements</code></td><td><em>Required.</em> The page's content elements, exactly as <code>content</code>'s. Their <code>x</code> and <code>y</code> are relative to the page's content band.</td></tr>
+        <tr><td><code>pages[].pageBreak</code></td><td>A boolean, the page's <strong>Page Break</strong> setting. It is written as <code>true</code> or <code>false</code> on every page after the first; a later page with no value loads as <code>true</code>. On the first page it does not apply: a value there loads without error and is dropped on save.</td></tr>
+        <tr><td><code>pages[].sectionBreak</code>, <code>pages[].sectionBreakAnchor</code></td><td><em>Optional.</em> The page's own section break, as <code>content</code>'s, on any page. Each page has at most one. Its range, its Anchor and its straddle rule are checked against that page's own elements only, and a problem is a load error located at that page's key (<code>pages[i].sectionBreak</code> or <code>pages[i].sectionBreakAnchor</code>; <code>SECTION_BREAK_INVALID</code>, or <code>SECTION_BREAK_STRADDLED</code> naming the element). It affects only that page's own content and overflow.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Element ids are unique across the whole document, and a <code>keepTogether</code> group cannot span pages. Each of the following is a load error (<code>PAGES_INVALID</code>) naming where it is: a <code>pages</code> array with fewer than two entries or that is not an array (<code>pages</code>); elements in <code>bands.content</code> beside <code>pages</code> (<code>bands.content</code>); a section break in <code>bands.content</code> beside <code>pages</code> (the key's path, <code>bands.content.sectionBreak</code> or <code>bands.content.sectionBreakAnchor</code>); an entry that is not an object, lacks <code>elements</code>, carries a key other than those above, or has a non-boolean or repeated <code>pageBreak</code> (<code>pages[i]</code>, with the key); a <code>keepTogether</code> tag used on two pages (naming both). A duplicate id on a later page is the ordinary duplicate-id load error (<code>TEMPLATE_FIELD_INVALID</code>), located at that page. A document with <code>pages</code> requires <code>4.1</code>.</p>
+    <h3 id="pagination">Pagination</h3>
+    <p>A document whose content is taller than one content band becomes <strong>several pages</strong>. The page header and the page footer are drawn on <strong>every</strong> one of them, identically, at the same band origins: page thirty-four is as complete as page one.</p>
+    <p><strong>The content band is a window onto one tall column.</strong> The elements of <code>content</code> form a single column of unbounded height; each page shows one page-height window onto it. A longer report is <strong>more windows</strong>, never rearranged furniture. Four rules decide what a reader sees.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th></th><th>rule</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Where a page begins.</strong> The first page's window begins at the top of the content band. Each later window begins at the top of the <strong>first item that did not fit</strong> in the window before it.</td></tr>
+        <tr><td>2</td><td><strong>What the unit is.</strong> The unit that lands on a page is the <strong>line</strong>, not the element. A paragraph continues from the foot of one page to the head of the next.</td></tr>
+        <tr><td>3</td><td><strong>No line is ever split.</strong> A line is drawn on the first page whose window holds it <strong>entirely</strong>, from the top of its tallest possible ascender to the bottom of its deepest possible descender.</td></tr>
+        <tr><td>4</td><td><strong>An image is atomic</strong>, and the same rule applies to its <strong>declared box</strong>.</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Whitespace at the foot of a page is correct.</strong> Rule 3 means a line that would fall half on one sheet and half on the next is drawn whole on the next sheet, and the space it vacated stays empty. A statement cannot ship a half-line, and there is no setting that trades this away.</p>
+    <p><strong>Nothing moves sideways and nothing reflows to close a gap.</strong> Every element keeps exactly the position its author gave it within the column, so no element is ever displaced because a neighbour grew — <strong>with two exceptions, the below-line section of a <code>sectionBreak</code> and a designed page with Page Break off, both described below; each moves as one rigid block.</strong> One consequence follows directly and an author should know it before designing a report rather than finding it in a diff:</p>
+    <div class="caution"><p><strong>Across a window boundary, declared vertical gaps collapse.</strong> An element that begins a window is drawn at the top of its page, whatever gap was declared above it. That is the price of never splitting a line and never reflowing a sibling. The one exception is the first page of a below-line section, which begins at the section's declared offset rather than at the top of the page — or, unanchored, directly below where the content above it ends.</p></div>
+    <p><strong>A section break moves the content below it as one rigid block.</strong> When the content band declares <code>sectionBreak</code>, the elements declared at or below it (the <em>section</em>) are paginated after the elements above it (the <em>above-line content</em>). An <strong>anchored</strong> break (the default) moves the section by whole pages only; an <strong>unanchored</strong> one (<code>"sectionBreakAnchor": false</code>) may also move it down within a page:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th></th><th>rule</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Where the above-line content ends.</strong> It is the lowest bottom, in page space, of any above-line item on the last page that content reaches — counting a table's row displacement and its <code>minHeight</code> floor.</td></tr>
+        <tr><td>2</td><td><strong>Where the section lands.</strong> Anchored: if that bottom is at or above the break, the section is drawn on that same page; otherwise on a new page added after it. Unanchored: if the content above ends on the first page, at or above the break, the section is drawn on that page; every other case is rule 5.</td></tr>
+        <tr><td>3</td><td><strong>Where on the page.</strong> Anchored, each section element sits at its declared <code>y</code> in the content band, and nothing above the break is drawn on an added page. Unanchored, the same holds when the content above ends on the first page, at or above the break: an unanchored section is never pulled up there, so a break nothing crosses changes nothing. When that content reaches a later page, see rule 5.</td></tr>
+        <tr><td>4</td><td><strong>What the section does next.</strong> A section taller than the room left on its landing page continues onto later pages under the four window rules at the start of <em>Pagination</em> — anchored, starting from its declared offset; unanchored and moved to a new page, starting from the top of that page's content window.</td></tr>
+        <tr><td>5</td><td><strong>Unanchored, when the content above ends below the break, or reaches a page after the first.</strong> On such a later page the section follows the content wherever it ends, above or below the break, so it sits next to the content that pushed it. Let <em>E</em> be that bottom and <em>extent</em> the section's lowest bottom in page space when it is laid out at its declared offset, measured as in rule 1 — its rows as they grow with data, a table's row displacement, its <code>minHeight</code> floor and any floor push. If the section laid out that way needs more than one content window, or a group in it is clipped, there is no room. Otherwise, if <em>E</em> + (<em>extent</em> − the break) is at or above the bottom of the content window, the whole section is moved by <em>E</em> − the break on that same page (down, or up when a later page's content ends above the break), each element keeping its offset from the break. Otherwise the whole section moves to a new page added after it, with the break at the top of the content window. If the content above was clipped on its last page, there is no room, and the section moves to a new page.</td></tr>
+      </tbody>
+    </table></div>
+    <p>The line reserves space only on the page where the section lands: rows of above-line content use the full page on every other page. An added page is a full page of the document — it carries the page header and page footer, and <code>{{pages}}</code> and <code>{{page}}</code> count it. A document whose above-line content fits on the first page and ends at or above the break renders exactly as it would without the key — unless a <code>keepTogether</code> group has members on both sides of the break, since that group is split on every render and so can paginate differently. Such a group is split at the line; each side is kept together on its own, and every render returns the Warning <code>SECTION_BREAK_SPLITS_KEEP_TOGETHER</code> naming the group. There is at most one break per designed page, and it is never drawn. In a document with several designed pages, each page's break applies to that page's own content column and overflow exactly as above, and to no other page; a group split by a page's break is reported once per render, naming that page's group.</p>
+    <p><strong>Designed pages follow one another in page order.</strong> Each designed page is paginated as its own column under every rule above, including its own section break. How a page follows the page before it is its Page Break setting (page 1 always starts the document):</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th></th><th>rule</th></tr></thead>
+      <tbody>
+        <tr><td><strong>On</strong></td><td>The page starts a new output page after the previous designed page's last output page, overflow included, with its content at its declared positions.</td></tr>
+        <tr><td><strong>Off</strong></td><td>Let <em>E</em> be where the previous page's content ends on its last output page, measured as in section-break rule 1, its below-line section included. The page's content is paginated alone, with its own break, as one block. If the previous page occupies <strong>more than one</strong> output page, nothing was clipped on its last output page, and the block paginates to exactly one output page with nothing clipped whose extent below the content window's top fits between <em>E</em> and the content window's bottom, the block is moved down as one rigid block so that its window top sits at <em>E</em>, every item keeping its offset, and it is drawn on that same output page. Otherwise the page starts a new output page exactly as with Page Break on. The block never moves up onto an earlier output page: when the previous page fits on a single output page, a Page Break off page still starts a new output page. A page with Page Break off and no elements, after a page that occupies more than one output page, adds no output page.</td></tr>
+      </tbody>
+    </table></div>
+    <p>The page header and page footer are drawn on every output page, and <code>{{pages}}</code> and <code>{{page}}</code> count the output pages of all designed pages together. The design canvas draws every page at its declared positions only; Page Break off changes the rendered output, never the canvas.</p>
+    <p><strong>No page is ever blank, except an empty designed page.</strong> Because a window begins at the first item that did not fit rather than at a fixed multiple of the content height, an element declared far below the preceding content starts the next page instead of generating empty pages in front of it. A designed page with no elements is still one output page, carrying only the page header and page footer.</p>
+    <p><strong>An item that fits in no window is an error, not a surprise.</strong> If a single line is taller than the content band — a font size larger than the space available — or an image's <strong>declared box</strong> is, then no window of any position can hold it, and rendering the document <strong>fails with an error (<code>CONTENT_UNLAYOUTABLE</code>) naming the element</strong>. It is never drawn partly, never split, and never spilled past the page edge.</p>
+    <p>Both cases are decidable from the <strong>template and the font set alone</strong>, with no report data: line height is a function of the declared font stack and font size (see <a href="#vertical-placement"><em>Vertical placement</em></a>), and the window is page height minus the declared margins and band heights. So this is a fault in the document, reported the same way to everyone who renders it, and not something one report's data can trigger and another's cannot.</p>
+    <p><strong>A table row taller than the page is clipped, not refused — and the reason is authorship.</strong> A row's height is not something the author typed; it is whatever the record made it. One customer's address runs to nine lines while every other customer's runs to two, and a statement run of a hundred thousand documents can contain exactly one record that no page could hold. Refusing that document would take down the run for a fault the author could not have seen when designing the template. So an over-tall <strong>table row</strong> — a header row, a data row, or the footer row — is placed alone on a fresh page, drawn as far down as the page has room for, and cut off there. The render <strong>succeeds</strong> and returns the finished document, with a warning (<code>TABLE_ROW_CLIPPED_HEIGHT</code>) naming the table, which row, the row's height and the height it was measured against. Whole lines are dropped, never half of one, and the row's own rectangle stops at the page's content bottom.</p>
+    <p>The line between the two answers is therefore <strong>who is responsible for the height</strong>:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>the thing that is too tall</th><th>where its height came from</th><th>what happens</th></tr></thead>
+      <tbody>
+        <tr><td>a table row (header, data or footer)</td><td>the <strong>data</strong> — the author may never have seen the record</td><td>clipped to a page of its own, <strong>warning</strong>, document produced</td></tr>
+        <tr><td>a declared keep-together group whose members each fit, but whose <strong>union</strong> does not</td><td>the <strong>author's</strong> own declaration that these elements travel as one</td><td>clipped to a page of its own, <strong>warning</strong>, document produced</td></tr>
+        <tr><td>a declared keep-together group holding an element that is by itself too tall</td><td>the <strong>author's</strong> own declaration — and removing the tag is the fix</td><td><strong>error</strong>, no document</td></tr>
+        <tr><td>a line of a text element</td><td>the <strong>author's</strong> declared font size</td><td><strong>error</strong>, no document</td></tr>
+        <tr><td>an image</td><td>the <strong>author's</strong> declared box</td><td><strong>error</strong>, no document</td></tr>
+      </tbody>
+    </table></div>
+    <p>Folio absorbs what the data made too tall, and refuses what the author typed too tall — with one deliberate exception, which is a <em>declared group</em> rather than a typed box. A set of elements the author declared inseparable can add up to more than a page even though every member fits, and the author has already said what should happen to it: keep it whole. Refusing the whole document at that point would throw away a signature block for the sake of a rule about typed heights, so a group that is too tall <strong>only in aggregate</strong> takes the row's answer instead — a page of its own, cut off at that page's content bottom, and the same <code>TABLE_ROW_CLIPPED_HEIGHT</code> warning, worded for a group rather than a row and naming the group the author declared. Whole members' lines and images are dropped, never half of one: an image inside such a group is <strong>removed, not moved</strong>.</p>
+    <p>That exception reaches the <em>aggregate</em> and nothing else. If a single element of the group is by itself taller than a content window, the document is <strong>refused</strong> and the error names that element. What decides is <strong>what</strong> is too tall, never whether it happens to be tagged: a group of one adds nothing, so tagging an element can never turn a refusal into a warning. A long text element the author declares inseparable is refused for the same reason a too-tall image is — no page can hold what was declared atomic. The difference from the untagged case is deliberate: untagged, that same text element's lines simply split across pages and print in full, and the tag is what makes it unsatisfiable, so removing the tag is the fix. A table row is the one thing that is never refused, because its height comes from the data and its author has nothing to remove.</p>
+    <p>A typo in a template should still be found by the person who can fix it, at the moment they can fix it; a pathological record should still not be able to stop a print run. Nothing is silent in any of these directions — the clip always carries its warning, and the refusal always names its element.</p>
+    <p>There is no page-break key inside a content column and no widow or orphan control. <code>keepTogether</code> (below) is the one thing an author writes on an element that pagination reads: it says which elements must not be separated, never where a page ends. Within a column, where the pages fall is derived from the four window rules and the section break above, and from nothing else; <code>pages[].pageBreak</code> only decides how one designed page follows the previous one.</p>
+  </section>
+
+  <section id="elements">
+    <h2>Elements</h2>
+    <p>Common to all seven types:</p>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
+  <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">14</span><span class="tk-punc">,</span>
+  <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e7"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"type"</span><span class="tk-punc">:</span> <span class="tk-str">"text"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">200</span><span class="tk-punc">,</span>
+  <span class="tk-key">"x"</span><span class="tk-punc">:</span> <span class="tk-num">20</span><span class="tk-punc">,</span>
+  <span class="tk-key">"y"</span><span class="tk-punc">:</span> <span class="tk-num">12</span>
+<span class="tk-punc">}</span></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td><code>e</code> + the counter in lowercase base 36 — <code>e1</code>, <code>ea</code>, <code>e1z</code>. Opaque: never derived from position or content, never reused, never renumbered on save. Unique across the whole document. Every diagnostic that concerns an element carries this.</td></tr>
+        <tr><td><code>type</code></td><td><code>text</code> · <code>image</code> · <code>table</code> · <code>line</code> · <code>rect</code> · <code>barcode</code> · <code>qrcode</code>. The set is closed; an eighth type is a load error. A document carrying a <code>barcode</code> or a <code>qrcode</code> requires <code>4.0</code>, and a <code>3.x</code> reader refuses it.</td></tr>
+        <tr><td><code>x</code>, <code>y</code>, <code>width</code>, <code>height</code></td><td>Band-relative position and size, in points. <strong>A <code>table</code> declares <code>x</code>, <code>y</code>, and an authored total <code>width</code> for proportional columns; it never declares <code>height</code></strong> — see below. For a <strong>text</strong> element, <code>width</code> bounds the laid-out content: content wider than the declared <code>width</code> is clipped at the box's left/right edges, never reflowed and never dropped, and a warning (<code>TEXT_CLIPPED_WIDTH</code>) names the element. <code>height</code> on a <strong>text</strong> element is <strong>not</strong> a clip bound — content taller than the declared <code>height</code> renders in full and no diagnostic is reported. (<code>style.lineSpacing</code> lets an author set the leading, so a vertical bound is something a template can be tuned towards by hand; it still is not something the engine checks the box against. <code>valign: middle</code>/<code>bottom</code> seat the packed block inside the declared <code>height</code>.) For an <strong>image</strong> element, <code>height</code> (together with <code>width</code>) is honoured: the image is scaled to fit the box and centred, never cropped and never stretched.</td></tr>
+        <tr><td><code>visibleIf</code></td><td><em>Optional.</em> A bare expression (no <code>{{ }}</code> wrapping — see <a href="#expressions"><em>Expressions</em></a>); the element is absent from the page model when it evaluates false, and its siblings do not move. Evaluated during binding, before pagination — it can never depend on the page an element lands on. Condition semantics are <code>if()</code>'s own, unchanged: <code>true</code>/<code>false</code> decide visibility directly; an explicit <code>null</code> result is silently <code>false</code> (no diagnostic); a path absent from the data is a located Error; a string or a number is a located Error (no truthiness). A <strong>field that is absent, or present with the JSON value <code>null</code></strong> (<code>"visibleIf": null</code>) both mean "no condition declared" — the element is visible, and there is nothing to evaluate; this is a <em>different</em> null from the condition <strong>resolving</strong> to <code>null</code> at evaluation, which is what hides the element. Boolean/null literals are valid conditions; numeric/string outcomes (e.g. <code>"visibleIf": "42"</code>) are rejected at <strong>load</strong>, including known outcomes in either conditional branch. <code>"visibleIf": "null"</code> hides the element. <strong>Not valid on a table column — rejected at load, naming the column id</strong> (row-level visibility would make pagination a function of data).</td></tr>
+        <tr><td><code>keepTogether</code></td><td><em>Optional.</em> A string naming a <strong>keep-together group</strong>, e.g. <code>"keepTogether": "signature"</code>. Every content-band element carrying the same tag paginates as <strong>one indivisible unit</strong>: the whole set stays within the window it started in, or the whole set moves to the next one — each member still at its own declared position, with no sibling moved, no gap invented and no page left empty. The members need not be adjacent in the element list, and a tag is scoped to the document; in a document with designed pages all members must be on one page. <strong>Content band only</strong> — rejected at load on a <code>pageHeader</code>/<code>pageFooter</code> element, which is repeated verbatim on every page and never paginated — and <strong>not valid on a <code>table</code></strong>, whose rows already carry their own grouping, rejected at load naming the element and the field. An absent field and an explicit <code>null</code> both mean "no group declared". A group taller than a whole content window <strong>only in aggregate</strong> — every member fitting, the sum not — is <em>clipped</em>, not refused; a group holding an element that is by itself taller than a content window is <strong>refused</strong>, naming that element. The tag is what makes such an element unsatisfiable, so removing it is the author's fix. See <a href="#pagination"><em>Pagination</em></a>. Declaring this key requires <code>1.2</code>.</td></tr>
+        <tr><td><code>style</code></td><td><em>Optional.</em> See <a href="#style"><em><code>style</code></em></a>.</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong><code>text</code></strong> — adds <code>"value"</code>, the string, which may contain <code>{{ }}</code> bindings.</p>
+    <p><strong><code>image</code></strong> — adds <code>"asset"</code>, a key of the top-level <code>assets</code> object. The image is scaled to fit its box preserving aspect ratio and centred.</p>
+    <p><strong><code>line</code></strong>, <strong><code>rect</code></strong> — no extra fields; both are drawn from <code>style.border</code> and <code>style.background</code>.</p>
+    <p><strong><code>barcode</code></strong> — adds <code>"value"</code>, the content, bound exactly as a text element's <code>value</code>: literal text and <code>{{ }}</code> expressions, through the same evaluator. The resolved string is encoded as <strong>Code 128</strong> (ISO/IEC 15417) with the code set chosen deterministically for the shortest symbol and the modulo-103 check character added automatically. It is drawn as black filled bars that fill the box's full height, centred horizontally, with a quiet zone of at least 10 modules on each side inside the box; every module is the same whole number of millipoints, the largest that fits the box width. No human-readable text is printed. Control characters are stored as the characters themselves, so a carriage return is the ordinary JSON escape <code>"\r"</code> (the designer's content box shows a carriage return as a new line, so Enter types one, and shows and accepts <code>\n</code> and <code>\\</code>; a typed <code>\r</code> is accepted too). <code>value: null</code>, or a value that resolves empty, draws nothing. A path absent from the data is a located Error, as for text. Refused at load: any <code>style</code> key (a barcode has no colour, border, font or alignment), a non-ASCII character in the text outside <code>{{ }}</code>, and <code>{{page}}</code>/<code>{{pages}}</code>. At render, and never stopping the render: data that resolves to a character above ASCII 127 omits that barcode with Warning <code>BARCODE_UNENCODABLE</code>; a symbol that cannot fit at 1 millipoint per module omits it with Warning <code>BARCODE_DOES_NOT_FIT</code>; a module narrower than 0.25 mm (709 millipoints) still draws, with Warning <code>BARCODE_MODULE_TOO_SMALL</code>. A caller that treats warnings as failures (the command-line renderer's <code>-strict</code> option, for example) turns each into a failure.</p>
+    <p><strong><code>qrcode</code></strong> — adds <code>"value"</code>, the content, bound exactly as a barcode's <code>value</code> (the same evaluator, the same stored control characters and designer escapes, the same <code>null</code>/empty and absent-path rules, and the same refusal of any <code>style</code> key and of <code>{{page}}</code>/<code>{{pages}}</code>), and adds <code>"errorCorrection"</code>, optional, one of the closed set <code>L</code> · <code>M</code> · <code>Q</code> · <code>H</code> (about 7, 15, 25 and 30% damage recovered). An absent <code>errorCorrection</code> means <code>M</code> and is saved absent; <code>null</code>, any other value, or the key on any other element type is a load error. The resolved string is encoded as a <strong>QR Code</strong> (ISO/IEC 18004 Model 2) in byte mode over its UTF-8 bytes, with no ECI, at the smallest version (1–40) that holds it at that level; the mask is the one with the lowest penalty score, ties to the lowest mask number. It is drawn as black filled rectangles — each row's dark modules merged into horizontal runs — in a square symbol with a 4-module quiet zone inside the box. The module is the largest whole number of millipoints for which the symbol plus quiet zone fits the smaller of the box's width and height, and the symbol is centred on both axes. Refused at load: static text outside <code>{{ }}</code> already longer than a version-40 symbol holds at the element's level. At render, and never stopping the render: data too long for version 40 omits that QR code with Warning <code>QRCODE_TOO_LONG</code>; a symbol that cannot fit at 1 millipoint per module omits it with Warning <code>QRCODE_DOES_NOT_FIT</code>; a module narrower than 0.5 mm (1418 millipoints) still draws, with Warning <code>QRCODE_MODULE_TOO_SMALL</code>. The same strict mode turns each into a failure.</p>
+    <h3 id="table"><code>table</code></h3>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
+  <span class="tk-key">"as"</span><span class="tk-punc">:</span> <span class="tk-str">"transaction"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"transactions[]"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"columns"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+    <span class="tk-punc">{</span> <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"left"</span><span class="tk-punc">,</span>  <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"{{transaction.date}}"</span><span class="tk-punc">,</span> <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e10"</span><span class="tk-punc">,</span> <span class="tk-key">"label"</span><span class="tk-punc">:</span> <span class="tk-str">"Date"</span><span class="tk-punc">,</span>   <span class="tk-key">"proportion"</span><span class="tk-punc">:</span> <span class="tk-num">1</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-punc">{</span> <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"right"</span><span class="tk-punc">,</span> <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"{{formatNumber(transaction.amount, \"#,##0.00\")}}"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"footer"</span><span class="tk-punc">:</span> <span class="tk-str">"sum"</span><span class="tk-punc">,</span> <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e11"</span><span class="tk-punc">,</span> <span class="tk-key">"label"</span><span class="tk-punc">:</span> <span class="tk-str">"Amount"</span><span class="tk-punc">,</span> <span class="tk-key">"proportion"</span><span class="tk-punc">:</span> <span class="tk-num">2</span> <span class="tk-punc">}</span>
+  <span class="tk-punc">]</span><span class="tk-punc">,</span>
+  <span class="tk-key">"headerHeight"</span><span class="tk-punc">:</span> <span class="tk-num">16</span><span class="tk-punc">,</span>
+  <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e9"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"type"</span><span class="tk-punc">:</span> <span class="tk-str">"table"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">450</span><span class="tk-punc">,</span>
+  <span class="tk-key">"x"</span><span class="tk-punc">:</span> <span class="tk-num">0</span><span class="tk-punc">,</span>
+  <span class="tk-key">"y"</span><span class="tk-punc">:</span> <span class="tk-num">0</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>New tables declare <strong><code>x</code>, <code>y</code>, and a positive total <code>width</code> in points</strong>, with a positive <code>proportion</code> on every column instead of a column <code>width</code>. The engine resolves these weights into millipoint widths once, and the same widths are used by editing commands, the canvas and the PDF. The exact allocations sum to the authored total: largest remainders receive the remaining millipoints, with ties in column order. A zero-width allocation is refused with its column identified. Height remains derived from rows; a table never stores <code>height</code>.</p>
+    <p>Proportions are exact positive decimal weights with at most three decimal places, carried as signed 64-bit thousandths. They have no typographic bounds. For example, total 500 with weights 1:2:1 resolves to 125, 250, 125 points; ten weights of 1 receive 50 points each. In the designer, adding a column starts its weight at 1; adding or removing retains the total and surviving weights; removing the last column retains the authored total for the next column; and totals beyond the band's available width are refused. Proportional tables require format version <code>3.0</code>.</p>
+    <p>A table with no total <code>width</code> uses absolute column <code>width</code>s instead, whose sum is the table width. The two representations cannot be mixed within a table: a <code>proportion</code> on a table with no <code>width</code>, or a column without a positive <code>proportion</code> (or with a <code>width</code>) on a table with one, is a load error (<code>TEMPLATE_FIELD_INVALID</code>) naming the column; a non-positive total <code>width</code> is one naming the table.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>bind</code></td><td>The collection path, suffixed <code>[]</code>.</td></tr>
+        <tr><td><code>as</code></td><td>The row-scope alias. Optional; defaults to <code>row</code>. Inside the table, <code>&lt;alias&gt;.field</code> is the current row; unqualified paths still resolve from the document root.</td></tr>
+        <tr><td><code>headerHeight</code></td><td><strong>Required.</strong> Height of the repeated header row, in points. Accounted for on <strong>every</strong> continuation page. Because it is required, no command may clear it, and it is always written on save.</td></tr>
+        <tr><td><code>columns[]</code></td><td>Ordered. Each carries its own <code>id</code> (same counter as elements, so a diagnostic can name a column), <code>label</code>, <code>proportion</code> (or <code>width</code> when the table has no total), <code>align</code>, and <code>bind</code>. <code>columns[].align</code> is its <strong>own</strong> closed set — <code>left</code> · <code>center</code> · <code>right</code> — and does <strong>not</strong> admit <code>justify</code>. Nor does a table's own <code>style.align</code> or its <code>headerStyle.align</code>, which feed the same cell alignment and therefore carry the same three values. The sets are separate declarations so that extending one cannot legalise another by accident.</td></tr>
+        <tr><td><code>columns[].headerAlign</code></td><td><em>Optional.</em> Aligns <strong>this column's header cell only</strong> — <code>left</code> · <code>center</code> · <code>right</code>, its own closed set. A header cell resolves <code>columns[].headerAlign</code> → <code>columns[].align</code> → <code>headerStyle.align</code> → <code>style.align</code> → <code>left</code>; data and footer cells never consult it. Absent means the header follows the column's <code>align</code>. Declaring it requires <code>3.2</code>.</td></tr>
+        <tr><td><code>columns[].proportion</code></td><td>Required instead of column <code>width</code> when the table declares its total <code>width</code>. A positive dimensionless weight with at most three decimal places; the engine allocates the exact total by these weights.</td></tr>
+        <tr><td><code>headerStyle</code></td><td><em>Optional.</em> A <code>Style</code> block governing the header row ONLY — the same vocabulary as an element's own <code>style</code> (below) <strong>except for <code>align</code></strong>, which admits <code>left</code> · <code>center</code> · <code>right</code> here and never <code>justify</code>, because a header cell is a table cell (see <a href="#alignment-sets"><em>Alignment sets</em></a>). A table's own <code>style.align</code> carries the same three values, for the same reason — never a data row. A field the header style leaves absent falls back to the table's own <code>style</code> for that field, then to that field's documented default — and that fall-through is <strong>per field</strong>, so <code>headerStyle: {"bold": true}</code> on a table whose own <code>style</code> sets <code>italic</code> gives the header row both. <code>headerStyle.bold</code> and <code>headerStyle.italic</code> govern the header row's weight and slope, which resolve to faces through the table's declared font chain exactly as an element's own do (see <a href="#style"><em><code>style</code></em></a> and <a href="#fonts"><em><code>fonts</code></em></a>). <code>columns[].align</code> still wins over both for that column's own header cell, and <code>columns[].headerAlign</code> wins over that.</td></tr>
+        <tr><td><code>columns[].footer</code></td><td><em>Optional.</em> <code>sum</code> · <code>count</code> · <code>avg</code>. <strong>Names the operation only</strong>; the numeric source is <code>columns[].footerOf</code>, below. Computed over the <strong>whole collection</strong>, never per page. Omitted means no footer cell for that column.</td></tr>
+        <tr><td><code>columns[].footerOf</code></td><td><em>Optional.</em> A bare root-relative dotted value path (e.g. <code>"transactions.amount"</code>) naming the numeric source the footer aggregates — no <code>{{ }}</code>, no function call, no <code>[]</code>. Legal only alongside <code>footer</code>, and never alongside <code>footer: "count"</code> (storing it would be a second source of truth against <code>bind</code>). When <code>footer</code> is present and <code>footerOf</code> is omitted, it is <strong>derived</strong> from the column's own <code>bind</code>, but only when <code>bind</code> is one of exactly two syntactic shapes: (1) a bare row-scoped path <code>{{&lt;alias&gt;.&lt;rest&gt;}}</code> → <code>footerOf</code> = <code>&lt;collection&gt;.&lt;rest&gt;</code>; (2) a single <code>formatNumber(&lt;bare row-scoped path&gt;, &lt;pattern literal&gt;)</code> call → <code>footerOf</code> = <code>&lt;collection&gt;.&lt;rest&gt;</code> from the first argument, <strong>and</strong> <code>footerFormat</code> defaults to <code>&lt;pattern&gt;</code>. <code>&lt;collection&gt;</code> is the table's own <code>bind</code> with <code>[]</code> stripped. Any other <code>bind</code> shape is a load error — never a guess. The derivation runs at load, and the derived value is resolved alongside the document, never written back into it — a document that omits <code>footerOf</code> still serializes without it. The aggregate is computed (<code>sum</code>/<code>count</code>/<code>avg</code>), can be formatted (<code>formatNumber</code>), and is rendered into the footer cell through the same expression evaluator used by ordinary bindings. Diagnostic codes: <code>TABLE_FOOTER_SOURCE_UNRESOLVED</code> (derivation failed, or an explicit <code>footerOf</code> is not under the table's collection) and <code>TABLE_FOOTER_SOURCE_FORBIDDEN</code> (<code>footerOf</code> beside <code>footer: "count"</code>, or a footer field with no <code>footer</code>).</td></tr>
+        <tr><td><code>columns[].footerFormat</code></td><td><em>Optional.</em> A <code>formatNumber</code> pattern applied to the computed footer value. Legal with all three <code>footer</code> operations.</td></tr>
+        <tr><td><code>altRowBackground</code></td><td><em>Optional.</em> Colour for alternating rows. Collection index zero retains the ordinary body treatment; the alternate colour applies to odd zero-based collection indexes (the second, fourth, sixth rows). Alternation follows that collection index, so it does not reset per page. Colour-by-data is out of scope for this field exactly as it is for <code>style</code>'s own colour fields (see "Colours are <code>#RRGGBB</code>" below): a <code>{{ }}</code> placeholder here is a <strong>load error</strong> naming the element, under the same rejection. It is the <strong>only</strong> declaration that fills a data cell — a table's <code>style.background</code> paints the table's own frame (below) and reaches no cell. Intervening data rows remain unfilled. Headers and footers are not alternating data rows.</td></tr>
+        <tr><td><code>rules</code></td><td><em>Optional.</em> The lines <strong>inside</strong> the table: <code>{"width": 0.5, "color": "#000000", "between": ["columns"]}</code>. <code>between</code> is a closed set — <code>columns</code> · <code>rows</code> — naming which <strong>boundaries</strong> carry a line: <code>columns</code> rules every boundary between two adjacent columns, <code>rows</code> every boundary between two adjacent rows. Both, either, or <code>[]</code> for none; an <strong>absent</strong> <code>between</code> rules nothing. A rule is drawn <strong>once</strong>, at a boundary, and <strong>never on the table's own edge</strong> — the outermost column has no outer vertical rule and the bottom-most row has no bottom rule, because those lines are the frame's own border. A <code>rows</code> rule at the header/first-row boundary is <strong>skipped</strong> when <code>headerStyle.border</code> already strokes its <code>bottom</code>, so that one coordinate never carries two strokes. Column rules run from the <strong>top of each page's slice to its bottom</strong>, through whatever empty area <code>minHeight</code> creates on that page; a <code>rows</code> rule lies between rows, so it never enters that empty area. <code>width</code> defaults to <code>0.5</code>, <code>color</code> to <code>#000000</code>, exactly as <code>style.border</code>'s do. Declaring this key requires <code>3.1</code>.</td></tr>
+        <tr><td><code>rules.between</code></td><td>The closed set naming which boundaries <code>rules</code> draws a line at: <code>columns</code> · <code>rows</code>. Both, either, or <code>[]</code> for none; absent rules nothing. Extending this set later is a MAJOR version change, so it is effectively permanent.</td></tr>
+        <tr><td><code>rules.width</code>, <code>rules.color</code></td><td>The interior lines' width in points and <code>#RRGGBB</code> colour, defaulting to <code>0.5</code> and <code>#000000</code> exactly as <code>style.border</code>'s do. A negative width is a load error (ISO 32000-1 §8.4.3.2); <code>0</code> is the thinnest device line.</td></tr>
+        <tr><td><code>minHeight</code></td><td><em>Optional.</em> A length in points: a <strong>floor under each page's slice</strong> of the table, never a height. For a slice whose top is <code>t</code> and whose content bottom is <code>c</code>, on a page whose content window ends at <code>w</code>, the slice's drawn bottom is <code>max(c, min(t + minHeight, w))</code> — it never lifts the content, never passes the window, and never moves the table to another page. Rows are unaffected; <code>minHeight</code> never stretches, shrinks or pads one. A table still declares no <code>height</code>, and its extent is still derived. The frame and the column rules are drawn to each slice's floored bottom, which is what a pre-printed form's empty ruled area is, on every page. The floor is reserved <strong>during pagination</strong>, so an element following the table on that page starts below the floored bottom rather than being overlapped (and moves to the next page if it no longer fits). A non-positive value is a <strong>load error</strong>: <code>max(0, content)</code> is <code>content</code>, which is what omitting the key already means. A <code>minHeight</code> taller than the content window is a <strong>load error</strong> naming the element, <code>TABLE_MIN_HEIGHT_UNPLACEABLE</code> — the alternative is a table that can never be placed. Absent or <code>null</code> means no floor. Declaring this key requires <code>3.1</code>.</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>A table's <code>style.border</code> and <code>style.background</code> paint the table's own frame.</strong> They are stroked and filled <strong>once per page</strong>, around and behind <strong>that page's slice</strong> of the table — not stamped onto every cell. A table whose rows span pages draws a complete, closed frame on every page it occupies: on a continuation page the frame's top edge sits under the repeated header, and on every page its bottom edge sits at that slice's (floored) bottom. It is never one rectangle around the whole table, and it never changes the table's page count. <strong>The perimeter belongs to the frame:</strong> where the frame strokes an edge, no header or cell edge is stroked on that same line. The interior lines are <code>rules</code>, above. An author who wants a full grid declares <code>rules: {"between": ["columns", "rows"]}</code> beside a <code>style.border</code>: the perimeter is the frame's, and each interior line is drawn once.</p>
+    <p>The other <code>style</code> members — <code>fontFamily</code>, <code>fontSize</code>, <code>lineSpacing</code>, <code>color</code>, <code>bold</code>, <code>italic</code>, <code>align</code>, <code>valign</code> and <code>padding</code> — cascade into data cells, because they describe the text inside a cell rather than the chrome around it. <code>headerStyle.border</code> and <code>headerStyle.background</code> are the only declaration that puts chrome on a header cell, and they do not fall back to the table's own <code>style.border</code>/<code>style.background</code>, which belong to the frame.</p>
+    <p>A <strong>data cell</strong> (every row the table's <code>bind</code> produces) cascades its font, padding, align and valign from the table's own <code>style</code> <strong>only</strong> — there is no <code>headerStyle</code> arm for a data row (<code>headerStyle</code> governs the header row exclusively), and no border or background arm at all. <code>columns[].align</code> still wins over <code>style.align</code> for that column's own data cells, exactly as it does for the header. A <strong>header</strong> cell resolves one step earlier: <code>columns[].headerAlign</code> → <code>columns[].align</code> → <code>headerStyle.align</code> → <code>style.align</code> → <code>left</code>. A table declaring <code>headerStyle.fontFamily</code> and no <code>style.fontFamily</code> therefore renders its header successfully and fails its data cells with the same "no resolvable <code>fontFamily</code>" error any other text-bearing element without one produces (there is no font default, see <a href="#style"><em><code>style</code></em></a>).</p>
+    <p><strong>A column <code>label</code> may be more than one line.</strong> <code>columns[].label</code> is an unbounded Unicode string and is laid out through the same packer a data cell uses: a <code>\n</code> in it starts a new line, and a label wider than its column <strong>wraps</strong> rather than being clipped in silence. Residual overflow — a run with no break opportunity narrow enough — is clipped and reported with <code>TEXT_CLIPPED_WIDTH</code>, the same warning a data cell emits; no clip path in a table is silent. <code>headerHeight</code> is the header row's <strong>floor</strong> rather than its exact height: the row grows to <code>max(headerHeight, the packed labels' height + padding)</code> when a label needs <strong>more than one line</strong>. The header's line metrics are the maximum across every column's, so labels in different scripts share one line geometry. The field stays required, and the packed height is settled at layout, before pagination, so a repeated header is the same height on every page it appears on. A header whose labels are all a single line does not grow, even when that line overflows the declared <code>headerHeight</code>. The designer's editing commands bound a label at <strong>256 Unicode code points</strong>, counted the same way by the engine and the designer.</p>
+    <h3 id="expressions">Expressions</h3>
+    <p>Full expression syntax — paths, parameters, row scope, the eight functions and formulas — is in the <a href="expression-reference.html">expression reference</a>. The rules below are the ones the format itself depends on.</p>
+    <p>Visibility takes a bare formula, without <code>=</code> or <code>{{ }}</code>: <code>loanAmount &gt; 20000</code> shows the element for 25000 and hides it for 20000 or 19999. Empty Visibility, an absent field, or JSON <code>"visibleIf": null</code> means always visible. The expression string <code>"visibleIf": "null"</code> hides the element.</p>
+    <p>Conditions accept booleans and null: <code>true</code> shows or selects the first branch; <code>false</code> and <code>null</code> select the other branch. Numbers and strings have no truthiness. Bold, Italic and all other fixed boolean properties remain literal controls.</p>
+    <p>Highest precedence first:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Syntax</th><th>Association</th></tr></thead>
+      <tbody>
+        <tr><td>(expression), paths, calls, string/number literals, true, false, null</td><td>Grouping</td></tr>
+        <tr><td>Unary +, -</td><td>Right</td></tr>
+        <tr><td>*, /, %</td><td>Left</td></tr>
+        <tr><td>+, -</td><td>Left</td></tr>
+        <tr><td>&gt;, &lt;, &gt;=, &lt;=</td><td>No repeated unparenthesized comparisons</td></tr>
+        <tr><td>!=</td><td>No repeated unparenthesized comparisons</td></tr>
+        <tr><td>condition ? then : else</td><td>Right</td></tr>
+      </tbody>
+    </table></div>
+    <p><code>x ? y : a ? b : c</code> means <code>x ? y : (a ? b : c)</code>. For example, <code>vip ? true : (blocked ? false : loanAmount &gt; 20000)</code> checks VIP, blocked status and the threshold. <code>2 + 3 * 4</code> is 14; <code>(2 + 3) * 4</code> is 20.</p>
+    <p>Lowercase whole words <code>true</code>, <code>false</code> and <code>null</code> are literals and never look up data. <code>trueFlag</code>, <code>True</code>, <code>record.true</code> and <code>params.null</code> remain paths. <code>true.field</code> and <code>true()</code> are syntax errors. Quoted words stay strings. There is no <code>==</code>, <code>===</code>, <code>!==</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, assignment, or scripting.</p>
+    <p>Ordering requires two numbers. <code>!=</code> accepts same-kind scalar values, comparing numbers by mathematical value, strings exactly and booleans directly. Null differs from every non-null scalar; <code>null != null</code> is false. Missing paths remain errors, including <code>customer.middleName != null</code> when the field is absent. Collections and non-null mixed scalar kinds are errors.</p>
+    <p>Arithmetic accepts numbers only and uses exact bounded Decimals, never floating point. Addition, subtraction and remainder retain the smaller operand exponent; multiplication adds exponents; unary signs retain scale. Remainder uses truncation toward zero: <code>-5 % 2</code> is -1 and <code>5 % -2</code> is 1.</p>
+    <p>Division uses <code>max(operand decimal scales, 0) + 4</code> fractional places, rounded half to even at each <code>/</code>, retaining all result trailing zeros: <code>1 / 3</code> is <code>0.3333</code>, <code>1.00 / 3</code> is <code>0.333333</code>, <code>1 / 8</code> is <code>0.1250</code>, and <code>12 / 3 / 2</code> is <code>2.00000000</code>. Half ties include <code>1 / 32 = 0.0312</code> and <code>3 / 32 = 0.0938</code>. Tiny results can round to zero: <code>1 / 100000 = 0.0000</code>. Zero divisors, overflow and exhausted limits are located errors. Coefficients must fit int64 at the required scale, and exponent magnitude is at most 100000; trailing zeros cannot be removed to avoid overflow. Thus <code>1000000000000000 / 1</code> fails.</p>
+    <p>Both branches of <code>if()</code> and ternaries are parsed and statically checked. Unknown functions and provably wrong types such as <code>false ? upper(1) : "ok"</code> fail at load or commit. Only the selected branch resolves data or runs calculations: <code>true ? true : missingFlag</code> succeeds. Each statically known branch must satisfy the consuming field's kind. Text accepts a string, a number or null: <code>{{true ? "Yes" : "No"}}</code> renders Yes, <code>{{null}}</code> renders empty, <code>{{1}}</code> renders 1, and <code>{{true}}</code> is an error.</p>
+    <p><strong>A number in text prints as its exact decimal.</strong> This holds for a data value and a computed number (arithmetic, <code>count</code>, <code>sum</code>, <code>avg</code>) alike, in text elements and table data cells. Footer cells are always formatted by <code>formatNumber</code>. The text is the engine Decimal's coefficient digits with a <code>.</code> placed by its exponent and the scale kept: <code>1234.50</code> prints <code>1234.50</code>, <code>2067071865</code> prints <code>2067071865</code>, <code>-3.5</code> prints <code>-3.5</code>, <code>1e3</code> prints <code>1000</code>, <code>-0</code> prints <code>0</code>, and <code>0.000</code> prints <code>0.000</code>. There is no exponent notation, grouping, locale digit, rounding or floating point; <code>formatNumber</code> stays the way to get styled output. The printer never rounds, but division and <code>avg</code> results carry their rounded division scale: <code>{{1 / 3}}</code> prints <code>0.3333</code>, and <code>{{avg(...)}}</code> over 1 and 2 prints <code>1.5000</code>. Booleans, arrays and objects in text stay located errors. Condition, function-operand and footer-source kind rules are unchanged by this.</p>
+    <p>A document requires <code>3.3</code> on save when any text expression is statically known to be able to return a number without data — <code>{{1}}</code>, <code>{{count(items)}}</code>, <code>{{a + b}}</code>, <code>{{avg(items.x)}}</code>. A reader older than <code>3.3</code> refuses such a document at LOAD, because its static text check rejects a number-typed expression; the plain-path case below loads and fails at render.</p>
+    <div class="caution"><p>⚠ <strong>A plain path cannot be detected, and this is disclosed rather than mechanised.</strong> The kind of <code>{{row.amount}}</code> is a property of the data, not of the document, so a document whose only numbers-in-text arrive through plain paths keeps whatever version its other content requires. An older reader given such a document still loads it and, when the path resolves to a number, fails the render with a located error. That is a refusal, never a silently wrong output.</p></div>
+    <p>Expressions are bounded to 64 KiB, 4096 AST nodes, depth 64 and 1,000,000 evaluation work units shared across nodes, strings, collection projection and decimal shifts. Errors identify the field and element, with a source-relative UTF-8 byte offset when available. Refused edits leave document bytes and history unchanged.</p>
+    <p>Formula syntax and boolean/null literals in any expression container require at least <code>2.0</code> on save. The requirement is derived from the parsed expression; quoted punctuation and ordinary paths do not raise it. Saving never lowers a loaded version.</p>
+    <p>No-data preview needs no fabricated data for literals. Other paths receive compatible defaults: numbers zero, direct divisors one, strings empty, and collections empty. A path used bare in text may take the zero (or divisor one) stand-in, so a path shared by text and <code>formatNumber</code> previews. Both branches contribute requirements. Conflicting requirements or a computed zero divisor refuse preview with sample-data guidance; valid formulas remain committable. Generated data does not guarantee a true condition. Parameters still come from Preview inputs.</p>
+    <p>There are, and will only ever be, <strong>eight</strong> named functions: <code>sum</code>, <code>count</code>, <code>avg</code>, <code>formatDate</code>, <code>formatNumber</code>, <code>upper</code>, <code>lower</code>, <code>if</code>. The set is closed in the engine — a ninth would be a deliberate change to the library, never a runtime surprise. All eight are implemented. Aggregate functions evaluate exact-decimal values over the whole collection, and <code>formatDate</code>/<code>formatNumber</code> apply the declared locale rules; unsupported function names remain located load/evaluation errors rather than silently wrong values.</p>
+    <p><strong><code>upper(x)</code> / <code>lower(x)</code></strong> apply Unicode case mapping. <code>x</code> must resolve to a string; any other kind (including an absent or null path) is a located error, never coerced. A script with no case distinction (Thai, CJK) is unchanged, byte for byte.</p>
+    <p><strong><code>if(condition, then, else)</code></strong> takes exactly three arguments and evaluates only the branch it selects. Both branches are statically checked; an absent path in the unselected branch is not resolved. <code>condition</code> must resolve to a <strong>boolean or null</strong> — there is no truthiness anywhere in this grammar: a JSON <code>0</code>, an empty string <code>""</code>, and an empty array <code>[]</code> are all the WRONG KIND for a condition, and each is a located error, exactly as any other wrong-kind value is — never treated as false.</p>
+    <p><strong>An absent path as <code>condition</code> is a located error naming the path.</strong> This is deliberately different from the next rule:</p>
+    <p><strong>An explicit JSON <code>null</code> as <code>condition</code> silently selects the <code>else</code> branch — no error, no diagnostic, no warning.</strong> This is the one behaviour in the engine that leaves no signal anywhere in its output: a reader of the rendered document cannot tell a section hidden by a null condition from one that was simply never authored. This trade was made deliberately, with that cost stated plainly, in preference to a warning that most template authors would never see. If a rendered document is missing a section you expected, and its visibility is driven by <code>if(row.someFlag, …)</code>, check whether <code>someFlag</code> can be <code>null</code> in your data — that is the one case this format will never flag for you.</p>
+    <h3 id="style"><code>style</code></h3>
+    <p>Every field optional; omitted fields inherit the documented default.</p>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"style"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"left"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"background"</span><span class="tk-punc">:</span> <span class="tk-str">"#F1F4F7"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"bold"</span><span class="tk-punc">:</span> <span class="tk-lit">false</span><span class="tk-punc">,</span>
+  <span class="tk-key">"border"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span> <span class="tk-key">"color"</span><span class="tk-punc">:</span> <span class="tk-str">"#000000"</span><span class="tk-punc">,</span> <span class="tk-key">"edges"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-str">"bottom"</span><span class="tk-punc">,</span> <span class="tk-str">"top"</span><span class="tk-punc">]</span><span class="tk-punc">,</span> <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">0.5</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"color"</span><span class="tk-punc">:</span> <span class="tk-str">"#1B2A4A"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"fontFamily"</span><span class="tk-punc">:</span> <span class="tk-str">"body"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"fontSize"</span><span class="tk-punc">:</span> <span class="tk-num">9</span><span class="tk-punc">,</span>
+  <span class="tk-key">"italic"</span><span class="tk-punc">:</span> <span class="tk-lit">false</span><span class="tk-punc">,</span>
+  <span class="tk-key">"lineSpacing"</span><span class="tk-punc">:</span> <span class="tk-num">1.5</span><span class="tk-punc">,</span>
+  <span class="tk-key">"padding"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span> <span class="tk-key">"bottom"</span><span class="tk-punc">:</span> <span class="tk-num">2</span><span class="tk-punc">,</span> <span class="tk-key">"left"</span><span class="tk-punc">:</span> <span class="tk-num">3</span><span class="tk-punc">,</span> <span class="tk-key">"right"</span><span class="tk-punc">:</span> <span class="tk-num">3</span><span class="tk-punc">,</span> <span class="tk-key">"top"</span><span class="tk-punc">:</span> <span class="tk-num">2</span> <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"valign"</span><span class="tk-punc">:</span> <span class="tk-str">"top"</span>
+<span class="tk-punc">}</span></pre></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Field</th><th>Default</th></tr></thead>
+      <tbody>
+        <tr><td><code>fontFamily</code></td><td><strong>none — required on any element carrying text</strong></td></tr>
+        <tr><td><code>fontSize</code></td><td><code>10</code></td></tr>
+        <tr><td><code>bold</code>, <code>italic</code></td><td><code>false</code>. <strong>Booleans: what the author asked for, not what to draw it with.</strong> The FACE each one resolves to is declared on the font chain, per entry — see <a href="#fonts"><em><code>fonts</code></em></a>, where a chain entry's own <code>bold</code>, <code>italic</code> and <code>boldItalic</code> name faces. Resolution is <strong>per rune, through the declared chain</strong>: the entry that COVERS the rune is chosen on its base face first, and the declared variant is then applied within that entry. An entry that declares no face for the requested weight and slope draws the rune in <strong>its own base face</strong> and emits a warning; the chain is never walked for weight, and no bold or oblique is ever synthesized. A table cascades both to its cells like every other cell property, and <code>headerStyle.bold</code>/<code>headerStyle.italic</code> win for the header row.</td></tr>
+        <tr><td><code>lineSpacing</code></td><td>absent — the leading the declared font chain itself rules. A ratio scaling the baseline-to-baseline advance, and <strong>only</strong> that: the ascent above the first baseline and the descent below the last are untouched, so the ratio never re-measures a line, and a component's siblings never move. Under the default <code>valign</code> (<code>top</code>) the first baseline therefore stays exactly where it was. Note the one place the ratio is still visible in a first line's position: <code>valign: middle</code>/<code>bottom</code> seat the whole packed block inside the declared <code>height</code>, and a ratio makes that block taller, so the block is re-seated and its first baseline moves — measured at 11pt over two lines, <code>1.5</code> lifts a <code>bottom</code>-aligned first baseline by 7.491pt. That is <code>valign</code> doing its job on a taller block, not the ratio touching the first line. An exact decimal of at most three places, between <code>0.001</code> and <code>1000.0</code> inclusive; anything outside that, or a fourth decimal place, is a located load error (<code>STYLE_LINE_SPACING_INVALID</code>) naming the component — never a silent clamp. Values below <code>1</code> are legal and genuinely tight: one line's letters may reach into the line below, which is what tight leading is and what the page draws. Declaring it requires <code>1.1</code>.</td></tr>
+        <tr><td><code>align</code></td><td><code>left</code> · also <code>center</code>, <code>right</code>, <code>justify</code> — <strong><code>justify</code> is for a non-table element's own <code>style</code> only</strong>; <code>columns[].align</code>, a table's <code>style.align</code> and its <code>headerStyle.align</code> all keep the three-value set. <code>justify</code> flushes both edges by distributing the line's leftover width across its interior break opportunities, in whole millipoints: every gap receives <code>slack / gaps</code> and the first <code>slack mod gaps</code> gaps <em>in reading order</em> each receive one more, so the distributed amounts sum to the slack exactly and the last piece's right edge meets the declared <code>width</code> exactly. Three independent conditions leave a line ragged at the element's own start edge: it is the <strong>last line</strong> of the element; it was ended by a <strong>mandatory break</strong> the author typed; or it has <strong>no interior break opportunity</strong> to place slack in (an atomic unknown Thai run offers none). An element with no declared <code>width</code> has no box to justify to, and a line that meets or overflows its width has no slack — the clip-and-warn rule for text wider than its box applies unchanged. Declaring <code>justify</code> requires <code>2.0</code>. It is legal <strong>only on a non-table element's own <code>style</code></strong>: a table's <code>style.align</code>, its <code>headerStyle.align</code> and its <code>columns[].align</code> all admit <code>left</code> · <code>center</code> · <code>right</code> alone, and <code>justify</code> at any of the three is a located load error naming the element and the field (see <a href="#alignment-sets"><em>Alignment sets</em></a>). So a table can never reach <code>2.0</code> through <code>align</code>.</td></tr>
+        <tr><td><code>valign</code></td><td><code>top</code> · also <code>middle</code>, <code>bottom</code></td></tr>
+        <tr><td><code>padding</code></td><td><code>0</code> on all four edges. Honoured <strong>only</strong> inside a table's cell chrome, where it insets a cell's content from that cell's own edges. A table cascades it to its cells like every other cell property, and <code>headerStyle.padding</code> wins for the header row. It is the chrome of a <strong>table cell</strong>, and only of that: on a <code>text</code>, <code>image</code>, <code>line</code> or <code>rect</code> a declared <code>padding</code> is <strong>accepted and inert</strong> — it loads, it round-trips, and nothing ever consumes it. The designer authors only a <strong>table's</strong> own <code>style.padding.left</code>/<code>right</code>, from the Table Editor; the header row takes it too unless <code>headerStyle.padding</code> exists. The designer offers no padding off a table, does not author top/bottom or <code>headerStyle.padding</code>, and introduces no default padding.</td></tr>
+        <tr><td><code>border</code></td><td>absent — no border drawn</td></tr>
+        <tr><td><code>border.width</code></td><td><code>0.5</code> pt</td></tr>
+        <tr><td><code>border.color</code></td><td><code>"#000000"</code></td></tr>
+        <tr><td><code>border.edges</code></td><td>all four; a subset draws only those edges</td></tr>
+        <tr><td><code>background</code></td><td>absent — transparent</td></tr>
+        <tr><td><code>color</code></td><td>absent — the PDF's own initial fill, black. The INK the element's text prints in, as against <code>background</code>, the box behind it. A table cascades it to its cells like every other cell property, and <code>headerStyle.color</code> wins for the header row. Declaring none emits no colour operator at all. It is the ink of <strong>text</strong>, and only of text: on a <code>rect</code>, <code>line</code> or <code>image</code> a declared <code>color</code> is <strong>accepted and inert</strong> — it loads, it round-trips, and nothing ever paints it. Declaring it requires <code>1.1</code>.</td></tr>
+      </tbody>
+    </table></div>
+    <p>There is no font default. An element with text and no <code>style.fontFamily</code> is a located error naming the element. <code>fonts</code> is a mapping with no authored key order, so "the first key" is not well-defined.</p>
+    <p>Colours are <code>#RRGGBB</code>; a colour that is not reaches render as an error (<code>STYLE_COLOR_INVALID</code>). There is no colour-by-data: conditional <em>visibility</em> is in scope, conditional <em>formatting</em> is not. A <code>{{ }}</code> placeholder found inside any string-valued style field (<code>background</code>, <code>color</code>, <code>fontFamily</code>, <code>border.color</code>, <code>border.edges</code>) — or in a table's own <code>altRowBackground</code> above, the format's one colour field outside <code>style</code> — is a <strong>load error</strong> naming the element and the field — a component's condition turns it on or off (<code>visibleIf</code>), it never changes how the component looks. This is not general style-field validation: a hex colour or a font-family name is still accepted at load with no format check at all — the rejection is narrowly "does this string contain a placeholder", nothing broader. Closed-set fields such as <code>align</code> and <code>valign</code> are governed by their own sets instead.</p>
+  </section>
+
+  <section id="assets">
+    <h2><code>assets</code></h2>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"a31f60866b4aa41953176fee9ddb90dc9bc53dce174421f8f567fac364c8bc27"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+    <span class="tk-key">"data"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+      <span class="tk-str">"iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAGklEQVR42mLhEpGTk5NjsbGxkZOT"</span><span class="tk-punc">,</span>
+      <span class="tk-str">"AwQAAP//CoABrYEc9NQAAAAASUVORK5CYII="</span>
+    <span class="tk-punc">]</span><span class="tk-punc">,</span>
+    <span class="tk-key">"mediaType"</span><span class="tk-punc">:</span> <span class="tk-str">"image/png"</span>
+  <span class="tk-punc">}</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>Keyed by the <strong>lowercase hex SHA-256 of the raw bytes</strong>, so identical images stored twice deduplicate and emission order is stable. <code>data</code> is base64 hard-wrapped at 76 columns into an array of strings — the file stays valid JSON, and the template's non-asset content stays readable in a text diff. Elements reference an asset by its key.</p>
+    <p><em>(The example is a real, supported, non-alpha 2×2 PNG, canonically wrapped.)</em></p>
+    <p>Images are only ever embedded. Folio never fetches by URL and never reads from disk at render time.</p>
+    <h3 id="a-font-asset">A font asset</h3>
+    <p>An asset is not only an image. A <strong>font face</strong> is stored by exactly the same mechanism — same key rule (the lowercase hex SHA-256 of the decoded bytes), same 76-column <code>data</code> wrapping, same deduplication, same emission order — and differs only in its <code>mediaType</code> and in one additive, optional record:</p>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+  <span class="tk-key">"9ab1e6c2f0d34b7a5c8e1f20d4b6a839c7e5024f1b8d63a09e4c7512fb3d8a6e"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+    <span class="tk-key">"data"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-str">"AAEAAAAP…"</span><span class="tk-punc">]</span><span class="tk-punc">,</span>
+    <span class="tk-key">"font"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+      <span class="tk-key">"copyright"</span><span class="tk-punc">:</span> <span class="tk-str">"Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai)"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"family"</span><span class="tk-punc">:</span> <span class="tk-str">"Noto Sans Thai"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"licence"</span><span class="tk-punc">:</span> <span class="tk-str">"SIL Open Font License 1.1"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"licenceText"</span><span class="tk-punc">:</span> <span class="tk-str">"Copyright 2022 The Noto Project Authors…\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\n…the whole text, verbatim…"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"source"</span><span class="tk-punc">:</span> <span class="tk-str">"https://github.com/notofonts/thai"</span><span class="tk-punc">,</span>
+      <span class="tk-key">"style"</span><span class="tk-punc">:</span> <span class="tk-str">"Regular"</span>
+    <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-key">"mediaType"</span><span class="tk-punc">:</span> <span class="tk-str">"font/ttf"</span>
+  <span class="tk-punc">}</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>It is a record <em>about</em> the face for the people reading and reusing the document — the <code>family</code> and <code>style</code> a designer shows in a chain editor, the <code>licence</code>, <code>licenceText</code> and <code>copyright</code> that state on what terms and by whose grant the bytes may be passed on, and the <code>source</code> that says where they came from. The engine derives none of it from the bytes and none of it is required to <strong>render</strong>.</p>
+    <p>When the designer embeds a family fetched from its published font library, it fills the record from the family itself: <code>licenceText</code> from <strong>the family's own upstream licence file, carried verbatim</strong> (never a hand-copy, which would be a second authority on the terms), <code>copyright</code> from <strong>name ID 0 of the face's own <code>name</code> table</strong>, and <code>licence</code> from a closed token table mapping the upstream vocabulary to an SPDX identifier — <strong><code>licence</code> carries the SPDX id, never the upstream token</strong> (<code>OFL-1.1</code>, not <code>OFL</code>). The record's shape and load rules are the same whoever wrote it.</p>
+    <p><strong>Whether <code>font</code> is optional depends on whether a chain names the asset, and that is the whole rule.</strong></p>
+    <ul>
+      <li><strong>No chain names this asset.</strong> <code>font</code> is <strong>optional</strong>, and every key inside it is optional. Such an asset is not an embedded face — nothing draws with it and no face is redistributed on its account — so the document carries it verbatim and loads clean with the record absent, partial, or explicitly <code>null</code>. This is also why such an asset does not raise the document's <code>version</code> (see <a href="#versions"><em>Versions</em></a>): it is legible to a <code>1.x</code> reader exactly as it is.</li>
+      <li><p><strong>A chain names this asset</strong> by <code>{"asset": "&lt;key&gt;"}</code>, <em>or names it as a style variant of an embedded entry</em> — <code>{"asset": "&lt;other key&gt;", "bold": "&lt;key&gt;"}</code>. Either way it <strong>is</strong> an embedded face, and <code>licence</code>, <code>licenceText</code> and <code>copyright</code> are <strong>REQUIRED</strong>: each must be present, non-<code>null</code> and non-empty. A document that fails this is a <strong>load error</strong>, located at <code>assets.&lt;key&gt;.font.&lt;the first missing key&gt;</code> and naming the chain entry — <code>fonts.&lt;chain&gt;[&lt;i&gt;]</code>, or <code>fonts.&lt;chain&gt;[&lt;i&gt;].&lt;variant&gt;</code> when a style variant is what named it — that made the asset an embedded face. A variant asset key clears this bar exactly as the entry's own <code>asset</code> value does; a sibling that skipped it would let a document carry an unlicensed embedded bold. It is never a warning and never a best-effort render.</p><p>A font that travels without its terms is not a font that may be passed on, and a <code>.folio</code> is a single file that travels alone: there is nowhere else for the terms to be. <code>licenceText</code> is the <strong>actual text</strong> of the licence, not its name — <code>licence</code> already carries the name. The duplication that costs (a document embedding three OFL families carries three near-identical copies of ~4 KB) is accepted deliberately, because an asset extracted from the document and passed on by itself must still carry its own terms, which a single document-level notice block would not survive.</p></li>
+    </ul>
+    <p>These required keys add no version trigger. They can only be required on an asset a chain names by <code>{"asset": key}</code> (or as an embedded variant), and that entry shape already requires <code>2.0</code>; they are a record <em>about</em> the asset and reach no output byte.</p>
+    <p><strong><code>mediaType</code> is an OPEN set for fonts exactly as it is for images.</strong> It is not one of the closed sets listed in <a href="#closed-sets"><em>Closed sets</em></a> and it never will be: a closed set can only be extended by a MAJOR bump, which would make every new font container a breaking format change. So:</p>
+    <ul>
+      <li>A <strong>recognised</strong> font media type whose bytes are not actually that format is a <strong>load error</strong> — the file lies about itself, and that is reader-independent.</li>
+      <li>An <strong>unrecognised</strong> font media type (<code>font/woff2</code>, say, on a library that cannot decode it) <strong>loads clean</strong>. The document is valid and the asset is preserved verbatim. The failure, if any, arrives at <strong>render</strong>, and only when something actually needs to draw that face — a library capability limit, not a format error.</li>
+      <li>A media type that is not a font type <strong>at all</strong> — an <code>image/png</code> asset named by a chain entry — takes the same path as the unrecognised one, for the same reason: it <strong>loads clean</strong>, and it errors at render only when something must draw with it. See <a href="#fonts"><em><code>fonts</code></em></a> for the shape of that error.</li>
+    </ul>
+    <p>Both render-time refusals report the same thing, and it is a statement about <strong>this build</strong>, never about the document: <em>the document is valid — <code>mediaType</code> is an open set — and this library cannot draw with these bytes.</em></p>
+  </section>
+
+  <section id="saving">
+    <h2>Saving</h2>
+    <p>Saving (<code>SerializeTemplate</code> in the Go library) writes one canonical form, so a template saved twice is byte-identical and a text diff shows only real changes:</p>
+    <ul>
+      <li>Every object's keys are sorted; arrays keep their order. Indentation is two spaces, and the file ends with a newline.</li>
+      <li>Lengths are written as exact decimals with at most three decimal places and no trailing zeros (<code>36</code>, not <code>36.000</code>).</li>
+      <li>Unknown keys the library carried through at load are written back verbatim.</li>
+      <li><code>version</code> is raised as described in <a href="#versions"><em>Versions</em></a>, never lowered.</li>
+      <li>A <code>fonts</code> entry object with no variants is written back as its bare face-name string.</li>
+      <li>Asset <code>data</code> is re-wrapped to 76-column base64 lines.</li>
+      <li><code>headerHeight</code> is always written; <code>errorCorrection</code> is written only when declared; an explicit <code>sectionBreakAnchor: true</code> is dropped; <code>pageBreak</code> is written on every page after the first and dropped from the first.</li>
+      <li>A document with exactly one page is written in the one-page shape (<code>bands.content</code>, no <code>pages</code>).</li>
+      <li>Saving refuses a table whose widths cannot be allocated, as loading does.</li>
+    </ul>
+  </section>
+
+  <section id="line-breaking">
+    <h2>Line breaking</h2>
+    <p>Text wraps inside its element's declared <code>width</code>. Where a line may end is decided per script, and what follows is the <strong>whole</strong> rule — this section is deliberately written as a list of what the engine does <strong>not</strong> do as well as what it does, because every omission below is a deliberate narrowing rather than an unfinished edge.</p>
+    <p>Two kinds of break exist, and the difference between them is the difference between the engine <strong>guessing</strong> and the engine <strong>being told</strong>:</p>
+    <ul>
+      <li>an <strong>inferred</strong> break is an <em>opportunity</em>. The engine proposes it from the text's script, and the line packer takes it only if the line needs it. The three script rules below are all of this kind.</li>
+      <li>a <strong>mandatory</strong> break is <em>not</em> an opportunity. It is a line feed the author, or the data, put in the text, and the packer may not decline it.</li>
+    </ul>
+    <h3 id="inferred-breaks">Inferred breaks</h3>
+    <p>Where a line <em>may</em> end:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Script</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td>Latin, and anything with no rule of its own</td><td>A line may end <strong>after</strong> a run of whitespace, and nowhere else. The whitespace run is consumed by the break: it is drawn on neither line.</td></tr>
+        <tr><td>CJK</td><td>A line may end between any two adjacent Han or kana characters.</td></tr>
+        <tr><td>Thai</td><td>Thai is written without interword spaces, so break positions come from an embedded dictionary. A stretch of Thai the dictionary cannot account for is kept whole.</td></tr>
+      </tbody>
+    </table></div>
+    <h3 id="mandatory-breaks">Mandatory breaks</h3>
+    <p>Where a line <em>must</em> end: a <code>U+000A</code> line feed in an element's text, or in a value bound into it, <strong>always</strong> ends the line — however much width remained. It is the only character with this meaning.</p>
+    <ul>
+      <li><strong>Breaks are separators: <em>k</em> of them produce <em>k+1</em> lines.</strong> <code>"a\nb"</code> is two lines. <code>"a\n\nb"</code> is three, the middle one empty — which is how a paragraph gap is expressed. <code>"a\n"</code> is two lines, the second empty; <code>"\na"</code> is two lines, the first empty; a value that is nothing but a line feed is two empty lines.</li>
+      <li><strong>An empty line is a real line.</strong> It draws nothing and occupies one full baseline-to-baseline advance, so it adds to the element's height and to a table row's height exactly as a drawn line does — and can therefore move a page break.</li>
+      <li><strong><code>\r\n</code> is one break, never two.</strong> A carriage return carries no line feed of its own; a lone <code>\r</code> is ordinary whitespace and stays an inferred break.</li>
+      <li><strong>The whole whitespace run around the break is consumed</strong>, exactly as an inferred whitespace break consumes its run: <code>"a \n b"</code> is <code>a</code> / <code>b</code>, with neither space drawn on either line.</li>
+      <li><strong>A mandatory break is not affected by <code>unbreakableValues</code></strong> — see <a href="#values-that-must-never-be-split"><em>Values that must never be split</em></a>.</li>
+    </ul>
+    <p>The engine never <em>invents</em> a mandatory break: it does not break at a declared width, at a hyphen, or anywhere else on its own initiative. Only a line feed in the input produces one.</p>
+    <p><strong>This is not UAX #14, and nothing in folio claims conformance to it.</strong> Absent, by name: hyphenation; a break at <code>-</code> or any other punctuation; the contextual pair rules that make up the bulk of the standard.</p>
+    <p><strong>No break falls inside a dictionary headword, including a lexicalised compound a native reader would accept breaking.</strong> The Thai engine matches against a shipped dictionary and never infers word membership; where a compound word happens to be a headword, it is kept whole even if some readers would break it. This is a stated capability limit, not a hidden one, and it is fail-closed: the compound moves to the next line whole and is never rendered with a break inside it.</p>
+    <p><strong>Kinsoku is not implemented.</strong> A CJK line may begin with <code>，</code> or <code>。</code> and may end with an opening bracket. Fullwidth punctuation and fullwidth digits are not break candidates at all.</p>
+    <h3 id="vertical-placement">Vertical placement</h3>
+    <p>Where an element's lines sit vertically is a function of the element's <strong>declared font stack</strong> and its font size, and of nothing else — in particular it does <strong>not</strong> depend on which characters happen to land on a given line. Adding one Chinese character to a paragraph never reflows it.</p>
+    <div class="caution"><p><strong>A stack declares what may appear in an element. Vertical placement must accommodate what may appear — not what does appear.</strong></p></div>
+    <p>"What does appear" is content-dependent, and content-dependent placement would make a box negotiate with its contents. "What may appear" is exactly the declared stack.</p>
+    <p><strong>One rule, three spans, three maxima.</strong> Write <code>A</code>, <code>D</code> and <code>gap</code> for a face's <code>hhea</code> ascent, the absolute value of its <code>hhea</code> descent, and its <code>hhea</code> lineGap, each read from the face's own <code>hhea</code> table and scaled to the font size. Then, over the faces of the declared stack:</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>span</th><th>distance</th></tr></thead>
+      <tbody>
+        <tr><td>top of the element → <strong>first</strong> baseline</td><td><code>max(A)</code></td></tr>
+        <tr><td>baseline → next baseline</td><td><code>max(A) + max(D) + max(gap)</code></td></tr>
+        <tr><td><strong>last</strong> baseline → bottom of the text</td><td><code>max(D)</code></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Each maximum is taken independently, over its own axis.</strong> That is the whole of the rule and it is easy to get subtly wrong: the natural-looking <code>max(A - D + gap)</code> — the largest single face — is <strong>not</strong> the same quantity, and it is too small.</p>
+    <p>The space between two baselines has to hold the <strong>descenders of the line above</strong> and the <strong>ascenders of the line below</strong>. Those are two different lines, and on a mixed stack they can resolve to two different faces, so the constraint is the worst <strong>adjacent pair</strong>, not the worst single face. On the shipped stack the two axes are won by different faces — Noto Sans Thai has the deepest descender (450/1000 em) and Noto Sans SC the tallest ascender (1160/1000 em):</p>
+    <div class="sample"><pre data-lang="go">worst pair       = <span class="tk-fn">max</span>(<span class="tk-type">A</span>) + <span class="tk-fn">max</span>(<span class="tk-type">D</span>) = <span class="tk-num">1160</span> + <span class="tk-num">450</span>          = <span class="tk-num">1610</span>
+largest one face = <span class="tk-fn">max</span>(<span class="tk-type">A</span> - <span class="tk-type">D</span> + gap) = <span class="tk-fn">max</span>(<span class="tk-num">1362</span>,<span class="tk-num">1511</span>,<span class="tk-num">1448</span>) = <span class="tk-num">1511</span></pre></div>
+    <p>The single-face form is <strong>99 units of the em short</strong> — enough for a Thai line's below-vowels to touch the next line's ideograph ascenders, on the default stack. For a stack resolving to a <strong>single</strong> face the two forms are identical, since one face cannot fail to supply both axes.</p>
+    <p>The first baseline is placed by <code>max(A)</code> for the same reason and by the same argument, asked about the ascent axis alone: the tallest thing that may appear on the first line must fit above it. It is <strong>not</strong> the point size. The two coincide only by accident, and they diverge in <strong>both</strong> directions — Noto Sans SC's ascent is 1160/em, so its first baseline sits <em>lower</em> than the point size implies, while a face whose <code>hhea</code> ascent is below its em sits <em>higher</em>.</p>
+    <p>The cost is bounded by the author's own choice. A Latin-only element in a <code>["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]</code> stack gets taller lines than Noto Sans alone would need — but the author declared that stack, and an author who wants Latin metrics declares a Latin-only stack. <strong>No element pays for a face its own stack does not name.</strong></p>
+    <p>There is no <code>lineHeight</code> key and no first-baseline key. Vertical placement is derived; the only authored adjustment is <code>style.lineSpacing</code>, which scales the baseline-to-baseline advance.</p>
+    <h3 id="values-that-must-never-be-split">Values that must never be split</h3>
+    <p>The engine does <strong>not</strong> guess which stretches of text are names. It cannot: Thai surnames are coined, one per family, out of ordinary everyday words, so a dictionary genuinely cannot tell a person's name from the words it was built from — <code>ศรีสุข</code> as a surname is character-for-character the two common words <code>ศรี</code> and <code>สุข</code>.</p>
+    <p>So a template <strong>declares</strong> it, in the document-level <code>unbreakableValues</code> list. Every value substituted from a listed path is kept on one line. This binds the break opportunities the engine <strong>infers</strong> — from whitespace, a script, or the dictionary — not literal control characters present in the input: a line feed the caller supplied is a break the engine was <strong>told</strong> about rather than one it proposed, so it is still taken inside a declared value. Literal text around the placeholder is unaffected — <code>"Statement for {{customer.name}}"</code> still breaks between <em>Statement</em> and <em>for</em>.</p>
+    <p><strong>The declaration protects bound values only.</strong> A Thai name that appears inside free-form literal text carries no declaration and remains breakable. That limitation is stated, not fixed.</p>
+    <p>If a value that must not be split is wider than its box, it <strong>overflows visibly</strong> rather than being re-broken, squeezed or silently dropped.</p>
+  </section>
+
+  <section id="what-is-not-in-the-file">
+    <h2>What is <em>not</em> in the file</h2>
+    <ul>
+      <li><strong>Report data.</strong> Supplied by the caller at render time.</li>
+      <li><strong>Sample data.</strong> A separate local file the designer loads for binding discovery and preview. The template does not store it or its path.</li>
+      <li><strong>Parameters.</strong> Supplied at render time. The designer keeps an author-edited parameter document as a sibling file, passed as the third preview input.</li>
+      <li><strong>Dates.</strong> Nothing in a template is stamped with a wall-clock time.</li>
+    </ul>
+  </section>
+
+  <section id="worked-example">
+    <h2>Worked example</h2>
+    <p>A minimal but complete template, in canonical form.</p>
+    <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
+  <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+    <span class="tk-key">"content"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+      <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+        <span class="tk-punc">{</span>
+          <span class="tk-key">"as"</span><span class="tk-punc">:</span> <span class="tk-str">"transaction"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"transactions[]"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"columns"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+            <span class="tk-punc">{</span>
+              <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"left"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"{{transaction.date}}"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e3"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"label"</span><span class="tk-punc">:</span> <span class="tk-str">"Date"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">80</span>
+            <span class="tk-punc">}</span><span class="tk-punc">,</span>
+            <span class="tk-punc">{</span>
+              <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"right"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"bind"</span><span class="tk-punc">:</span> <span class="tk-str">"{{formatNumber(transaction.amount, \"#,##0.00\")}}"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"footer"</span><span class="tk-punc">:</span> <span class="tk-str">"sum"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e4"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"label"</span><span class="tk-punc">:</span> <span class="tk-str">"Amount"</span><span class="tk-punc">,</span>
+              <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">90</span>
+            <span class="tk-punc">}</span>
+          <span class="tk-punc">]</span><span class="tk-punc">,</span>
+          <span class="tk-key">"headerHeight"</span><span class="tk-punc">:</span> <span class="tk-num">16</span><span class="tk-punc">,</span>
+          <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e2"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"style"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+            <span class="tk-key">"border"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+              <span class="tk-key">"edges"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+                <span class="tk-str">"bottom"</span>
+              <span class="tk-punc">]</span>
+            <span class="tk-punc">}</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontFamily"</span><span class="tk-punc">:</span> <span class="tk-str">"body"</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontSize"</span><span class="tk-punc">:</span> <span class="tk-num">8</span><span class="tk-punc">,</span>
+            <span class="tk-key">"padding"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+              <span class="tk-key">"left"</span><span class="tk-punc">:</span> <span class="tk-num">3</span><span class="tk-punc">,</span>
+              <span class="tk-key">"right"</span><span class="tk-punc">:</span> <span class="tk-num">3</span>
+            <span class="tk-punc">}</span>
+          <span class="tk-punc">}</span><span class="tk-punc">,</span>
+          <span class="tk-key">"type"</span><span class="tk-punc">:</span> <span class="tk-str">"table"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"x"</span><span class="tk-punc">:</span> <span class="tk-num">0</span><span class="tk-punc">,</span>
+          <span class="tk-key">"y"</span><span class="tk-punc">:</span> <span class="tk-num">0</span>
+        <span class="tk-punc">}</span>
+      <span class="tk-punc">]</span>
+    <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-key">"pageFooter"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+      <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+        <span class="tk-punc">{</span>
+          <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">10</span><span class="tk-punc">,</span>
+          <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e5"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"style"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+            <span class="tk-key">"align"</span><span class="tk-punc">:</span> <span class="tk-str">"center"</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontFamily"</span><span class="tk-punc">:</span> <span class="tk-str">"body"</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontSize"</span><span class="tk-punc">:</span> <span class="tk-num">7</span>
+          <span class="tk-punc">}</span><span class="tk-punc">,</span>
+          <span class="tk-key">"type"</span><span class="tk-punc">:</span> <span class="tk-str">"text"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"value"</span><span class="tk-punc">:</span> <span class="tk-str">"Page {{page}} of {{pages}}"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">523</span><span class="tk-punc">,</span>
+          <span class="tk-key">"x"</span><span class="tk-punc">:</span> <span class="tk-num">0</span><span class="tk-punc">,</span>
+          <span class="tk-key">"y"</span><span class="tk-punc">:</span> <span class="tk-num">8</span>
+        <span class="tk-punc">}</span>
+      <span class="tk-punc">]</span><span class="tk-punc">,</span>
+      <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">30</span>
+    <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-key">"pageHeader"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+      <span class="tk-key">"elements"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+        <span class="tk-punc">{</span>
+          <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">16</span><span class="tk-punc">,</span>
+          <span class="tk-key">"id"</span><span class="tk-punc">:</span> <span class="tk-str">"e1"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"style"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+            <span class="tk-key">"bold"</span><span class="tk-punc">:</span> <span class="tk-lit">true</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontFamily"</span><span class="tk-punc">:</span> <span class="tk-str">"body"</span><span class="tk-punc">,</span>
+            <span class="tk-key">"fontSize"</span><span class="tk-punc">:</span> <span class="tk-num">12</span>
+          <span class="tk-punc">}</span><span class="tk-punc">,</span>
+          <span class="tk-key">"type"</span><span class="tk-punc">:</span> <span class="tk-str">"text"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"value"</span><span class="tk-punc">:</span> <span class="tk-str">"Statement for {{customer.name}}"</span><span class="tk-punc">,</span>
+          <span class="tk-key">"width"</span><span class="tk-punc">:</span> <span class="tk-num">400</span><span class="tk-punc">,</span>
+          <span class="tk-key">"x"</span><span class="tk-punc">:</span> <span class="tk-num">0</span><span class="tk-punc">,</span>
+          <span class="tk-key">"y"</span><span class="tk-punc">:</span> <span class="tk-num">10</span>
+        <span class="tk-punc">}</span>
+      <span class="tk-punc">]</span><span class="tk-punc">,</span>
+      <span class="tk-key">"height"</span><span class="tk-punc">:</span> <span class="tk-num">60</span>
+    <span class="tk-punc">}</span>
+  <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"fonts"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+    <span class="tk-key">"body"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span>
+      <span class="tk-str">"Noto Sans"</span><span class="tk-punc">,</span>
+      <span class="tk-str">"Noto Sans Thai"</span><span class="tk-punc">,</span>
+      <span class="tk-str">"Noto Sans SC"</span>
+    <span class="tk-punc">]</span>
+  <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"locale"</span><span class="tk-punc">:</span> <span class="tk-str">"th"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"nextId"</span><span class="tk-punc">:</span> <span class="tk-num">6</span><span class="tk-punc">,</span>
+  <span class="tk-key">"page"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+    <span class="tk-key">"margin"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
+      <span class="tk-key">"bottom"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span>
+      <span class="tk-key">"left"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span>
+      <span class="tk-key">"right"</span><span class="tk-punc">:</span> <span class="tk-num">36</span><span class="tk-punc">,</span>
+      <span class="tk-key">"top"</span><span class="tk-punc">:</span> <span class="tk-num">36</span>
+    <span class="tk-punc">}</span><span class="tk-punc">,</span>
+    <span class="tk-key">"orientation"</span><span class="tk-punc">:</span> <span class="tk-str">"portrait"</span><span class="tk-punc">,</span>
+    <span class="tk-key">"size"</span><span class="tk-punc">:</span> <span class="tk-str">"A4"</span>
+  <span class="tk-punc">}</span><span class="tk-punc">,</span>
+  <span class="tk-key">"utcOffset"</span><span class="tk-punc">:</span> <span class="tk-str">"+07:00"</span><span class="tk-punc">,</span>
+  <span class="tk-key">"version"</span><span class="tk-punc">:</span> <span class="tk-str">"1.0"</span>
+<span class="tk-punc">}</span></pre></div>
+    <p>It uses absolute column widths and no feature above <code>1.0</code>, so it declares <code>1.0</code>. Its structure, indentation and key order are exactly what saving produces.</p>
+    <p><code>{{page}}</code> and <code>{{pages}}</code> are <strong>not</strong> expressions and <strong>not</strong> a data namespace — they are the two late-bound page-number slots, the only values in the format that depend on pagination. No <code>page</code> namespace exists for expressions to reach, and none may be added.</p>
+    <p>These resolve in the page header and page footer bands. Elsewhere — in the content band — the document fails to render, naming the element.</p>
+  </section>
+<!-- /body -->
+
+        <p class="source-note">Source of truth: <code>docs/folio-format.md</code>. This page is its HTML twin.</p>
+      </article>
+    </div>
+  </main>
+
+</div>
+
+<script>
+(() => {
+  const filter = document.querySelector('.filter')
+  const groups = [...document.querySelectorAll('.toc-group')]
+  const empty = document.querySelector('.toc-empty')
+  filter.addEventListener('input', () => {
+    const query = filter.value.trim().toLowerCase()
+    let shown = 0
+    for (const group of groups) {
+      let hits = 0
+      for (const item of group.querySelectorAll('.toc-item')) {
+        const hit = query === '' || item.textContent.toLowerCase().includes(query)
+        item.hidden = !hit
+        if (hit) hits++
+      }
+      group.hidden = hits === 0
+      shown += hits
+    }
+    empty.hidden = shown !== 0
+  })
+  filter.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && filter.value !== '') { filter.value = ''; filter.dispatchEvent(new Event('input')) }
+  })
+
+  const local = [...document.querySelectorAll('.toc-group[data-current] .toc-item')]
+    .map((item) => ({ item, target: document.getElementById(item.getAttribute('href').slice(1)) }))
+    .filter(({ target }) => target !== null)
+  let active = null
+  let queued = false
+  const update = () => {
+    queued = false
+    let next = null
+    for (const entry of local) {
+      if (entry.target.getBoundingClientRect().top <= 96) next = entry
+      else break
+    }
+    if (next === active) return
+    if (active) active.item.removeAttribute('aria-current')
+    active = next
+    if (active) {
+      active.item.setAttribute('aria-current', 'location')
+      const sidebar = document.querySelector('.sidebar')
+      const box = active.item.getBoundingClientRect()
+      const frame = sidebar.getBoundingClientRect()
+      if (box.top < frame.top + 120 || box.bottom > frame.bottom) sidebar.scrollTop += box.top - frame.top - frame.height / 3
+    }
+  }
+  addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(update) } }, { passive: true })
+  update()
+})()
+</script>

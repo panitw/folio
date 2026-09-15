@@ -121,16 +121,22 @@ export const DECLARATION_MARKER = 'folio:font-host-declaration'
  *     of the rule a violation of it. Measured at Story 8.5: 15 occurrences,
  *     all in archived UX mockup HTML from 2026-08-23 and in the story artifacts
  *     that quote them.
- *   - `docs/` is published prose. Measured at Story 8.5: 3 occurrences, all in
- *     `docs/expression-reference.html`, which really does link a Google Fonts
- *     stylesheet. That is a PRE-EXISTING fact about a documentation page, it
- *     predates this story, and this story may not fix it — it is reported
- *     rather than swept up, and rather than left implied by a silent exclusion.
  *   - `fixtures/` and `test-data/` hold PDFs and `.folio` documents, no source.
  *
- * NOTHING THAT BUILDS, TESTS OR SHIPS THE PRODUCT IS EXCLUDED. The designer,
- * the engine, the lint module, the hash matrix, the font tools and the CI
- * workflows are all in.
+ *   - `docs/` is published prose. Measured at Story 8.5: 3 occurrences, all in
+ *     `docs/expression-reference.html`'s remote font stylesheet links. THAT
+ *     EXCEPTION NO LONGER EXISTS: the rendering library documentation change
+ *     replaced those links with system font stacks, because the designer now
+ *     bundles `docs/rendering-library.html`, `docs/folio-format.html` and
+ *     `docs/expression-reference.html` as precached release assets
+ *     (`scripts/build-wasm.mjs`), and a shipped page must request no font host.
+ *     The tree itself stays outside `SCANNED_ROOTS` — `docs/` is the
+ *     out-of-walk control in `src/forbidden-font-hosts.test.ts` — so this scan
+ *     does NOT prove those pages clean; the bound is stated, not implied.
+ *
+ * NOTHING ELSE THAT BUILDS, TESTS OR SHIPS THE PRODUCT IS EXCLUDED. The
+ * designer, the engine, the lint module, the hash matrix, the font tools and
+ * the CI workflows are all in.
  */
 export const SCANNED_ROOTS = ['folio-designer', 'folio-go', 'lint', 'hashmatrix', 'tools', '.github']
 

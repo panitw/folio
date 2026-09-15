@@ -1,0 +1,20 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "text", "x": 0, "y": 0, "width": 180, "height": 12, "value": "Total {{formatNumber(loanAmount + fee, \"#,##0.00\")}}", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "e2", "type": "text", "x": 0, "y": 16, "width": 180, "height": 12, "value": "Manual review required", "visibleIf": "loanAmount > 20000", "style": {"fontFamily": "body", "fontSize": 8}},
+        {"id": "e3", "type": "text", "x": 0, "y": 32, "width": 180, "height": 12, "value": "{{loanAmount > 20000 ? \"Tier: large\" : \"Tier: standard\"}}", "style": {"fontFamily": "body", "fontSize": 8}}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "2.0"
+}

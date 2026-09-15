@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
 import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
+import { FORBIDDEN_FONT_HOSTS } from './forbidden-font-hosts.mjs'
 import { RELEASE_RUNTIME, declaredCacheAssetBounds, declaredCacheAssetWarning, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -56,6 +57,18 @@ export function reportCacheAssetApproach(assetCount, { warn = console.warn } = {
   const message = `offline release approach warning: the release carries ${assetCount} cache assets against a declared maximum of ${maximumCacheAssets} — the margin is ${maximumCacheAssets - assetCount}. The warning threshold is \`warnCacheAssets\` = ${warnCacheAssets} in src/release-payload.ts; nothing fails until the maximum is exceeded.`
   warn(message)
   return message
+}
+
+// THE PRECACHED DOCUMENTATION PAGES CARRY NO REMOTE FONT HOST. The source scan
+// runs before build-wasm copies the pages and does not walk `docs/`, so this is
+// the one check that reads the bytes the release actually ships. It returns the
+// first offending `{ url, host }`, or null.
+export function documentationFontHostFinding(pages) {
+  for (const { url, html } of pages) {
+    const found = FORBIDDEN_FONT_HOSTS.find(({ host }) => html.includes(host))
+    if (found) return { url, host: found.host }
+  }
+  return null
 }
 
 export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false, reportApproach = false } = {}) {
@@ -114,6 +127,23 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false, re
   if (!release.assets.some((asset) => /\/pdf\.worker-[A-Za-z0-9_-]+\.mjs$/.test(asset.url))) fail('missing local PDF.js worker runtime asset')
   if (release.assets.filter((asset) => asset.url.endsWith('.bcmap')).length < 4) fail('missing local PDF.js CMap runtime assets')
   if (!release.assets.some((asset) => /\/pdfjs-standard-fonts-[a-f0-9]{20}\/LiberationSans-Regular\.ttf$/.test(asset.url))) fail('missing local PDF.js standard-font runtime asset')
+  // THE BUNDLED DOCUMENTATION: the guide, the format reference and the
+  // expression reference are each one precached, content-addressed page, and
+  // every link between them names a page this release actually carries — a
+  // link left at its canonical `docs/` name would be a dead link offline.
+  const documentationStems = ['rendering-library', 'folio-format', 'expression-reference']
+  for (const stem of documentationStems) {
+    const pages = release.assets.filter((asset) => new RegExp(`^/assets/${stem}-[a-f0-9]{20}\\.html$`).test(asset.url))
+    if (pages.length !== 1 || !pages[0].immutable) fail(`missing precached documentation page ${stem} (found ${pages.length})`)
+    const html = readFileSync(join(outputDir, pages[0].url.slice(1)), 'utf8')
+    for (const [, target] of html.matchAll(/\bhref\s*=\s*["']([^"'#]*)/g)) {
+      if (!documentationStems.some((candidate) => target.includes(candidate))) continue
+      if (!manifestUrls.has(`/assets/${target}`)) fail(`documentation page ${pages[0].url} links to ${target}, which this release does not carry`)
+    }
+  }
+  const precachedPages = release.assets.filter((asset) => /^\/assets\/[^/]+\.html$/.test(asset.url)).map((asset) => ({ url: asset.url, html: readFileSync(join(outputDir, asset.url.slice(1)), 'utf8') }))
+  const fontHost = documentationFontHostFinding(precachedPages)
+  if (fontHost) fail(`precached page ${fontHost.url} references remote font host ${fontHost.host}`)
   if (release.id !== releaseIdentity(release.assets, release.workerRevision)) fail('release identity does not match canonical assets and worker revision')
   if (release.pageId !== pageIdentity(release.assets, release.workerRevision)) fail('page release identity does not match runtime assets and worker revision')
   if (!readFileSync(join(outputDir, 'index.html'), 'utf8').includes(`name="folio-page-release" content="${release.pageId}"`)) fail('page does not bind to its release identity')

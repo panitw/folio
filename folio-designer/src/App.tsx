@@ -39,6 +39,7 @@ import { tableWidthCommand, addTableColumnCommand, configureTableBindingCommand,
 import { TableEditor } from './TableEditor'
 import { alignSegments, justifySegment, SegmentedControl, type SegmentSpec } from './segmented-control'
 import { ToolIcon } from './toolbar-icons'
+import { documentationAssetUrls } from './generated/documentation-assets'
 
 // A glyph tool button's hover guide: its name, then its shortcut when it has one.
 const toolTip = (name: string, shortcut: string) => `${name} (${shortcut})`
@@ -3402,6 +3403,14 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         ? <span className="later-control" aria-label="Render freshness">{renderFreshness}</span>
         : <span className="later-control" aria-label="Current page setup">{canvas ? `${canvas.preset} · ${canvas.orientation}` : 'Page setup unavailable'}</span>}
       <div className="mode-switch" role="group" aria-label="Designer mode"><button className={mode === 'design' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'design'} onClick={returnToDesign}>DESIGN</button><button className={mode === 'preview' ? 'mode-active' : ''} type="button" aria-pressed={mode === 'preview'} onClick={enterPreview}>PREVIEW <kbd aria-hidden="true">{shortcuts.preview}</kbd></button></div>
+      {/* THE DOCUMENTATION LINK IS ITS OWN GROUP, NOT A SEVENTH FILE ACTION.
+          It is a real link to the bundled, precached rendering library guide,
+          opened in a NEW TAB so the author's unsaved document, selection and
+          undo history stay exactly where they are. It depends on nothing — no
+          engine, template or render — so it is never disabled. Same glyph
+          treatment as the file actions: `aria-label` names it, `data-tip` is
+          the CSS-painted hover guide, and there is no `title`. */}
+      <div className="documentation-actions" role="group" aria-label="Documentation"><a className="tool-button" href={documentationAssetUrls.guide} target="_blank" rel="noopener noreferrer" aria-label="Rendering library documentation" data-tip="Documentation"><ToolIcon glyph="docs" /></a></div>
     </header>
     <div className="workbench" id="future-features">
       {/* STORY 13.6 — THE PALETTE GIVES WAY TO THE PAGES RAIL.

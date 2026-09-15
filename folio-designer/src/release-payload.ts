@@ -39,7 +39,7 @@ const labels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Noto Sans Bold
 // or duplicating any of these lines fails the build loudly rather than
 // disabling it.
 const minimumCacheAssets = 10
-const maximumCacheAssets = 64
+const maximumCacheAssets = 65
 // THE APPROACH WARNING'S THRESHOLD (Story 11.1, D-11.1.10). NOT A BOUND:
 // nothing in this module reads it, nothing rejects a payload for crossing it,
 // and `maximumCacheAssets` above is still the only number that refuses a

@@ -1,0 +1,20 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "barcode", "x": 0, "y": 0, "width": 260, "height": 50, "value": "INV-{{invoice}}"},
+        {"id": "e2", "type": "qrcode", "x": 0, "y": 60, "width": 100, "height": 100, "value": "https://example.com/pay/{{invoice}}"},
+        {"id": "e3", "type": "qrcode", "x": 120, "y": 60, "width": 100, "height": 100, "errorCorrection": "H", "value": "{{invoice}}"}
+      ]
+    },
+    "pageFooter": {"elements": [], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {},
+  "locale": "en",
+  "nextId": 4,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 300, "height": 220}},
+  "utcOffset": "+00:00",
+  "version": "4.0"
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import vm from 'node:vm'
-import { isCacheableStaticRequest, isStatusRequest, serviceWorkerSource } from './offline-service-worker-template.mjs'
+import { isCacheableDocumentNavigation, isCacheableStaticRequest, isStatusRequest, serviceWorkerSource } from './offline-service-worker-template.mjs'
 
 const release = (id = 'a'.repeat(64), workerRevision = 'b'.repeat(64)) => ({ version: 2, id, pageId: 'c'.repeat(64), workerRevision, assets: [{ url: '/index.html', sha256: 'd'.repeat(64), immutable: false }, { url: '/assets/app-abc12345.js', sha256: 'e'.repeat(64), immutable: true }] })
 const request = (overrides = {}) => ({ url: 'https://folio.test/assets/app-abc12345.js', method: 'GET', credentials: 'omit', mode: 'cors', ...overrides })
@@ -33,6 +33,42 @@ describe('service worker static policy', () => {
     expect(isCacheableStaticRequest(request({ url: 'https://evil.test/assets/app-abc12345.js' }), 'https://folio.test', paths)).toBe(false)
     expect(isCacheableStaticRequest(request({ url: 'https://folio.test/documents/customer.folio' }), 'https://folio.test', paths)).toBe(false)
     expect(isCacheableStaticRequest(request({ method: 'POST' }), 'https://folio.test', paths)).toBe(false)
+  })
+
+  it('admits a navigation only when it is a same-origin GET to a precached /assets/*.html entry', () => {
+    const guide = '/assets/rendering-library-0123456789abcdef0123.html'
+    const paths = new Set(['/index.html', guide, '/assets/app-abc12345.js'])
+    const navigate = (overrides = {}) => request({ url: `https://folio.test${guide}`, mode: 'navigate', ...overrides })
+    expect(isCacheableDocumentNavigation(navigate(), 'https://folio.test', paths)).toBe(true)
+    expect(isCacheableDocumentNavigation(navigate({ url: `https://folio.test${guide}?from=designer` }), 'https://folio.test', paths)).toBe(true)
+    // The static policy is unchanged: it still refuses every navigation.
+    expect(isCacheableStaticRequest(navigate(), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ mode: 'cors' }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ url: `https://evil.test${guide}` }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ method: 'POST' }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio.test/assets/folio-format-0123456789abcdef0123.html' }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio.test/assets/app-abc12345.js' }), 'https://folio.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio.test/index.html' }), 'https://folio.test', paths)).toBe(false)
+  })
+
+  it('serves a navigation to a precached documentation page from the release cache, and leaves other navigations alone', async () => {
+    const guide = '/assets/rendering-library-0123456789abcdef0123.html'
+    const base = release()
+    const workerRelease = { ...base, assets: [...base.assets, { url: guide, sha256: 'f'.repeat(64), immutable: true }] }
+    const cached = { body: 'guide' }
+    const index = { body: 'index' }
+    const cacheData = new Map([[`folio-release-${workerRelease.id}`, new Map([[guide, cached], ['/index.html', index]])]])
+    const harness = workerHarness(workerRelease, { cacheData })
+    const dispatch = async (overrides) => {
+      let responded
+      harness.handlers.fetch({ request: request(overrides), respondWith: (promise) => { responded = promise } })
+      return responded === undefined ? undefined : await responded
+    }
+    expect(await dispatch({ url: `https://folio.test${guide}`, mode: 'navigate' })).toBe(cached)
+    expect(await dispatch({ url: 'https://folio.test/', mode: 'navigate' })).toBe(index)
+    expect(await dispatch({ url: 'https://folio.test/assets/folio-format-0123456789abcdef0123.html', mode: 'navigate' })).toBeUndefined()
+    expect(await dispatch({ url: 'https://folio.test/assets/app-abc12345.js', mode: 'navigate' })).toBeUndefined()
+    expect(await dispatch({ url: `https://elsewhere.test${guide}`, mode: 'navigate' })).toBeUndefined()
   })
 
   it('executes the emitted status handler with no module closure', async () => {

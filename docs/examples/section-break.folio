@@ -1,0 +1,25 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {"id": "e1", "type": "table", "x": 0, "y": 0, "bind": "items[]", "headerHeight": 10,
+          "style": {"fontFamily": "body", "fontSize": 8},
+          "columns": [
+            {"id": "e2", "label": "Item", "width": 100, "bind": "{{row.name}}"},
+            {"id": "e3", "label": "Amount", "width": 80, "align": "right", "bind": "{{row.amount}}"}
+          ]},
+        {"id": "e5", "type": "text", "x": 0, "y": 80, "width": 180, "height": 12, "value": "Legend", "style": {"fontFamily": "body", "fontSize": 8}}
+      ],
+      "sectionBreak": 75
+    },
+    "pageFooter": {"elements": [{"id": "e4", "type": "text", "x": 0, "y": 0, "width": 180, "height": 8, "value": "Page {{page}} of {{pages}}", "style": {"fontFamily": "body", "fontSize": 6}}], "height": 10},
+    "pageHeader": {"elements": [], "height": 10}
+  },
+  "fonts": {"body": ["Noto Sans"]},
+  "locale": "en",
+  "nextId": 6,
+  "page": {"margin": {"bottom": 10, "left": 10, "right": 10, "top": 10}, "orientation": "portrait", "size": {"width": 200, "height": 150}},
+  "utcOffset": "+00:00",
+  "version": "4.1"
+}
