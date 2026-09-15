@@ -34,6 +34,9 @@ RUN cd folio-designer \
  && npm run build:offline \
  && npm run verify:offline
 
-FROM caddy:2.10-alpine
+# Pinned exactly: Caddy 2.10.2 answers a brotli-precompressed GET with 206
+# instead of 200, and Cache.put() rejects 206, which breaks the service
+# worker's offline precache. 2.11.4 answers 200 (measured).
+FROM caddy:2.11.4-alpine
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /src/folio-designer/dist /srv
