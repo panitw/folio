@@ -93,7 +93,7 @@ says so instead of quietly passing.
 
 | File | What it is |
 |---|---|
-| `input.folio8` | the template, kept byte-identical to `folio8-go/justifiedThaiTemplateJSON` by hand |
+| `input.folio` | the template, kept byte-identical to `folio8-go/justifiedThaiTemplateJSON` by hand |
 | `expected.json` | the recorded digest and the toolchain it was recorded under |
 | `expected.pdf` | the recorded artifact |
 

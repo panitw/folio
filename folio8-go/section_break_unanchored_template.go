@@ -1,7 +1,7 @@
 package folio8
 
 // sectionBreakUnanchoredTemplateJSON is
-// fixtures/section-break-unanchored/input.folio8, kept byte-identical to it by
+// fixtures/section-break-unanchored/input.folio, kept byte-identical to it by
 // TestSectionBreakUnanchoredGoldenFixture (line-spacing's hand-sync precedent).
 //
 // It is spec-section-break's golden for CAP-7: the synthetic bilingual

@@ -1,4 +1,4 @@
-// Package template owns the `.folio8` document model, its parser and its
+// Package template owns the `.folio` document model, its parser and its
 // serializer (AD-9: "internal/template owns both the parser and the
 // serializer"). It never imports "os" (D-1.4.6: LoadTemplate's path
 // argument is handled entirely in package folio8 at the module root) and
@@ -16,7 +16,7 @@ import (
 	"github.com/panitw/folio8/folio8-go/internal/geom"
 )
 
-// Document is the parsed, canonicalised form of a `.folio8` file. Every
+// Document is the parsed, canonicalised form of a `.folio` file. Every
 // slice and map field is initialised to non-nil empty by the parser and
 // by any constructor (D-1.4.3 extended: a nil map/slice with omitempty
 // removed serializes to "null", not "{}"/"[]" — the fifth trap, AC23).
@@ -58,7 +58,7 @@ type Document struct {
 	// convention.
 	//
 	// DOCUMENT-LEVEL, NOT ELEMENT-LEVEL, AND THE FORMAT'S OWN EXAMPLE
-	// IS WHY (D-2.4.1). folio8-format.md defines a text element's
+	// IS WHY (D-2.4.1). folio-format.md defines a text element's
 	// `value` as a string "which may contain {{ }} bindings", and both
 	// canonical examples MIX literal text with bindings — "Statement
 	// for {{customer.name}}". An element-level flag would forbid
@@ -101,7 +101,7 @@ type Field struct {
 
 // Page is the document's page setup.
 type Page struct {
-	// Margin is required in this story's model — folio8-format.md's
+	// Margin is required in this story's model — folio-format.md's
 	// worked example always carries all four edges and no default is
 	// documented for an absent margin (unlike style.padding, whose
 	// default of 0 IS documented). A future story may relax this.
@@ -118,7 +118,7 @@ type Page struct {
 
 	// Extra carries unknown keys on the page object opaquely (AC8,
 	// D-1.4.9 OWNER — this story's finisher review, Finding 2: unlike
-	// `bands`, folio8-format.md states no closed key set for `page`, so
+	// `bands`, folio-format.md states no closed key set for `page`, so
 	// there is no ruling authorising a refusal here).
 	Extra []Field
 }
@@ -183,7 +183,7 @@ type Padding struct {
 // is the reason an open sub-object (`{"face":"X","variants":{…}}`) was
 // considered and rejected: it would have surrendered the unknown-key
 // refusal that is the whole property this shape exists to preserve.
-// folio8-format.md states the closure and its price.
+// folio-format.md states the closure and its price.
 //
 // A SIBLING'S NAMESPACE MATCHES ITS ENTRY'S DISCRIMINANT (AD-8). A
 // `face` entry's siblings are FontSet face names; an `asset` entry's are
@@ -388,7 +388,7 @@ func (f Fonts) Chain(name string) ([]FontChainEntry, bool) {
 
 // Bands holds exactly the three band keys (AC5). Unlike Page, Margin,
 // Padding, Border and Asset, Bands deliberately carries NO Extra field:
-// AC5 and folio8-format.md (:101, "Exactly these three keys (FR6)") make
+// AC5 and folio-format.md (:101, "Exactly these three keys (FR6)") make
 // the band-name set itself one of the closed sets this story enforces —
 // D-1.4.9's "nothing is refused" governs unknown KEYS inside an object,
 // not a structural rule the format's own field table states as closed.
@@ -633,7 +633,7 @@ type Column struct {
 
 // Style is the optional per-element style block. Every field is
 // optional; an absent field means "inherit the documented default"
-// (folio8-format.md's Style table).
+// (folio-format.md's Style table).
 type Style struct {
 	Align      Presence[string]
 	Background Presence[string]

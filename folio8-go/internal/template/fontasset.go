@@ -265,7 +265,7 @@ func checkSfnt(data []byte) error {
 		// ABOUT ITSELF, which is exactly what this check exists to
 		// refuse. `mediaType` is AUTHOR-DECLARED, so `font/ttf` over TTC
 		// bytes is recognised, reaches here, and would otherwise load
-		// clean — while folio8-format.md promises a recognised type whose
+		// clean — while folio-format.md promises a recognised type whose
 		// bytes are not that format is a load error.
 		//
 		// This branch used to return nil on the stated ground that "no

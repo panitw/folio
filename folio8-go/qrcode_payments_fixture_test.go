@@ -62,7 +62,7 @@ func TestQRCodePaymentsGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", qrcodePaymentsFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", qrcodePaymentsTemplateJSON},
+		{"input.folio", qrcodePaymentsTemplateJSON},
 		{"data.json", qrcodePaymentsDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))

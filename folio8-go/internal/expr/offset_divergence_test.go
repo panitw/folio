@@ -43,7 +43,7 @@ import (
 //
 // `Z` is RFC 3339's canonical UTC spelling and the data caller requires it; the
 // document field must refuse it on ONE ground — it is not `±HH:MM`, the syntax
-// folio8-format.md's `utcOffset` field-table row states, so excluding it
+// folio-format.md's `utcOffset` field-table row states, so excluding it
 // implements the
 // format exactly as excluding `+99:99` does. The loader admits `-00:00`
 // precisely because that IS `±HH:MM`. Syntax is the whole test. So the function
@@ -56,7 +56,7 @@ import (
 // because a guard that filters `Z` out hides the very fact that decision
 // uncovered.
 var utcOffsetAsymmetry = map[string]string{
-	"Z": "RFC 3339's canonical UTC spelling. parseUTCOffsetMinutes must admit it for offsets embedded in report DATA (the m[8] calls in ParseRFC3339 and instantMsFromValue); the loader must refuse it on one ground — it is not ±HH:MM, the syntax folio8-format.md's `utcOffset` field-table row states, so excluding it implements the format exactly as excluding +99:99 does. The loader admits -00:00 precisely because that IS ±HH:MM; syntax is the whole test (D-12.C, D-12.C.4).",
+	"Z": "RFC 3339's canonical UTC spelling. parseUTCOffsetMinutes must admit it for offsets embedded in report DATA (the m[8] calls in ParseRFC3339 and instantMsFromValue); the loader must refuse it on one ground — it is not ±HH:MM, the syntax folio-format.md's `utcOffset` field-table row states, so excluding it implements the format exactly as excluding +99:99 does. The loader admits -00:00 precisely because that IS ±HH:MM; syntax is the whole test (D-12.C, D-12.C.4).",
 }
 
 // utcOffsetEvaluatorLaxity is A FINDING THIS GUARD FOUND, recorded rather than
@@ -187,7 +187,7 @@ func TestEveryEvaluatorOnlyOffsetIsDeclared(t *testing.T) {
 // cover a divergence nobody wants any more.
 func TestZIsTheDataPathsSpellingAndNotTheDocuments(t *testing.T) {
 	if template.IsUTCOffset("Z") {
-		t.Error("the loader now admits Z as a document utcOffset — it is not ±HH:MM, the syntax folio8-format.md's `utcOffset` field-table row states (D-12.C)")
+		t.Error("the loader now admits Z as a document utcOffset — it is not ±HH:MM, the syntax folio-format.md's `utcOffset` field-table row states (D-12.C)")
 	}
 	minutes, err := parseUTCOffsetMinutes("Z")
 	if err != nil {

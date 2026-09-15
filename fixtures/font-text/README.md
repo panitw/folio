@@ -13,7 +13,7 @@ emission path; this fixture is the first covering the **font-embedding** path th
 
 ## Contents
 
-- `input.folio8` — the `.folio8` document rendered to produce this fixture. `folio8-go/fixture_test.go`
+- `input.folio` — the `.folio` document rendered to produce this fixture. `folio8-go/fixture_test.go`
   renders the `fontTestTemplateJSON` constant directly, not this file — exactly as `minimal-rect/`'s
   fixture test renders `internal/pdf.Serialize()` directly rather than reading a file — but
   `TestRenderMatchesFontTextGoldenFixture` now asserts this file is byte-identical to that constant

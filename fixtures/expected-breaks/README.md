@@ -85,7 +85,7 @@ word-boundary-aware breaking. The seven declarations are template-level facts ab
 
 With all seven CJK items declared atomic, no fixture subject would exercise the engine's standard
 per-character CJK breaking at all — so **`cjk-008`** was added, undeclared: `结算单共三页请核对每一行的
-金额与日期`, 18 runes, attested verbatim in `fixtures/wrapped-text/input.folio8`, every rune Unicode
+金额与日期`, 18 runes, attested verbatim in `fixtures/wrapped-text/input.folio`, every rune Unicode
 category `Lo`, no punctuation and no digits. Its label — one word per rune, breaking at every interior
 position — is **derived from UAX #14, not a native-speaker judgment**, and its gloss says so explicitly
 so it is never mistaken for an owner-adjudicated item. It also demonstrates the mechanism directly:
@@ -99,7 +99,7 @@ passed" is exactly the shape this fixture exists to make impossible.
 ## A narrowing this fixture does not attempt to close
 
 The engine does not implement kinsoku (line-start/line-end prohibitions for CJK punctuation) — see
-`folio8-format.md`'s Line breaking section. `cjk-008` was deliberately chosen punctuation-free so it
+`folio-format.md`'s Line breaking section. `cjk-008` was deliberately chosen punctuation-free so it
 exercises per-character CJK breaking without straying into a prohibition the engine does not honour.
 
 ## Coverage
@@ -111,7 +111,7 @@ they are AD-25's atomic-unknown-run absolute stated as a conformance expectation
 
 ## Capability limit, stated where the narrowing already lives
 
-`folio8-format.md`'s line-breaking section narrows its UAX #14 claim by name (no hyphenation, no break at
+`folio-format.md`'s line-breaking section narrows its UAX #14 claim by name (no hyphenation, no break at
 `-`, no contextual pair rules). It also now states, in the same register: **no break inside a dictionary
 headword, including lexicalised compounds a native reader would accept breaking.** This is a stated
 capability limit, not a hidden one, and it is fail-closed — the compound moves to the next line whole,

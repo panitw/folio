@@ -12,7 +12,7 @@ import (
 )
 
 // fixtures/embedded-font/ is Story 8.3's artifact and Story 8.4's subject:
-// THE FIRST `.folio8` IN THIS REPOSITORY THAT CARRIES A FONT FACE, and now the
+// THE FIRST `.folio` IN THIS REPOSITORY THAT CARRIES A FONT FACE, and now the
 // first whose page is DRAWN with one.
 //
 // WHAT IT RED-PROVES: that a face can travel inside a template — stored,
@@ -73,7 +73,7 @@ func embeddedFontAssetKey() string {
 	return fmt.Sprintf("%x", sum)
 }
 
-// embeddedFontTemplateJSON is fixtures/embedded-font/input.folio8, BUILT rather
+// embeddedFontTemplateJSON is fixtures/embedded-font/input.folio, BUILT rather
 // than transcribed.
 //
 // Every other matrix document keeps its template as a hand-copied Go string
@@ -233,16 +233,16 @@ func base64Wrapped76(raw []byte) []string {
 // template the matrix actually renders. Without it the two drift, and the
 // fixture stops documenting what the matrix measured.
 func TestEmbeddedFontFixtureMatchesInputFolio8(t *testing.T) {
-	path := filepath.Join(repoRootFromTest(t), "fixtures", "embedded-font", "input.folio8")
+	path := filepath.Join(repoRootFromTest(t), "fixtures", "embedded-font", "input.folio")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	if len(raw) == 0 {
-		t.Fatal("presence precondition: fixtures/embedded-font/input.folio8 is empty")
+		t.Fatal("presence precondition: fixtures/embedded-font/input.folio is empty")
 	}
 	if string(raw) != embeddedFontTemplateJSON() {
-		t.Errorf("embeddedFontTemplateJSON and fixtures/embedded-font/input.folio8 have DIVERGED — the matrix renders one and the repository documents the other")
+		t.Errorf("embeddedFontTemplateJSON and fixtures/embedded-font/input.folio have DIVERGED — the matrix renders one and the repository documents the other")
 	}
 }
 
@@ -419,7 +419,7 @@ func TestUnrecognisedFontMediaTypeIsValidToo(t *testing.T) {
 //
 // WHAT IS NOT ASSERTED HERE, AND WHY. "Re-serializing a committed fixture
 // reproduces its bytes" is FALSE at HEAD and was false before this story:
-// several committed `input.folio8` files are hand-written for readability
+// several committed `input.folio` files are hand-written for readability
 // (compact bands, one-line style blocks) and are not canonical. Writing that
 // assertion would have meant either changing those files — moving the very
 // bytes this AC is about — or quietly restricting the population until it
@@ -453,10 +453,10 @@ func TestTheFontRecordCostsAnExistingDocumentNothing(t *testing.T) {
 		if !entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name(), "input.folio8")
+		path := filepath.Join(dir, entry.Name(), "input.folio")
 		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
-			continue // not every fixture ships an input.folio8
+			continue // not every fixture ships an input.folio
 		}
 		checked++
 		canonical := serializeTwice(t, entry.Name(), raw)
@@ -468,7 +468,7 @@ func TestTheFontRecordCostsAnExistingDocumentNothing(t *testing.T) {
 		}
 	}
 	if checked == 0 {
-		t.Fatal("vacuity guard: no fixture input.folio8 was read, so this test asserted nothing")
+		t.Fatal("vacuity guard: no fixture input.folio was read, so this test asserted nothing")
 	}
 	if withAssets != 7 {
 		t.Errorf("fixtures carrying a non-empty assets map = %d, want 7 (the six that predate Story 8.3 plus embedded-font) — if a fixture gained or lost an asset map, say so here deliberately", withAssets)

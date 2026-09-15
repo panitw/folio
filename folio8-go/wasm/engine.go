@@ -31,7 +31,7 @@ const historyLimit = 100
 var ErrNoUndo = errors.New("folio8 wasm: no undo history")
 var ErrNoRedo = errors.New("folio8 wasm: no redo history")
 
-// Snapshot is a paint-safe projection, not a .folio8 schema mirror.
+// Snapshot is a paint-safe projection, not a .folio schema mirror.
 type Snapshot struct {
 	DocumentState string                   `json:"documentState"`
 	Revision      uint64                   `json:"revision"`
@@ -354,7 +354,7 @@ func (e *Engine) Apply(command []byte) (Snapshot, error) {
 }
 
 // Undo and Redo replay canonical engine bytes from this live wasm session.
-// They never serialize history into .folio8 bytes or ask TypeScript to retain
+// They never serialize history into .folio bytes or ask TypeScript to retain
 // a mirror/inverse command. Revisions stay monotonic even when document bytes
 // return to an earlier state, which keeps preview authority correlation sound.
 func (e *Engine) Undo() (Snapshot, error) {

@@ -8,7 +8,7 @@
 // about the two being one family's regular and bold cuts. That grouping is
 // what a pick has to write into a chain entry, and before this module the only
 // place in the tree that held it was one hand-authored document
-// (`public/templates/starter.folio8`).
+// (`public/templates/starter.folio`).
 //
 // ⚠ IT IS HAND-WRITTEN DATA, AND IT MUST NOT READ AS A NAMING CONVENTION.
 // D-11.2.1 / D-11.2.2: resolution is DECLARED, never constructed, parsed or

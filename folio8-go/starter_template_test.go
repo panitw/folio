@@ -3,13 +3,13 @@ package folio8_test
 // STORY 11.3 / P7 — THE SHIPPED STARTER TEMPLATE, PARSED BY SOMETHING THAT RUNS.
 //
 // ⚠ NOTHING THAT RUNS PARSED THIS FILE. Measured before this test existed:
-// `git grep starter.folio8` returns five non-doc consumers, and the only one
+// `git grep starter.folio` returns five non-doc consumers, and the only one
 // that reads its BYTES is `folio8-go/wasm/cmd/engine/main_test.go`, which is
 // `//go:build js && wasm` — absent from `go list ./...` and never built by any
 // gate on this machine. `startup-sequence.test.ts` stubs the fetch with
 // `new Uint8Array([1,2,3])`; `font-embed-boundary.spec.ts` reads it but is
 // COMPILED only; `verify-offline-release.mjs` class-checks that some asset ends
-// with `.folio8`; the build fingerprints it into gitignored generated output.
+// with `.folio`; the build fingerprints it into gitignored generated output.
 //
 // SO THE FILE COULD SHIP BROKEN AND EVERY GATE WOULD STAY GREEN: `"1.0"` beside
 // object-form entries (the "version that lies" this epic already caught once),
@@ -29,7 +29,7 @@ import (
 	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
-const starterTemplatePath = "../folio8-designer/public/templates/starter.folio8"
+const starterTemplatePath = "../folio8-designer/public/templates/starter.folio"
 
 // starterChainName is the chain the starter declares and every text element in
 // a new document names. Read as a constant rather than discovered, because a
@@ -227,7 +227,7 @@ func declaredBoldOf(t *testing.T, chainName string) string {
 	if err := json.Unmarshal(mustReadStarter(t), &document); err != nil {
 		t.Fatalf("decode the starter's fonts block: %v", err)
 	}
-	// An entry is EITHER a bare string or an object (folio8-format.md's two
+	// An entry is EITHER a bare string or an object (folio-format.md's two
 	// shapes), and only the object form can declare a variant, so a failed
 	// object decode is a legal entry that declares none rather than an error.
 	for _, entry := range document.Fonts[chainName] {

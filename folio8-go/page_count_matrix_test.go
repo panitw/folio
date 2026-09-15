@@ -39,12 +39,12 @@ var pageCountFixtures = []struct {
 
 // TestPageCountFixturesMatchTheInRepoTemplates keeps each in-repo
 // template constant byte-identical to its fixtures/page-count-N/
-// input.folio8 — multi-page's own precedent (font-text's, wrapped-
+// input.folio — multi-page's own precedent (font-text's, wrapped-
 // text's, three-band-page's before it).
 func TestPageCountFixturesMatchTheInRepoTemplates(t *testing.T) {
 	root := repoRootFromTest(t)
 	for _, f := range pageCountFixtures {
-		path := filepath.Join(root, "fixtures", f.slug, "input.folio8")
+		path := filepath.Join(root, "fixtures", f.slug, "input.folio")
 		onDisk, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("%s: presence precondition: %s could not be read: %v", f.slug, path, err)

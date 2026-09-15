@@ -39,7 +39,7 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// imageTemplateJSON builds a `.folio8` document with one image element in
+// imageTemplateJSON builds a `.folio` document with one image element in
 // content, referencing the given asset key/bytes/mediaType, with the
 // element's box given by boxW/boxH (millipoints).
 func imageTemplateJSON(assetKey string, wrapped []string, mediaType string, boxW, boxH int) string {

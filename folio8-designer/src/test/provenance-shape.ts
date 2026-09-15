@@ -240,7 +240,7 @@ export function assertProvenanceShape(expect: Expect, tier: string, subject: str
   // `owner/repo@v1 — , fetched 2026-09-03` satisfied every assertion above it
   // with an empty path half. The path half is what says WHICH FILE of the
   // project these bytes are; without it the record names a repository and a
-  // day, and a reader holding a `.folio8` cannot get back to the file. Held to
+  // day, and a reader holding a `.folio` cannot get back to the file. Held to
   // presence only, which is all the real halves have in common
   // (`ofl/notosans/NotoSans-Regular.ttf`, `TTF/SourceSans3-Regular.ttf`).
   expect(pathHalfOf(value).trim(), `${tier}: ${subject} names a project and a fetch date but no path within the project, so it never says which file of that project the bytes are`).not.toBe('')

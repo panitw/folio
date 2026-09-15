@@ -617,10 +617,10 @@ func assertLocatedTableAlignRefusal(t *testing.T, err error, field string) {
 // having one predicate.
 //
 // THE OUT-OF-RANGE ROWS ARE IN THE REFUSE COLUMN BY RULING (D-12.C).
-// `+99:99` and `+24:00` are not fixed offsets, folio8-format.md's `utcOffset`
+// `+99:99` and `+24:00` are not fixed offsets, folio-format.md's `utcOffset`
 // field-table row says it is a fixed offset spelled ±HH:MM, and the repaired
 // pattern implements that rather than narrowing it — 0 of the 31
-// `.folio8` files in the corpus is excluded (D-12.C.3; D-12.C's own
+// `.folio` files in the corpus is excluded (D-12.C.3; D-12.C's own
 // table says 28, a smaller population, not a different answer).
 //
 // THIS TABLE IS READ BY THE COMMAND DOOR'S TEST TOO. `package folio8`'s
@@ -642,9 +642,9 @@ var utcOffsetProbes = []struct {
 	admit bool
 	why   string
 }{
-	{"+00:00", true, "UTC, the corpus's own commonest value (24 of the 31 .folio8 files, D-12.C.3)"},
+	{"+00:00", true, "UTC, the corpus's own commonest value (24 of the 31 .folio files, D-12.C.3)"},
 	{"-00:00", true, "negative zero is a legal spelling of the same offset and the format does not forbid it"},
-	{"+07:00", true, "Bangkok; the corpus's only other value (7 of the 31 .folio8 files, D-12.C.3)"},
+	{"+07:00", true, "Bangkok; the corpus's only other value (7 of the 31 .folio files, D-12.C.3)"},
 	{"-05:30", true, "a half-hour offset, negative"},
 	{"+14:00", true, "Kiritimati, the largest real offset"},
 	{"-12:00", true, "the smallest real offset"},
@@ -652,7 +652,7 @@ var utcOffsetProbes = []struct {
 	{"+99:99", false, "D-12.C: no clock has it; it LOADED before Story 12.2 and then failed at render"},
 	{"+24:00", false, "HH is an hour; 24 is not one"},
 	{"+00:60", false, "MM is a minute; 60 is not one"},
-	{"Z", false, "it is not ±HH:MM, the syntax folio8-format.md's `utcOffset` field-table row states; it is RFC 3339's UTC spelling and belongs to report DATA (D-12.C). That is the whole ground — -00:00 above is admitted because it IS ±HH:MM, and the two rows differ by syntax and nothing else (D-12.C.4)"},
+	{"Z", false, "it is not ±HH:MM, the syntax folio-format.md's `utcOffset` field-table row states; it is RFC 3339's UTC spelling and belongs to report DATA (D-12.C). That is the whole ground — -00:00 above is admitted because it IS ±HH:MM, and the two rows differ by syntax and nothing else (D-12.C.4)"},
 	{"+7:00", false, "one hour digit"},
 	{"+0700", false, "no colon"},
 	{"07:00", false, "no sign"},
@@ -692,7 +692,7 @@ func TestIsUTCOffsetMatchesTheLoader(t *testing.T) {
 	// so does the command's, so a re-typing here is the drift the
 	// constant exists to prevent.
 	if UTCOffsetSyntax != "±HH:MM" {
-		t.Errorf("UTCOffsetSyntax = %q, want ±HH:MM — folio8-format.md's own utcOffset field-table row", UTCOffsetSyntax)
+		t.Errorf("UTCOffsetSyntax = %q, want ±HH:MM — folio-format.md's own utcOffset field-table row", UTCOffsetSyntax)
 	}
 }
 

@@ -134,9 +134,9 @@ var robotoBoldItalic []byte
 
 // Shipped returns folio8-go's shipped font set — the three Story 2.2 Noto
 // faces, Story 16.8's Roboto and Story 11.1's seven weighted and sloped
-// cuts — keyed by the exact face names a `.folio8` document's `fonts`
+// cuts — keyed by the exact face names a `.folio` document's `fonts`
 // fallback chains reference. A new document's starter template
-// (folio8-designer/public/templates/starter.folio8) names its default chain
+// (folio8-designer/public/templates/starter.folio) names its default chain
 // `"Roboto"` over the same three families, and since Story 11.3 it
 // declares the CUTS as well: Roboto as an object carrying `bold`,
 // `italic` and `boldItalic`, Noto Sans Thai carrying `bold` alone (there

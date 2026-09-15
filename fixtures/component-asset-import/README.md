@@ -1,7 +1,7 @@
 # Fixture: component-asset-import
 
 Story 5.13's golden record. Unlike `fixtures/image-embed/`, which pins the passthrough
-image-**rendering** path (a `.folio8` document that already names an image asset), this fixture
+image-**rendering** path (a `.folio` document that already names an image asset), this fixture
 pins the **asset-authoring command** (AD-9, D-5.13.1): `setComponentAsset`'s digest-as-key
 insertion, 76-column canonical base64 wrapping, sorted-key serialization, insert-if-absent
 dedup, and repoint-with-orphan-collection, run through the real `ApplyComponentCommand` /
@@ -9,7 +9,7 @@ dedup, and repoint-with-orphan-collection, run through the real `ApplyComponentC
 
 It sits beside `fixtures/image-embed/`, replacing neither: `image-embed/` remains the
 passthrough-render baseline (a document that already carries its image asset); this fixture is
-the first to pin the **command that produces** a `.folio8` document's asset bytes in the first
+the first to pin the **command that produces** a `.folio` document's asset bytes in the first
 place.
 
 ## How this fixture was generated
@@ -38,11 +38,11 @@ present; it stayed green under the same mutation with only one.
 2. Apply one real `setComponentAsset` command against element `e1` ONLY, replacing its asset with a
    different real, valid, decodable 1x1 grayscale PNG (`internal/template/fixtures_test.go`'s own
    fixture picture; 81 bytes decoded) declared as `image/png`.
-3. Serialize the resulting template canonically (`SerializeTemplate`) — that is `input.folio8`,
+3. Serialize the resulting template canonically (`SerializeTemplate`) — that is `input.folio`,
    captured verbatim, not retyped. The command's own logic (D-5.13.3) repoints element `e1` to
    the new asset's key and, because nothing else in the document referenced the prior asset,
    collects it as an orphan and drops it. `e2`'s asset is untouched throughout — neither repointed
-   nor collected — so `input.folio8` carries exactly TWO assets: the new one at key
+   nor collected — so `input.folio` carries exactly TWO assets: the new one at key
    `541581d3ab4d47c46ce5bcfbe86f9e9369f425b41df11decff572d259fa22c65` and `e2`'s untouched one at
    `a3beda078fd65550fb477583f62a56b17fcb89a881b22606c1790cede7f9640a`, serialized in sorted-key
    order (`5...` before `a...`).
@@ -51,7 +51,7 @@ present; it stayed green under the same mutation with only one.
 
 ## Contents
 
-- `input.folio8` — the captured canonical output of step 3 above, byte-identical to the
+- `input.folio` — the captured canonical output of step 3 above, byte-identical to the
   `componentAssetImportTemplateJSON` constant in `folio8-go/render_test.go`.
 - `expected.json` — the normative record: SHA-256 of the rendered bytes, `folio8GoVersion`, and the
   exact Go toolchain version that produced the hash (AC16, D-1.2.2). `goToolchain` matches every
@@ -64,12 +64,12 @@ present; it stayed green under the same mutation with only one.
 `TestRenderMatchesComponentAssetImportGoldenFixture` (`folio8-go/fixture_test.go`) asserts two
 things, not one:
 
-1. **(a)** the render of `input.folio8` matches `expected.json`'s recorded hash, in the same shape
+1. **(a)** the render of `input.folio` matches `expected.json`'s recorded hash, in the same shape
    as every other golden fixture (`TestRenderMatchesGoldenFixture`'s pattern) — with the same
    image-XObject vacuity guard `image-embed/` carries, so a render that silently dropped the
    embedded image would fail here before any hash comparison runs.
 2. **(b)** re-running the real `setComponentAsset` command — against the same starting document
-   and the same source image bytes used to generate this fixture — reproduces `input.folio8`
+   and the same source image bytes used to generate this fixture — reproduces `input.folio`
    byte-for-byte.
 
 (b) is what makes this a Story 5.13 fixture rather than a second `image-embed`: the committed

@@ -710,7 +710,7 @@ func TestMissingGlyphMessageSpellsACarriedFaceForAHuman(t *testing.T) {
 // and D-1.8.1 as amended puts its refusal at the moment something must draw
 // with it. An unsupplied face is a DEPLOYMENT CONDITION: the same document is
 // correct on a host that supplies it, and AD-8's chain exists precisely so a
-// document survives one. The rule is written down in folio8-format.md; this
+// document survives one. The rule is written down in folio-format.md; this
 // test is what stops either arm flipping unnoticed.
 func TestANonFontAssetRefusesWhereAnUnsuppliedFaceSkips(t *testing.T) {
 	t.Run("a non-font asset refuses even though a later entry covers", func(t *testing.T) {

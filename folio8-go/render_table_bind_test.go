@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// tableBindTestTemplateJSON is a `.folio8` document with one table
+// tableBindTestTemplateJSON is a `.folio` document with one table
 // element bound to a collection path ("transactions[]", source AC5)
 // and one column whose bind stays expression-shaped (D-1.6.8's fence
 // — Story 3.1 does not evaluate columns[].bind, that is 3.2).

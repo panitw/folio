@@ -217,7 +217,7 @@ func textRiseOperands(t *testing.T, run int, block string) []string {
 
 // TestThaiStackedMarksGoldenFixture is the byte-identity half: the live
 // render must reproduce fixtures/thai-stacked-marks/expected.pdf exactly,
-// and the committed input.folio8 must still be byte-identical to the const
+// and the committed input.folio must still be byte-identical to the const
 // this package renders (the hand-sync precedent font-text,
 // multi-script-fallback, wrapped-text, mandatory-break, line-spacing,
 // justified-text, justified-thai and alignment-rounding set).
@@ -225,7 +225,7 @@ func TestThaiStackedMarksGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", "thai-stacked-marks")
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

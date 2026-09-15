@@ -1,6 +1,6 @@
 package folio8
 
-// thaiStackedMarksTemplateJSON is fixtures/thai-stacked-marks/input.folio8,
+// thaiStackedMarksTemplateJSON is fixtures/thai-stacked-marks/input.folio,
 // kept byte-identical to it by TestThaiStackedMarksGoldenFixture (the
 // same hand-sync precedent font-text, multi-script-fallback,
 // wrapped-text, mandatory-break, line-spacing, justified-text,

@@ -6,7 +6,7 @@ precedent: add a document, never switch one).
 
 | file | what it is |
 |---|---|
-| `input.folio8` | the source document. Kept **byte-identical** to `folio8-go/shapedTextTemplateJSON` (`render_test.go`); `TestShapedTextGoldenFixture` fails if they drift. |
+| `input.folio` | the source document. Kept **byte-identical** to `folio8-go/shapedTextTemplateJSON` (`render_test.go`); `TestShapedTextGoldenFixture` fails if they drift. |
 | `expected.json` | the **normative** hash, plus the recorded `folio8GoVersion` and `goToolchain`. |
 | `expected.pdf` | the rendered document, for **human diffing only**. Its own SHA-256 is asserted to equal `expected.json`'s, so the two halves cannot drift apart. |
 | `harfbuzz-oracle.json` | the independent cross-validation oracle — see below. |

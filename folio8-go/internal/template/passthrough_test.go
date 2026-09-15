@@ -18,7 +18,7 @@ import (
 // Ten of the document's eleven object levels accept and preserve an
 // unknown key opaquely (AC8, D-1.4.9: "nothing is dropped, nothing is
 // refused"). The eleventh, `bands`, is a DELIBERATE, ruled exception:
-// folio8-format.md (:101) and AC5 state "Exactly these three keys (FR6)"
+// folio-format.md (:101) and AC5 state "Exactly these three keys (FR6)"
 // as one of the closed sets this story enforces — a normative statement
 // about the schema's shape, not an implementation choice with no ruling
 // behind it (unlike the other five levels this story's finisher review

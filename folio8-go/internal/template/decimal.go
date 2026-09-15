@@ -153,7 +153,7 @@ const MaxSplitExponentMagnitude = 100_000
 // all, so an absurd exponent like "99999999999999999999" silently
 // wrapped into an arbitrary int64 (frequently math.MinInt64), which
 // then reached big.Int.Exp's repeated squaring in decodePoints and
-// HUNG the process — reachable from a syntactically valid `.folio8`
+// HUNG the process — reachable from a syntactically valid `.folio`
 // through the public folio8.LoadTemplate (measured, story 1.6 Dev
 // Notes M-1; the defect is recorded against Story 1.4's "malformed …
 // templates rejected with a located error" promise).

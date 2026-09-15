@@ -151,7 +151,7 @@ func TestStandInDocumentIsAcceptedByEveryFunction(t *testing.T) {
 // acceptance criterion against a LITERAL expected document, never against
 // a value read back out of the generator (D-11.2.2, D-11.2.8).
 func TestStandInScalarBindingRendersAsNothing(t *testing.T) {
-	tpl, err := ParseTemplate(standInReadFile(t, "testdata/example/first-pdf.folio8"))
+	tpl, err := ParseTemplate(standInReadFile(t, "testdata/example/first-pdf.folio"))
 	if err != nil {
 		t.Fatalf("presence precondition: the shipped example does not parse: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestStandInScalarBindingRendersAsNothing(t *testing.T) {
 // central promise and gets its own pin: nothing here changes what Render
 // does when data is genuinely ABSENT.
 func TestAbsentDataStillFailsWithTheLocatedBindingError(t *testing.T) {
-	tpl, err := ParseTemplate(standInReadFile(t, "testdata/example/first-pdf.folio8"))
+	tpl, err := ParseTemplate(standInReadFile(t, "testdata/example/first-pdf.folio"))
 	if err != nil {
 		t.Fatalf("presence precondition: the shipped example does not parse: %v", err)
 	}

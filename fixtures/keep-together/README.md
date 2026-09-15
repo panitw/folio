@@ -50,7 +50,7 @@ fixture — so that doc comment now points here instead of repeating the numbers
 ## The twin
 
 `folio8-go/keep_together_template.go` ships this document as `keepTogetherTemplateJSON`,
-byte-identical to `input.folio8`, **and a second const identical except that the three tags are
+byte-identical to `input.folio`, **and a second const identical except that the three tags are
 absent**. `TestKeepTogetherTwinDiffersOnlyByTheTags` asserts mechanically that the pair differs in
 exactly that one respect, so "the two renders differ" cannot quietly become evidence about something
 else. Every assertion in `keep_together_fixture_test.go` is about the *difference* between the two,

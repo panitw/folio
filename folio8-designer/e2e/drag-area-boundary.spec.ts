@@ -9,7 +9,7 @@ async function openFixture(page: Page, later = false, orphan: boolean | 'tall' =
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
-  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio8', import.meta.url), 'utf8'))
+  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.height = 61.123
   fixture.bands.pageFooter.height = 40.456
   fixture.bands.content.elements = [
@@ -20,7 +20,7 @@ async function openFixture(page: Page, later = false, orphan: boolean | 'tall' =
   fixture.nextId = 4
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'drag-boundary.folio8', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
+  await (await chooser).setFiles({ name: 'drag-boundary.folio', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
   await expect(component(page, 'e1')).toBeVisible()
 }
 async function drag(page: Page, id: string, dy: number, release = true) {

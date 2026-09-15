@@ -1,6 +1,6 @@
 package folio8
 
-// declaredVariantsTemplateJSON is fixtures/declared-variants/input.folio8,
+// declaredVariantsTemplateJSON is fixtures/declared-variants/input.folio,
 // kept byte-identical to it BY HAND and pinned by
 // TestDeclaredVariantsGoldenFixture (line-spacing's precedent, the same
 // hand-sync tie font-text, multi-script-fallback, wrapped-text,
@@ -22,7 +22,7 @@ package folio8
 //
 // WHAT IT DECLARES. One chain entry, in the object form Story 11.2
 // introduced and the shipped starter now writes for an author
-// (folio8-designer/public/templates/starter.folio8):
+// (folio8-designer/public/templates/starter.folio):
 //
 //	{"bold": "Roboto Bold", "boldItalic": "Roboto Bold Italic",
 //	 "face": "Roboto", "italic": "Roboto Italic"}

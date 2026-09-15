@@ -13,8 +13,8 @@ in this directory, the unmodified upstream licence text).
 
 This is one of Story 2.2's three shipped production faces (AC1, AC9):
 folio8-go's bundled `FontSet`, keyed as `"Noto Sans SC"`, providing Simplified Chinese (CJK) glyph coverage
-for the `fonts` fallback chains a `.folio8` document declares (see
-`folio8-format.md`'s `fonts` example,
+for the `fonts` fallback chains a `.folio` document declares (see
+`folio-format.md`'s `fonts` example,
 `["Noto Sans", "Noto Sans Thai", "Noto Sans SC"]`).
 
 It is a **static** TrueType font — `glyf` outlines, **no** `fvar`/`gvar`/

@@ -11,7 +11,7 @@ import "github.com/panitw/folio8/folio8-go/internal/geom"
 //
 // It converts a TOP-DOWN, page-local Y (the offset from the page's
 // printable top edge to the TOP of whatever is being placed; this is
-// how Y reads in the `.folio8` document model, per textdoc.go's TextRun
+// how Y reads in the `.folio` document model, per textdoc.go's TextRun
 // doc comment) into PDF user space's BOTTOM-UP Y (the coordinate of the
 // BOTTOM of that same thing) — what every placement operator (Tm's ty,
 // or cm's f for an image) actually needs.

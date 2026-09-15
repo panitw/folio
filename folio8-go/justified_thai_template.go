@@ -1,6 +1,6 @@
 package folio8
 
-// justifiedThaiTemplateJSON is fixtures/justified-thai/input.folio8, kept
+// justifiedThaiTemplateJSON is fixtures/justified-thai/input.folio, kept
 // byte-identical to it by TestJustifiedThaiGoldenFixture (the same
 // hand-sync precedent font-text, multi-script-fallback, wrapped-text,
 // mandatory-break, line-spacing, justified-text and alignment-rounding

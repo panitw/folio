@@ -96,7 +96,7 @@ giving **22 lines on page 1 and 7 on page 2**.
 
 | file | what it is |
 |---|---|
-| `input.folio8` | the document. Kept **byte-identical** to `multiPageTemplateJSON` in `folio8-go/multi_page_template.go`, by hand. |
+| `input.folio` | the document. Kept **byte-identical** to `multiPageTemplateJSON` in `folio8-go/multi_page_template.go`, by hand. |
 | `expected.pdf` | the golden, recorded by Story 2.6. |
 | `expected.json` | the golden's digest and the toolchain that produced it. |
 

@@ -270,7 +270,7 @@ func cascadeTableDoc(headerStyleJSON string) string {
 // null and stopped the fall-through: measured at 2 inked runs where an
 // absent or empty headerStyle gave 3, with the header printing black. The
 // background and border arms on the SAME table are the controls — both
-// already fall through on an explicit null — and folio8-format.md already
+// already fall through on an explicit null — and folio-format.md already
 // states the correct rule, so the code was the outlier and neither document
 // changes.
 func TestANullHeaderColorFallsThroughToTheTableColour(t *testing.T) {

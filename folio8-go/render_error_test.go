@@ -28,7 +28,7 @@ const malformedTemplateJSON = `{
 `
 
 // unparseableTemplateJSON is what FR41's "malformed template" mode
-// actually names since Story 7.8: bytes that are not a `.folio8`
+// actually names since Story 7.8: bytes that are not a `.folio`
 // DOCUMENT at all. It has no field to be located at, and its own error
 // text can quote the offending input back — which is exactly why
 // wasm/cmd/engine's reportableMessage replaces TEMPLATE_MALFORMED's

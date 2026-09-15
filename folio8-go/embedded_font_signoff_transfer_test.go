@@ -59,13 +59,13 @@ type fixtureShapedRun struct {
 }
 
 // shapedRunFromCommittedFixture shapes one element of a fixture's COMMITTED
-// input.folio8 — read from disk, not from a Go constant mirroring it — because
+// input.folio — read from disk, not from a Go constant mirroring it — because
 // the sign-off record names fixture paths, and a constant is a second
 // authority on what the fixture says.
 func shapedRunFromCommittedFixture(t *testing.T, fixtureDir, elementID string) fixtureShapedRun {
 	t.Helper()
 	root := repoRootFromTest(t)
-	path := filepath.Join(root, "fixtures", fixtureDir, "input.folio8")
+	path := filepath.Join(root, "fixtures", fixtureDir, "input.folio")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -85,7 +85,7 @@ func shapedRunFromCommittedFixture(t *testing.T, fixtureDir, elementID string) f
 		}
 	}
 	if !found {
-		t.Fatalf("presence precondition: fixtures/%s/input.folio8 has no content element %q — the transfer names it, so its absence makes every assertion below vacuous", fixtureDir, elementID)
+		t.Fatalf("presence precondition: fixtures/%s/input.folio has no content element %q — the transfer names it, so its absence makes every assertion below vacuous", fixtureDir, elementID)
 	}
 
 	chain, styled, err := fontChain(tpl, el)

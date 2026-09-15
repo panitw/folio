@@ -52,7 +52,7 @@ func TestBarcodeThaiBillPaymentGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", barcodeThaiBillPaymentFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", barcodeThaiBillPaymentTemplateJSON},
+		{"input.folio", barcodeThaiBillPaymentTemplateJSON},
 		{"data.json", barcodeThaiBillPaymentDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))

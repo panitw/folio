@@ -1844,7 +1844,7 @@ var matrixDocuments = []matrixDocument{
 	{
 		// Story 4.7's FOUR documents — the C4 gate, and THE FIRST
 		// TABLE GOLDENS THIS REPOSITORY HAS EVER HAD. Measured at
-		// 4.7's baseline: not one committed fixture's input.folio8
+		// 4.7's baseline: not one committed fixture's input.folio
 		// contained a table, so cross-target identity had never once
 		// been asserted over a paginated table with a repeated
 		// header and a footer aggregate.
@@ -2224,7 +2224,7 @@ var matrixDocuments = []matrixDocument{
 	},
 	{
 		// Story 8.3's document (FR53/FR56), and Story 8.4's subject — THE
-		// FIRST `.folio8` THIS MATRIX RENDERS THAT CARRIES A FONT FACE, the
+		// FIRST `.folio` THIS MATRIX RENDERS THAT CARRIES A FONT FACE, the
 		// first to declare version 2.0 for a reason other than
 		// `align: "justify"`, and now the first whose page is DRAWN with a
 		// face the document itself carries.

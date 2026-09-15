@@ -41,7 +41,7 @@ func buildFolio8Binary(t *testing.T) string {
 func TestRenderReadsSourceDateEpochFromEnvironment(t *testing.T) {
 	bin := buildFolio8Binary(t)
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	// 1750000000 -> 2025-06-15T15:06:40Z (a fixed epoch this test owns
@@ -81,7 +81,7 @@ func TestRenderReadsSourceDateEpochFromEnvironment(t *testing.T) {
 func TestRenderSourceDateEpochValueIsHonoured(t *testing.T) {
 	bin := buildFolio8Binary(t)
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	cmd := exec.Command(bin, "render", "-data", dataPath, tplPath)
@@ -107,7 +107,7 @@ func TestRenderSourceDateEpochValueIsHonoured(t *testing.T) {
 func TestRenderWithSourceDateEpochUnsetIsByteIdenticalToNoParams(t *testing.T) {
 	bin := buildFolio8Binary(t)
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	// Build an environment with SOURCE_DATE_EPOCH explicitly ABSENT

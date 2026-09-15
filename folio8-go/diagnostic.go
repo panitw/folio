@@ -288,7 +288,7 @@ const DiagCodeStyleColorInvalid = string(diag.CodeStyleColorInvalid)
 const DiagCodeStyleLineSpacingInvalid = string(diag.CodeStyleLineSpacingInvalid)
 
 // DiagCodeTemplateFieldInvalid names the GENERAL load-stage condition
-// (Story 7.8, D-7.8.1): a well-formed `.folio8` document carries a field
+// (Story 7.8, D-7.8.1): a well-formed `.folio` document carries a field
 // value that is not acceptable — a closed-set member that is not in the
 // set, a missing required field, a value of the wrong JSON kind, a
 // misspelled or duplicated element id. Loading fails with a
@@ -478,7 +478,7 @@ type Diagnostic struct {
 //
 //   - ORDER IS DOCUMENT ORDER: band order (page header, then content,
 //     then page footer), and within one band, element DECLARATION order
-//     — the order elements appear in the authored `.folio8` document.
+//     — the order elements appear in the authored `.folio` document.
 //     NEVER map order, and never an order that depends on which
 //     goroutine or which pass happened to finish detecting an overflow
 //     first.

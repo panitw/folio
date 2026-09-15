@@ -50,7 +50,7 @@ with identical output.
 
 ### The coverage history, recorded here so a future reader at a gate does not have to re-derive it
 
-Measured at this story's baseline (`df8cbcc`), with `grep -l '"table"' fixtures/*/input.folio8`:
+Measured at this story's baseline (`df8cbcc`), with `grep -l '"table"' fixtures/*/input.folio`:
 **no committed golden contained a table** before this story. Not one of the nine recorded
 `expected.pdf` files in this repository carried a single table element, so no recorded byte in
 the corpus could tell a correct table from a broken one.
@@ -120,7 +120,7 @@ the bound collection:
   life of the project, and minting would create a second signed corpus that could disagree with
   it.
 - **A lowered/stacked Thai mark positioned by GPOS inside a table cell** — `ปั ฟั ที่ ป้ำ`,
-  verbatim from `fixtures/shaped-text/input.folio8`. The `ฟั` cluster's declared GPOS x-offset of
+  verbatim from `fixtures/shaped-text/input.folio`. The `ฟั` cluster's declared GPOS x-offset of
   +21 font units reaches the page as a TJ adjustment.
 - **A generated date supplied through `params`, never a clock.** The value `2026-08-27` occurs
   nowhere else in the fixture — every transaction date and the statement period fall in

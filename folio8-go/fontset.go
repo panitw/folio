@@ -1,7 +1,7 @@
 package folio8
 
 // FontSet is the engine's explicit font input (AC1, AC2, AD-8). It maps
-// a face name — as referenced by a `.folio8` document's `fonts` fallback
+// a face name — as referenced by a `.folio` document's `fonts` fallback
 // chains — to that face's raw OpenType/TrueType font program bytes.
 //
 // The engine never goes looking for fonts on the machine it runs on: a

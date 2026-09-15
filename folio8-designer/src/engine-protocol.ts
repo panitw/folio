@@ -148,7 +148,7 @@ export const BANDS_CAPPING_VERTICALLY = ['pageHeader', 'pageFooter']
 // permanently blank with nothing to attribute it to.
 //
 // A FIFTH TAG IS NOT ADDED HERE. Widening the set is a MAJOR change under
-// folio8-format.md's MINOR-increment rule — every existing library validates it as a load error —
+// folio-format.md's MINOR-increment rule — every existing library validates it as a load error —
 // so it is Go's decision and an owner's, and it reaches this file through the
 // mirror rather than by an edit that starts here.
 export const LOCALE_TAGS = ['en', 'th', 'zh-Hans', 'ja'] as const
@@ -374,7 +374,7 @@ export type TableColumns = Readonly<{ revision: number; table: Readonly<{ tableI
 export type TableCellPadding = Readonly<{ paddingLeft: string; paddingRight: string; paddingHeaderOverride: boolean }>
 
 // Opaque bytes/JSON are deliberately the only document-bearing values on this
-// boundary. These types describe transport, not the .folio8 file format.
+// boundary. These types describe transport, not the .folio file format.
 export type EngineRequest = Readonly<{
   protocolVersion: typeof ENGINE_PROTOCOL_VERSION
   kind: 'request'
@@ -392,7 +392,7 @@ export type EngineSnapshot = Readonly<{
 	canvas?: CanvasProjection
 }>
 
-// This is paint-only output from Go, not a .folio8 page model. Values are
+// This is paint-only output from Go, not a .folio page model. Values are
 // millipoints and are never used to derive a browser document layout.
 export type AuthoredProperty<T> = Readonly<{ state: 'absent' | 'null' }> | Readonly<{ state: 'value'; value: T }>
 export type AuthoredProperties = Readonly<Record<'fontFamily', AuthoredProperty<string>> & {
@@ -580,7 +580,7 @@ const isRenderPayload = (value: unknown): value is RenderPayload => isRecord(val
 const isIdentityPayload = (value: unknown): value is IdentityPayload => isRecord(value) && hasExactKeys(value, ['data', 'params']) && ['data', 'params'].every((key) => isArrayBuffer(value[key]) && value[key].byteLength > 0 && value[key].byteLength <= MAX_ENGINE_PAYLOAD_BYTES)
 // DW-70. Go sorts the projected chain names with slices.Sorted over Go
 // strings, which compares them BY BYTE — and those keys are the canonical
-// `.folio8`'s own `fonts` key order under AD-9, so Go's order IS the document's
+// `.folio`'s own `fonts` key order under AD-9, so Go's order IS the document's
 // order and is NORMATIVE. JavaScript's `<` compares UTF-16 CODE UNITS, and the
 // two disagree wherever a name mixes the astral planes with U+E000-U+FFFF: a
 // surrogate pair (0xD800-) sorts BELOW U+E000 in UTF-16 and ABOVE it in UTF-8.

@@ -5,7 +5,7 @@ in the `pages` shape, where each page has its own section break or follows the p
 
 | File | What it is |
 |---|---|
-| `input.folio8` | A canonical three-page document on A4. Page 1 holds a synthetic statement: two heading lines, a `transactions[]` table and, below an **unanchored** section break at 600pt, a code legend. Page 2 has `"pageBreak": false` and holds a `charges[]` table and, below an **anchored** section break at 400pt, a note. Page 3 has `"pageBreak": false` and holds a signature block. The shared page header and page footer print `Page {{page}} of {{pages}}`. |
+| `input.folio` | A canonical three-page document on A4. Page 1 holds a synthetic statement: two heading lines, a `transactions[]` table and, below an **unanchored** section break at 600pt, a code legend. Page 2 has `"pageBreak": false` and holds a `charges[]` table and, below an **anchored** section break at 400pt, a note. Page 3 has `"pageBreak": false` and holds a signature block. The shared page header and page footer print `Page {{page}} of {{pages}}`. |
 | `data.json` | Sixty **synthetic** transactions and forty synthetic service charges for a fictitious account holder — no real customer data |
 | `expected.pdf` | The render, sha256 `787d4707423f67975f1c26cee7d29002561b2ae5494e1f6f4acb50a12299cb07` |
 
@@ -18,8 +18,8 @@ header and page footer, and the footers read `Page 1 of 4` to `Page 4 of 4`.
 
 ## What the tests prove
 
-- `TestMultiPageFlowGoldenFixture` pins `input.folio8` and `data.json` to the Go constants in
-  `multi_page_flow_template.go`, checks that `input.folio8` saves back byte-for-byte, and pins the
+- `TestMultiPageFlowGoldenFixture` pins `input.folio` and `data.json` to the Go constants in
+  `multi_page_flow_template.go`, checks that `input.folio` saves back byte-for-byte, and pins the
   render's sha256 to `expected.json` and `expected.pdf`.
 - `TestMultiPageFlowSemanticAcceptance` checks the page model against oracles rendered from each
   page alone as a one-page document: pages 1 and 2 draw exactly what they draw alone, and page 3's

@@ -9,7 +9,7 @@ import (
 	"github.com/panitw/folio8/folio8-go/internal/template"
 )
 
-// minimalTemplateJSON is a well-formed `.folio8` document (AC4): a
+// minimalTemplateJSON is a well-formed `.folio` document (AC4): a
 // version, page setup, and ordered (empty) band content.
 const minimalTemplateJSON = `{
   "assets": {},
@@ -44,7 +44,7 @@ const minimalTemplateJSON = `{
 }
 `
 
-// TestParseTemplate is AC4/AC1: a well-formed `.folio8` file parses with
+// TestParseTemplate is AC4/AC1: a well-formed `.folio` file parses with
 // no error via ParseTemplate.
 func TestParseTemplate(t *testing.T) {
 	tpl, err := ParseTemplate([]byte(minimalTemplateJSON))
@@ -63,7 +63,7 @@ func TestParseTemplate(t *testing.T) {
 // delegates to ParseTemplate.
 func TestLoadTemplate(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "minimal.folio8")
+	path := filepath.Join(dir, "minimal.folio")
 	if err := os.WriteFile(path, []byte(minimalTemplateJSON), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestLoadTemplate(t *testing.T) {
 // TestLoadTemplateMissingFile confirms LoadTemplate surfaces the
 // underlying os error rather than swallowing it.
 func TestLoadTemplateMissingFile(t *testing.T) {
-	_, err := LoadTemplate(filepath.Join(t.TempDir(), "does-not-exist.folio8"))
+	_, err := LoadTemplate(filepath.Join(t.TempDir(), "does-not-exist.folio"))
 	if err == nil {
 		t.Fatal("expected an error for a missing file")
 	}
@@ -115,7 +115,7 @@ func TestHigherMajorVersionIsRejected(t *testing.T) {
 // TestLoadTemplateRejectsHugeExponentQuickly is AC4c/D-1.6.6's retained
 // CORPUS fixture, proved through the PUBLIC loader (not only the unit
 // test in internal/template/decimal_test.go): a syntactically valid
-// `.folio8` file (testdata/template/malformed/huge-exponent.folio8)
+// `.folio` file (testdata/template/malformed/huge-exponent.folio)
 // containing element e1's x set to 1e99999999999999999999 must produce
 // a located error, quickly.
 //
@@ -136,7 +136,7 @@ func TestHigherMajorVersionIsRejected(t *testing.T) {
 // the surrounding `go test` process timeout is the safety net.
 func TestLoadTemplateRejectsHugeExponentQuickly(t *testing.T) {
 	root := repoRootFromTest(t)
-	path := filepath.Join(root, "folio8-go", "testdata", "template", "malformed", "huge-exponent.folio8")
+	path := filepath.Join(root, "folio8-go", "testdata", "template", "malformed", "huge-exponent.folio")
 
 	tpl, err := LoadTemplate(path)
 	if err == nil {
@@ -166,7 +166,7 @@ func TestLoadTemplateRejectsHugeExponentQuickly(t *testing.T) {
 // through the public path" — for BOTH input classes now).
 func TestLoadTemplateRejectsNegativeWrapExponentQuicklyToo(t *testing.T) {
 	root := repoRootFromTest(t)
-	path := filepath.Join(root, "folio8-go", "testdata", "template", "malformed", "huge-exponent-negative-wrap.folio8")
+	path := filepath.Join(root, "folio8-go", "testdata", "template", "malformed", "huge-exponent-negative-wrap.folio")
 
 	tpl, err := LoadTemplate(path)
 	if err == nil {

@@ -197,7 +197,7 @@ func TestBindStageCaveatPrecedesLayoutStageClipWarning(t *testing.T) {
 	}
 }
 
-// multiPageAggregateBandTemplateJSON builds a synthetic .folio8 document
+// multiPageAggregateBandTemplateJSON builds a synthetic .folio document
 // SHARING multi_page_composition_test.go's own measured geometry (page
 // height 841890mp, margin.top 30000mp, margin.bottom 42000mp,
 // pageHeader.height 18000mp, pageFooter.height 24000mp; 40 repetitions of

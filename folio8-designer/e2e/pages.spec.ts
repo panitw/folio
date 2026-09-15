@@ -18,8 +18,8 @@ const labels = (page: Page) => page.locator('.page-label')
 test('adds pages, deletes one after confirming, undoes it, and saves Page Break off', async ({ page }) => {
   await page.addInitScript(() => {
     const handle = {
-      name: 'pages.folio8',
-      getFile: async () => new File([], 'pages.folio8', { type: 'application/json' }),
+      name: 'pages.folio',
+      getFile: async () => new File([], 'pages.folio', { type: 'application/json' }),
       createWritable: async () => ({ write: async (written: ArrayBuffer) => { (window as typeof window & { __folio8Writes?: number[][] }).__folio8Writes = [Array.from(new Uint8Array(written))] }, close: async () => undefined }),
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
@@ -83,8 +83,8 @@ test('adds pages, deletes one after confirming, undoes it, and saves Page Break 
 test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it under pages[1]', async ({ page }) => {
   await page.addInitScript(() => {
     const handle = {
-      name: 'elements.folio8',
-      getFile: async () => new File([], 'elements.folio8', { type: 'application/json' }),
+      name: 'elements.folio',
+      getFile: async () => new File([], 'elements.folio', { type: 'application/json' }),
       createWritable: async () => ({ write: async (written: ArrayBuffer) => { (window as typeof window & { __folio8Writes?: number[][] }).__folio8Writes = [Array.from(new Uint8Array(written))] }, close: async () => undefined }),
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
@@ -152,8 +152,8 @@ test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it
 test('places a section break on page 2, follows the current page in the palette, and saves it under pages[1]', async ({ page }) => {
   await page.addInitScript(() => {
     const handle = {
-      name: 'breaks.folio8',
-      getFile: async () => new File([], 'breaks.folio8', { type: 'application/json' }),
+      name: 'breaks.folio',
+      getFile: async () => new File([], 'breaks.folio', { type: 'application/json' }),
       createWritable: async () => ({ write: async (written: ArrayBuffer) => { (window as typeof window & { __folio8Writes?: number[][] }).__folio8Writes = [Array.from(new Uint8Array(written))] }, close: async () => undefined }),
     }
     Object.assign(window, { showSaveFilePicker: async () => handle })
@@ -200,12 +200,12 @@ test('edits the shared header from page 3, every copy changes, one undo reverts 
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
   await page.goto('/')
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio8', import.meta.url), 'utf8'))
+  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.elements = [{ id: 'e1', type: 'text', x: 0, y: 0, width: 200, height: 24, value: 'Acme', style: { fontFamily: 'Roboto', fontSize: 12 } }]
   fixture.nextId = 2
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'header.folio8', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
+  await (await chooser).setFiles({ name: 'header.folio', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
   await expect(labels(page)).toHaveText(['Page 1'])
   await tools(page).getByRole('button', { name: 'Add page' }).click()
   await expect(labels(page)).toHaveText(['Page 1', 'Page 2'])

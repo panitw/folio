@@ -278,7 +278,7 @@ func TestRenderMatchesGoldenFixture(t *testing.T) {
 	// AD-3 number emission, xref arithmetic, content-derived /ID — not
 	// the public Render API, which D-1.1.c designed to change every
 	// story and which now requires a non-nil template (AC14b). No
-	// `.folio8` template can reproduce these exact 547 bytes (F-8: the
+	// `.folio` template can reproduce these exact 547 bytes (F-8: the
 	// golden's content stream has no colour operator, and any
 	// template-authored rectangle's style.background emits one via
 	// D-1.1.b's colour rule) — so this test calls internal/pdf.Serialize()
@@ -369,15 +369,15 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
 	}
 
-	// Finding 14 (QA review): fixtures/font-text/input.folio8's own README
+	// Finding 14 (QA review): fixtures/font-text/input.folio's own README
 	// stated it is "kept in sync by hand — the fixture is not read at
 	// test time", with nothing asserting that claim. AD-21 makes the
 	// fixture the normative record of what produced the hash; if
-	// fontTestTemplateJSON were edited and input.folio8 were not, the
+	// fontTestTemplateJSON were edited and input.folio were not, the
 	// fixture would document a document that does not produce its own
 	// recorded hash — a silently lying artifact. This costs nothing new:
 	// the test already reads fixtures/ (out-of-module) under -count=1.
-	inputFolio8Path := filepath.Join(root, "fixtures", "font-text", "input.folio8")
+	inputFolio8Path := filepath.Join(root, "fixtures", "font-text", "input.folio")
 	inputFolio8Bytes, err := os.ReadFile(inputFolio8Path)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputFolio8Path, err)
@@ -386,7 +386,7 @@ func TestRenderMatchesFontTextGoldenFixture(t *testing.T) {
 		t.Fatalf(
 			"%s has drifted from folio8-go/fontTestTemplateJSON (render_test.go) — the two are "+
 				"supposed to be byte-identical (kept in sync by hand, per the fixture's own "+
-				"README); update input.folio8 to match, or this fixture no longer documents what "+
+				"README); update input.folio to match, or this fixture no longer documents what "+
 				"actually produced its recorded hash",
 			inputFolio8Path,
 		)
@@ -588,10 +588,10 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
 	}
 
-	// AC25a: input.folio8 is byte-identical to the Go constant that
-	// renders it — the same obligation font-text/input.folio8 carries
+	// AC25a: input.folio is byte-identical to the Go constant that
+	// renders it — the same obligation font-text/input.folio carries
 	// (Finding 14, Story 1.5's QA review), inherited here.
-	inputFolio8Path := filepath.Join(root, "fixtures", "image-embed", "input.folio8")
+	inputFolio8Path := filepath.Join(root, "fixtures", "image-embed", "input.folio")
 	inputFolio8Bytes, err := os.ReadFile(inputFolio8Path)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputFolio8Path, err)
@@ -599,7 +599,7 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 	if string(inputFolio8Bytes) != imageTestTemplateJSON {
 		t.Fatalf(
 			"%s has drifted from folio8-go/imageTestTemplateJSON (render_test.go) — the two are "+
-				"supposed to be byte-identical; update input.folio8 to match, or this fixture no "+
+				"supposed to be byte-identical; update input.folio to match, or this fixture no "+
 				"longer documents what actually produced its recorded hash",
 			inputFolio8Path,
 		)
@@ -662,7 +662,7 @@ func TestRenderMatchesImageEmbedGoldenFixture(t *testing.T) {
 
 // TestMultiScriptFallbackGoldenFixture is Story 2.2's AC8 fourth
 // fixture: renders multiScriptTestTemplateJSON (fixtures/multi-script-
-// fallback/input.folio8) through the public Render path against the
+// fallback/input.folio) through the public Render path against the
 // REAL shipped face set, and compares against the recorded golden —
 // the same shape TestRenderMatchesFontTextGoldenFixture already
 // established for font-text, extended with AC7's per-(face,pinned-
@@ -695,7 +695,7 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
 	}
 
-	inputFolio8Path := filepath.Join(root, "fixtures", "multi-script-fallback", "input.folio8")
+	inputFolio8Path := filepath.Join(root, "fixtures", "multi-script-fallback", "input.folio")
 	inputFolio8Bytes, err := os.ReadFile(inputFolio8Path)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputFolio8Path, err)
@@ -905,7 +905,7 @@ func TestMultiScriptFallbackGoldenFixture(t *testing.T) {
 // golden fixture, part (a): the same shape as
 // TestRenderMatchesImageEmbedGoldenFixture, applied to
 // fixtures/component-asset-import/ — but unlike image-embed, this
-// fixture's input.folio8 is not merely a document that names an asset; it
+// fixture's input.folio is not merely a document that names an asset; it
 // is the CAPTURED CANONICAL OUTPUT of one real setComponentAsset command
 // (see part (b), TestComponentAssetImportCommandReproducesTheFixtureInput,
 // below — part (a) alone would make this indistinguishable from a second
@@ -937,9 +937,9 @@ func TestRenderMatchesComponentAssetImportGoldenFixture(t *testing.T) {
 		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
 	}
 
-	// input.folio8 is byte-identical to the Go constant that renders it —
-	// the same obligation every other fixture's input.folio8 carries.
-	inputFolio8Path := filepath.Join(root, "fixtures", "component-asset-import", "input.folio8")
+	// input.folio is byte-identical to the Go constant that renders it —
+	// the same obligation every other fixture's input.folio carries.
+	inputFolio8Path := filepath.Join(root, "fixtures", "component-asset-import", "input.folio")
 	inputFolio8Bytes, err := os.ReadFile(inputFolio8Path)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputFolio8Path, err)
@@ -1016,7 +1016,7 @@ func TestRenderMatchesComponentAssetImportGoldenFixture(t *testing.T) {
 // render_test.go) and the same source image bytes (png1x1Gray(),
 // component_asset_command_test.go) used to generate this fixture, and
 // asserts the resulting canonical bytes are byte-for-byte identical to
-// fixtures/component-asset-import/input.folio8.
+// fixtures/component-asset-import/input.folio.
 //
 // This is what pins the AUTHORING COMMAND's canonical-bytes-producing
 // behaviour (AD-9: digest-as-key, 76-column wrap, sorted keys,
@@ -1025,7 +1025,7 @@ func TestRenderMatchesComponentAssetImportGoldenFixture(t *testing.T) {
 // red-proofs cleanly: change the base64 wrap width or the digest-as-key
 // derivation, and this test fails while TestRenderMatchesComponentAssetImportGoldenFixture
 // above might not (that test only observes the rendered PDF, not the
-// canonical `.folio8` bytes the command produced). Attribution note
+// canonical `.folio` bytes the command produced). Attribution note
 // (Finding 20, review of 2026-08-29): mutating the digest-as-key
 // derivation specifically reddens through ApplyComponentCommand's own
 // reparse hitting decodeAssets's PRE-EXISTING digest-match enforcement
@@ -1043,7 +1043,7 @@ func TestRenderMatchesComponentAssetImportGoldenFixture(t *testing.T) {
 // test actually compares.
 func TestComponentAssetImportCommandReproducesTheFixtureInput(t *testing.T) {
 	root := repoRootFromTest(t)
-	inputFolio8Path := filepath.Join(root, "fixtures", "component-asset-import", "input.folio8")
+	inputFolio8Path := filepath.Join(root, "fixtures", "component-asset-import", "input.folio")
 	want, err := os.ReadFile(inputFolio8Path)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputFolio8Path, err)
@@ -1073,7 +1073,7 @@ func TestComponentAssetImportCommandReproducesTheFixtureInput(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf(
 			"running the real setComponentAsset command against componentAssetImportBaseTemplateJSON + "+
-				"png1x1Gray() no longer reproduces fixtures/component-asset-import/input.folio8 "+
+				"png1x1Gray() no longer reproduces fixtures/component-asset-import/input.folio "+
 				"byte-for-byte — the authoring command's canonical output has drifted from the "+
 				"committed golden bytes (AD-9). This is a defect until proven to be an intended, "+
 				"versioned change — see fixtures/component-asset-import/README.md.\ngot:\n%s\nwant:\n%s",
@@ -1084,7 +1084,7 @@ func TestComponentAssetImportCommandReproducesTheFixtureInput(t *testing.T) {
 	if string(got) != componentAssetImportTemplateJSON {
 		t.Fatalf(
 			"the command's output also disagrees with folio8-go/componentAssetImportTemplateJSON " +
-				"(render_test.go) — that constant and fixtures/component-asset-import/input.folio8 " +
+				"(render_test.go) — that constant and fixtures/component-asset-import/input.folio " +
 				"were supposed to be kept byte-identical",
 		)
 	}

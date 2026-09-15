@@ -58,7 +58,7 @@ func roundTripInputs(t *testing.T, dir, name string) roundTripWitness {
 		return b
 	}
 	return roundTripWitness{
-		template:   read(".folio8"),
+		template:   read(".folio"),
 		data:       read(".data.json"),
 		params:     read(".params.json"),
 		browserPDF: read(".browser.pdf"),

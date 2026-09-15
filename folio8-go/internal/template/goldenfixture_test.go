@@ -20,7 +20,7 @@ func TestWorkedExampleMatchesGoldenFixture(t *testing.T) {
 
 	fence := extractWorkedExampleFence(t, string(docBytes))
 	if fence != string(golden) {
-		t.Fatalf("folio8-format.md's worked example fence is no longer byte-identical to the golden fixture:\n--- doc ---\n%s\n--- golden ---\n%s", fence, golden)
+		t.Fatalf("folio-format.md's worked example fence is no longer byte-identical to the golden fixture:\n--- doc ---\n%s\n--- golden ---\n%s", fence, golden)
 	}
 }
 
@@ -31,7 +31,7 @@ func extractWorkedExampleFence(t *testing.T, doc string) string {
 	t.Helper()
 	idx := strings.Index(doc, "## Worked example")
 	if idx < 0 {
-		t.Fatal("could not find \"## Worked example\" heading in folio8-format.md")
+		t.Fatal("could not find \"## Worked example\" heading in folio-format.md")
 	}
 	rest := doc[idx:]
 	start := strings.Index(rest, "```json\n")
@@ -64,7 +64,7 @@ func extractWorkedExampleFence(t *testing.T, doc string) string {
 // RP-13: mutating only the asset fence must redden this test while
 // TestWorkedExampleMatchesGoldenFixture stays green.
 //
-// The asset example is a FRAGMENT, not a whole `.folio8` document (it
+// The asset example is a FRAGMENT, not a whole `.folio` document (it
 // cannot be parsed and round-tripped the way the worked example is) —
 // AC27b requires picking one of two ways to close it and saying which:
 // this compares it to a golden FRAGMENT emitted by the shipped assets
@@ -80,7 +80,7 @@ func TestAssetExampleMatchesGoldenFragment(t *testing.T) {
 
 	fence := extractAssetExampleFence(t, string(docBytes))
 	if fence != string(golden) {
-		t.Fatalf("folio8-format.md's assets example fence is no longer byte-identical to the golden fragment (D-1.8.7):\n--- doc ---\n%s\n--- golden ---\n%s", fence, golden)
+		t.Fatalf("folio-format.md's assets example fence is no longer byte-identical to the golden fragment (D-1.8.7):\n--- doc ---\n%s\n--- golden ---\n%s", fence, golden)
 	}
 
 	// Finding 10 (Story 1.8 review): the check above proves the doc and
@@ -155,7 +155,7 @@ func extractAssetExampleFence(t *testing.T, doc string) string {
 	t.Helper()
 	idx := strings.Index(doc, "## `assets`")
 	if idx < 0 {
-		t.Fatal("could not find \"## `assets`\" heading in folio8-format.md")
+		t.Fatal("could not find \"## `assets`\" heading in folio-format.md")
 	}
 	rest := doc[idx+len("## `assets`"):]
 

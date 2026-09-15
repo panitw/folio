@@ -89,7 +89,7 @@ const (
 	CodeTableFooterSourceForbidden Code = "TABLE_FOOTER_SOURCE_FORBIDDEN"
 
 	// CodeTemplateMalformed names FR41's "malformed template" mode: a
-	// `.folio8` document that fails to load (internal/template's
+	// `.folio` document that fails to load (internal/template's
 	// load-time validation, surfaced through folio8.LoadTemplate/
 	// ParseTemplate). AC4/AC8.
 	CodeTemplateMalformed Code = "TEMPLATE_MALFORMED"
@@ -164,7 +164,7 @@ const (
 
 	// CodeStyleColorInvalid names Story 4.1's own new condition: a
 	// style colour string reaching render that is not `#RRGGBB`
-	// (folio8-format.md: "Colours are #RRGGBB") — unvalidated at load
+	// (folio-format.md: "Colours are #RRGGBB") — unvalidated at load
 	// (folio8_expr_validate.go's own scope fence: "hex colours...
 	// remain entirely unvalidated"), and unreachable before this story
 	// because no colour was ever CONSUMED before it (D1: "no fill or

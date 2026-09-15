@@ -13,9 +13,9 @@ route (D-1.8.1).
 
 ## Contents
 
-- `input.folio8` — the `.folio8` document rendered to produce this fixture, byte-identical to the
+- `input.folio` — the `.folio` document rendered to produce this fixture, byte-identical to the
   `imageTestTemplateJSON` constant in `folio8-go/render_test.go` (AC25a, the same discipline
-  `fixtures/font-text/input.folio8` carries).
+  `fixtures/font-text/input.folio` carries).
 - `expected.json` — the normative record: SHA-256 of the rendered bytes, `folio8GoVersion`, and the
   exact Go toolchain version that produced the hash (AC16, D-1.2.2: `sha256` is always a JSON
   string of exactly 64 lower-case hex characters, never a per-target map). `goToolchain` matches

@@ -1,6 +1,6 @@
 // Story 5.13's asset-authoring command factory. It stays exactly as opaque
 // as component-command.ts/component-property-command.ts: this module knows
-// nothing about the .folio8 format, does not hash, does not sniff the file's
+// nothing about the .folio format, does not hash, does not sniff the file's
 // real format, and does not decide legality — it only base64-encodes the
 // bytes the browser already read and carries the browser/OS's OWN declared
 // media type opaquely to Go, which is the sole authority (component_commands.go's

@@ -4315,7 +4315,7 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 	// bytes this build cannot read are refused before anything is written to
 	// t.doc.Assets. An unrecognised container is refused HERE even though the
 	// FORMAT accepts one (D-1.8.1 as amended, mediaType is an open set): a
-	// hand-written `.folio8` may carry a face this build cannot draw, but a
+	// hand-written `.folio` may carry a face this build cannot draw, but a
 	// pick the designer makes must never produce one.
 	if ferr := template.DecodeFontForRender(mediaType, decoded, template.FontChainSite{AssetKey: key, ChainName: name}); ferr != nil {
 		return componentFailure("", fontChainPath(name), ferr.Error())
@@ -4324,7 +4324,7 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 	// D-16.6). DecodeFontForRender's fence is "can this build read these bytes
 	// as a single face, and nothing more", and checkSfnt beneath it never
 	// inspects a table TAG — so a VARIABLE face is readable as a single face
-	// and sailed straight through, into a `.folio8` that saved cleanly and then
+	// and sailed straight through, into a `.folio` that saved cleanly and then
 	// failed at render, where fontset.New refuses it. About a quarter of what
 	// Google publishes is a variable build, so this was reachable by an
 	// ordinary pick.
@@ -4332,7 +4332,7 @@ func embedFontFamily(t *Template, raw map[string]json.RawMessage) error {
 	// The refusal is THE RENDERER'S OWN, not a second sentence written here:
 	// fontset.RefuseVariableFace is the single function fontset.New also calls,
 	// and its message already names the fonttools varLib.instancer remedy the
-	// author needs. The renderer's guard is KEPT — a hand-written `.folio8`
+	// author needs. The renderer's guard is KEPT — a hand-written `.folio`
 	// bypasses this command entirely — so this is an addition, never a move.
 	//
 	// It sits beside DecodeFontForRender and BEFORE anything reaches
@@ -4579,7 +4579,7 @@ func commandQuotedKeyList(keys []string) string {
 
 // fontChainEntryShape is what a COMMAND may write for one chain entry, spelled
 // once and quoted by every refusal below so an author is always told what they
-// MAY write and never only what they may not. It is folio8-format.md's entry
+// MAY write and never only what they may not. It is folio-format.md's entry
 // grammar with the `asset` arm removed — see embeddedFontTail for why that
 // removal is the mechanism rather than a restriction.
 //

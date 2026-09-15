@@ -267,7 +267,7 @@ func (r tableRectSource) chromeRowGroup() layout.ItemGroup {
 // for every field, `headerStyle.<field>` wins when the table declares
 // one AND that field is set within it; otherwise the table's own
 // `style.<field>` wins when set; otherwise the field's documented
-// default (folio8-format.md's Style table, unchanged by this story
+// default (folio-format.md's Style table, unchanged by this story
 // except fontFamily — see the story's Delivery Log). `columns[].align`
 // is resolved separately, per column, and still wins over both
 // (AC4's own grounds, extended one level: the column's field is the
@@ -391,7 +391,7 @@ func resolveHeaderStyle(el template.Element) resolvedHeaderStyle {
 	// header in black — measured at 2 ink operations against 3 for the
 	// same table with headerStyle absent or `{}`. The background and
 	// border arms on the same table already fall through on an explicit
-	// null; folio8-format.md already states that rule; the code was the
+	// null; folio-format.md already states that rule; the code was the
 	// outlier, so the fix is here and neither document changes.
 	switch {
 	case hasHeader && header.Color.Set && !header.Color.Null:
@@ -653,7 +653,7 @@ func buildCellRect(elementID string, x, y, w, h geom.Length, hasBackground bool,
 // PDF can draw, not an absent border). These functions decide only what an
 // ABSENT sub-key means, which is a render question and belongs in this file.
 const (
-	// folio8-format.md's documented defaults for an unset border sub-key.
+	// folio-format.md's documented defaults for an unset border sub-key.
 	defaultBorderWidth geom.Length = 500
 	defaultBorderColor             = "#000000"
 )

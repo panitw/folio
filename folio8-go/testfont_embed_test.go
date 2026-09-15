@@ -101,7 +101,7 @@ var testShippedRobotoBoldItalic []byte
 // from disk at runtime would be unreachable on js/wasm — and a licence
 // hand-copied into a Go string constant would be a SECOND authority on
 // what the terms are, which is precisely the thing this story exists to
-// stop happening inside a `.folio8`.
+// stop happening inside a `.folio`.
 //
 // Its FIRST LINE is also where the fixture's `copyright` comes from
 // (embeddedFontCopyright), so the record and the terms it belongs to

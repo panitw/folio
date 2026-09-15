@@ -7,7 +7,7 @@ import (
 	"github.com/panitw/folio8/folio8-go/internal/template"
 )
 
-// SerializeTemplate returns the engine's canonical .folio8 bytes for t.
+// SerializeTemplate returns the engine's canonical .folio bytes for t.
 //
 // The Template remains opaque: callers receive bytes, not the internal
 // document or a field-by-field representation of it. This is the only save
@@ -29,7 +29,7 @@ func SerializeTemplate(t *Template) ([]byte, error) {
 //     number ({{1}}, {{count(items)}}, {{a + b}}). A number in text prints as
 //     its exact decimal from 3.3 on. A plain path whose kind depends on data
 //     ({{row.amount}}) cannot be detected and raises nothing (disclosed in
-//     folio8-format.md).
+//     folio-format.md).
 //   - 2.0: formula syntax or boolean/null literals in any expression container.
 func expressionMinimumVersion(doc *template.Document) string {
 	formula := func(raw string) bool { e, err := expr.Parse(raw); return err == nil && expr.UsesFormulas(e) }

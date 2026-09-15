@@ -28,8 +28,8 @@ async function installNativePickers(page: Page): Promise<void> {
       createWritable: async () => ({ write: async () => undefined, close: async () => undefined }),
     }
     const templateHandle = {
-      name: 'statement.folio8',
-      getFile: async () => new File([(state.writes.at(-1) ?? new Uint8Array()).buffer as ArrayBuffer], 'statement.folio8', { type: 'application/json' }),
+      name: 'statement.folio',
+      getFile: async () => new File([(state.writes.at(-1) ?? new Uint8Array()).buffer as ArrayBuffer], 'statement.folio', { type: 'application/json' }),
       createWritable: async () => ({ write: async (written: ArrayBuffer) => { state.writes.push(new Uint8Array(written)) }, close: async () => undefined }),
     }
     // Distinguish the image picker from the template picker by the accept
@@ -143,7 +143,7 @@ test('the File System Access tier sets a local image through one committed comma
   // SHA-256 key; reopening the SAME bytes shows the SAME identity again —
   // the asset embedded, never linked, surviving a full round trip.
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+S' : 'Control+S')
-  await expect(page.getByText(/Saved locally as statement\.folio8/)).toBeVisible()
+  await expect(page.getByText(/Saved locally as statement\.folio/)).toBeVisible()
   const written = await page.evaluate(() => {
     const state = (window as unknown as { __folio8ImageE2E: { writes: Uint8Array[] } }).__folio8ImageE2E
     return Array.from(state.writes.at(-1) ?? [])
@@ -152,7 +152,7 @@ test('the File System Access tier sets a local image through one committed comma
   expect(writtenText).toContain(`"${png1x1GrayKey}"`)
 
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   const reopenedImageComponent = content.getByRole('button', { name: /image component/ })
   await reopenedImageComponent.click()
   await expect(page.getByText(`image/png · 1×1px · asset ${png1x1GrayKey.slice(0, 12)}…`, { exact: true })).toBeVisible()

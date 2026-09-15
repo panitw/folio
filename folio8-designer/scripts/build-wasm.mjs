@@ -71,8 +71,8 @@ copyPDFJSRuntime('pdfjs-standard_fonts', ['LiberationSans-Regular.ttf', 'Liberat
 // The starter is an empty, author-owned canvas. Whitespace keeps it a
 // deliberately non-canonical input; only the Go serializer determines the
 // bytes the application subsequently reads and saves.
-const starterPath = join(outputDir, 'starter.folio8')
-writeFileSync(starterPath, Buffer.concat([Buffer.from('\n  '), readFileSync(join(designerRoot, 'public', 'templates', 'starter.folio8'))]))
+const starterPath = join(outputDir, 'starter.folio')
+writeFileSync(starterPath, Buffer.concat([Buffer.from('\n  '), readFileSync(join(designerRoot, 'public', 'templates', 'starter.folio'))]))
 
 const fingerprint = (source, label) => {
   const bytes = readFileSync(source)
@@ -96,7 +96,7 @@ const pdfjsStandardFontDirectory = `pdfjs-standard-fonts-${directoryFingerprint(
 const assets = {
   wasmExec: fingerprint(gluePath, 'wasm-exec.js'),
   wasm: fingerprint(wasmPath, 'folio8-engine.wasm'),
-  starter: fingerprint(starterPath, 'starter.folio8'),
+  starter: fingerprint(starterPath, 'starter.folio'),
   sans: fingerprint(join(designerRoot, 'public', 'fonts', 'notosans', 'NotoSans-Regular.ttf'), 'noto-sans.ttf'),
   sansCjk: fingerprint(join(designerRoot, 'public', 'fonts', 'notosanssc', 'NotoSansSC-Regular.ttf'), 'noto-sans-cjk.ttf'),
   sansThai: fingerprint(join(designerRoot, 'public', 'fonts', 'notosansthai', 'NotoSansThai-Regular.ttf'), 'noto-sans-thai.ttf'),
@@ -318,7 +318,7 @@ const catalogueFaces = catalogue.map((entry) => {
 
 // THE COPYRIGHT LINE AND THE LICENCE TEXT, READ OFF COMMITTED BYTES (Story 8.6).
 //
-// A `.folio8` that carries a face must state its terms — the engine refuses to
+// A `.folio` that carries a face must state its terms — the engine refuses to
 // load one that does not — so the designer has to be able to supply them at the
 // moment of the pick. Neither is hand-copied into `font-catalogue.json`, and
 // that is the whole point: a hand-copied licence is a SECOND authority on what
@@ -395,7 +395,7 @@ const licenceTextOf = (face) => {
 //    for the pinned upstream release and digest`
 //
 // Honest, and incomplete in the one way that matters: **the recipient of a
-// `.folio8` does not have that NOTICE.md.** The file travels alone (CAP-2), so a
+// `.folio` does not have that NOTICE.md.** The file travels alone (CAP-2), so a
 // `source` that points into this repository's tree names a fact its reader
 // cannot reach. The fetched tier had the mirror-image defect — a bare mutable
 // branch URL — and the two disagreed in KIND, so a reader could not tell which
@@ -460,7 +460,7 @@ writeFileSync(join(generatedDir, 'font-catalogue.ts'),
   + `\n]\n`)
 
 // THE BUNDLED DOCUMENTATION: three hand-written HTML pages from the repository's
-// `docs/` tree — the rendering library guide, the `.folio8` format reference and
+// `docs/` tree — the rendering library guide, the `.folio` format reference and
 // the expression reference — copied into the same immutable runtime tree as the
 // engine, so Vite emits them under `/assets/` and the
 // offline release precaches them. ONE PAGE IS ONE CACHE SLOT: these three take
@@ -470,7 +470,7 @@ writeFileSync(join(generatedDir, 'font-catalogue.ts'),
 // hashed its own rewritten bytes (A's bytes name B's fingerprint, which depends
 // on B's bytes, which name A's). The cycle is broken deterministically:
 //   1. every cross-page link is NORMALISED to its canonical sibling name
-//      (`folio8-format.html#table`; a `.md` sibling link becomes `.html`);
+//      (`folio-format.html#table`; a `.md` sibling link becomes `.html`);
 //   2. ONE digest is taken over all three normalised pages together;
 //   3. each page's fingerprint is that group digest salted with its own stem;
 //   4. only then are the links rewritten to the fingerprinted names.
@@ -483,7 +483,7 @@ writeFileSync(join(generatedDir, 'font-catalogue.ts'),
 // verbatim rather than appending a second hash, because relative links between
 // the pages must name exactly the files that exist beside them.
 const documentationDir = join(designerRoot, '..', 'docs')
-const documentationPages = [['guide', 'rendering-library'], ['format', 'folio8-format'], ['expressions', 'expression-reference']]
+const documentationPages = [['guide', 'rendering-library'], ['format', 'folio-format'], ['expressions', 'expression-reference']]
 const documentationLink = new RegExp(`(\\bhref\\s*=\\s*)(["'])(?:\\./)?(${documentationPages.map(([, stem]) => stem).join('|')})\\.(?:html|md)(#[^"']*)?\\2`, 'g')
 const canonicalDocumentation = documentationPages.map(([key, stem]) => {
   const source = join(documentationDir, `${stem}.html`)

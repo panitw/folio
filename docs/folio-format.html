@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FOLIO8 · The .folio8 format</title>
+<title>FOLIO8 · The .folio format</title>
 
 <style>
   /* Documentation site redesign: tokens from the designer's DESIGN.md.
@@ -223,7 +223,7 @@
         <a class="toc-item" href="expression-reference.html#all">The whole list</a>
       </div>
       <div class="toc-group" data-current>
-        <a class="toc-doc" href="#top" aria-current="page">The .folio8 format</a>
+        <a class="toc-doc" href="#top" aria-current="page">The .folio format</a>
         <a class="toc-item" href="#units">Units</a>
         <a class="toc-item" href="#document">Document</a>
         <a class="toc-item sub" href="#alignment-sets">Alignment sets</a>
@@ -261,22 +261,22 @@
         <p class="brand">FOLIO8 · High-performance PDF reporting library</p>
         <a href="rendering-library.html">Rendering library</a>
         <a href="expression-reference.html">Expressions</a>
-        <a href="#top" aria-current="page">.folio8 format</a>
+        <a href="#top" aria-current="page">.folio format</a>
       </nav>
 
       <article id="top">
         <div class="article-head">
           <p class="eyebrow">FOLIO8 · Format reference</p>
-          <h1>The <code>.folio8</code> format</h1>
+          <h1>The <code>.folio</code> format</h1>
           <p class="standfirst">
-            This is the canonical reference for the <code>.folio8</code> template format: what every field is
+            This is the canonical reference for the <code>.folio</code> template format: what every field is
             called, what it means, which values are legal, and what the library does when a file breaks a rule.
             Format version <strong>4.1</strong> is the highest version this library supports.
           </p>
           <p>
             The format is a public contract, not an implementation detail. A person or a program can write or
             edit a template by hand, without the designer, and a hand-written template renders exactly as a
-            designer-written one does. The designer never parses <code>.folio8</code> itself; the engine owns the
+            designer-written one does. The designer never parses <code>.folio</code> itself; the engine owns the
             document.
           </p>
           <ul>
@@ -472,7 +472,7 @@
     </ol>
     <p>A partial match is an absence too: an element declaring both <code>bold</code> and <code>italic</code>, against an entry declaring only <code>bold</code>, draws the base face and warns — choosing the bold cut would be a nearest-fit search, and nothing here searches. No weight or slope is ever synthesized.</p>
     <p>Anything else — a number, an array, an object with neither <code>face</code> nor <code>asset</code>, an object with both, or an object carrying any key outside that closed set — is a <strong>load error naming the chain and the entry's index</strong>, e.g. <code>fonts.body[1]</code>. An <code>{"asset": …}</code> entry whose key is <strong>not present in <code>assets</code></strong> is likewise a load error, and it names the chain, the index and the key: <code>fonts.body[1].asset</code>. A chain entry is never silently dropped and never coerced.</p>
-    <p><strong>An entry naming an asset that is not a font is ACCEPTED AT LOAD and errors at RENDER.</strong> The load path checks that the key exists in <code>assets</code> and nothing else — it never inspects the asset's <code>mediaType</code> or its bytes to decide whether the entry is legal. That is the same rule the open <code>mediaType</code> set rests on (see <a href="#a-font-asset"><em>A font asset</em></a>), and it applies to a <em>wrong-kind</em> asset exactly as it does to an unrecognised font container: a chain entry naming an <code>image/png</code> asset is a valid <code>.folio8</code>. The failure arrives at render, and <strong>only when something must actually draw with that entry</strong> — when a rune reaches it because no earlier entry in the chain covers that rune. It is a located error naming <strong>the chain, the entry's index and the asset key</strong>. A document whose text is covered entirely by the entries ahead of it renders clean and says nothing, because nothing ever asked what those bytes were.</p>
+    <p><strong>An entry naming an asset that is not a font is ACCEPTED AT LOAD and errors at RENDER.</strong> The load path checks that the key exists in <code>assets</code> and nothing else — it never inspects the asset's <code>mediaType</code> or its bytes to decide whether the entry is legal. That is the same rule the open <code>mediaType</code> set rests on (see <a href="#a-font-asset"><em>A font asset</em></a>), and it applies to a <em>wrong-kind</em> asset exactly as it does to an unrecognised font container: a chain entry naming an <code>image/png</code> asset is a valid <code>.folio</code>. The failure arrives at render, and <strong>only when something must actually draw with that entry</strong> — when a rune reaches it because no earlier entry in the chain covers that rune. It is a located error naming <strong>the chain, the entry's index and the asset key</strong>. A document whose text is covered entirely by the entries ahead of it renders clean and says nothing, because nothing ever asked what those bytes were.</p>
     <p><strong>Validation returns the identical error.</strong> Validating that document — without rendering it — returns the <em>same</em> error, with the same text and the same coordinates, and no diagnostics alongside it. A validator that accepted a document the renderer refuses would be a second rule system, and the one an author would trust is the one that says yes.</p>
     <p><strong>Refusing is NOT what happens when a chain names a face nobody supplied, and the difference is deliberate.</strong> Given <code>["Noto Sans", &lt;a non-font asset&gt;, "Noto Sans Thai"]</code>, the render is refused at the middle entry even though the entry after it covers every rune. Given <code>["Noto Sans", "No Such Face", "Noto Sans Thai"]</code>, the middle entry is <strong>skipped in silence</strong> and the third entry draws. The two conditions are not the same kind of thing:</p>
     <ul>
@@ -751,7 +751,7 @@
     <p><strong>Whether <code>font</code> is optional depends on whether a chain names the asset, and that is the whole rule.</strong></p>
     <ul>
       <li><strong>No chain names this asset.</strong> <code>font</code> is <strong>optional</strong>, and every key inside it is optional. Such an asset is not an embedded face — nothing draws with it and no face is redistributed on its account — so the document carries it verbatim and loads clean with the record absent, partial, or explicitly <code>null</code>. This is also why such an asset does not raise the document's <code>version</code> (see <a href="#versions"><em>Versions</em></a>): it is legible to a <code>1.x</code> reader exactly as it is.</li>
-      <li><p><strong>A chain names this asset</strong> by <code>{"asset": "&lt;key&gt;"}</code>, <em>or names it as a style variant of an embedded entry</em> — <code>{"asset": "&lt;other key&gt;", "bold": "&lt;key&gt;"}</code>. Either way it <strong>is</strong> an embedded face, and <code>licence</code>, <code>licenceText</code> and <code>copyright</code> are <strong>REQUIRED</strong>: each must be present, non-<code>null</code> and non-empty. A document that fails this is a <strong>load error</strong>, located at <code>assets.&lt;key&gt;.font.&lt;the first missing key&gt;</code> and naming the chain entry — <code>fonts.&lt;chain&gt;[&lt;i&gt;]</code>, or <code>fonts.&lt;chain&gt;[&lt;i&gt;].&lt;variant&gt;</code> when a style variant is what named it — that made the asset an embedded face. A variant asset key clears this bar exactly as the entry's own <code>asset</code> value does; a sibling that skipped it would let a document carry an unlicensed embedded bold. It is never a warning and never a best-effort render.</p><p>A font that travels without its terms is not a font that may be passed on, and a <code>.folio8</code> is a single file that travels alone: there is nowhere else for the terms to be. <code>licenceText</code> is the <strong>actual text</strong> of the licence, not its name — <code>licence</code> already carries the name. The duplication that costs (a document embedding three OFL families carries three near-identical copies of ~4 KB) is accepted deliberately, because an asset extracted from the document and passed on by itself must still carry its own terms, which a single document-level notice block would not survive.</p></li>
+      <li><p><strong>A chain names this asset</strong> by <code>{"asset": "&lt;key&gt;"}</code>, <em>or names it as a style variant of an embedded entry</em> — <code>{"asset": "&lt;other key&gt;", "bold": "&lt;key&gt;"}</code>. Either way it <strong>is</strong> an embedded face, and <code>licence</code>, <code>licenceText</code> and <code>copyright</code> are <strong>REQUIRED</strong>: each must be present, non-<code>null</code> and non-empty. A document that fails this is a <strong>load error</strong>, located at <code>assets.&lt;key&gt;.font.&lt;the first missing key&gt;</code> and naming the chain entry — <code>fonts.&lt;chain&gt;[&lt;i&gt;]</code>, or <code>fonts.&lt;chain&gt;[&lt;i&gt;].&lt;variant&gt;</code> when a style variant is what named it — that made the asset an embedded face. A variant asset key clears this bar exactly as the entry's own <code>asset</code> value does; a sibling that skipped it would let a document carry an unlicensed embedded bold. It is never a warning and never a best-effort render.</p><p>A font that travels without its terms is not a font that may be passed on, and a <code>.folio</code> is a single file that travels alone: there is nowhere else for the terms to be. <code>licenceText</code> is the <strong>actual text</strong> of the licence, not its name — <code>licence</code> already carries the name. The duplication that costs (a document embedding three OFL families carries three near-identical copies of ~4 KB) is accepted deliberately, because an asset extracted from the document and passed on by itself must still carry its own terms, which a single document-level notice block would not survive.</p></li>
     </ul>
     <p>These required keys add no version trigger. They can only be required on an asset a chain names by <code>{"asset": key}</code> (or as an embedded variant), and that entry shape already requires <code>2.0</code>; they are a record <em>about</em> the asset and reach no output byte.</p>
     <p><strong><code>mediaType</code> is an OPEN set for fonts exactly as it is for images.</strong> It is not one of the closed sets listed in <a href="#closed-sets"><em>Closed sets</em></a> and it never will be: a closed set can only be extended by a MAJOR bump, which would make every new font container a breaking format change. So:</p>
@@ -964,7 +964,7 @@ largest one face = <span class="tk-fn">max</span>(<span class="tk-type">A</span>
   </section>
 <!-- /body -->
 
-        <p class="source-note">Source of truth: <code>docs/folio8-format.md</code>. This page is its HTML twin.</p>
+        <p class="source-note">Source of truth: <code>docs/folio-format.md</code>. This page is its HTML twin.</p>
       </article>
     </div>
   </main>

@@ -67,7 +67,7 @@ proving anything about the declaration.
   at all** — it is the only one with a multi-line element on a multi-face stack, and for a
   single-face stack the amended and superseded forms are identical. Measured by mutation: reinstating
   the superseded rule reddens this fixture and nothing else.
-- `input.folio8` is kept byte-identical to `folio8-go/wrapped_text_template.go`'s
+- `input.folio` is kept byte-identical to `folio8-go/wrapped_text_template.go`'s
   `wrappedTextTemplateJSON` by hand, as `font-text` and `multi-script-fallback` already are.
 
 ## Cross-target status

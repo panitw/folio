@@ -5,7 +5,7 @@ committed document declaring **`"version": "4.1"`**, because it is the first car
 
 | File | What it is |
 |---|---|
-| `input.folio8` | A bilingual (English/Thai) statement on A4: a customer block, a `transactions[]` table at y 38, and a transaction-code legend at y 410–508 below a `sectionBreak` at 400 pt |
+| `input.folio` | A bilingual (English/Thai) statement on A4: a customer block, a `transactions[]` table at y 38, and a transaction-code legend at y 410–508 below a `sectionBreak` at 400 pt |
 | `data.json` | Forty **synthetic** transactions for a fictitious account holder — no real customer data |
 | `expected.pdf` | The render, sha256 `4f10e8b62fc4bbdb1abc807c9ec7c8d9600b1d04571f5bc904a7bb3cc86f0dae` |
 
@@ -16,7 +16,7 @@ nothing drawn above it but the page header, and both pages print `Page X of 2`.
 
 ## What the tests prove
 
-- `TestSectionBreakStatementGoldenFixture` pins `input.folio8` and `data.json` to the Go constants in
+- `TestSectionBreakStatementGoldenFixture` pins `input.folio` and `data.json` to the Go constants in
   `section_break_statement_template.go`, and the render's sha256 to `expected.json` and `expected.pdf`.
 - `TestSectionBreakStatementSemanticAcceptance` checks the page model: two pages, all forty rows on
   page 1, the legend on page 2 only, and its baseline equal to its page-1 baseline when the same

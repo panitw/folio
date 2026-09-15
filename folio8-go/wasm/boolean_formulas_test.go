@@ -13,7 +13,7 @@ import (
 )
 
 func TestBooleanFormulasRealEngineHistoryPersistenceAndRefusal(t *testing.T) {
-	original, err := os.ReadFile("../testdata/example/first-pdf.folio8")
+	original, err := os.ReadFile("../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestBooleanFormulasRealEngineHistoryPersistenceAndRefusal(t *testing.T) {
 }
 
 func TestBooleanFormulaValidOverEditorLimitIsAtomic(t *testing.T) {
-	original, err := os.ReadFile("../testdata/example/first-pdf.folio8")
+	original, err := os.ReadFile("../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}

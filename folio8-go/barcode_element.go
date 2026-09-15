@@ -4,7 +4,7 @@
 // (Code 128) and `qrcode` (QR Code) — share every step here; only the
 // static encodability check and the paint shape differ by kind.
 //
-// ESCAPES LIVE HERE, NOT IN THE ENGINE. A `.folio8` file stores the real
+// ESCAPES LIVE HERE, NOT IN THE ENGINE. A `.folio` file stores the real
 // characters (a carriage return is the JSON escape "\r"), and the engine
 // never interprets a backslash. The designer's content box is a textarea,
 // which holds a line feed but turns a typed carriage return into one, so the

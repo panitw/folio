@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	templateBytes, err := os.ReadFile("first-pdf.folio8")
+	templateBytes, err := os.ReadFile("first-pdf.folio")
 	if err != nil {
 		log.Fatal(err)
 	}

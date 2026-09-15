@@ -1,6 +1,6 @@
 package folio8
 
-// multiPageFlowTemplateJSON is fixtures/multi-page-flow/input.folio8, kept
+// multiPageFlowTemplateJSON is fixtures/multi-page-flow/input.folio, kept
 // byte-identical to it by TestMultiPageFlowGoldenFixture.
 //
 // It is SPEC-multi-pages' golden for CAP-6 and CAP-9: a canonical three-page

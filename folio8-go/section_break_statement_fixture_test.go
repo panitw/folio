@@ -92,7 +92,7 @@ func TestSectionBreakStatementGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", sectionBreakStatementFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", sectionBreakStatementTemplateJSON},
+		{"input.folio", sectionBreakStatementTemplateJSON},
 		{"data.json", sectionBreakStatementDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))

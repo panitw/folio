@@ -54,7 +54,7 @@ const families = catalogue.map((row) => row.family)
 // AND THE STARTER TEMPLATE IS READ THE SAME WAY, FOR THE SAME REASON.
 //
 // Two assertions in this file closed over a premise rather than a source: "the
-// starter declares no catalogue family". Story 16.8 renamed `starter.folio8`'s
+// starter declares no catalogue family". Story 16.8 renamed `starter.folio`'s
 // only chain from `body` to `Roboto`, which made a catalogue family
 // document-declared, and both assertions went red over behaviour that is
 // CORRECT. `App.tsx:2580` puts every declared chain under `IN THIS TEMPLATE`;
@@ -62,8 +62,8 @@ const families = catalogue.map((row) => row.family)
 // template declares is offered exactly once, in the other group.
 //
 // So the split is DERIVED from the template the browser actually loads —
-// `public/templates/starter.folio8`, the file `scripts/build-wasm.mjs` serves as
-// `/starter.folio8` — rather than from a premise about what it contains. Rename
+// `public/templates/starter.folio`, the file `scripts/build-wasm.mjs` serves as
+// `/starter.folio` — rather than from a premise about what it contains. Rename
 // a chain, or declare a second one, and EVERY expectation below re-derives from
 // the file with no line here changing: which group a row must appear under,
 // from the declared set; and which pick is a no-op, from `defaultFontFamily`'s
@@ -72,7 +72,7 @@ const families = catalogue.map((row) => row.family)
 // template that parses to no chains at all THROWS: an empty declared set would
 // silently collapse this file back to the one-armed harness it was.
 //
-// ⚠ AN ENTRY IS `unknown`, NOT `string` (Story 11.3). `starter.folio8` declares
+// ⚠ AN ENTRY IS `unknown`, NOT `string` (Story 11.3). `starter.folio` declares
 // style variants now, so two of its three entries are OBJECTS
 // (`{"face": "Roboto", "bold": "Roboto Bold", …}`) and only the third is a bare
 // string. This harness reads `Object.keys(fonts)` and nothing else, so the
@@ -80,7 +80,7 @@ const families = catalogue.map((row) => row.family)
 // that lies about the file it parses is exactly the premise-instead-of-source
 // mistake the comment above records.
 type StarterTemplate = Readonly<{ fonts?: Readonly<Record<string, ReadonlyArray<unknown>>> }>
-const starterPath = fileURLToPath(new URL('../public/templates/starter.folio8', import.meta.url))
+const starterPath = fileURLToPath(new URL('../public/templates/starter.folio', import.meta.url))
 const starter = JSON.parse(readFileSync(starterPath, 'utf8')) as StarterTemplate
 const declaredChains = Object.keys(starter.fonts ?? {})
 if (declaredChains.length === 0) throw new Error(`${starterPath} declares no \`fonts\` chains this harness can read; re-derive the partition rather than deleting it — every text element in a new document names one of these chains`)
@@ -302,7 +302,7 @@ test('the dropdown splits the catalogue into the template\'s own chains and the 
 // STORY 16.8 BROKE THE SENTENCE THIS TEST WAS NAMED AFTER, AND THE HONEST REPAIR
 // IS TWO PARTITIONS, NOT A NARROWER LOOP.
 //
-// "Every catalogue family embeds" stopped being true the moment `starter.folio8`
+// "Every catalogue family embeds" stopped being true the moment `starter.folio`
 // declared `Roboto`. The repair needs TWO different splits, and collapsing them
 // into one is the mistake this comment exists to prevent:
 //
@@ -367,7 +367,7 @@ test('every family is offered in the group its declaredness puts it in, the pick
       // the catch below already states and this check used to sit outside of.
       const offered = await option.count()
       if (offered !== 1) {
-        outcome = `NOT OFFERED under ${groupLabel} (${offered} matching rows): starter.folio8's declared chains are what put a family in that group`
+        outcome = `NOT OFFERED under ${groupLabel} (${offered} matching rows): starter.folio's declared chains are what put a family in that group`
       } else if (carried === family) {
         // THE NO-OP ARM. `choose` sends the command unconditionally — there is no
         // comparison against `committed` in `App.tsx` — and the ENGINE is what

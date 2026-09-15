@@ -60,7 +60,7 @@ describe('engine ownership structure', () => {
     expect(fs.readFileSync(path.join(sourceDir, 'engine.worker.ts'), 'utf8')).toContain('importScripts(runtimeAssetUrls.wasmExec)')
   })
 
-  it('does not mirror the .folio8 document schema in production TypeScript', () => {
+  it('does not mirror the .folio document schema in production TypeScript', () => {
     const scan = scanOwnership(sources())
     expect(scan.schemaMirrors).toEqual([])
     expect(scan.documentJson.filter((name) => !['engine.worker.ts', 'offline-lifecycle.ts', 'release-payload.ts', 'sample-data.ts', 'App.tsx', 'command-json.ts'].includes(name))).toEqual([]) // protocol/release envelopes, bounded local sample discovery, and the transient parameter-document editor may parse JSON. STORY 15.2a REPLACED THE THREE COMMAND FACTORIES ON THIS LIST WITH ONE ENTRY, and the count was the point: the comment used to say "the three command factories may JSON-quote SCALAR INTENT", while SIX modules built command JSON and three of them did it with hand-rolled escaping or none. command-json.ts is now the only module that quotes anything for the wire — it encodes SCALAR INTENT and the envelope around it, never a template and never a document — and every builder lists its own fields, in order, so the field arity Go counts is still visible at the call site. The soleness of that arrangement is asserted by command-json-soleness.test.ts, not by this filter, which is one-directional and would not notice a stale entry.

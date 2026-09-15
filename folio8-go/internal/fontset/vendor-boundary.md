@@ -91,7 +91,7 @@ in this package validates every source id against the face's glyph count before 
 ## Table 2 — what folio8 does with each, at the public entry point
 
 `folio8.Render(tmpl, folio8.Data("{}"), folio8.Params("{}"), folio8.FontSet{"Roboto-Regular": <bytes>})`
-against `fixtures/font-text/input.folio8`. **The "before" column was measured at commit `431a6a5`, the
+against `fixtures/font-text/input.folio`. **The "before" column was measured at commit `431a6a5`, the
 "after" column at this commit** — every row's disposition ends *confirmed and fixed* or *traced and
 closed*, never carried (D-000.29).
 

@@ -1,7 +1,7 @@
 package folio8
 
 // barcodeThaiBillPaymentTemplateJSON is
-// fixtures/barcode-thai-bill-payment/input.folio8, kept byte-identical to it by
+// fixtures/barcode-thai-bill-payment/input.folio, kept byte-identical to it by
 // TestBarcodeThaiBillPaymentGoldenFixture (line-spacing's hand-sync
 // precedent).
 //

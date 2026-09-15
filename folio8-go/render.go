@@ -727,7 +727,7 @@ func collectBandTextRuns(
 	var pending []pendingPageSlot
 	// diags accumulates in ELEMENT DECLARATION ORDER within this one
 	// band — the `for _, el := range b.band.Elements` loop below walks
-	// the authored `.folio8` document in order, never a map, so this
+	// the authored `.folio` document in order, never a map, so this
 	// slice is already the order D-2.8.6's Result.Diagnostics doc
 	// comment requires WITHIN one band. renderDocument concatenates
 	// this band's diags after the header band's and before the footer

@@ -27,7 +27,7 @@ const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 // READ-ONLY, and proven to meet this spec's precondition: element `e8` is a
 // table bound to `transactions[]` with alias `txn` and five columns, every one
 // of them bound. `data.json` is that collection's own sample.
-const template = readFileSync(path.join(fixtures, 'input.folio8'))
+const template = readFileSync(path.join(fixtures, 'input.folio'))
 const sample = readFileSync(path.join(fixtures, 'data.json'))
 
 // The Note column, `ec`, and the field this spec re-points it at. `Note` is
@@ -45,8 +45,8 @@ async function openFixture(page: Page, sampleBytes = sample): Promise<void> {
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await templateChooser).setFiles({ name: 'statement.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await (await templateChooser).setFiles({ name: 'statement.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   const sampleChooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
@@ -181,7 +181,7 @@ test('binds a table column from the main window: click the column, pick its row 
 // them from App.css left the whole repository green while the primary gesture
 // for an unbound column — *"click the column that reads Not set"* — was inert.
 //
-// THE `Not set` CELL IS MANUFACTURED IN-RUN, NOT IN THE FIXTURE. `input.folio8`
+// THE `Not set` CELL IS MANUFACTURED IN-RUN, NOT IN THE FIXTURE. `input.folio`
 // binds all five of `e8`'s columns and is read-only here, so a sixth column is
 // ADDED through the product's own Add column control, which is what leaves an
 // unbound column behind. Its width is the engine's default 72pt against a

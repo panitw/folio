@@ -123,7 +123,7 @@ type documentDateParityCase struct {
 // mutation note below) targets.
 func TestSourceDateEpochFillsAbsentButNeverOverwritesSupplied(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	cases := []documentDateParityCase{
@@ -243,7 +243,7 @@ func sanitizeName(s string) string {
 // INSIDE the CLI and pre-empt the engine's own located diagnostic).
 func TestMalformedParamsProduceIdenticalOutcomeRegardlessOfEnvironment(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 	malformedParamsPath := writeTempFile(t, dir, "bad-params.json", `{ not valid json`)
 

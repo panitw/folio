@@ -24,7 +24,7 @@
 // Coordinates. Every coordinate here is PAGE-ABSOLUTE and in
 // geom.Length millipoints (AD-2's one fixed-point unit), on a TOP-LEFT
 // origin with Y increasing DOWNWARD — the same sense X/Y read in the
-// `.folio8` document model. Band placement has ALREADY been resolved by
+// `.folio` document model. Band placement has ALREADY been resolved by
 // internal/layout before a value of these types exists: AD-24 says
 // "bands are placed on the page by internal/layout alone", so nothing
 // downstream of this package may add a band origin, and nothing here
@@ -245,7 +245,7 @@ type ImagePlacement struct {
 }
 
 // Color is a page-model colour: three channels, each 0..255, exactly the
-// `.folio8` format's own `#RRGGBB` representation (folio8-format.md). It
+// `.folio` format's own `#RRGGBB` representation (folio-format.md). It
 // names no PDF concept — never a `rg`/`RG` operand, never a decimal, never
 // a float (AD-1/AD-23). Converting a channel into the PDF's 0..1 decimal
 // operand is internal/pdf's job, at the one site that emits it

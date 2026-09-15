@@ -103,9 +103,9 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "usage: folio8 <validate|render> [flags] <template.folio8>")
-	fmt.Fprintln(w, "  validate [-data <path>] [-params <path>] [-strict] <template.folio8>")
-	fmt.Fprintln(w, "  render [-data <path>] [-params <path>] [-o <path>] [-strict] <template.folio8>")
+	fmt.Fprintln(w, "usage: folio8 <validate|render> [flags] <template.folio>")
+	fmt.Fprintln(w, "  validate [-data <path>] [-params <path>] [-strict] <template.folio>")
+	fmt.Fprintln(w, "  render [-data <path>] [-params <path>] [-o <path>] [-strict] <template.folio>")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "SOURCE_DATE_EPOCH, if set, supplies the reserved params key \"documentDate\"")
 	fmt.Fprintln(w, "(both /CreationDate and /ModDate) WHEN NO ROUTE HAS ALREADY SUPPLIED ONE.")
@@ -220,7 +220,7 @@ func runValidate(args []string, stdout, stderr io.Writer, getenv func(string) st
 		return exitUsageErr
 	}
 	if fset.NArg() != 1 {
-		fmt.Fprintln(stderr, "validate: exactly one <template.folio8> argument is required")
+		fmt.Fprintln(stderr, "validate: exactly one <template.folio> argument is required")
 		printUsage(stderr)
 		return exitUsageErr
 	}
@@ -266,7 +266,7 @@ func runRender(args []string, stdout, stderr io.Writer, getenv func(string) stri
 		return exitUsageErr
 	}
 	if fset.NArg() != 1 {
-		fmt.Fprintln(stderr, "render: exactly one <template.folio8> argument is required")
+		fmt.Fprintln(stderr, "render: exactly one <template.folio> argument is required")
 		printUsage(stderr)
 		return exitUsageErr
 	}

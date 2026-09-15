@@ -92,7 +92,7 @@ func TestLatinDoesNotBreakAnywhereElse(t *testing.T) {
 func TestCJKBreaksBetweenAdjacentIdeographs(t *testing.T) {
 	dict := Dictionary()
 
-	// fixtures/shaped-text/input.folio8 element e5.
+	// fixtures/shaped-text/input.folio element e5.
 	const subject = "结算单，共３页"
 	ops := Opportunities(dict, subject, nil)
 	if len(ops) == 0 {

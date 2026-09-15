@@ -582,7 +582,7 @@ function tsLocaleTags(source: string): ReadonlyArray<string> {
 // STORY 12.2's MIRROR, and the second here that ties a CLOSED SET rather than a
 // numeral.
 //
-// The invariant: which locale tags a `.folio8` document may declare. Go enforces
+// The invariant: which locale tags a `.folio` document may declare. Go enforces
 // it on the FILE path (parse.go, through template.IsLocale) and on the COMMAND
 // path (setDocumentLocale, through the same predicate), and TypeScript enforces
 // it again on the PROJECTION path (isCanvas) while OFFERING it in the panel.

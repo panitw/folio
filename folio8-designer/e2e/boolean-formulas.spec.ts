@@ -44,7 +44,7 @@ async function revision(page: Page): Promise<string> { return await page.getByTe
 async function openFile(page: Page, buffer: Buffer) {
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'boolean-formulas.folio8', mimeType: 'application/json', buffer })
+  await (await chooser).setFiles({ name: 'boolean-formulas.folio', mimeType: 'application/json', buffer })
   await expect(page.getByRole('button', { name: /text component e1/ })).toBeVisible()
 }
 async function save(page: Page): Promise<Buffer> {
@@ -62,7 +62,7 @@ test('authored boolean formulas survive real worker history, persistence and nat
   await observeWorker(page)
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
-  const starter = JSON.parse(readFileSync(path.join(root, 'folio8-designer/public/templates/starter.folio8'), 'utf8'))
+  const starter = JSON.parse(readFileSync(path.join(root, 'folio8-designer/public/templates/starter.folio'), 'utf8'))
   starter.nextId = 3
   starter.bands.content.elements = [
     { id: 'e1', type: 'text', x: 0, y: 0, width: 200, height: 24, value: 'Conditional line', style: { fontFamily: 'Roboto', fontSize: 12 } },
@@ -129,7 +129,7 @@ test('authored boolean formulas survive real worker history, persistence and nat
   const output = testInfo.outputPath('boolean-formula-parity')
   mkdirSync(output, { recursive: true })
   execFileSync('go', ['build', '-o', path.join(output, 'folio8'), './cmd/folio8'], { cwd: goRoot, stdio: 'pipe' })
-  const templatePath = path.join(output, 'input.folio8')
+  const templatePath = path.join(output, 'input.folio')
   const paramsPath = path.join(output, 'params.json')
   writeFileSync(templatePath, saved)
   writeFileSync(paramsPath, '{}')

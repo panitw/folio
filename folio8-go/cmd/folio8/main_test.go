@@ -82,7 +82,7 @@ func TestUsageNamesBothSubcommands(t *testing.T) {
 // AC3: both subcommands are reachable and work end-to-end.
 func TestValidateAndRenderAreReachable(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	var vout, verr bytes.Buffer
@@ -102,8 +102,8 @@ func TestValidateAndRenderAreReachable(t *testing.T) {
 // AC4: exit codes and stream discipline.
 func TestExitCodesAndStreamDiscipline(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
-	malformedPath := writeTempFile(t, dir, "bad.folio8", cliMalformedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
+	malformedPath := writeTempFile(t, dir, "bad.folio", cliMalformedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 
 	t.Run("success exits 0, bytes on stdout, nothing else", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestExitCodesAndStreamDiscipline(t *testing.T) {
 
 	// This is a PERMANENT test, not a one-off (AC4's own text): a later
 	// "helpful" summary line on stdout alongside the bytes is exactly
-	// how `folio8 render t.folio8 > out.pdf` gets silently corrupted.
+	// how `folio8 render t.folio > out.pdf` gets silently corrupted.
 	//
 	// QA Finding 1 (this story's review, BLOCKER): the original version
 	// of this subtest asserted only bytes.HasPrefix(stdout, "%PDF-1.7")
@@ -217,7 +217,7 @@ func TestExitCodesAndStreamDiscipline(t *testing.T) {
 // fixture from AC6) so the flag is the only variable.
 func TestStrictFlag(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "ก"}`) // Thai, not covered by "Noto Sans"
 
 	t.Run("without --strict: exits 0, complete bytes written", func(t *testing.T) {
@@ -263,7 +263,7 @@ func TestStrictFlag(t *testing.T) {
 // stream, never by asserting Result.Diagnostics directly (D-000.21).
 func TestDiagnosticsPrintedOnStderr(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "ก"}`)
 
 	var stdout, stderr bytes.Buffer
@@ -284,7 +284,7 @@ func TestDiagnosticsPrintedOnStderr(t *testing.T) {
 
 	// Negative control: a clean render prints no diagnostic text at all.
 	cleanDataPath := writeTempFile(t, dir, "clean-data.json", `{"name": "Jane"}`)
-	cleanTplPath := writeTempFile(t, dir, "clean.folio8", cliWellFormedTemplateJSON)
+	cleanTplPath := writeTempFile(t, dir, "clean.folio", cliWellFormedTemplateJSON)
 	var cout, cerr bytes.Buffer
 	code = run([]string{"render", "-data", cleanDataPath, cleanTplPath}, &cout, &cerr, noEnv)
 	if code != exitOK {
@@ -301,7 +301,7 @@ func TestDiagnosticsPrintedOnStderr(t *testing.T) {
 // privileged route only SOURCE_DATE_EPOCH can reach.
 func TestParamsSuppliedDocumentDateNoEnvironment(t *testing.T) {
 	dir := t.TempDir()
-	tplPath := writeTempFile(t, dir, "t.folio8", cliWellFormedTemplateJSON)
+	tplPath := writeTempFile(t, dir, "t.folio", cliWellFormedTemplateJSON)
 	dataPath := writeTempFile(t, dir, "data.json", `{"name": "Jane"}`)
 	paramsPath := writeTempFile(t, dir, "params.json", `{"documentDate": "2023-06-15T12:00:00Z"}`)
 

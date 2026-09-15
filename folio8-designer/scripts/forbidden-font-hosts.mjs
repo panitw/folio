@@ -121,13 +121,13 @@ export const DECLARATION_MARKER = 'folio8:font-host-declaration'
  *     of the rule a violation of it. Measured at Story 8.5: 15 occurrences,
  *     all in archived UX mockup HTML from 2026-08-23 and in the story artifacts
  *     that quote them.
- *   - `fixtures/` and `test-data/` hold PDFs and `.folio8` documents, no source.
+ *   - `fixtures/` and `test-data/` hold PDFs and `.folio` documents, no source.
  *
  *   - `docs/` is published prose. Measured at Story 8.5: 3 occurrences, all in
  *     `docs/expression-reference.html`'s remote font stylesheet links. THAT
  *     EXCEPTION NO LONGER EXISTS: the rendering library documentation change
  *     replaced those links with system font stacks, because the designer now
- *     bundles `docs/rendering-library.html`, `docs/folio8-format.html` and
+ *     bundles `docs/rendering-library.html`, `docs/folio-format.html` and
  *     `docs/expression-reference.html` as precached release assets
  *     (`scripts/build-wasm.mjs`), and a shipped page must request no font host.
  *     The tree itself stays outside `SCANNED_ROOTS` — `docs/` is the

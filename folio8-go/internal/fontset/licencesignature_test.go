@@ -691,7 +691,7 @@ var designerLicenceSignatureKey = regexp.MustCompile(`(?m)^\s*'([^']+)'\s*:`)
 
 // designerTokenTable extracts the RUNTIME licence table Story 16.1 added —
 // `folio8-designer/src/font-licence.ts`'s `licenceTokens`, the closed map from an
-// upstream `METADATA.pb` token to the SPDX id a `.folio8` carries.
+// upstream `METADATA.pb` token to the SPDX id a `.folio` carries.
 //
 // A SECOND TABLE ON THE OTHER SIDE OF THE SAME SEAM, and the one that actually
 // decides what reaches `RefuseContradictedLicence`. The build-time table above
@@ -716,7 +716,7 @@ var designerTokenSPDX = regexp.MustCompile(`\{\s*spdx:\s*'([^']+)'\s*\}`)
 //
 // TWO TABLES IN TWO LANGUAGES, and the Go one is the authority for documents:
 // the designer's runs at BUILD time over the 21 committed faces, while this
-// one runs at the moment bytes are written into a `.folio8`, over faces nobody
+// one runs at the moment bytes are written into a `.folio`, over faces nobody
 // has reviewed. If the designer's table admitted an id Go's did not, a face
 // the build gate had passed would be refused at the pick — or, worse, the two
 // halves would disagree about what a licence sentence looks like and only one

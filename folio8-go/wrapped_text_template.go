@@ -1,6 +1,6 @@
 package folio8
 
-// wrappedTextTemplateJSON is fixtures/wrapped-text/input.folio8, kept
+// wrappedTextTemplateJSON is fixtures/wrapped-text/input.folio, kept
 // byte-identical to it by TestWrappedTextGoldenFixture (the same
 // hand-sync precedent font-text and multi-script-fallback set).
 //

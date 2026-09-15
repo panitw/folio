@@ -415,7 +415,7 @@ func TestFolio8DeclinesEverySubstitutionAtIngestion(t *testing.T) {
 	// was pinned and its justification was only narrated.
 	t.Run("a chain whose first face has no cmap falls through and still renders", func(t *testing.T) {
 		const fallbackName = "Noto Sans"
-		tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio8")
+		tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio")
 		raw, rerr := os.ReadFile(tmplPath)
 		if rerr != nil {
 			t.Fatalf("read the template this assertion renders, %s: %v", tmplPath, rerr)
@@ -495,7 +495,7 @@ func TestFolio8DeclinesEverySubstitutionAtIngestion(t *testing.T) {
 //
 // THE CLOSED HALF, and why it is no longer an emitted-byte assertion.
 // Measured at 431a6a5, in an isolated worktree at that commit: rendering
-// fixtures/font-text/input.folio8 with an OS/2-stripped Roboto produced
+// fixtures/font-text/input.folio with an OS/2-stripped Roboto produced
 // 22,198 bytes, err == nil, and the bytes /CapHeight 928 — the ascender,
 // not a cap height, in a document reporting success. The intact render
 // at that same commit produced 22,310 bytes and /CapHeight 711.
@@ -507,7 +507,7 @@ func TestFolio8DeclinesEverySubstitutionAtIngestion(t *testing.T) {
 // derived here, not quoted.
 func TestCapHeightSubstitutionIsAssertedOnTheEmittedBytes(t *testing.T) {
 	const faceName = "Roboto-Regular"
-	tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio8")
+	tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio")
 	raw, rerr := os.ReadFile(tmplPath)
 	if rerr != nil {
 		t.Fatalf("read the template this assertion renders, %s: %v", tmplPath, rerr)
@@ -571,7 +571,7 @@ func TestCapHeightSubstitutionIsAssertedOnTheEmittedBytes(t *testing.T) {
 // the definition of indistinguishable.
 func TestNamelessProgramNamesItsBaseFontSubstitutionInThePDF(t *testing.T) {
 	const faceName = "Roboto-Regular"
-	tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio8")
+	tmplPath := filepath.Join("..", "..", "..", "fixtures", "font-text", "input.folio")
 	raw, rerr := os.ReadFile(tmplPath)
 	if rerr != nil {
 		t.Fatalf("read %s: %v", tmplPath, rerr)

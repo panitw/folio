@@ -928,7 +928,7 @@ func renderShapedTextFixture(t *testing.T) []byte {
 // and is asserted as such, with the reason stated inline.
 //
 // Red-proof, run and available today against a committed file: point
-// this at fixtures/multi-script-fallback/input.folio8 ("Ada ก 汉") and it
+// this at fixtures/multi-script-fallback/input.folio ("Ada ก 汉") and it
 // reports 0 shape-observable for Latin and Thai and fails.
 func TestShapedTextFixtureIsShapeObservable(t *testing.T) {
 	segments := expectedSegments(t)
@@ -1317,7 +1317,7 @@ func TestShapedTextGoldenFixture(t *testing.T) {
 		t.Fatalf("fixture sha256 %q is not a JSON string of exactly 64 lower-case hex characters (AC16)", fixture.SHA256)
 	}
 
-	inputPath := filepath.Join(root, "fixtures", "shaped-text", "input.folio8")
+	inputPath := filepath.Join(root, "fixtures", "shaped-text", "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 // now `.rail-hash-value`, a bordered mono block carrying all 64 characters in
 // two fixed 32-character lines; `toContainText` reads the block's text, which
 // is the two lines concatenated, so what these two tests compare is unchanged.
-const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio8'))
+const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio'))
 const sampleData = Buffer.from('{"customer":{"name":"Ada"}}')
 
 type PdfSaveProbe = typeof window & {
@@ -38,8 +38,8 @@ test('the fallback tier downloads the current preview as a .pdf without touching
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await templateChooser).setFiles({ name: 'statement.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await (await templateChooser).setFiles({ name: 'statement.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   const sampleChooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
@@ -51,7 +51,7 @@ test('the fallback tier downloads the current preview as a .pdf without touching
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Save PDF' }).click()
   const saved = await download
-  // The `.folio8` suffix is REPLACED, never appended to.
+  // The `.folio` suffix is REPLACED, never appended to.
   expect(saved.suggestedFilename()).toBe('statement.pdf')
   await expect(page.getByText(/Downloaded PDF of revision \d+ as statement\.pdf/)).toBeVisible()
   // THE BYTES THAT LEFT THE TAB, not merely the name they left under. The
@@ -66,17 +66,17 @@ test('the fallback tier downloads the current preview as a .pdf without touching
   expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-')
   await expect(page.locator('.rail-hash-value')).toContainText(createHash('sha256').update(body).digest('hex'))
   // The document the author is editing is untouched by an output save.
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-test('the activation-gated tier writes exactly the bytes the displayed producer digest covers and never reaches the held .folio8 handle', async ({ page }) => {
+test('the activation-gated tier writes exactly the bytes the displayed producer digest covers and never reaches the held .folio handle', async ({ page }) => {
   await page.addInitScript(([rawTemplate, rawSample]: [number[], number[]]) => {
     const probe = window as PdfSaveProbe
     probe.__folio8TemplateWrites = 0
     const held = {
-      name: 'statement.folio8',
-      getFile: async () => new File([new Uint8Array(rawTemplate)], 'statement.folio8', { type: 'application/json' }),
+      name: 'statement.folio',
+      getFile: async () => new File([new Uint8Array(rawTemplate)], 'statement.folio', { type: 'application/json' }),
       // A PDF save that passed the template's retained target would arrive
       // HERE, and this counter is how that becomes visible rather than silent.
       createWritable: async () => ({ write: async () => { probe.__folio8TemplateWrites = (probe.__folio8TemplateWrites ?? 0) + 1 }, close: async () => undefined }),
@@ -103,7 +103,7 @@ test('the activation-gated tier writes exactly the bytes the displayed producer 
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
@@ -132,6 +132,6 @@ test('the activation-gated tier writes exactly the bytes the displayed producer 
 
   // AND THE AUTHOR'S TEMPLATE WAS NEVER OPENED FOR WRITING.
   expect(await page.evaluate(() => (window as PdfSaveProbe).__folio8TemplateWrites)).toBe(0)
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   await expect(page.getByRole('alert')).toHaveCount(0)
 })

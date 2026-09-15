@@ -103,7 +103,7 @@ func TestAlternatingRowsFixtureSourcesMatchMatrixConstants(t *testing.T) {
 		path     string
 		constant string
 	}{
-		{name: "input.folio8", path: filepath.Join(root, "fixtures", "alternating-rows", "input.folio8"), constant: alternatingRowsTemplateJSON},
+		{name: "input.folio", path: filepath.Join(root, "fixtures", "alternating-rows", "input.folio"), constant: alternatingRowsTemplateJSON},
 		{name: "data.json", path: filepath.Join(root, "fixtures", "alternating-rows", "data.json"), constant: alternatingRowsDataJSON},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

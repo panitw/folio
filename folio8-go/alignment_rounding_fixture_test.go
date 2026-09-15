@@ -290,7 +290,7 @@ func TestAlignmentRoundingGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", "alignment-rounding")
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

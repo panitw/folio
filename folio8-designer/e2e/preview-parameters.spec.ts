@@ -9,15 +9,15 @@ test.beforeEach(async ({ page }) => {
 
 // Compiled source for the Epic 6 boundary run. The fixture is altered only as
 // picker input; the browser never reads its template structure.
-const source = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio8'), 'utf8')
+const source = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio'), 'utf8')
 const parameterTemplate = Buffer.from(source.replace('{{customer.name}}', '{{params.reportDate}}'))
 
 test('discovers reportDate from Go, keeps an absent value as a located engine failure, and makes supplied input stale', async ({ page }) => {
   await page.goto('/')
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await templateChooser).setFiles({ name: 'parameter-preview.folio8', mimeType: 'application/json', buffer: parameterTemplate })
-	await expect(page.locator('.document-name')).toHaveText('parameter-preview.folio8')
+  await (await templateChooser).setFiles({ name: 'parameter-preview.folio', mimeType: 'application/json', buffer: parameterTemplate })
+	await expect(page.locator('.document-name')).toHaveText('parameter-preview.folio')
   const sampleChooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()

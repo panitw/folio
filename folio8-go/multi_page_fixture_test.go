@@ -37,7 +37,7 @@ import (
 
 // The fixture's page setup, restated as the literals the assertions below
 // compare against. Every one is HAND-DERIVED from
-// fixtures/multi-page/input.folio8 and the arithmetic is written out.
+// fixtures/multi-page/input.folio and the arithmetic is written out.
 //
 //	page.size            A4          -> 595276 x 841890 mp
 //	page.margin.top      30          ->  30000 mp
@@ -448,16 +448,16 @@ func PageContentStreams(t *testing.T, b []byte) []string {
 // test binary and the committed fixture are THE SAME DOCUMENT. Without it,
 // every assertion below describes a document nobody ships.
 func TestMultiPageGoldenFixtureMatchesTheInRepoTemplate(t *testing.T) {
-	path := filepath.Join(repoRootFromTest(t), "fixtures", "multi-page", "input.folio8")
+	path := filepath.Join(repoRootFromTest(t), "fixtures", "multi-page", "input.folio")
 	onDisk, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("presence precondition: %s could not be read: %v", path, err)
 	}
 	if len(onDisk) == 0 {
-		t.Fatal("presence precondition: fixtures/multi-page/input.folio8 is empty")
+		t.Fatal("presence precondition: fixtures/multi-page/input.folio is empty")
 	}
 	if string(onDisk) != multiPageTemplateJSON {
-		t.Errorf("multiPageTemplateJSON and fixtures/multi-page/input.folio8 have DIVERGED.\n"+
+		t.Errorf("multiPageTemplateJSON and fixtures/multi-page/input.folio have DIVERGED.\n"+
 			"in-repo constant: %d bytes\non disk:          %d bytes\n"+
 			"They are kept byte-identical by hand (font-text's, wrapped-text's and three-band-page's "+
 			"precedent). Every assertion in this file is about the constant; the golden is recorded from "+

@@ -49,7 +49,7 @@ func TestStatementFixtureInputsMatchTheInRepoDefinitions(t *testing.T) {
 		t.Run(f.slug, func(t *testing.T) {
 			dir := filepath.Join(root, "fixtures", f.slug)
 			for _, c := range []struct{ name, want string }{
-				{"input.folio8", statementTemplateJSON},
+				{"input.folio", statementTemplateJSON},
 				{"params.json", statementParamsJSON},
 				{"data.json", statementDataJSON(f.rows)},
 			} {

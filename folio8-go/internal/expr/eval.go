@@ -171,7 +171,7 @@ func evalUpperLower(name string, call *CallExpr, resolver Resolver, fc FormatCon
 //     section from one that was never there) was presented and chosen
 //     deliberately, over the alternative of a Warning. This is the one
 //     behaviour in the engine that produces no signal at all; it is
-//     documented in folio8-format.md and has its own dedicated,
+//     documented in folio-format.md and has its own dedicated,
 //     findable test (TestIfNullConditionIsSilentlyFalse, eval_test.go)
 //     for exactly that reason.
 //

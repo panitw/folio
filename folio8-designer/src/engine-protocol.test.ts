@@ -431,7 +431,7 @@ describe('canvas projection protocol guard', () => {
   })
 
   // DW-70. Go sorts these keys with slices.Sorted over Go strings — BY BYTE —
-  // and those keys are the canonical `.folio8`'s own `fonts` key order under
+  // and those keys are the canonical `.folio`'s own `fonts` key order under
   // AD-9, so Go's order IS the document's and is NORMATIVE. The guard used
   // `>=` on JavaScript strings, which compares UTF-16 CODE UNITS, and the two
   // disagree wherever a name mixes the astral planes with U+E000-U+FFFF: a

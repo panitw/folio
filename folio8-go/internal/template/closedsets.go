@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// The closed sets folio8-format.md states, enforced at load (AC5). Kept
+// The closed sets folio-format.md states, enforced at load (AC5). Kept
 // visibly separate from passthrough (AC10, AC11 clause 3): an unknown
 // KEY passes through opaquely; a recognised key carrying an unlisted
 // VALUE from one of these sets is still a load error. Conflating the
@@ -134,7 +134,7 @@ var StyleAlignTokens = []string{AlignLeft, AlignCenter, AlignRight, AlignJustify
 // impossible.
 //
 // A separate declaration from ColumnAlignTokens rather than an alias of
-// it: they are separately documented closed sets in folio8-format.md,
+// it: they are separately documented closed sets in folio-format.md,
 // and either could move without the other. TestAlignSetsAreThreeSets…
 // pins them against their own maps and against each other.
 var TableStyleAlignTokens = []string{AlignLeft, AlignCenter, AlignRight}
@@ -294,7 +294,7 @@ var closedFooterKinds = map[string]bool{
 // like. The loader's own refusal and the command door's both render it
 // (parse.go, component_commands.go's setDocumentUTCOffset), so the
 // sentence the author reads cannot drift from the pattern below by a
-// re-typing. The phrase comes from folio8-format.md's own
+// re-typing. The phrase comes from folio-format.md's own
 // `utcOffset` row in the top-level field table: "utcOffset | Fixed
 // offset, ±HH:MM." (Cited by NAME rather than by line: this story
 // edits that file, and a line number a story's own edit can move is
@@ -307,13 +307,13 @@ const UTCOffsetSyntax = "±HH:MM"
 // value no clock has and internal/expr's parseUTCOffsetMinutes then
 // refused, so the document LOADED and every formatDate in it failed at
 // render with `expr: invalid UTC offset "+99:99"`. D-12.C ruled that
-// repairing this is implementing folio8-format.md's `utcOffset`
+// repairing this is implementing folio-format.md's `utcOffset`
 // field-table row rather than
 // narrowing it: `+99:99` is not a fixed offset, and the format's
 // compatibility rules are recorded as explicitly undefined pending a
 // policy (SPEC.md's open-questions list; epics.md's NFR6).
 //
-// NOTHING REAL IS EXCLUDED (D-12.C.3): measured over every `.folio8`
+// NOTHING REAL IS EXCLUDED (D-12.C.3): measured over every `.folio`
 // file `git ls-files --others --cached` reports — 31 of them — 24
 // declare `+00:00`, 7 declare `+07:00`, and ZERO are excluded by the
 // repair. D-12.C's own table says 28/21/7; that was a smaller
@@ -323,7 +323,7 @@ const UTCOffsetSyntax = "±HH:MM"
 // too.
 //
 // `Z` IS NOT ADMITTED HERE, ON ONE GROUND: it is not `±HH:MM`.
-// folio8-format.md's `utcOffset` field-table row states the field's
+// folio-format.md's `utcOffset` field-table row states the field's
 // syntax and `Z` does not match
 // it, so excluding it IMPLEMENTS the format exactly as excluding
 // `+99:99` does. `Z` is RFC 3339's UTC spelling and belongs to report

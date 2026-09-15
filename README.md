@@ -8,7 +8,7 @@ engine in the space JasperReports occupies, built around four commitments:
   data and hands it over; folio8 renders it.
 - **Deterministic.** The same template and the same data produce the same bytes.
   No clock, no locale, no network, no filesystem beyond the calls you make.
-- **Portable templates.** A `.folio8` file is text. It diffs, it reviews, it lives
+- **Portable templates.** A `.folio` file is text. It diffs, it reviews, it lives
   in git, and a person or an agent can edit it without opening the designer.
 - **A library, not a service.** `folio8-go` is the reference engine and a normal Go
   dependency. The designer is a static page that runs that same engine in your
@@ -32,7 +32,7 @@ approximation of it.
 | [lint/](lint/) | The guardrails that fail the build: architecture/import rules, the float ban, and the third-party licence check ([MANIFEST.md](lint/MANIFEST.md)). A separate Go module. |
 | [hashmatrix/](hashmatrix/) | A deliberately-broken floating-point probe, kept out of the guards' reach, that proves the cross-target matrix can actually *detect* divergence. See its [README](hashmatrix/README.md). |
 | [tools/fontgen/](tools/fontgen/) | Derives the shipped static faces from upstream variable builds. The outputs are committed; this exists so the derivation can be replayed. |
-| [docs/](docs/) | User documentation, the source of truth: the [rendering library guide](docs/rendering-library.md), the [`.folio8` format reference](docs/folio8-format.md), the [expression reference](docs/expression-reference.md), and the original [MVP plan](docs/folio8-mvp-plan.md). |
+| [docs/](docs/) | User documentation, the source of truth: the [rendering library guide](docs/rendering-library.md), the [`.folio` format reference](docs/folio-format.md), the [expression reference](docs/expression-reference.md), and the original [MVP plan](docs/folio8-mvp-plan.md). |
 | [_bmad-output/](_bmad-output/) | Planning and delivery record: PRD, architecture spine, specs, epics, and [sprint status](_bmad-output/implementation-artifacts/sprint-status.yaml). |
 
 Three independent Go modules (`folio8-go`, `lint`, `hashmatrix`) with no
@@ -45,7 +45,7 @@ Three independent Go modules (`folio8-go`, `lint`, `hashmatrix`) with no
 ### Render from Go
 
 ```go
-tpl, err := folio8.LoadTemplate("statement.folio8")
+tpl, err := folio8.LoadTemplate("statement.folio")
 if err != nil {
 	log.Fatal(err)
 }
@@ -76,8 +76,8 @@ limitations.
 ### Render from the command line
 
 ```
-folio8 validate [-data <path>] [-params <path>] [-strict] <template.folio8>
-folio8 render   [-data <path>] [-params <path>] [-o <path>] [-strict] <template.folio8>
+folio8 validate [-data <path>] [-params <path>] [-strict] <template.folio>
+folio8 render   [-data <path>] [-params <path>] [-o <path>] [-strict] <template.folio>
 ```
 
 `SOURCE_DATE_EPOCH` supplies the reserved `documentDate` param when no other
@@ -93,7 +93,7 @@ npm ci
 npm run dev
 ```
 
-It opens a `.folio8` file from your machine and saves it back — no round-trip and
+It opens a `.folio` file from your machine and saves it back — no round-trip and
 no account — and works offline after first load. `npm run build` produces the
 static, offline-capable release and verifies it.
 
@@ -101,7 +101,7 @@ static, offline-capable release and verifies it.
 
 ## Templates and data
 
-A `.folio8` file is JSON: page setup, three bands (page header, content, page
+A `.folio` file is JSON: page setup, three bands (page header, content, page
 footer), and components placed at absolute coordinates. Five component types —
 Text, Image, Table, Line, Rectangle.
 

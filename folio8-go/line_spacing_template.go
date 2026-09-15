@@ -1,6 +1,6 @@
 package folio8
 
-// lineSpacingTemplateJSON is fixtures/line-spacing/input.folio8, kept
+// lineSpacingTemplateJSON is fixtures/line-spacing/input.folio, kept
 // byte-identical to it by TestLineSpacingGoldenFixture (the same
 // hand-sync precedent font-text, multi-script-fallback, wrapped-text and
 // mandatory-break set).

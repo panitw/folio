@@ -44,10 +44,10 @@ func (k Kind) String() string {
 
 // Value is bind's generic report-data value tree (AC7, AC24) — the
 // SECOND of this story's two decode trees. internal/template's Document
-// (Story 1.4) is schema-typed, built from the `.folio8` document itself;
+// (Story 1.4) is schema-typed, built from the `.folio` document itself;
 // Value is generic, built from whatever JSON shape a caller's report
 // data happens to be. The two tree-builders stay deliberately separate
-// (AC7: merging them would force the `.folio8` schema to model arbitrary
+// (AC7: merging them would force the `.folio` schema to model arbitrary
 // caller JSON) — what they SHARE is only the number-literal
 // decomposition (internal/template.SplitJSONNumber, via Decimal, AC6).
 type Value struct {

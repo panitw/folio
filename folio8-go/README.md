@@ -1,6 +1,6 @@
 # folio8-go
 
-`folio8-go` turns a `.folio8` template plus report data into a PDF 1.7 document —
+`folio8-go` turns a `.folio` template plus report data into a PDF 1.7 document —
 byte-identically, every time, on a given build toolchain (see
 [Reproducible bytes](#reproducible-bytes--the-toolchain-caveat) below). It
 never reads the clock, the filesystem outside the calls you make, the
@@ -9,7 +9,7 @@ parameters, and fonts — is handed in explicitly.
 
 **Documentation.** The [rendering library guide](../docs/rendering-library.md) covers installation,
 inputs, warnings and errors, the template features that change output, and every exported API. The
-[`.folio8` format reference](../docs/folio8-format.md) defines the template file, and the
+[`.folio` format reference](../docs/folio-format.md) defines the template file, and the
 [expression reference](../docs/expression-reference.md) the syntax inside `{{ }}`.
 
 ## Your first PDF
@@ -35,14 +35,14 @@ import (
 	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
-// Example demonstrates the whole path from a `.folio8` template on disk to
+// Example demonstrates the whole path from a `.folio` template on disk to
 // rendered PDF bytes: a load call, a render call, and — the one thing this
 // example exists to prove — the FontSet arriving as a single, no-argument
 // expression, fonts.Shipped(). There is no builder, no options struct, and
 // no field-by-field assembly of font bytes: Story 2.2's shipped face set is
 // simply asked for.
 func Example() {
-	tpl, err := folio8.LoadTemplate("testdata/example/first-pdf.folio8")
+	tpl, err := folio8.LoadTemplate("testdata/example/first-pdf.folio")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -148,7 +148,7 @@ if your own code imports `folio8-go/fonts` and calls `Shipped()`.
 
 ### The `locale` field
 
-A `.folio8` document carries a top-level `"locale"`, and it is the document's
+A `.folio` document carries a top-level `"locale"`, and it is the document's
 own property — folio8 never consults the host's locale, environment or
 system settings for it (that is what makes a render reproducible across
 machines, AD-1).

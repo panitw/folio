@@ -25,7 +25,7 @@ in this directory, the unmodified upstream licence text).
 This is Story 16.8's addition to `fonts.Shipped()`'s FontSet — the fourth shipped production
 face, joining the three Story 2.2 Noto faces (`"Noto Sans"`, `"Noto Sans Thai"`,
 `"Noto Sans SC"`) — keyed as `"Roboto"`. A new document's starter template
-(`folio8-designer/public/templates/starter.folio8`) declares its default `fonts` chain under the
+(`folio8-designer/public/templates/starter.folio`) declares its default `fonts` chain under the
 name `"Roboto"`, over the same three families in the same order, so a new document opens in a
 typeface with a name rather than in the internal chain name `body` the starter used before this
 story — the Noto Sans Thai and Noto Sans SC fallbacks are unchanged and keep Thai and CJK

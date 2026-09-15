@@ -38,7 +38,7 @@ const embeddedFontData = `[
         "VEFHTFlGREFUQUhFQUREQVRBSEVBRERBVEFIRUFEREFUQUhFQUREQVRB"
       ]`
 
-// embeddedFontDoc builds a whole `.folio8` with one asset and one chain, so
+// embeddedFontDoc builds a whole `.folio` with one asset and one chain, so
 // every row of the matrix is a real ParseDocument over real bytes rather than
 // a hand-built Document that skipped the loader.
 //
@@ -942,7 +942,7 @@ func TestRecognisedFontMediaTypeWithWrongBytesIsALoadError(t *testing.T) {
 // THE HOLE, MEASURED. `mediaType` is AUTHOR-DECLARED. Nothing inspects the
 // bytes before the media type is read, so `{"mediaType": "font/ttf"}` over TTC
 // bytes IS recognised, DOES reach checkSfnt, and used to load clean — while
-// folio8-format.md promises a recognised type whose bytes are not that format is
+// folio-format.md promises a recognised type whose bytes are not that format is
 // a load error. The old branch justified itself with "no recognised media type
 // reaches here with it anyway", which was an unmeasured negative and false.
 //

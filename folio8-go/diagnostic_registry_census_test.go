@@ -26,7 +26,7 @@ func TestDiagnosticRegistryErrorCensus(t *testing.T) {
 			// Story 7.8: this trigger used to be malformedTemplateJSON —
 			// a well-formed document missing a required field — which is
 			// TEMPLATE_FIELD_INVALID now. The production condition this
-			// code still names is a document that is not a `.folio8`
+			// code still names is a document that is not a `.folio`
 			// document at all, which is the one whose message may quote
 			// the input back.
 			_, err := ParseTemplate([]byte(unparseableTemplateJSON))

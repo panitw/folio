@@ -151,7 +151,7 @@ func jsonString(s string) string {
 
 // oneElementShapedTemplate builds a single-element document over the
 // shipped three-face chain at 16 pt — the same chain and size
-// fixtures/shaped-text/input.folio8 uses, so the numbers in
+// fixtures/shaped-text/input.folio uses, so the numbers in
 // segmentOriginCase describe the same conditions the golden records.
 func oneElementShapedTemplate(value string) string {
 	return `{

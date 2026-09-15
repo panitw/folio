@@ -2,7 +2,7 @@
 
 This fixture exists to close a hole, not to show a feature.
 
-Measured across every `fixtures/*/input.folio8` at this story's baseline: **16 `"align": "left"`,
+Measured across every `fixtures/*/input.folio` at this story's baseline: **16 `"align": "left"`,
 8 `"align": "right"`, zero `"center"`, and zero `valign` of any value.** So of the alignment
 feature's branches, the golden corpus exercised the two that *cannot* round — `left` returns zero and
 `right` returns the slack unchanged — and none of the ones that halve a slack with
@@ -73,7 +73,7 @@ sibling fixture's version leaks into a document requiring neither.
 
 | File | What it is |
 |---|---|
-| `input.folio8` | the template, kept byte-identical to `folio8-go/alignmentRoundingTemplateJSON` by hand |
+| `input.folio` | the template, kept byte-identical to `folio8-go/alignmentRoundingTemplateJSON` by hand |
 | `expected.json` | the recorded digest and the toolchain it was recorded under |
 | `expected.pdf` | the recorded artifact |
 

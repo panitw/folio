@@ -9,7 +9,7 @@ import (
 	"github.com/panitw/folio8/folio8-go/internal/template"
 )
 
-// Template is a parsed, canonicalised `.folio8` document (AC1). It is an
+// Template is a parsed, canonicalised `.folio` document (AC1). It is an
 // OPAQUE handle wrapping internal/template.Document — deliberately NOT
 // a type alias (Epic 1 boundary gate finding): an alias made every
 // exported field of internal/template.Document, and all 32 exported
@@ -44,7 +44,7 @@ type Template struct {
 	derivedFooters map[template.ElementID]expr.DerivedFooter
 }
 
-// LoadTemplate reads path from disk and parses it as a `.folio8`
+// LoadTemplate reads path from disk and parses it as a `.folio`
 // document (AC1). Per D-1.4.6: "So LoadTemplate(path string) and
 // ParseTemplate(b []byte) live in package folio8 at the module root,
 // where os is permitted; internal/template never sees a path — it
@@ -59,7 +59,7 @@ func LoadTemplate(path string) (*Template, error) {
 	return ParseTemplate(b)
 }
 
-// ParseTemplate parses b as a `.folio8` document (AC1). It is the sole
+// ParseTemplate parses b as a `.folio` document (AC1). It is the sole
 // bridge into internal/template's parser (AD-9: "internal/template
 // owns both the parser and the serializer").
 //

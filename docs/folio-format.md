@@ -1,12 +1,12 @@
-# The `.folio8` format
+# The `.folio` format
 
-This is the canonical reference for the `.folio8` template format: what every field is called, what
+This is the canonical reference for the `.folio` template format: what every field is called, what
 it means, which values are legal, and what the library does when a file breaks a rule. Format
 version **4.1** is the highest version this library supports.
 
 The format is a public contract, not an implementation detail. A person or a program can write or
 edit a template by hand, without the designer, and a hand-written template renders exactly as a
-designer-written one does. The designer never parses `.folio8` itself; the engine owns the document.
+designer-written one does. The designer never parses `.folio` itself; the engine owns the document.
 
 - To render a template from Go, see the [rendering library guide](rendering-library.md).
 - For expression syntax — paths, functions, formulas — see the
@@ -310,7 +310,7 @@ path checks that the key exists in `assets` and nothing else — it never inspec
 `mediaType` or its bytes to decide whether the entry is legal. That is the same rule the open
 `mediaType` set rests on (see [*A font asset*](#a-font-asset)), and it applies to a *wrong-kind*
 asset exactly as it does to an unrecognised font container: a chain entry naming an `image/png`
-asset is a valid `.folio8`. The failure arrives at render, and **only when something must actually
+asset is a valid `.folio`. The failure arrives at render, and **only when something must actually
 draw with that entry** — when a rune reaches it because no earlier entry in the chain covers that
 rune. It is a located error naming **the chain, the entry's index and the asset key**. A document
 whose text is covered entirely by the entries ahead of it renders clean and says nothing, because
@@ -957,7 +957,7 @@ rule.**
   a sibling that skipped it would let a document carry an unlicensed embedded bold. It is never a
   warning and never a best-effort render.
 
-  A font that travels without its terms is not a font that may be passed on, and a `.folio8` is a
+  A font that travels without its terms is not a font that may be passed on, and a `.folio` is a
   single file that travels alone: there is nowhere else for the terms to be. `licenceText` is the
   **actual text** of the licence, not its name — `licence` already carries the name. The
   duplication that costs (a document embedding three OFL families carries three near-identical

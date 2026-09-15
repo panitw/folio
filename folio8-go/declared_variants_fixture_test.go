@@ -446,7 +446,7 @@ func TestDeclaredVariantsEmitsFourCuts(t *testing.T) {
 // object while declaring "1.0" would be a version that lies, and sharing
 // the predicate is what makes that unrepresentable. This asserts the
 // TEMPLATE CONST is on the right side of it. It does not open
-// fixtures/declared-variants/input.folio8 — TestDeclaredVariantsGolden-
+// fixtures/declared-variants/input.folio — TestDeclaredVariantsGolden-
 // Fixture below is what ties the committed file to this const, byte for
 // byte, and a second copy of that check here would buy nothing.
 func TestDeclaredVariantsIsCanonicalAndDeclaresTwoPointZero(t *testing.T) {
@@ -492,7 +492,7 @@ func TestDeclaredVariantsIsCanonicalAndDeclaresTwoPointZero(t *testing.T) {
 
 // TestDeclaredVariantsGoldenFixture is the byte-identity half: the live
 // render must reproduce fixtures/declared-variants/expected.pdf exactly,
-// and the committed input.folio8 must still be byte-identical to the const
+// and the committed input.folio must still be byte-identical to the const
 // this package renders (the hand-sync precedent font-text,
 // multi-script-fallback, wrapped-text, mandatory-break, line-spacing,
 // justified-text, justified-thai, alignment-rounding and
@@ -501,7 +501,7 @@ func TestDeclaredVariantsGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", declaredVariantsFixtureDir)
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

@@ -606,7 +606,7 @@ func TestCanvasBodyTextAtTheLineBoundCarriesEveryLine(t *testing.T) {
 // per-chain entry-count guard, measured where it actually bites: a document
 // LOADED FROM BYTES that already declares a chain deeper than the projection
 // will carry. decodeFonts validates nothing about a chain's length, so such a
-// .folio8 parses; only the projection refuses it.
+// .folio parses; only the projection refuses it.
 //
 // It is deliberately not the command path's test.
 // TestFontChainEntryCountIsBoundedAtTheCommand drives addFontChain, a

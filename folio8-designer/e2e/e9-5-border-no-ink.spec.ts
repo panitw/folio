@@ -54,8 +54,8 @@ test('a border that paints no ink paints no border on the canvas', async ({ page
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'border.folio8', mimeType: 'application/json', buffer: Buffer.from(inertVsPainting, 'utf8') })
-  await expect(page.locator('.document-name')).toHaveText('border.folio8')
+  await (await chooser).setFiles({ name: 'border.folio', mimeType: 'application/json', buffer: Buffer.from(inertVsPainting, 'utf8') })
+  await expect(page.locator('.document-name')).toHaveText('border.folio')
   await expect(page.locator('[aria-label*="component e2"]').first()).toBeVisible()
 
   // THE assertion. Every border-painting box the canvas drew, keyed by the

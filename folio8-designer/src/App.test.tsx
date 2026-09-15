@@ -9,7 +9,7 @@ import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
 import { shippedFamilyEntry } from './shipped-face-cuts'
-import { FileAccessCancelled, FileAccessFailure, folio8FileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
+import { FileAccessCancelled, FileAccessFailure, folioFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
 import { FileSystemAccess } from './file/file-system-access'
 import { InputDownloadAccess } from './file/input-download'
 import type { EngineClient } from './engine-client'
@@ -1346,10 +1346,10 @@ describe('application shell', () => {
 
   it('loads only opaque adapter bytes through Go, establishes a clean baseline, and dirties after a committed command', async () => {
     const request = vi.fn(async (operation: string) => ({ snapshot: snapshot(operation === 'command' ? 8 : 7), ...(operation === 'serialize' ? { bytes } : {}) }))
-    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={snapshot(1)} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
-    await waitFor(() => expect(screen.getByText('report.folio8')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('report.folio')).toBeInTheDocument())
     expect(request.mock.calls.map(([operation]) => operation)).toEqual(['load', 'serialize'])
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Top margin (pt)' }), { target: { value: '37' } })
@@ -1787,7 +1787,7 @@ describe('application shell', () => {
 
   it('empties the clipboard when a different document is opened', async () => {
     await onPlatform('', async () => {
-      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'other.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'other.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
       const request = renderShortcutCanvas(files)
       fireEvent.click(screen.getByLabelText('rect component e2'))
       fireEvent.keyDown(screen.getByLabelText('Canvas region'), { key: 'c', ctrlKey: true })
@@ -1918,8 +1918,8 @@ describe('application shell', () => {
   })
 
   it('keeps the Save shortcut working while the table editor is open, because it sits above the guard', async () => {
-    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio8', format: folio8FileFormat }))
-    const writeSave = vi.fn(async () => ({ name: 'untitled.folio8' }))
+    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat }))
+    const writeSave = vi.fn(async () => ({ name: 'untitled.folio' }))
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     await openTableEditorOver(files)
     const done = screen.getByRole('button', { name: 'Done' })
@@ -2784,7 +2784,7 @@ describe('application shell', () => {
       const request = vi.fn((_operation: string, _payload?: ArrayBuffer, signal?: AbortSignal) => new Promise((_resolve, reject) => {
         signal?.addEventListener('abort', () => reject(Object.assign(new Error('Engine request was abandoned'), { code: 'REQUEST_ABORTED' })), { once: true })
       }))
-      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'wedged.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'wedged.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
       render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
 
       const open = screen.getByRole('button', { name: 'Open local template' })
@@ -2825,7 +2825,7 @@ describe('application shell', () => {
       // then `serialize`, and the status is busy until both have landed.
       const pending: Array<(value: unknown) => void> = []
       const request = vi.fn(() => new Promise((resolve) => { pending.push(resolve) }))
-      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'timed.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+      const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'timed.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
       render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
       const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0) }) }
       const settle = async () => { await act(async () => { pending.shift()?.({ snapshot: { documentState: 'loaded', revision: 5, byteLength: 3 }, bytes }) }); await flush() }
@@ -2842,13 +2842,13 @@ describe('application shell', () => {
 
       await settle()
       await settle()
-      expect(screen.getByText(/Opened local file timed\.folio8/)).toBeInTheDocument()
+      expect(screen.getByText(/Opened local file timed\.folio/)).toBeInTheDocument()
 
       // The settled status survives to the edge of the window and not past it.
       await act(async () => { await vi.advanceTimersByTimeAsync(5_999) })
-      expect(screen.getByText(/Opened local file timed\.folio8/)).toBeInTheDocument()
+      expect(screen.getByText(/Opened local file timed\.folio/)).toBeInTheDocument()
       await act(async () => { await vi.advanceTimersByTimeAsync(1) })
-      expect(screen.queryByText(/Opened local file timed\.folio8/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Opened local file timed\.folio/)).not.toBeInTheDocument()
     } finally { vi.useRealTimers() }
   })
 
@@ -2875,7 +2875,7 @@ describe('application shell', () => {
   it('reports the file boundary\'s own sentence, and keeps the plain one for everything else', async () => {
     const files: FileAccess = {
       open: vi.fn(),
-      acquireSaveTarget: vi.fn(async () => ({ name: 'locked.folio8', format: folio8FileFormat })),
+      acquireSaveTarget: vi.fn(async () => ({ name: 'locked.folio', format: folioFileFormat })),
       writeSave: vi.fn()
         .mockRejectedValueOnce(new FileAccessFailure('Could not save local file: NoModificationAllowedError: The file is locked'))
         .mockRejectedValueOnce(new Error('something else entirely')),
@@ -2897,12 +2897,12 @@ describe('application shell', () => {
   // which scroll, so the reason a file button was disabled was routinely off
   // the bottom of the window while the deny cursor was up in the bar.
   it('renders the local file message inside the document bar, with the actions it explains', async () => {
-    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'placed.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'placed.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
     render(<App engine={engine()} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 2, byteLength: 3 }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
-    await waitFor(() => expect(screen.getByText(/Opened local file placed\.folio8/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Opened local file placed\.folio/)).toBeInTheDocument())
     const actions = screen.getByRole('group', { name: 'Local file actions' })
-    expect(actions).toContainElement(screen.getByText(/Opened local file placed\.folio8/))
+    expect(actions).toContainElement(screen.getByText(/Opened local file placed\.folio/))
     expect(screen.getByRole('banner', { name: 'Document bar' })).toContainElement(actions)
   })
 
@@ -2920,8 +2920,8 @@ describe('application shell', () => {
   it('acquires a target before serialization, preserves dirty on failure, and handles the Save shortcut', async () => {
     let rejectSave = true
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 3, byteLength: 3 }, bytes }))
-    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio8', format: folio8FileFormat }))
-    const writeSave = vi.fn(async () => { if (rejectSave) throw new Error('denied'); return { name: 'untitled.folio8' } })
+    const acquireSaveTarget = vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat }))
+    const writeSave = vi.fn(async () => { if (rejectSave) throw new Error('denied'); return { name: 'untitled.folio' } })
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 3, byteLength: 3 }} />)
     fireEvent.keyDown(window, { key: 's', ctrlKey: true })
@@ -2932,7 +2932,7 @@ describe('application shell', () => {
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
     rejectSave = false
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
-    await waitFor(() => expect(screen.getByText('Downloaded local file untitled.folio8')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Downloaded local file untitled.folio')).toBeInTheDocument())
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
   })
 
@@ -2951,7 +2951,7 @@ describe('application shell', () => {
   it('keeps a noncanonical valid open dirty until the canonical engine bytes are written', async () => {
     const canonical = new Uint8Array([9, 8, 7]).buffer
     const request = vi.fn(async (operation: string) => ({ snapshot: { documentState: 'loaded' as const, revision: 7, byteLength: 3 }, ...(operation === 'serialize' ? { bytes: canonical } : {}) }))
-    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'noncanonical.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'noncanonical.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3 }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
     await waitFor(() => expect(screen.getByText(/canonical local changes need saving/)).toBeInTheDocument())
@@ -2961,12 +2961,12 @@ describe('application shell', () => {
   it('does not roll back or clean a newer engine revision after an older save settles', async () => {
     let releaseWrite: (() => void) | undefined
     let releaseCommit: (() => void) | undefined
-    const writeSave = vi.fn(() => new Promise<{ name: string }>((resolve) => { releaseWrite = () => resolve({ name: 'untitled.folio8' }) }))
+    const writeSave = vi.fn(() => new Promise<{ name: string }>((resolve) => { releaseWrite = () => resolve({ name: 'untitled.folio' }) }))
     const request = vi.fn((operation: string): Promise<{ snapshot: ReturnType<typeof snapshot>; bytes?: ArrayBuffer }> => {
       if (operation === 'command') return new Promise((resolve) => { releaseCommit = () => resolve({ snapshot: snapshot(3) }) })
       return Promise.resolve({ snapshot: snapshot(2), bytes })
     })
-    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'untitled.folio8', format: folio8FileFormat })), writeSave }
+    const files: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'untitled.folio', format: folioFileFormat })), writeSave }
     render(<App engine={engine(request)} fileAccess={files} initialSnapshot={snapshot(2)} />)
     fireEvent.click(screen.getByRole('button', { name: 'Apply page setup' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
@@ -3534,7 +3534,7 @@ describe('application shell', () => {
     // panel may only propose values the loader will accept.
     const options = within(screen.getByRole('combobox', { name: 'Document locale' })).getAllByRole('option')
     expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual([...LOCALE_TAGS])
-    // The VISIBLE text is the tag itself, not a display name: the `.folio8` file
+    // The VISIBLE text is the tag itself, not a display name: the `.folio` file
     // says `zh-Hans`, and a display-name map would be a fifth artifact keyed by
     // the tag set, needing a tie of its own.
     expect(options.map((option) => option.textContent)).toEqual([...LOCALE_TAGS])
@@ -4577,7 +4577,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       // first cut of it sent a ONE-entry chain: latin kept working and every
       // Thai and CJK run in the document silently lost its fallback. Roboto's
       // catalogue `scripts` is `["latin"]`, so the answer is exactly the
-      // three-entry chain `starter.folio8` already declares — which
+      // three-entry chain `starter.folio` already declares — which
       // `pick_declares_cuts_ext_test.go` compares against that file itself, so
       // this expectation and the shipped document cannot drift apart.
       expect(payload['entries']).toEqual([
@@ -4715,7 +4715,7 @@ describe('typography controls over the engine-projected closed sets', () => {
 
   // Story 7.4 / AC4. lineSpacing is a dimensionless RATIO carried as a RAW,
   // UNQUOTED JSON number: Go's own decoder performs the x1000 to thousandths,
-  // exactly as it does for a value written in a .folio8 file. Quoting it, or
+  // exactly as it does for a value written in a .folio file. Quoting it, or
   // pre-multiplying it here, is refused by the engine.
   it('shows an unset ratio as the engine\'s own value and commits a typed one as a raw unquoted number', async () => {
     const sent: ArrayBuffer[] = []
@@ -4870,7 +4870,7 @@ describe('typography controls over the engine-projected closed sets', () => {
       }
       return { snapshot: stable, ...(operation === 'serialize' ? { bytes } : {}) }
     })
-    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'report.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
     render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={stable} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
     await waitFor(() => expect(screen.getByText('Saved local file')).toBeInTheDocument())
@@ -5630,7 +5630,7 @@ describe('Story 17.4: arrow keys step a number field', () => {
 // carry the real number and committing one writes it.
 //
 // THE SAFETY PROPERTY IS THE FIRST TEST BELOW AND IT IS NOT A FORMALITY:
-// opening a document must never mutate it. Every existing `.folio8` would
+// opening a document must never mutate it. Every existing `.folio` would
 // silently rewrite itself on being looked at if the default were written
 // anywhere but on an author's commit, and the assertion that catches that is
 // `request` never having been called — not the box's text.
@@ -8072,7 +8072,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
     await waitFor(() => expect(tier.written).toHaveLength(1))
     // THE PICKER IS OFFERED A PDF NAME AND A PDF-ONLY FILTER — all three of the
-    // former `.folio8` hardcodings, arriving as one format.
+    // former `.folio` hardcodings, arriving as one format.
     expect(tier.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'Untitled template.pdf', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] })
     // THE BYTES, against the literal and against the digest the stub reported.
     expect(tier.written[0]).toEqual([...exportedPdfBytes])
@@ -8105,48 +8105,48 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     // only interesting when there IS something for it to have carried: with
     // `target` still undefined, `currentTarget: target` and no `currentTarget`
     // at all are the same object to a structural comparison.
-    const heldTarget = { kind: 'in-place' as const, name: 'held.folio8', handle: { name: 'held.folio8', getFile: async () => new File([], 'held.folio8'), createWritable: vi.fn(async () => ({ write: async () => undefined, close: async () => undefined })) } }
+    const heldTarget = { kind: 'in-place' as const, name: 'held.folio', handle: { name: 'held.folio', getFile: async () => new File([], 'held.folio'), createWritable: vi.fn(async () => ({ write: async () => undefined, close: async () => undefined })) } }
     const requests: SaveTargetRequest[] = []
-    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return requests.length === 1 ? { name: 'held.folio8', target: heldTarget, format: folio8FileFormat } : { name: 'held.pdf', format: pdfFileFormat } })
-    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => (requests.length === 1 ? { name: 'held.folio8', target: heldTarget } : { name: 'held.pdf' }))
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return requests.length === 1 ? { name: 'held.folio', target: heldTarget, format: folioFileFormat } : { name: 'held.pdf', format: pdfFileFormat } })
+    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => (requests.length === 1 ? { name: 'held.folio', target: heldTarget } : { name: 'held.pdf' }))
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     render(<App engine={engine(previewRequest())} fileAccess={files} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
-    await waitFor(() => expect(screen.getByText('held.folio8')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('held.folio')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
     // The template save DID carry the session's target, so the contrast below
     // is between two live requests rather than between a request and a wish.
-    expect(requests[0]).toEqual({ suggestedName: 'Untitled template', currentTarget: undefined, saveAs: true, format: folio8FileFormat })
+    expect(requests[0]).toEqual({ suggestedName: 'Untitled template', currentTarget: undefined, saveAs: true, format: folioFileFormat })
     fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
     await waitFor(() => expect(requests).toHaveLength(2))
     const pdfRequest: Readonly<Record<string, unknown>> = requests[1]!
     // `saveAs: true` AND NO `currentTarget` KEY AT ALL — asserted by key
     // presence, not by value, because `currentTarget: target` with a target in
-    // hand is exactly the mutation that would overwrite the author's `.folio8`
+    // hand is exactly the mutation that would overwrite the author's `.folio`
     // with PDF bytes, and `toEqual` treats an explicit `undefined` as absent.
     expect(Object.keys(pdfRequest).sort()).toEqual(['format', 'saveAs', 'suggestedName'])
     expect('currentTarget' in pdfRequest).toBe(false)
     expect(pdfRequest.saveAs).toBe(true)
     expect(pdfRequest.format).toBe(pdfFileFormat)
-    expect(pdfRequest.suggestedName).toBe('held.folio8')
+    expect(pdfRequest.suggestedName).toBe('held.folio')
     expect(heldTarget.handle.createWritable).not.toHaveBeenCalled()
   })
 
-  it('shows the picker for a PDF save while a .folio8 target is held, leaves that handle unwritten, and leaves the template save clean and in place', async () => {
+  it('shows the picker for a PDF save while a .folio target is held, leaves that handle unwritten, and leaves the template save clean and in place', async () => {
     const templateWrites: number[][] = []
     const pdfWrites: number[][] = []
     const recording = (name: string, sink: number[][]) => ({ name, getFile: async () => new File([new Uint8Array([1, 2, 3])], name), createWritable: vi.fn(async () => ({ write: async (buffer: ArrayBuffer) => { sink.push([...new Uint8Array(buffer)]) }, close: async () => undefined })) })
-    const held = recording('held.folio8', templateWrites)
+    const held = recording('held.folio', templateWrites)
     const picked = recording('statement.pdf', pdfWrites)
     // Order, not content: the fake must not decide what to hand back by
     // inspecting the very request this test is making a claim about.
     let pickerCalls = 0
     const showSaveFilePicker = vi.fn(async () => (++pickerCalls === 1 ? held : picked))
     render(<App engine={engine(previewRequest())} fileAccess={new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker })} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
-    // A TEMPLATE SAVE FIRST, so a real `.folio8` handle is retained.
+    // A TEMPLATE SAVE FIRST, so a real `.folio` handle is retained.
     fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
     await waitFor(() => expect(templateWrites).toHaveLength(1))
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
@@ -8156,7 +8156,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Save PDF' }))
     await waitFor(() => expect(pdfWrites).toHaveLength(1))
-    // THE PICKER WAS SHOWN, and the retained `.folio8` handle received nothing:
+    // THE PICKER WAS SHOWN, and the retained `.folio` handle received nothing:
     // it is still on its single write, the one the template save made.
     expect(showSaveFilePicker).toHaveBeenCalledTimes(2)
     expect(showSaveFilePicker).toHaveBeenLastCalledWith({ suggestedName: 'held.pdf', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] })
@@ -8166,7 +8166,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     // AND `title`, `target` AND `savedRevision` ARE WHAT THEY WERE: the name is
     // unchanged, the document is still clean, and the next plain Save goes back
     // in place through the retained handle with no third picker.
-    expect(screen.getByText('held.folio8')).toBeInTheDocument()
+    expect(screen.getByText('held.folio')).toBeInTheDocument()
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
     // STORY 13.5 — THE MODE SWITCH. There is no failure card on screen in this
     // row, so the `Return to Design` this used to press was the preview
@@ -8233,7 +8233,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
       screen.getByRole('button', { name: 'Save As' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
       screen.getByRole('button', { name: 'Save PDF' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(requests.map((request) => request.format)).toEqual([folio8FileFormat])
+    expect(requests.map((request) => request.format)).toEqual([folioFileFormat])
     // AND THE REASON, WHILE IT IS THE ONE IN FLIGHT, does not call the export
     // "another" action.
     expect(screen.getByRole('button', { name: 'Save PDF' })).toHaveAccessibleDescription('Save PDF is unavailable while a local file action is in progress.')
@@ -8243,7 +8243,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
       screen.getByRole('button', { name: 'Save PDF' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
       screen.getByRole('button', { name: 'Save As' }).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(requests.map((request) => request.format)).toEqual([folio8FileFormat, pdfFileFormat])
+    expect(requests.map((request) => request.format)).toEqual([folioFileFormat, pdfFileFormat])
     release()
     await waitFor(() => expect(requests).toHaveLength(2))
   })
@@ -8262,14 +8262,14 @@ describe('Story 13.1: the preview keeps the PDF', () => {
   })
 
   it('announces exactly one alert naming the PDF save when the write fails, and leaves the document and its retained target alone', async () => {
-    const heldTarget = { kind: 'in-place' as const, name: 'held.folio8', handle: { name: 'held.folio8', getFile: async () => new File([], 'held.folio8'), createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) } }
+    const heldTarget = { kind: 'in-place' as const, name: 'held.folio', handle: { name: 'held.folio', getFile: async () => new File([], 'held.folio'), createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) } }
     const requests: SaveTargetRequest[] = []
-    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return request.format === pdfFileFormat ? { name: 'held.pdf', format: pdfFileFormat } : { name: 'held.folio8', target: heldTarget, format: folio8FileFormat } })
-    const writeSave = vi.fn(async (acquired: AcquiredSaveTarget): Promise<SavedLocalFile> => { if (acquired.format === pdfFileFormat) throw new Error('media removed'); return { name: 'held.folio8', target: heldTarget } })
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { requests.push(request); return request.format === pdfFileFormat ? { name: 'held.pdf', format: pdfFileFormat } : { name: 'held.folio', target: heldTarget, format: folioFileFormat } })
+    const writeSave = vi.fn(async (acquired: AcquiredSaveTarget): Promise<SavedLocalFile> => { if (acquired.format === pdfFileFormat) throw new Error('media removed'); return { name: 'held.folio', target: heldTarget } })
     const files: FileAccess = { open: vi.fn(), acquireSaveTarget, writeSave }
     render(<App engine={engine(previewRequest())} fileAccess={files} initialSnapshot={snapshot(1)} initialSampleData={sample} />)
     fireEvent.click(screen.getByRole('button', { name: 'Save As' }))
-    await waitFor(() => expect(screen.getByText('held.folio8')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('held.folio')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'PREVIEW' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Stale historical PDF/ })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Stale historical PDF/ }))
@@ -8279,7 +8279,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.getByRole('alert')).toHaveTextContent('Could not save the preview PDF')
     expect(screen.queryByText(/Saved PDF/)).not.toBeInTheDocument()
-    expect(screen.getByText('held.folio8')).toBeInTheDocument()
+    expect(screen.getByText('held.folio')).toBeInTheDocument()
     expect(screen.getByText('Saved local file')).toBeInTheDocument()
     // The preview itself is untouched, so the author can try again.
     expect(screen.getByRole('button', { name: /Current exact local production PDF/ })).toBeInTheDocument()
@@ -8294,7 +8294,7 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
     await waitFor(() => expect(requests).toHaveLength(3))
-    expect(requests[2]).toEqual({ suggestedName: 'held.folio8', currentTarget: heldTarget, saveAs: false, format: folio8FileFormat })
+    expect(requests[2]).toEqual({ suggestedName: 'held.folio', currentTarget: heldTarget, saveAs: false, format: folioFileFormat })
   })
 
   // PATCH 4 — THE LATCH IS RELEASED ON EVERY PATH, AND NOTHING PROVED IT.
@@ -11192,7 +11192,7 @@ describe('SPEC-multi-pages: pages on the canvas', () => {
 
   it('states a file action in progress as the reason both page buttons are disabled', async () => {
     const request = vi.fn(async (operation: string) => operation === 'load' ? new Promise<never>(() => undefined) : ({ snapshot: snapshotOf(pages(2), 2) }))
-    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'busy.folio8' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
+    const files: FileAccess = { open: vi.fn(async () => ({ bytes, name: 'busy.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }
     render(<App engine={engine(request as never)} fileAccess={files} initialSnapshot={snapshotOf(pages(2))} />)
     fireEvent.click(label(2))
     expect(tools().getByRole('button', { name: 'Delete page' })).toBeEnabled()

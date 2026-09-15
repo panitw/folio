@@ -340,7 +340,7 @@ func TestWrappedTextDeclarationIsLoadBearing(t *testing.T) {
 // this is the test that proves fixtures/wrapped-text/ can.
 func TestWrappedTextObservabilityRedProof(t *testing.T) {
 	root := repoRootFromTest(t)
-	raw, err := os.ReadFile(filepath.Join(root, "fixtures", "shaped-text", "input.folio8"))
+	raw, err := os.ReadFile(filepath.Join(root, "fixtures", "shaped-text", "input.folio"))
 	if err != nil {
 		t.Fatalf("read shaped-text input: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestWrappedTextGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", "wrapped-text")
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

@@ -60,7 +60,7 @@ func TestSectionBreakUnanchoredGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", sectionBreakUnanchoredFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", sectionBreakUnanchoredTemplateJSON},
+		{"input.folio", sectionBreakUnanchoredTemplateJSON},
 		{"data.json", sectionBreakUnanchoredDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))

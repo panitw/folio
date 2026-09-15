@@ -2,7 +2,7 @@
 //
 // WHAT IT IS. An origin-scoped IndexedDB store of the faces this designer has
 // already fetched, keyed by the SHA-256 of the face bytes — the same content
-// address `.folio8`'s `assets` map uses, and the same one Go derives at
+// address `.folio`'s `assets` map uses, and the same one Go derives at
 // `component_commands.go`'s `embedFontFamily`. A read in front of the fetch is
 // the whole feature: a hit means no request leaves the machine, which is what
 // makes a re-pick work with the network down.
@@ -20,7 +20,7 @@
 //   prose would be an occurrence like any other. `src/host-font-access.test.ts`
 //   runs it over the whole designer and red-proves it by deleting the guard.
 //
-//   IT IS NOT A SECOND COPY OF A DOCUMENT'S FONTS. A `.folio8` carries its own
+//   IT IS NOT A SECOND COPY OF A DOCUMENT'S FONTS. A `.folio` carries its own
 //   faces (CAP-2). This store SHORTENS A FETCH; it never stands in for what a
 //   file contains, and removing an entry never changes a saved document. It is
 //   a cache and a source, never an authority.
@@ -79,7 +79,7 @@
 //   origin. It outlives every document and every session, and NOTHING in it is
 //   released when a document is replaced. That is the point of it, and it is
 //   also why nothing in it may ever be treated as document state: a document's
-//   truth is the `.folio8`, always.
+//   truth is the `.folio`, always.
 //
 // "ON THIS MACHINE" IS A DELIBERATE UNDERSTATEMENT AND THE UI MUST NOT IMPROVE
 // ON IT. Origin-scoped browser storage means: this browser, this profile, this

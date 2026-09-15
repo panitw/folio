@@ -1,4 +1,4 @@
-import { FileAccessCancelled, FileAccessFailure, fileFailureFor, folio8FileFormat, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileFormat, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
+import { FileAccessCancelled, FileAccessFailure, fileFailureFor, folioFileFormat, localFileName, type AcquiredSaveTarget, type FileAccess, type LocalFile, type LocalFileFormat, type LocalFileHandle, type SaveRequest, type SaveTargetRequest, type SavedLocalFile } from './file-access'
 
 export type FileSystemPicker = Readonly<{
   showOpenFilePicker(options: OpenPickerOptions): Promise<ReadonlyArray<LocalFileHandle>>
@@ -12,9 +12,9 @@ type SavePickerOptions = Readonly<{ suggestedName: string; types: ReadonlyArray<
 // The picker entry is DERIVED from the format rather than written out, so the
 // filter the author sees and the suffix the name gets can never disagree.
 const pickerTypeFor = (format: LocalFileFormat): PickerType => ({ description: format.description, accept: { [format.mimeType]: [format.extension] } })
-// Opening is still `.folio8`-only: a PDF is something this designer writes, not
+// Opening is still `.folio`-only: a PDF is something this designer writes, not
 // something it can load.
-const folio8PickerType: PickerType = pickerTypeFor(folio8FileFormat)
+const folio8PickerType: PickerType = pickerTypeFor(folioFileFormat)
 
 export class FileSystemAccess implements FileAccess {
   private readonly picker: FileSystemPicker

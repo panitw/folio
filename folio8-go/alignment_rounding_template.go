@@ -1,10 +1,10 @@
 package folio8
 
-// alignmentRoundingTemplateJSON is fixtures/alignment-rounding/input.folio8,
+// alignmentRoundingTemplateJSON is fixtures/alignment-rounding/input.folio,
 // kept byte-identical to it by TestAlignmentRoundingGoldenFixture.
 //
 // IT CLOSES DW-24. Measured at Story 7.3's baseline, across every
-// `fixtures/*/input.folio8`: 16 `"align": "left"`, 8 `"align": "right"`,
+// `fixtures/*/input.folio`: 16 `"align": "left"`, 8 `"align": "right"`,
 // ZERO `"center"` and ZERO `valign` of any value. So of the alignment
 // feature's branches the corpus exercised the two that CANNOT round -
 // `left` returns zero and `right` returns the slack unchanged - and none

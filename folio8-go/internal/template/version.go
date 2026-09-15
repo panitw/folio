@@ -91,7 +91,7 @@ import (
 // are parsed: a text expression whose static kinds include number raises
 // the document to TextNumberExpressionVersion. A plain path whose kind
 // depends on data cannot be detected; that case is DISCLOSED in
-// folio8-format.md rather than mechanised — an older reader loads such a
+// folio-format.md rather than mechanised — an older reader loads such a
 // document and fails at render with a located error, never a silent wrong
 // output.
 //
@@ -170,7 +170,7 @@ const (
 	// differently with no signal. The owner ruled out both a legacy arm
 	// and a major bump (a major bump would reject every existing
 	// document), so the divergence is DISCLOSED here and in
-	// folio8-format.md rather than mechanised.
+	// folio-format.md rather than mechanised.
 	tableRulesVersion = "3.1"
 	// columnHeaderAlignVersion is the version introduced by
 	// `columns[].headerAlign`. Presence.Set, on `color`'s terms: any value
@@ -187,7 +187,7 @@ const (
 // parseVersion splits a "MAJOR.MINOR" string into its two integer
 // components. Both parts must be non-negative decimal integers with no
 // sign and no extra components — the format is exactly two dot-separated
-// integers (folio8-format.md: `"version"` | `"MAJOR.MINOR"`).
+// integers (folio-format.md: `"version"` | `"MAJOR.MINOR"`).
 func parseVersion(v string) (major, minor int, err error) {
 	parts := strings.Split(v, ".")
 	if len(parts) != 2 {

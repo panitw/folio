@@ -23,7 +23,7 @@ import (
 // the digest by its own means — `crypto/sha256` here, `crypto.subtle` there.
 //
 // WHY THAT IS WORTH HAVING. The store keys a face by the SHA-256 of its bytes
-// because that is the address `.folio8`'s `assets` map uses, derived in
+// because that is the address `.folio`'s `assets` map uses, derived in
 // `embedFontFamily` (`component_commands.go`) as
 // `fmt.Sprintf("%x", sha256.Sum256(decoded))`. If the two addressings ever
 // disagreed, a store "hit" would be a hit on bytes the document does not hold —

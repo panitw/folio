@@ -16,7 +16,7 @@ import (
 )
 
 func TestEngineTableCollectionBindingOwnsOneHistoryStep(t *testing.T) {
-	input, err := os.ReadFile("../../fixtures/statement-1/input.folio8")
+	input, err := os.ReadFile("../../fixtures/statement-1/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestEngineTableCollectionBindingOwnsOneHistoryStep(t *testing.T) {
 }
 
 func TestEngineCollectionFooterRebaseIsOneHistoryStep(t *testing.T) {
-	input, err := os.ReadFile("../testdata/commands/table-collection-footers.folio8")
+	input, err := os.ReadFile("../testdata/commands/table-collection-footers.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestEngineLoadAndSerializeRoundTripsCanonicalBytes(t *testing.T) {
 
 func TestEngineParameterReferencesAreARevisionCorrelatedProjection(t *testing.T) {
 	engine := NewEngine()
-	input, err := os.ReadFile("../testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestEngineParameterReferencesAreARevisionCorrelatedProjection(t *testing.T)
 
 func TestEngineEmptyParameterReferencesRemainAnArrayForWorkerTransport(t *testing.T) {
 	engine := NewEngine()
-	input, err := os.ReadFile("../testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,17 +316,17 @@ func TestEngineTableCreationAndStarterColumnUndoRedoAtomically(t *testing.T) {
 
 func TestEngineRenderMatchesTheNativeProductionPathByteForByte(t *testing.T) {
 	fixtures := []struct{ name, template, data, params string }{
-		{"simple", "../testdata/example/first-pdf.folio8", `{"customer":{"name":"Ada"}}`, `{"preview":null}`},
+		{"simple", "../testdata/example/first-pdf.folio", `{"customer":{"name":"Ada"}}`, `{"preview":null}`},
 		// This is a genuine five-page, table/text, multi-script shipped-font
 		// document. A one-page ASCII fixture cannot detect pagination or font
 		// path divergence, so both inputs remain required parity subjects.
-		{"multipage-text-font", "../../fixtures/statement-5/input.folio8", "../../fixtures/statement-5/data.json", "../../fixtures/statement-5/params.json"},
+		{"multipage-text-font", "../../fixtures/statement-5/input.folio", "../../fixtures/statement-5/data.json", "../../fixtures/statement-5/params.json"},
 		// spec-section-break CAP-6: the golden statement whose legend moves to
 		// an added page. Preview (the wasm engine) must equal the native render.
-		{"section-break-statement", "../../fixtures/section-break-statement/input.folio8", "../../fixtures/section-break-statement/data.json", `{}`},
+		{"section-break-statement", "../../fixtures/section-break-statement/input.folio", "../../fixtures/section-break-statement/data.json", `{}`},
 		// spec-section-break CAP-7: the unanchored golden, whose legend is
 		// pushed down on page 1. Preview must equal the native render.
-		{"section-break-unanchored", "../../fixtures/section-break-unanchored/input.folio8", "../../fixtures/section-break-unanchored/data.json", `{}`},
+		{"section-break-unanchored", "../../fixtures/section-break-unanchored/input.folio", "../../fixtures/section-break-unanchored/data.json", `{}`},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -1022,7 +1022,7 @@ func TestEngineProjectsTheChainsThemselvesNotOnlyTheirNames(t *testing.T) {
 }
 
 // TestEngineFontChainMoveIsFollowedByTheFolio8Bytes is the I/O matrix's "Move
-// an entry" row read literally: "`.folio8` entry order follows verbatim". The
+// an entry" row read literally: "`.folio` entry order follows verbatim". The
 // in-memory slice was already asserted, but the slice is not the claim — the
 // claim is about the SERIALIZED document, and the only byte-level chain
 // assertions in this file were the rename round trip (which restores the
@@ -1053,10 +1053,10 @@ func TestEngineFontChainMoveIsFollowedByTheFolio8Bytes(t *testing.T) {
 	}
 	reordered := "\"body\": [\n      \"Noto Sans Thai\",\n      \"Noto Sans\"\n    ]"
 	if !bytes.Contains(after, []byte(reordered)) {
-		t.Fatalf("the moved entry order did not reach the .folio8 bytes\n%s", after)
+		t.Fatalf("the moved entry order did not reach the .folio bytes\n%s", after)
 	}
 	if bytes.Contains(after, []byte(authored)) {
-		t.Fatal("the authored entry order survived the move in the .folio8 bytes")
+		t.Fatal("the authored entry order survived the move in the .folio bytes")
 	}
 	// The OTHER chains are untouched, and the keys are still sorted: a move is
 	// an edit to one slice, not a re-emission of the map.

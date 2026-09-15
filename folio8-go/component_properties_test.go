@@ -311,7 +311,7 @@ func TestStyleAlignPropertyValidatesAgainstItsConsumersSet(t *testing.T) {
 // THE UNIT IS THE POINT. The wire carries the author's own dimensionless
 // ratio as a RAW, UNQUOTED JSON number; template.DecodeLineSpacingRaw
 // performs the ×1000 to thousandths itself, exactly as it does for a value
-// written in a `.folio8` file — which is what makes "a value refused in a file
+// written in a `.folio` file — which is what makes "a value refused in a file
 // is refused in the inspector, for the same reason" (D-7.2.3) true by
 // construction. Sending thousandths directly is refused, and this test pins
 // that so nobody "fixes" the designer into sending 1500.
@@ -707,7 +707,7 @@ func serializedPaddingEdges(t *testing.T, document []byte, id string) map[string
 // kind: the shared fixture already carries a text (e1) and a table (e2), and
 // the remaining three kinds are created the way component_commands_test.go
 // does. The fixture is edited by other stories and byte-locked to
-// folio8-format.md's worked example, so the two borrowed ids are CHECKED
+// folio-format.md's worked example, so the two borrowed ids are CHECKED
 // rather than assumed — an e1 that stopped being a text would leave the
 // callers green while asserting nothing about a text element. Named for the
 // kind, not for padding: the box-key test uses it for background and the

@@ -5,7 +5,7 @@ package expr
 // internal/"). It is keyed by internal/template's exported locale
 // constants (AC4, D-3.4.2 amended), never by a second copy of the tag
 // literals: internal/template declares the closed SET of legal
-// `locale` values (a .folio8 FORMAT constraint, enforced at load); this
+// `locale` values (a .folio FORMAT constraint, enforced at load); this
 // table declares the per-locale FORMATTING DATA a legal tag names (a
 // behavioural constraint, applied at evaluation). AD-12 is not
 // amended by this split — its own source-tree map already says

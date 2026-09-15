@@ -846,7 +846,7 @@ func decodeColumn(ctx *parseCtx, tableID, collection string, raw json.RawMessage
 	// per-record slice, so a column-level visibleIf is exactly the
 	// row-level visibility AD-24 forbids, because it would make
 	// pagination a function of data in a way FR25 does not define.
-	// folio8-format.md has said "Not valid on a table column" since the
+	// folio-format.md has said "Not valid on a table column" since the
 	// format was written; this is the first place anything enforces it.
 	if _, ok := obj["visibleIf"]; ok {
 		return Column{}, newLoadError("visibleIf", string(id), "", "visibility applies to elements only, never a table column/row (AD-24) — a condition here would make pagination a function of data")

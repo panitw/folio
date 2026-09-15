@@ -1,6 +1,6 @@
 # folio8 rendering library for Go
 
-`folio8-go` turns a `.folio8` template, JSON data and runtime parameters into a PDF 1.7 document. It
+`folio8-go` turns a `.folio` template, JSON data and runtime parameters into a PDF 1.7 document. It
 reads no clock, no environment, no network and no host fonts while rendering: everything a document
 needs is passed in. The same inputs rendered with the same Go toolchain produce the same bytes.
 
@@ -8,7 +8,7 @@ This guide covers installing the module, rendering your first PDF, the inputs an
 handle, the template features that change what is drawn, and every exported API of the `folio8`,
 `fonts` and `wasm` packages. Two companion references hold the rules this guide does not repeat:
 
-- [The `.folio8` format](folio8-format.md) — every field of a template, version rules and load errors.
+- [The `.folio` format](folio-format.md) — every field of a template, version rules and load errors.
 - [Expressions](expression-reference.md) — the syntax inside `{{ }}` and Visibility formulas.
 
 Contents: [Install](#install) · [Your first PDF](#your-first-pdf) ·
@@ -57,7 +57,7 @@ PDF hashes in your own tests and expect them to hold, pin your own toolchain as 
 
 A template, a data file and a short program. Save these two files next to the program:
 
-`first-pdf.folio8`
+`first-pdf.folio`
 
 ```json
 {
@@ -106,7 +106,7 @@ A template, a data file and a short program. Save these two files next to the pr
 `main.go`
 
 ```go
-// Command first-pdf renders docs/examples/first-pdf.folio8 to first-pdf.pdf.
+// Command first-pdf renders docs/examples/first-pdf.folio to first-pdf.pdf.
 package main
 
 import (
@@ -120,7 +120,7 @@ import (
 )
 
 func main() {
-	tpl, err := folio8.LoadTemplate("first-pdf.folio8")
+	tpl, err := folio8.LoadTemplate("first-pdf.folio")
 	if err != nil {
 		log.Fatal(describe("load", err))
 	}
@@ -174,7 +174,7 @@ What each step does:
    failures, such as malformed JSON data or a file that cannot be read, are plain errors — keep the
    fallback branch.
 
-`folio8.SerializeTemplate(tpl)` returns the template's canonical `.folio8` bytes, which is how an
+`folio8.SerializeTemplate(tpl)` returns the template's canonical `.folio` bytes, which is how an
 editor saves a template it loaded. Saving writes keys in canonical order, keeps the declared
 `version` unless the content requires a higher one, and never lowers it.
 
@@ -213,7 +213,7 @@ import (
 )
 
 func main() {
-	templateBytes, err := os.ReadFile("first-pdf.folio8")
+	templateBytes, err := os.ReadFile("first-pdf.folio")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -342,8 +342,8 @@ entry is either a face **name**, looked up in your `FontSet`, or an `{"asset": "
 face the template carries in its own `assets` — resolved by asset key only, never by name, so a
 `FontSet` entry can never replace an embedded face or the reverse. A chain entry may also declare
 `bold`, `italic` and `boldItalic` faces; `style.bold`/`style.italic` pick those, and folio8 never
-synthesises a weight or slant. See [`fonts`](folio8-format.md#fonts) and
-[`assets`](folio8-format.md#assets) for the rules.
+synthesises a weight or slant. See [`fonts`](folio-format.md#fonts) and
+[`assets`](folio-format.md#assets) for the rules.
 
 `fonts.Shipped()` returns a fresh `FontSet` with these face names:
 
@@ -464,7 +464,7 @@ element in `ElementID`. Table width allocation problems are `TEMPLATE_FIELD_INVA
 - **Thai names.** Thai has no spaces between words and breaks from a dictionary, which cannot tell a
   name from the ordinary words it is made of. List data paths whose values must never break in the
   document's `unbreakableValues`; a name inside free-form text is still breakable. See
-  [Line breaking](folio8-format.md#line-breaking).
+  [Line breaking](folio-format.md#line-breaking).
 - **Latin breaking** is at spaces only: no hyphenation, no break after `-`, and it is not UAX #14.
 - **CJK kinsoku** is not implemented: a line may begin with `，` or end with an opening bracket.
 - Expression syntax, limits and division scale: see [Expressions](expression-reference.md).
@@ -494,9 +494,9 @@ decimal arithmetic, nested `? :` and the literals `true`, `false` and `null` wor
 `if()`. A number printed bare in text appears as its exact decimal (`{{1 / 3}}` prints `0.3333`); use
 `formatNumber` for grouping. A hidden element leaves its siblings where they are. Syntax, precedence,
 limits and division scale are in [Expressions](expression-reference.md#formulas-and-visibility); field rules in
-[Expressions](folio8-format.md#expressions).
+[Expressions](folio-format.md#expressions).
 
-`formula-visibility.folio8`
+`formula-visibility.folio`
 
 ```json
 {
@@ -545,9 +545,9 @@ A `barcode` element encodes its `value` as Code 128; a `qrcode` element encodes 
 error correction `L`, `M` (the default), `Q` or `H`. `value` binds like text. Both draw black vector
 modules of one whole-millipoint width, as large as fits the box with the quiet zone inside it, centred
 and never distorted, with no human-readable text and no `style`. Store control characters as real
-characters (`"\r"` in JSON). See [Elements](folio8-format.md#elements).
+characters (`"\r"` in JSON). See [Elements](folio-format.md#elements).
 
-`barcode-qrcode.folio8`
+`barcode-qrcode.folio`
 
 ```json
 {
@@ -603,10 +603,10 @@ default) moves the section by whole pages, keeping its declared position; with
 `"sectionBreakAnchor": false` the section follows where the content above ends when it fits on that
 page. When nothing crosses the line, the PDF is byte-identical to the same template without the key.
 The break is never drawn, and a `keepTogether` group split by it is split with the warning
-`SECTION_BREAK_SPLITS_KEEP_TOGETHER`. See [Pagination](folio8-format.md#pagination) and
-[`bands`](folio8-format.md#bands).
+`SECTION_BREAK_SPLITS_KEEP_TOGETHER`. See [Pagination](folio-format.md#pagination) and
+[`bands`](folio-format.md#bands).
 
-`section-break.folio8` (anchored)
+`section-break.folio` (anchored)
 
 ```json
 {
@@ -636,7 +636,7 @@ The break is never drawn, and a `keepTogether` group split by it is split with t
 }
 ```
 
-`section-break-unanchored.folio8` differs only in the content band's keys:
+`section-break-unanchored.folio` differs only in the content band's keys:
 
 ```json
 {
@@ -701,9 +701,9 @@ follows the previous page: `true` (Page Break on, the default after page 1) star
 after the previous page and all its overflow; `false` continues directly where the previous page's
 content ended, as one rigid block, if the previous page overflowed onto more than one output page
 and the block fits in the room left — otherwise it starts a new output page. See
-[Designed pages](folio8-format.md#designed-pages).
+[Designed pages](folio-format.md#designed-pages).
 
-`designed-pages.folio8` (Page Break on)
+`designed-pages.folio` (Page Break on)
 
 ```json
 {
@@ -735,7 +735,7 @@ and the block fits in the room left — otherwise it starts a new output page. S
 }
 ```
 
-`designed-pages-page-break-off.folio8`
+`designed-pages-page-break-off.folio`
 
 ```json
 {
@@ -791,9 +791,9 @@ A table's `style.border` and `style.background` draw one frame around each page'
 not a border on every cell. `rules` draws interior lines between `columns` and/or `rows`, never on
 the frame's edge. `minHeight` is a floor for each page's slice: the frame and column rules extend to
 it, rows are never stretched, and following content starts below it. Column labels may wrap onto
-several lines, and `headerHeight` is then the header's minimum height. See [`table`](folio8-format.md#table).
+several lines, and `headerHeight` is then the header's minimum height. See [`table`](folio-format.md#table).
 
-`ruled-table.folio8`
+`ruled-table.folio`
 
 ```json
 {
@@ -833,7 +833,7 @@ The page shows a 180 × 90 pt frame although three rows fill only about 43 pt, o
 between the two columns running the frame's full height, and three horizontal rules: under the
 header and between the rows, none under the last row. No warnings.
 
-`ruled-table-unplaceable.folio8` asks for a floor taller than the 110 pt content window:
+`ruled-table-unplaceable.folio` asks for a floor taller than the 110 pt content window:
 
 ```json
 {
@@ -903,7 +903,7 @@ This section lists every exported identifier in the three packages of the `githu
 func ParseTemplate(b []byte) (*Template, error)
 ```
 
-Parses `b` as a `.folio8` document and returns an opaque `*Template`. Beyond decoding, it performs every check that can be decided from the document alone:
+Parses `b` as a `.folio` document and returns an opaque `*Template`. Beyond decoding, it performs every check that can be decided from the document alone:
 
 - It parses and statically checks every `{{ }}` expression: syntax, arity, unknown function names and literal argument kinds. It does not evaluate them.
 - It derives `footerOf`/`footerFormat` for `sum`/`avg` table footers that omit `footerOf`.
@@ -935,7 +935,7 @@ type Template struct {
 }
 ```
 
-A parsed, canonicalised `.folio8` document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from `ParseTemplate` or `LoadTemplate`. Read-only functions such as `Render`, `Canvas` and `TableColumns` do not modify it. `ApplyComponentCommand` and `ApplyPageSetupCommand` **do** modify it in place.
+A parsed, canonicalised `.folio` document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from `ParseTemplate` or `LoadTemplate`. Read-only functions such as `Render`, `Canvas` and `TableColumns` do not modify it. `ApplyComponentCommand` and `ApplyPageSetupCommand` **do** modify it in place.
 
 #### `SerializeTemplate`
 
@@ -943,7 +943,7 @@ A parsed, canonicalised `.folio8` document. It is opaque: there are no exported 
 func SerializeTemplate(t *Template) ([]byte, error)
 ```
 
-Returns the engine's canonical `.folio8` bytes for `t`. This is the save path the designer uses. A nil `t` returns an error. The written format version is raised when the document's expressions need it:
+Returns the engine's canonical `.folio` bytes for `t`. This is the save path the designer uses. A nil `t` returns an error. The written format version is raised when the document's expressions need it:
 
 - `"2.0"` for formula syntax or boolean/null literals.
 - `"3.3"` for a text expression whose static kind includes a number.
@@ -1815,7 +1815,7 @@ func (e *Engine) Initialize(input []byte) (Snapshot, error)
 func (e *Engine) Load(input []byte) (Snapshot, error)
 ```
 
-Both behave identically. `input` is `.folio8` document bytes.
+Both behave identically. `input` is `.folio` document bytes.
 
 The engine parses them with `folio8.ParseTemplate`, re-serializes them to canonical bytes, and projects with `folio8.CanvasWithTextPaint`. Only after all three steps succeed does it install the document: it clears both history stacks, increments the revision and returns the snapshot. On error nothing changes.
 
@@ -1835,7 +1835,7 @@ Returns the current `Snapshot`. It never fails.
 func (e *Engine) Serialize() ([]byte, Snapshot, error)
 ```
 
-Returns a copy of the canonical `.folio8` bytes and the snapshot. It errors when no document is loaded.
+Returns a copy of the canonical `.folio` bytes and the snapshot. It errors when no document is loaded.
 
 #### `Engine.Apply`
 
@@ -1989,6 +1989,6 @@ Sentinel errors from `Engine.Undo` and `Engine.Redo`. Test them with `errors.Is`
 ## Command-line tool
 
 The module also contains a `folio8` command with `validate` and `render` subcommands
-(`go run github.com/panitw/folio8/folio8-go/cmd/folio8@main render -data data.json -o out.pdf template.folio8`).
+(`go run github.com/panitw/folio8/folio8-go/cmd/folio8@main render -data data.json -o out.pdf template.folio`).
 It is a thin wrapper over `Validate` and `Render`; its flags are described in the
 [repository README](../README.md#render-from-the-command-line).

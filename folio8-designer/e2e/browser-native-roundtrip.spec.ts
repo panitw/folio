@@ -26,7 +26,7 @@ const goRoot = path.join(root, 'folio8-go')
 // of exactly this signal cost in DW-383.
 //
 // ⚠ THE FIXTURE IS READ-ONLY AND ITS PRECONDITION IS ASSERTED, NOT ASSUMED.
-// `fixtures/statement-1/input.folio8` carries the logo asset, the account
+// `fixtures/statement-1/input.folio` carries the logo asset, the account
 // framing, the generated-date/page footer AND a five-column table with every
 // column bound — which is exactly what `assertCustomerStatementFacts` in
 // `folio8-go/browser_roundtrip_witness_test.go` reads out of the Go-owned model.
@@ -34,7 +34,7 @@ const goRoot = path.join(root, 'folio8-go')
 // dialog on every run: a fixture that stopped matching the precondition is a
 // guard that cannot see the defect ([D-14.8.4]).
 const fixtures = path.join(root, 'fixtures/statement-1')
-const template = readFileSync(path.join(fixtures, 'input.folio8'))
+const template = readFileSync(path.join(fixtures, 'input.folio'))
 const sample = readFileSync(path.join(fixtures, 'data.json'))
 const params = readFileSync(path.join(fixtures, 'params.json'))
 
@@ -98,7 +98,7 @@ async function openTab(page: Page, name: 'PROPERTIES' | 'DATA' | 'INPUTS'): Prom
 }
 
 // THE ONE CHAIN A FRESH SESSION DECLARES. Startup initializes the engine from
-// the shipped starter (`folio8-designer/public/templates/starter.folio8`, via
+// the shipped starter (`folio8-designer/public/templates/starter.folio`, via
 // `loadStarterAfterEngineReady`), so `CanvasProjection.fontFamilies` is exactly
 // that file's font-map keys and the family control's IN THIS TEMPLATE group has
 // exactly this one row. It was `body` until commit 4d2b27e ("Ship Roboto in the
@@ -206,8 +206,8 @@ async function placeStatementText(page: Page, band: ReturnType<Page['getByRole']
 async function openPreparedStatement(page: Page): Promise<void> {
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'statement-1.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('statement-1.folio8', { timeout: 12_000 })
+  await (await chooser).setFiles({ name: 'statement-1.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement-1.folio', { timeout: 12_000 })
   // The Go-owned facts `assertCustomerStatementFacts` will read, seen first
   // through the app's own canvas.
   await expect(page.getByRole('button', { name: /image component e1/ })).toBeVisible({ timeout: 12_000 })
@@ -242,7 +242,7 @@ async function authorAlternateReport(page: Page): Promise<void> {
 }
 
 function assertNativePreflight(output: string, name: string, template: Buffer, data: Buffer, parameterBytes: Buffer): void {
-  const templatePath = path.join(output, `${name}.folio8`)
+  const templatePath = path.join(output, `${name}.folio`)
   const dataPath = path.join(output, `${name}.data.json`)
   const paramsPath = path.join(output, `${name}.params.json`)
   const pdfPath = path.join(output, `${name}.preflight.pdf`)
@@ -311,7 +311,7 @@ function fingerprint(value: Buffer): Readonly<{ length: number; sha256: string }
 
 function runNativeCLI(output: string, name: string): Buffer {
   const binary = path.join(output, 'folio8')
-  const template = path.join(output, `${name}.folio8`)
+  const template = path.join(output, `${name}.folio`)
   const data = path.join(output, `${name}.data.json`)
   const parameterFile = path.join(output, `${name}.params.json`)
   const pdf = path.join(output, `${name}.native-cli.pdf`)
@@ -341,7 +341,7 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   // exact production PDF and never reaches `EXACT LOCAL PRODUCTION PDF`.
   await openPreparedStatement(goldenPage)
   await loadSample(goldenPage)
-  const golden = await savePreviewAndCapture(goldenPage, 'statement-1.folio8', output, 'golden')
+  const golden = await savePreviewAndCapture(goldenPage, 'statement-1.folio', output, 'golden')
   const goldenSession = golden.requests
   // STORY 14.10 / Q4b — THE GOLDEN DOCUMENT ARRIVES WHOLE, so this session
   // issues NO document command at all. It was `>= 8` while the statement was
@@ -365,7 +365,7 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   const alternateContent = alternatePage.getByRole('region', { name: 'Content', exact: true })
   await bindTextToCustomer(alternatePage, alternateContent)
   await authorAlternateReport(alternatePage)
-  const alternate = await savePreviewAndCapture(alternatePage, 'Untitled template.folio8', output, 'alternate')
+  const alternate = await savePreviewAndCapture(alternatePage, 'Untitled template.folio', output, 'alternate')
   const alternateSession = alternate.requests
   expect(alternateSession.filter(({ operation, command }) => operation === 'command' && command).length).toBeGreaterThanOrEqual(3)
   expect(alternateSession.filter(({ operation }) => operation === 'load' || operation === 'initialize').map(({ operation }) => operation)).toEqual(['initialize'])
@@ -375,7 +375,7 @@ test('fresh authored sessions close exactly through admitted Preview and native 
   await alternateContext.close()
 
   for (const [name, witness] of Object.entries({ golden, alternate })) {
-    writeFileSync(path.join(output, `${name}.folio8`), witness.template)
+    writeFileSync(path.join(output, `${name}.folio`), witness.template)
     writeFileSync(path.join(output, `${name}.data.json`), witness.data)
     writeFileSync(path.join(output, `${name}.params.json`), witness.params)
     writeFileSync(path.join(output, `${name}.browser.pdf`), witness.pdf)

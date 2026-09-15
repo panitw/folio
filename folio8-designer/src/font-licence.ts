@@ -16,7 +16,7 @@
 // looks like it does. So there are two vocabularies, and this table is the one
 // place they meet.
 //
-// `font.licence` IN THE `.folio8` CARRIES THE SPDX ID, NEVER THE UPSTREAM TOKEN.
+// `font.licence` IN THE `.folio` CARRIES THE SPDX ID, NEVER THE UPSTREAM TOKEN.
 // Precedent, not preference: `font-catalogue.json` already writes
 // `Ubuntu-font-1.0` rather than `UFL`, and Go's signature table is keyed on
 // SPDX. Two vocabularies in one field make a document unsortable by its own

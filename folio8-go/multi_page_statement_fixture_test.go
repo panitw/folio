@@ -67,7 +67,7 @@ func TestMultiPageStatementGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", multiPageStatementFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", multiPageStatementTemplateJSON},
+		{"input.folio", multiPageStatementTemplateJSON},
 		{"data.json", multiPageStatementDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))
@@ -88,7 +88,7 @@ func TestMultiPageStatementGoldenFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(saved) != multiPageStatementTemplateJSON {
-		t.Fatalf("input.folio8 does not save back byte-for-byte:\n%s", saved)
+		t.Fatalf("input.folio does not save back byte-for-byte:\n%s", saved)
 	}
 	fixture := loadExpectedFixture(t, filepath.Join(dir, "expected.json"))
 	if fixture.Folio8GoVersion == "" || fixture.GoToolchain == "" || !isSHA256HexString(fixture.SHA256) {

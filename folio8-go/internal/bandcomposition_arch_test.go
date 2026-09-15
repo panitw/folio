@@ -468,7 +468,7 @@ func TestContentHeightIsDerivedByExactlyOneFunction(t *testing.T) {
 	}
 
 	if declarations != 1 {
-		t.Fatalf("AC5: internal/layout declares ContentHeight %d times, want exactly 1 — the content band's height is derived BY ONE FUNCTION (folio8-format.md; storing or re-deriving it is a second source of truth for a derived quantity)", declarations)
+		t.Fatalf("AC5: internal/layout declares ContentHeight %d times, want exactly 1 — the content band's height is derived BY ONE FUNCTION (folio-format.md; storing or re-deriving it is a second source of truth for a derived quantity)", declarations)
 	}
 	if callSites == 0 {
 		t.Fatal("presence precondition (D-000.9): ContentHeight is called from ZERO non-test sites inside internal/layout — \"every site that needs a content height obtains it from that function\" is satisfied vacuously when no site needs one")

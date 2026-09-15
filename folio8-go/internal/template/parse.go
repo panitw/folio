@@ -669,10 +669,10 @@ func decodeFontChainEntry(raw json.RawMessage, field string, assets map[string]A
 // NAMES MUST STATE ITS TERMS.
 //
 // A font that travels without its terms is not a font that may be passed on,
-// so a `.folio8` carrying an embedded face with no licence identifier, no
+// so a `.folio` carrying an embedded face with no licence identifier, no
 // licence text or no copyright is refused when it is opened — never warned
 // about, never rendered best-effort. The owner settled this on 2026-09-02:
-// folio8 is unreleased and no `.folio8` documents exist, so the format is made
+// folio8 is unreleased and no `.folio` documents exist, so the format is made
 // right here rather than softened to spare files that do not exist.
 //
 // THE RULE IS SCOPED TO REFERENCE, AND THAT SCOPE IS LOAD-BEARING. It is not

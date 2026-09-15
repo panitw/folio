@@ -92,7 +92,7 @@ import (
 // values are not passed to the generator, they are compared with what
 // the generator emitted.
 type shippedFaceSpec struct {
-	// Key is the FontSet key, i.e. the name a .folio8 document's `fonts`
+	// Key is the FontSet key, i.e. the name a .folio document's `fonts`
 	// fallback chain references.
 	Key string
 	// Dir and File locate the committed face under folio8-go/fonts/.

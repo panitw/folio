@@ -1459,7 +1459,7 @@ const keepTogetherOverTallImageTemplate = `{
 }
 `
 
-// TestKeepTogetherOverTallGroupDropsATaggedImage holds folio8-format.md's
+// TestKeepTogetherOverTallGroupDropsATaggedImage holds folio-format.md's
 // image-specific promise — "an image inside an over-tall group is
 // removed, not moved" — to a measurement rather than to prose.
 func TestKeepTogetherOverTallGroupDropsATaggedImage(t *testing.T) {
@@ -1542,7 +1542,7 @@ func TestKeepTogetherGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", "keep-together")
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

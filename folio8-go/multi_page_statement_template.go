@@ -1,6 +1,6 @@
 package folio8
 
-// multiPageStatementTemplateJSON is fixtures/multi-page-statement/input.folio8,
+// multiPageStatementTemplateJSON is fixtures/multi-page-statement/input.folio,
 // kept byte-identical to it by TestMultiPageStatementGoldenFixture.
 //
 // It is SPEC-multi-pages' golden for CAP-5: a canonical two-page document.

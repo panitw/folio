@@ -69,7 +69,7 @@ func TestTheVariantKeySetIsClosedAndTheFormatDocSaysSo(t *testing.T) {
 		}
 	}
 	if headings != 1 {
-		t.Fatalf("folio8-format.md has %d `## \\x60fonts\\x60` headings, want exactly 1 — the section slice below is only well defined when there is one", headings)
+		t.Fatalf("folio-format.md has %d `## \\x60fonts\\x60` headings, want exactly 1 — the section slice below is only well defined when there is one", headings)
 	}
 	end := len(lines)
 	for i := heading + 1; i < len(lines); i++ {
@@ -107,7 +107,7 @@ func TestTheVariantKeySetIsClosedAndTheFormatDocSaysSo(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("folio8-format.md's `fonts` section documents no chain-entry row for the variant key %q — the closed set and the doc have drifted", key)
+			t.Errorf("folio-format.md's `fonts` section documents no chain-entry row for the variant key %q — the closed set and the doc have drifted", key)
 		}
 	}
 }

@@ -13,7 +13,7 @@ async function openFixture(page: Page, pages = false, continuation: boolean | 't
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/REVISION 1/)
-  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio8', import.meta.url), 'utf8'))
+  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageHeader.elements = [rect('e8', 20, 12, 30, 12)]
   fixture.bands.content.elements = [text('e1', 20, 30, 10), text('e2', 110, 80, 14), rect('e3', 180, 110, 80, 40), { id: 'e4', type: 'line', x: 20, y: 180, width: 100, height: 1, style: { background: '#112233' } }, { id: 'e5', type: 'image', x: 145, y: 180, width: 30, height: 20, asset: null }, { id: 'e6', type: 'table', x: 220, y: 180, headerHeight: 12, bind: 'items[]', as: 'item', columns: [{ id: 'ea', width: 60, label: 'Item', bind: '{{item.name}}' }], style: { fontFamily: 'Roboto', fontSize: 10 } }, text('e7', 340, 80)]
   if (pages) fixture.bands.content.elements.push(rect('e9', 20, 800, 30, 20), continuation ? { ...text('eb', 400, continuation === 'tail' ? 200 : 620, 10), width: 80, height: 1200, value: continuation === 'tail' ? 'Short' : 'Continuation line\n'.repeat(90) } : rect('eb', 400, 620, 30, 100))
@@ -25,7 +25,7 @@ async function openFixture(page: Page, pages = false, continuation: boolean | 't
   fixture.nextId = 12
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'selection.folio8', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
+  await (await chooser).setFiles({ name: 'selection.folio', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
   await expect(page.locator(element('e1'))).toBeVisible()
   await expect(page.locator('[data-component-id]')).toHaveCount(pages ? 10 : 8)
 }

@@ -18,7 +18,7 @@ At Story 2.5's creation each band's origin was moved by one line in turn and the
 
 | fixture | `pageHeader` elements | `content` elements | `pageFooter` elements |
 |---|---|---|---|
-| `minimal-rect` | *(no `input.folio8`)* | — | — |
+| `minimal-rect` | *(no `input.folio`)* | — | — |
 | `font-text` | **0** | 1 | 1 |
 | `image-embed` | **0** | 1 | 0 |
 | `multi-script-fallback` | **0** | 1 | 0 |
@@ -101,7 +101,7 @@ Stated so nobody reads more into it than is there:
 
 ## Rules
 
-- `input.folio8` is kept **byte-identical to `folio8-go/threeBandPageTemplateJSON`**
+- `input.folio` is kept **byte-identical to `folio8-go/threeBandPageTemplateJSON`**
   (`folio8-go/three_band_page_template.go`) **by hand**; `TestThreeBandPageGoldenFixture` asserts it
   before asserting anything else.
 - **A hash change here is a defect until proven otherwise** (AD-21/AD-22). Hand-check the change;

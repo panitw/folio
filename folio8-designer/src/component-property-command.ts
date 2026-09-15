@@ -50,7 +50,7 @@ const pointFields = new Set<PropertyField>(['x', 'y', 'width', 'height', 'fontSi
 // distinction is worth a second set rather than an entry in the first.
 // It is a dimensionless RATIO. Go's decoder (template.DecodeLineSpacingRaw)
 // reads the author's own literal and performs the x1000 to thousandths
-// itself, exactly as it does for a `lineSpacing` written in a .folio8 file —
+// itself, exactly as it does for a `lineSpacing` written in a .folio file —
 // so `1.5` on the wire is 1500 thousandths in the document, and sending
 // `1500` would be refused as 1 500 000, outside the load-time range. Verified
 // against the engine, not inferred: the two entry points share one decoder

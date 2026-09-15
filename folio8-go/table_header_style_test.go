@@ -1455,7 +1455,7 @@ func TestAnUnknownHeaderBorderSubKeySurvivesTheCollapse(t *testing.T) {
 // THE FOURTH ASSERTION IS THE ONLY ONE THAT PINS THE DEFAULTS THEMSELVES —
 // 500, #000000, top,right,bottom,left — and therefore the only one that can
 // fail if both sides move together. It is the reason a joint edit still has to
-// face folio8-format.md's documented values. DELETE THE FOURTH AND THIS TEST
+// face folio-format.md's documented values. DELETE THE FOURTH AND THIS TEST
 // CANNOT FAIL AT ALL. Anyone reading "the first three are derived" as a licence
 // to trim has it exactly backwards: the derived three are the delegation guard
 // and stay, and the fourth is the coverage and stays.
@@ -1476,7 +1476,7 @@ func TestTheProjectedHeaderBorderDefaultsAreTheRenderersOwn(t *testing.T) {
 		t.Errorf("resolved headerBorder.edges = %q, and the renderer answers %q for the same border", view.HeaderBorderEdgesResolved, want)
 	}
 	// AND THE NUMBERS THEMSELVES, PINNED ONCE, so a joint edit of both sides
-	// still has to face folio8-format.md's documented defaults.
+	// still has to face folio-format.md's documented defaults.
 	if view.HeaderBorderWidthResolved != "500" || view.HeaderBorderColorResolved != "#000000" || view.HeaderBorderEdgesResolved != "top,right,bottom,left" {
 		t.Errorf("an all-absent border resolves to %q/%q/%q, want the format's documented 500/#000000/top,right,bottom,left", view.HeaderBorderWidthResolved, view.HeaderBorderColorResolved, view.HeaderBorderEdgesResolved)
 	}

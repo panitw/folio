@@ -1,4 +1,4 @@
-// Command first-pdf renders docs/examples/first-pdf.folio8 to first-pdf.pdf.
+// Command first-pdf renders docs/examples/first-pdf.folio to first-pdf.pdf.
 package main
 
 import (
@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	tpl, err := folio8.LoadTemplate("first-pdf.folio8")
+	tpl, err := folio8.LoadTemplate("first-pdf.folio")
 	if err != nil {
 		log.Fatal(describe("load", err))
 	}

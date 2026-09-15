@@ -1,6 +1,6 @@
 package folio8
 
-// justifiedTemplateJSON is fixtures/justified-text/input.folio8, kept
+// justifiedTemplateJSON is fixtures/justified-text/input.folio, kept
 // byte-identical to it by TestJustifiedTextGoldenFixture (the same
 // hand-sync precedent font-text, multi-script-fallback, wrapped-text,
 // mandatory-break and line-spacing set).
@@ -8,7 +8,7 @@ package folio8
 // It is Story 7.3's golden, and it exists because the story's own
 // byte-neutrality guard over the pre-7.3 corpus is UNFALSIFIABLE without
 // it: measured at this story's baseline, `grep -oh '"align"[^,}]*'
-// fixtures/*/input.folio8` returned 16 `left` and 8 `right` and nothing
+// fixtures/*/input.folio` returned 16 `left` and 8 `right` and nothing
 // else, so no recorded byte in the repository could tell a build that
 // distributes a justified line's slack from one that draws it ragged.
 //

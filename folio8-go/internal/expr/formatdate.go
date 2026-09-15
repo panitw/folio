@@ -47,7 +47,7 @@ var rfc3339Pattern = regexp.MustCompile(
 // "Z" IS FOR THE SECOND CALLER AND IS NOT A DIVERGENCE. It is RFC
 // 3339's canonical UTC spelling and the data path requires it; the
 // document field refuses it on one ground — it is not `±HH:MM`, the
-// syntax folio8-format.md's `utcOffset` field-table row states
+// syntax folio-format.md's `utcOffset` field-table row states
 // (D-12.C). Nothing
 // about byte identity is involved: template's own pattern admits
 // `-00:00` as readily as `+00:00`, and offsets travel verbatim. The tie

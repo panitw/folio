@@ -223,7 +223,7 @@ const mediaTypeOf = (filename: string): string | undefined => {
  *   - **`main` is a branch**, so the string does not identify the bytes it
  *     claims to describe — upstream may move it tomorrow.
  *   - It disagreed in KIND with the committed tier's own `source`, so a reader
- *     holding a `.folio8` could not tell which tier a face came from, which
+ *     holding a `.folio` could not tell which tier a face came from, which
  *     makes the field uninterpretable rather than merely inconsistent.
  *
  * What it carries instead is exactly three things: the **upstream project**,

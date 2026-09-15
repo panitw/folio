@@ -17,7 +17,7 @@ matrix must cover them in-story, not at the Epic 2 gate.
 
 ## Contents
 
-- `input.folio8` — byte-identical to `folio8-go/render_test.go`'s `multiScriptTestTemplateJSON`
+- `input.folio` — byte-identical to `folio8-go/render_test.go`'s `multiScriptTestTemplateJSON`
   constant (verified, same shape as `font-text/`'s own `TestRenderMatchesFontTextGoldenFixture`
   drift check).
 - `expected.json` — the normative record: SHA-256 of the rendered bytes, `folio8GoVersion`,

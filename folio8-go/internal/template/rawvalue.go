@@ -28,7 +28,7 @@ const (
 // passthrough content separately from known fields.
 //
 // Numbers are preserved as their exact original literal text (Num,
-// via json.Number) rather than renormalised: folio8-format.md defines a
+// via json.Number) rather than renormalised: folio-format.md defines a
 // canonical spelling only for the two KNOWN numeric kinds (points and
 // nextId, D-1.4.3); an opaque passthrough number has no such rule, so
 // "canonical" for it is simply "written back exactly as read" — which

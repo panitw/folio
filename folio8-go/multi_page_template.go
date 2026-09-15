@@ -1,7 +1,7 @@
 package folio8
 
 // multiPageTemplateJSON is Story 2.6's multi-page composition fixture, kept
-// BYTE-IDENTICAL to fixtures/multi-page/input.folio8 by hand (font-text's,
+// BYTE-IDENTICAL to fixtures/multi-page/input.folio by hand (font-text's,
 // wrapped-text's and three-band-page's precedent —
 // TestMultiPageGoldenFixtureMatchesTheInRepoTemplate asserts the two are
 // equal before it asserts anything else).

@@ -1,7 +1,7 @@
 // Package expr is Story 3.2's expression language: a hand-written
 // recursive-descent parser (AD-9, D-3.2.2 — no generator, no
 // third-party dependency, no general-purpose expression library) over
-// the small grammar `.folio8` bindings use inside "{{ }}" — a bare
+// the small grammar `.folio` bindings use inside "{{ }}" — a bare
 // dotted path, a function call over comma-separated arguments, a
 // double-quoted string literal, or a number literal — plus the eight
 // named functions FR18 promises (sum, count, avg, formatDate,

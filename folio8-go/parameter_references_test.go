@@ -9,7 +9,7 @@ import (
 )
 
 func TestParameterReferencesUseOnlyCanonicalNonTableExpressions(t *testing.T) {
-	input, err := os.ReadFile("testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestParameterReferencesUseOnlyCanonicalNonTableExpressions(t *testing.T) {
 }
 
 func TestParameterReferencesIncludeNestedAndTableVisibleIfButNotTableBindings(t *testing.T) {
-	input, err := os.ReadFile("testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestParameterReferencesIncludeNestedAndTableVisibleIfButNotTableBindings(t 
 }
 
 func TestParameterReferencesKeepsVisibleIfMissingParameterLocatedAtItsElement(t *testing.T) {
-	input, err := os.ReadFile("testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestParameterReferencesKeepsVisibleIfMissingParameterLocatedAtItsElement(t 
 
 func TestParameterReferencesRejectsNameLongerThanProtocolBound(t *testing.T) {
 	name := strings.Repeat("a", MaxParameterReferenceNameLength+1)
-	input, err := os.ReadFile("testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}

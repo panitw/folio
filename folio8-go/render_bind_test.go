@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// bindTestTemplateJSON is a `.folio8` document with one text element
+// bindTestTemplateJSON is a `.folio` document with one text element
 // bound to report data (AC15) and one table element.
 //
 // Story 3.1 / finding 4: table.bind used to be "{{transactions[]}}" —
 // braces and all, which is not a collection path at all
-// (folio8-format.md:211; D-2.4.1's "one path convention in the format,
+// (folio-format.md:211; D-2.4.1's "one path convention in the format,
 // not two" precedent) — and the data supplied no "transactions", which
 // source AC5 now makes a render error on its own. It is amended to the
 // bare collection path "transactions[]" with a real array supplied

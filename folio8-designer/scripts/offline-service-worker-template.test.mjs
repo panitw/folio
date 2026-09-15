@@ -31,7 +31,7 @@ describe('service worker static policy', () => {
     expect(isCacheableStaticRequest(request({ credentials: 'same-origin' }), 'https://folio8.test', paths)).toBe(true)
     expect(isCacheableStaticRequest(request({ credentials: 'include' }), 'https://folio8.test', paths)).toBe(true)
     expect(isCacheableStaticRequest(request({ url: 'https://evil.test/assets/app-abc12345.js' }), 'https://folio8.test', paths)).toBe(false)
-    expect(isCacheableStaticRequest(request({ url: 'https://folio8.test/documents/customer.folio8' }), 'https://folio8.test', paths)).toBe(false)
+    expect(isCacheableStaticRequest(request({ url: 'https://folio8.test/documents/customer.folio' }), 'https://folio8.test', paths)).toBe(false)
     expect(isCacheableStaticRequest(request({ method: 'POST' }), 'https://folio8.test', paths)).toBe(false)
   })
 
@@ -46,7 +46,7 @@ describe('service worker static policy', () => {
     expect(isCacheableDocumentNavigation(navigate({ mode: 'cors' }), 'https://folio8.test', paths)).toBe(false)
     expect(isCacheableDocumentNavigation(navigate({ url: `https://evil.test${guide}` }), 'https://folio8.test', paths)).toBe(false)
     expect(isCacheableDocumentNavigation(navigate({ method: 'POST' }), 'https://folio8.test', paths)).toBe(false)
-    expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio8.test/assets/folio8-format-0123456789abcdef0123.html' }), 'https://folio8.test', paths)).toBe(false)
+    expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio8.test/assets/folio-format-0123456789abcdef0123.html' }), 'https://folio8.test', paths)).toBe(false)
     expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio8.test/assets/app-abc12345.js' }), 'https://folio8.test', paths)).toBe(false)
     expect(isCacheableDocumentNavigation(navigate({ url: 'https://folio8.test/index.html' }), 'https://folio8.test', paths)).toBe(false)
   })
@@ -66,7 +66,7 @@ describe('service worker static policy', () => {
     }
     expect(await dispatch({ url: `https://folio8.test${guide}`, mode: 'navigate' })).toBe(cached)
     expect(await dispatch({ url: 'https://folio8.test/', mode: 'navigate' })).toBe(index)
-    expect(await dispatch({ url: 'https://folio8.test/assets/folio8-format-0123456789abcdef0123.html', mode: 'navigate' })).toBeUndefined()
+    expect(await dispatch({ url: 'https://folio8.test/assets/folio-format-0123456789abcdef0123.html', mode: 'navigate' })).toBeUndefined()
     expect(await dispatch({ url: 'https://folio8.test/assets/app-abc12345.js', mode: 'navigate' })).toBeUndefined()
     expect(await dispatch({ url: `https://elsewhere.test${guide}`, mode: 'navigate' })).toBeUndefined()
   })

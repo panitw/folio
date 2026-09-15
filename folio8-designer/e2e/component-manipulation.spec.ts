@@ -89,14 +89,14 @@ const openTwoSheetFixture = async (page: Page, footerHeight: number) => {
   await page.addInitScript(() => { Object.assign(window, { showOpenFilePicker: undefined, showSaveFilePicker: undefined }) })
   await page.goto('/')
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio8', import.meta.url), 'utf8'))
+  const fixture = JSON.parse(readFileSync(new URL('../public/templates/starter.folio', import.meta.url), 'utf8'))
   fixture.bands.pageFooter.height = footerHeight
   // Visible content on both sheets makes the repeated bands reachable.
   fixture.bands.content.elements = [0, 800].map((y, index) => ({ id: `e${index + 1}`, type: 'rect', x: 0, y, width: 72, height: 24, style: { background: '#000000' } }))
   fixture.nextId = 3
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'repeated-bands.folio8', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
+  await (await chooser).setFiles({ name: 'repeated-bands.folio', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) })
 }
 
 test.describe('image palette placement in repeating bands', () => {

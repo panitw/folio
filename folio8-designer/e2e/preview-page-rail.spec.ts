@@ -80,8 +80,8 @@ test('enumerates the render as rasterised page thumbnails, and navigates by them
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'five-pages.folio8', mimeType: 'application/json', buffer: Buffer.from(fivePages, 'utf8') })
-  await expect(page.locator('.document-name')).toHaveText('five-pages.folio8')
+  await (await chooser).setFiles({ name: 'five-pages.folio', mimeType: 'application/json', buffer: Buffer.from(fivePages, 'utf8') })
+  await expect(page.locator('.document-name')).toHaveText('five-pages.folio')
 
   // IN DESIGN, THE PALETTE IS THE FIRST COLUMN. Asserting it here is what makes
   // its absence in Preview a change rather than a restatement of a template that

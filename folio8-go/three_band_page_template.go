@@ -1,7 +1,7 @@
 package folio8
 
 // threeBandPageTemplateJSON is Story 2.5's three-band composition
-// fixture, kept BYTE-IDENTICAL to fixtures/three-band-page/input.folio8
+// fixture, kept BYTE-IDENTICAL to fixtures/three-band-page/input.folio
 // by hand (font-text's and wrapped-text's precedent —
 // TestThreeBandPageGoldenFixture asserts the two are equal before it
 // asserts anything else).

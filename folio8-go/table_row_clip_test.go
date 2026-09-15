@@ -591,7 +591,7 @@ func TestClippedRowSuppressesTheRepeatOnlyWhenItBuysNothingAndRecordsIt(t *testi
 	// and here is the record saying so" is not. Measured before this fix:
 	// plan.Suppressed was EMPTY for this document.
 	if len(plan.Suppressed) != 1 {
-		t.Fatalf("plan.Suppressed = %+v; want exactly one record. AD-14 and folio8-format.md both say nothing is silent in either direction — a page that loses its header repeat says so", plan.Suppressed)
+		t.Fatalf("plan.Suppressed = %+v; want exactly one record. AD-14 and folio-format.md both say nothing is silent in either direction — a page that loses its header repeat says so", plan.Suppressed)
 	}
 	s := plan.Suppressed[0]
 	if s.ElementID != "e1" || s.Page != clippedPage {

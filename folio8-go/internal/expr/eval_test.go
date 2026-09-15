@@ -170,7 +170,7 @@ func TestIfAbsentConditionIsLocatedError(t *testing.T) {
 // diagnostic, no warning. This is the one behaviour in the engine that
 // produces no signal in its output at all (a reader cannot distinguish
 // a hidden section from one that was never there); this test and
-// folio8-format.md's stated-behaviour entry are the only two places
+// folio-format.md's stated-behaviour entry are the only two places
 // this fact exists, per the owner's own implementation obligation.
 //
 // Paired deliberately with TestIfAbsentConditionIsLocatedError above:
@@ -246,7 +246,7 @@ func TestIfShortCircuitsUnselectedBranch(t *testing.T) {
 }
 
 // TestIfShortCircuitsAbsentPathInUnselectedBranch is QA Finding 16(a)
-// (Minor): the DOCUMENTED motivating example (folio8-format.md's
+// (Minor): the DOCUMENTED motivating example (folio-format.md's
 // "### Expressions" section) is {{if(hasDiscount, discount.amount,
 // "N/A")}} on a row where discount is absent entirely.
 // TestIfShortCircuitsUnselectedBranch above exercises the mechanism

@@ -412,7 +412,7 @@ describe('the Story 8.5 catalogue ships the faces its manifest declares', () => 
       //
       // The designer sends `licenceText` and `copyright` with every pick, and
       // the engine refuses to load a document that embeds a face without them,
-      // so these two strings ARE the terms a `.folio8` travels under. They are
+      // so these two strings ARE the terms a `.folio` travels under. They are
       // asserted per face, against this face's own directory and this face's
       // own bytes, because the failure they exist to catch is not "the field
       // is empty" — it is "the field is FULL, and it belongs to another

@@ -13,7 +13,7 @@ import (
 // undo entry, changes only that page, and one undo restores the bytes. A
 // command without `page` still targets page 1.
 func TestLaterPageSectionBreakCommandsAreOneUndoEntryEach(t *testing.T) {
-	input, err := os.ReadFile("../../fixtures/multi-page-statement/input.folio8")
+	input, err := os.ReadFile("../../fixtures/multi-page-statement/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}

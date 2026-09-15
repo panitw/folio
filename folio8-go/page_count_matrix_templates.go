@@ -20,7 +20,7 @@ package folio8
 // -- this story's construct -- and the page header a fixed literal, so
 // a header/footer mix-up is readable in the text.
 //
-// Kept BYTE-IDENTICAL to fixtures/page-count-N/input.folio8 by hand,
+// Kept BYTE-IDENTICAL to fixtures/page-count-N/input.folio by hand,
 // the same discipline multi_page_template.go documents: a test
 // (page_count_matrix_test.go) asserts the pairs are equal before it
 // asserts anything else.

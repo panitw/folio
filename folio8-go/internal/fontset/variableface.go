@@ -13,7 +13,7 @@ import (
 // the only one. `embedFontFamily`'s structural gate is checkSfnt, whose own
 // doc fences it at "the file is not lying about what it is, and nothing
 // more", and which never inspects a table tag at all. So a pick of a variable
-// face wrote a `.folio8` that SAVED CLEANLY AND FAILED AT RENDER — the one
+// face wrote a `.folio` that SAVED CLEANLY AND FAILED AT RENDER — the one
 // outcome D-8.4d.1 and D-16.1 both promise cannot happen. The refusal was
 // right; it arrived far too late.
 //
@@ -25,7 +25,7 @@ import (
 // feeds ONE byte slice to both doors and asserts both refuse; deleting either
 // call site reds that test.
 //
-// THE RENDERER'S GUARD IS KEPT, NOT MOVED. A `.folio8` can be hand-written and
+// THE RENDERER'S GUARD IS KEPT, NOT MOVED. A `.folio` can be hand-written and
 // the loader is not the only door, so `New` still calls this before it builds
 // a shaper. fontset_test.go's TestNewRejectsVariableFace passes unchanged.
 //
@@ -39,7 +39,7 @@ import (
 //
 // THE REASON IS THE DRIFT ASYMMETRY, and it is what separates the two cases
 // rather than a judgement about who wrote which file. A command-side copy that
-// drifts permissive ADMITS a variable face into a `.folio8` that fails at
+// drifts permissive ADMITS a variable face into a `.folio` that fails at
 // render — D-16.6's original defect, reproduced. An install-time filter that
 // drifts permissive installs the face and lets this function refuse it at first
 // use, which is exactly today's behaviour; drifting strict, it fails an install

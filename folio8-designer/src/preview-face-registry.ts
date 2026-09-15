@@ -41,7 +41,7 @@ import { previewFaceFamily } from './preview-face-family'
 //
 // AND IT IS NOT A SECOND AUTHORITY ON WHAT A DOCUMENT CONTAINS. Nothing here
 // writes to the machine store, sends a command, touches `fontFamilies` or
-// produces anything a `.folio8` can carry. A registered preview face is a face
+// produces anything a `.folio` can carry. A registered preview face is a face
 // one `<span>` in one modal can be set in, and that is the entire claim.
 //
 // THE BOUND IS THE PAGE, AND IT IS WRITTEN DOWN IN `font-browser-model.ts`

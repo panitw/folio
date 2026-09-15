@@ -51,7 +51,7 @@ import (
 	"testing"
 )
 
-// composeMultiPageTemplate builds a synthetic .folio8 document sharing
+// composeMultiPageTemplate builds a synthetic .folio document sharing
 // fixtures/multi-page/'s geometry, with its content element's value set to
 // sentenceCount repetitions of one fixed sentence (or no content element at
 // all when sentenceCount is 0).

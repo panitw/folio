@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// canonicalFixtures is the corpus of canonical `.folio8` bytes this
+// canonicalFixtures is the corpus of canonical `.folio` bytes this
 // story's P1/P2/P3 tests run over (AC12–AC17). Every entry here is
 // itself asserted, by mustBeCanonical, to already be a fixed point
 // under the serializer before it is used to test anything else — a

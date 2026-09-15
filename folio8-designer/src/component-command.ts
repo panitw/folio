@@ -1,5 +1,5 @@
 // Component commands are opaque, versioned Go vocabulary. This module does
-// not describe a .folio8 element or serialize a document; it only encodes the
+// not describe a .folio element or serialize a document; it only encodes the
 // final intent that crosses the existing worker FIFO.
 //
 // STORY 15.2a: every value on the wire now goes through command-json.ts. This

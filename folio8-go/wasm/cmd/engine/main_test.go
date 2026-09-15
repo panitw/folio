@@ -152,7 +152,7 @@ func TestWasmHostSanitizesTemplateDiagnostics(t *testing.T) {
 // TestWasmHostReportsTheTableJustifyRefusalIntact is Story 7.8's AC4,
 // asserted at the only place it is actually decided: the wasm boundary.
 //
-// A designer author opens a hand-edited `.folio8` whose table carries
+// A designer author opens a hand-edited `.folio` whose table carries
 // `style.align: "justify"`. Before this story that document LOADED,
 // paid a MAJOR version bump and drew every cell at the start edge with
 // no diagnostic at all. Refusing it at load is only half the fix — an
@@ -227,7 +227,7 @@ func TestWasmHostReportsTheLineSpacingRefusalIntact(t *testing.T) {
 }
 
 func TestWasmHostReportsEngineAuthoredRenderMessages(t *testing.T) {
-	starter, err := os.ReadFile("../../../../folio8-designer/public/templates/starter.folio8")
+	starter, err := os.ReadFile("../../../../folio8-designer/public/templates/starter.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +441,7 @@ func TestWasmGroupMovePreviewAndCommitTransport(t *testing.T) {
 }
 
 func TestWasmFormulaLongSyntaxCauseSurvivesWireBound(t *testing.T) {
-	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestWasmFormulaLongSyntaxCauseSurvivesWireBound(t *testing.T) {
 }
 
 func TestWasmFormulaMultiplePlaceholderCauseSurvivesWireBound(t *testing.T) {
-	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio8")
+	input, err := os.ReadFile("../../../testdata/example/first-pdf.folio")
 	if err != nil {
 		t.Fatal(err)
 	}

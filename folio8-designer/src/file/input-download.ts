@@ -20,7 +20,7 @@ export class InputDownloadAccess implements FileAccess {
     return new Promise((resolve, reject) => {
       const input = this.document.createElement('input')
       input.type = 'file'
-      input.accept = '.folio8,application/json'
+      input.accept = '.folio,application/json'
       input.value = '' // a second selection of the same file must still notify us
       input.style.display = 'none'
       const cleanup = () => input.remove()

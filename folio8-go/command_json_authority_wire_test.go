@@ -123,7 +123,7 @@ func TestCommandJsonAuthorityAndTheEnginesRefusalLandTogether(t *testing.T) {
 		},
 		{
 			// The hostile document id, which needed no typing at all: open a
-			// .folio8, select the element, press Delete.
+			// .folio, select the element, press Delete.
 			name:    "the hostile document id",
 			command: `{"kind":"deleteComponent","version":1,"id":"a","id":"victim"}`,
 		},

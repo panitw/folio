@@ -23,7 +23,7 @@ name: Build, vet, and guardrails
 # -count=1, actions/setup-go's restored cache can report a stale "ok" for
 # a guard whose out-of-module input changed since the cache was primed —
 # reproduced decisively: with the cache primed, injecting real drift into
-# folio8-format.md gives `ok (cached)` on a plain `go test`, and only
+# folio-format.md gives `ok (cached)` on a plain `go test`, and only
 # `go test -count=1` catches it. A cached ok is not evidence.
 
 on:

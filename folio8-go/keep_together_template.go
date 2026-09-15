@@ -1,6 +1,6 @@
 package folio8
 
-// keepTogetherTemplateJSON is fixtures/keep-together/input.folio8, kept
+// keepTogetherTemplateJSON is fixtures/keep-together/input.folio, kept
 // byte-identical to it by TestKeepTogetherGoldenFixture.
 //
 // IT IS A DISCRIMINATOR, NOT A DEMONSTRATION (Story 7.7, FR51). The

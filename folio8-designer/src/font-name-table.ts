@@ -125,7 +125,7 @@ export function fontView(bytes: ArrayBuffer | ArrayBufferView): DataView {
 
 /**
  * nameID 0 — THE ONE STATEMENT OF PROVENANCE THAT CANNOT BE EDITED FROM OUTSIDE
- * THE BINARY, and the value that reaches a `.folio8` as `font.copyright`.
+ * THE BINARY, and the value that reaches a `.folio` as `font.copyright`.
  *
  * It is read from the face's own bytes and never from a family's upstream
  * metadata, for the reason `font-catalogue.md` already gives: a value copied

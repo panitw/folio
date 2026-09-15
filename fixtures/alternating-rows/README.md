@@ -8,7 +8,7 @@ alternate-colour fills: collection indexes 1 and 3. Indexes 0, 2, and 4 remain u
 The committed PDF was rendered on 2026-08-27 with Go `go1.26.0` on `darwin/arm64`:
 
 ```text
-CGO_ENABLED=0 GOWORK=off go run ./cmd/folio8 render -data ../fixtures/alternating-rows/data.json -o ../fixtures/alternating-rows/expected.pdf ../fixtures/alternating-rows/input.folio8
+CGO_ENABLED=0 GOWORK=off go run ./cmd/folio8 render -data ../fixtures/alternating-rows/data.json -o ../fixtures/alternating-rows/expected.pdf ../fixtures/alternating-rows/input.folio
 ```
 
 Its independently recorded SHA-256 digest is
@@ -31,7 +31,7 @@ test-owned vertical positions `741.374` and `716.858` points, in that order. The
 test re-renders through the public API, performs the byte comparison, validates the PDF page tree,
 and reads the produced PDF bytes to verify those two semantic fill operations.
 
-Matrix registration covers slug `alternating-rows`, `input.folio8`, `data.json`, `expected.pdf`, and
+Matrix registration covers slug `alternating-rows`, `input.folio`, `data.json`, `expected.pdf`, and
 `expected.json`. Story 4.8 runs the native `darwin/arm64` leg when registering this document. That
 single leg proves the document executes and hashes on its native host; cross-target equality remains
 deferred to the Epic 4 boundary gate.

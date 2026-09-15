@@ -14,7 +14,7 @@ const production = fs.readdirSync(sourceRoot, { recursive: true }).filter((entry
 // below: no durable/browser-cloud FICTION. A designer that quietly kept the
 // author's template in browser storage — or implied a cloud, a sync, an account
 // or a recent-files list it does not have — would be lying about where the
-// author's work lives, which is the whole reason `.folio8` is a file the author
+// author's work lives, which is the whole reason `.folio` is a file the author
 // holds.
 //
 // Story 16.2 adds durable state on purpose, ruled and scoped: an origin-scoped
@@ -27,7 +27,7 @@ const production = fs.readdirSync(sourceRoot, { recursive: true }).filter((entry
 //
 // AND THE EXEMPTION IS BOUNDED BY WHAT THE MODULE MAY CONTAIN. The store is a
 // cache and a source, never an authority on a document: it keeps face bytes and
-// their licence record, and a `.folio8` still carries its own faces. The
+// their licence record, and a `.folio` still carries its own faces. The
 // assertion below holds it to that — a document-shaped word appearing in it
 // would mean the exemption had been used for something it was not granted for.
 //

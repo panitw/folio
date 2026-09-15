@@ -107,7 +107,7 @@ message pinned verbatim by `folio8-go/thai_mark_stacking_test.go`. At any `fontS
 
 | File | What it is |
 |---|---|
-| `input.folio8` | the template, kept byte-identical to `folio8-go/thaiStackedMarksTemplateJSON` by hand |
+| `input.folio` | the template, kept byte-identical to `folio8-go/thaiStackedMarksTemplateJSON` by hand |
 | `expected.json` | the recorded digest and the toolchain it was recorded under |
 | `expected.pdf` | the recorded artifact |
 

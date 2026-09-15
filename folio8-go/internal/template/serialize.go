@@ -305,7 +305,7 @@ func writeFontChain(dst []byte, depth int, chain []FontChainEntry) []byte {
 			// emit, and a key held in a loop variable is invisible to it
 			// — the emitted byte would then appear in the runtime half
 			// of TestDriftASTMatchesRuntimeEmission and in neither the
-			// AST half nor folio8-format.md's drift guard. The closed set
+			// AST half nor folio-format.md's drift guard. The closed set
 			// lives in model.go; these three lines are its emission, and
 			// the targeted enumeration test pins that they agree.
 			if entry.Bold != "" {
@@ -431,7 +431,7 @@ func writeElement(dst []byte, depth int, e Element) []byte {
 	// Story 7.7 (FR51). The unkeyed literal form is REQUIRED here, not a
 	// style choice: drift_test.go's AST reader (extractGoKeys) sees a
 	// kv literal only in the `kv{"key", …}` spelling, so a keyed
-	// `kv{key: …, write: …}` would emit a key folio8-format.md's drift
+	// `kv{key: …, write: …}` would emit a key folio-format.md's drift
 	// guard is structurally blind to.
 	if e.KeepTogether.Set {
 		if e.KeepTogether.Null {

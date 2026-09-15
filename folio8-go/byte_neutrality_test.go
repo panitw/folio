@@ -213,7 +213,7 @@ var goldenDigestRecord = []struct {
 		// RECORDED by Story 4.7 — the C4 gate. THE FIRST FOUR
 		// COMMITTED GOLDENS IN THIS REPOSITORY THAT CONTAIN A TABLE
 		// AT ALL. Measured at 4.7's baseline (df8cbcc):
-		// `grep -l '"table"' fixtures/*/input.folio8` returned
+		// `grep -l '"table"' fixtures/*/input.folio` returned
 		// NOTHING, so no recorded byte in the corpus could tell a
 		// correct table from a broken one, and Story 4.6's
 		// unconditional-clip mutation reddened ZERO goldens while
@@ -309,12 +309,12 @@ var goldenDigestRecord = []struct {
 	},
 	{
 		// RECORDED by Story 5.13 (AD-21). Unlike every fixture above,
-		// input.folio8 here is not hand-authored — it is the captured
+		// input.folio here is not hand-authored — it is the captured
 		// canonical output of one real setComponentAsset command, and
 		// TestComponentAssetImportCommandReproducesTheFixtureInput
 		// (fixture_test.go) re-runs that command on every ordinary
 		// `go test ./...` and asserts it reproduces this fixture's
-		// input.folio8 byte-for-byte, pinning the AUTHORING COMMAND's
+		// input.folio byte-for-byte, pinning the AUTHORING COMMAND's
 		// canonical-bytes behaviour (AD-9), not merely a render of a
 		// document that already names an asset. RE-RECORDED after the
 		// initial delivery (Finding 7, review of 2026-08-29): the base
@@ -333,7 +333,7 @@ var goldenDigestRecord = []struct {
 		// RECORDED by Story 7.1 (FR46). THE FIRST COMMITTED DOCUMENT IN
 		// THIS REPOSITORY WHOSE TEXT OR BOUND DATA CONTAINS A LINE FEED
 		// AT ALL. Measured at 7.1's baseline, `grep -l '\\n'
-		// fixtures/*/input.folio8 fixtures/*/*.json` returned NOTHING,
+		// fixtures/*/input.folio fixtures/*/*.json` returned NOTHING,
 		// so no recorded byte in the corpus could tell a build that
 		// honours a typed break from one that silently eats it — and
 		// AC6's "every existing golden hashes identically" guard is
@@ -382,7 +382,7 @@ var goldenDigestRecord = []struct {
 	{
 		// RECORDED by Story 7.3 (FR47). THE FIRST COMMITTED DOCUMENT IN
 		// THIS REPOSITORY THAT IS JUSTIFIED AT ALL. Measured at 7.3's
-		// baseline, `grep -oh '"align"[^,}]*' fixtures/*/input.folio8`
+		// baseline, `grep -oh '"align"[^,}]*' fixtures/*/input.folio`
 		// returned 16 `left` and 8 `right` and nothing else, so no
 		// recorded byte in the corpus could tell a build that
 		// distributes a justified line's slack from one that draws it
@@ -630,7 +630,7 @@ var goldenDigestRecord = []struct {
 		// produce the page that matters, so recording a page drawn with
 		// the SHIPPED face under the name "embedded-font" would have
 		// attested the wrong thing. 8.4 produces that page. Its
-		// input.folio8 ALSO moved: the drawn text went from Latin to
+		// input.folio ALSO moved: the drawn text went from Latin to
 		// pure Thai, because NotoSans-Regular covers zero of
 		// U+0E00–U+0E7F while the carried NotoSansThai-Regular covers
 		// 87 — so the carried face is now the ONLY face that can draw

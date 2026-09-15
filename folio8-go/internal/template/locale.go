@@ -1,7 +1,7 @@
 package template
 
 // This file is Story 3.4's AC4 (D-3.4.2, amended): the closed SET of
-// valid `locale` tags is a `.folio8` FORMAT constraint (folio8-format.md
+// valid `locale` tags is a `.folio` FORMAT constraint (folio-format.md
 // states it, and the load error is raised in this package, parse.go),
 // while the per-locale FORMATTING DATA (symbols, calendar, patterns)
 // is internal/expr's behaviour (AD-12: "expr/ — … locale tables"). The

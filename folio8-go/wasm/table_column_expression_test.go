@@ -12,7 +12,7 @@ import (
 )
 
 func TestEngineColumnExpressionExactBytesHistoryAndRefusals(t *testing.T) {
-	input, err := os.ReadFile("../../fixtures/statement-1/input.folio8")
+	input, err := os.ReadFile("../../fixtures/statement-1/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestEngineColumnExpressionExactBytesHistoryAndRefusals(t *testing.T) {
 }
 
 func TestEngineColumnExpressionFooterAndAliasRefusalPreserveHistory(t *testing.T) {
-	input, err := os.ReadFile("../../fixtures/statement-1/input.folio8")
+	input, err := os.ReadFile("../../fixtures/statement-1/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}

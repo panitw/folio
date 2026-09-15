@@ -23,7 +23,7 @@ import (
 )
 
 func TestBindTableCollectionPreservesEverythingElse(t *testing.T) {
-	input, err := os.ReadFile("../fixtures/statement-1/input.folio8")
+	input, err := os.ReadFile("../fixtures/statement-1/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestBindTableCollectionPreservesEverythingElse(t *testing.T) {
 }
 
 func TestBindTableCollectionRefusalsAreTransactional(t *testing.T) {
-	input, err := os.ReadFile("../fixtures/statement-1/input.folio8")
+	input, err := os.ReadFile("../fixtures/statement-1/input.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func tableCollectionEditCommand(kind, id, collection, alias string) []byte {
 }
 
 func TestTableCollectionCommandsPreserveRelativeFooterSources(t *testing.T) {
-	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio8")
+	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestTableCollectionCommandsPreserveRelativeFooterSources(t *testing.T) {
 }
 
 func TestTableCollectionFooterSourceBoundIsTransactional(t *testing.T) {
-	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio8")
+	input, err := os.ReadFile("testdata/commands/table-collection-footers.folio")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2022,7 +2022,7 @@ func TestEmptyFontChainIsInvisibleToTheProjectionAndRefusedByTheProperty(t *test
 	if _, err := ApplyComponentCommand(tpl, []byte(`{"kind":"updateComponentProperties","version":1,"ids":["e2"],"changes":{"fontFamily":{"op":"set","value":"unused"}}}`)); err == nil {
 		t.Fatal("the property command accepted an empty chain")
 	}
-	// Still deletable: an empty chain a .folio8 in the wild carries must not
+	// Still deletable: an empty chain a .folio in the wild carries must not
 	// become unreachable to every command at once.
 	fontChainAccepted(t, tpl, `{"kind":"deleteFontChain","version":1,"name":"unused"}`)
 }
@@ -2648,7 +2648,7 @@ func TestEmbedFontFamilyRefusesAChainNameTheDocumentAlreadyTakes(t *testing.T) {
 //
 // D-16.6 measured the disagreement: embedFontFamily's only structural gate was
 // checkSfnt, which does not look at `fvar`, while fontset.New refuses `fvar`
-// outright. A pick of a variable face therefore wrote a `.folio8` that saved
+// outright. A pick of a variable face therefore wrote a `.folio` that saved
 // cleanly and failed at RENDER — the one outcome D-8.4d.1 and D-16.1 both
 // promise cannot happen, and reachable today with none of Epic 16 built.
 //
@@ -2677,7 +2677,7 @@ func TestVariableFaceIsRefusedAtTheCommandAndAtIngestionOverTheSameBytes(t *test
 	// Door two: the renderer, over those same bytes.
 	_, ingestErr := fontset.New(chain, face)
 	if ingestErr == nil {
-		t.Fatal("fontset.New accepted a variable face; the renderer's own guard has been moved or removed, and a hand-written .folio8 is now unguarded")
+		t.Fatal("fontset.New accepted a variable face; the renderer's own guard has been moved or removed, and a hand-written .folio is now unguarded")
 	}
 
 	// ONE PREDICATE, NOT TWO AUTHORITIES. componentFailure carries the

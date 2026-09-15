@@ -8,12 +8,12 @@ import { assertProvenanceShape } from './test/provenance-shape'
 
 // STORY 16.1a — THE TRIPWIRE UNDER `source`, ON BOTH TIERS (D-16.R.13, DW-160).
 //
-// `source` is one of the twelve wire fields a `.folio8` records for an embedded
+// `source` is one of the twelve wire fields a `.folio` records for an embedded
 // face, and until this story its two writers disagreed in KIND:
 //
 //   committed tier  `folio8-designer/public/fonts/<dir>/<file> — see that
 //                    directory's NOTICE.md …`   (a path into THIS repository,
-//                    naming a file the recipient of a `.folio8` does not have)
+//                    naming a file the recipient of a `.folio` does not have)
 //   fetched tier    `<the declared fetch host>/google/fonts/main/<path>`
 //                    (a bare MUTABLE BRANCH URL)
 //
@@ -67,10 +67,10 @@ describe('`source` names provenance and never a retrieval path', () => {
   })
 
   // AND IT NO LONGER POINTS AT A FILE THAT DOES NOT TRAVEL. The old string named
-  // `NOTICE.md` in this repository; a `.folio8` reaches its recipient without it.
+  // `NOTICE.md` in this repository; a `.folio` reaches its recipient without it.
   it('inlines the pinned upstream release rather than pointing at this repository', () => {
     for (const face of catalogueFaces) {
-      expect(face.source, `${face.family}: \`source\` points at a NOTICE.md the recipient of a .folio8 does not have`).not.toContain('NOTICE.md')
+      expect(face.source, `${face.family}: \`source\` points at a NOTICE.md the recipient of a .folio does not have`).not.toContain('NOTICE.md')
       expect(face.source, `${face.family}: \`source\` points into this repository's own tree`).not.toContain('folio8-designer/')
       expect(face.source, `${face.family}: \`source\` names no pinned upstream release`).toMatch(/^[^\s@]+@[^\s@]+ — \S+, fetched \d{4}-\d{2}-\d{2}$/)
     }

@@ -688,7 +688,7 @@ func containsSubstring(s, substr string) bool {
 // TestDataCellValignDistributesRowSlack is Story 4.2 review Finding 4
 // (Major): resolvedBodyStyle.valign was resolved and NEVER READ, while
 // AC5's own mechanism text, table_render.go's own comment, and
-// folio8-format.md all claimed it cascades to data cells exactly as it
+// folio-format.md all claimed it cascades to data cells exactly as it
 // does to the header. This wires it: a SHORT cell sitting in a row
 // whose OTHER cell wraps to several lines has real vertical slack —
 // "top" (the only behaviour before this fix) leaves it at the row's

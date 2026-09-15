@@ -6,7 +6,7 @@ package folio8
 // WHAT THIS FAMILY IS FOR, AND WHAT IT IS NOT.
 //
 // Measured at this story's baseline (df8cbcc): `grep -l '"table"'
-// fixtures/*/input.folio8` returned NOTHING. Not one committed golden in
+// fixtures/*/input.folio` returned NOTHING. Not one committed golden in
 // this repository contained a table, so no recorded byte in the corpus
 // could tell a correct table from a broken one, and Story 4.6's
 // unconditional-clip mutation reddened ZERO goldens while reddening the
@@ -108,7 +108,7 @@ import (
 // a black box", and a solid rectangle makes that question unanswerable.
 const statementLogoAssetKey = "f4a37bba5652865abc8e24be5e1aad4d5ad42ce5727715f6d19b93861d23f6a4"
 
-// statementTemplateJSON is fixtures/statement-*/input.folio8, kept
+// statementTemplateJSON is fixtures/statement-*/input.folio, kept
 // BYTE-IDENTICAL to all four copies by hand — multi_page_template.go's
 // and page_count_matrix_templates.go's established discipline. All four
 // fixture directories carry the SAME template; only their data document
@@ -205,7 +205,7 @@ const statementGeneratedDate = "2026-08-27"
 //        line while its first labelled word CAN — the width is the
 //        knob, not the string set.
 // Row 4  the lowered/stacked Thai mark case, "ปั ฟั ที่ ป้ำ", verbatim
-//        from fixtures/shaped-text/input.folio8 element e1 — already
+//        from fixtures/shaped-text/input.folio element e1 — already
 //        human-signed at that fixture's digest. GPOS inside a cell.
 // Row 5  thai-002, "เก็บเงิน". Its labelled seam is NOT asserted, and
 //        the reason is now a MEASUREMENT rather than an inference.

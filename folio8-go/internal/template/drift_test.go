@@ -14,7 +14,7 @@ import (
 )
 
 // This file is the drift test (D-1.4.7, AC45–AC47): internal/template's
-// parser and serializer are normative; folio8-format.md is documentation.
+// parser and serializer are normative; folio-format.md is documentation.
 // A readability contract that lies is worse than none, so drift is
 // caught mechanically in both directions.
 //
@@ -36,7 +36,7 @@ import (
 // comment for the full rationale.
 //
 // Scope boundary (AC10, AC47): both this file's comparisons are about
-// KNOWN keys — the ones the Go model and folio8-format.md's field table
+// KNOWN keys — the ones the Go model and folio-format.md's field table
 // both claim to define. Unknown passthrough keys (AC8, AC9: an
 // unrecognised key carried opaquely through parse and merged back on
 // serialize) are explicitly OUTSIDE this file's scope in every
@@ -226,7 +226,7 @@ func normaliseDocToken(tok string) string {
 
 // TestDriftGoToDoc is AC45/AC47's Go→doc half: every JSON key the
 // serializer can emit must appear as a backticked token somewhere in
-// folio8-format.md. Reports both sides' witnesses and fails on zero
+// folio-format.md. Reports both sides' witnesses and fails on zero
 // (AC47: "the extractors themselves need witnesses, not just the
 // comparison").
 func TestDriftGoToDoc(t *testing.T) {
@@ -242,7 +242,7 @@ func TestDriftGoToDoc(t *testing.T) {
 	docBytes := mustReadFile(t, filepath.Join(root, "_bmad-output", "specs", "spec-folio", "folio-format.md"))
 	docKeys, tokensExtracted := extractDocKeys(docBytes)
 	if tokensExtracted == 0 {
-		t.Fatal("coverage witness: zero tokens extracted from folio8-format.md")
+		t.Fatal("coverage witness: zero tokens extracted from folio-format.md")
 	}
 
 	compared := 0
@@ -258,12 +258,12 @@ func TestDriftGoToDoc(t *testing.T) {
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		t.Fatalf("keys the serializer can emit but folio8-format.md never documents: %v", missing)
+		t.Fatalf("keys the serializer can emit but folio-format.md never documents: %v", missing)
 	}
 }
 
 // TestDriftDocToGo is AC45/AC47's doc→Go half: every backticked key
-// token folio8-format.md documents corresponds to a real key the Go
+// token folio-format.md documents corresponds to a real key the Go
 // serializer can emit — a readability contract that names a key the
 // engine does not implement is worse than none.
 func TestDriftDocToGo(t *testing.T) {
@@ -279,7 +279,7 @@ func TestDriftDocToGo(t *testing.T) {
 	docBytes := mustReadFile(t, filepath.Join(root, "_bmad-output", "specs", "spec-folio", "folio-format.md"))
 	docKeys, tokensExtracted := extractDocKeys(docBytes)
 	if tokensExtracted == 0 {
-		t.Fatal("coverage witness: zero tokens extracted from folio8-format.md")
+		t.Fatal("coverage witness: zero tokens extracted from folio-format.md")
 	}
 
 	compared := 0
@@ -295,13 +295,13 @@ func TestDriftDocToGo(t *testing.T) {
 	}
 	if len(extra) > 0 {
 		sort.Strings(extra)
-		t.Fatalf("keys folio8-format.md documents but the serializer never emits: %v", extra)
+		t.Fatalf("keys folio-format.md documents but the serializer never emits: %v", extra)
 	}
 }
 
 // TestDriftCatchesARemovedDocKey is AC47's red-proof, by construction,
 // against a RETAINED FIXTURE DOCUMENT — never by mutating
-// folio8-format.md itself. driftFixtureMissingWidth simulates the doc
+// folio-format.md itself. driftFixtureMissingWidth simulates the doc
 // losing its documentation of a real Go key ("width"); the Go→doc
 // comparison must flag it.
 func TestDriftCatchesARemovedDocKey(t *testing.T) {
@@ -329,7 +329,7 @@ func TestDriftCatchesARemovedDocKey(t *testing.T) {
 }
 
 // driftFixtureMissingWidth is a retained miniature fixture document —
-// same table shape as folio8-format.md, deliberately never documenting
+// same table shape as folio-format.md, deliberately never documenting
 // "width" — used only by TestDriftCatchesARemovedDocKey.
 var driftFixtureMissingWidth = []byte("| Field | Meaning |\n|---|---|\n| `id` | opaque id |\n| `type` | element type |\n| `x`, `y` | position |\n")
 

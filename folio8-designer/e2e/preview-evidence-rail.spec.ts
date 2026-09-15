@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 // System Access API emits no `filechooser` event at all and times out at 90s.
 // Two specs shipped without this and did exactly that the first time anyone ran
 // them.
-const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio8'))
+const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio'))
 const sampleData = Buffer.from('{"customer":{"name":"Ada"}}')
 
 // `--panel-width` in `tokens.css`, and `.workbench`'s third grid column. The
@@ -44,8 +44,8 @@ test('the evidence rail occupies the inspector column, with the whole hash wrapp
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await templateChooser).setFiles({ name: 'statement.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await (await templateChooser).setFiles({ name: 'statement.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
   const sampleChooser = page.waitForEvent('filechooser')
   await page.getByRole('tab', { name: 'DATA' }).click()
   await page.getByRole('button', { name: 'Load sample JSON' }).click()

@@ -35,7 +35,7 @@ The first MVP should include four core components:
                    ▼
         ┌─────────────────────┐
         │   folio8 Template    │
-        │      (.folio8)       │
+        │      (.folio)       │
         └──────────┬──────────┘
                    │
                    ▼
@@ -189,7 +189,7 @@ The designer should produce a portable, text-based template.
 Recommended extension:
 
 ```text
-customer-statement.folio8
+customer-statement.folio
 ```
 
 The content can remain JSON internally.
@@ -270,7 +270,7 @@ import (
 )
 
 func main() {
-    template, err := folio8.LoadTemplate("statement.folio8")
+    template, err := folio8.LoadTemplate("statement.folio")
     if err != nil {
         panic(err)
     }
@@ -674,7 +674,7 @@ Only PDF is required for MVP.
 |---|---|
 | Web visual designer | Must |
 | JSON template format | Must |
-| `.folio8` template file | Must |
+| `.folio` template file | Must |
 | JSON data binding | Must |
 | Text | Must |
 | Image | Must |
@@ -742,7 +742,7 @@ Recommended sequence:
 
 Build:
 
-- `.folio8` schema
+- `.folio` schema
 - Template parser
 - Template validator
 - Text rendering
@@ -869,7 +869,7 @@ folio8 v0.1 should be considered successful when:
 
 1. A user can create a report in the visual designer.
 2. The report can bind to JSON data.
-3. The template can be saved as a portable `.folio8` file.
+3. The template can be saved as a portable `.folio` file.
 4. A Go application can load that template.
 5. The application can render it using:
 
@@ -891,4 +891,4 @@ pdf, err := folio8.Render(template, data)
 
 The first release should optimize for reliability rather than feature breadth.
 
-> **If folio8 v0.1 can reliably generate a professional 20–50 page enterprise statement from JSON using a `.folio8` template and `folio8-go`, the MVP has proven its core value.**
+> **If folio8 v0.1 can reliably generate a professional 20–50 page enterprise statement from JSON using a `.folio` template and `folio8-go`, the MVP has proven its core value.**

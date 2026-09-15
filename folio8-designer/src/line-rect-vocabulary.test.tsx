@@ -360,7 +360,7 @@ describe('the kind-specific vocabulary is gated on a single selection', () => {
 //
 // WHAT THIS PROVES: that the same gesture emits the same COMMAND BYTES it
 // emitted before this story. WHAT IT DOES NOT PROVE: anything about the
-// serialized `.folio8` document directly. A vitest/jsdom test cannot obtain real
+// serialized `.folio` document directly. A vitest/jsdom test cannot obtain real
 // serialized bytes — the save path is `engine.request('serialize')`, answered by
 // the wasm engine, whose sole instantiation in production is `engine.worker.ts`
 // and whose soleness `engine-ownership-contract.test.ts` enforces; every
@@ -654,7 +654,7 @@ describe('a derived label is a function of committed state', () => {
   //
   // Orientation is DERIVED from the committed box because the alternative is
   // stored state, and a stored orientation is a new serialized key — which AC1
-  // forbids and which would move the `.folio8` format for a label. So when the
+  // forbids and which would move the `.folio` format for a label. So when the
   // author sets Thickness above Length the shape genuinely becomes taller than
   // it is wide, the derivation re-reads as vertical, and the two labels swap
   // over the two values. The commit SUCCEEDS; nothing is refused, nothing is

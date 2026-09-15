@@ -168,7 +168,7 @@ const subprocessThreeBandEnvVar = "FOLIO8_SUBPROCESS_RENDER_THREEBAND"
 const subprocessMultiPageEnvVar = "FOLIO8_SUBPROCESS_RENDER_MULTIPAGE"
 
 // shapedTextTemplateJSON is Story 2.3's AC10 fixture document
-// (fixtures/shaped-text/input.folio8, kept byte-identical to it by
+// (fixtures/shaped-text/input.folio, kept byte-identical to it by
 // TestShapedTextGoldenFixture). Every element is chosen for what it
 // makes observable:
 //
@@ -230,7 +230,7 @@ const shapedTextTemplateJSON = `{
 // cross-checked with Python's hashlib/base64 during story creation.
 const imageTestAssetKey = "5a05ad01e89c143b7061b0c93450566568d38a23da9b9c5c9dfe449016433078"
 
-// imageTestTemplateJSON is a `.folio8` document with one image element
+// imageTestTemplateJSON is a `.folio` document with one image element
 // in content, referencing a real, supported, non-square 3x2 8-bit RGB
 // PNG asset (AC27a: non-square, so it exercises AC13's binding-axis
 // choice) — its data is the canonical 76-column base64 split of
@@ -359,7 +359,7 @@ const componentAssetImportBaseTemplateJSON = `{
 `
 
 // componentAssetImportTemplateJSON is fixtures/component-asset-import's
-// input.folio8, captured verbatim (AC in Story 5.13's Task 5): the CANONICAL
+// input.folio, captured verbatim (AC in Story 5.13's Task 5): the CANONICAL
 // output of one real setComponentAsset command (AD-9's digest-as-key, 76-col
 // wrap, sorted keys, insert-if-absent, repoint-with-orphan-collection) run
 // against componentAssetImportBaseTemplateJSON above, replacing element e1's
@@ -453,7 +453,7 @@ const componentAssetImportTemplateJSON = `{
 // subprocessComponentAssetImportEnvVar is Story 5.13's SIXTEENTH selector
 // (joining the fifteen above — it replaces none of them): it renders
 // componentAssetImportTemplateJSON — fixtures/component-asset-import's
-// input.folio8, the captured canonical output of one real setComponentAsset
+// input.folio, the captured canonical output of one real setComponentAsset
 // command, not a hand-authored document — through the public Render path
 // and writes the bytes to stdout. Unlike subprocessImageEnvVar's
 // image-embed fixture, this selector's fixture pins the AUTHORING
@@ -462,7 +462,7 @@ const componentAssetImportTemplateJSON = `{
 // names an asset.
 const subprocessComponentAssetImportEnvVar = "FOLIO8_SUBPROCESS_RENDER_COMPONENTASSETIMPORT"
 
-// fontTestTemplateJSON is a `.folio8` document with one text element in
+// fontTestTemplateJSON is a `.folio` document with one text element in
 // each of pageHeader, content and pageFooter, all resolving to the same
 // face via one fallback chain ("body" -> ["Roboto-Regular"]) — enough to
 // exercise AC9's "union of glyphs the whole document uses, collected
@@ -1116,7 +1116,7 @@ const subprocessEmbeddedFontEnvVar = "FOLIO8_SUBPROCESS_RENDER_EMBEDDEDFONT"
 // EVERY LEG RENDERS FROM THE COMMITTED TEMPLATE CONST, IN A FRESH
 // PROCESS, AND THAT IS THE INVARIANT. The four legs render
 // declaredVariantsTemplateJSON — the same const
-// fixtures/declared-variants/input.folio8 is kept byte-identical to — so
+// fixtures/declared-variants/input.folio is kept byte-identical to — so
 // no leg can certify a document the repository does not carry. There IS
 // an in-process render of that same const (renderDeclaredVariants, in
 // declared_variants_fixture_test.go), and the untagged golden test

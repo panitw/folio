@@ -79,7 +79,7 @@ differ.
   reaches a render.
 - **Do not add this fixture to `baselineAcceptanceFixtures`.** That list is Story 2.5a's record of
   the five goldens *that story* re-recorded, and is hard-pinned to exactly five.
-- `input.folio8` is kept byte-identical to `folio8-go/lineSpacingTemplateJSON` by hand, the same way
+- `input.folio` is kept byte-identical to `folio8-go/lineSpacingTemplateJSON` by hand, the same way
   `font-text`, `multi-script-fallback`, `wrapped-text` and `mandatory-break` are.
 
 ## Recorded

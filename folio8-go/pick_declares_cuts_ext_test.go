@@ -97,7 +97,7 @@ func starterRobotoChain(t *testing.T) []json.RawMessage {
 	}
 	chain, ok := document.Fonts["Roboto"]
 	if !ok || len(chain) == 0 {
-		t.Fatalf("starter.folio8 declares no Roboto chain, so the comparison below would be vacuous: %v", document.Fonts)
+		t.Fatalf("starter.folio declares no Roboto chain, so the comparison below would be vacuous: %v", document.Fonts)
 	}
 	return chain
 }
@@ -184,10 +184,10 @@ func TestAPickOfAShippedFamilyDeclaresThatFamilysCutsInTheDocument(t *testing.T)
 	// and every Thai and CJK run in the document silently lost its fallback. A
 	// pick must never yield a chain with less script coverage than the path it
 	// replaced, and for Roboto — `scripts: ["latin"]` — the answer is exactly
-	// what `starter.folio8` already declares. That file is the comparand rather
+	// what `starter.folio` already declares. That file is the comparand rather
 	// than a list restated here, so the two cannot drift.
 	if got, want := canonicalChain(t, entries), canonicalChain(t, starterRobotoChain(t)); got != want {
-		t.Errorf("a Roboto pick writes\n  %s\nand starter.folio8 declares\n  %s", got, want)
+		t.Errorf("a Roboto pick writes\n  %s\nand starter.folio declares\n  %s", got, want)
 	}
 	// EVERY NAME THE ENTRY CARRIES IS A `fonts.Shipped()` KEY, and every variant
 	// differs from the base. Both are read off the FILE, so this cannot become a

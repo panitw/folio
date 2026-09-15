@@ -32,7 +32,7 @@ func tablePagesForTest(t *testing.T, tplJSON, dataJSON string) []pagemodel.Page 
 	return pages
 }
 
-// tableHeaderDoc builds a minimal one-table `.folio8` document. style is
+// tableHeaderDoc builds a minimal one-table `.folio` document. style is
 // injected verbatim (may be "", meaning no "style" key at all — R6,
 // amended: at least fontFamily must still be set for a non-empty
 // label, so callers pass one).

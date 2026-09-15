@@ -45,7 +45,7 @@ const index = jsonNumber
  * A bare string is a face name. An object is a `face` discriminant plus any of
  * the CLOSED variant set — `bold`, `italic`, `boldItalic` — naming the face
  * that entry is drawn in at that weight and slope. There is deliberately no
- * `asset` arm and no way to add one: `folio8-format.md` gives an entry three
+ * `asset` arm and no way to add one: `folio-format.md` gives an entry three
  * legal shapes and this type admits two of them.
  *
  * ⚠ THAT OMISSION IS THE POINT, AND IT REPLACES A RULE WITH A MECHANISM.

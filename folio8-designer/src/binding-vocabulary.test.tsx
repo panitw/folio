@@ -180,7 +180,7 @@ describe('a Table states its binding once, and names where it is edited', () => 
 // zero-dispatch guard (by dispatching a command on selection) must red this.
 //
 // ⚠ WHAT JSDOM CANNOT PROVE, NAMED RATHER THAN LEFT TO INFERENCE. It cannot see
-// serialized `.folio8` bytes: the save path is `engine.request('serialize')`,
+// serialized `.folio` bytes: the save path is `engine.request('serialize')`,
 // answered by the wasm engine, and every designer unit test injects a fake. The
 // only place real serialize bytes are observable is
 // `e2e/browser-native-roundtrip.spec.ts`, which this cadence COMPILES and DOES

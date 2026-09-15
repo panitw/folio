@@ -224,7 +224,7 @@ func TestParseTemplateAcceptsNumberKindTextValue(t *testing.T) {
 
 // TestParseTemplateRejectsSyntaxErrorInVisibleIf is QA Finding 12
 // (Minor) through the public API: visibleIf is a BARE expression (no
-// "{{ }}" — folio8-format.md's field table, and fixtures_test.go:298's
+// "{{ }}" — folio-format.md's field table, and fixtures_test.go:298's
 // "visibleIf": "customer.hasTransactions"), never walked by
 // validateAndDeriveExpressions before this fix, so a malformed
 // visibleIf loaded clean. It must now fail at LOAD, naming the element
@@ -363,7 +363,7 @@ func TestParseTemplateRejectsWrongArityAtLoad(t *testing.T) {
 // TestParseTemplateRejectsExcessiveCallNestingAtLoad is QA Finding 3's
 // (Blocker) load-entry-point half: reproduces the reviewer's real
 // trigger — a single text element whose value nests ~800,000 function
-// calls, ~1.6MB, an unremarkable size for a .folio8 file — through the
+// calls, ~1.6MB, an unremarkable size for a .folio file — through the
 // actual public API, folio8.ParseTemplate, load's real entry point.
 // Before internal/expr's maxCallDepth existed this input drove
 // unbounded recursion into an unrecoverable runtime stack overflow;
@@ -621,7 +621,7 @@ func TestParseTemplateAcceptsOrdinaryStyleValues(t *testing.T) {
 // TestParseTemplateRejectsPlaceholderInAltRowBackground is Story 3.5
 // finisher review, Finding 4 (Major): D-3.5.2's ruling covers "any
 // style string field", not "any style.* string field", and
-// table.altRowBackground (FR28, folio8-format.md's ONLY colour field
+// table.altRowBackground (FR28, folio-format.md's ONLY colour field
 // outside element.style) loaded clean before this fix — the exact
 // worked example D-3.5.2 itself gave ("a colour as 'whatever
 // if(overdue, red, black) says'").

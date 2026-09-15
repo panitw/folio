@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { selectFileAccess, selectSampleFileAccess } from './capability'
-import { FileAccessCancelled, folio8FileFormat, localFileName, pdfFileFormat, type LocalFileFormat, type LocalFileHandle } from './file-access'
+import { FileAccessCancelled, folioFileFormat, localFileName, pdfFileFormat, type LocalFileFormat, type LocalFileHandle } from './file-access'
 import { FileSystemAccess } from './file-system-access'
 import { InputDownloadAccess } from './input-download'
 
@@ -13,9 +13,9 @@ const bytes = new Uint8Array([0, 255, 7]).buffer
 // ascending fixture would not reliably show.
 const pdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55, 10, 37, 226, 227, 207, 211, 10, 0, 255, 128, 1, 254, 200, 17, 42, 7, 240, 13, 10, 37, 37, 69, 79, 70, 10]).buffer
 const pdfByteList = Array.from(new Uint8Array(pdfBytes)).join(',')
-const file = () => new File([bytes], 'report.folio8', { type: 'application/json' })
+const file = () => new File([bytes], 'report.folio', { type: 'application/json' })
 
-function handle(name = 'report.folio8', events: string[] = []): LocalFileHandle {
+function handle(name = 'report.folio', events: string[] = []): LocalFileHandle {
   return {
     name,
     getFile: async () => file(),
@@ -67,30 +67,30 @@ describe('local file access boundary', () => {
     const selected = handle()
     const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(async () => [selected]), showSaveFilePicker: vi.fn() })
     const opened = await access.open()
-    expect(opened.name).toBe('report.folio8')
+    expect(opened.name).toBe('report.folio')
     expect(opened.target?.handle).toBe(selected)
     expect(new Uint8Array(opened.bytes)).toEqual(new Uint8Array(bytes))
   })
 
   it('silently classifies picker aborts and writes then closes before reporting an in-place save', async () => {
     const events: string[] = []
-    const selected = handle('saved.folio8', events)
+    const selected = handle('saved.folio', events)
     const picker = { showOpenFilePicker: vi.fn(async () => { throw new DOMException('cancel', 'AbortError') }), showSaveFilePicker: vi.fn(async () => selected) }
     const access = new FileSystemAccess(picker)
     await expect(access.open()).rejects.toBeInstanceOf(FileAccessCancelled)
-    const target = await access.acquireSaveTarget({ suggestedName: 'ignored.folio8', currentTarget: { kind: 'in-place', name: selected.name, handle: selected }, saveAs: false, format: folio8FileFormat })
-    await expect(access.writeSave(target, { bytes })).resolves.toMatchObject({ name: 'saved.folio8', target: { handle: selected } })
+    const target = await access.acquireSaveTarget({ suggestedName: 'ignored.folio', currentTarget: { kind: 'in-place', name: selected.name, handle: selected }, saveAs: false, format: folioFileFormat })
+    await expect(access.writeSave(target, { bytes })).resolves.toMatchObject({ name: 'saved.folio', target: { handle: selected } })
     expect(events).toEqual(['write:0,255,7', 'close'])
     expect(picker.showSaveFilePicker).not.toHaveBeenCalled()
   })
 
   it('uses a fresh File System Access target for Save As and does not report success when close fails', async () => {
-    const broken: LocalFileHandle = { name: 'new.folio8', getFile: async () => file(), createWritable: async () => ({ write: async () => undefined, close: async () => { throw new Error('media removed') } }) }
+    const broken: LocalFileHandle = { name: 'new.folio', getFile: async () => file(), createWritable: async () => ({ write: async () => undefined, close: async () => { throw new Error('media removed') } }) }
     const picker = { showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn(async () => broken) }
     const access = new FileSystemAccess(picker)
-    const target = await access.acquireSaveTarget({ suggestedName: 'old.folio8', saveAs: true, format: folio8FileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'old.folio', saveAs: true, format: folioFileFormat })
     await expect(access.writeSave(target, { bytes })).rejects.toThrow('Could not save local file')
-    expect(picker.showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({ suggestedName: 'old.folio8' }))
+    expect(picker.showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({ suggestedName: 'old.folio' }))
   })
 
   // THE BROWSER ALREADY NAMED THE PROBLEM; THE BOUNDARY MUST NOT UNNAME IT.
@@ -102,30 +102,30 @@ describe('local file access boundary', () => {
   // and `NotAllowed` (the grant is gone) are different problems with different
   // fixes, and an author photographing the bar could distinguish neither.
   it('carries the browser\'s own name for a failed write into the reported sentence', async () => {
-    const locked: LocalFileHandle = { name: 'locked.folio8', getFile: async () => file(), createWritable: async () => { throw new DOMException('The file is locked', 'NoModificationAllowedError') } }
+    const locked: LocalFileHandle = { name: 'locked.folio', getFile: async () => file(), createWritable: async () => { throw new DOMException('The file is locked', 'NoModificationAllowedError') } }
     const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn() })
-    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio8', currentTarget: { kind: 'in-place', name: locked.name, handle: locked }, saveAs: false, format: folio8FileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio', currentTarget: { kind: 'in-place', name: locked.name, handle: locked }, saveAs: false, format: folioFileFormat })
     await expect(access.writeSave(target, { bytes })).rejects.toThrow('Could not save local file: NoModificationAllowedError: The file is locked')
   })
 
   // An abort is this boundary's own vocabulary, not an unanticipated throw, so
   // it stays a cancellation and grows no cause.
   it('still reports a native abort as a cancellation rather than a described failure', async () => {
-    const aborted: LocalFileHandle = { name: 'cancelled.folio8', getFile: async () => file(), createWritable: async () => { throw new DOMException('cancel', 'AbortError') } }
+    const aborted: LocalFileHandle = { name: 'cancelled.folio', getFile: async () => file(), createWritable: async () => { throw new DOMException('cancel', 'AbortError') } }
     const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn() })
-    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio8', currentTarget: { kind: 'in-place', name: aborted.name, handle: aborted }, saveAs: false, format: folio8FileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'report.folio', currentTarget: { kind: 'in-place', name: aborted.name, handle: aborted }, saveAs: false, format: folioFileFormat })
     await expect(access.writeSave(target, { bytes })).rejects.toThrow('Local file selection was cancelled')
   })
 
   it('keeps each denied, stale, write, and close failure as a failed local save', async () => {
     const failedHandles: LocalFileHandle[] = [
-      { name: 'denied.folio8', getFile: async () => file(), createWritable: async () => { throw new Error('denied') } },
-      { name: 'stale.folio8', getFile: async () => file(), createWritable: async () => ({ write: async () => { throw new Error('stale') }, close: async () => undefined }) },
-      { name: 'close.folio8', getFile: async () => file(), createWritable: async () => ({ write: async () => undefined, close: async () => { throw new Error('close') } }) },
+      { name: 'denied.folio', getFile: async () => file(), createWritable: async () => { throw new Error('denied') } },
+      { name: 'stale.folio', getFile: async () => file(), createWritable: async () => ({ write: async () => { throw new Error('stale') }, close: async () => undefined }) },
+      { name: 'close.folio', getFile: async () => file(), createWritable: async () => ({ write: async () => undefined, close: async () => { throw new Error('close') } }) },
     ]
     for (const failed of failedHandles) {
       const access = new FileSystemAccess({ showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn() })
-      const target = await access.acquireSaveTarget({ suggestedName: 'report.folio8', currentTarget: { kind: 'in-place', name: failed.name, handle: failed }, saveAs: false, format: folio8FileFormat })
+      const target = await access.acquireSaveTarget({ suggestedName: 'report.folio', currentTarget: { kind: 'in-place', name: failed.name, handle: failed }, saveAs: false, format: folioFileFormat })
       await expect(access.writeSave(target, { bytes })).rejects.toThrow('Could not save local file')
     }
   })
@@ -136,9 +136,9 @@ describe('local file access boundary', () => {
     let captured: Blob | undefined
     const url = { createObjectURL: vi.fn((blob: Blob) => { captured = blob; return 'blob:local' }), revokeObjectURL: vi.fn() }
     const access = new InputDownloadAccess(fakeDocument, url)
-    const target = await access.acquireSaveTarget({ suggestedName: 'report', saveAs: false, format: folio8FileFormat })
-    await expect(access.writeSave(target, { bytes })).resolves.toEqual({ name: 'report.folio8' })
-    expect(anchor.download).toBe('report.folio8')
+    const target = await access.acquireSaveTarget({ suggestedName: 'report', saveAs: false, format: folioFileFormat })
+    await expect(access.writeSave(target, { bytes })).resolves.toEqual({ name: 'report.folio' })
+    expect(anchor.download).toBe('report.folio')
     expect(anchor.click).toHaveBeenCalledOnce()
     expect(new Uint8Array(await captured!.arrayBuffer())).toEqual(new Uint8Array(bytes))
   })
@@ -147,69 +147,69 @@ describe('local file access boundary', () => {
     const access = new InputDownloadAccess()
     const opening = access.open()
     const input = document.body.querySelector<HTMLInputElement>('input[type="file"]')!
-    expect(input.accept).toContain('.folio8')
+    expect(input.accept).toContain('.folio')
     Object.defineProperty(input, 'files', { configurable: true, value: { item: () => file() } })
     input.dispatchEvent(new Event('change'))
-    await expect(opening).resolves.toMatchObject({ name: 'report.folio8' })
+    await expect(opening).resolves.toMatchObject({ name: 'report.folio' })
     expect(document.body.querySelector('input[type="file"]')).toBeNull()
   })
 
   it('acquires a native save picker before any serialization/write work', async () => {
     const events: string[] = []
-    const picker = { showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn(async () => { events.push('picker'); return handle('picked.folio8', events) }) }
+    const picker = { showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn(async () => { events.push('picker'); return handle('picked.folio', events) }) }
     const access = new FileSystemAccess(picker)
-    const target = await access.acquireSaveTarget({ suggestedName: 'picked', saveAs: true, format: folio8FileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'picked', saveAs: true, format: folioFileFormat })
     await access.writeSave(target, { bytes })
     expect(events).toEqual(['picker', 'write:0,255,7', 'close'])
   })
 
   // STORY 13.1 — THE SAME BOUNDARY, CARRYING A SECOND FORMAT.
   //
-  // Three `.folio8` hardcodings became one parameter: the suggested name, the
+  // Three `.folio` hardcodings became one parameter: the suggested name, the
   // picker's accept entry, and the download blob's MIME. Each is asserted here
   // over BOTH formats, because a story that carried only two of the three
-  // ships a PDF named `.folio8` or a `.pdf` written as `application/json`.
+  // ships a PDF named `.folio` or a `.pdf` written as `application/json`.
 
   it('names a save for the format it is being written as, stripping at most one suffix belonging to either known format', () => {
-    expect(localFileName('report', folio8FileFormat)).toBe('report.folio8')
+    expect(localFileName('report', folioFileFormat)).toBe('report.folio')
     expect(localFileName('report', pdfFileFormat)).toBe('report.pdf')
-    // A template's own name is what Save PDF suggests from, so the `.folio8`
+    // A template's own name is what Save PDF suggests from, so the `.folio`
     // suffix must be REPLACED rather than appended to — and the same in the
     // other direction, which is the symmetry the module's comment defends.
-    expect(localFileName('report.folio8', pdfFileFormat)).toBe('report.pdf')
-    expect(localFileName('report.pdf', folio8FileFormat)).toBe('report.folio8')
+    expect(localFileName('report.folio', pdfFileFormat)).toBe('report.pdf')
+    expect(localFileName('report.pdf', folioFileFormat)).toBe('report.folio')
     // ⚠ THE IDENTITY CASE, PINNED. Strip-then-append must be a NO-OP here, and
     // this is the case a future refactor breaks silently: `report`, or
-    // `report.folio8.folio8`, would both look plausible in a diff.
-    expect(localFileName('report.folio8', folio8FileFormat)).toBe('report.folio8')
+    // `report.folio.folio`, would both look plausible in a diff.
+    expect(localFileName('report.folio', folioFileFormat)).toBe('report.folio')
     expect(localFileName('report.pdf', pdfFileFormat)).toBe('report.pdf')
     // ⚠ AND THE SHIPPED CASING SURVIVES. This is the input that separates the
     // case-preserving early return from its absence — nothing else here does —
-    // and it is not cosmetic: `REPORT.folio8` overwrites `REPORT.FOLIO8` on a
+    // and it is not cosmetic: `REPORT.folio` overwrites `REPORT.FOLIO` on a
     // case-insensitive filesystem and forks the author's template into two
     // one-keystroke-apart files on a case-sensitive one.
-    expect(localFileName('REPORT.FOLIO8', folio8FileFormat)).toBe('REPORT.FOLIO8')
+    expect(localFileName('REPORT.FOLIO', folioFileFormat)).toBe('REPORT.FOLIO')
     // ⚠ THE STRIPS DO NOT CHAIN. Folding over the format list took `.pdf` off
-    // and then `.folio8` off what was left, so this returned
-    // `report.folio8.folio8`. One trailing extension, one slice.
-    expect(localFileName('report.folio8.pdf', folio8FileFormat)).toBe('report.folio8')
-    expect(localFileName('report.folio8.pdf', pdfFileFormat)).toBe('report.folio8.pdf')
-    expect(localFileName('report.pdf.folio8', pdfFileFormat)).toBe('report.pdf')
-    // A name that is ALREADY a `.folio8` file whose stem happens to end in `.pdf`
+    // and then `.folio` off what was left, so this returned
+    // `report.folio.folio`. One trailing extension, one slice.
+    expect(localFileName('report.folio.pdf', folioFileFormat)).toBe('report.folio')
+    expect(localFileName('report.folio.pdf', pdfFileFormat)).toBe('report.folio.pdf')
+    expect(localFileName('report.pdf.folio', pdfFileFormat)).toBe('report.pdf')
+    // A name that is ALREADY a `.folio` file whose stem happens to end in `.pdf`
     // keeps both: one extension is removed, never two, so the stem survives.
-    expect(localFileName('report.pdf.folio8', folio8FileFormat)).toBe('report.pdf.folio8')
+    expect(localFileName('report.pdf.folio', folioFileFormat)).toBe('report.pdf.folio')
     // ⚠ THE UNTITLED FALLBACK RUNS AFTER THE STRIP. It used to run before, so a
     // name that is nothing BUT an extension became the stem-less dotfile `.pdf`.
-    expect(localFileName('.folio8', pdfFileFormat)).toBe('untitled.pdf')
-    expect(localFileName('.pdf', folio8FileFormat)).toBe('untitled.folio8')
-    // ...on the CROSS-format path only. A `.folio8` saved as a `.folio8` returns
+    expect(localFileName('.folio', pdfFileFormat)).toBe('untitled.pdf')
+    expect(localFileName('.pdf', folioFileFormat)).toBe('untitled.folio')
+    // ...on the CROSS-format path only. A `.folio` saved as a `.folio` returns
     // unchanged, which is the behaviour `folio8Name` shipped; changing it would
-    // be a third unrequested change to `.folio8` naming.
-    expect(localFileName('.folio8', folio8FileFormat)).toBe('.folio8')
+    // be a third unrequested change to `.folio` naming.
+    expect(localFileName('.folio', folioFileFormat)).toBe('.folio')
     expect(localFileName('   ', pdfFileFormat)).toBe('untitled.pdf')
     // A dot that is not a known extension is part of the name.
     expect(localFileName('quarterly.summary', pdfFileFormat)).toBe('quarterly.summary.pdf')
-    expect(localFileName('  a/b\\c.folio8  ', pdfFileFormat)).toBe('abc.pdf')
+    expect(localFileName('  a/b\\c.folio  ', pdfFileFormat)).toBe('abc.pdf')
     // ⚠ CASE-FOLDED ON BOTH SIDES. Both shipped extensions are lowercase, so a
     // bare comparison passes today by coincidence rather than by rule. A format
     // that declares its extension in upper case must still recognise its own
@@ -219,10 +219,10 @@ describe('local file access boundary', () => {
     expect(localFileName('report.PDF', pdfFileFormat)).toBe('report.PDF')
     // Recognising a suffix across cases is not the same as rewriting one: a
     // cross-format save still restyles the extension it appends.
-    expect(localFileName('REPORT.FOLIO8', pdfFileFormat)).toBe('REPORT.pdf')
+    expect(localFileName('REPORT.FOLIO', pdfFileFormat)).toBe('REPORT.pdf')
     // The two shipped formats, pinned: the picker entry and the blob MIME below
     // are both derived from these, so a wrong value here is a wrong file there.
-    expect(folio8FileFormat).toEqual({ description: 'folio8 template', mimeType: 'application/json', extension: '.folio8' })
+    expect(folioFileFormat).toEqual({ description: 'folio8 template', mimeType: 'application/json', extension: '.folio' })
     expect(pdfFileFormat).toEqual({ description: 'PDF document', mimeType: 'application/pdf', extension: '.pdf' })
   })
 
@@ -231,7 +231,7 @@ describe('local file access boundary', () => {
     const picked = handle('statement.pdf', events)
     const picker = { showOpenFilePicker: vi.fn(), showSaveFilePicker: vi.fn(async () => { events.push('picker'); return picked }) }
     const access = new FileSystemAccess(picker)
-    const target = await access.acquireSaveTarget({ suggestedName: 'statement.folio8', saveAs: true, format: pdfFileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'statement.folio', saveAs: true, format: pdfFileFormat })
     expect(picker.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'statement.pdf', types: [{ description: 'PDF document', accept: { 'application/pdf': ['.pdf'] } }] })
     // The acquired target CARRIES the format, so the write cannot disagree with
     // the picker that named it.
@@ -240,13 +240,13 @@ describe('local file access boundary', () => {
     expect(events).toEqual(['picker', `write:${pdfByteList}`, 'close'])
   })
 
-  it('keeps the native open and template-save entries on the .folio8 format', async () => {
-    const picker = { showOpenFilePicker: vi.fn(async () => [handle()]), showSaveFilePicker: vi.fn(async () => handle('kept.folio8')) }
+  it('keeps the native open and template-save entries on the .folio format', async () => {
+    const picker = { showOpenFilePicker: vi.fn(async () => [handle()]), showSaveFilePicker: vi.fn(async () => handle('kept.folio')) }
     const access = new FileSystemAccess(picker)
     await access.open()
-    expect(picker.showOpenFilePicker).toHaveBeenCalledWith({ multiple: false, types: [{ description: 'folio8 template', accept: { 'application/json': ['.folio8'] } }] })
-    await access.acquireSaveTarget({ suggestedName: 'kept', saveAs: true, format: folio8FileFormat })
-    expect(picker.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'kept.folio8', types: [{ description: 'folio8 template', accept: { 'application/json': ['.folio8'] } }] })
+    expect(picker.showOpenFilePicker).toHaveBeenCalledWith({ multiple: false, types: [{ description: 'folio8 template', accept: { 'application/json': ['.folio'] } }] })
+    await access.acquireSaveTarget({ suggestedName: 'kept', saveAs: true, format: folioFileFormat })
+    expect(picker.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'kept.folio', types: [{ description: 'folio8 template', accept: { 'application/json': ['.folio'] } }] })
   })
 
   it('downloads a PDF under its own suffix and MIME while the template download keeps its own', async () => {
@@ -260,7 +260,7 @@ describe('local file access boundary', () => {
       const saved = await access.writeSave(target, { bytes: pdfBytes })
       return { anchor, captured: captured!, saved, target }
     }
-    const pdf = await download('statement.folio8', pdfFileFormat)
+    const pdf = await download('statement.folio', pdfFileFormat)
     expect(pdf.target).toEqual({ name: 'statement.pdf', format: pdfFileFormat })
     expect(pdf.saved).toEqual({ name: 'statement.pdf' })
     expect(pdf.anchor.download).toBe('statement.pdf')
@@ -268,8 +268,8 @@ describe('local file access boundary', () => {
     expect(Array.from(new Uint8Array(await pdf.captured.arrayBuffer())).join(',')).toBe(pdfByteList)
     // THE CONTROL. Same tier, same bytes, the other format — so the two claims
     // above are about the format parameter rather than about this tier.
-    const folio8 = await download('statement.folio8', folio8FileFormat)
-    expect(folio8.anchor.download).toBe('statement.folio8')
+    const folio8 = await download('statement.folio', folioFileFormat)
+    expect(folio8.anchor.download).toBe('statement.folio')
     expect(folio8.captured.type).toBe('application/json')
   })
 
@@ -278,7 +278,7 @@ describe('local file access boundary', () => {
     const fakeDocument = { body: { append: vi.fn() }, createElement: vi.fn(() => anchor) } as unknown as Document
     const url = { createObjectURL: vi.fn(() => 'blob:local'), revokeObjectURL: vi.fn() }
     const access = new InputDownloadAccess(fakeDocument, url)
-    const target = await access.acquireSaveTarget({ suggestedName: 'report', saveAs: false, format: folio8FileFormat })
+    const target = await access.acquireSaveTarget({ suggestedName: 'report', saveAs: false, format: folioFileFormat })
     await expect(access.writeSave(target, { bytes })).rejects.toThrow('Could not download local file')
     await Promise.resolve()
     expect(anchor.remove).toHaveBeenCalledOnce()

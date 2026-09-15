@@ -1,6 +1,6 @@
 package folio8
 
-// qrcodePaymentsTemplateJSON is fixtures/qrcode-payments/input.folio8, kept
+// qrcodePaymentsTemplateJSON is fixtures/qrcode-payments/input.folio, kept
 // byte-identical to it by TestQRCodePaymentsGoldenFixture (the barcode
 // fixture's hand-sync precedent).
 //

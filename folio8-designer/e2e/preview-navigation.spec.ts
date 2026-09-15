@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 // `canvas-authority-contract.test.ts:673` and the `src/preview/` exception does
 // not reach it, so the whole witness is built out of Playwright's own
 // `boundingBox()` and `mouse.wheel()`, neither of which the scan names.
-const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio8'))
+const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio'))
 
 // The viewport is Playwright's default 1280x720 — `playwright.config.ts`
 // declares none. A letter page at 200% is 1224 CSS px wide and 1584 tall, and
@@ -48,8 +48,8 @@ test('scrolls the page area alone, and leaves the chrome that describes it fixed
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const templateChooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await templateChooser).setFiles({ name: 'statement.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('statement.folio8')
+  await (await templateChooser).setFiles({ name: 'statement.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
 
   // The no-data fixture is chosen because it is the one that renders the most
   // chrome around the page: 13.4's amber notice, the

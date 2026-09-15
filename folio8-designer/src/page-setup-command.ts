@@ -1,5 +1,5 @@
 // The command is deliberately assembled as opaque Go-defined bytes. It is
-// not a TypeScript document interface and does not JSON stringify any .folio8.
+// not a TypeScript document interface and does not JSON stringify any .folio.
 //
 // STORY 15.2a: this was the only encoder with no escaping at all. `preset` and
 // `orientation` were spliced raw INSIDE quotes and the six numeric fields were

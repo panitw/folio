@@ -80,7 +80,7 @@ func TestMultiPageFlowGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", multiPageFlowFixtureDir)
 	for _, c := range []struct{ file, want string }{
-		{"input.folio8", multiPageFlowTemplateJSON},
+		{"input.folio", multiPageFlowTemplateJSON},
 		{"data.json", multiPageFlowDataJSON},
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, c.file))
@@ -100,7 +100,7 @@ func TestMultiPageFlowGoldenFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(saved) != multiPageFlowTemplateJSON {
-		t.Fatalf("input.folio8 does not save back byte-for-byte:\n%s", saved)
+		t.Fatalf("input.folio does not save back byte-for-byte:\n%s", saved)
 	}
 	fixture := loadExpectedFixture(t, filepath.Join(dir, "expected.json"))
 	if fixture.Folio8GoVersion == "" || fixture.GoToolchain == "" || !isSHA256HexString(fixture.SHA256) {

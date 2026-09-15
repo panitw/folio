@@ -94,8 +94,8 @@ test('authors three bound columns from a full-width starter and saves/reopens th
   const before = await savedBytes(page)
   const reopen = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await reopen).setFiles({ name: 'authored-table.folio8', mimeType: 'application/json', buffer: before })
-  await expect(page.locator('.document-name')).toHaveText('authored-table.folio8')
+  await (await reopen).setFiles({ name: 'authored-table.folio', mimeType: 'application/json', buffer: before })
+  await expect(page.locator('.document-name')).toHaveText('authored-table.folio')
   expect(await table(page).boundingBox()).toEqual(originalBox)
   await openEditor(page)
   for (const [column, value, size] of [[1, 'date', '174.426'], [2, 'amount', '174.425'], [3, 'customer.name', '174.425']] as const) {

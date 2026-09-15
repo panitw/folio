@@ -88,12 +88,12 @@ func requireNoDiagnostics(t *testing.T, name string, diags []Diagnostic) {
 }
 
 func TestDocsExampleFirstPDF(t *testing.T) {
-	pages, diags := docsExamplePages(t, "first-pdf.folio8", "first-pdf.data.json")
+	pages, diags := docsExamplePages(t, "first-pdf.folio", "first-pdf.data.json")
 	requireNoDiagnostics(t, "first-pdf", diags)
 	if on, _ := runTop(pages, "Hello, Ada Lovelace!"); len(pages) != 1 || len(on) != 1 {
 		t.Fatalf("first-pdf: %d pages, greeting on %v", len(pages), on)
 	}
-	tpl, err := ParseTemplate([]byte(readDocsExample(t, "first-pdf.folio8")))
+	tpl, err := ParseTemplate([]byte(readDocsExample(t, "first-pdf.folio")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,9 +115,9 @@ func TestDocsExampleFirstPDF(t *testing.T) {
 }
 
 func TestDocsExampleFormulaVisibility(t *testing.T) {
-	above, diags := docsExamplePages(t, "formula-visibility.folio8", "formula-visibility.above.json")
+	above, diags := docsExamplePages(t, "formula-visibility.folio", "formula-visibility.above.json")
 	requireNoDiagnostics(t, "above", diags)
-	below, diags := docsExamplePages(t, "formula-visibility.folio8", "formula-visibility.below.json")
+	below, diags := docsExamplePages(t, "formula-visibility.folio", "formula-visibility.below.json")
 	requireNoDiagnostics(t, "below", diags)
 	for _, c := range []struct {
 		pages []pagemodel.Page
@@ -134,14 +134,14 @@ func TestDocsExampleFormulaVisibility(t *testing.T) {
 }
 
 func TestDocsExampleBarcodeAndQRCode(t *testing.T) {
-	pages, diags := docsExamplePages(t, "barcode-qrcode.folio8", "barcode-qrcode.data.json")
+	pages, diags := docsExamplePages(t, "barcode-qrcode.folio", "barcode-qrcode.data.json")
 	requireNoDiagnostics(t, "barcode-qrcode", diags)
 	if len(pages) != 1 || len(pages[0].Rects) == 0 {
 		t.Fatalf("barcode-qrcode: %d pages", len(pages))
 	}
 	drawn := len(pages[0].Rects)
 
-	pages, diags = docsExamplePages(t, "barcode-qrcode.folio8", "barcode-qrcode.unencodable.json")
+	pages, diags = docsExamplePages(t, "barcode-qrcode.folio", "barcode-qrcode.unencodable.json")
 	if got := docsCodes(diags); len(got) != 1 || got[0] != "Warning "+DiagCodeBarcodeUnencodable+" e1" {
 		t.Fatalf("unencodable: diagnostics %v, want one BARCODE_UNENCODABLE warning on e1", got)
 	}
@@ -152,15 +152,15 @@ func TestDocsExampleBarcodeAndQRCode(t *testing.T) {
 		}
 		t.Fatalf("unencodable: %d pages; the QR codes must still draw (rects %d, with the barcode %d)", len(pages), rects, drawn)
 	}
-	res := docsRender(t, readDocsExample(t, "barcode-qrcode.folio8"), "barcode-qrcode.unencodable.json")
+	res := docsRender(t, readDocsExample(t, "barcode-qrcode.folio"), "barcode-qrcode.unencodable.json")
 	if len(res.Bytes) == 0 || len(res.Diagnostics) != 1 {
 		t.Fatalf("unencodable render: %d bytes, %d diagnostics", len(res.Bytes), len(res.Diagnostics))
 	}
 }
 
 func TestDocsExampleSectionBreaks(t *testing.T) {
-	anchored := readDocsExample(t, "section-break.folio8")
-	unanchored := readDocsExample(t, "section-break-unanchored.folio8")
+	anchored := readDocsExample(t, "section-break.folio")
+	unanchored := readDocsExample(t, "section-break-unanchored.folio")
 
 	// Uncrossed: identical bytes to the same document with no break.
 	withoutBreak := strings.Replace(anchored, `,
@@ -174,10 +174,10 @@ func TestDocsExampleSectionBreaks(t *testing.T) {
 		}
 	}
 
-	declared, _ := docsExamplePages(t, "section-break.folio8", "section-break.5-rows.json")
+	declared, _ := docsExamplePages(t, "section-break.folio", "section-break.5-rows.json")
 	_, legendY := runTop(declared, "Legend")
 
-	pages, diags := docsExamplePages(t, "section-break.folio8", "section-break.7-rows.json")
+	pages, diags := docsExamplePages(t, "section-break.folio", "section-break.7-rows.json")
 	requireNoDiagnostics(t, "anchored", diags)
 	if on, y := runTop(pages, "Legend"); len(pages) != 2 || len(on) != 1 || on[0] != 1 || y != legendY {
 		t.Fatalf("anchored, crossed: %d pages, legend on %v at %d; want 2 pages, legend on page 2 at its declared %d", len(pages), on, y, legendY)
@@ -186,7 +186,7 @@ func TestDocsExampleSectionBreaks(t *testing.T) {
 		t.Fatalf("anchored footer counts %d pages", got)
 	}
 
-	pages, diags = docsExamplePages(t, "section-break-unanchored.folio8", "section-break.7-rows.json")
+	pages, diags = docsExamplePages(t, "section-break-unanchored.folio", "section-break.7-rows.json")
 	requireNoDiagnostics(t, "unanchored", diags)
 	_, lastRowY := runTop(pages, "Item 7")
 	on, y := runTop(pages, "Legend")
@@ -197,14 +197,14 @@ func TestDocsExampleSectionBreaks(t *testing.T) {
 }
 
 func TestDocsExampleDesignedPages(t *testing.T) {
-	on, diags := docsExamplePages(t, "designed-pages.folio8", "designed-pages.data.json")
+	on, diags := docsExamplePages(t, "designed-pages.folio", "designed-pages.data.json")
 	requireNoDiagnostics(t, "page break on", diags)
 	pagesOn, approvedOnY := runTop(on, "Approved by")
 	if len(on) != 3 || len(pagesOn) != 1 || pagesOn[0] != 2 {
 		t.Fatalf("Page Break on: %d output pages, Approved by on %v; want 3 pages, on page 3", len(on), pagesOn)
 	}
 
-	off, diags := docsExamplePages(t, "designed-pages-page-break-off.folio8", "designed-pages.data.json")
+	off, diags := docsExamplePages(t, "designed-pages-page-break-off.folio", "designed-pages.data.json")
 	requireNoDiagnostics(t, "page break off", diags)
 	pagesOff, y := runTop(off, "Approved by")
 	_, lastRowY := runTop(off, "Item 12")
@@ -215,7 +215,7 @@ func TestDocsExampleDesignedPages(t *testing.T) {
 	if approvedOnY >= y {
 		t.Fatalf("Page Break on should draw Approved by at its declared position (%d), above %d", approvedOnY, y)
 	}
-	for name, file := range map[string]string{"on": "designed-pages.folio8", "off": "designed-pages-page-break-off.folio8"} {
+	for name, file := range map[string]string{"on": "designed-pages.folio", "off": "designed-pages-page-break-off.folio"} {
 		want := map[string]int{"on": 3, "off": 2}[name]
 		if got := requirePageXOfY(t, docsRender(t, readDocsExample(t, file), "designed-pages.data.json").Bytes); got != want {
 			t.Errorf("Page Break %s: footers count %d pages, want %d", name, got, want)
@@ -224,7 +224,7 @@ func TestDocsExampleDesignedPages(t *testing.T) {
 }
 
 func TestDocsExampleRuledTable(t *testing.T) {
-	pages, diags := docsExamplePages(t, "ruled-table.folio8", "ruled-table.data.json")
+	pages, diags := docsExamplePages(t, "ruled-table.folio", "ruled-table.data.json")
 	requireNoDiagnostics(t, "ruled-table", diags)
 	if len(pages) != 1 {
 		t.Fatalf("ruled-table: %d pages", len(pages))
@@ -241,7 +241,7 @@ func TestDocsExampleRuledTable(t *testing.T) {
 		t.Fatalf("ruled-table: no 180x90pt frame drawn to the minHeight floor")
 	}
 
-	_, err := ParseTemplate([]byte(readDocsExample(t, "ruled-table-unplaceable.folio8")))
+	_, err := ParseTemplate([]byte(readDocsExample(t, "ruled-table-unplaceable.folio")))
 	var re *RenderError
 	if !errors.As(err, &re) || re.Diagnostic.Code != DiagCodeTableMinHeightUnplaceable || re.Diagnostic.ElementID != "e1" {
 		t.Fatalf("ruled-table-unplaceable: err %v, want TABLE_MIN_HEIGHT_UNPLACEABLE on e1", err)
@@ -441,7 +441,7 @@ func TestDocsGuideProgramsRunAgainstTheWorkingTree(t *testing.T) {
 				"go.mod":              gomod,
 				"go.sum":              string(sum),
 				"main.go":             readDocsExample(t, filepath.Join(program, "main.go")),
-				"first-pdf.folio8":    readDocsExample(t, "first-pdf.folio8"),
+				"first-pdf.folio":     readDocsExample(t, "first-pdf.folio"),
 				"first-pdf.data.json": readDocsExample(t, "first-pdf.data.json"),
 			}
 			for name, content := range files {

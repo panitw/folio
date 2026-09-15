@@ -21,7 +21,7 @@
 //
 // AND IT IS NEVER A SECOND AUTHORITY ON WHAT A DOCUMENT CONTAINS. A family with
 // a preview face is not embedded, is not in `fontFamilies`, and this module
-// produces nothing that any command, any projection or any `.folio8` ever sees.
+// produces nothing that any command, any projection or any `.folio` ever sees.
 // It produces a CSS token for one `<span>` in one modal.
 //
 // THE SUFFIX IS AN INJECTIVE ENCODING OF THE FAMILY NAME, NOT A SLUG. A slug

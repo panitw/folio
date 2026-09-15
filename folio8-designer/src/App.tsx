@@ -10,7 +10,7 @@ import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { BrandMark } from './BrandMark'
 import type { BindingErrorScope } from './DataPanel'
-import { FileAccessFailure, folio8FileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
+import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
@@ -102,7 +102,7 @@ const CANVAS_GUTTER = 116
 //
 // The file messages hang under the buttons they explain, over the canvas, so a
 // finished outcome that stays forever is a sticker on the workspace: "Saved
-// locally as x.folio8" is worth reading once and is then just something in the
+// locally as x.folio" is worth reading once and is then just something in the
 // way. An ERROR is the opposite — it is the only record of a failure the
 // author will get, it is the half a truncation must never take, and it already
 // clears itself the moment the next file action starts (`setFileError(undefined)`
@@ -274,7 +274,7 @@ const NO_STORED_FACES: ReadonlyArray<StoredFace> = []
  * A FUNCTION. Story 11.4 gave a pick two paths — `dispatchEmbed` for a family
  * that has to travel, `declareShippedFamily` for one the release already ships
  * — and the second was written with NO tail at all. A `Roboto` pick, whose own
- * fallback tail is the two entries `starter.folio8` itself declares, produced a
+ * fallback tail is the two entries `starter.folio` itself declares, produced a
  * ONE-entry chain: latin kept working and every Thai and CJK run in the
  * document silently lost its fallback. A pick must never yield a chain with
  * less script coverage than the path it replaced, and two implementations that
@@ -2265,7 +2265,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // and it is surfaced at the control the author acted on.
   //
   // THE COMMAND IS UNTOUCHED, AT TWELVE FIELDS. `embedFontFamilyCommand` already
-  // demands exactly what a `.folio8` requires and Go refuses the pick without it,
+  // demands exactly what a `.folio` requires and Go refuses the pick without it,
   // so changing the SOURCE of those values while leaving that guard in place is
   // what keeps this story from reaching the format.
   //
@@ -2289,7 +2289,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // WHAT IT WAS BUILT FOR (D-16.R.46).
   //
   // IT USED TO EMBED. The bytes travelled into the document at the moment of a
-  // pick, so a family the author merely tried landed in the `.folio8` and stayed
+  // pick, so a family the author merely tried landed in the `.folio` and stayed
   // there. IT NOW INSTALLS: fetch, classify, keep on this machine, AND SEND NO
   // ENGINE COMMAND AT ALL. The embed moved to first use — see
   // `embedInstalledFamily` below — so an installed-but-unused face is never in
@@ -2306,7 +2306,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // which is what it does.
   //
   // NO REVISION, NO HISTORY ENTRY, NO UNDO, BY CONSTRUCTION rather than by
-  // suppression. History is whole canonical `.folio8` byte snapshots and `Apply`
+  // suppression. History is whole canonical `.folio` byte snapshots and `Apply`
   // short-circuits when the bytes do not move (`folio8-go/wasm/engine.go`), so an
   // action that sends no command cannot move any of the three.
   const addFamilyToDocument = async (source: FamilySource, responseGeneration: number, selectionKey: string, announce: 'panel' | 'caller' = 'panel'): Promise<string | undefined> => {
@@ -2422,7 +2422,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // THE SAME PROPOSED TAIL THE EMBED PATH COMPUTES, from the same function.
       // A declare that wrote only the picked entry would hand back a chain with
       // LESS script coverage than the embed it replaced — measured: a `Roboto`
-      // pick produced one entry where `starter.folio8`'s own Roboto chain has
+      // pick produced one entry where `starter.folio`'s own Roboto chain has
       // three, so every Thai and CJK run in the document lost its fallback and
       // nothing said so.
       const chain: ReadonlyArray<FontChainEntryAsk> = [entry, ...proposedFallbackTail(scriptsOfSource(source))]
@@ -2557,7 +2557,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
    * FIRST USE — THE MOMENT A FONT STARTS TRAVELLING INSIDE THE TEMPLATE.
    *
    * Story 8.6's guarantee is untouched: send the file to a colleague and the
-   * pages come out identical, because a font still travels inside the `.folio8`
+   * pages come out identical, because a font still travels inside the `.folio`
    * (CAP-2/AD-8). Only the moment it starts travelling moves — from the pick to
    * the first time something in the template is actually set in the family.
    *
@@ -2842,7 +2842,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     try {
       // Must run inside the gesture before awaiting the worker: the native
       // picker is activation-gated. Cancellation leaves every session field as-is.
-      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, currentTarget: target, saveAs, format: folio8FileFormat })
+      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: title, currentTarget: target, saveAs, format: folioFileFormat })
       setFileStatus('Saving local file…')
       const serialized = await engineFileStep((signal) => engine.request('serialize', undefined, signal))
       if (!serialized.bytes) throw new Error('Local file could not be serialized')
@@ -2930,7 +2930,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // A STYLE. `FileSystemAccess.acquireSaveTarget` reuses a retained handle with
   // no picker when `!saveAs && currentTarget?.kind === 'in-place'`, so a PDF
   // save that passed the template's target would overwrite the author's
-  // `.folio8` with PDF bytes, irreversibly. A PDF save is always a fresh target.
+  // `.folio` with PDF bytes, irreversibly. A PDF save is always a fresh target.
   //
   // ⚠ AND NOTHING FROM THE RESULT IS KEPT. `title`, `target` and
   // `savedRevision` describe the TEMPLATE the author is editing; a PDF is an
@@ -3371,7 +3371,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           room between this group and `.later-control` at the shell's declared
           1024px minimum, requiring it to stay above zero. A message rendered as
           a SEVENTH FLEX ITEM would consume exactly that slack — "Opened local
-          file statement.folio8; canonical local changes need saving" is wider
+          file statement.folio; canonical local changes need saving" is wider
           than the whole measured gap — so the bar would overfill on the very
           sentence this change exists to show. Out of the row, the instrument
           measures what it always did and the message cannot overfill anything.

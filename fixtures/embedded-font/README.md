@@ -1,6 +1,6 @@
 # `embedded-font`
 
-**The first `.folio8` in this repository that carries a font face — and the first whose page is drawn
+**The first `.folio` in this repository that carries a font face — and the first whose page is drawn
 with one.**
 
 Story 8.3 (FR53, FR56) made the face travel. Story 8.4 (FR54) made it draw. The document declares
@@ -25,7 +25,7 @@ family, style, licence and source.
 The record used to carry four keys — `family`, `licence`, `source`, `style` — and **no licence text
 and no copyright**. Story 8.6 made those two REQUIRED of an asset a chain names by
 `{"asset": key}`: a font that travels without its terms is not a font that may be passed on, so a
-`.folio8` carrying one is refused at load, located at the asset record and naming the chain entry
+`.folio` carrying one is refused at load, located at the asset record and naming the chain entry
 that makes it an embedded face. This document's chain names its asset, so under the new rule the
 old file was **invalid** and had to be amended. (An UNREFERENCED font asset is untouched by the
 rule and still loads with no record at all.)
@@ -38,14 +38,14 @@ what the terms are, which is the exact failure this rule exists to prevent.
 
 **`expected.pdf` did not move, and that was the expectation rather than the discovery.** The
 recorded digest in `expected.json` and `signoff.json` is the SHA-256 of `expected.pdf`, not of
-`input.folio8`, and the `font` record reaches no output byte: `folio8-format.md` states the engine
+`input.folio`, and the `font` record reaches no output byte: `folio-format.md` states the engine
 derives none of it from the bytes and none of it is required to render, and Story 8.6's subsetting
 measurement found the produced PDF carries no `name` table at all. All 23 golden digests hold.
 
 The bytes are the **shipped** Noto Sans Thai
 (`folio8-go/fonts/notosansthai/NotoSansThai-Regular.ttf`), embedded here as an asset rather than
 supplied through the `FontSet`. **No new binary entered the repository for this fixture**, and
-`input.folio8` is not hand-transcribed: `embeddedFontTemplateJSON()`
+`input.folio` is not hand-transcribed: `embeddedFontTemplateJSON()`
 (`folio8-go/embedded_font_fixture_test.go`) derives it from those shipped bytes by the format's own
 rules, and `TestEmbeddedFontFixtureMatchesInputFolio8` pins the committed file against it.
 
@@ -118,7 +118,7 @@ recorded by a test rather than by a comment:
 
 | File | What it is |
 |---|---|
-| `input.folio8` | The document. Canonical bytes; a serializer fixed point. |
+| `input.folio` | The document. Canonical bytes; a serializer fixed point. |
 | `expected.pdf` | The golden, recorded by Story 8.4 and registered in `goldenDigestRecord`. |
 | `expected.json` | The recorded render hash, toolchain and library version for the matrix legs. |
 

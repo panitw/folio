@@ -25,7 +25,7 @@ describe('documentLocaleCommand', () => {
       .toEqual(LOCALE_TAGS.map((tag) => `{"kind":"setDocumentLocale","version":1,"locale":"${tag}"}`))
     // THE HYPHENATED TAG, DERIVED RATHER THAN SPELLED. It is the one whose
     // spelling a hand-written union gets wrong, and the one that proves the
-    // wire carries the tag EXACTLY as the `.folio8` file does — never a display
+    // wire carries the tag EXACTLY as the `.folio` file does — never a display
     // name, never a lower-cased variant. It is found by SHAPE (the only tag
     // carrying a script subtag) instead of by literal, because
     // engine-bounds-mirror.test.ts walks all of `src/` for a second spelling of

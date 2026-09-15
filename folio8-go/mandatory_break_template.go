@@ -1,6 +1,6 @@
 package folio8
 
-// mandatoryBreakTemplateJSON is fixtures/mandatory-break/input.folio8,
+// mandatoryBreakTemplateJSON is fixtures/mandatory-break/input.folio,
 // kept byte-identical to it by TestMandatoryBreakGoldenFixture (the
 // same hand-sync precedent font-text, multi-script-fallback and
 // wrapped-text set).

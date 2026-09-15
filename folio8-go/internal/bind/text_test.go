@@ -153,7 +153,7 @@ func TestBindTextRejectsGenuineSyntaxErrors(t *testing.T) {
 // resolver, the other reachable path the finding named alongside
 // folio8.ParseTemplate (load). Before internal/expr's maxCallDepth
 // existed, a value nesting ~800,000 function calls (~1.6MB, an
-// unremarkable size for a .folio8 file) drove unbounded recursion into
+// unremarkable size for a .folio file) drove unbounded recursion into
 // an unrecoverable runtime stack overflow reachable straight from a
 // render call. Now it must be an ordinary located error, like every
 // other rejected form.
@@ -177,7 +177,7 @@ func TestBindTextRejectsExcessiveCallNestingAtRender(t *testing.T) {
 // path a located error rather than a plausible value — had NO test at
 // all before this fix (a search for its message, "not a scalar value
 // usable in an expression", across every _test.go file returned
-// nothing). Both folio8-format.md's own "### Expressions" section and
+// nothing). Both folio-format.md's own "### Expressions" section and
 // the (out-of-story) author-facing reference explicitly claim an
 // empty array [] as an if() condition is a located error; expr.Value
 // has no array kind, so that claim rested entirely on this previously

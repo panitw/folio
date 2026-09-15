@@ -59,7 +59,7 @@ type PageGeometry struct {
 }
 
 // ContentHeight is THE one function that derives the content band's
-// height (`folio8-format.md`: "derived by one function"; D-2.0.4: "guard
+// height (`folio-format.md`: "derived by one function"; D-2.0.4: "guard
 // it positively at 2.5"):
 //
 //	pageHeight − marginTop − marginBottom − pageHeaderHeight − pageFooterHeight

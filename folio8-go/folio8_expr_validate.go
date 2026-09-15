@@ -24,7 +24,7 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 	for _, band := range doc.ElementBands() {
 		for _, el := range band.Elements {
 			// visibleIf is a common field on every element kind (QA
-			// Finding 12, Minor): the field table (folio8-format.md,
+			// Finding 12, Minor): the field table (folio-format.md,
 			// "visibleIf | *Optional.* An expression; …") and this
 			// module's own fixtures (fixtures_test.go:298,
 			// "visibleIf": "customer.hasTransactions") agree it holds
@@ -85,7 +85,7 @@ func validateAndDeriveExpressions(doc *template.Document) (map[template.ElementI
 				if el.Table.Set {
 					// Story 3.5 finisher review, Finding 4 (Major):
 					// table.altRowBackground is a style/appearance
-					// field (folio8-format.md, FR28: "Colour for
+					// field (folio-format.md, FR28: "Colour for
 					// alternating rows") and D-3.5.2's ruling covers
 					// "any style string field" — not "any style.*
 					// string field" — so it belongs under the same

@@ -9,14 +9,14 @@ import (
 	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
-// Example demonstrates the whole path from a `.folio8` template on disk to
+// Example demonstrates the whole path from a `.folio` template on disk to
 // rendered PDF bytes: a load call, a render call, and — the one thing this
 // example exists to prove — the FontSet arriving as a single, no-argument
 // expression, fonts.Shipped(). There is no builder, no options struct, and
 // no field-by-field assembly of font bytes: Story 2.2's shipped face set is
 // simply asked for.
 func Example() {
-	tpl, err := folio8.LoadTemplate("testdata/example/first-pdf.folio8")
+	tpl, err := folio8.LoadTemplate("testdata/example/first-pdf.folio")
 	if err != nil {
 		log.Fatal(err)
 	}

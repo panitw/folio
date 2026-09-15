@@ -1,7 +1,7 @@
 package folio8
 
 // sectionBreakStatementTemplateJSON is
-// fixtures/section-break-statement/input.folio8, kept byte-identical to it by
+// fixtures/section-break-statement/input.folio, kept byte-identical to it by
 // TestSectionBreakStatementGoldenFixture (line-spacing's hand-sync precedent).
 //
 // It is spec-section-break's golden (CAP-2): a synthetic bilingual statement

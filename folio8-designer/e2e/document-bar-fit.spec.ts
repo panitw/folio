@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 // uses green for the preview STATUS bar — and never from
 // `getBoundingClientRect`, `offset*`, `client*`, `scroll*`, `getComputedStyle`
 // or `ResizeObserver`.
-const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio8'))
+const template = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../folio8-go/testdata/example/first-pdf.folio'))
 
 type Box = { x: number; y: number; width: number; height: number }
 
@@ -56,7 +56,7 @@ async function openTemplate(page: Page, name: string): Promise<void> {
 // inequality below is taken against it and never against the bar's own parent.
 test('fits the document bar into the shell\'s declared 1024px minimum, in both modes', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 })
-  await openTemplate(page, 'statement.folio8')
+  await openTemplate(page, 'statement.folio')
 
   const bar = page.getByRole('banner', { name: 'Document bar' })
   const lockup = bar.locator('.brand-lockup')
@@ -158,7 +158,7 @@ test('fits the document bar into the shell\'s declared 1024px minimum, in both m
 // see the fit assertion actually red; the RED figures are in the gate report.
 test('control: the same measurement reports an overflow when the bar is genuinely overfull', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 })
-  await openTemplate(page, `${'a'.repeat(220)}.folio8`)
+  await openTemplate(page, `${'a'.repeat(220)}.folio`)
   const bar = page.getByRole('banner', { name: 'Document bar' })
   const modes = bar.getByRole('group', { name: 'Designer mode' })
   const viewport = page.viewportSize()

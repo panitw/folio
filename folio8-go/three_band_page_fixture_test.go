@@ -32,11 +32,11 @@ import (
 
 // The fixture's page setup, restated here as the literals the
 // assertions below compare against. Every one is HAND-DERIVED from
-// fixtures/three-band-page/input.folio8, and the arithmetic that
+// fixtures/three-band-page/input.folio, and the arithmetic that
 // produced it is written out beside it. Nothing here is computed from
 // the code under test.
 //
-// From input.folio8, converted to millipoints by AD-2's one fixed-point
+// From input.folio, converted to millipoints by AD-2's one fixed-point
 // unit (points x 1000):
 //
 //	page.size            A4          -> height 841890 mp
@@ -491,7 +491,7 @@ func TestThreeBandPageGoldenFixture(t *testing.T) {
 	root := repoRootFromTest(t)
 	dir := filepath.Join(root, "fixtures", "three-band-page")
 
-	inputPath := filepath.Join(dir, "input.folio8")
+	inputPath := filepath.Join(dir, "input.folio")
 	inputBytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", inputPath, err)

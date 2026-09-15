@@ -1,7 +1,7 @@
 package template
 
 // This file is the canonical serializer's string- and whitespace-emission
-// core (AD-9). Every string anywhere in a serialized `.folio8` document —
+// core (AD-9). Every string anywhere in a serialized `.folio` document —
 // known field or passthrough — goes through appendJSONString, so the
 // three escaping traps (AC19 HTML off, AC20 literal UTF-8, AC21 minimal
 // escaping) are enforced in exactly one place.

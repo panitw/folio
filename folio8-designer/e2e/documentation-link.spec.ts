@@ -14,13 +14,13 @@ import { fileURLToPath } from 'node:url'
 // The expected title is read from `docs/rendering-library.html` itself, so the
 // assertion follows the page rather than restating its wording.
 const here = path.dirname(fileURLToPath(import.meta.url))
-const template = readFileSync(path.resolve(here, '../../folio8-go/testdata/example/first-pdf.folio8'))
+const template = readFileSync(path.resolve(here, '../../folio8-go/testdata/example/first-pdf.folio'))
 const titleOf = (file: string): string => {
   const raw = /<title>([^<]*)<\/title>/i.exec(readFileSync(path.resolve(here, '../../docs', file), 'utf8'))?.[1]?.trim() ?? ''
   return raw.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', '\'').replaceAll('&amp;', '&')
 }
 const guideTitle = titleOf('rendering-library.html')
-const documentationStems = ['rendering-library', 'folio8-format', 'expression-reference']
+const documentationStems = ['rendering-library', 'folio-format', 'expression-reference']
 
 type EditorState = Readonly<{ url: string; name: string | null; status: string | null; snapshot: string | null; components: string[]; selected: string[]; undo: boolean; redo: boolean }>
 
@@ -48,8 +48,8 @@ async function openEditedTemplate(page: Page): Promise<EditorState> {
   await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open local template' }).click()
-  await (await chooser).setFiles({ name: 'edited.folio8', mimeType: 'application/json', buffer: template })
-  await expect(page.locator('.document-name')).toHaveText('edited.folio8')
+  await (await chooser).setFiles({ name: 'edited.folio', mimeType: 'application/json', buffer: template })
+  await expect(page.locator('.document-name')).toHaveText('edited.folio')
 
   const content = page.getByRole('region', { name: 'Content', exact: true })
   const before = await content.locator('[data-component-id]').count()
@@ -122,13 +122,13 @@ test('the bundled guide links to the bundled format and expression references by
   const crossPage = hrefs.filter((target) => documentationStems.some((stem) => target.includes(stem)))
   expect(crossPage.length, 'the guide must link to the format reference').toBeGreaterThan(0)
   for (const target of crossPage) {
-    expect(target, 'a cross-page link must be rewritten to a fingerprinted name').toMatch(/^(?:rendering-library|folio8-format|expression-reference)-[a-f0-9]{20}\.html(?:#.*)?$/)
+    expect(target, 'a cross-page link must be rewritten to a fingerprinted name').toMatch(/^(?:rendering-library|folio-format|expression-reference)-[a-f0-9]{20}\.html(?:#.*)?$/)
     const response = await guide.request.get(new URL(target, guide.url()).toString())
     expect(response.ok(), `${target} must be an emitted file`).toBe(true)
     expect(response.headers()['content-type']).toMatch(/text\/html/)
   }
-  const format = crossPage.find((target) => target.startsWith('folio8-format-'))
+  const format = crossPage.find((target) => target.startsWith('folio-format-'))
   expect(format, 'the guide must link to the format reference').toBeDefined()
   await guide.goto(new URL(format!, guide.url()).toString())
-  await expect(guide).toHaveTitle(titleOf('folio8-format.html'))
+  await expect(guide).toHaveTitle(titleOf('folio-format.html'))
 })
