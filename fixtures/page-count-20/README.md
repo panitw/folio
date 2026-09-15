@@ -60,12 +60,12 @@ $ qpdf --show-npages fixtures/page-count-20/expected.pdf
 ```
 
 `qpdf --check` resolves the file's cross-reference table and object graph independently of
-folio's own writer and reports no structural defect; `qpdf --show-npages` resolves the page
+folio8's own writer and reports no structural defect; `qpdf --show-npages` resolves the page
 tree and reports **20**, matching this document's declared page count exactly.
 
 ## Matrix registration
 
-Registered in `matrixDocuments` (`folio-go/matrix_test.go`) as the Epic 2 gate's **sixth**
+Registered in `matrixDocuments` (`folio8-go/matrix_test.go`) as the Epic 2 gate's **sixth**
 obligation (D-2.7.4, on D-2.6.2's criterion: FR31 had no cross-target artifact before this
 entry). Cross-target legs are **deferred to the gate** (D-000.4's override criterion declined —
 page-number substitution is integer advance arithmetic on `geom.Length`, no float, vendor call,
@@ -74,7 +74,7 @@ compressor or new dependency).
 **Native leg run once before this story reached `review` (D-000.54)**:
 
 ```
-$ FOLIO_MATRIX_TARGET=darwin/arm64 go test -tags=matrix -count=1 -run TestTargetRenderHash .
+$ FOLIO8_MATRIX_TARGET=darwin/arm64 go test -tags=matrix -count=1 -run TestTargetRenderHash .
 --- PASS: TestTargetRenderHash
 ```
 

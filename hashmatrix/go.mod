@@ -1,4 +1,4 @@
-module github.com/panitw/folio/hashmatrix
+module github.com/panitw/folio8/hashmatrix
 
 go 1.25.0
 

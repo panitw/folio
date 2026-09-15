@@ -1,7 +1,7 @@
 # `fixtures/justified-text/` — a paragraph justified to both margins (Story 7.3)
 
 The golden for **`style.align: "justify"`** (FR47). Measured at this story's baseline,
-`grep -oh '"align"[^,}]*' fixtures/*/input.folio` across the whole corpus returned **16 `left` and
+`grep -oh '"align"[^,}]*' fixtures/*/input.folio8` across the whole corpus returned **16 `left` and
 8 `right`, and nothing else** — so no recorded byte in this repository could tell a build that
 distributes a justified line's slack across its gaps from one that quietly draws it ragged. The
 story's byte-neutrality guard ("every existing golden hashes identically") is only falsifiable
@@ -69,7 +69,7 @@ it reachable, because an unknown Thai run is atomic.
 
 | File | What it is |
 |---|---|
-| `input.folio` | the template, kept byte-identical to `folio-go/justifiedTemplateJSON` by hand |
+| `input.folio8` | the template, kept byte-identical to `folio8-go/justifiedTemplateJSON` by hand |
 | `expected.json` | the recorded digest and the toolchain it was recorded under |
 | `expected.pdf` | the recorded artifact |
 

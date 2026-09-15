@@ -5,7 +5,7 @@ document declaring **`"version": "4.0"`**, because it is the first carrying a ba
 
 | File | What it is |
 |---|---|
-| `input.folio` | One barcode, `e1`, 400 x 50 pt, value `\|0994000123456{{suffix}}\r{{ref1}}\r{{ref2}}\r{{amount}}` |
+| `input.folio8` | One barcode, `e1`, 400 x 50 pt, value `\|0994000123456{{suffix}}\r{{ref1}}\r{{ref2}}\r{{amount}}` |
 | `data.json` | The record: suffix `01`, ref1 `1234567890`, ref2 `0000000001`, amount `150000` |
 | `expected.pdf` | The render, sha256 `c04c1a848843b5adda8bb1852b74957cef99f90f522c09d14783e8d4f29c61ef` |
 
@@ -20,7 +20,7 @@ separators — comes from the template; the suffix, references and amount come f
 
 ## What the tests prove
 
-- `TestBarcodeThaiBillPaymentGoldenFixture` pins `input.folio` and `data.json` to the Go constants,
+- `TestBarcodeThaiBillPaymentGoldenFixture` pins `input.folio8` and `data.json` to the Go constants,
   and the render's sha256 to `expected.json` and `expected.pdf`.
 - `TestBarcodeThaiBillPaymentSemanticAcceptance` reads the page model's bars back into module runs
   and compares them with the Code 128 encoding of the resolved string, checks every module is the

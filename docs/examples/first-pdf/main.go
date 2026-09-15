@@ -1,4 +1,4 @@
-// Command first-pdf renders docs/examples/first-pdf.folio to first-pdf.pdf.
+// Command first-pdf renders docs/examples/first-pdf.folio8 to first-pdf.pdf.
 package main
 
 import (
@@ -7,12 +7,12 @@ import (
 	"log"
 	"os"
 
-	folio "github.com/panitw/folio/folio-go"
-	"github.com/panitw/folio/folio-go/fonts"
+	folio8 "github.com/panitw/folio8/folio8-go"
+	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
 func main() {
-	tpl, err := folio.LoadTemplate("first-pdf.folio")
+	tpl, err := folio8.LoadTemplate("first-pdf.folio8")
 	if err != nil {
 		log.Fatal(describe("load", err))
 	}
@@ -22,7 +22,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	res, err := folio.Render(tpl, folio.Data(data), nil, fonts.Shipped())
+	res, err := folio8.Render(tpl, folio8.Data(data), nil, fonts.Shipped())
 	if err != nil {
 		log.Fatal(describe("render", err))
 	}
@@ -39,7 +39,7 @@ func main() {
 
 // describe adds the stable diagnostic code when err carries one.
 func describe(stage string, err error) string {
-	var re *folio.RenderError
+	var re *folio8.RenderError
 	if errors.As(err, &re) {
 		d := re.Diagnostic
 		return fmt.Sprintf("%s failed: %s element=%q path=%q: %v", stage, d.Code, d.ElementID, d.DataPath, err)

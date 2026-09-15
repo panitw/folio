@@ -1,6 +1,6 @@
 # fixtures/three-band-page/ — band composition, all three bands populated (Story 2.5)
 
-A Folio report is three stacked strips of the page: a page header at the top, a page footer at the
+A folio8 report is three stacked strips of the page: a page header at the top, a page footer at the
 bottom, and the content region between them. This is the document that makes a mistake in that
 composition **visible in the bytes**.
 
@@ -18,7 +18,7 @@ At Story 2.5's creation each band's origin was moved by one line in turn and the
 
 | fixture | `pageHeader` elements | `content` elements | `pageFooter` elements |
 |---|---|---|---|
-| `minimal-rect` | *(no `input.folio`)* | — | — |
+| `minimal-rect` | *(no `input.folio8`)* | — | — |
 | `font-text` | **0** | 1 | 1 |
 | `image-embed` | **0** | 1 | 0 |
 | `multi-script-fallback` | **0** | 1 | 0 |
@@ -101,8 +101,8 @@ Stated so nobody reads more into it than is there:
 
 ## Rules
 
-- `input.folio` is kept **byte-identical to `folio-go/threeBandPageTemplateJSON`**
-  (`folio-go/three_band_page_template.go`) **by hand**; `TestThreeBandPageGoldenFixture` asserts it
+- `input.folio8` is kept **byte-identical to `folio8-go/threeBandPageTemplateJSON`**
+  (`folio8-go/three_band_page_template.go`) **by hand**; `TestThreeBandPageGoldenFixture` asserts it
   before asserting anything else.
 - **A hash change here is a defect until proven otherwise** (AD-21/AD-22). Hand-check the change;
   **do not regenerate the fixture to make a test pass.** An intended change is a versioned event
@@ -113,7 +113,7 @@ Stated so nobody reads more into it than is there:
 
 ## Cross-target status
 
-Registered in **both** `matrixDocuments` (`folio-go/matrix_test.go`) and
+Registered in **both** `matrixDocuments` (`folio8-go/matrix_test.go`) and
 `.github/workflows/matrix.yml`'s `docs="…"` line, with four `hash.<target>.three-band-page.txt`
 upload paths — `TestMatrixDocumentSlugsAreRegisteredInCI` pins the two lists together.
 
@@ -154,5 +154,5 @@ recording machine, hand-checked, output pasted here. It is never a runtime or CI
 `TestModuleGraphAllowlist`), and it is deliberately **not** gated to "the legs that have qpdf": a check
 that runs on some legs and not others reproduces D-000.9's failure — an "all clear" indistinguishable
 from "I could not look" — one level up, at the leg. The standing every-leg regression guard is the
-in-repo checker `folio-go/golden_structural_validity_test.go`, which is hermetic and covers all four
+in-repo checker `folio8-go/golden_structural_validity_test.go`, which is hermetic and covers all four
 targets including `js-wasm`.

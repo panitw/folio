@@ -1,6 +1,6 @@
-# Releasing Folio
+# Releasing folio8
 
-This document is the procedure for cutting a Folio release. It exists because
+This document is the procedure for cutting a folio8 release. It exists because
 **a release with no written procedure is not a release** — the same rule
 D-000.58 applies to gate procedures, one level up.
 
@@ -10,7 +10,7 @@ time one is ruled. An incomplete procedure that names an obligation is
 strictly better than a complete-looking backlog nobody opens at the moment of
 release.
 
-## When `folio-go/v0.1.0` is cut
+## When `folio8-go/v0.1.0` is cut
 
 **After Epic 6, at the end of the MVP** (owner decision, D-000.78). The public
 Go API stays unfrozen through the designer work and the data-binding work, so
@@ -40,7 +40,7 @@ which has its own `go.mod` — not from the repo root).
 
 ### 2. The public API surface is deliberate
 
-**Obligation:** the exported surface of package `folio` is reviewed as a whole
+**Obligation:** the exported surface of package `folio8` is reviewed as a whole
 before it freezes, because D-1.1.c fixes it at the tag.
 
 Measured at the Epic 3 boundary gate: **40 items** — 31 top-level declarations
@@ -53,10 +53,10 @@ reads, not what fires.*
 
 ### 3. The call-graph walker is precise, or its precondition still holds
 
-**Obligation:** `buildFolioCallGraph` (`folio-go/render_arch_test.go`) resolves
+**Obligation:** `buildFolio8CallGraph` (`folio8-go/render_arch_test.go`) resolves
 methods by name alone. Before the tag, either replace it with a `go/types`
 version in `lint`, or confirm its precondition — that no two receiver types in
-package `folio` declare the same method name — still holds.
+package `folio8` declare the same method name — still holds.
 
 *Backstop for DW-20. The live trigger is the pinned injectivity assertion
 beside the walker itself; it fires at the commit that creates the collision,

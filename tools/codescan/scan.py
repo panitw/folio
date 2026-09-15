@@ -1,6 +1,6 @@
 # Usage: uv run --with zxing-cpp --with pillow python3 tools/codescan/scan.py <pdf>
 #
-# Independent decode check for folio's code elements: rasterises every filled
+# Independent decode check for folio8's code elements: rasterises every filled
 # rectangle ("re f") in a PDF's content streams and prints each barcode or QR
 # code zxing-cpp finds, with its format, error-correction level and text.
 import re

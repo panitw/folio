@@ -24,16 +24,16 @@ func TestVisibilityComputationSignatureCoverageStatementWording(t *testing.T) {
 }
 
 // TestVisibilityComputationSignatureProductionScan is AC9's real
-// anchor: the real folio-go package's computeVisibility, asserted to
+// anchor: the real folio8-go package's computeVisibility, asserted to
 // report zero findings against the literal four-parameter list this
 // test owns.
 func TestVisibilityComputationSignatureProductionScan(t *testing.T) {
 	root := repoRootFromTest(t)
-	folioDir := filepath.Join(root, "folio-go")
+	folio8Dir := filepath.Join(root, "folio8-go")
 
-	findings, stats, err := ScanVisibilityComputationSignature(folioDir)
+	findings, stats, err := ScanVisibilityComputationSignature(folio8Dir)
 	if err != nil {
-		t.Fatalf("scan %s: %v", folioDir, err)
+		t.Fatalf("scan %s: %v", folio8Dir, err)
 	}
 	if stats.FilesParsed == 0 {
 		t.Fatal("vacuity guard: checker's own stats report 0 files parsed")
@@ -49,7 +49,7 @@ func TestVisibilityComputationSignatureProductionScan(t *testing.T) {
 // visibilitySignatureFixtureModule writes a minimal, self-contained Go
 // module at dir with two helper packages named "bind" and "expr" (so
 // types.RelativeTo prints them exactly as the real production package
-// does — by short package name, not import path) and a "folio" package
+// does — by short package name, not import path) and a "folio8" package
 // declaring computeVisibility with the given extra source appended
 // verbatim after the closed-set declaration. This lets each red-proof
 // below stay a single, self-contained file rather than depending on a
@@ -72,7 +72,7 @@ func visibilitySignatureFixtureModule(t *testing.T, funcSrc string) string {
 	write("go.mod", "module visibilitysignaturefixture\n\ngo 1.25\n")
 	write("bind/bind.go", "package bind\n\ntype Value struct{}\n")
 	write("expr/expr.go", "package expr\n\ntype FormatContext struct{}\n")
-	write("main.go", `package folio
+	write("main.go", `package folio8
 
 import (
 	"visibilitysignaturefixture/bind"
@@ -187,7 +187,7 @@ func TestVisibilityComputationSignatureNotFoundReportsError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module empty\n\ngo 1.25\n"), 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package folio\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package folio8\n"), 0o644); err != nil {
 		t.Fatalf("write main.go: %v", err)
 	}
 

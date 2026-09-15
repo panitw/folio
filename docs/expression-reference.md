@@ -1,6 +1,6 @@
-# Expressions in a Folio template
+# Expressions in a folio8 template
 
-Anything between double braces is an expression: `{{customer.name}}`. Folio evaluates it when the
+Anything between double braces is an expression: `{{customer.name}}`. folio8 evaluates it when the
 report renders and substitutes the result into the document.
 
 Expressions are deliberately small. There are **eight functions and no more** — no loops, no
@@ -98,7 +98,7 @@ data — **a row never shadows the document root**, so `{{customer.name}}` insid
 still means the customer, not a `name` field on the transaction.
 
 You cannot name a region `params`, `page`, or `pages`. Those are reserved: `params` because it can
-never be shadowed, and `page`/`pages` because nothing in a Folio template may ever refer to the page
+never be shadowed, and `page`/`pages` because nothing in a folio8 template may ever refer to the page
 it sits on. Using one is an error naming the element, raised **when the report renders**.
 
 ---
@@ -123,7 +123,7 @@ it sits on. Using one is an error naming the element, raised **when the report r
 {{if(hasDiscount, discount.amount, "N/A")}}
 ```
 
-**The condition must be a boolean or null** — from a literal, a path, or a formula. Folio does not treat `0`,
+**The condition must be a boolean or null** — from a literal, a path, or a formula. folio8 does not treat `0`,
 `""`, or an empty list as false. If the condition is some other kind of value, that is an error
 naming the element, not a guess about what you meant.
 
@@ -136,7 +136,7 @@ Three cases worth knowing, because they differ:
 | **explicitly `null`** | **treated as false**, silently |
 
 Only the branch actually taken is evaluated. That is what makes the second example above work:
-`discount.amount` does not exist on rows without a discount, and Folio never looks at it on those
+`discount.amount` does not exist on rows without a discount, and folio8 never looks at it on those
 rows.
 
 A missing path in the unselected branch remains unresolved. Syntax, unknown functions and statically provable type errors in either branch are rejected before rendering.
@@ -171,7 +171,7 @@ For styled output — grouping, a fixed number of decimals, locale digits — wr
 A number in text is the one kind rule that changed: booleans, lists and objects in text are still
 errors naming the element.
 
-**Totals are exact.** Folio adds money as decimal digits, never as binary floating point, so a
+**Totals are exact.** folio8 adds money as decimal digits, never as binary floating point, so a
 statement total is correct to the last satang no matter how many rows it covers. `avg` divides at
 the greatest number of decimal places any operand carries, plus a fixed number of extra digits —
 four today; **the constant is illustrative, the rule is not** — with round-half-to-even, so a
@@ -224,11 +224,11 @@ since the epoch. Anything else is an error.
 
 ### Locale
 
-The document declares its locale and a fixed UTC offset. Folio ships tables for exactly four:
+The document declares its locale and a fixed UTC offset. folio8 ships tables for exactly four:
 
 `en` · `th` · `zh-Hans` · `ja`
 
-Any other tag is reported when the template loads — Folio will not quietly fall back to something
+Any other tag is reported when the template loads — folio8 will not quietly fall back to something
 close. **The machine rendering the report never affects the output**: its locale, its time zone and
 its clock are all ignored, so the same template and the same data produce the same bytes anywhere.
 

@@ -223,33 +223,33 @@
         <a class="toc-item" href="expression-reference.html#all">The whole list</a>
       </div>
       <div class="toc-group">
-        <a class="toc-doc" href="folio-format.html">The .folio format</a>
-        <a class="toc-item" href="folio-format.html#units">Units</a>
-        <a class="toc-item" href="folio-format.html#document">Document</a>
-        <a class="toc-item sub" href="folio-format.html#alignment-sets">Alignment sets</a>
-        <a class="toc-item" href="folio-format.html#versions">Versions</a>
-        <a class="toc-item sub" href="folio-format.html#compatibility-rules">Compatibility rules</a>
-        <a class="toc-item sub" href="folio-format.html#closed-sets">Closed sets</a>
-        <a class="toc-item" href="folio-format.html#load-errors">Load errors</a>
-        <a class="toc-item" href="folio-format.html#page">page</a>
-        <a class="toc-item" href="folio-format.html#fonts">fonts</a>
-        <a class="toc-item" href="folio-format.html#bands">bands</a>
-        <a class="toc-item sub" href="folio-format.html#designed-pages">Designed pages</a>
-        <a class="toc-item sub" href="folio-format.html#pagination">Pagination</a>
-        <a class="toc-item" href="folio-format.html#elements">Elements</a>
-        <a class="toc-item sub" href="folio-format.html#table">table</a>
-        <a class="toc-item sub" href="folio-format.html#expressions">Expressions</a>
-        <a class="toc-item sub" href="folio-format.html#style">style</a>
-        <a class="toc-item" href="folio-format.html#assets">assets</a>
-        <a class="toc-item sub" href="folio-format.html#a-font-asset">A font asset</a>
-        <a class="toc-item" href="folio-format.html#saving">Saving</a>
-        <a class="toc-item" href="folio-format.html#line-breaking">Line breaking</a>
-        <a class="toc-item sub" href="folio-format.html#inferred-breaks">Inferred breaks</a>
-        <a class="toc-item sub" href="folio-format.html#mandatory-breaks">Mandatory breaks</a>
-        <a class="toc-item sub" href="folio-format.html#vertical-placement">Vertical placement</a>
-        <a class="toc-item sub" href="folio-format.html#values-that-must-never-be-split">Values that must never be split</a>
-        <a class="toc-item" href="folio-format.html#what-is-not-in-the-file">What is not in the file</a>
-        <a class="toc-item" href="folio-format.html#worked-example">Worked example</a>
+        <a class="toc-doc" href="folio8-format.html">The .folio8 format</a>
+        <a class="toc-item" href="folio8-format.html#units">Units</a>
+        <a class="toc-item" href="folio8-format.html#document">Document</a>
+        <a class="toc-item sub" href="folio8-format.html#alignment-sets">Alignment sets</a>
+        <a class="toc-item" href="folio8-format.html#versions">Versions</a>
+        <a class="toc-item sub" href="folio8-format.html#compatibility-rules">Compatibility rules</a>
+        <a class="toc-item sub" href="folio8-format.html#closed-sets">Closed sets</a>
+        <a class="toc-item" href="folio8-format.html#load-errors">Load errors</a>
+        <a class="toc-item" href="folio8-format.html#page">page</a>
+        <a class="toc-item" href="folio8-format.html#fonts">fonts</a>
+        <a class="toc-item" href="folio8-format.html#bands">bands</a>
+        <a class="toc-item sub" href="folio8-format.html#designed-pages">Designed pages</a>
+        <a class="toc-item sub" href="folio8-format.html#pagination">Pagination</a>
+        <a class="toc-item" href="folio8-format.html#elements">Elements</a>
+        <a class="toc-item sub" href="folio8-format.html#table">table</a>
+        <a class="toc-item sub" href="folio8-format.html#expressions">Expressions</a>
+        <a class="toc-item sub" href="folio8-format.html#style">style</a>
+        <a class="toc-item" href="folio8-format.html#assets">assets</a>
+        <a class="toc-item sub" href="folio8-format.html#a-font-asset">A font asset</a>
+        <a class="toc-item" href="folio8-format.html#saving">Saving</a>
+        <a class="toc-item" href="folio8-format.html#line-breaking">Line breaking</a>
+        <a class="toc-item sub" href="folio8-format.html#inferred-breaks">Inferred breaks</a>
+        <a class="toc-item sub" href="folio8-format.html#mandatory-breaks">Mandatory breaks</a>
+        <a class="toc-item sub" href="folio8-format.html#vertical-placement">Vertical placement</a>
+        <a class="toc-item sub" href="folio8-format.html#values-that-must-never-be-split">Values that must never be split</a>
+        <a class="toc-item" href="folio8-format.html#what-is-not-in-the-file">What is not in the file</a>
+        <a class="toc-item" href="folio8-format.html#worked-example">Worked example</a>
       </div>
       <p class="toc-empty" hidden>No section matches.</p>
     </nav>
@@ -261,17 +261,17 @@
         <p class="brand">FOLIO8 · High-performance PDF reporting library</p>
         <a href="#top" aria-current="page">Rendering library</a>
         <a href="expression-reference.html">Expressions</a>
-        <a href="folio-format.html">.folio format</a>
+        <a href="folio8-format.html">.folio8 format</a>
       </nav>
 
       <article id="top">
         <div class="article-head">
           <p class="eyebrow">FOLIO8 · Rendering library</p>
-          <h1 id="folio-rendering-library-for-go">Folio rendering library for Go</h1>
-          <p class="standfirst"><code>folio-go</code> turns a <code>.folio</code> template, JSON data and runtime parameters into a PDF 1.7 document. It reads no clock, no environment, no network and no host fonts while rendering: everything a document needs is passed in. The same inputs rendered with the same Go toolchain produce the same bytes.</p>
-          <p>This guide covers installing the module, rendering your first PDF, the inputs and failures you have to handle, the template features that change what is drawn, and every exported API of the <code>folio</code>, <code>fonts</code> and <code>wasm</code> packages. Two companion references hold the rules this guide does not repeat:</p>
+          <h1 id="folio8-rendering-library-for-go">folio8 rendering library for Go</h1>
+          <p class="standfirst"><code>folio8-go</code> turns a <code>.folio8</code> template, JSON data and runtime parameters into a PDF 1.7 document. It reads no clock, no environment, no network and no host fonts while rendering: everything a document needs is passed in. The same inputs rendered with the same Go toolchain produce the same bytes.</p>
+          <p>This guide covers installing the module, rendering your first PDF, the inputs and failures you have to handle, the template features that change what is drawn, and every exported API of the <code>folio8</code>, <code>fonts</code> and <code>wasm</code> packages. Two companion references hold the rules this guide does not repeat:</p>
           <ul>
-            <li><a href="folio-format.html">The <code>.folio</code> format</a> — every field of a template, version rules and load errors.</li>
+            <li><a href="folio8-format.html">The <code>.folio8</code> format</a> — every field of a template, version rules and load errors.</li>
             <li><a href="expression-reference.html">Expressions</a> — the syntax inside <code>{{ }}</code> and Visibility formulas.</li>
           </ul>
         </div>
@@ -280,24 +280,24 @@
 <!-- body -->
   <section id="install">
     <h2>Install</h2>
-    <p>Folio has no tagged release yet, so you install a commit of the <code>main</code> branch. From your application's directory:</p>
-    <div class="sample"><pre data-lang="shell"><span class="tk-fn">go</span> mod init example.com/folio-demo
-<span class="tk-fn">go</span> get github.com/panitw/folio/folio-go@main
+    <p>folio8 has no tagged release yet, so you install a commit of the <code>main</code> branch. From your application's directory:</p>
+    <div class="sample"><pre data-lang="shell"><span class="tk-fn">go</span> mod init example.com/folio8-demo
+<span class="tk-fn">go</span> get github.com/panitw/folio8/folio8-go@main
 <span class="tk-fn">go</span> mod tidy</pre></div>
-    <p>On 2026-09-15 <code>@main</code> resolved to <code>github.com/panitw/folio/folio-go v0.0.0-20260914182357-563352e6f92a</code> (commit <code>563352e</code>), and this guide's programs and example templates were verified against that version from a fresh module. <code>go get</code> records the resolved pseudo-version in your <code>go.mod</code>, so your build stays pinned to that commit until you run <code>go get github.com/panitw/folio/folio-go@main</code> again to upgrade. The public API is not frozen before a release is tagged, so read the changes before you upgrade. If a module proxy still serves an older commit for <code>@main</code>, fetch with <code>GOPROXY=direct</code>.</p>
-    <p>Import the module root as <code>folio</code>. The shipped fonts are a separate, opt-in package:</p>
+    <p>On 2026-09-15 <code>@main</code> resolved to <code>github.com/panitw/folio8/folio8-go v0.0.0-20260914182357-563352e6f92a</code> (commit <code>563352e</code>), and this guide's programs and example templates were verified against that version from a fresh module. <code>go get</code> records the resolved pseudo-version in your <code>go.mod</code>, so your build stays pinned to that commit until you run <code>go get github.com/panitw/folio8/folio8-go@main</code> again to upgrade. The public API is not frozen before a release is tagged, so read the changes before you upgrade. If a module proxy still serves an older commit for <code>@main</code>, fetch with <code>GOPROXY=direct</code>.</p>
+    <p>Import the module root as <code>folio8</code>. The shipped fonts are a separate, opt-in package:</p>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">import</span> (
-	folio <span class="tk-str">"github.com/panitw/folio/folio-go"</span>
-	<span class="tk-str">"github.com/panitw/folio/folio-go/fonts"</span>
+	folio8 <span class="tk-str">"github.com/panitw/folio8/folio8-go"</span>
+	<span class="tk-str">"github.com/panitw/folio8/folio8-go/fonts"</span>
 )</pre></div>
-    <p><strong>Toolchain.</strong> <code>folio-go/go.mod</code> declares <code>go 1.25.0</code> as the minimum language version and <code>toolchain go1.26.0</code>. A dependency's <code>toolchain</code> line does not choose the compiler for your application: your own <code>go.mod</code> <code>toolchain</code> line, or your <code>GOTOOLCHAIN</code> setting, does. If you record PDF hashes in your own tests and expect them to hold, pin your own toolchain as well as your inputs.</p>
-    <p><strong>Binary size.</strong> <code>fonts</code> embeds its faces with <code>go:embed</code>, about 14.8 MB of raw font data. Package <code>folio</code> never imports <code>fonts</code>, so the data is in your binary only if you import <code>fonts</code> yourself.</p>
+    <p><strong>Toolchain.</strong> <code>folio8-go/go.mod</code> declares <code>go 1.25.0</code> as the minimum language version and <code>toolchain go1.26.0</code>. A dependency's <code>toolchain</code> line does not choose the compiler for your application: your own <code>go.mod</code> <code>toolchain</code> line, or your <code>GOTOOLCHAIN</code> setting, does. If you record PDF hashes in your own tests and expect them to hold, pin your own toolchain as well as your inputs.</p>
+    <p><strong>Binary size.</strong> <code>fonts</code> embeds its faces with <code>go:embed</code>, about 14.8 MB of raw font data. Package <code>folio8</code> never imports <code>fonts</code>, so the data is in your binary only if you import <code>fonts</code> yourself.</p>
   </section>
 
   <section id="your-first-pdf">
     <h2>Your first PDF</h2>
     <p>A template, a data file and a short program. Save these two files next to the program:</p>
-    <p><code>first-pdf.folio</code></p>
+    <p><code>first-pdf.folio8</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -336,7 +336,7 @@
     <p><code>first-pdf.data.json</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span><span class="tk-key">"customer"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-key">"name"</span><span class="tk-punc">:</span> <span class="tk-str">"Ada Lovelace"</span><span class="tk-punc">}</span><span class="tk-punc">}</span></pre></div>
     <p><code>main.go</code></p>
-    <div class="sample"><pre data-lang="go"><span class="tk-com">// Command first-pdf renders docs/examples/first-pdf.folio to first-pdf.pdf.</span>
+    <div class="sample"><pre data-lang="go"><span class="tk-com">// Command first-pdf renders docs/examples/first-pdf.folio8 to first-pdf.pdf.</span>
 <span class="tk-kw">package</span> main
 
 <span class="tk-kw">import</span> (
@@ -345,12 +345,12 @@
 	<span class="tk-str">"log"</span>
 	<span class="tk-str">"os"</span>
 
-	folio <span class="tk-str">"github.com/panitw/folio/folio-go"</span>
-	<span class="tk-str">"github.com/panitw/folio/folio-go/fonts"</span>
+	folio8 <span class="tk-str">"github.com/panitw/folio8/folio8-go"</span>
+	<span class="tk-str">"github.com/panitw/folio8/folio8-go/fonts"</span>
 )
 
 <span class="tk-kw">func</span> <span class="tk-fn">main</span>() {
-	tpl, err := folio.<span class="tk-fn">LoadTemplate</span>(<span class="tk-str">"first-pdf.folio"</span>)
+	tpl, err := folio8.<span class="tk-fn">LoadTemplate</span>(<span class="tk-str">"first-pdf.folio8"</span>)
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(<span class="tk-fn">describe</span>(<span class="tk-str">"load"</span>, err))
 	}
@@ -360,7 +360,7 @@
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
 
-	res, err := folio.<span class="tk-fn">Render</span>(tpl, folio.<span class="tk-fn">Data</span>(data), <span class="tk-lit">nil</span>, fonts.<span class="tk-fn">Shipped</span>())
+	res, err := folio8.<span class="tk-fn">Render</span>(tpl, folio8.<span class="tk-fn">Data</span>(data), <span class="tk-lit">nil</span>, fonts.<span class="tk-fn">Shipped</span>())
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(<span class="tk-fn">describe</span>(<span class="tk-str">"render"</span>, err))
 	}
@@ -377,7 +377,7 @@
 
 <span class="tk-com">// describe adds the stable diagnostic code when err carries one.</span>
 <span class="tk-kw">func</span> <span class="tk-fn">describe</span>(stage <span class="tk-type">string</span>, err <span class="tk-type">error</span>) <span class="tk-type">string</span> {
-	<span class="tk-kw">var</span> re *folio.<span class="tk-type">RenderError</span>
+	<span class="tk-kw">var</span> re *folio8.<span class="tk-type">RenderError</span>
 	<span class="tk-kw">if</span> errors.<span class="tk-fn">As</span>(err, &amp;re) {
 		d := re.<span class="tk-type">Diagnostic</span>
 		<span class="tk-kw">return</span> fmt.<span class="tk-fn">Sprintf</span>(<span class="tk-str">"%s failed: %s element=%q path=%q: %v"</span>, stage, d.<span class="tk-type">Code</span>, d.<span class="tk-type">ElementID</span>, d.<span class="tk-type">DataPath</span>, err)
@@ -387,19 +387,19 @@
     <p><code>go run .</code> prints <code>wrote first-pdf.pdf (53035 bytes, 0 warnings)</code> with the verified version and toolchain; the byte count is a property of the inputs and the library version, so treat it as illustrative. The page reads "Hello, Ada Lovelace!" in Noto Sans.</p>
     <p>What each step does:</p>
     <ol>
-      <li><code>folio.LoadTemplate</code> reads a file and calls <code>folio.ParseTemplate</code>. Use <code>ParseTemplate</code> directly when the template bytes come from memory, an embed or a database. Both return an opaque <code>*folio.Template</code>; you cannot build one field by field, only by parsing.</li>
-      <li><code>folio.Data</code> is your report data as raw JSON bytes. <code>nil</code> params means no runtime values.</li>
+      <li><code>folio8.LoadTemplate</code> reads a file and calls <code>folio8.ParseTemplate</code>. Use <code>ParseTemplate</code> directly when the template bytes come from memory, an embed or a database. Both return an opaque <code>*folio8.Template</code>; you cannot build one field by field, only by parsing.</li>
+      <li><code>folio8.Data</code> is your report data as raw JSON bytes. <code>nil</code> params means no runtime values.</li>
       <li><code>fonts.Shipped()</code> supplies the face named by the template's <code>fonts</code> chain (<code>"Noto Sans"</code>).</li>
-      <li><code>folio.Render</code> returns a <code>folio.Result</code>: <code>Bytes</code> is the complete PDF whenever the error is nil, and <code>Diagnostics</code> holds warnings that accompanied that successful render.</li>
-      <li>A failure is an ordinary Go <code>error</code>. When it concerns the template, the data or a render rule, it is a <code>*folio.RenderError</code> whose <code>Diagnostic</code> carries a stable <code>Code</code>; <code>errors.As</code> finds it. Other failures, such as malformed JSON data or a file that cannot be read, are plain errors — keep the fallback branch.</li>
+      <li><code>folio8.Render</code> returns a <code>folio8.Result</code>: <code>Bytes</code> is the complete PDF whenever the error is nil, and <code>Diagnostics</code> holds warnings that accompanied that successful render.</li>
+      <li>A failure is an ordinary Go <code>error</code>. When it concerns the template, the data or a render rule, it is a <code>*folio8.RenderError</code> whose <code>Diagnostic</code> carries a stable <code>Code</code>; <code>errors.As</code> finds it. Other failures, such as malformed JSON data or a file that cannot be read, are plain errors — keep the fallback branch.</li>
     </ol>
-    <p><code>folio.SerializeTemplate(tpl)</code> returns the template's canonical <code>.folio</code> bytes, which is how an editor saves a template it loaded. Saving writes keys in canonical order, keeps the declared <code>version</code> unless the content requires a higher one, and never lowers it.</p>
+    <p><code>folio8.SerializeTemplate(tpl)</code> returns the template's canonical <code>.folio8</code> bytes, which is how an editor saves a template it loaded. Saving writes keys in canonical order, keeps the declared <code>version</code> unless the content requires a higher one, and never lowers it.</p>
   </section>
 
   <section id="writing-to-an-iowriter">
     <h2>Writing to an <code>io.Writer</code></h2>
-    <p><code>folio.RenderTo</code> takes the same arguments as <code>Render</code> with a writer first, writes the PDF and returns the warnings:</p>
-    <div class="sample"><pre data-lang="go">diagnostics, err := folio.<span class="tk-fn">RenderTo</span>(writer, tpl, data, params, fontSet)</pre></div>
+    <p><code>folio8.RenderTo</code> takes the same arguments as <code>Render</code> with a writer first, writes the PDF and returns the warnings:</p>
+    <div class="sample"><pre data-lang="go">diagnostics, err := folio8.<span class="tk-fn">RenderTo</span>(writer, tpl, data, params, fontSet)</pre></div>
     <p>It builds the whole document in memory first — the PDF's cross-reference table and <code>/ID</code> depend on the complete file — and then makes one <code>Write</code> call with exactly the bytes <code>Render</code> returns. It does not stream. If the writer returns an error, or accepts fewer bytes than it was given, <code>RenderTo</code> returns an error; the writer may already have accepted part of the document, so discard or remove partial output. A render failure returns before anything is written.</p>
     <p>This program renders the first-PDF template both ways, compares the bytes, shows <code>Validate</code>, and shows a failing writer:</p>
     <div class="sample"><pre data-lang="go"><span class="tk-com">// Command render-to renders the same document twice — once with Render and</span>
@@ -413,32 +413,32 @@
 	<span class="tk-str">"log"</span>
 	<span class="tk-str">"os"</span>
 
-	folio <span class="tk-str">"github.com/panitw/folio/folio-go"</span>
-	<span class="tk-str">"github.com/panitw/folio/folio-go/fonts"</span>
+	folio8 <span class="tk-str">"github.com/panitw/folio8/folio8-go"</span>
+	<span class="tk-str">"github.com/panitw/folio8/folio8-go/fonts"</span>
 )
 
 <span class="tk-kw">func</span> <span class="tk-fn">main</span>() {
-	templateBytes, err := os.<span class="tk-fn">ReadFile</span>(<span class="tk-str">"first-pdf.folio"</span>)
+	templateBytes, err := os.<span class="tk-fn">ReadFile</span>(<span class="tk-str">"first-pdf.folio8"</span>)
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
-	tpl, err := folio.<span class="tk-fn">ParseTemplate</span>(templateBytes)
+	tpl, err := folio8.<span class="tk-fn">ParseTemplate</span>(templateBytes)
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
-	data := folio.<span class="tk-fn">Data</span>(<span class="tk-str">`{"customer": {"name": "Ada Lovelace"}}`</span>)
-	params := folio.<span class="tk-fn">Params</span>(<span class="tk-str">`{}`</span>)
+	data := folio8.<span class="tk-fn">Data</span>(<span class="tk-str">`{"customer": {"name": "Ada Lovelace"}}`</span>)
+	params := folio8.<span class="tk-fn">Params</span>(<span class="tk-str">`{}`</span>)
 	fontSet := fonts.<span class="tk-fn">Shipped</span>()
 
 	<span class="tk-com">// Validate runs the same checks as a render, with the same inputs, without</span>
 	<span class="tk-com">// producing a PDF.</span>
-	warnings, err := folio.<span class="tk-fn">Validate</span>(templateBytes, data, params, fontSet)
+	warnings, err := folio8.<span class="tk-fn">Validate</span>(templateBytes, data, params, fontSet)
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
 	fmt.<span class="tk-fn">Printf</span>(<span class="tk-str">"validate: %d warnings\n"</span>, <span class="tk-fn">len</span>(warnings))
 
-	res, err := folio.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
+	res, err := folio8.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
@@ -447,7 +447,7 @@
 	<span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 		log.<span class="tk-fn">Fatal</span>(err)
 	}
-	diagnostics, err := folio.<span class="tk-fn">RenderTo</span>(out, tpl, data, params, fontSet)
+	diagnostics, err := folio8.<span class="tk-fn">RenderTo</span>(out, tpl, data, params, fontSet)
 	<span class="tk-kw">if</span> closeErr := out.<span class="tk-fn">Close</span>(); err == <span class="tk-lit">nil</span> {
 		err = closeErr
 	}
@@ -467,9 +467,9 @@
 	fmt.<span class="tk-fn">Println</span>(<span class="tk-str">"bytes equal:"</span>, bytes.<span class="tk-fn">Equal</span>(written, res.<span class="tk-type">Bytes</span>))
 
 	<span class="tk-com">// A writer that fails is reported as an error; the PDF was fully built first.</span>
-	_, err = folio.<span class="tk-fn">RenderTo</span>(failingWriter{}, tpl, data, params, fontSet)
+	_, err = folio8.<span class="tk-fn">RenderTo</span>(failingWriter{}, tpl, data, params, fontSet)
 	fmt.<span class="tk-fn">Println</span>(<span class="tk-str">"failing writer:"</span>, err)
-	<span class="tk-kw">var</span> re *folio.<span class="tk-type">RenderError</span>
+	<span class="tk-kw">var</span> re *folio8.<span class="tk-type">RenderError</span>
 	fmt.<span class="tk-fn">Println</span>(<span class="tk-str">"is a RenderError:"</span>, errors.<span class="tk-fn">As</span>(err, &amp;re))
 }
 
@@ -479,11 +479,11 @@
     <p>Verified output:</p>
     <div class="sample"><pre class="json" data-lang="json">validate<span class="tk-punc">:</span> <span class="tk-num">0</span> warnings
 bytes equal<span class="tk-punc">:</span> <span class="tk-lit">true</span>
-failing writer<span class="tk-punc">:</span> folio<span class="tk-punc">:</span> RenderTo<span class="tk-punc">:</span> write failed after <span class="tk-num">0</span> of <span class="tk-num">53035</span> bytes<span class="tk-punc">:</span> disk full
+failing writer<span class="tk-punc">:</span> folio8<span class="tk-punc">:</span> RenderTo<span class="tk-punc">:</span> write failed after <span class="tk-num">0</span> of <span class="tk-num">53035</span> bytes<span class="tk-punc">:</span> disk full
 is a RenderError<span class="tk-punc">:</span> <span class="tk-lit">false</span></pre></div>
-    <p>A writer failure is a plain error, not a <code>*folio.RenderError</code>: nothing is wrong with the document.</p>
+    <p>A writer failure is a plain error, not a <code>*folio8.RenderError</code>: nothing is wrong with the document.</p>
     <p><strong>In an HTTP handler</strong>, a render error returned by <code>RenderTo</code> happens before any byte is written, so you can still send an error status. A write error happens after the response has started — the status line and part of the body may already be on the wire — so you can only log it. To choose the status code with certainty, call <code>Render</code> first and write <code>res.Bytes</code> yourself:</p>
-    <div class="sample"><pre data-lang="go">res, err := folio.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
+    <div class="sample"><pre data-lang="go">res, err := folio8.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
 <span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
 	http.<span class="tk-fn">Error</span>(w, <span class="tk-str">"could not render statement"</span>, http.<span class="tk-type">StatusInternalServerError</span>)
 	<span class="tk-kw">return</span>
@@ -498,18 +498,18 @@ w.<span class="tk-fn">Header</span>().<span class="tk-fn">Set</span>(<span class
   <section id="inputs">
     <h2>Inputs</h2>
     <h3 id="data-and-params">Data and params</h3>
-    <p><code>folio.Data</code> and <code>folio.Params</code> are distinct types over raw JSON bytes, so swapping them at a call site does not compile.</p>
+    <p><code>folio8.Data</code> and <code>folio8.Params</code> are distinct types over raw JSON bytes, so swapping them at a call site does not compile.</p>
     <ul>
       <li><strong>Data</strong> is the report: <code>{{customer.name}}</code> and <code>transactions[]</code> read from it. It must be valid JSON.</li>
       <li><strong>Params</strong> are runtime values that are not report data, read only through the reserved <code>params.</code> prefix: <code>{{params.reportDate}}</code>. A path starting with <code>params.</code> never reads data, so a top-level <code>"params"</code> key in your data is legal and unreachable. <code>nil</code> or empty <code>Params</code> means no runtime values were supplied, not malformed JSON.</li>
       <li>A path absent from the data — or <code>{{params.x}}</code> with no such param — is an error (<code>BINDING_PATH_ABSENT</code>) naming the element and the path. It is never rendered as empty. A value that is present and JSON <code>null</code> renders empty.</li>
-      <li>Numbers keep the precision written in the JSON. Both inputs are decoded as exact decimals, never as <code>float64</code>. Build the JSON from your own values (strings, <code>json.Number</code>, decimal types) rather than decoding into <code>float64</code> and re-encoding, which rounds before Folio ever sees the value.</li>
+      <li>Numbers keep the precision written in the JSON. Both inputs are decoded as exact decimals, never as <code>float64</code>. Build the JSON from your own values (strings, <code>json.Number</code>, decimal types) rather than decoding into <code>float64</code> and re-encoding, which rounds before folio8 ever sees the value.</li>
       <li><code>params.documentDate</code> is reserved: an RFC 3339 timestamp that, when present, is written as the PDF's creation and modification date. A present value that is not a valid timestamp fails with <code>DOCUMENT_DATE_INVALID</code>. Without it the PDF has no date at all.</li>
     </ul>
     <h3 id="fonts">Fonts</h3>
-    <p>A render uses only the fonts you pass. <code>folio.FontSet</code> maps a face name to raw OpenType/TrueType bytes:</p>
+    <p>A render uses only the fonts you pass. <code>folio8.FontSet</code> maps a face name to raw OpenType/TrueType bytes:</p>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">type</span> <span class="tk-type">FontSet</span> <span class="tk-kw">map</span>[<span class="tk-type">string</span>][]<span class="tk-type">byte</span></pre></div>
-    <p>A template's <code>fonts</code> object declares named fallback chains, and each text element names a chain in <code>style.fontFamily</code>. Each character is drawn from the first face in the chain that covers it. A chain entry is either a face <strong>name</strong>, looked up in your <code>FontSet</code>, or an <code>{"asset": "&lt;key&gt;"}</code> entry, a face the template carries in its own <code>assets</code> — resolved by asset key only, never by name, so a <code>FontSet</code> entry can never replace an embedded face or the reverse. A chain entry may also declare <code>bold</code>, <code>italic</code> and <code>boldItalic</code> faces; <code>style.bold</code>/<code>style.italic</code> pick those, and Folio never synthesises a weight or slant. See <a href="folio-format.html#fonts"><code>fonts</code></a> and <a href="folio-format.html#assets"><code>assets</code></a> for the rules.</p>
+    <p>A template's <code>fonts</code> object declares named fallback chains, and each text element names a chain in <code>style.fontFamily</code>. Each character is drawn from the first face in the chain that covers it. A chain entry is either a face <strong>name</strong>, looked up in your <code>FontSet</code>, or an <code>{"asset": "&lt;key&gt;"}</code> entry, a face the template carries in its own <code>assets</code> — resolved by asset key only, never by name, so a <code>FontSet</code> entry can never replace an embedded face or the reverse. A chain entry may also declare <code>bold</code>, <code>italic</code> and <code>boldItalic</code> faces; <code>style.bold</code>/<code>style.italic</code> pick those, and folio8 never synthesises a weight or slant. See <a href="folio8-format.html#fonts"><code>fonts</code></a> and <a href="folio8-format.html#assets"><code>assets</code></a> for the rules.</p>
     <p><code>fonts.Shipped()</code> returns a fresh <code>FontSet</code> with these face names:</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Family</th><th>Face names</th></tr></thead>
@@ -528,30 +528,30 @@ brand, err := os.<span class="tk-fn">ReadFile</span>(<span class="tk-str">"Brand
 	log.<span class="tk-fn">Fatal</span>(err)
 }
 fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">// referenced by a chain such as "body": ["Brand Sans", "Noto Sans Thai"]</span></pre></div>
-    <p>A character that no face in its chain covers is omitted, never drawn as a box, and reported with the warning <code>TEXT_MISSING_GLYPH</code>. A bold or italic request that the covering entry declares no face for is drawn in that entry's regular face with the warning <code>TEXT_STYLE_FACE_UNDECLARED</code>. A chain face missing from the <code>FontSet</code>, or bytes that are not a usable font, fail the render with an error naming the element and the chain; that error is not a <code>*folio.RenderError</code>, so handle it in your fallback branch.</p>
+    <p>A character that no face in its chain covers is omitted, never drawn as a box, and reported with the warning <code>TEXT_MISSING_GLYPH</code>. A bold or italic request that the covering entry declares no face for is drawn in that entry's regular face with the warning <code>TEXT_STYLE_FACE_UNDECLARED</code>. A chain face missing from the <code>FontSet</code>, or bytes that are not a usable font, fail the render with an error naming the element and the chain; that error is not a <code>*folio8.RenderError</code>, so handle it in your fallback branch.</p>
   </section>
 
   <section id="warnings-and-errors">
     <h2>Warnings and errors</h2>
-    <p>Folio reports every problem as a <code>folio.Diagnostic</code>:</p>
+    <p>folio8 reports every problem as a <code>folio8.Diagnostic</code>:</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
       <tbody>
-        <tr><td><code>Severity</code></td><td><code>folio.SeverityWarning</code> or <code>folio.SeverityError</code>. <code>Severity.String()</code> returns <code>"Warning"</code> or <code>"Error"</code>; the zero value prints <code>"Severity(unset)"</code> and is never produced by Folio.</td></tr>
-        <tr><td><code>Code</code></td><td>A stable string from a closed registry, such as <code>"TEXT_CLIPPED_WIDTH"</code>. Compare against the <code>folio.DiagCode…</code> constants. A code's meaning never changes.</td></tr>
+        <tr><td><code>Severity</code></td><td><code>folio8.SeverityWarning</code> or <code>folio8.SeverityError</code>. <code>Severity.String()</code> returns <code>"Warning"</code> or <code>"Error"</code>; the zero value prints <code>"Severity(unset)"</code> and is never produced by folio8.</td></tr>
+        <tr><td><code>Code</code></td><td>A stable string from a closed registry, such as <code>"TEXT_CLIPPED_WIDTH"</code>. Compare against the <code>folio8.DiagCode…</code> constants. A code's meaning never changes.</td></tr>
         <tr><td><code>ElementID</code></td><td>The template element (<code>"e7"</code>) or table column the problem concerns, when there is one.</td></tr>
         <tr><td><code>DataPath</code></td><td>The data path, or for load errors the template field path (<code>"pages[1].sectionBreak"</code>, <code>"table.width"</code>), when there is one.</td></tr>
         <tr><td><code>Message</code></td><td>A human-readable sentence. Print it; never parse it.</td></tr>
       </tbody>
     </table></div>
-    <p><strong>Warnings accompany a successful render.</strong> The PDF in <code>Result.Bytes</code> (or written by <code>RenderTo</code>) is complete, and something could not be honoured exactly — text clipped at its box, a missing glyph, a barcode that could not be drawn. <code>Result.Diagnostics</code> lists them in document order, and is <code>nil</code> when there are none. <code>folio render -strict</code> turns warnings into a failure; in Go, decide yourself.</p>
-    <p><strong>Errors abort.</strong> <code>LoadTemplate</code>, <code>ParseTemplate</code>, <code>Render</code>, <code>RenderTo</code> and <code>Validate</code> return a Go <code>error</code>, and no PDF. When the error is a known condition it is a <code>*folio.RenderError</code> whose <code>Diagnostic</code> has <code>Severity</code> <code>SeverityError</code> and a code; <code>Unwrap</code> exposes the underlying error.</p>
-    <div class="sample"><pre data-lang="go">res, err := folio.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
-<span class="tk-kw">var</span> re *folio.<span class="tk-type">RenderError</span>
+    <p><strong>Warnings accompany a successful render.</strong> The PDF in <code>Result.Bytes</code> (or written by <code>RenderTo</code>) is complete, and something could not be honoured exactly — text clipped at its box, a missing glyph, a barcode that could not be drawn. <code>Result.Diagnostics</code> lists them in document order, and is <code>nil</code> when there are none. <code>folio8 render -strict</code> turns warnings into a failure; in Go, decide yourself.</p>
+    <p><strong>Errors abort.</strong> <code>LoadTemplate</code>, <code>ParseTemplate</code>, <code>Render</code>, <code>RenderTo</code> and <code>Validate</code> return a Go <code>error</code>, and no PDF. When the error is a known condition it is a <code>*folio8.RenderError</code> whose <code>Diagnostic</code> has <code>Severity</code> <code>SeverityError</code> and a code; <code>Unwrap</code> exposes the underlying error.</p>
+    <div class="sample"><pre data-lang="go">res, err := folio8.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
+<span class="tk-kw">var</span> re *folio8.<span class="tk-type">RenderError</span>
 <span class="tk-kw">switch</span> {
 <span class="tk-kw">case</span> errors.<span class="tk-fn">As</span>(err, &amp;re):
 	<span class="tk-kw">switch</span> re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">Code</span> {
-	<span class="tk-kw">case</span> folio.<span class="tk-type">DiagCodeBindingPathAbsent</span>:
+	<span class="tk-kw">case</span> folio8.<span class="tk-type">DiagCodeBindingPathAbsent</span>:
 		<span class="tk-kw">return</span> fmt.<span class="tk-fn">Errorf</span>(<span class="tk-str">"data is missing %s (element %s)"</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">DataPath</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">ElementID</span>)
 	<span class="tk-kw">default</span>:
 		<span class="tk-kw">return</span> fmt.<span class="tk-fn">Errorf</span>(<span class="tk-str">"%s: %w"</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">Code</span>, err)
@@ -560,7 +560,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
 	<span class="tk-kw">return</span> err <span class="tk-com">// not a document problem: invalid JSON data, a nil template, an I/O failure</span>
 }
 <span class="tk-kw">for</span> _, d := <span class="tk-kw">range</span> res.<span class="tk-type">Diagnostics</span> {
-	<span class="tk-kw">if</span> d.<span class="tk-type">Code</span> == folio.<span class="tk-type">DiagCodeTextMissingGlyph</span> {
+	<span class="tk-kw">if</span> d.<span class="tk-type">Code</span> == folio8.<span class="tk-type">DiagCodeTextMissingGlyph</span> {
 		log.<span class="tk-fn">Printf</span>(<span class="tk-str">"element %s lost a character: %s"</span>, d.<span class="tk-type">ElementID</span>, d.<span class="tk-type">Message</span>)
 	}
 }</pre></div>
@@ -590,7 +590,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <ul>
       <li>Output depends only on the template, data, params, <code>FontSet</code> and the Go toolchain that built your binary. Rendering never reads the clock, environment variables, the host locale, host fonts or the network.</li>
       <li>Locale and time are document properties: the template's <code>locale</code> (<code>en</code>, <code>th</code>, <code>zh-Hans</code> or <code>ja</code>) and fixed <code>utcOffset</code> drive <code>formatDate</code>, <code>formatNumber</code> and line breaking. Any other locale is a load error.</li>
-      <li>No PDF date is written unless you pass <code>params.documentDate</code>. The <code>folio</code> command-line tool fills that param from <code>SOURCE_DATE_EPOCH</code> when you have not supplied one; the library never reads that variable.</li>
+      <li>No PDF date is written unless you pass <code>params.documentDate</code>. The <code>folio8</code> command-line tool fills that param from <code>SOURCE_DATE_EPOCH</code> when you have not supplied one; the library never reads that variable.</li>
       <li>Nothing in this guide is a statement about concurrent use; the library makes no documented concurrency guarantee for sharing one <code>*Template</code> or <code>FontSet</code> across goroutines while it is being mutated. Treat <code>FontSet</code> maps you pass as read-only for the duration of a call.</li>
     </ul>
   </section>
@@ -599,7 +599,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <h2>Known limitations</h2>
     <ul>
       <li><strong>Japanese glyph forms.</strong> <code>ja</code> text renders with coverage from <code>Noto Sans SC</code>, which draws the Simplified Chinese shape for the ideographs whose Japanese form differs. Supply a Japanese face in your <code>FontSet</code> and chain if that matters.</li>
-      <li><strong>Thai names.</strong> Thai has no spaces between words and breaks from a dictionary, which cannot tell a name from the ordinary words it is made of. List data paths whose values must never break in the document's <code>unbreakableValues</code>; a name inside free-form text is still breakable. See <a href="folio-format.html#line-breaking">Line breaking</a>.</li>
+      <li><strong>Thai names.</strong> Thai has no spaces between words and breaks from a dictionary, which cannot tell a name from the ordinary words it is made of. List data paths whose values must never break in the document's <code>unbreakableValues</code>; a name inside free-form text is still breakable. See <a href="folio8-format.html#line-breaking">Line breaking</a>.</li>
       <li><strong>Latin breaking</strong> is at spaces only: no hyphenation, no break after <code>-</code>, and it is not UAX #14.</li>
       <li><strong>CJK kinsoku</strong> is not implemented: a line may begin with <code>，</code> or end with an opening bracket.</li>
       <li>Expression syntax, limits and division scale: see <a href="expression-reference.html">Expressions</a>.</li>
@@ -622,8 +622,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
       </tbody>
     </table></div>
     <h3 id="formulas">Formulas</h3>
-    <p>Visibility (<code>visibleIf</code>) takes a bare formula; text takes <code>{{ }}</code> expressions. Comparisons, exact decimal arithmetic, nested <code>? :</code> and the literals <code>true</code>, <code>false</code> and <code>null</code> work in both, and in <code>if()</code>. A number printed bare in text appears as its exact decimal (<code>{{1 / 3}}</code> prints <code>0.3333</code>); use <code>formatNumber</code> for grouping. A hidden element leaves its siblings where they are. Syntax, precedence, limits and division scale are in <a href="expression-reference.html#formulas">Expressions</a>; field rules in <a href="folio-format.html#expressions">Expressions</a>.</p>
-    <p><code>formula-visibility.folio</code></p>
+    <p>Visibility (<code>visibleIf</code>) takes a bare formula; text takes <code>{{ }}</code> expressions. Comparisons, exact decimal arithmetic, nested <code>? :</code> and the literals <code>true</code>, <code>false</code> and <code>null</code> work in both, and in <code>if()</code>. A number printed bare in text appears as its exact decimal (<code>{{1 / 3}}</code> prints <code>0.3333</code>); use <code>formatNumber</code> for grouping. A hidden element leaves its siblings where they are. Syntax, precedence, limits and division scale are in <a href="expression-reference.html#formulas">Expressions</a>; field rules in <a href="folio8-format.html#expressions">Expressions</a>.</p>
+    <p><code>formula-visibility.folio8</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -650,8 +650,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span><span class="tk-key">"loanAmount"</span><span class="tk-punc">:</span> <span class="tk-num">20000</span><span class="tk-punc">,</span> <span class="tk-key">"fee"</span><span class="tk-punc">:</span> <span class="tk-num">150.50</span><span class="tk-punc">}</span></pre></div>
     <p>With the first data the page reads "Total 25,150.50", "Manual review required" and "Tier: large". With the second it reads "Total 20,150.50" and "Tier: standard"; the review line is not drawn and the tier line stays at y 32. There are no warnings. A missing <code>loanAmount</code> fails with <code>BINDING_PATH_ABSENT</code>; <code>"visibleIf": "loanAmount"</code> with a number is a located error, because conditions have no truthiness.</p>
     <h3 id="barcode-and-qr-code">Barcode and QR code</h3>
-    <p>A <code>barcode</code> element encodes its <code>value</code> as Code 128; a <code>qrcode</code> element encodes it as a QR Code at error correction <code>L</code>, <code>M</code> (the default), <code>Q</code> or <code>H</code>. <code>value</code> binds like text. Both draw black vector modules of one whole-millipoint width, as large as fits the box with the quiet zone inside it, centred and never distorted, with no human-readable text and no <code>style</code>. Store control characters as real characters (<code>"\r"</code> in JSON). See <a href="folio-format.html#elements">Elements</a>.</p>
-    <p><code>barcode-qrcode.folio</code></p>
+    <p>A <code>barcode</code> element encodes its <code>value</code> as Code 128; a <code>qrcode</code> element encodes it as a QR Code at error correction <code>L</code>, <code>M</code> (the default), <code>Q</code> or <code>H</code>. <code>value</code> binds like text. Both draw black vector modules of one whole-millipoint width, as large as fits the box with the quiet zone inside it, centred and never distorted, with no human-readable text and no <code>style</code>. Store control characters as real characters (<code>"\r"</code> in JSON). See <a href="folio8-format.html#elements">Elements</a>.</p>
+    <p><code>barcode-qrcode.folio8</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -678,8 +678,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span><span class="tk-key">"invoice"</span><span class="tk-punc">:</span> <span class="tk-str">"2026-ใบที่-7"</span><span class="tk-punc">}</span></pre></div>
     <p>With the first data the page carries three codes, which an independent decoder reads as Code 128 <code>INV-2026-000123</code>, QR (level M) <code>https://example.com/pay/2026-000123</code> and QR (level H) <code>2026-000123</code>, with no warnings. With the second data the barcode is omitted with the warning <code>BARCODE_UNENCODABLE</code> on <code>e1</code> — Code 128 encodes ASCII only — while both QR codes still draw, because QR encodes the UTF-8 bytes. The render succeeds. Static text that cannot be encoded (a non-ASCII character outside <code>{{ }}</code> in a barcode, or a QR value already too long) is refused at load instead. A symbol that cannot fit at one millipoint per module is omitted with <code>BARCODE_DOES_NOT_FIT</code> or <code>QRCODE_DOES_NOT_FIT</code>; modules narrower than 0.25 mm (barcode) or 0.5 mm (QR) still draw, with <code>BARCODE_MODULE_TOO_SMALL</code> or <code>QRCODE_MODULE_TOO_SMALL</code>; QR data too long for version 40 is omitted with <code>QRCODE_TOO_LONG</code>.</p>
     <h3 id="section-break">Section break</h3>
-    <p><code>sectionBreak</code> on the content band is an offset in points. Elements declared at or below it form a section that moves as one rigid block when the content above grows past the line. Anchored (the default) moves the section by whole pages, keeping its declared position; with <code>"sectionBreakAnchor": false</code> the section follows where the content above ends when it fits on that page. When nothing crosses the line, the PDF is byte-identical to the same template without the key. The break is never drawn, and a <code>keepTogether</code> group split by it is split with the warning <code>SECTION_BREAK_SPLITS_KEEP_TOGETHER</code>. See <a href="folio-format.html#pagination">Pagination</a> and <a href="folio-format.html#bands"><code>bands</code></a>.</p>
-    <p><code>section-break.folio</code> (anchored)</p>
+    <p><code>sectionBreak</code> on the content band is an offset in points. Elements declared at or below it form a section that moves as one rigid block when the content above grows past the line. Anchored (the default) moves the section by whole pages, keeping its declared position; with <code>"sectionBreakAnchor": false</code> the section follows where the content above ends when it fits on that page. When nothing crosses the line, the PDF is byte-identical to the same template without the key. The break is never drawn, and a <code>keepTogether</code> group split by it is split with the warning <code>SECTION_BREAK_SPLITS_KEEP_TOGETHER</code>. See <a href="folio8-format.html#pagination">Pagination</a> and <a href="folio8-format.html#bands"><code>bands</code></a>.</p>
+    <p><code>section-break.folio8</code> (anchored)</p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -705,7 +705,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
   <span class="tk-key">"utcOffset"</span><span class="tk-punc">:</span> <span class="tk-str">"+00:00"</span><span class="tk-punc">,</span>
   <span class="tk-key">"version"</span><span class="tk-punc">:</span> <span class="tk-str">"4.1"</span>
 <span class="tk-punc">}</span></pre></div>
-    <p><code>section-break-unanchored.folio</code> differs only in the content band's keys:</p>
+    <p><code>section-break-unanchored.folio8</code> differs only in the content band's keys:</p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -746,8 +746,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     </table></div>
     <p>No warnings in any case. A <code>sectionBreak</code> of 0 or at least the content height, a second break, a break on <code>pageHeader</code>/<code>pageFooter</code>, or <code>sectionBreakAnchor</code> without <code>sectionBreak</code> fails at load with <code>SECTION_BREAK_INVALID</code> located at the band's key; an element whose box lies on both sides of the line fails with <code>SECTION_BREAK_STRADDLED</code> naming it.</p>
     <h3 id="designed-pages">Designed pages</h3>
-    <p>A template with a top-level <code>pages</code> array has two or more designed pages, rendered in order. They share the page setup, page header and page footer, and <code>{{page}}</code>/<code>{{pages}}</code> count the output pages of all of them. Each page's content overflows onto further output pages as usual, and each page may have its own section break. With <code>bands.content</code> then empty, a page's <code>pageBreak</code> decides how it follows the previous page: <code>true</code> (Page Break on, the default after page 1) starts a new output page after the previous page and all its overflow; <code>false</code> continues directly where the previous page's content ended, as one rigid block, if the previous page overflowed onto more than one output page and the block fits in the room left — otherwise it starts a new output page. See <a href="folio-format.html#designed-pages">Designed pages</a>.</p>
-    <p><code>designed-pages.folio</code> (Page Break on)</p>
+    <p>A template with a top-level <code>pages</code> array has two or more designed pages, rendered in order. They share the page setup, page header and page footer, and <code>{{page}}</code>/<code>{{pages}}</code> count the output pages of all of them. Each page's content overflows onto further output pages as usual, and each page may have its own section break. With <code>bands.content</code> then empty, a page's <code>pageBreak</code> decides how it follows the previous page: <code>true</code> (Page Break on, the default after page 1) starts a new output page after the previous page and all its overflow; <code>false</code> continues directly where the previous page's content ended, as one rigid block, if the previous page overflowed onto more than one output page and the block fits in the room left — otherwise it starts a new output page. See <a href="folio8-format.html#designed-pages">Designed pages</a>.</p>
+    <p><code>designed-pages.folio8</code> (Page Break on)</p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -775,7 +775,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
   <span class="tk-key">"utcOffset"</span><span class="tk-punc">:</span> <span class="tk-str">"+00:00"</span><span class="tk-punc">,</span>
   <span class="tk-key">"version"</span><span class="tk-punc">:</span> <span class="tk-str">"4.1"</span>
 <span class="tk-punc">}</span></pre></div>
-    <p><code>designed-pages-page-break-off.folio</code></p>
+    <p><code>designed-pages-page-break-off.folio8</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -815,8 +815,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     </table></div>
     <p>No warnings. A <code>pages</code> array with fewer than two entries, elements or a section break left in <code>bands.content</code>, an unknown key on a page, a non-boolean <code>pageBreak</code>, or a <code>keepTogether</code> group on two pages fails at load with <code>PAGES_INVALID</code>, located by <code>DataPath</code>.</p>
     <h3 id="table-frame-rules-and-minheight">Table frame, rules and minHeight</h3>
-    <p>A table's <code>style.border</code> and <code>style.background</code> draw one frame around each page's slice of the table, not a border on every cell. <code>rules</code> draws interior lines between <code>columns</code> and/or <code>rows</code>, never on the frame's edge. <code>minHeight</code> is a floor for each page's slice: the frame and column rules extend to it, rows are never stretched, and following content starts below it. Column labels may wrap onto several lines, and <code>headerHeight</code> is then the header's minimum height. See <a href="folio-format.html#table"><code>table</code></a>.</p>
-    <p><code>ruled-table.folio</code></p>
+    <p>A table's <code>style.border</code> and <code>style.background</code> draw one frame around each page's slice of the table, not a border on every cell. <code>rules</code> draws interior lines between <code>columns</code> and/or <code>rows</code>, never on the frame's edge. <code>minHeight</code> is a floor for each page's slice: the frame and column rules extend to it, rows are never stretched, and following content starts below it. Column labels may wrap onto several lines, and <code>headerHeight</code> is then the header's minimum height. See <a href="folio8-format.html#table"><code>table</code></a>.</p>
+    <p><code>ruled-table.folio8</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -845,7 +845,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <p><code>ruled-table.data.json</code></p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span><span class="tk-key">"items"</span><span class="tk-punc">:</span> <span class="tk-punc">[</span><span class="tk-punc">{</span><span class="tk-key">"name"</span><span class="tk-punc">:</span> <span class="tk-str">"Item 1"</span><span class="tk-punc">,</span> <span class="tk-key">"amount"</span><span class="tk-punc">:</span> <span class="tk-str">"10.00"</span><span class="tk-punc">}</span><span class="tk-punc">,</span> <span class="tk-punc">{</span><span class="tk-key">"name"</span><span class="tk-punc">:</span> <span class="tk-str">"Item 2"</span><span class="tk-punc">,</span> <span class="tk-key">"amount"</span><span class="tk-punc">:</span> <span class="tk-str">"20.00"</span><span class="tk-punc">}</span><span class="tk-punc">,</span> <span class="tk-punc">{</span><span class="tk-key">"name"</span><span class="tk-punc">:</span> <span class="tk-str">"Item 3"</span><span class="tk-punc">,</span> <span class="tk-key">"amount"</span><span class="tk-punc">:</span> <span class="tk-str">"30.00"</span><span class="tk-punc">}</span><span class="tk-punc">]</span><span class="tk-punc">}</span></pre></div>
     <p>The page shows a 180 × 90 pt frame although three rows fill only about 43 pt, one vertical rule between the two columns running the frame's full height, and three horizontal rules: under the header and between the rows, none under the last row. No warnings.</p>
-    <p><code>ruled-table-unplaceable.folio</code> asks for a floor taller than the 110 pt content window:</p>
+    <p><code>ruled-table-unplaceable.folio8</code> asks for a floor taller than the 110 pt content window:</p>
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span>
   <span class="tk-key">"assets"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span><span class="tk-punc">}</span><span class="tk-punc">,</span>
   <span class="tk-key">"bands"</span><span class="tk-punc">:</span> <span class="tk-punc">{</span>
@@ -871,33 +871,33 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
   <span class="tk-key">"utcOffset"</span><span class="tk-punc">:</span> <span class="tk-str">"+00:00"</span><span class="tk-punc">,</span>
   <span class="tk-key">"version"</span><span class="tk-punc">:</span> <span class="tk-str">"3.1"</span>
 <span class="tk-punc">}</span></pre></div>
-    <p><code>ParseTemplate</code> refuses it with a <code>*folio.RenderError</code> whose code is <code>TABLE_MIN_HEIGHT_UNPLACEABLE</code> and <code>ElementID</code> is <code>e1</code>; there is no template to render. The same page with data or fonts cannot change that outcome.</p>
+    <p><code>ParseTemplate</code> refuses it with a <code>*folio8.RenderError</code> whose code is <code>TABLE_MIN_HEIGHT_UNPLACEABLE</code> and <code>ElementID</code> is <code>e1</code>; there is no template to render. The same page with data or fonts cannot change that outcome.</p>
     <p>The frame meaning of <code>style.border</code> applies to every table, including templates written before <code>3.1</code>: a template that relied on <code>style.border</code> drawing a grid now draws only the frame. Declare <code>"rules": {"between": ["columns", "rows"]}</code> to draw the interior lines.</p>
     <h3 id="other-version-gated-table-features">Other version-gated table features</h3>
     <ul>
-      <li><strong>Proportional widths</strong> (<code>3.0</code>): declare the table's total <code>width</code> and a <code>proportion</code> on each column instead of column widths. Folio allocates exact millipoint widths that sum to the total. A zero-width allocation or a mix of both representations fails at load with <code>TEMPLATE_FIELD_INVALID</code>, <code>DataPath</code> <code>table.width</code> or <code>column.&lt;field&gt;</code>.</li>
+      <li><strong>Proportional widths</strong> (<code>3.0</code>): declare the table's total <code>width</code> and a <code>proportion</code> on each column instead of column widths. folio8 allocates exact millipoint widths that sum to the total. A zero-width allocation or a mix of both representations fails at load with <code>TEMPLATE_FIELD_INVALID</code>, <code>DataPath</code> <code>table.width</code> or <code>column.&lt;field&gt;</code>.</li>
       <li><strong>Column <code>headerAlign</code></strong> (<code>3.2</code>): aligns one column's header cell independently of its data.</li>
     </ul>
   </section>
 
   <section id="api-reference">
     <h2>API reference</h2>
-    <p>This section lists every exported identifier in the three packages of the <code>github.com/panitw/folio/folio-go</code> module:</p>
+    <p>This section lists every exported identifier in the three packages of the <code>github.com/panitw/folio8/folio8-go</code> module:</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Import path</th><th>Package</th><th>Role</th></tr></thead>
       <tbody>
-        <tr><td><code>github.com/panitw/folio/folio-go</code></td><td><code>folio</code></td><td>Parsing, rendering, validation, diagnostics, template helpers, and the canvas/authoring helpers used by Folio Designer.</td></tr>
-        <tr><td><code>github.com/panitw/folio/folio-go/fonts</code></td><td><code>fonts</code></td><td>The shipped font faces, as a ready-made <code>folio.FontSet</code>. Opt-in: package <code>folio</code> never imports it.</td></tr>
-        <tr><td><code>github.com/panitw/folio/folio-go/wasm</code></td><td><code>wasm</code></td><td>The browser/editor session engine compiled into Folio Designer's WebAssembly worker.</td></tr>
+        <tr><td><code>github.com/panitw/folio8/folio8-go</code></td><td><code>folio8</code></td><td>Parsing, rendering, validation, diagnostics, template helpers, and the canvas/authoring helpers used by folio8 Designer.</td></tr>
+        <tr><td><code>github.com/panitw/folio8/folio8-go/fonts</code></td><td><code>fonts</code></td><td>The shipped font faces, as a ready-made <code>folio8.FontSet</code>. Opt-in: package <code>folio8</code> never imports it.</td></tr>
+        <tr><td><code>github.com/panitw/folio8/folio8-go/wasm</code></td><td><code>wasm</code></td><td>The browser/editor session engine compiled into folio8 Designer's WebAssembly worker.</td></tr>
       </tbody>
     </table></div>
-    <p><strong>Stability.</strong> The module has no release tag yet: <code>folio.Version</code> is <code>"0.0.0-dev"</code>. The rendering and validation entry points, the font input and the diagnostic types are the library surface a server-side application uses. The <em>authoring and canvas</em> APIs and the whole <code>wasm</code> package are <strong>editor-facing helpers</strong>. Their JSON projections and command payloads track Folio Designer, which lives in the same repository and changes in the same commit. They are not a frozen API; expect fields and command kinds to change without notice.</p>
+    <p><strong>Stability.</strong> The module has no release tag yet: <code>folio8.Version</code> is <code>"0.0.0-dev"</code>. The rendering and validation entry points, the font input and the diagnostic types are the library surface a server-side application uses. The <em>authoring and canvas</em> APIs and the whole <code>wasm</code> package are <strong>editor-facing helpers</strong>. Their JSON projections and command payloads track folio8 Designer, which lives in the same repository and changes in the same commit. They are not a frozen API; expect fields and command kinds to change without notice.</p>
     <p><strong>Units.</strong> Every <code>int64</code> length in a projection or command result is <strong>millipoints</strong>: 1/1000 of a PDF point, so 1 pt = 1000 and A4 is 595276 × 841890. Length values <em>inside</em> a command payload are written in <strong>points</strong> as JSON decimals with at most three decimal places and no exponent. The engine converts them to millipoints exactly, never through <code>float64</code>; for example <code>12.5</code> becomes 12500. Line spacing is a dimensionless ratio carried in <strong>thousandths</strong>, so 1000 means 1.0.</p>
-    <p><strong>Concurrency.</strong> Nothing in these packages documents or tests concurrent use. <code>*folio.Template</code> is mutated in place by the authoring commands, and <code>*wasm.Engine</code> holds unsynchronised session state. Do not share either across goroutines without your own locking.</p>
+    <p><strong>Concurrency.</strong> Nothing in these packages documents or tests concurrent use. <code>*folio8.Template</code> is mutated in place by the authoring commands, and <code>*wasm.Engine</code> holds unsynchronised session state. Do not share either across goroutines without your own locking.</p>
     <h3 id="rendering-and-validation">Rendering and validation</h3>
     <h4 id="parsetemplate"><code>ParseTemplate</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">ParseTemplate</span>(b []<span class="tk-type">byte</span>) (*<span class="tk-type">Template</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Parses <code>b</code> as a <code>.folio</code> document and returns an opaque <code>*Template</code>. Beyond decoding, it performs every check that can be decided from the document alone:</p>
+    <p>Parses <code>b</code> as a <code>.folio8</code> document and returns an opaque <code>*Template</code>. Beyond decoding, it performs every check that can be decided from the document alone:</p>
     <ul>
       <li>It parses and statically checks every <code>{{ }}</code> expression: syntax, arity, unknown function names and literal argument kinds. It does not evaluate them.</li>
       <li>It derives <code>footerOf</code>/<code>footerFormat</code> for <code>sum</code>/<code>avg</code> table footers that omit <code>footerOf</code>.</li>
@@ -918,10 +918,10 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <div class="sample"><pre data-lang="go"><span class="tk-kw">type</span> <span class="tk-type">Template</span> <span class="tk-kw">struct</span> {
 	<span class="tk-com">// Has unexported fields.</span>
 }</pre></div>
-    <p>A parsed, canonicalised <code>.folio</code> document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from <code>ParseTemplate</code> or <code>LoadTemplate</code>. Read-only functions such as <code>Render</code>, <code>Canvas</code> and <code>TableColumns</code> do not modify it. <code>ApplyComponentCommand</code> and <code>ApplyPageSetupCommand</code> <strong>do</strong> modify it in place.</p>
+    <p>A parsed, canonicalised <code>.folio8</code> document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from <code>ParseTemplate</code> or <code>LoadTemplate</code>. Read-only functions such as <code>Render</code>, <code>Canvas</code> and <code>TableColumns</code> do not modify it. <code>ApplyComponentCommand</code> and <code>ApplyPageSetupCommand</code> <strong>do</strong> modify it in place.</p>
     <h4 id="serializetemplate"><code>SerializeTemplate</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">SerializeTemplate</span>(t *<span class="tk-type">Template</span>) ([]<span class="tk-type">byte</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns the engine's canonical <code>.folio</code> bytes for <code>t</code>. This is the save path the designer uses. A nil <code>t</code> returns an error. The written format version is raised when the document's expressions need it:</p>
+    <p>Returns the engine's canonical <code>.folio8</code> bytes for <code>t</code>. This is the save path the designer uses. A nil <code>t</code> returns an error. The written format version is raised when the document's expressions need it:</p>
     <ul>
       <li><code>"2.0"</code> for formula syntax or boolean/null literals.</li>
       <li><code>"3.3"</code> for a text expression whose static kind includes a number.</li>
@@ -934,7 +934,7 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
       <li><strong>Preconditions.</strong>
         <ul>
           <li><code>t</code> must be non-nil, or a plain error is returned.</li>
-          <li><code>d</code> must be syntactically valid JSON. It is decoded once with number literals preserved exactly, and a decode failure is a plain error prefixed <code>folio: Render:</code>.</li>
+          <li><code>d</code> must be syntactically valid JSON. It is decoded once with number literals preserved exactly, and a decode failure is a plain error prefixed <code>folio8: Render:</code>.</li>
           <li>A nil or empty <code>p</code> means "no runtime values": <code>{{params.x}}</code> is then absent.</li>
           <li><code>f</code> must contain every face the document's font chains actually need. The engine never looks for fonts on the host.</li>
         </ul>
@@ -981,8 +981,8 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
     <div class="sample"><pre data-lang="go"><span class="tk-kw">type</span> <span class="tk-type">FontSet</span> <span class="tk-kw">map</span>[<span class="tk-type">string</span>][]<span class="tk-type">byte</span></pre></div>
     <p>The engine's only font input. It maps a <strong>face name</strong>, as written in a document's <code>fonts</code> fallback chains (for example <code>"Noto Sans"</code>), to that face's raw OpenType/TrueType bytes. Rendering resolves faces only from this map and never queries the host system. Faces a document embeds in its own <code>assets</code> are resolved from the document. The map and its byte slices are read, not modified.</p>
     <h4 id="fontsshipped"><code>fonts.Shipped</code></h4>
-    <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">Shipped</span>() folio.<span class="tk-type">FontSet</span></pre></div>
-    <p>Returns a new <code>folio.FontSet</code> map holding the eleven faces embedded in the <code>fonts</code> package. Each face ships with its OFL-1.1 licence text and NOTICE under <code>folio-go/fonts/</code>. The keys are exactly:</p>
+    <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">Shipped</span>() folio8.<span class="tk-type">FontSet</span></pre></div>
+    <p>Returns a new <code>folio8.FontSet</code> map holding the eleven faces embedded in the <code>fonts</code> package. Each face ships with its OFL-1.1 licence text and NOTICE under <code>folio8-go/fonts/</code>. The keys are exactly:</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Family</th><th>Face names (map keys)</th></tr></thead>
       <tbody>
@@ -1041,12 +1041,12 @@ fontSet[<span class="tk-str">"Brand Sans"</span>] = brand <span class="tk-com">/
       </tbody>
     </table></div>
     <p><code>Error()</code> returns <code>Err.Error()</code> unchanged. <code>Unwrap()</code> returns <code>Err</code>, so <code>errors.Is</code>/<code>errors.As</code> reach the wrapped error. Match on the code:</p>
-    <div class="sample"><pre data-lang="go">res, err := folio.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
+    <div class="sample"><pre data-lang="go">res, err := folio8.<span class="tk-fn">Render</span>(tpl, data, params, fontSet)
 <span class="tk-kw">if</span> err != <span class="tk-lit">nil</span> {
-	<span class="tk-kw">var</span> re *folio.<span class="tk-type">RenderError</span>
+	<span class="tk-kw">var</span> re *folio8.<span class="tk-type">RenderError</span>
 	<span class="tk-kw">if</span> errors.<span class="tk-fn">As</span>(err, &amp;re) {
 		<span class="tk-kw">switch</span> re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">Code</span> {
-		<span class="tk-kw">case</span> folio.<span class="tk-type">DiagCodeBindingPathAbsent</span>:
+		<span class="tk-kw">case</span> folio8.<span class="tk-type">DiagCodeBindingPathAbsent</span>:
 			log.<span class="tk-fn">Printf</span>(<span class="tk-str">"missing data %s (element %s)"</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">DataPath</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">ElementID</span>)
 		<span class="tk-kw">default</span>:
 			log.<span class="tk-fn">Printf</span>(<span class="tk-str">"%s: %s"</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">Code</span>, re.<span class="tk-type">Diagnostic</span>.<span class="tk-type">Message</span>)
@@ -1064,7 +1064,7 @@ _ = res</pre></div>
 	<span class="tk-type">Message</span>   <span class="tk-type">string</span>
 	<span class="tk-com">// Has unexported fields.</span>
 }</pre></div>
-    <p>The located refusal returned by the authoring commands (<code>ApplyComponentCommand</code>, <code>PreviewComponentMove</code>, and <code>wasm.Engine.Apply</code>/<code>GroupMovePreview</code> for component commands). It embeds an unexported <code>error</code>, so <code>*ComponentCommandError</code> satisfies <code>error</code>; its <code>Error()</code> text is <code>"folio: " + Message</code>. There are no other exported methods.</p>
+    <p>The located refusal returned by the authoring commands (<code>ApplyComponentCommand</code>, <code>PreviewComponentMove</code>, and <code>wasm.Engine.Apply</code>/<code>GroupMovePreview</code> for component commands). It embeds an unexported <code>error</code>, so <code>*ComponentCommandError</code> satisfies <code>error</code>; its <code>Error()</code> text is <code>"folio8: " + Message</code>. There are no other exported methods.</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
       <tbody>
@@ -1075,10 +1075,10 @@ _ = res</pre></div>
     </table></div>
     <p>Not every command failure is a <code>*ComponentCommandError</code>. Several arrive as plain errors, so use <code>errors.As</code> and keep a fallback:</p>
     <ul>
-      <li>malformed JSON (<code>folio: component command is malformed</code>)</li>
-      <li>an unknown kind or wrong <code>version</code> (<code>folio: unknown component command</code>)</li>
-      <li>some arity and field errors (<code>folio: component command has unknown or missing fields</code>)</li>
-      <li>every <code>ApplyPageSetupCommand</code> refusal, whose messages start with <code>folio: page</code></li>
+      <li>malformed JSON (<code>folio8: component command is malformed</code>)</li>
+      <li>an unknown kind or wrong <code>version</code> (<code>folio8: unknown component command</code>)</li>
+      <li>some arity and field errors (<code>folio8: component command has unknown or missing fields</code>)</li>
+      <li>every <code>ApplyPageSetupCommand</code> refusal, whose messages start with <code>folio8: page</code></li>
       <li>a candidate that fails <code>ParseTemplate</code> during the command transaction, which is a <code>*RenderError</code></li>
     </ul>
     <h4 id="diagnostic-codes">Diagnostic codes</h4>
@@ -1232,7 +1232,7 @@ _ = res</pre></div>
       </tbody>
     </table></div>
     <h3 id="authoring-and-canvas-editor-facing">Authoring and canvas (editor-facing)</h3>
-    <p>These functions let an editor draw a template and change it without ever holding the template model. Command payloads and projection shapes follow Folio Designer and are not a frozen API.</p>
+    <p>These functions let an editor draw a template and change it without ever holding the template model. Command payloads and projection shapes follow folio8 Designer and are not a frozen API.</p>
     <h4 id="canvas"><code>Canvas</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">Canvas</span>(t *<span class="tk-type">Template</span>) (<span class="tk-type">CanvasProjection</span>, <span class="tk-type">error</span>)</pre></div>
     <p>Returns page geometry, bands, components, font chains and section-break/page data, all in millipoints. It does not shape text, so it has no <code>TextPaint</code>, image, barcode or QR paint and no pagination. <code>ContentWindowCount</code> is the number of designed pages (one window per page), every origin is <code>0</code>, and <code>ContentWindowCountIsExact</code> is <code>false</code>.</p>
@@ -1246,7 +1246,7 @@ _ = res</pre></div>
 <span class="tk-kw">const</span> <span class="tk-type">GridIncrement</span> <span class="tk-type">int64</span> = <span class="tk-num">6000</span></pre></div>
     <p>Rounds a millipoint value to the nearest multiple of <code>GridIncrement</code> (6 pt), with a midpoint rounding away from zero. The boolean is <code>false</code> when rounding would overflow.</p>
     <p><code>geom.Length</code> is a defined <code>int64</code> type in the module's <code>internal/geom</code> package. Code outside the module cannot import or name it. It <em>can</em> pass an untyped constant, and convert the result with <code>int64(...)</code>; a variable of type <code>int64</code> cannot be passed without naming the type:</p>
-    <div class="sample"><pre data-lang="go">snapped, ok := folio.<span class="tk-fn">SnapToGrid</span>(<span class="tk-num">3500</span>) <span class="tk-com">// untyped constant: compiles</span>
+    <div class="sample"><pre data-lang="go">snapped, ok := folio8.<span class="tk-fn">SnapToGrid</span>(<span class="tk-num">3500</span>) <span class="tk-com">// untyped constant: compiles</span>
 fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snapped), ok)       <span class="tk-com">// 6000 true; SnapToGrid(-3000) gives -6000</span></pre></div>
     <p>The authoring commands' <code>"snap": true</code> applies this same rounding inside the engine, so most callers never call it.</p>
     <h4 id="maxcanvasmillipoints"><code>MaxCanvasMillipoints</code></h4>
@@ -1281,7 +1281,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
       <li>a change that would leave a table <code>minHeight</code> or a section break beyond the new content window</li>
       <li>a projection failure</li>
     </ul>
-    <p>A refusal after the page fields were written restores the previous canonical page. Errors are plain errors whose messages begin <code>folio: page</code> (or <code>folio: unknown page setup command</code> / <code>folio: page setup command is malformed</code>), not <code>*ComponentCommandError</code>.</p>
+    <p>A refusal after the page fields were written restores the previous canonical page. Errors are plain errors whose messages begin <code>folio8: page</code> (or <code>folio8: unknown page setup command</code> / <code>folio8: page setup command is malformed</code>), not <code>*ComponentCommandError</code>.</p>
     <h4 id="previewcomponentmove-and-componentmove"><code>PreviewComponentMove</code> and <code>ComponentMove</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> <span class="tk-fn">PreviewComponentMove</span>(t *<span class="tk-type">Template</span>, command []<span class="tk-type">byte</span>, fonts ...<span class="tk-type">FontSet</span>) (<span class="tk-type">ComponentMove</span>, <span class="tk-type">error</span>)
 
@@ -1633,7 +1633,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
     <div class="sample"><pre class="json" data-lang="json"><span class="tk-punc">{</span><span class="tk-key">"kind"</span><span class="tk-punc">:</span><span class="tk-str">"addFontChain"</span><span class="tk-punc">,</span><span class="tk-key">"version"</span><span class="tk-punc">:</span><span class="tk-num">1</span><span class="tk-punc">,</span><span class="tk-key">"name"</span><span class="tk-punc">:</span><span class="tk-str">"caption"</span><span class="tk-punc">,</span><span class="tk-key">"entries"</span><span class="tk-punc">:</span><span class="tk-punc">[</span><span class="tk-str">"Noto Sans"</span><span class="tk-punc">,</span><span class="tk-str">"Noto Sans Thai"</span><span class="tk-punc">]</span><span class="tk-punc">}</span>
 <span class="tk-punc">{</span><span class="tk-key">"kind"</span><span class="tk-punc">:</span><span class="tk-str">"moveFontChainEntry"</span><span class="tk-punc">,</span><span class="tk-key">"version"</span><span class="tk-punc">:</span><span class="tk-num">1</span><span class="tk-punc">,</span><span class="tk-key">"name"</span><span class="tk-punc">:</span><span class="tk-str">"body"</span><span class="tk-punc">,</span><span class="tk-key">"from"</span><span class="tk-punc">:</span><span class="tk-num">0</span><span class="tk-punc">,</span><span class="tk-key">"to"</span><span class="tk-punc">:</span><span class="tk-num">2</span><span class="tk-punc">}</span></pre></div>
     <h3 id="wasm-integration">wasm integration</h3>
-    <p>Package <code>wasm</code> is the stateful session engine that Folio Designer compiles into its WebAssembly worker. The worker entry point is the <code>main</code> package in <code>folio-go/wasm/cmd/engine</code>, which is not an importable API. It receives base64 request fields, bounded to 8 MiB each, and maps them onto the methods below. Everything here is an editor-facing helper.</p>
+    <p>Package <code>wasm</code> is the stateful session engine that folio8 Designer compiles into its WebAssembly worker. The worker entry point is the <code>main</code> package in <code>folio8-go/wasm/cmd/engine</code>, which is not an importable API. It receives base64 request fields, bounded to 8 MiB each, and maps them onto the methods below. Everything here is an editor-facing helper.</p>
     <p>An <code>Engine</code> always renders and projects with <code>fonts.Shipped()</code>. It holds one template, that template's canonical bytes, a revision counter, the last projection, and undo/redo stacks of at most 100 canonical byte snapshots each. Its fields are not synchronised.</p>
     <h4 id="engine-and-newengine"><code>Engine</code> and <code>NewEngine</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">type</span> <span class="tk-type">Engine</span> <span class="tk-kw">struct</span> {
@@ -1645,15 +1645,15 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
     <h4 id="loading">Loading</h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Initialize</span>(input []<span class="tk-type">byte</span>) (<span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)
 <span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Load</span>(input []<span class="tk-type">byte</span>) (<span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Both behave identically. <code>input</code> is <code>.folio</code> document bytes.</p>
-    <p>The engine parses them with <code>folio.ParseTemplate</code>, re-serializes them to canonical bytes, and projects with <code>folio.CanvasWithTextPaint</code>. Only after all three steps succeed does it install the document: it clears both history stacks, increments the revision and returns the snapshot. On error nothing changes.</p>
+    <p>Both behave identically. <code>input</code> is <code>.folio8</code> document bytes.</p>
+    <p>The engine parses them with <code>folio8.ParseTemplate</code>, re-serializes them to canonical bytes, and projects with <code>folio8.CanvasWithTextPaint</code>. Only after all three steps succeed does it install the document: it clears both history stacks, increments the revision and returns the snapshot. On error nothing changes.</p>
     <p>The input slice is copied, not retained.</p>
     <h4 id="enginesnapshot"><code>Engine.Snapshot</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Snapshot</span>() <span class="tk-type">Snapshot</span></pre></div>
     <p>Returns the current <code>Snapshot</code>. It never fails.</p>
     <h4 id="engineserialize"><code>Engine.Serialize</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Serialize</span>() ([]<span class="tk-type">byte</span>, <span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns a copy of the canonical <code>.folio</code> bytes and the snapshot. It errors when no document is loaded.</p>
+    <p>Returns a copy of the canonical <code>.folio8</code> bytes and the snapshot. It errors when no document is loaded.</p>
     <h4 id="engineapply"><code>Engine.Apply</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Apply</span>(command []<span class="tk-type">byte</span>) (<span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)</pre></div>
     <p><code>command</code> is an authoring command in the JSON shape described in the catalog.</p>
@@ -1665,7 +1665,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
     </ul>
     <p>Processing:</p>
     <ol>
-      <li>The command is applied to a fresh parse of the canonical bytes. <code>kind: "pageSetup"</code> goes to <code>folio.ApplyPageSetupCommand</code>; any other kind goes to <code>folio.ApplyComponentCommand</code> with the shipped fonts.</li>
+      <li>The command is applied to a fresh parse of the canonical bytes. <code>kind: "pageSetup"</code> goes to <code>folio8.ApplyPageSetupCommand</code>; any other kind goes to <code>folio8.ApplyComponentCommand</code> with the shipped fonts.</li>
       <li>If the resulting canonical bytes equal the current bytes, the current snapshot is returned. The revision and history are unchanged.</li>
       <li>Otherwise the new bytes are reparsed and projected with text paint. The previous bytes are pushed to undo, redo is cleared, and the revision is incremented.</li>
     </ol>
@@ -1676,7 +1676,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
     <p>These restore the previous or next canonical bytes and move the current bytes to the opposite stack. The revision <strong>increases</strong> on every successful undo or redo, even though the bytes return to an earlier state. With an empty stack they return the current snapshot together with <code>ErrNoUndo</code> or <code>ErrNoRedo</code>.</p>
     <h4 id="enginevalidate"><code>Engine.Validate</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Validate</span>() (<span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Reparses the engine's canonical bytes with <code>folio.ParseTemplate</code> and returns the snapshot. It does not call <code>folio.Validate</code> and does not render.</p>
+    <p>Reparses the engine's canonical bytes with <code>folio8.ParseTemplate</code> and returns the snapshot. It does not call <code>folio8.Validate</code> and does not render.</p>
     <h4 id="enginerender"><code>Engine.Render</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">Render</span>(template, data, params []<span class="tk-type">byte</span>) ([]<span class="tk-type">byte</span>, <span class="tk-type">RenderResult</span>, <span class="tk-type">error</span>)</pre></div>
     <p>Preconditions:</p>
@@ -1685,29 +1685,29 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
       <li>All three inputs must be non-empty. Send <code>{}</code> for no params.</li>
       <li><code>template</code> must be byte-for-byte equal to the engine's current canonical bytes; it refuses stale template bytes.</li>
     </ul>
-    <p>The engine parses <code>template</code> and calls <code>folio.Render</code> with <code>data</code> as <code>folio.Data</code>, <code>params</code> as <code>folio.Params</code>, and the shipped fonts. It returns a copy of the PDF bytes and a <code>RenderResult</code>. Render errors, such as a <code>*folio.RenderError</code>, are returned unchanged.</p>
+    <p>The engine parses <code>template</code> and calls <code>folio8.Render</code> with <code>data</code> as <code>folio8.Data</code>, <code>params</code> as <code>folio8.Params</code>, and the shipped fonts. It returns a copy of the PDF bytes and a <code>RenderResult</code>. Render errors, such as a <code>*folio8.RenderError</code>, are returned unchanged.</p>
     <h4 id="enginepreviewidentity"><code>Engine.PreviewIdentity</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">PreviewIdentity</span>(data, params []<span class="tk-type">byte</span>) (<span class="tk-type">string</span>, <span class="tk-type">uint64</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns <code>folio.PreviewIdentity</code> over the canonical bytes, <code>data</code>, <code>params</code> and the shipped fonts, plus the current revision. Both inputs must be non-empty.</p>
+    <p>Returns <code>folio8.PreviewIdentity</code> over the canonical bytes, <code>data</code>, <code>params</code> and the shipped fonts, plus the current revision. Both inputs must be non-empty.</p>
     <h4 id="engineassetbytes"><code>Engine.AssetBytes</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">AssetBytes</span>(key <span class="tk-type">string</span>) ([]<span class="tk-type">byte</span>, <span class="tk-type">Snapshot</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns <code>folio.AssetBytes</code> raw bytes for <code>key</code> (the media type is not returned) and the snapshot. Read-only.</p>
+    <p>Returns <code>folio8.AssetBytes</code> raw bytes for <code>key</code> (the media type is not returned) and the snapshot. Read-only.</p>
     <h4 id="engineparameterreferences"><code>Engine.ParameterReferences</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">ParameterReferences</span>() ([]<span class="tk-type">string</span>, <span class="tk-type">uint64</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns <code>folio.ParameterReferences</code> as a non-nil slice, plus the current revision.</p>
+    <p>Returns <code>folio8.ParameterReferences</code> as a non-nil slice, plus the current revision.</p>
     <h4 id="enginestandindata"><code>Engine.StandInData</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">StandInData</span>() ([]<span class="tk-type">byte</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns <code>folio.StandInData</code> bytes. It carries no revision; correlate with <code>Snapshot().Revision</code>.</p>
+    <p>Returns <code>folio8.StandInData</code> bytes. It carries no revision; correlate with <code>Snapshot().Revision</code>.</p>
     <h4 id="enginetablecolumns"><code>Engine.TableColumns</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">TableColumns</span>(tableID <span class="tk-type">string</span>) (<span class="tk-type">TableColumnsResult</span>, <span class="tk-type">error</span>)</pre></div>
-    <p>Returns <code>folio.TableColumns</code> for <code>tableID</code>, tagged with the current revision.</p>
+    <p>Returns <code>folio8.TableColumns</code> for <code>tableID</code>, tagged with the current revision.</p>
     <h4 id="enginegroupmovepreview"><code>Engine.GroupMovePreview</code></h4>
     <div class="sample"><pre data-lang="go"><span class="tk-kw">func</span> (e *<span class="tk-type">Engine</span>) <span class="tk-fn">GroupMovePreview</span>(command []<span class="tk-type">byte</span>) (<span class="tk-type">GroupMoveResult</span>, <span class="tk-type">error</span>)</pre></div>
-    <p><code>command</code> is a <code>moveComponents</code> payload, and its <code>expectedRevision</code> must equal the current revision. The engine calls <code>folio.PreviewComponentMove</code> with the shipped fonts and returns the accepted translation. It does not change bytes, revision or history.</p>
+    <p><code>command</code> is a <code>moveComponents</code> payload, and its <code>expectedRevision</code> must equal the current revision. The engine calls <code>folio8.PreviewComponentMove</code> with the shipped fonts and returns the accepted translation. It does not change bytes, revision or history.</p>
     <p>Every read-only query above returns an error when no document is loaded.</p>
     <h4 id="errnoundo-and-errnoredo"><code>ErrNoUndo</code> and <code>ErrNoRedo</code></h4>
-    <div class="sample"><pre data-lang="go"><span class="tk-kw">var</span> <span class="tk-type">ErrNoUndo</span> = errors.<span class="tk-fn">New</span>(<span class="tk-str">"folio wasm: no undo history"</span>)
-<span class="tk-kw">var</span> <span class="tk-type">ErrNoRedo</span> = errors.<span class="tk-fn">New</span>(<span class="tk-str">"folio wasm: no redo history"</span>)</pre></div>
+    <div class="sample"><pre data-lang="go"><span class="tk-kw">var</span> <span class="tk-type">ErrNoUndo</span> = errors.<span class="tk-fn">New</span>(<span class="tk-str">"folio8 wasm: no undo history"</span>)
+<span class="tk-kw">var</span> <span class="tk-type">ErrNoRedo</span> = errors.<span class="tk-fn">New</span>(<span class="tk-str">"folio8 wasm: no redo history"</span>)</pre></div>
     <p>Sentinel errors from <code>Engine.Undo</code> and <code>Engine.Redo</code>. Test them with <code>errors.Is</code>.</p>
     <h4 id="snapshot"><code>Snapshot</code></h4>
     <div class="tablewrap"><table>
@@ -1718,7 +1718,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
         <tr><td><code>ByteLength</code></td><td><code>int</code></td><td><code>byteLength</code></td><td>Length of the canonical bytes (0 when empty).</td></tr>
         <tr><td><code>CanUndo</code></td><td><code>bool</code></td><td><code>canUndo</code></td><td>Undo history is non-empty.</td></tr>
         <tr><td><code>CanRedo</code></td><td><code>bool</code></td><td><code>canRedo</code></td><td>Redo history is non-empty.</td></tr>
-        <tr><td><code>Canvas</code></td><td><code>*folio.CanvasProjection</code></td><td><code>canvas,omitempty</code></td><td>The current <code>CanvasWithTextPaint</code> projection; nil when empty. The pointer is shared with the engine, so treat it as read-only.</td></tr>
+        <tr><td><code>Canvas</code></td><td><code>*folio8.CanvasProjection</code></td><td><code>canvas,omitempty</code></td><td>The current <code>CanvasWithTextPaint</code> projection; nil when empty. The pointer is shared with the engine, so treat it as read-only.</td></tr>
       </tbody>
     </table></div>
     <h4 id="renderresult"><code>RenderResult</code></h4>
@@ -1728,9 +1728,9 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
         <tr><td><code>PDFSHA256</code></td><td><code>string</code></td><td><code>pdfSha256</code></td><td>Lowercase hex SHA-256 of the returned PDF.</td></tr>
         <tr><td><code>Identity</code></td><td><code>string</code></td><td><code>identity</code></td><td><code>PreviewIdentity</code> digest for this render's inputs.</td></tr>
         <tr><td><code>Revision</code></td><td><code>uint64</code></td><td><code>revision</code></td><td>Revision whose canonical bytes were rendered.</td></tr>
-        <tr><td><code>Diagnostics</code></td><td><code>[]folio.Diagnostic</code></td><td><code>diagnostics</code></td><td>Copy of the render's Warning diagnostics. Not <code>omitempty</code>; the elements have no JSON tags, so they encode with Go field names.</td></tr>
-        <tr><td><code>ElapsedMs</code></td><td><code>int64</code></td><td><code>elapsedMs</code></td><td>Wall-clock milliseconds spent in <code>folio.Render</code> alone. It is measured with <code>time</code>, varies between runs, and never affects PDF bytes.</td></tr>
-        <tr><td><code>Version</code></td><td><code>string</code></td><td><code>version</code></td><td><code>folio.Version</code>.</td></tr>
+        <tr><td><code>Diagnostics</code></td><td><code>[]folio8.Diagnostic</code></td><td><code>diagnostics</code></td><td>Copy of the render's Warning diagnostics. Not <code>omitempty</code>; the elements have no JSON tags, so they encode with Go field names.</td></tr>
+        <tr><td><code>ElapsedMs</code></td><td><code>int64</code></td><td><code>elapsedMs</code></td><td>Wall-clock milliseconds spent in <code>folio8.Render</code> alone. It is measured with <code>time</code>, varies between runs, and never affects PDF bytes.</td></tr>
+        <tr><td><code>Version</code></td><td><code>string</code></td><td><code>version</code></td><td><code>folio8.Version</code>.</td></tr>
       </tbody>
     </table></div>
     <h4 id="tablecolumnsresult"><code>TableColumnsResult</code></h4>
@@ -1738,7 +1738,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
       <thead><tr><th>Field</th><th>Type</th><th>JSON key</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td><code>Revision</code></td><td><code>uint64</code></td><td><code>revision</code></td><td>Revision the projection was taken at.</td></tr>
-        <tr><td><code>Table</code></td><td><code>folio.TableColumnsProjection</code></td><td><code>table</code></td><td>The table projection.</td></tr>
+        <tr><td><code>Table</code></td><td><code>folio8.TableColumnsProjection</code></td><td><code>table</code></td><td>The table projection.</td></tr>
       </tbody>
     </table></div>
     <h4 id="groupmoveresult"><code>GroupMoveResult</code></h4>
@@ -1754,7 +1754,7 @@ fmt.<span class="tk-fn">Println</span>(<span class="tk-type">int64</span>(snappe
 
   <section id="command-line-tool">
     <h2>Command-line tool</h2>
-    <p>The module also contains a <code>folio</code> command with <code>validate</code> and <code>render</code> subcommands (<code>go run github.com/panitw/folio/folio-go/cmd/folio@main render -data data.json -o out.pdf template.folio</code>). It is a thin wrapper over <code>Validate</code> and <code>Render</code>; its flags are described in the repository README.</p>
+    <p>The module also contains a <code>folio8</code> command with <code>validate</code> and <code>render</code> subcommands (<code>go run github.com/panitw/folio8/folio8-go/cmd/folio8@main render -data data.json -o out.pdf template.folio8</code>). It is a thin wrapper over <code>Validate</code> and <code>Render</code>; its flags are described in the repository README.</p>
   </section>
 <!-- /body -->
 

@@ -63,7 +63,7 @@ headwords though both of their parts are, and which therefore do carry a break.
 
 AC14's exact-equality assertion carries a small, enumerated, **fail-closed-only** exception for
 `thai-007`/`008`/`009` — see `s4ExpectedDivergences` in
-`folio-go/internal/text/s4_expected_test.go`. The engine cannot be made to propose these breaks without
+`folio8-go/internal/text/s4_expected_test.go`. The engine cannot be made to propose these breaks without
 inventing a heuristic (forbidden by AD-25) or editing the shipped wordlist to make a real Thai word
 disappear (forbidden, D-000.32) — the divergence is named and bounded rather than hidden inside a
 relaxed assertion.
@@ -85,7 +85,7 @@ word-boundary-aware breaking. The seven declarations are template-level facts ab
 
 With all seven CJK items declared atomic, no fixture subject would exercise the engine's standard
 per-character CJK breaking at all — so **`cjk-008`** was added, undeclared: `结算单共三页请核对每一行的
-金额与日期`, 18 runes, attested verbatim in `fixtures/wrapped-text/input.folio`, every rune Unicode
+金额与日期`, 18 runes, attested verbatim in `fixtures/wrapped-text/input.folio8`, every rune Unicode
 category `Lo`, no punctuation and no digits. Its label — one word per rune, breaking at every interior
 position — is **derived from UAX #14, not a native-speaker judgment**, and its gloss says so explicitly
 so it is never mistaken for an owner-adjudicated item. It also demonstrates the mechanism directly:
@@ -99,7 +99,7 @@ passed" is exactly the shape this fixture exists to make impossible.
 ## A narrowing this fixture does not attempt to close
 
 The engine does not implement kinsoku (line-start/line-end prohibitions for CJK punctuation) — see
-`folio-format.md`'s Line breaking section. `cjk-008` was deliberately chosen punctuation-free so it
+`folio8-format.md`'s Line breaking section. `cjk-008` was deliberately chosen punctuation-free so it
 exercises per-character CJK breaking without straying into a prohibition the engine does not honour.
 
 ## Coverage
@@ -111,7 +111,7 @@ they are AD-25's atomic-unknown-run absolute stated as a conformance expectation
 
 ## Capability limit, stated where the narrowing already lives
 
-`folio-format.md`'s line-breaking section narrows its UAX #14 claim by name (no hyphenation, no break at
+`folio8-format.md`'s line-breaking section narrows its UAX #14 claim by name (no hyphenation, no break at
 `-`, no contextual pair rules). It also now states, in the same register: **no break inside a dictionary
 headword, including lexicalised compounds a native reader would accept breaking.** This is a stated
 capability limit, not a hidden one, and it is fail-closed — the compound moves to the next line whole,
@@ -120,7 +120,7 @@ never renders wrongly.
 ## Pending: the human sign-off
 
 **The labels here were authored by an agent, so an agent confirming them would be marking its own
-work.** `folio-go/expected_breaks_signoff_matrix_test.go` is a `//go:build matrix` test that **fails**
+work.** `folio8-go/expected_breaks_signoff_matrix_test.go` is a `//go:build matrix` test that **fails**
 until `break-signoff.json` exists, naming this file's (now corrected) sha256. The Epic 2 boundary gate
 cannot pass until a person has signed off on the corrected labels — requested only now that this
 correction has landed (D-000.41, D-000.43).

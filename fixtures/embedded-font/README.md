@@ -1,6 +1,6 @@
 # `embedded-font`
 
-**The first `.folio` in this repository that carries a font face — and the first whose page is drawn
+**The first `.folio8` in this repository that carries a font face — and the first whose page is drawn
 with one.**
 
 Story 8.3 (FR53, FR56) made the face travel. Story 8.4 (FR54) made it draw. The document declares
@@ -25,29 +25,29 @@ family, style, licence and source.
 The record used to carry four keys — `family`, `licence`, `source`, `style` — and **no licence text
 and no copyright**. Story 8.6 made those two REQUIRED of an asset a chain names by
 `{"asset": key}`: a font that travels without its terms is not a font that may be passed on, so a
-`.folio` carrying one is refused at load, located at the asset record and naming the chain entry
+`.folio8` carrying one is refused at load, located at the asset record and naming the chain entry
 that makes it an embedded face. This document's chain names its asset, so under the new rule the
 old file was **invalid** and had to be amended. (An UNREFERENCED font asset is untouched by the
 rule and still loads with no record at all.)
 
 Neither new value is written down. `licenceText` is
-`folio-go/fonts/notosansthai/LICENSE-OFL.txt` verbatim, embedded into the test binary beside the
+`folio8-go/fonts/notosansthai/LICENSE-OFL.txt` verbatim, embedded into the test binary beside the
 face itself, and `copyright` is that file's own first line — so the document's terms and the terms
 committed beside the bytes cannot disagree. A hand-copied licence would be a second authority on
 what the terms are, which is the exact failure this rule exists to prevent.
 
 **`expected.pdf` did not move, and that was the expectation rather than the discovery.** The
 recorded digest in `expected.json` and `signoff.json` is the SHA-256 of `expected.pdf`, not of
-`input.folio`, and the `font` record reaches no output byte: `folio-format.md` states the engine
+`input.folio8`, and the `font` record reaches no output byte: `folio8-format.md` states the engine
 derives none of it from the bytes and none of it is required to render, and Story 8.6's subsetting
 measurement found the produced PDF carries no `name` table at all. All 23 golden digests hold.
 
 The bytes are the **shipped** Noto Sans Thai
-(`folio-go/fonts/notosansthai/NotoSansThai-Regular.ttf`), embedded here as an asset rather than
+(`folio8-go/fonts/notosansthai/NotoSansThai-Regular.ttf`), embedded here as an asset rather than
 supplied through the `FontSet`. **No new binary entered the repository for this fixture**, and
-`input.folio` is not hand-transcribed: `embeddedFontTemplateJSON()`
-(`folio-go/embedded_font_fixture_test.go`) derives it from those shipped bytes by the format's own
-rules, and `TestEmbeddedFontFixtureMatchesInputFolio` pins the committed file against it.
+`input.folio8` is not hand-transcribed: `embeddedFontTemplateJSON()`
+(`folio8-go/embedded_font_fixture_test.go`) derives it from those shipped bytes by the format's own
+rules, and `TestEmbeddedFontFixtureMatchesInputFolio8` pins the committed file against it.
 
 ## The text is pure Thai, and that is the whole measurement
 
@@ -109,16 +109,16 @@ build never subsets it.
 **The designer canvas *painting* with the carried face.** The engine now **measures** with it — the
 canvas paint projection's fragment origins and advances come from the render path's own
 `fontChain`/`shapeSegments`/`chainVerticalModel`, asserted by
-`folio-go/canvas_embedded_face_test.go` — but the browser has **no CSS family for a carried face at
+`folio8-go/canvas_embedded_face_test.go` — but the browser has **no CSS family for a carried face at
 all** and falls through to generic `sans-serif`. That is **Story 8.4a** (DW-35), and the gap is
 recorded by a test rather than by a comment:
-`folio-designer/src/canvas-font-stack.test.ts`.
+`folio8-designer/src/canvas-font-stack.test.ts`.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `input.folio` | The document. Canonical bytes; a serializer fixed point. |
+| `input.folio8` | The document. Canonical bytes; a serializer fixed point. |
 | `expected.pdf` | The golden, recorded by Story 8.4 and registered in `goldenDigestRecord`. |
 | `expected.json` | The recorded render hash, toolchain and library version for the matrix legs. |
 

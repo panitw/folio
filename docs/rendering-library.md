@@ -1,14 +1,14 @@
-# Folio rendering library for Go
+# folio8 rendering library for Go
 
-`folio-go` turns a `.folio` template, JSON data and runtime parameters into a PDF 1.7 document. It
+`folio8-go` turns a `.folio8` template, JSON data and runtime parameters into a PDF 1.7 document. It
 reads no clock, no environment, no network and no host fonts while rendering: everything a document
 needs is passed in. The same inputs rendered with the same Go toolchain produce the same bytes.
 
 This guide covers installing the module, rendering your first PDF, the inputs and failures you have to
-handle, the template features that change what is drawn, and every exported API of the `folio`,
+handle, the template features that change what is drawn, and every exported API of the `folio8`,
 `fonts` and `wasm` packages. Two companion references hold the rules this guide does not repeat:
 
-- [The `.folio` format](folio-format.md) — every field of a template, version rules and load errors.
+- [The `.folio8` format](folio8-format.md) — every field of a template, version rules and load errors.
 - [Expressions](expression-reference.md) — the syntax inside `{{ }}` and Visibility formulas.
 
 Contents: [Install](#install) · [Your first PDF](#your-first-pdf) ·
@@ -20,44 +20,44 @@ Contents: [Install](#install) · [Your first PDF](#your-first-pdf) ·
 
 ## Install
 
-Folio has no tagged release yet, so you install a commit of the `main` branch. From your
+folio8 has no tagged release yet, so you install a commit of the `main` branch. From your
 application's directory:
 
 ```sh
-go mod init example.com/folio-demo
-go get github.com/panitw/folio/folio-go@main
+go mod init example.com/folio8-demo
+go get github.com/panitw/folio8/folio8-go@main
 go mod tidy
 ```
 
-On 2026-09-15 `@main` resolved to `github.com/panitw/folio/folio-go v0.0.0-20260914182357-563352e6f92a`
+On 2026-09-15 `@main` resolved to `github.com/panitw/folio8/folio8-go v0.0.0-20260914182357-563352e6f92a`
 (commit `563352e`), and this guide's programs and example templates were verified against that
 version from a fresh module. `go get` records the resolved pseudo-version in your `go.mod`, so your
-build stays pinned to that commit until you run `go get github.com/panitw/folio/folio-go@main` again
+build stays pinned to that commit until you run `go get github.com/panitw/folio8/folio8-go@main` again
 to upgrade. The public API is not frozen before a release is tagged, so read the changes before you
 upgrade. If a module proxy still serves an older commit for `@main`, fetch with `GOPROXY=direct`.
 
-Import the module root as `folio`. The shipped fonts are a separate, opt-in package:
+Import the module root as `folio8`. The shipped fonts are a separate, opt-in package:
 
 ```go
 import (
-	folio "github.com/panitw/folio/folio-go"
-	"github.com/panitw/folio/folio-go/fonts"
+	folio8 "github.com/panitw/folio8/folio8-go"
+	"github.com/panitw/folio8/folio8-go/fonts"
 )
 ```
 
-**Toolchain.** `folio-go/go.mod` declares `go 1.25.0` as the minimum language version and
+**Toolchain.** `folio8-go/go.mod` declares `go 1.25.0` as the minimum language version and
 `toolchain go1.26.0`. A dependency's `toolchain` line does not choose the compiler for your
 application: your own `go.mod` `toolchain` line, or your `GOTOOLCHAIN` setting, does. If you record
 PDF hashes in your own tests and expect them to hold, pin your own toolchain as well as your inputs.
 
 **Binary size.** `fonts` embeds its faces with `go:embed`, about 14.8 MB of raw font data. Package
-`folio` never imports `fonts`, so the data is in your binary only if you import `fonts` yourself.
+`folio8` never imports `fonts`, so the data is in your binary only if you import `fonts` yourself.
 
 ## Your first PDF
 
 A template, a data file and a short program. Save these two files next to the program:
 
-`first-pdf.folio`
+`first-pdf.folio8`
 
 ```json
 {
@@ -106,7 +106,7 @@ A template, a data file and a short program. Save these two files next to the pr
 `main.go`
 
 ```go
-// Command first-pdf renders docs/examples/first-pdf.folio to first-pdf.pdf.
+// Command first-pdf renders docs/examples/first-pdf.folio8 to first-pdf.pdf.
 package main
 
 import (
@@ -115,12 +115,12 @@ import (
 	"log"
 	"os"
 
-	folio "github.com/panitw/folio/folio-go"
-	"github.com/panitw/folio/folio-go/fonts"
+	folio8 "github.com/panitw/folio8/folio8-go"
+	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
 func main() {
-	tpl, err := folio.LoadTemplate("first-pdf.folio")
+	tpl, err := folio8.LoadTemplate("first-pdf.folio8")
 	if err != nil {
 		log.Fatal(describe("load", err))
 	}
@@ -130,7 +130,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	res, err := folio.Render(tpl, folio.Data(data), nil, fonts.Shipped())
+	res, err := folio8.Render(tpl, folio8.Data(data), nil, fonts.Shipped())
 	if err != nil {
 		log.Fatal(describe("render", err))
 	}
@@ -147,7 +147,7 @@ func main() {
 
 // describe adds the stable diagnostic code when err carries one.
 func describe(stage string, err error) string {
-	var re *folio.RenderError
+	var re *folio8.RenderError
 	if errors.As(err, &re) {
 		d := re.Diagnostic
 		return fmt.Sprintf("%s failed: %s element=%q path=%q: %v", stage, d.Code, d.ElementID, d.DataPath, err)
@@ -162,29 +162,29 @@ illustrative. The page reads "Hello, Ada Lovelace!" in Noto Sans.
 
 What each step does:
 
-1. `folio.LoadTemplate` reads a file and calls `folio.ParseTemplate`. Use `ParseTemplate` directly
+1. `folio8.LoadTemplate` reads a file and calls `folio8.ParseTemplate`. Use `ParseTemplate` directly
    when the template bytes come from memory, an embed or a database. Both return an opaque
-   `*folio.Template`; you cannot build one field by field, only by parsing.
-2. `folio.Data` is your report data as raw JSON bytes. `nil` params means no runtime values.
+   `*folio8.Template`; you cannot build one field by field, only by parsing.
+2. `folio8.Data` is your report data as raw JSON bytes. `nil` params means no runtime values.
 3. `fonts.Shipped()` supplies the face named by the template's `fonts` chain (`"Noto Sans"`).
-4. `folio.Render` returns a `folio.Result`: `Bytes` is the complete PDF whenever the error is nil,
+4. `folio8.Render` returns a `folio8.Result`: `Bytes` is the complete PDF whenever the error is nil,
    and `Diagnostics` holds warnings that accompanied that successful render.
 5. A failure is an ordinary Go `error`. When it concerns the template, the data or a render rule, it
-   is a `*folio.RenderError` whose `Diagnostic` carries a stable `Code`; `errors.As` finds it. Other
+   is a `*folio8.RenderError` whose `Diagnostic` carries a stable `Code`; `errors.As` finds it. Other
    failures, such as malformed JSON data or a file that cannot be read, are plain errors — keep the
    fallback branch.
 
-`folio.SerializeTemplate(tpl)` returns the template's canonical `.folio` bytes, which is how an
+`folio8.SerializeTemplate(tpl)` returns the template's canonical `.folio8` bytes, which is how an
 editor saves a template it loaded. Saving writes keys in canonical order, keeps the declared
 `version` unless the content requires a higher one, and never lowers it.
 
 ## Writing to an `io.Writer`
 
-`folio.RenderTo` takes the same arguments as `Render` with a writer first, writes the PDF and
+`folio8.RenderTo` takes the same arguments as `Render` with a writer first, writes the PDF and
 returns the warnings:
 
 ```go
-diagnostics, err := folio.RenderTo(writer, tpl, data, params, fontSet)
+diagnostics, err := folio8.RenderTo(writer, tpl, data, params, fontSet)
 ```
 
 It builds the whole document in memory first — the PDF's cross-reference table and `/ID` depend on
@@ -208,32 +208,32 @@ import (
 	"log"
 	"os"
 
-	folio "github.com/panitw/folio/folio-go"
-	"github.com/panitw/folio/folio-go/fonts"
+	folio8 "github.com/panitw/folio8/folio8-go"
+	"github.com/panitw/folio8/folio8-go/fonts"
 )
 
 func main() {
-	templateBytes, err := os.ReadFile("first-pdf.folio")
+	templateBytes, err := os.ReadFile("first-pdf.folio8")
 	if err != nil {
 		log.Fatal(err)
 	}
-	tpl, err := folio.ParseTemplate(templateBytes)
+	tpl, err := folio8.ParseTemplate(templateBytes)
 	if err != nil {
 		log.Fatal(err)
 	}
-	data := folio.Data(`{"customer": {"name": "Ada Lovelace"}}`)
-	params := folio.Params(`{}`)
+	data := folio8.Data(`{"customer": {"name": "Ada Lovelace"}}`)
+	params := folio8.Params(`{}`)
 	fontSet := fonts.Shipped()
 
 	// Validate runs the same checks as a render, with the same inputs, without
 	// producing a PDF.
-	warnings, err := folio.Validate(templateBytes, data, params, fontSet)
+	warnings, err := folio8.Validate(templateBytes, data, params, fontSet)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("validate: %d warnings\n", len(warnings))
 
-	res, err := folio.Render(tpl, data, params, fontSet)
+	res, err := folio8.Render(tpl, data, params, fontSet)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	diagnostics, err := folio.RenderTo(out, tpl, data, params, fontSet)
+	diagnostics, err := folio8.RenderTo(out, tpl, data, params, fontSet)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
@@ -262,9 +262,9 @@ func main() {
 	fmt.Println("bytes equal:", bytes.Equal(written, res.Bytes))
 
 	// A writer that fails is reported as an error; the PDF was fully built first.
-	_, err = folio.RenderTo(failingWriter{}, tpl, data, params, fontSet)
+	_, err = folio8.RenderTo(failingWriter{}, tpl, data, params, fontSet)
 	fmt.Println("failing writer:", err)
-	var re *folio.RenderError
+	var re *folio8.RenderError
 	fmt.Println("is a RenderError:", errors.As(err, &re))
 }
 
@@ -278,11 +278,11 @@ Verified output:
 ```text
 validate: 0 warnings
 bytes equal: true
-failing writer: folio: RenderTo: write failed after 0 of 53035 bytes: disk full
+failing writer: folio8: RenderTo: write failed after 0 of 53035 bytes: disk full
 is a RenderError: false
 ```
 
-A writer failure is a plain error, not a `*folio.RenderError`: nothing is wrong with the document.
+A writer failure is a plain error, not a `*folio8.RenderError`: nothing is wrong with the document.
 
 **In an HTTP handler**, a render error returned by `RenderTo` happens before any byte is written, so
 you can still send an error status. A write error happens after the response has started — the
@@ -290,7 +290,7 @@ status line and part of the body may already be on the wire — so you can only 
 status code with certainty, call `Render` first and write `res.Bytes` yourself:
 
 ```go
-res, err := folio.Render(tpl, data, params, fontSet)
+res, err := folio8.Render(tpl, data, params, fontSet)
 if err != nil {
 	http.Error(w, "could not render statement", http.StatusInternalServerError)
 	return
@@ -310,7 +310,7 @@ empty data it correctly reports that the paths your template binds to are absent
 
 ### Data and params
 
-`folio.Data` and `folio.Params` are distinct types over raw JSON bytes, so swapping them at a call
+`folio8.Data` and `folio8.Params` are distinct types over raw JSON bytes, so swapping them at a call
 site does not compile.
 
 - **Data** is the report: `{{customer.name}}` and `transactions[]` read from it. It must be valid JSON.
@@ -323,14 +323,14 @@ site does not compile.
   is present and JSON `null` renders empty.
 - Numbers keep the precision written in the JSON. Both inputs are decoded as exact decimals, never as
   `float64`. Build the JSON from your own values (strings, `json.Number`, decimal types) rather than
-  decoding into `float64` and re-encoding, which rounds before Folio ever sees the value.
+  decoding into `float64` and re-encoding, which rounds before folio8 ever sees the value.
 - `params.documentDate` is reserved: an RFC 3339 timestamp that, when present, is written as the PDF's
   creation and modification date. A present value that is not a valid timestamp fails with
   `DOCUMENT_DATE_INVALID`. Without it the PDF has no date at all.
 
 ### Fonts
 
-A render uses only the fonts you pass. `folio.FontSet` maps a face name to raw OpenType/TrueType bytes:
+A render uses only the fonts you pass. `folio8.FontSet` maps a face name to raw OpenType/TrueType bytes:
 
 ```go
 type FontSet map[string][]byte
@@ -341,9 +341,9 @@ A template's `fonts` object declares named fallback chains, and each text elemen
 entry is either a face **name**, looked up in your `FontSet`, or an `{"asset": "<key>"}` entry, a
 face the template carries in its own `assets` — resolved by asset key only, never by name, so a
 `FontSet` entry can never replace an embedded face or the reverse. A chain entry may also declare
-`bold`, `italic` and `boldItalic` faces; `style.bold`/`style.italic` pick those, and Folio never
-synthesises a weight or slant. See [`fonts`](folio-format.md#fonts) and
-[`assets`](folio-format.md#assets) for the rules.
+`bold`, `italic` and `boldItalic` faces; `style.bold`/`style.italic` pick those, and folio8 never
+synthesises a weight or slant. See [`fonts`](folio8-format.md#fonts) and
+[`assets`](folio8-format.md#assets) for the rules.
 
 `fonts.Shipped()` returns a fresh `FontSet` with these face names:
 
@@ -373,16 +373,16 @@ A character that no face in its chain covers is omitted, never drawn as a box, a
 the warning `TEXT_MISSING_GLYPH`. A bold or italic request that the covering entry declares no face
 for is drawn in that entry's regular face with the warning `TEXT_STYLE_FACE_UNDECLARED`. A chain face
 missing from the `FontSet`, or bytes that are not a usable font, fail the render with an error naming the element and the chain;
-that error is not a `*folio.RenderError`, so handle it in your fallback branch.
+that error is not a `*folio8.RenderError`, so handle it in your fallback branch.
 
 ## Warnings and errors
 
-Folio reports every problem as a `folio.Diagnostic`:
+folio8 reports every problem as a `folio8.Diagnostic`:
 
 | Field | Meaning |
 |---|---|
-| `Severity` | `folio.SeverityWarning` or `folio.SeverityError`. `Severity.String()` returns `"Warning"` or `"Error"`; the zero value prints `"Severity(unset)"` and is never produced by Folio. |
-| `Code` | A stable string from a closed registry, such as `"TEXT_CLIPPED_WIDTH"`. Compare against the `folio.DiagCode…` constants. A code's meaning never changes. |
+| `Severity` | `folio8.SeverityWarning` or `folio8.SeverityError`. `Severity.String()` returns `"Warning"` or `"Error"`; the zero value prints `"Severity(unset)"` and is never produced by folio8. |
+| `Code` | A stable string from a closed registry, such as `"TEXT_CLIPPED_WIDTH"`. Compare against the `folio8.DiagCode…` constants. A code's meaning never changes. |
 | `ElementID` | The template element (`"e7"`) or table column the problem concerns, when there is one. |
 | `DataPath` | The data path, or for load errors the template field path (`"pages[1].sectionBreak"`, `"table.width"`), when there is one. |
 | `Message` | A human-readable sentence. Print it; never parse it. |
@@ -390,19 +390,19 @@ Folio reports every problem as a `folio.Diagnostic`:
 **Warnings accompany a successful render.** The PDF in `Result.Bytes` (or written by `RenderTo`) is
 complete, and something could not be honoured exactly — text clipped at its box, a missing glyph, a
 barcode that could not be drawn. `Result.Diagnostics` lists them in document order, and is `nil`
-when there are none. `folio render -strict` turns warnings into a failure; in Go, decide yourself.
+when there are none. `folio8 render -strict` turns warnings into a failure; in Go, decide yourself.
 
 **Errors abort.** `LoadTemplate`, `ParseTemplate`, `Render`, `RenderTo` and `Validate` return a Go
-`error`, and no PDF. When the error is a known condition it is a `*folio.RenderError` whose
+`error`, and no PDF. When the error is a known condition it is a `*folio8.RenderError` whose
 `Diagnostic` has `Severity` `SeverityError` and a code; `Unwrap` exposes the underlying error.
 
 ```go
-res, err := folio.Render(tpl, data, params, fontSet)
-var re *folio.RenderError
+res, err := folio8.Render(tpl, data, params, fontSet)
+var re *folio8.RenderError
 switch {
 case errors.As(err, &re):
 	switch re.Diagnostic.Code {
-	case folio.DiagCodeBindingPathAbsent:
+	case folio8.DiagCodeBindingPathAbsent:
 		return fmt.Errorf("data is missing %s (element %s)", re.Diagnostic.DataPath, re.Diagnostic.ElementID)
 	default:
 		return fmt.Errorf("%s: %w", re.Diagnostic.Code, err)
@@ -411,7 +411,7 @@ case err != nil:
 	return err // not a document problem: invalid JSON data, a nil template, an I/O failure
 }
 for _, d := range res.Diagnostics {
-	if d.Code == folio.DiagCodeTextMissingGlyph {
+	if d.Code == folio8.DiagCodeTextMissingGlyph {
 		log.Printf("element %s lost a character: %s", d.ElementID, d.Message)
 	}
 }
@@ -449,7 +449,7 @@ element in `ElementID`. Table width allocation problems are `TEMPLATE_FIELD_INVA
 - Locale and time are document properties: the template's `locale` (`en`, `th`, `zh-Hans` or `ja`)
   and fixed `utcOffset` drive `formatDate`, `formatNumber` and line breaking. Any other locale is a
   load error.
-- No PDF date is written unless you pass `params.documentDate`. The `folio` command-line tool fills
+- No PDF date is written unless you pass `params.documentDate`. The `folio8` command-line tool fills
   that param from `SOURCE_DATE_EPOCH` when you have not supplied one; the library never reads that
   variable.
 - Nothing in this guide is a statement about concurrent use; the library makes no documented
@@ -464,7 +464,7 @@ element in `ElementID`. Table width allocation problems are `TEMPLATE_FIELD_INVA
 - **Thai names.** Thai has no spaces between words and breaks from a dictionary, which cannot tell a
   name from the ordinary words it is made of. List data paths whose values must never break in the
   document's `unbreakableValues`; a name inside free-form text is still breakable. See
-  [Line breaking](folio-format.md#line-breaking).
+  [Line breaking](folio8-format.md#line-breaking).
 - **Latin breaking** is at spaces only: no hyphenation, no break after `-`, and it is not UAX #14.
 - **CJK kinsoku** is not implemented: a line may begin with `，` or end with an opening bracket.
 - Expression syntax, limits and division scale: see [Expressions](expression-reference.md).
@@ -494,9 +494,9 @@ decimal arithmetic, nested `? :` and the literals `true`, `false` and `null` wor
 `if()`. A number printed bare in text appears as its exact decimal (`{{1 / 3}}` prints `0.3333`); use
 `formatNumber` for grouping. A hidden element leaves its siblings where they are. Syntax, precedence,
 limits and division scale are in [Expressions](expression-reference.md#formulas-and-visibility); field rules in
-[Expressions](folio-format.md#expressions).
+[Expressions](folio8-format.md#expressions).
 
-`formula-visibility.folio`
+`formula-visibility.folio8`
 
 ```json
 {
@@ -545,9 +545,9 @@ A `barcode` element encodes its `value` as Code 128; a `qrcode` element encodes 
 error correction `L`, `M` (the default), `Q` or `H`. `value` binds like text. Both draw black vector
 modules of one whole-millipoint width, as large as fits the box with the quiet zone inside it, centred
 and never distorted, with no human-readable text and no `style`. Store control characters as real
-characters (`"\r"` in JSON). See [Elements](folio-format.md#elements).
+characters (`"\r"` in JSON). See [Elements](folio8-format.md#elements).
 
-`barcode-qrcode.folio`
+`barcode-qrcode.folio8`
 
 ```json
 {
@@ -603,10 +603,10 @@ default) moves the section by whole pages, keeping its declared position; with
 `"sectionBreakAnchor": false` the section follows where the content above ends when it fits on that
 page. When nothing crosses the line, the PDF is byte-identical to the same template without the key.
 The break is never drawn, and a `keepTogether` group split by it is split with the warning
-`SECTION_BREAK_SPLITS_KEEP_TOGETHER`. See [Pagination](folio-format.md#pagination) and
-[`bands`](folio-format.md#bands).
+`SECTION_BREAK_SPLITS_KEEP_TOGETHER`. See [Pagination](folio8-format.md#pagination) and
+[`bands`](folio8-format.md#bands).
 
-`section-break.folio` (anchored)
+`section-break.folio8` (anchored)
 
 ```json
 {
@@ -636,7 +636,7 @@ The break is never drawn, and a `keepTogether` group split by it is split with t
 }
 ```
 
-`section-break-unanchored.folio` differs only in the content band's keys:
+`section-break-unanchored.folio8` differs only in the content band's keys:
 
 ```json
 {
@@ -701,9 +701,9 @@ follows the previous page: `true` (Page Break on, the default after page 1) star
 after the previous page and all its overflow; `false` continues directly where the previous page's
 content ended, as one rigid block, if the previous page overflowed onto more than one output page
 and the block fits in the room left — otherwise it starts a new output page. See
-[Designed pages](folio-format.md#designed-pages).
+[Designed pages](folio8-format.md#designed-pages).
 
-`designed-pages.folio` (Page Break on)
+`designed-pages.folio8` (Page Break on)
 
 ```json
 {
@@ -735,7 +735,7 @@ and the block fits in the room left — otherwise it starts a new output page. S
 }
 ```
 
-`designed-pages-page-break-off.folio`
+`designed-pages-page-break-off.folio8`
 
 ```json
 {
@@ -791,9 +791,9 @@ A table's `style.border` and `style.background` draw one frame around each page'
 not a border on every cell. `rules` draws interior lines between `columns` and/or `rows`, never on
 the frame's edge. `minHeight` is a floor for each page's slice: the frame and column rules extend to
 it, rows are never stretched, and following content starts below it. Column labels may wrap onto
-several lines, and `headerHeight` is then the header's minimum height. See [`table`](folio-format.md#table).
+several lines, and `headerHeight` is then the header's minimum height. See [`table`](folio8-format.md#table).
 
-`ruled-table.folio`
+`ruled-table.folio8`
 
 ```json
 {
@@ -833,7 +833,7 @@ The page shows a 180 × 90 pt frame although three rows fill only about 43 pt, o
 between the two columns running the frame's full height, and three horizontal rules: under the
 header and between the rows, none under the last row. No warnings.
 
-`ruled-table-unplaceable.folio` asks for a floor taller than the 110 pt content window:
+`ruled-table-unplaceable.folio8` asks for a floor taller than the 110 pt content window:
 
 ```json
 {
@@ -863,7 +863,7 @@ header and between the rows, none under the last row. No warnings.
 }
 ```
 
-`ParseTemplate` refuses it with a `*folio.RenderError` whose code is `TABLE_MIN_HEIGHT_UNPLACEABLE`
+`ParseTemplate` refuses it with a `*folio8.RenderError` whose code is `TABLE_MIN_HEIGHT_UNPLACEABLE`
 and `ElementID` is `e1`; there is no template to render. The same page with data or fonts cannot
 change that outcome.
 
@@ -874,26 +874,26 @@ The frame meaning of `style.border` applies to every table, including templates 
 ### Other version-gated table features
 
 - **Proportional widths** (`3.0`): declare the table's total `width` and a `proportion` on each column
-  instead of column widths. Folio allocates exact millipoint widths that sum to the total. A zero-width
+  instead of column widths. folio8 allocates exact millipoint widths that sum to the total. A zero-width
   allocation or a mix of both representations fails at load with `TEMPLATE_FIELD_INVALID`, `DataPath`
   `table.width` or `column.<field>`.
 - **Column `headerAlign`** (`3.2`): aligns one column's header cell independently of its data.
 
 ## API reference
 
-This section lists every exported identifier in the three packages of the `github.com/panitw/folio/folio-go` module:
+This section lists every exported identifier in the three packages of the `github.com/panitw/folio8/folio8-go` module:
 
 | Import path | Package | Role |
 |---|---|---|
-| `github.com/panitw/folio/folio-go` | `folio` | Parsing, rendering, validation, diagnostics, template helpers, and the canvas/authoring helpers used by Folio Designer. |
-| `github.com/panitw/folio/folio-go/fonts` | `fonts` | The shipped font faces, as a ready-made `folio.FontSet`. Opt-in: package `folio` never imports it. |
-| `github.com/panitw/folio/folio-go/wasm` | `wasm` | The browser/editor session engine compiled into Folio Designer's WebAssembly worker. |
+| `github.com/panitw/folio8/folio8-go` | `folio8` | Parsing, rendering, validation, diagnostics, template helpers, and the canvas/authoring helpers used by folio8 Designer. |
+| `github.com/panitw/folio8/folio8-go/fonts` | `fonts` | The shipped font faces, as a ready-made `folio8.FontSet`. Opt-in: package `folio8` never imports it. |
+| `github.com/panitw/folio8/folio8-go/wasm` | `wasm` | The browser/editor session engine compiled into folio8 Designer's WebAssembly worker. |
 
-**Stability.** The module has no release tag yet: `folio.Version` is `"0.0.0-dev"`. The rendering and validation entry points, the font input and the diagnostic types are the library surface a server-side application uses. The *authoring and canvas* APIs and the whole `wasm` package are **editor-facing helpers**. Their JSON projections and command payloads track Folio Designer, which lives in the same repository and changes in the same commit. They are not a frozen API; expect fields and command kinds to change without notice.
+**Stability.** The module has no release tag yet: `folio8.Version` is `"0.0.0-dev"`. The rendering and validation entry points, the font input and the diagnostic types are the library surface a server-side application uses. The *authoring and canvas* APIs and the whole `wasm` package are **editor-facing helpers**. Their JSON projections and command payloads track folio8 Designer, which lives in the same repository and changes in the same commit. They are not a frozen API; expect fields and command kinds to change without notice.
 
 **Units.** Every `int64` length in a projection or command result is **millipoints**: 1/1000 of a PDF point, so 1 pt = 1000 and A4 is 595276 × 841890. Length values *inside* a command payload are written in **points** as JSON decimals with at most three decimal places and no exponent. The engine converts them to millipoints exactly, never through `float64`; for example `12.5` becomes 12500. Line spacing is a dimensionless ratio carried in **thousandths**, so 1000 means 1.0.
 
-**Concurrency.** Nothing in these packages documents or tests concurrent use. `*folio.Template` is mutated in place by the authoring commands, and `*wasm.Engine` holds unsynchronised session state. Do not share either across goroutines without your own locking.
+**Concurrency.** Nothing in these packages documents or tests concurrent use. `*folio8.Template` is mutated in place by the authoring commands, and `*wasm.Engine` holds unsynchronised session state. Do not share either across goroutines without your own locking.
 
 ### Rendering and validation
 
@@ -903,7 +903,7 @@ This section lists every exported identifier in the three packages of the `githu
 func ParseTemplate(b []byte) (*Template, error)
 ```
 
-Parses `b` as a `.folio` document and returns an opaque `*Template`. Beyond decoding, it performs every check that can be decided from the document alone:
+Parses `b` as a `.folio8` document and returns an opaque `*Template`. Beyond decoding, it performs every check that can be decided from the document alone:
 
 - It parses and statically checks every `{{ }}` expression: syntax, arity, unknown function names and literal argument kinds. It does not evaluate them.
 - It derives `footerOf`/`footerFormat` for `sum`/`avg` table footers that omit `footerOf`.
@@ -935,7 +935,7 @@ type Template struct {
 }
 ```
 
-A parsed, canonicalised `.folio` document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from `ParseTemplate` or `LoadTemplate`. Read-only functions such as `Render`, `Canvas` and `TableColumns` do not modify it. `ApplyComponentCommand` and `ApplyPageSetupCommand` **do** modify it in place.
+A parsed, canonicalised `.folio8` document. It is opaque: there are no exported fields or accessors, and a composite literal cannot construct a usable one. Obtain it only from `ParseTemplate` or `LoadTemplate`. Read-only functions such as `Render`, `Canvas` and `TableColumns` do not modify it. `ApplyComponentCommand` and `ApplyPageSetupCommand` **do** modify it in place.
 
 #### `SerializeTemplate`
 
@@ -943,7 +943,7 @@ A parsed, canonicalised `.folio` document. It is opaque: there are no exported f
 func SerializeTemplate(t *Template) ([]byte, error)
 ```
 
-Returns the engine's canonical `.folio` bytes for `t`. This is the save path the designer uses. A nil `t` returns an error. The written format version is raised when the document's expressions need it:
+Returns the engine's canonical `.folio8` bytes for `t`. This is the save path the designer uses. A nil `t` returns an error. The written format version is raised when the document's expressions need it:
 
 - `"2.0"` for formula syntax or boolean/null literals.
 - `"3.3"` for a text expression whose static kind includes a number.
@@ -960,7 +960,7 @@ Produces a PDF 1.7 document. It resolves every placeholder against `d` (report d
 
 - **Preconditions.**
   - `t` must be non-nil, or a plain error is returned.
-  - `d` must be syntactically valid JSON. It is decoded once with number literals preserved exactly, and a decode failure is a plain error prefixed `folio: Render:`.
+  - `d` must be syntactically valid JSON. It is decoded once with number literals preserved exactly, and a decode failure is a plain error prefixed `folio8: Render:`.
   - A nil or empty `p` means "no runtime values": `{{params.x}}` is then absent.
   - `f` must contain every face the document's font chains actually need. The engine never looks for fonts on the host.
 - **Returns.** On success, `Result.Bytes` is the complete PDF and `Result.Diagnostics` holds every Warning. A non-nil error means nothing was rendered; ignore `Result` in that case.
@@ -1037,10 +1037,10 @@ The engine's only font input. It maps a **face name**, as written in a document'
 #### `fonts.Shipped`
 
 ```go
-func Shipped() folio.FontSet
+func Shipped() folio8.FontSet
 ```
 
-Returns a new `folio.FontSet` map holding the eleven faces embedded in the `fonts` package. Each face ships with its OFL-1.1 licence text and NOTICE under `folio-go/fonts/`. The keys are exactly:
+Returns a new `folio8.FontSet` map holding the eleven faces embedded in the `fonts` package. Each face ships with its OFL-1.1 licence text and NOTICE under `folio8-go/fonts/`. The keys are exactly:
 
 | Family | Face names (map keys) |
 |---|---|
@@ -1114,12 +1114,12 @@ func (e *RenderError) Unwrap() error
 `Error()` returns `Err.Error()` unchanged. `Unwrap()` returns `Err`, so `errors.Is`/`errors.As` reach the wrapped error. Match on the code:
 
 ```go
-res, err := folio.Render(tpl, data, params, fontSet)
+res, err := folio8.Render(tpl, data, params, fontSet)
 if err != nil {
-	var re *folio.RenderError
+	var re *folio8.RenderError
 	if errors.As(err, &re) {
 		switch re.Diagnostic.Code {
-		case folio.DiagCodeBindingPathAbsent:
+		case folio8.DiagCodeBindingPathAbsent:
 			log.Printf("missing data %s (element %s)", re.Diagnostic.DataPath, re.Diagnostic.ElementID)
 		default:
 			log.Printf("%s: %s", re.Diagnostic.Code, re.Diagnostic.Message)
@@ -1143,7 +1143,7 @@ type ComponentCommandError struct {
 }
 ```
 
-The located refusal returned by the authoring commands (`ApplyComponentCommand`, `PreviewComponentMove`, and `wasm.Engine.Apply`/`GroupMovePreview` for component commands). It embeds an unexported `error`, so `*ComponentCommandError` satisfies `error`; its `Error()` text is `"folio: " + Message`. There are no other exported methods.
+The located refusal returned by the authoring commands (`ApplyComponentCommand`, `PreviewComponentMove`, and `wasm.Engine.Apply`/`GroupMovePreview` for component commands). It embeds an unexported `error`, so `*ComponentCommandError` satisfies `error`; its `Error()` text is `"folio8: " + Message`. There are no other exported methods.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -1153,10 +1153,10 @@ The located refusal returned by the authoring commands (`ApplyComponentCommand`,
 
 Not every command failure is a `*ComponentCommandError`. Several arrive as plain errors, so use `errors.As` and keep a fallback:
 
-- malformed JSON (`folio: component command is malformed`)
-- an unknown kind or wrong `version` (`folio: unknown component command`)
-- some arity and field errors (`folio: component command has unknown or missing fields`)
-- every `ApplyPageSetupCommand` refusal, whose messages start with `folio: page`
+- malformed JSON (`folio8: component command is malformed`)
+- an unknown kind or wrong `version` (`folio8: unknown component command`)
+- some arity and field errors (`folio8: component command has unknown or missing fields`)
+- every `ApplyPageSetupCommand` refusal, whose messages start with `folio8: page`
 - a candidate that fails `ParseTemplate` during the command transaction, which is a `*RenderError`
 
 #### Diagnostic codes
@@ -1343,7 +1343,7 @@ The dotted JSON keys (for example `headerBorder.width`) are literal key names, n
 
 ### Authoring and canvas (editor-facing)
 
-These functions let an editor draw a template and change it without ever holding the template model. Command payloads and projection shapes follow Folio Designer and are not a frozen API.
+These functions let an editor draw a template and change it without ever holding the template model. Command payloads and projection shapes follow folio8 Designer and are not a frozen API.
 
 #### `Canvas`
 
@@ -1376,7 +1376,7 @@ Rounds a millipoint value to the nearest multiple of `GridIncrement` (6 pt), wit
 `geom.Length` is a defined `int64` type in the module's `internal/geom` package. Code outside the module cannot import or name it. It *can* pass an untyped constant, and convert the result with `int64(...)`; a variable of type `int64` cannot be passed without naming the type:
 
 ```go
-snapped, ok := folio.SnapToGrid(3500) // untyped constant: compiles
+snapped, ok := folio8.SnapToGrid(3500) // untyped constant: compiles
 fmt.Println(int64(snapped), ok)       // 6000 true; SnapToGrid(-3000) gives -6000
 ```
 
@@ -1424,7 +1424,7 @@ Applies the single `pageSetup` command (payload below) to `t` in place and retur
 - a change that would leave a table `minHeight` or a section break beyond the new content window
 - a projection failure
 
-A refusal after the page fields were written restores the previous canonical page. Errors are plain errors whose messages begin `folio: page` (or `folio: unknown page setup command` / `folio: page setup command is malformed`), not `*ComponentCommandError`.
+A refusal after the page fields were written restores the previous canonical page. Errors are plain errors whose messages begin `folio8: page` (or `folio8: unknown page setup command` / `folio8: page setup command is malformed`), not `*ComponentCommandError`.
 
 #### `PreviewComponentMove` and `ComponentMove`
 
@@ -1792,7 +1792,7 @@ A chain *entry* in a command is either a face-name string or an object `{"face":
 
 ### wasm integration
 
-Package `wasm` is the stateful session engine that Folio Designer compiles into its WebAssembly worker. The worker entry point is the `main` package in `folio-go/wasm/cmd/engine`, which is not an importable API. It receives base64 request fields, bounded to 8 MiB each, and maps them onto the methods below. Everything here is an editor-facing helper.
+Package `wasm` is the stateful session engine that folio8 Designer compiles into its WebAssembly worker. The worker entry point is the `main` package in `folio8-go/wasm/cmd/engine`, which is not an importable API. It receives base64 request fields, bounded to 8 MiB each, and maps them onto the methods below. Everything here is an editor-facing helper.
 
 An `Engine` always renders and projects with `fonts.Shipped()`. It holds one template, that template's canonical bytes, a revision counter, the last projection, and undo/redo stacks of at most 100 canonical byte snapshots each. Its fields are not synchronised.
 
@@ -1815,9 +1815,9 @@ func (e *Engine) Initialize(input []byte) (Snapshot, error)
 func (e *Engine) Load(input []byte) (Snapshot, error)
 ```
 
-Both behave identically. `input` is `.folio` document bytes.
+Both behave identically. `input` is `.folio8` document bytes.
 
-The engine parses them with `folio.ParseTemplate`, re-serializes them to canonical bytes, and projects with `folio.CanvasWithTextPaint`. Only after all three steps succeed does it install the document: it clears both history stacks, increments the revision and returns the snapshot. On error nothing changes.
+The engine parses them with `folio8.ParseTemplate`, re-serializes them to canonical bytes, and projects with `folio8.CanvasWithTextPaint`. Only after all three steps succeed does it install the document: it clears both history stacks, increments the revision and returns the snapshot. On error nothing changes.
 
 The input slice is copied, not retained.
 
@@ -1835,7 +1835,7 @@ Returns the current `Snapshot`. It never fails.
 func (e *Engine) Serialize() ([]byte, Snapshot, error)
 ```
 
-Returns a copy of the canonical `.folio` bytes and the snapshot. It errors when no document is loaded.
+Returns a copy of the canonical `.folio8` bytes and the snapshot. It errors when no document is loaded.
 
 #### `Engine.Apply`
 
@@ -1853,7 +1853,7 @@ Preconditions and refusals:
 
 Processing:
 
-1. The command is applied to a fresh parse of the canonical bytes. `kind: "pageSetup"` goes to `folio.ApplyPageSetupCommand`; any other kind goes to `folio.ApplyComponentCommand` with the shipped fonts.
+1. The command is applied to a fresh parse of the canonical bytes. `kind: "pageSetup"` goes to `folio8.ApplyPageSetupCommand`; any other kind goes to `folio8.ApplyComponentCommand` with the shipped fonts.
 2. If the resulting canonical bytes equal the current bytes, the current snapshot is returned. The revision and history are unchanged.
 3. Otherwise the new bytes are reparsed and projected with text paint. The previous bytes are pushed to undo, redo is cleared, and the revision is incremented.
 
@@ -1874,7 +1874,7 @@ These restore the previous or next canonical bytes and move the current bytes to
 func (e *Engine) Validate() (Snapshot, error)
 ```
 
-Reparses the engine's canonical bytes with `folio.ParseTemplate` and returns the snapshot. It does not call `folio.Validate` and does not render.
+Reparses the engine's canonical bytes with `folio8.ParseTemplate` and returns the snapshot. It does not call `folio8.Validate` and does not render.
 
 #### `Engine.Render`
 
@@ -1888,7 +1888,7 @@ Preconditions:
 - All three inputs must be non-empty. Send `{}` for no params.
 - `template` must be byte-for-byte equal to the engine's current canonical bytes; it refuses stale template bytes.
 
-The engine parses `template` and calls `folio.Render` with `data` as `folio.Data`, `params` as `folio.Params`, and the shipped fonts. It returns a copy of the PDF bytes and a `RenderResult`. Render errors, such as a `*folio.RenderError`, are returned unchanged.
+The engine parses `template` and calls `folio8.Render` with `data` as `folio8.Data`, `params` as `folio8.Params`, and the shipped fonts. It returns a copy of the PDF bytes and a `RenderResult`. Render errors, such as a `*folio8.RenderError`, are returned unchanged.
 
 #### `Engine.PreviewIdentity`
 
@@ -1896,7 +1896,7 @@ The engine parses `template` and calls `folio.Render` with `data` as `folio.Data
 func (e *Engine) PreviewIdentity(data, params []byte) (string, uint64, error)
 ```
 
-Returns `folio.PreviewIdentity` over the canonical bytes, `data`, `params` and the shipped fonts, plus the current revision. Both inputs must be non-empty.
+Returns `folio8.PreviewIdentity` over the canonical bytes, `data`, `params` and the shipped fonts, plus the current revision. Both inputs must be non-empty.
 
 #### `Engine.AssetBytes`
 
@@ -1904,7 +1904,7 @@ Returns `folio.PreviewIdentity` over the canonical bytes, `data`, `params` and t
 func (e *Engine) AssetBytes(key string) ([]byte, Snapshot, error)
 ```
 
-Returns `folio.AssetBytes` raw bytes for `key` (the media type is not returned) and the snapshot. Read-only.
+Returns `folio8.AssetBytes` raw bytes for `key` (the media type is not returned) and the snapshot. Read-only.
 
 #### `Engine.ParameterReferences`
 
@@ -1912,7 +1912,7 @@ Returns `folio.AssetBytes` raw bytes for `key` (the media type is not returned) 
 func (e *Engine) ParameterReferences() ([]string, uint64, error)
 ```
 
-Returns `folio.ParameterReferences` as a non-nil slice, plus the current revision.
+Returns `folio8.ParameterReferences` as a non-nil slice, plus the current revision.
 
 #### `Engine.StandInData`
 
@@ -1920,7 +1920,7 @@ Returns `folio.ParameterReferences` as a non-nil slice, plus the current revisio
 func (e *Engine) StandInData() ([]byte, error)
 ```
 
-Returns `folio.StandInData` bytes. It carries no revision; correlate with `Snapshot().Revision`.
+Returns `folio8.StandInData` bytes. It carries no revision; correlate with `Snapshot().Revision`.
 
 #### `Engine.TableColumns`
 
@@ -1928,7 +1928,7 @@ Returns `folio.StandInData` bytes. It carries no revision; correlate with `Snaps
 func (e *Engine) TableColumns(tableID string) (TableColumnsResult, error)
 ```
 
-Returns `folio.TableColumns` for `tableID`, tagged with the current revision.
+Returns `folio8.TableColumns` for `tableID`, tagged with the current revision.
 
 #### `Engine.GroupMovePreview`
 
@@ -1936,15 +1936,15 @@ Returns `folio.TableColumns` for `tableID`, tagged with the current revision.
 func (e *Engine) GroupMovePreview(command []byte) (GroupMoveResult, error)
 ```
 
-`command` is a `moveComponents` payload, and its `expectedRevision` must equal the current revision. The engine calls `folio.PreviewComponentMove` with the shipped fonts and returns the accepted translation. It does not change bytes, revision or history.
+`command` is a `moveComponents` payload, and its `expectedRevision` must equal the current revision. The engine calls `folio8.PreviewComponentMove` with the shipped fonts and returns the accepted translation. It does not change bytes, revision or history.
 
 Every read-only query above returns an error when no document is loaded.
 
 #### `ErrNoUndo` and `ErrNoRedo`
 
 ```go
-var ErrNoUndo = errors.New("folio wasm: no undo history")
-var ErrNoRedo = errors.New("folio wasm: no redo history")
+var ErrNoUndo = errors.New("folio8 wasm: no undo history")
+var ErrNoRedo = errors.New("folio8 wasm: no redo history")
 ```
 
 Sentinel errors from `Engine.Undo` and `Engine.Redo`. Test them with `errors.Is`.
@@ -1958,7 +1958,7 @@ Sentinel errors from `Engine.Undo` and `Engine.Redo`. Test them with `errors.Is`
 | `ByteLength` | `int` | `byteLength` | Length of the canonical bytes (0 when empty). |
 | `CanUndo` | `bool` | `canUndo` | Undo history is non-empty. |
 | `CanRedo` | `bool` | `canRedo` | Redo history is non-empty. |
-| `Canvas` | `*folio.CanvasProjection` | `canvas,omitempty` | The current `CanvasWithTextPaint` projection; nil when empty. The pointer is shared with the engine, so treat it as read-only. |
+| `Canvas` | `*folio8.CanvasProjection` | `canvas,omitempty` | The current `CanvasWithTextPaint` projection; nil when empty. The pointer is shared with the engine, so treat it as read-only. |
 
 #### `RenderResult`
 
@@ -1967,16 +1967,16 @@ Sentinel errors from `Engine.Undo` and `Engine.Redo`. Test them with `errors.Is`
 | `PDFSHA256` | `string` | `pdfSha256` | Lowercase hex SHA-256 of the returned PDF. |
 | `Identity` | `string` | `identity` | `PreviewIdentity` digest for this render's inputs. |
 | `Revision` | `uint64` | `revision` | Revision whose canonical bytes were rendered. |
-| `Diagnostics` | `[]folio.Diagnostic` | `diagnostics` | Copy of the render's Warning diagnostics. Not `omitempty`; the elements have no JSON tags, so they encode with Go field names. |
-| `ElapsedMs` | `int64` | `elapsedMs` | Wall-clock milliseconds spent in `folio.Render` alone. It is measured with `time`, varies between runs, and never affects PDF bytes. |
-| `Version` | `string` | `version` | `folio.Version`. |
+| `Diagnostics` | `[]folio8.Diagnostic` | `diagnostics` | Copy of the render's Warning diagnostics. Not `omitempty`; the elements have no JSON tags, so they encode with Go field names. |
+| `ElapsedMs` | `int64` | `elapsedMs` | Wall-clock milliseconds spent in `folio8.Render` alone. It is measured with `time`, varies between runs, and never affects PDF bytes. |
+| `Version` | `string` | `version` | `folio8.Version`. |
 
 #### `TableColumnsResult`
 
 | Field | Type | JSON key | Meaning |
 |---|---|---|---|
 | `Revision` | `uint64` | `revision` | Revision the projection was taken at. |
-| `Table` | `folio.TableColumnsProjection` | `table` | The table projection. |
+| `Table` | `folio8.TableColumnsProjection` | `table` | The table projection. |
 
 #### `GroupMoveResult`
 
@@ -1988,7 +1988,7 @@ Sentinel errors from `Engine.Undo` and `Engine.Redo`. Test them with `errors.Is`
 
 ## Command-line tool
 
-The module also contains a `folio` command with `validate` and `render` subcommands
-(`go run github.com/panitw/folio/folio-go/cmd/folio@main render -data data.json -o out.pdf template.folio`).
+The module also contains a `folio8` command with `validate` and `render` subcommands
+(`go run github.com/panitw/folio8/folio8-go/cmd/folio8@main render -data data.json -o out.pdf template.folio8`).
 It is a thin wrapper over `Validate` and `Render`; its flags are described in the
 [repository README](../README.md#render-from-the-command-line).

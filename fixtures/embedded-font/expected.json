@@ -1,5 +1,5 @@
 {
-  "folioGoVersion": "0.0.0-dev",
+  "folio8GoVersion": "0.0.0-dev",
   "goToolchain": "go1.26.0",
   "sha256": "f533b04b7a4ccb20587f096c9e3173a48fbc870b8c718a73fecf869c6d851832"
 }

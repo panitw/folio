@@ -11,7 +11,7 @@
 # ─────────────────────────────────────────────────────────────────
 
 [core]
-project_name = "folio"
+project_name = "folio8"
 document_output_language = "English"
 output_folder = "{project-root}/_bmad-output"
 

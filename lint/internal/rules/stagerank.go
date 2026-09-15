@@ -10,7 +10,7 @@ import (
 )
 
 // RuleStageRank is this guard's stable rule id (D-000.16): a
-// stage-rank violation — a package under folio-go/internal/ importing
+// stage-rank violation — a package under folio8-go/internal/ importing
 // another internal package of EQUAL OR HIGHER rank — or an internal
 // package that carries no rank at all.
 const RuleStageRank = "stage-rank"
@@ -28,7 +28,7 @@ const RuleStageRank = "stage-rank"
 // as a parameter.
 //
 // stageRankTable is the table, keyed by the package's DIRECTORY
-// relative to the scanned root (folio-go/internal/). A package may
+// relative to the scanned root (folio8-go/internal/). A package may
 // import only a STRICTLY LOWER rank; equal ranks may not import each
 // other, so two rank-1 siblings stay independent.
 //
@@ -36,7 +36,7 @@ const RuleStageRank = "stage-rank"
 // illustrative. D-000.16 published `fontset` 5 and `text` 6; Story 2.5
 // measured the real graph and found `fontset -> [geom, text]`
 // (fontset.go:25, :245, :445 — Story 2.3a's own vendor containment,
-// which returns folio's `internal/text.Shaper` so no vendor pointer
+// which returns folio8's `internal/text.Shaper` so no vendor pointer
 // crosses the boundary), while `text` imports nothing first-party.
 // D-000.16 marked the ranks "illustrative… for the implementing story
 // to validate"; the validation ran and swapped exactly these two.
@@ -67,7 +67,7 @@ var stageRankTable = []stageRank{
 	{"layout", 7},
 	{"pdf", 8},
 
-	// "." is the scan root itself — folio-go/internal/, which holds the
+	// "." is the scan root itself — folio8-go/internal/, which holds the
 	// test-only `arch` fitness package (no non-test files; it exists to
 	// assert properties no single package's own tests can see past their
 	// directory). It is NOT a pipeline stage, so it is ranked BELOW

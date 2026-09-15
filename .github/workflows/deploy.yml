@@ -1,6 +1,6 @@
 name: Deploy to Railway
 
-# Deploys Folio Designer to Railway (project folio8, environment production)
+# Deploys folio8 Designer to Railway (project folio8, environment production)
 # once "Build, vet, and guardrails" has passed for a push to main — never on a
 # red commit, and never on pull requests. Railway builds the root Dockerfile.
 #

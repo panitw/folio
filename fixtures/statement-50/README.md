@@ -13,7 +13,7 @@ per-page delta all four statement goldens took.
 
 **What moved, measured rather than reasoned about** (D-15.1.1; full evidence and commands in
 `_bmad-output/implementation-artifacts/evidence/15-1/attribution.md`). Commit `791ed00` created
-`folio-go/text_alignment.go` and wired `style.align` into the emitter for the first time. The page
+`folio8-go/text_alignment.go` and wired `style.align` into the emitter for the first time. The page
 footer `e4` declares `"align": "right"`, and until that commit the engine parsed, validated,
 round-tripped and displayed that request and then drew the text at the **left** edge of its box
 anyway. Resolving both PDFs with `splitPageContentStreams` and diffing them page by page shows
@@ -50,7 +50,7 @@ with identical output.
 
 ### The coverage history, recorded here so a future reader at a gate does not have to re-derive it
 
-Measured at this story's baseline (`df8cbcc`), with `grep -l '"table"' fixtures/*/input.folio`:
+Measured at this story's baseline (`df8cbcc`), with `grep -l '"table"' fixtures/*/input.folio8`:
 **no committed golden contained a table** before this story. Not one of the nine recorded
 `expected.pdf` files in this repository carried a single table element, so no recorded byte in
 the corpus could tell a correct table from a broken one.
@@ -120,7 +120,7 @@ the bound collection:
   life of the project, and minting would create a second signed corpus that could disagree with
   it.
 - **A lowered/stacked Thai mark positioned by GPOS inside a table cell** — `ปั ฟั ที่ ป้ำ`,
-  verbatim from `fixtures/shaped-text/input.folio`. The `ฟั` cluster's declared GPOS x-offset of
+  verbatim from `fixtures/shaped-text/input.folio8`. The `ฟั` cluster's declared GPOS x-offset of
   +21 font units reaches the page as a TJ adjustment.
 - **A generated date supplied through `params`, never a clock.** The value `2026-08-27` occurs
   nowhere else in the fixture — every transaction date and the statement period fall in
@@ -140,7 +140,7 @@ the bound collection:
   in binary64 **iff** 25 divides *m*, so "no multiple of 0.25" and "not representable" are the
   same statement), keeps the old quarter-integral class as the control that does **not**
   discriminate, and pins the totals a binary money path would draw. The wrong implementation is
-  deliberately **not written** anywhere under `folio-go/` — three separate guards forbid binary
+  deliberately **not written** anywhere under `folio8-go/` — three separate guards forbid binary
   floating point there, `_test.go` files included, and all three were measured firing during
   this story's finisher pass. This is the column AD-23 exists for.
 
@@ -191,7 +191,7 @@ $ qpdf --show-npages fixtures/statement-50/expected.pdf
 ```
 
 `qpdf --check` resolves the file's cross-reference table and object graph independently of
-folio's own writer and reports no structural defect; `qpdf --show-npages` resolves the page tree
+folio8's own writer and reports no structural defect; `qpdf --show-npages` resolves the page tree
 and reports **50**, matching this document's declared page count exactly.
 
 ## Human semantic acceptance (D-000.22 / D-2.3.5) — PENDING, and tracked by a failing test
@@ -204,7 +204,7 @@ asserted at recording (`statement_semantics_test.go`, `matrix_test.go`).
 
 The irreducibly-human half — *does this statement READ correctly to a person* — is outstanding,
 and is tracked by a **failing, matrix-gated test**, not by this paragraph:
-`TestStatementSemanticSignOffIsRecorded` in `folio-go/statement_signoff_matrix_test.go`. It is
+`TestStatementSemanticSignOffIsRecorded` in `folio8-go/statement_signoff_matrix_test.go`. It is
 red until `fixtures/statement-signoff.json` names a reader, a date, what they examined, and
 **all four** of this family's digests.
 
@@ -214,9 +214,9 @@ under-invalidating would let three attestations survive a systemic change.
 
 ## Matrix registration
 
-Registered in `matrixDocuments` (`folio-go/matrix_test.go`), in
+Registered in `matrixDocuments` (`folio8-go/matrix_test.go`), in
 `.github/workflows/matrix.yml`'s `docs=` list and its four per-target upload paths, and in
-`declaredEpic2GateObligations` (`folio-go/byte_neutrality_test.go`).
+`declaredEpic2GateObligations` (`folio8-go/byte_neutrality_test.go`).
 
 **The four legs are RUN IN THIS STORY**, not deferred to the Epic 4 boundary gate. D-000.4 names
 4.7 explicitly as a per-story matrix override (`matrix_test.go`'s own comments list the

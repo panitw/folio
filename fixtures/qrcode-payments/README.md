@@ -5,7 +5,7 @@ The golden for the **`qrcode`** element (spec-barcode-qr-elements CAP-2). It dec
 
 | File | What it is |
 |---|---|
-| `input.folio` | Four QR codes on one page: `e1` `{{payload}}` with no `errorCorrection` (M), 120 x 120 pt; `e2` `{{payload}}` at H, 120 x 120 pt; `e3` `ชำระเงิน {{ref}}` at Q, 120 x 120 pt; `e4` static `INV-2026-000001` at L in a 200 x 80 pt box |
+| `input.folio8` | Four QR codes on one page: `e1` `{{payload}}` with no `errorCorrection` (M), 120 x 120 pt; `e2` `{{payload}}` at H, 120 x 120 pt; `e3` `ชำระเงิน {{ref}}` at Q, 120 x 120 pt; `e4` static `INV-2026-000001` at L in a 200 x 80 pt box |
 | `data.json` | The record: an EMVCo Thai QR Payment shaped `payload` and `ref` `INV-2026-000001` |
 | `expected.pdf` | The render, sha256 `a14dc0aec702a28ef741fca2ebb09c79a0edd7122d181c6f305ce378e03bd84a` |
 
@@ -23,7 +23,7 @@ is illustrative: the element encodes the finished string and never builds or che
 
 ## What the tests prove
 
-- `TestQRCodePaymentsGoldenFixture` pins `input.folio` and `data.json` to the Go constants
+- `TestQRCodePaymentsGoldenFixture` pins `input.folio8` and `data.json` to the Go constants
   (`qrcode_payments_template.go`), and the render's sha256 to `expected.json` and `expected.pdf`.
 - `TestQRCodePaymentsSemanticAcceptance` reads each QR code's rectangles back out of the page model
   and checks they cover exactly the dark modules of its string's encoding at its declared level, on

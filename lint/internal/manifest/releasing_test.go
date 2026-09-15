@@ -25,7 +25,7 @@ var manifestPathPattern = regexp.MustCompile(`[A-Za-z0-9_./-]*MANIFEST\.md`)
 //
 // WHY THIS EXISTS. DW-3 deferred "publish the licence manifest as a
 // release artifact" to an owner that was written as two moments —
-// "Epic 4 close" and "the folio-go/v0.1.0 tag" — which were the same
+// "Epic 4 close" and "the folio8-go/v0.1.0 tag" — which were the same
 // moment when written and are now three epics apart (D-000.78). The
 // engineering lead retired the entry rather than picking one: AD-26's
 // substance shipped at Story 1.3 and is guarded live by
@@ -86,7 +86,7 @@ func TestReleasingDocNamesTheGuardedManifest(t *testing.T) {
 	// A cheap sanity check that the document is the release procedure and
 	// not some other file that happens to mention a manifest — the tag
 	// whose obligations these are.
-	if !strings.Contains(string(raw), "folio-go/v0.1.0") {
-		t.Errorf("%s does not mention folio-go/v0.1.0 — this test assumes that document is the release procedure for that tag", releasingRelPath)
+	if !strings.Contains(string(raw), "folio8-go/v0.1.0") {
+		t.Errorf("%s does not mention folio8-go/v0.1.0 — this test assumes that document is the release procedure for that tag", releasingRelPath)
 	}
 }
