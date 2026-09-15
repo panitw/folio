@@ -1,0 +1,418 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "height": 26,
+          "id": "e3",
+          "style": {
+            "align": "center",
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 18
+          },
+          "type": "text",
+          "value": "{{agreement.title}}",
+          "width": 523,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 14,
+          "id": "e4",
+          "style": {
+            "align": "center",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Reference {{agreement.reference}}   |   Effective {{formatDate(agreement.effective, \"d MMMM yyyy\")}}",
+          "width": 523,
+          "x": 0,
+          "y": 30
+        },
+        {
+          "height": 1,
+          "id": "e5",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 523,
+          "x": 0,
+          "y": 56
+        },
+        {
+          "height": 16,
+          "id": "e6",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "This Agreement is made between the following parties:",
+          "width": 523,
+          "x": 0,
+          "y": 68
+        },
+        {
+          "height": 12,
+          "id": "e7",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "PARTY A - THE PROVIDER",
+          "width": 250,
+          "x": 0,
+          "y": 96
+        },
+        {
+          "height": 16,
+          "id": "e8",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{partyA.name}}",
+          "width": 250,
+          "x": 0,
+          "y": 110
+        },
+        {
+          "height": 58,
+          "id": "e9",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{partyA.address}}\n{{partyA.city}}\nCompany no. {{partyA.companyNumber}}\n(the \"{{partyA.shortName}}\")",
+          "width": 250,
+          "x": 0,
+          "y": 128
+        },
+        {
+          "height": 12,
+          "id": "ea",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "PARTY B - THE CLIENT",
+          "width": 250,
+          "x": 273,
+          "y": 96
+        },
+        {
+          "height": 16,
+          "id": "eb",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{partyB.name}}",
+          "width": 250,
+          "x": 273,
+          "y": 110
+        },
+        {
+          "height": 58,
+          "id": "ec",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{partyB.address}}\n{{partyB.city}}\nCompany no. {{partyB.companyNumber}}\n(the \"{{partyB.shortName}}\")",
+          "width": 250,
+          "x": 273,
+          "y": 128
+        },
+        {
+          "height": 12,
+          "id": "ed",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "AGREED TERMS",
+          "width": 300,
+          "x": 0,
+          "y": 204
+        },
+        {
+          "as": "clause",
+          "bind": "clauses[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{clause.no}}.",
+              "id": "ee",
+              "label": "No.",
+              "proportion": 0.6
+            },
+            {
+              "align": "left",
+              "bind": "{{clause.heading}}\n{{clause.body}}",
+              "id": "ef",
+              "label": "Clause",
+              "proportion": 9.4
+            }
+          ],
+          "headerHeight": 18,
+          "headerStyle": {
+            "background": "#EEF1F4",
+            "bold": true,
+            "color": "#1B2A4A"
+          },
+          "id": "eg",
+          "rules": {
+            "between": [
+              "rows"
+            ],
+            "color": "#D5DAE0",
+            "width": 0.5
+          },
+          "style": {
+            "border": {
+              "color": "#1B2A4A",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9.5,
+            "padding": {
+              "bottom": 6,
+              "left": 4,
+              "right": 4,
+              "top": 6
+            }
+          },
+          "type": "table",
+          "width": 523,
+          "x": 0,
+          "y": 220
+        },
+        {
+          "height": 16,
+          "id": "eh",
+          "keepTogether": "signatures",
+          "style": {
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "Signed by the authorised representatives of the parties on the dates shown below.",
+          "width": 523,
+          "x": 0,
+          "y": 530
+        },
+        {
+          "height": 28,
+          "id": "ei",
+          "keepTogether": "signatures",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Signed for and on behalf of\n{{partyA.name}}",
+          "width": 250,
+          "x": 0,
+          "y": 560
+        },
+        {
+          "height": 0.75,
+          "id": "ej",
+          "keepTogether": "signatures",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 220,
+          "x": 0,
+          "y": 626
+        },
+        {
+          "height": 16,
+          "id": "ek",
+          "keepTogether": "signatures",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "{{partyA.signatory.name}}",
+          "width": 250,
+          "x": 0,
+          "y": 632
+        },
+        {
+          "height": 28,
+          "id": "el",
+          "keepTogether": "signatures",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{partyA.signatory.role}}\nDate:",
+          "width": 250,
+          "x": 0,
+          "y": 648
+        },
+        {
+          "height": 28,
+          "id": "em",
+          "keepTogether": "signatures",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Signed for and on behalf of\n{{partyB.name}}",
+          "width": 250,
+          "x": 273,
+          "y": 560
+        },
+        {
+          "height": 0.75,
+          "id": "en",
+          "keepTogether": "signatures",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 220,
+          "x": 273,
+          "y": 626
+        },
+        {
+          "height": 16,
+          "id": "eo",
+          "keepTogether": "signatures",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "{{partyB.signatory.name}}",
+          "width": 250,
+          "x": 273,
+          "y": 632
+        },
+        {
+          "height": 28,
+          "id": "ep",
+          "keepTogether": "signatures",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{partyB.signatory.role}}\nDate:",
+          "width": 250,
+          "x": 273,
+          "y": 648
+        }
+      ],
+      "sectionBreak": 516,
+      "sectionBreakAnchor": false
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "e1",
+          "style": {
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "{{agreement.title}} - Ref. {{agreement.reference}} - Sample document, not legal advice",
+          "width": 380,
+          "x": 0,
+          "y": 12
+        },
+        {
+          "height": 12,
+          "id": "e2",
+          "style": {
+            "align": "right",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Page {{page}} of {{pages}}",
+          "width": 120,
+          "x": 403,
+          "y": 12
+        }
+      ],
+      "height": 30
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": [
+      {
+        "bold": "Roboto Bold",
+        "boldItalic": "Roboto Bold Italic",
+        "face": "Roboto",
+        "italic": "Roboto Italic"
+      },
+      {
+        "bold": "Noto Sans Thai Bold",
+        "face": "Noto Sans Thai"
+      },
+      "Noto Sans SC"
+    ]
+  },
+  "locale": "en",
+  "nextId": 26,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "4.1"
+}

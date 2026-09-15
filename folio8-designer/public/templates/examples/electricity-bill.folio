@@ -1,0 +1,571 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "height": 24,
+          "id": "e2",
+          "style": {
+            "bold": true,
+            "color": "#0B5D6B",
+            "fontFamily": "body",
+            "fontSize": 18
+          },
+          "type": "text",
+          "value": "Brightwater Energy",
+          "width": 300,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 14,
+          "id": "e3",
+          "style": {
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "5 Turbine Lane, Millbrook, Examplia 10077",
+          "width": 300,
+          "x": 0,
+          "y": 26
+        },
+        {
+          "height": 20,
+          "id": "e4",
+          "style": {
+            "align": "right",
+            "bold": true,
+            "color": "#0B5D6B",
+            "fontFamily": "body",
+            "fontSize": 14
+          },
+          "type": "text",
+          "value": "ELECTRICITY BILL",
+          "width": 220,
+          "x": 303,
+          "y": 0
+        },
+        {
+          "height": 28,
+          "id": "e5",
+          "style": {
+            "align": "right",
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Billing period\n{{formatDate(period.from, \"d MMMM yyyy\")}} to {{formatDate(period.to, \"d MMMM yyyy\")}}",
+          "width": 260,
+          "x": 263,
+          "y": 22
+        },
+        {
+          "height": 1,
+          "id": "e6",
+          "style": {
+            "background": "#0B5D6B"
+          },
+          "type": "rect",
+          "width": 523,
+          "x": 0,
+          "y": 56
+        },
+        {
+          "height": 12,
+          "id": "e7",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "SUPPLY ADDRESS",
+          "width": 250,
+          "x": 0,
+          "y": 68
+        },
+        {
+          "height": 16,
+          "id": "e8",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{customer.name}}",
+          "width": 280,
+          "x": 0,
+          "y": 82
+        },
+        {
+          "height": 30,
+          "id": "e9",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{customer.address}}\n{{customer.city}}",
+          "width": 280,
+          "x": 0,
+          "y": 100
+        },
+        {
+          "height": 44,
+          "id": "ea",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Account number\nMeter number\nTariff",
+          "width": 90,
+          "x": 313,
+          "y": 68
+        },
+        {
+          "height": 44,
+          "id": "eb",
+          "style": {
+            "align": "right",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{account.number}}\n{{account.meter}}\n{{account.tariff}}",
+          "width": 130,
+          "x": 393,
+          "y": 68
+        },
+        {
+          "height": 40,
+          "id": "ec",
+          "style": {
+            "background": "#FDECEA",
+            "border": {
+              "color": "#B42318",
+              "width": 0.75
+            }
+          },
+          "type": "rect",
+          "visibleIf": "overdue",
+          "width": 523,
+          "x": 0,
+          "y": 140
+        },
+        {
+          "height": 30,
+          "id": "ed",
+          "style": {
+            "color": "#B42318",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "PAYMENT OVERDUE: {{formatNumber(arrears, \"#,##0.00\")}} from your previous bill was not paid by its due date.\nIt has been added to the amount due below. Please pay now to avoid a late payment fee.",
+          "visibleIf": "overdue",
+          "width": 503,
+          "x": 10,
+          "y": 146
+        },
+        {
+          "height": 12,
+          "id": "ee",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "METER READINGS",
+          "width": 250,
+          "x": 0,
+          "y": 194
+        },
+        {
+          "as": "reading",
+          "bind": "readings[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{reading.register}}",
+              "id": "ef",
+              "label": "Register",
+              "proportion": 2
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(reading.previous, \"#,##0\")}}",
+              "id": "eg",
+              "label": "Previous reading",
+              "proportion": 1.5
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(reading.current, \"#,##0\")}}",
+              "id": "eh",
+              "label": "Current reading",
+              "proportion": 1.5
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(reading.units, \"#,##0\")}}",
+              "id": "ei",
+              "label": "Units (kWh)",
+              "proportion": 1.2
+            }
+          ],
+          "headerHeight": 20,
+          "headerStyle": {
+            "background": "#E6F1F2",
+            "bold": true,
+            "color": "#0B5D6B"
+          },
+          "id": "ej",
+          "rules": {
+            "between": [
+              "rows"
+            ],
+            "color": "#D5DAE0",
+            "width": 0.5
+          },
+          "style": {
+            "border": {
+              "color": "#0B5D6B",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9,
+            "padding": {
+              "bottom": 4,
+              "left": 4,
+              "right": 4,
+              "top": 4
+            }
+          },
+          "type": "table",
+          "width": 523,
+          "x": 0,
+          "y": 208
+        },
+        {
+          "height": 12,
+          "id": "ek",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "CHARGES",
+          "width": 250,
+          "x": 0,
+          "y": 290
+        },
+        {
+          "as": "charge",
+          "bind": "charges[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{charge.label}}",
+              "id": "el",
+              "label": "Description",
+              "proportion": 3.4
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(charge.units, \"#,##0\")}}",
+              "id": "em",
+              "label": "Units",
+              "proportion": 1.2
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(charge.rate, \"0.0000\")}}",
+              "id": "en",
+              "label": "Rate",
+              "proportion": 1.2
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(charge.amount, \"#,##0.00\")}}",
+              "footer": "sum",
+              "id": "eo",
+              "label": "Amount",
+              "proportion": 1.4
+            }
+          ],
+          "headerHeight": 20,
+          "headerStyle": {
+            "background": "#E6F1F2",
+            "bold": true,
+            "color": "#0B5D6B"
+          },
+          "id": "ep",
+          "rules": {
+            "between": [
+              "rows"
+            ],
+            "color": "#D5DAE0",
+            "width": 0.5
+          },
+          "style": {
+            "border": {
+              "color": "#0B5D6B",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9,
+            "padding": {
+              "bottom": 4,
+              "left": 4,
+              "right": 4,
+              "top": 4
+            }
+          },
+          "type": "table",
+          "width": 523,
+          "x": 0,
+          "y": 304
+        },
+        {
+          "height": 12,
+          "id": "eq",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "USAGE HISTORY, LAST 6 MONTHS",
+          "width": 240,
+          "x": 0,
+          "y": 494
+        },
+        {
+          "as": "month",
+          "bind": "history[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{formatDate(month.month, \"MMMM yyyy\")}}",
+              "id": "er",
+              "label": "Month",
+              "proportion": 1.6
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(month.units, \"#,##0\")}}",
+              "id": "es",
+              "label": "Units (kWh)",
+              "proportion": 1
+            }
+          ],
+          "headerHeight": 20,
+          "headerStyle": {
+            "background": "#E6F1F2",
+            "bold": true,
+            "color": "#0B5D6B"
+          },
+          "id": "et",
+          "rules": {
+            "between": [
+              "rows"
+            ],
+            "color": "#D5DAE0",
+            "width": 0.5
+          },
+          "style": {
+            "border": {
+              "color": "#0B5D6B",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9,
+            "padding": {
+              "bottom": 4,
+              "left": 4,
+              "right": 4,
+              "top": 4
+            }
+          },
+          "type": "table",
+          "width": 240,
+          "x": 0,
+          "y": 508
+        },
+        {
+          "height": 176,
+          "id": "eu",
+          "style": {
+            "background": "#F3F5F8"
+          },
+          "type": "rect",
+          "width": 240,
+          "x": 283,
+          "y": 494
+        },
+        {
+          "height": 12,
+          "id": "ev",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "AMOUNT DUE",
+          "width": 216,
+          "x": 295,
+          "y": 504
+        },
+        {
+          "height": 30,
+          "id": "ew",
+          "style": {
+            "bold": true,
+            "color": "#0B5D6B",
+            "fontFamily": "body",
+            "fontSize": 22
+          },
+          "type": "text",
+          "value": "{{formatNumber(amountDue, \"#,##0.00\")}}",
+          "width": 216,
+          "x": 295,
+          "y": 518
+        },
+        {
+          "height": 16,
+          "id": "ex",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "Pay by {{formatDate(dueDate, \"d MMMM yyyy\")}}",
+          "width": 216,
+          "x": 295,
+          "y": 552
+        },
+        {
+          "height": 26,
+          "id": "ey",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Pay at any payment counter with the barcode below, or quote your payment reference.",
+          "width": 216,
+          "x": 295,
+          "y": 570
+        },
+        {
+          "height": 44,
+          "id": "ez",
+          "type": "barcode",
+          "value": "{{account.paymentRef}}",
+          "width": 216,
+          "x": 295,
+          "y": 602
+        },
+        {
+          "height": 12,
+          "id": "e10",
+          "style": {
+            "align": "center",
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "{{account.paymentRef}}",
+          "width": 216,
+          "x": 295,
+          "y": 648
+        }
+      ],
+      "sectionBreak": 484
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "e1",
+          "style": {
+            "align": "center",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Brightwater Energy is a fictional supplier. Customer, account and meter details are sample data.",
+          "width": 523,
+          "x": 0,
+          "y": 12
+        }
+      ],
+      "height": 30
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": [
+      {
+        "bold": "Roboto Bold",
+        "boldItalic": "Roboto Bold Italic",
+        "face": "Roboto",
+        "italic": "Roboto Italic"
+      },
+      {
+        "bold": "Noto Sans Thai Bold",
+        "face": "Noto Sans Thai"
+      },
+      "Noto Sans SC"
+    ]
+  },
+  "locale": "en",
+  "nextId": 37,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "4.1"
+}

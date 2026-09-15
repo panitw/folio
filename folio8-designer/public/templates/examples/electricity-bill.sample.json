@@ -1,0 +1,93 @@
+{
+  "customer": {
+    "name": "Mira Castellan",
+    "address": "88 Quayside Avenue, Flat 2",
+    "city": "Port Averly, Examplia 20931"
+  },
+  "account": {
+    "number": "EX-00-4821-7736",
+    "meter": "MTR-0000-58213",
+    "tariff": "Home Saver, day/night",
+    "paymentRef": "EXB0048217736"
+  },
+  "period": {
+    "from": "2026-08-01T00:00:00Z",
+    "to": "2026-08-31T00:00:00Z"
+  },
+  "readings": [
+    {
+      "register": "Day",
+      "previous": 18244,
+      "current": 18556,
+      "units": 312
+    },
+    {
+      "register": "Night",
+      "previous": 7310,
+      "current": 7414,
+      "units": 104
+    }
+  ],
+  "charges": [
+    {
+      "label": "Day energy",
+      "units": 312,
+      "rate": 0.2150,
+      "amount": 67.08
+    },
+    {
+      "label": "Night energy",
+      "units": 104,
+      "rate": 0.1320,
+      "amount": 13.73
+    },
+    {
+      "label": "Standing charge (31 days)",
+      "units": 31,
+      "rate": 0.4500,
+      "amount": 13.95
+    },
+    {
+      "label": "Network access fee",
+      "units": 416,
+      "rate": 0.0180,
+      "amount": 7.49
+    },
+    {
+      "label": "Renewables levy",
+      "units": 416,
+      "rate": 0.0065,
+      "amount": 2.70
+    }
+  ],
+  "history": [
+    {
+      "month": "2026-03-01T00:00:00Z",
+      "units": 468
+    },
+    {
+      "month": "2026-04-01T00:00:00Z",
+      "units": 441
+    },
+    {
+      "month": "2026-05-01T00:00:00Z",
+      "units": 402
+    },
+    {
+      "month": "2026-06-01T00:00:00Z",
+      "units": 377
+    },
+    {
+      "month": "2026-07-01T00:00:00Z",
+      "units": 395
+    },
+    {
+      "month": "2026-08-01T00:00:00Z",
+      "units": 416
+    }
+  ],
+  "arrears": 94.30,
+  "amountDue": 199.25,
+  "dueDate": "2026-09-21T00:00:00Z",
+  "overdue": true
+}

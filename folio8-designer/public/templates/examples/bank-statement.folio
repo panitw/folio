@@ -1,0 +1,374 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "e8",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "ACCOUNT HOLDER",
+          "width": 200,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 16,
+          "id": "e9",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{account.holder}}",
+          "width": 260,
+          "x": 0,
+          "y": 14
+        },
+        {
+          "height": 30,
+          "id": "ea",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{account.address}}\n{{account.city}}",
+          "width": 260,
+          "x": 0,
+          "y": 32
+        },
+        {
+          "height": 44,
+          "id": "eb",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Account number\nStatement period\nOpening balance",
+          "width": 100,
+          "x": 263,
+          "y": 0
+        },
+        {
+          "height": 44,
+          "id": "ec",
+          "style": {
+            "align": "right",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{account.number}}\n{{formatDate(account.period.from, \"d MMMM yyyy\")}} to {{formatDate(account.period.to, \"d MMMM yyyy\")}}\n{{formatNumber(balances.opening, \"#,##0.00\")}}",
+          "width": 180,
+          "x": 343,
+          "y": 0
+        },
+        {
+          "height": 1,
+          "id": "ed",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 260,
+          "x": 263,
+          "y": 50
+        },
+        {
+          "height": 16,
+          "id": "ee",
+          "style": {
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "Closing balance",
+          "width": 120,
+          "x": 263,
+          "y": 56
+        },
+        {
+          "height": 16,
+          "id": "ef",
+          "style": {
+            "align": "right",
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 10
+          },
+          "type": "text",
+          "value": "{{formatNumber(balances.closing, \"#,##0.00\")}}",
+          "width": 140,
+          "x": 383,
+          "y": 56
+        },
+        {
+          "altRowBackground": "#F3F5F8",
+          "as": "txn",
+          "bind": "transactions[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{formatDate(txn.date, \"dd/MM/yyyy\")}}",
+              "id": "eg",
+              "label": "Date",
+              "proportion": 1.3
+            },
+            {
+              "align": "left",
+              "bind": "{{txn.description}}",
+              "id": "eh",
+              "label": "Description",
+              "proportion": 4.4
+            },
+            {
+              "align": "right",
+              "bind": "{{txn.debit != null ? formatNumber(txn.debit, \"#,##0.00\") : \"\"}}",
+              "id": "ei",
+              "label": "Debit",
+              "proportion": 1.4
+            },
+            {
+              "align": "right",
+              "bind": "{{txn.credit != null ? formatNumber(txn.credit, \"#,##0.00\") : \"\"}}",
+              "id": "ej",
+              "label": "Credit",
+              "proportion": 1.4
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(txn.balance, \"#,##0.00\")}}",
+              "id": "ek",
+              "label": "Balance",
+              "proportion": 1.5
+            }
+          ],
+          "headerHeight": 20,
+          "headerStyle": {
+            "background": "#1B2A4A",
+            "bold": true,
+            "color": "#FFFFFF"
+          },
+          "id": "el",
+          "style": {
+            "border": {
+              "color": "#1B2A4A",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 8,
+            "padding": {
+              "bottom": 3,
+              "left": 4,
+              "right": 4,
+              "top": 3
+            }
+          },
+          "type": "table",
+          "width": 523,
+          "x": 0,
+          "y": 92
+        },
+        {
+          "height": 74,
+          "id": "em",
+          "style": {
+            "background": "#F3F5F8"
+          },
+          "type": "rect",
+          "width": 523,
+          "x": 0,
+          "y": 574
+        },
+        {
+          "height": 12,
+          "id": "en",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "HOW TO READ THIS STATEMENT",
+          "width": 300,
+          "x": 10,
+          "y": 582
+        },
+        {
+          "height": 46,
+          "id": "eo",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Debit: money paid out of the account.   Credit: money paid into the account.\nBalance: the running balance after each transaction, including any fees.\nTell us within 30 days about any transaction you do not recognise.",
+          "width": 503,
+          "x": 10,
+          "y": 598
+        }
+      ],
+      "sectionBreak": 560,
+      "sectionBreakAnchor": false
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "e6",
+          "style": {
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Examplia Community Bank is a fictional bank. All names, numbers and transactions are sample data.",
+          "width": 400,
+          "x": 0,
+          "y": 12
+        },
+        {
+          "height": 12,
+          "id": "e7",
+          "style": {
+            "align": "right",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 7
+          },
+          "type": "text",
+          "value": "Page {{page}} of {{pages}}",
+          "width": 120,
+          "x": 403,
+          "y": 12
+        }
+      ],
+      "height": 30
+    },
+    "pageHeader": {
+      "elements": [
+        {
+          "height": 20,
+          "id": "e1",
+          "style": {
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 15
+          },
+          "type": "text",
+          "value": "Examplia Community Bank",
+          "width": 300,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 14,
+          "id": "e2",
+          "style": {
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "1 Ledger Square, Millbrook, Examplia 10001",
+          "width": 300,
+          "x": 0,
+          "y": 22
+        },
+        {
+          "height": 20,
+          "id": "e3",
+          "style": {
+            "align": "right",
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "STATEMENT OF ACCOUNT",
+          "width": 200,
+          "x": 323,
+          "y": 0
+        },
+        {
+          "height": 14,
+          "id": "e4",
+          "style": {
+            "align": "right",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Account {{account.number}}",
+          "width": 260,
+          "x": 263,
+          "y": 22
+        },
+        {
+          "height": 1,
+          "id": "e5",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 523,
+          "x": 0,
+          "y": 46
+        }
+      ],
+      "height": 64
+    }
+  },
+  "fonts": {
+    "body": [
+      {
+        "bold": "Roboto Bold",
+        "boldItalic": "Roboto Bold Italic",
+        "face": "Roboto",
+        "italic": "Roboto Italic"
+      },
+      {
+        "bold": "Noto Sans Thai Bold",
+        "face": "Noto Sans Thai"
+      },
+      "Noto Sans SC"
+    ]
+  },
+  "locale": "en",
+  "nextId": 25,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "4.1"
+}

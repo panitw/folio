@@ -27,8 +27,8 @@ import { dirname, join } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-/** The bundled examples, in dialog order. Story 2 appends the other three. */
-export const exampleIds = ['invoice']
+/** The bundled examples, in dialog order. */
+export const exampleIds = ['invoice', 'bank-statement', 'legal-contract', 'electricity-bill']
 
 /** Thumbnail width in CSS pixels. */
 export const thumbnailWidth = 264

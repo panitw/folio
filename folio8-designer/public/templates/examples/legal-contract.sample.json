@@ -1,0 +1,81 @@
+{
+  "agreement": {
+    "title": "Services Agreement",
+    "reference": "SA-EX-2026-0042",
+    "effective": "2026-10-01T00:00:00Z"
+  },
+  "partyA": {
+    "name": "Northwind Paper Works Ltd.",
+    "shortName": "Provider",
+    "address": "12 Lantern Row, Suite 4",
+    "city": "Millbrook, Examplia 10420",
+    "companyNumber": "EX-00012345",
+    "signatory": {
+      "name": "Owen Castellan",
+      "role": "Managing Director"
+    }
+  },
+  "partyB": {
+    "name": "Harbourline Design Studio",
+    "shortName": "Client",
+    "address": "88 Quayside Avenue, Floor 2",
+    "city": "Port Averly, Examplia 20931",
+    "companyNumber": "EX-00067890",
+    "signatory": {
+      "name": "Priya Lindqvist",
+      "role": "Head of Operations"
+    }
+  },
+  "clauses": [
+    {
+      "no": 1,
+      "heading": "Definitions",
+      "body": "In this Agreement, \"Services\" means the design, printing and fulfilment services described in the Schedule; \"Working Day\" means a day other than a Saturday, Sunday or public holiday in Examplia; and \"Confidential Information\" means any information disclosed by one party to the other that is marked as confidential or would reasonably be understood to be so."
+    },
+    {
+      "no": 2,
+      "heading": "Term",
+      "body": "This Agreement starts on the Effective Date and continues for an initial period of twelve months. It then renews automatically for further periods of twelve months unless either party gives the other at least sixty days' written notice before the end of the current period that it does not wish to renew."
+    },
+    {
+      "no": 3,
+      "heading": "Services",
+      "body": "The Provider shall perform the Services with reasonable skill and care, in accordance with good industry practice and the timetable agreed in writing between the parties. The Provider may appoint subcontractors, but remains responsible for the acts and omissions of every subcontractor it appoints."
+    },
+    {
+      "no": 4,
+      "heading": "Client obligations",
+      "body": "The Client shall supply artwork, copy and approvals in good time, give the Provider reasonable access to its staff and information, and ensure that everything it supplies is accurate and does not infringe the rights of any third party. Delays caused by the Client extend the Provider's deadlines accordingly."
+    },
+    {
+      "no": 5,
+      "heading": "Fees and payment",
+      "body": "The Client shall pay the fees set out in the Schedule within thirty days of the date of each invoice. Late payments carry interest at four per cent a year above the base rate from the due date until payment is made in full. All fees are stated exclusive of any applicable sales tax."
+    },
+    {
+      "no": 6,
+      "heading": "Intellectual property",
+      "body": "Each party keeps ownership of the intellectual property it owned before the Effective Date. On full payment, the Provider assigns to the Client all rights in the final approved deliverables, and grants the Client a non-exclusive licence to use any underlying Provider materials incorporated in them."
+    },
+    {
+      "no": 7,
+      "heading": "Confidentiality",
+      "body": "Each party shall keep the other's Confidential Information secret, use it only to perform this Agreement, and disclose it only to employees and advisers who need to know it and are bound by equivalent duties. This clause survives the end of this Agreement for three years."
+    },
+    {
+      "no": 8,
+      "heading": "Limitation of liability",
+      "body": "Neither party excludes liability for death or personal injury caused by its negligence or for fraud. Subject to that, each party's total liability under this Agreement in any contract year is limited to the fees paid or payable in that year, and neither party is liable for indirect or consequential loss."
+    },
+    {
+      "no": 9,
+      "heading": "Termination",
+      "body": "Either party may end this Agreement immediately by written notice if the other commits a material breach that is not remedied within thirty days of being notified of it, or becomes insolvent. On termination the Client shall pay for all Services performed up to the termination date."
+    },
+    {
+      "no": 10,
+      "heading": "Governing law",
+      "body": "This Agreement and any dispute arising out of it are governed by the laws of Examplia, and the courts of Millbrook have exclusive jurisdiction. Any notice under this Agreement must be in writing and delivered by hand or by recorded post to the address of the other party shown above."
+    }
+  ]
+}
