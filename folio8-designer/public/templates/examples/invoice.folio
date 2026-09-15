@@ -1,0 +1,355 @@
+{
+  "assets": {},
+  "bands": {
+    "content": {
+      "elements": [
+        {
+          "height": 30,
+          "id": "e1",
+          "style": {
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 24
+          },
+          "type": "text",
+          "value": "INVOICE",
+          "width": 260,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "height": 16,
+          "id": "e2",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{seller.name}}",
+          "width": 290,
+          "x": 0,
+          "y": 40
+        },
+        {
+          "height": 56,
+          "id": "e3",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{seller.address}}\n{{seller.city}}\n{{seller.email}}\n{{seller.taxId}}",
+          "width": 290,
+          "x": 0,
+          "y": 58
+        },
+        {
+          "height": 44,
+          "id": "e4",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Invoice no.\nIssue date\nDue date",
+          "width": 80,
+          "x": 313,
+          "y": 40
+        },
+        {
+          "height": 44,
+          "id": "e5",
+          "style": {
+            "align": "right",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{invoice.number}}\n{{formatDate(invoice.issued, \"d MMMM yyyy\")}}\n{{formatDate(invoice.due, \"d MMMM yyyy\")}}",
+          "width": 130,
+          "x": 393,
+          "y": 40
+        },
+        {
+          "height": 12,
+          "id": "e6",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "BILL TO",
+          "width": 200,
+          "x": 0,
+          "y": 132
+        },
+        {
+          "height": 16,
+          "id": "e7",
+          "style": {
+            "bold": true,
+            "fontFamily": "body",
+            "fontSize": 11
+          },
+          "type": "text",
+          "value": "{{customer.name}}",
+          "width": 290,
+          "x": 0,
+          "y": 146
+        },
+        {
+          "height": 42,
+          "id": "e8",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{customer.contact}}\n{{customer.address}}\n{{customer.city}}",
+          "width": 290,
+          "x": 0,
+          "y": 164
+        },
+        {
+          "as": "item",
+          "bind": "items[]",
+          "columns": [
+            {
+              "align": "left",
+              "bind": "{{item.description}}",
+              "id": "ea",
+              "label": "Description",
+              "proportion": 5
+            },
+            {
+              "align": "right",
+              "bind": "{{item.qty}}",
+              "id": "eb",
+              "label": "Qty",
+              "proportion": 1
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(item.unitPrice, \"#,##0.00\")}}",
+              "id": "ec",
+              "label": "Unit price",
+              "proportion": 1.5
+            },
+            {
+              "align": "right",
+              "bind": "{{formatNumber(item.amount, \"#,##0.00\")}}",
+              "footer": "sum",
+              "id": "ed",
+              "label": "Amount",
+              "proportion": 1.5
+            }
+          ],
+          "headerHeight": 20,
+          "headerStyle": {
+            "background": "#EEF1F4",
+            "bold": true,
+            "color": "#1B2A4A"
+          },
+          "id": "e9",
+          "rules": {
+            "between": [
+              "rows"
+            ],
+            "color": "#D5DAE0",
+            "width": 0.5
+          },
+          "style": {
+            "border": {
+              "color": "#1B2A4A",
+              "edges": [
+                "bottom",
+                "top"
+              ],
+              "width": 0.75
+            },
+            "fontFamily": "body",
+            "fontSize": 9,
+            "padding": {
+              "bottom": 5,
+              "left": 4,
+              "right": 4,
+              "top": 5
+            }
+          },
+          "type": "table",
+          "width": 523,
+          "x": 0,
+          "y": 224
+        },
+        {
+          "height": 30,
+          "id": "ee",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Subtotal\nTax ({{totals.taxRate}})",
+          "width": 100,
+          "x": 313,
+          "y": 484
+        },
+        {
+          "height": 30,
+          "id": "ef",
+          "style": {
+            "align": "right",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "{{formatNumber(totals.subtotal, \"#,##0.00\")}}\n{{formatNumber(totals.tax, \"#,##0.00\")}}",
+          "width": 110,
+          "x": 413,
+          "y": 484
+        },
+        {
+          "height": 1,
+          "id": "eg",
+          "style": {
+            "background": "#1B2A4A"
+          },
+          "type": "rect",
+          "width": 210,
+          "x": 313,
+          "y": 520
+        },
+        {
+          "height": 18,
+          "id": "eh",
+          "style": {
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "Total due",
+          "width": 100,
+          "x": 313,
+          "y": 528
+        },
+        {
+          "height": 18,
+          "id": "ei",
+          "style": {
+            "align": "right",
+            "bold": true,
+            "color": "#1B2A4A",
+            "fontFamily": "body",
+            "fontSize": 12
+          },
+          "type": "text",
+          "value": "{{formatNumber(totals.total, \"#,##0.00\")}}",
+          "width": 110,
+          "x": 413,
+          "y": 528
+        },
+        {
+          "height": 12,
+          "id": "ej",
+          "style": {
+            "bold": true,
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "PAYMENT",
+          "width": 200,
+          "x": 0,
+          "y": 484
+        },
+        {
+          "height": 84,
+          "id": "ek",
+          "type": "qrcode",
+          "value": "{{invoice.reference}}",
+          "width": 84,
+          "x": 0,
+          "y": 500
+        },
+        {
+          "height": 60,
+          "id": "el",
+          "style": {
+            "color": "#4A5563",
+            "fontFamily": "body",
+            "fontSize": 9
+          },
+          "type": "text",
+          "value": "Scan to pay, or quote the reference\n{{invoice.reference}}\nwith your bank transfer. Payment due\nby {{formatDate(invoice.due, \"d MMMM yyyy\")}}.",
+          "width": 200,
+          "x": 96,
+          "y": 504
+        }
+      ]
+    },
+    "pageFooter": {
+      "elements": [
+        {
+          "height": 12,
+          "id": "em",
+          "style": {
+            "align": "center",
+            "color": "#6B7480",
+            "fontFamily": "body",
+            "fontSize": 8
+          },
+          "type": "text",
+          "value": "Thank you for your business. Questions about this invoice: {{seller.email}}",
+          "width": 523,
+          "x": 0,
+          "y": 16
+        }
+      ],
+      "height": 40
+    },
+    "pageHeader": {
+      "elements": [],
+      "height": 20
+    }
+  },
+  "fonts": {
+    "body": [
+      {
+        "bold": "Roboto Bold",
+        "boldItalic": "Roboto Bold Italic",
+        "face": "Roboto",
+        "italic": "Roboto Italic"
+      },
+      {
+        "bold": "Noto Sans Thai Bold",
+        "face": "Noto Sans Thai"
+      },
+      "Noto Sans SC"
+    ]
+  },
+  "locale": "en",
+  "nextId": 23,
+  "page": {
+    "margin": {
+      "bottom": 36,
+      "left": 36,
+      "right": 36,
+      "top": 36
+    },
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "utcOffset": "+00:00",
+  "version": "4.0"
+}

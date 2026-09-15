@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { declaredCacheAssetWarning } from './offline-release-contract.mjs'
-import { documentationFontHostFinding, reportCacheAssetApproach } from './verify-offline-release.mjs'
+import { documentationFontHostFinding, reportCacheAssetApproach, templateAssetFinding } from './verify-offline-release.mjs'
 import { FORBIDDEN_FONT_HOSTS } from './forbidden-font-hosts.mjs'
 // THE TYPESCRIPT DECLARATION ITSELF, IMPORTED AS A VALUE. See the tie below for
 // why this import is the point rather than a convenience.
@@ -39,6 +39,29 @@ describe('the precached documentation pages', () => {
     const remote = { url: '/assets/expression-reference-0123456789abcdef0123.html', html: `<link rel="stylesheet" href="https://${host}/css2">` }
     expect(documentationFontHostFinding([clean])).toBeNull()
     expect(documentationFontHostFinding([clean, remote])).toEqual({ url: remote.url, host })
+  })
+})
+
+describe('the starter and example template assets', () => {
+  const hex = '0123456789abcdef0123'
+  const starter = { url: `/assets/starter.${hex}-Ab12Cd34.folio`, immutable: true }
+  const invoice = [
+    { url: `/assets/invoice.${hex}-Ab12Cd34.folio`, immutable: true },
+    { url: `/assets/invoice.sample.${hex}-Ab12Cd34.json`, immutable: true },
+    { url: `/assets/invoice.thumbnail.${hex}-Ab12Cd34.png`, immutable: true },
+  ]
+
+  it('pass with the starter and every example asset', () => {
+    expect(templateAssetFinding([starter, ...invoice], ['invoice'])).toBeNull()
+  })
+
+  it('fail when only an example .folio is present, because the starter is required by name', () => {
+    expect(templateAssetFinding(invoice, ['invoice'])).toBe('missing the starter template runtime asset')
+  })
+
+  it('fail naming the example when one of its assets is missing', () => {
+    expect(templateAssetFinding([starter, invoice[0], invoice[1]], ['invoice'])).toBe("example 'invoice' must ship exactly one immutable thumbnail asset (found 0)")
+    expect(templateAssetFinding([starter, invoice[1], invoice[2]], ['invoice'])).toBe("example 'invoice' must ship exactly one immutable template asset (found 0)")
   })
 })
 

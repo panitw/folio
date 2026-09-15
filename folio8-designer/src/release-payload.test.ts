@@ -30,7 +30,7 @@ const payload = () => ({ version: 1, releaseId: hash, pageId: 'b'.repeat(64), un
 // instead of quietly satisfying a `not.toBe` somewhere.
 const reasonOf = (value: unknown): S1PayloadRejection | 'accepted' => { const result = parseS1Payload(value); return result.ok ? 'accepted' : result.reason }
 
-const overBound = () => { const over = payload(); over.assetCount = 66; over.cacheAssets = Array.from({ length: 66 }, (_, index) => ({ assetUrl: `/asset-${index}`, bytes: 10 })); over.cachedBytes = 660; return over }
+const overBound = () => { const over = payload(); over.assetCount = 91; over.cacheAssets = Array.from({ length: 91 }, (_, index) => ({ assetUrl: `/asset-${index}`, bytes: 10 })); over.cachedBytes = 910; return over }
 const underBound = () => { const under = payload(); under.assetCount = 9; under.cacheAssets = under.cacheAssets.slice(0, 9); under.cachedBytes = 90; return under }
 const staleArithmetic = () => { const total = payload(); total.cachedBytes = 41; return total }
 // KEYED BY ID, LIKE THE ASSERTION IT FALSIFIES. `rows[4]` was the dictionary

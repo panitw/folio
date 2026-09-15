@@ -8,6 +8,7 @@ import { serviceWorkerSource } from './offline-service-worker-template.mjs'
 import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-release.mjs'
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
 import { FORBIDDEN_FONT_HOSTS } from './forbidden-font-hosts.mjs'
+import { exampleIds } from './build-examples.mjs'
 import { RELEASE_RUNTIME, declaredCacheAssetBounds, declaredCacheAssetWarning, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -16,6 +17,21 @@ const fail = (message) => { throw new Error(`offline release verification failed
 // Kept in sync with the `import.meta.env.DEV` offline bypass in src/main.tsx,
 // src/App.tsx, and src/offline-lifecycle.ts.
 const DEV_BYPASS_MARKERS = ['dev-bypass', 'Offline layer bypassed']
+// THE STARTER AND THE BUNDLED EXAMPLES. The starter is required by name — a
+// generic `.folio` class would be satisfied by an example template alone — and
+// every listed example must ship exactly one immutable template, sample and
+// thumbnail, so an example silently dropped from Vite's asset graph fails here.
+// Returns the first finding, or null.
+export function templateAssetFinding(assets, ids = exampleIds) {
+  if (!assets.some((asset) => /\/assets\/starter\.[a-f0-9]{20}-[^/]+\.folio$/.test(asset.url))) return 'missing the starter template runtime asset'
+  for (const id of ids) {
+    for (const [kind, pattern] of [['template', `${id}\\.[a-f0-9]{20}-[^/]+\\.folio`], ['sample', `${id}\\.sample\\.[a-f0-9]{20}-[^/]+\\.json`], ['thumbnail', `${id}\\.thumbnail\\.[a-f0-9]{20}-[^/]+\\.png`]]) {
+      const found = assets.filter((asset) => new RegExp(`^/assets/${pattern}$`).test(asset.url))
+      if (found.length !== 1 || !found[0].immutable) return `example '${id}' must ship exactly one immutable ${kind} asset (found ${found.length})`
+    }
+  }
+  return null
+}
 const sameSet = (left, right) => left.size === right.size && [...left].every((value) => right.has(value))
 const brotliOptions = { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_GENERIC, [constants.BROTLI_PARAM_LGWIN]: 22 } }
 const walk = (directory) => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(join(directory, entry.name)) : [join(directory, entry.name)])
@@ -123,7 +139,9 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false, re
   const outputUrls = runtimeOutputUrls(outputDir)
   if (!sameSet(manifestUrls, outputUrls)) fail('manifest and production runtime output are not an exact set')
   if (!manifestUrls.has('/index.html')) fail('navigation entry is absent')
-  for (const required of ['.wasm', '.css', '.js', '.ttf', '.folio']) if (!release.assets.some((asset) => asset.url.endsWith(required))) fail(`missing required runtime class ${required}`)
+  for (const required of ['.wasm', '.css', '.js', '.ttf']) if (!release.assets.some((asset) => asset.url.endsWith(required))) fail(`missing required runtime class ${required}`)
+  const templateFinding = templateAssetFinding(release.assets)
+  if (templateFinding) fail(templateFinding)
   if (!release.assets.some((asset) => /\/pdf\.worker-[A-Za-z0-9_-]+\.mjs$/.test(asset.url))) fail('missing local PDF.js worker runtime asset')
   if (release.assets.filter((asset) => asset.url.endsWith('.bcmap')).length < 4) fail('missing local PDF.js CMap runtime assets')
   if (!release.assets.some((asset) => /\/pdfjs-standard-fonts-[a-f0-9]{20}\/LiberationSans-Regular\.ttf$/.test(asset.url))) fail('missing local PDF.js standard-font runtime asset')

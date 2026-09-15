@@ -1,0 +1,37 @@
+{
+  "invoice": {
+    "number": "INV-2026-0417",
+    "issued": "2026-09-01T00:00:00Z",
+    "due": "2026-10-01T00:00:00Z",
+    "reference": "PAY-EXMP-2026-0417"
+  },
+  "seller": {
+    "name": "Northwind Paper Works Ltd.",
+    "address": "12 Lantern Row, Suite 4",
+    "city": "Millbrook, Examplia 10420",
+    "email": "billing@northwind-paper.example",
+    "taxId": "Tax ID EX-000-123-456"
+  },
+  "customer": {
+    "name": "Harbourline Design Studio",
+    "contact": "Attn: Mira Castellan",
+    "address": "88 Quayside Avenue, Floor 2",
+    "city": "Port Averly, Examplia 20931"
+  },
+  "items": [
+    {"description": "Letterpress business cards, 400 gsm", "qty": 500, "unitPrice": 0.42, "amount": 210.00},
+    {"description": "A4 letterhead, recycled 120 gsm", "qty": 1000, "unitPrice": 0.18, "amount": 180.00},
+    {"description": "Branded envelopes, DL window", "qty": 750, "unitPrice": 0.25, "amount": 187.50},
+    {"description": "Presentation folders, matte laminate", "qty": 200, "unitPrice": 2.35, "amount": 470.00},
+    {"description": "Brand guideline booklet, 32 pages", "qty": 40, "unitPrice": 14.80, "amount": 592.00},
+    {"description": "Sticker sheets, die-cut", "qty": 300, "unitPrice": 0.95, "amount": 285.00},
+    {"description": "Design proofing and colour matching", "qty": 6, "unitPrice": 65.00, "amount": 390.00},
+    {"description": "Courier delivery, two drops", "qty": 2, "unitPrice": 38.50, "amount": 77.00}
+  ],
+  "totals": {
+    "subtotal": 2391.50,
+    "taxRate": "10%",
+    "tax": 239.15,
+    "total": 2630.65
+  }
+}

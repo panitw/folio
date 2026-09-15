@@ -39,7 +39,13 @@ const labels = ['Engine', 'Latin font', 'Thai font', 'CJK font', 'Noto Sans Bold
 // or duplicating any of these lines fails the build loudly rather than
 // disabling it.
 const minimumCacheAssets = 10
-const maximumCacheAssets = 65
+// RAISED 65 → 90 BY THE STARTUP TEMPLATES (story 1, the example bundling
+// pipeline), WITH STATED HEADROOM RATHER THAN TUNED TO THE COUNT. The release
+// already sat at 65 of 65; each bundled example spends three slots (template,
+// sample JSON, thumbnail), so the four planned examples take twelve, and the
+// remaining margin is room for the next unrelated batch rather than a ceiling
+// fitted to this one.
+const maximumCacheAssets = 90
 // THE APPROACH WARNING'S THRESHOLD (Story 11.1, D-11.1.10). NOT A BOUND:
 // nothing in this module reads it, nothing rejects a payload for crossing it,
 // and `maximumCacheAssets` above is still the only number that refuses a
@@ -54,7 +60,11 @@ const maximumCacheAssets = 65
 // this is the file the derivation reader is anchored to, and it obeys the same
 // `const <name> = <digits>` shape on a line of its own for the same reason
 // they do.
-const warnCacheAssets = 56
+//
+// RAISED 56 → 82 WITH THE MAXIMUM (startup templates, story 1): still eight
+// below the ceiling, the same one-comparable-batch margin, after the twelve
+// slots four examples take.
+const warnCacheAssets = 82
 // THE DECLARATION ABOVE IS SHAPED FOR A TEXT READER IN ANOTHER LANGUAGE
 // (`scripts/offline-release-contract.mjs` matches `^const <name> = <digits>$`),
 // not for a TypeScript importer, so nothing in `src/` reads it. It is exported

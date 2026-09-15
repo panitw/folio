@@ -124,6 +124,7 @@ folio8-designer/src/generated/offline-assets.ts
 folio8-designer/src/generated/runtime-fonts.css
 folio8-designer/src/generated/font-catalogue.ts
 folio8-designer/src/generated/documentation-assets.ts
+folio8-designer/src/generated/example-assets.ts
 # Story 16.1's family-index module is GENERATED from the COMMITTED
 # folio8-designer/font-index.json by scripts/build-font-index.mjs, with no
 # network and no second input. The snapshot is committed; its projection is not.

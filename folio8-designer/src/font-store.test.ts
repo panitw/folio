@@ -397,7 +397,7 @@ describe('the offline release contract is untouched', () => {
     // `const <name> = <digits>`, so this asserts the value AND the shape that
     // reader depends on.
     expect(releasePayload).toContain('const minimumCacheAssets = 10\n')
-    expect(releasePayload).toContain('const maximumCacheAssets = 65\n')
+    expect(releasePayload).toContain('const maximumCacheAssets = 90\n')
   })
 
   it('adds no release asset of its own, because the store is a database and not a bundle', () => {
@@ -465,6 +465,63 @@ describe('the test-only backing store never reaches the product', () => {
     const licence = fs.readFileSync(path.join(installed, 'LICENSE'), 'utf8')
     expect(licence).toContain('Apache License')
     expect(licence).toContain('Version 2.0, January 2004')
+    for (const forbidden of ['GNU GENERAL PUBLIC LICENSE', 'GNU LESSER GENERAL PUBLIC LICENSE', 'GNU AFFERO', 'Server Side Public License']) {
+      expect(licence, `AD-26 forbids ${forbidden} at any depth`).not.toContain(forbidden)
+    }
+  })
+})
+
+// THE BUILD-TIME RASTERIZER, ADMITTED UNDER THE SAME POLICY (startup templates,
+// story 1). `@napi-rs/canvas` turns page 1 of each bundled example's engine PDF
+// into its dialog thumbnail inside `scripts/build-examples.mjs`. It was already
+// in the lockfile as `pdfjs-dist`'s optional canvas backend; declaring it pins
+// the exact version the build depends on. It runs at build time only and must
+// never reach the shipped bundle.
+describe('the build-time rasterizer never reaches the product', () => {
+  const buildOnlyPackage = '@napi-rs/canvas'
+
+  it('is declared in devDependencies, pinned exactly, and not in dependencies', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> }
+    expect(manifest.devDependencies[buildOnlyPackage]).toBe('1.0.8')
+    expect(Object.hasOwn(manifest.dependencies, buildOnlyPackage)).toBe(false)
+    expect(Object.keys(manifest.dependencies).sort()).toEqual(['pdfjs-dist', 'react', 'react-dom'])
+  })
+
+  it('is imported by no shipping module under src/', () => {
+    const shipping: string[] = []
+    const walk = (directory: string) => {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const full = path.join(directory, entry.name)
+        if (entry.isDirectory()) { walk(full); continue }
+        if (!/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(entry.name)) continue
+        if (/\.test\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(entry.name)) continue
+        if (path.relative(path.join(here), full).split(path.sep)[0] === 'test') continue
+        shipping.push(full)
+      }
+    }
+    walk(here)
+    expect(shipping.length, 'the walk read almost nothing, which cannot support a claim about the shipping tree').toBeGreaterThan(30)
+    const offenders = shipping.filter((file) => fs.readFileSync(file, 'utf8').includes(buildOnlyPackage))
+    expect(offenders.map((file) => path.relative(here, file)), `${buildOnlyPackage} is a build-time devDependency and must never be reachable from a shipping module`).toEqual([])
+  })
+
+  // AD-26 forbids GPL, LGPL, AGPL, SSPL and commercial EULAs at ANY DEPTH. The
+  // package has no runtime dependencies; its optional dependencies are its own
+  // per-platform prebuilt binaries at the same version. The installed LICENSE
+  // file is read, because the field is a claim and the file is the grant.
+  it('is MIT, with only its own same-version platform binaries beneath it', () => {
+    const installed = path.join(here, '..', 'node_modules', buildOnlyPackage)
+    const manifest = JSON.parse(fs.readFileSync(path.join(installed, 'package.json'), 'utf8')) as { version: string; license: string; dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> }
+    expect(manifest.version).toBe('1.0.8')
+    expect(manifest.license).toBe('MIT')
+    expect(Object.keys(manifest.dependencies ?? {})).toEqual([])
+    for (const [name, version] of Object.entries(manifest.optionalDependencies ?? {})) {
+      expect(name, 'an optional dependency outside the package family would be a new, unreviewed package').toMatch(/^@napi-rs\/canvas-[a-z0-9-]+$/)
+      expect(version).toBe('1.0.8')
+    }
+    const licence = fs.readFileSync(path.join(installed, 'LICENSE'), 'utf8')
+    expect(licence).toContain('MIT License')
+    expect(licence).toContain('Permission is hereby granted, free of charge')
     for (const forbidden of ['GNU GENERAL PUBLIC LICENSE', 'GNU LESSER GENERAL PUBLIC LICENSE', 'GNU AFFERO', 'Server Side Public License']) {
       expect(licence, `AD-26 forbids ${forbidden} at any depth`).not.toContain(forbidden)
     }

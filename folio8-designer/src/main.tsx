@@ -6,6 +6,11 @@ import type { EngineSnapshot } from './engine-protocol.ts'
 import { engineMayStart, registerOfflineLifecycle, type OfflineLifecycle } from './offline-lifecycle.ts'
 import { isDevBypassReason, loadS1Payload, payloadForLifecycle, type S1Payload } from './release-payload.ts'
 import { runtimeAssetUrls } from './generated/offline-assets.ts'
+// The bundled example templates (startup templates) ship in the offline release
+// from the bundling story on; the dialog that opens them arrives later. Loading
+// the module from the application entry — never the engine worker — puts their
+// template, sample and thumbnail URLs in Vite's asset graph. No behaviour.
+import './generated/example-assets.ts'
 import { loadStarterAfterEngineReady } from './startup-sequence.ts'
 import { selectFileAccess, selectImageFileAccess, selectSampleFileAccess } from './file/capability.ts'
 
