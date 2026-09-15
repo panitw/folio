@@ -1,0 +1,18 @@
+.git
+**/node_modules
+**/.DS_Store
+
+# Local toolchains and generated output
+.fontgen-venv
+.font-sources
+folio-go/.matrix-build
+folio-designer/dist
+folio-designer/src/generated
+folio-designer/test-results
+folio-designer/playwright-report
+
+# Planning record and agent tooling — not build inputs
+_bmad
+_bmad-output
+.agents
+.claude

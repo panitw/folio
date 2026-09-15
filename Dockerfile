@@ -1,0 +1,39 @@
+# Folio Designer — production image for Railway.
+#
+# The designer is a static page, but its build compiles the Go engine to wasm
+# (build:wasm), so the build stage carries both toolchains at the exact versions
+# the repo pins: Go 1.26.0 (folio-go/go.mod toolchain, AD-22) and Node 24.16.0
+# (folio-designer/package.json engines).
+# The context is the repo root: build-wasm.mjs reads ../folio-go and ../docs.
+
+FROM golang:1.26.0-bookworm AS go
+
+FROM node:24.16.0-bookworm AS build
+COPY --from=go /usr/local/go /usr/local/go
+# GOTOOLCHAIN=local: never let `go` fetch a different toolchain mid-build.
+ENV PATH=/usr/local/go/bin:$PATH \
+    GOTOOLCHAIN=local
+WORKDIR /src
+
+COPY folio-designer/package.json folio-designer/package-lock.json folio-designer/
+RUN cd folio-designer && npm ci
+
+COPY folio-go/go.mod folio-go/go.sum folio-go/
+RUN cd folio-go && go mod download
+
+COPY . .
+# `npm run build` minus its first two steps. scan:font-hosts and scan:host-fonts
+# are source guardrails that populate from `git ls-files` and refuse to run
+# without a checkout — and neither a Railway upload nor this build context
+# carries .git. They do not shape the output and CI runs them on every push.
+# Everything that does shape or verify the release runs, in the same order.
+RUN cd folio-designer \
+ && npm run build:wasm \
+ && npx tsc -b \
+ && npx vite build \
+ && npm run build:offline \
+ && npm run verify:offline
+
+FROM caddy:2.10-alpine
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /src/folio-designer/dist /srv
