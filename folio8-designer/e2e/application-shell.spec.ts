@@ -22,7 +22,7 @@ test('the initial shell exposes desktop landmarks and honest local-file controls
   await expect(page.getByRole('button', { name: 'Open local template' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save local template' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save As' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Start blank' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New…' })).toBeVisible()
   await expect(page.getByText('Unsaved local changes')).toBeVisible()
   await expect(page.getByRole('button', { name: 'PREVIEW' })).toBeVisible()
 })

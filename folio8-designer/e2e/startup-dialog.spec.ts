@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
 // STARTUP TEMPLATES, STORY 3 — THE BROWSER WITNESS FOR THE LAUNCH DIALOG.
@@ -74,6 +77,69 @@ test('opening Invoice lands in Preview with its sample loaded', async ({ page })
   // The sample tree is the one Load sample JSON would have installed.
   await page.getByRole('tab', { name: 'DATA' }).click()
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
+})
+
+// STORY 4 — NEW… OVER REAL EDITS, THROUGH THE REAL ENGINE. Keep editing must
+// send nothing: the revision the edit produced is still the one on screen, and
+// Undo still has the edit to undo. Discard then opens the example in Preview.
+test('New… over an edited document warns before the dialog; Keep editing keeps it, Discard opens the dialog and Invoice lands in Preview', async ({ page }) => {
+  await page.goto('/')
+  await expectLaunchDialog(page)
+  await page.keyboard.press('Escape')
+  await expectStarterCanvas(page)
+  // A REAL EDIT: add a page, which moves the engine past revision 1.
+  await page.getByLabel('Canvas controls').getByRole('button', { name: 'Add page' }).click()
+  const revision = page.getByTestId('engine-snapshot')
+  await expect(revision).not.toHaveText(/GO SNAPSHOT · REVISION 1\b/)
+  const edited = await revision.textContent()
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled()
+
+  const dialog = page.getByRole('dialog', { name: 'New template' })
+  const warning = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
+  await page.getByRole('button', { name: 'New…' }).click()
+  await expect(warning).toBeVisible()
+  await expect(warning).toHaveAccessibleDescription('Untitled template has unsaved changes.')
+  await expect(dialog).toHaveCount(0)
+  const keep = warning.getByRole('button', { name: 'Keep editing' })
+  const discard = warning.getByRole('button', { name: 'Discard', exact: true })
+  await expect(keep).toBeFocused()
+  // Tab cycles through Keep editing and Discard only.
+  await page.keyboard.press('Tab')
+  await expect(discard).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(keep).toBeFocused()
+
+  await keep.click()
+  await expect(warning).toHaveCount(0)
+  await expect(dialog).toHaveCount(0)
+  await expect(revision).toHaveText(edited ?? '')
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'New…' }).click()
+  await warning.getByRole('button', { name: 'Discard', exact: true }).click()
+  await expect(warning).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Blank', exact: true })).toBeFocused()
+  await expect(revision).toHaveText(edited ?? '')
+  await dialog.getByRole('button', { name: 'Invoice', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Open example' }).click()
+  await expectExampleInPreview(page, 'Invoice')
+})
+
+test('Open existing file… opens a .folio from the dialog and closes it', async ({ page }) => {
+  const fixture = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/statement-1/input.folio'))
+  await page.addInitScript((rawBytes) => {
+    const bytes = new Uint8Array(rawBytes)
+    const handle = { name: 'statement.folio', getFile: async () => new File([bytes], 'statement.folio', { type: 'application/json' }), createWritable: async () => { throw new Error('not reached') } }
+    Object.assign(window, { showOpenFilePicker: async () => [handle] })
+  }, [...fixture])
+  await page.goto('/')
+  const dialog = await expectLaunchDialog(page)
+  await dialog.getByRole('button', { name: 'Open existing file…' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('.document-name')).toHaveText('statement.folio')
+  // Proof the fixture really went through the engine: the bar's Open status.
+  await expect(page.getByLabel('Local file actions').getByRole('status')).toHaveText(/^Opened local file statement\.folio(; canonical local changes need saving)?$/)
+  await expect(page.getByLabel('Canvas region')).toBeVisible()
 })
 
 // A NARROW WINDOW. Five fixed-width thumbnails in five squeezed columns used to

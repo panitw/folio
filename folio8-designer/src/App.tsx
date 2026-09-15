@@ -10,7 +10,7 @@ import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { BrandMark } from './BrandMark'
 import type { BindingErrorScope } from './DataPanel'
-import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget } from './file/file-access'
+import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget, type LocalFile } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
@@ -373,9 +373,24 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   const [startupSelected, setStartupSelected] = useState(DEFAULT_STARTUP_CHOICE_ID)
   const [startupBusy, setStartupBusy] = useState<string>()
   const [startupError, setStartupError] = useState<string>()
-  const startupCards: ReadonlyArray<StartupCard> = examples === undefined ? [] : startupChoices.flatMap((choice): StartupCard[] => {
+  // STORY 4. The dialog has two origins. At launch the untouched starter already
+  // is Blank, so Blank, Cancel and Escape only close it. After New… Blank must
+  // really replace whatever is open, and Cancel leaves that document alone.
+  const [startupOrigin, setStartupOrigin] = useState<'launch' | 'new'>('launch')
+  // THE UNSAVED-CHANGES WARNING (CAP-6, owner renegotiation). New… on a document
+  // with real edits opens this first; only its Discard opens the startup
+  // dialog, and nothing inside that dialog asks again.
+  const [unsavedWarningOpen, setUnsavedWarningOpen] = useState(false)
+  // THE REVISION THE DOCUMENT HAD WHEN IT WAS LAST STARTED, OPENED, OPENED AS AN
+  // EXAMPLE OR SAVED. Separate from `savedRevision`, which drives the bar's
+  // "Unsaved local changes" label: an untouched starter, example or opened file
+  // is "unsaved" there but has no real edits to lose, so it is replaced without
+  // asking. Only a different revision from this one warns.
+  const [baselineRevision, setBaselineRevision] = useState(initialSnapshot?.revision)
+  // Blank is always a card, with or without examples, so New… works everywhere.
+  const startupCards: ReadonlyArray<StartupCard> = startupChoices.flatMap((choice): StartupCard[] => {
     if (choice.id === BLANK_CHOICE_ID) return [choice]
-    const asset = examples.find((example) => example.id === choice.id)
+    const asset = examples?.find((example) => example.id === choice.id)
     return asset ? [{ ...choice, thumbnail: asset.thumbnail }] : []
   })
   const [zoom, setZoom] = useState(1)
@@ -1767,7 +1782,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // focused component's own Delete. Design mode, no modal, nothing else owning
   // the canvas, and the key aimed at the canvas (or at no control at all).
   const canvasKeyAllowed = (event: Pick<KeyboardEvent, 'target'>): boolean =>
-    modeRef.current === 'design' && engine !== undefined && !fileBusy && !startupOpen && tableEditor === undefined && pageDeleteConfirm === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
+    modeRef.current === 'design' && engine !== undefined && !fileBusy && !startupOpen && !unsavedWarningOpen && tableEditor === undefined && pageDeleteConfirm === undefined && placing === undefined && (drag === undefined || drag.released === true) && boundaryDrag === undefined && sectionBreakDrag === undefined && !canvasSelection.active()
     && (event.target === document.body || (event.target instanceof Node && canvasRegionRef.current?.contains(event.target) === true))
   const keyboardDelete = (event: Pick<KeyboardEvent, 'target' | 'repeat' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean => {
     if (!canvasKeyAllowed(event) || event.repeat || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false
@@ -2865,15 +2880,20 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     clearPreviewParameters(true)
     setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
     try {
-      const opened = await fileAccess.open()
-      const installed = await installOpenedDocument(opened.bytes, opened.name, opened.target)
-      setSavedRevision(installed.inputWasCanonical ? installed.canonicalRevision : undefined)
-      setFileStatus(installed.inputWasCanonical ? `Opened local file ${opened.name}` : `Opened local file ${opened.name}; canonical local changes need saving`)
-      if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
+      await installPickedFile(await fileAccess.open())
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
       else announceFailure(fileFailureSentence(error, 'Could not open local file'))
     } finally { setFileBusy(false) }
+  }
+  // What Open does with a file the picker returned, shared by the document bar
+  // and the startup dialog's Open existing file… (story 4). The mode is left as
+  // it is; a Preview re-renders the new document.
+  const installPickedFile = async (opened: LocalFile) => {
+    const installed = await installOpenedDocument(opened.bytes, opened.name, opened.target)
+    setSavedRevision(installed.inputWasCanonical ? installed.canonicalRevision : undefined)
+    setFileStatus(installed.inputWasCanonical ? `Opened local file ${opened.name}` : `Opened local file ${opened.name}; canonical local changes need saving`)
+    if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
   }
   // THE ONE DOCUMENT-REPLACEMENT PATH FOR TEMPLATE BYTES, shared by Open and by
   // an example opened from the startup dialog: load, canonical serialize, a new
@@ -2889,21 +2909,91 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     const inputWasCanonical = equalBytes(source, canonical.bytes)
     installDocumentIdentity()
     setCurrentSnapshot(loaded.snapshot, false, true)
+    setBaselineRevision(loaded.snapshot.revision)
     clearSampleData()
     setTitle(name)
     setTarget(fileTarget)
     return { inputWasCanonical, canonicalRevision: canonical.snapshot.revision }
   }
 
-  // AN EXAMPLE FROM THE STARTUP DIALOG. Blank (and Escape) is no request at all:
-  // the starter the engine already holds stays, at revision 1. An example
+  // STORY 4. New… on a document with real edits warns before the dialog opens
+  // (CAP-6, owner renegotiation); no choice inside the dialog asks again.
+  const unsavedEdits = () => {
+    const current = snapshotRef.current
+    return current !== undefined && baselineRevision !== undefined && current.revision !== baselineRevision
+  }
+  const chooseStartup = (id: string) => {
+    if (startupBusy !== undefined) return
+    setStartupError(undefined)
+    if (id === BLANK_CHOICE_ID) {
+      if (startupOrigin === 'launch') { setStartupOpen(false); return }
+      void startBlankFromStartup()
+      return
+    }
+    void openExample(id)
+  }
+  // New…: on real edits, the warning first; otherwise straight to the dialog.
+  const openNewDialog = () => {
+    if (!engine || !blankBytes || fileBusy) return
+    if (unsavedEdits()) { setUnsavedWarningOpen(true); return }
+    openStartupFromNew()
+  }
+  const openStartupFromNew = () => { setStartupOrigin('new'); setStartupSelected(BLANK_CHOICE_ID); setStartupError(undefined); setStartupOpen(true) }
+  // Keep editing (or Escape): nothing opens and nothing is requested.
+  const keepEditing = () => setUnsavedWarningOpen(false)
+  // Discard only agrees to replacement; the dialog's choice performs it, and
+  // Cancel there still leaves the document as it is.
+  const discardForNew = () => { setUnsavedWarningOpen(false); openStartupFromNew() }
+  // Cancel and Escape: close, with nothing requested from the engine.
+  const cancelStartup = () => {
+    if (startupBusy !== undefined) return
+    setStartupError(undefined); setStartupOpen(false)
+  }
+  // Blank from a reopened dialog is exactly the old document-bar Start blank.
+  const startBlankFromStartup = async () => {
+    setStartupBusy('Blank')
+    try {
+      if (await startBlank()) setStartupOpen(false)
+      else setStartupError('Could not start a blank local template')
+    } finally { setStartupBusy(undefined) }
+  }
+  // Open existing file… (CAP-8): the bar's picker and install path. The picker
+  // is called before any await, inside the click's activation. A cancelled
+  // picker changes nothing and says nothing; a failure stays in the footer.
+  const requestStartupFile = () => {
+    if (startupBusy !== undefined) return
+    setStartupError(undefined)
+    void openFileFromStartup()
+  }
+  const openFileFromStartup = async () => {
+    if (!engine || !fileAccess || fileBusy) return
+    let opened: LocalFile
+    try { opened = await fileAccess.open() } catch (error) {
+      if (!isFileAccessCancelled(error)) setStartupError(fileFailureSentence(error, 'Could not open local file'))
+      return
+    }
+    setStartupBusy(opened.name)
+    revokeSampleLoad()
+    invalidatePreview(true)
+    clearPreviewParameters(true)
+    setFileBusy(true); setFileError(undefined); setFileStatus('Opening local file…')
+    try {
+      await installPickedFile(opened)
+      setStartupOpen(false)
+    } catch (error) {
+      setFileStatus(undefined)
+      setStartupError(fileFailureSentence(error, 'Could not open local file'))
+    } finally { setFileBusy(false); setStartupBusy(undefined) }
+  }
+  // AN EXAMPLE FROM THE STARTUP DIALOG. At launch Blank (like Cancel and Escape)
+  // is no request at all: the starter the engine already holds stays, at
+  // revision 1. From New…, Blank loads the starter (story 4). An example
   // fetches BOTH files before anything is sent, so a failed fetch leaves the
   // document untouched and the dialog open with the failure in its footer.
   // Opened, it is an ordinary unsaved document with no file target, titled with
   // the example's name, and it enters Preview once — rendered from its sample.
-  const chooseStartup = async (id: string) => {
+  const openExample = async (id: string) => {
     if (startupBusy !== undefined) return
-    if (id === BLANK_CHOICE_ID) { setStartupError(undefined); setStartupOpen(false); return }
     const card = startupCards.find((entry) => entry.id === id)
     const asset = examples?.find((example) => example.id === id)
     if (!engine || !card || !asset || fileBusy) return
@@ -2949,7 +3039,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // Completion establishes only the written revision. It must never repaint
       // an older snapshot over a newer engine commit or call that newer state clean.
       const wroteCurrentRevision = snapshotRef.current?.revision === serialized.snapshot.revision
-      if (wroteCurrentRevision) setSavedRevision(serialized.snapshot.revision)
+      if (wroteCurrentRevision) { setSavedRevision(serialized.snapshot.revision); setBaselineRevision(serialized.snapshot.revision) }
       setFileStatus(wroteCurrentRevision ? (saved.target ? `Saved locally as ${saved.name}` : `Downloaded local file ${saved.name}`) : `Saved revision ${serialized.snapshot.revision}; newer local changes need saving`)
     } catch (error) {
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
@@ -2957,8 +3047,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     } finally { saveInFlight.current = false; setFileBusy(false) }
   }
 
-  const startBlank = async () => {
-    if (!engine || !blankBytes || fileBusy) return
+  // Reached only through a reopened startup dialog's Blank (story 4). Resolves
+  // whether the starter was installed.
+  const startBlank = async (): Promise<boolean> => {
+    if (!engine || !blankBytes || fileBusy) return false
     revokeSampleLoad()
     invalidatePreview(true)
     clearPreviewParameters(true)
@@ -2967,11 +3059,13 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       const loaded = await engineFileStep((signal) => engine.request('load', blankBytes, signal))
       installDocumentIdentity()
       setCurrentSnapshot(loaded.snapshot, false, true)
+      setBaselineRevision(loaded.snapshot.revision)
       clearSampleData()
       setTitle('Untitled template'); setTarget(undefined); setSavedRevision(undefined)
       setFileStatus('Started an unnamed local template')
       if (modeRef.current === 'preview') { void loadParameterReferences(); void renderPreview() }
-    } catch { announceFailure('Could not start a blank local template')
+      return true
+    } catch { announceFailure('Could not start a blank local template'); return false
     } finally { setFileBusy(false) }
   }
 
@@ -3093,7 +3187,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       // Save is still claimed from the browser, or it opens Save Page instead.
       const mac = isMacPlatform()
       const modifier = primaryModifier(event, mac)
-      if (startupOpen) { if (modifier && event.key.toLowerCase() === 's') event.preventDefault(); return }
+      if (startupOpen || unsavedWarningOpen) { if (modifier && event.key.toLowerCase() === 's') event.preventDefault(); return }
       const editing = isEditableTarget(event.target) || event.isComposing
       if (modifier && event.key.toLowerCase() === 's' && engine && fileAccess && !fileBusy) {
         event.preventDefault()
@@ -3488,7 +3582,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
           `role="status"`: that line says what the DOCUMENT is (saved, dirty)
           and this one says what the last file ACTION did. One line with two
           writers means either can erase the other's sentence. */}
-      <div className="document-actions" role="group" aria-label="Local file actions"><button className="tool-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template" data-tip="Open"><ToolIcon glyph="open" /></button><button className="tool-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" data-tip={toolTip('Save', shortcuts.save)}><ToolIcon glyph="save" /></button><button className="tool-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save As" data-tip="Save As"><ToolIcon glyph="save-as" /></button><button className="tool-button" type="button" onClick={() => void startBlank()} disabled={!engine || !blankBytes || fileBusy} aria-label="Start blank" data-tip="Start blank"><ToolIcon glyph="blank" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy} aria-label="Undo" data-tip={toolTip('Undo', shortcuts.undo)}><ToolIcon glyph="undo" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy} aria-label="Redo" data-tip={toolTip('Redo', shortcuts.redo)}><ToolIcon glyph="redo" /></button>{fileError ? <span role="alert" className="bar-message bar-message-alert" title={fileError}>{fileError}</span> : fileStatus ? <span role="status" aria-live="polite" className="bar-message" title={fileStatus}>{fileStatus}</span> : undefined}</div>
+      <div className="document-actions" role="group" aria-label="Local file actions"><button className="tool-button" type="button" onClick={() => void open()} disabled={!engine || !fileAccess || fileBusy} aria-label="Open local template" data-tip="Open"><ToolIcon glyph="open" /></button><button className="tool-button" type="button" onClick={() => void save(false)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save local template" data-tip={toolTip('Save', shortcuts.save)}><ToolIcon glyph="save" /></button><button className="tool-button" type="button" onClick={() => void save(true)} disabled={!engine || !fileAccess || fileBusy} aria-label="Save As" data-tip="Save As"><ToolIcon glyph="save-as" /></button><button className="tool-button" type="button" onClick={openNewDialog} disabled={!engine || !blankBytes || fileBusy} aria-label="New…" data-tip="New…"><ToolIcon glyph="blank" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('undo')} disabled={!undoAvailable || fileBusy} aria-label="Undo" data-tip={toolTip('Undo', shortcuts.undo)}><ToolIcon glyph="undo" /></button><button className="tool-button" type="button" onClick={() => void applyHistory('redo')} disabled={!redoAvailable || fileBusy} aria-label="Redo" data-tip={toolTip('Redo', shortcuts.redo)}><ToolIcon glyph="redo" /></button>{fileError ? <span role="alert" className="bar-message bar-message-alert" title={fileError}>{fileError}</span> : fileStatus ? <span role="status" aria-live="polite" className="bar-message" title={fileStatus}>{fileStatus}</span> : undefined}</div>
       {/* STORY 13.5 — THE SLOT SAYS SOMETHING ABOUT WHAT IS ON SCREEN.
           In Design that is the page setup; in Preview the page setup is a fact
           about a template nobody is looking at, and the render's own freshness
@@ -3645,7 +3739,8 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
         zero. */}
     {tableEditor && <TableEditor projection={tableEditor} busy={tableEditorBusy} fileBusy={fileBusy} discarding={tableEditorDiscarding} error={tableEditorError} candidates={sampleCandidateScan.candidates} sampleAvailable={Boolean(sampleData)} band={canvas?.components.find((component) => component.id === tableEditor.table.tableId)?.band} availableWidth={tableEditorAvailableWidth} sampleItemCount={tableSampleItemCount(sampleData?.tree, tableEditor.table.collection)} onClose={closeTableEditor} onAdd={(index) => void commitTableColumn(addTableColumnCommand(tableEditor.table.tableId, index))} onRemove={(columnId) => void commitTableColumn(removeTableColumnCommand(tableEditor.table.tableId, columnId))} onMove={(columnId, index) => void commitTableColumn(moveTableColumnCommand(tableEditor.table.tableId, columnId, index))} onUpdate={(columnId, field, value) => commitTableColumn(updateTableColumnCommand(tableEditor.table.tableId, columnId, field, value))} onTotalWidth={(value) => commitTableColumn(tableWidthCommand(tableEditor.table.tableId, value))} onBinding={(columnId, binding) => commitTableColumn(updateTableColumnExpressionCommand(tableEditor.table.tableId, columnId, binding))} onConfigure={(collection, alias) => void commitTableColumn(configureTableBindingCommand(tableEditor.table.tableId, collection, alias))} onFooter={(columnId, footer, footerOf, footerFormat) => void commitTableColumn(updateTableColumnFooterCommand(tableEditor.table.tableId, columnId, footer, footerOf, footerFormat))} onHeaderHeight={(height) => void commitTableColumn(tableHeaderHeightCommand(tableEditor.table.tableId, height))} onAltRowBackground={(operation, value) => void commitTableColumn(tableAltRowBackgroundCommand(tableEditor.table.tableId, operation, value))} onHeaderStyle={(field, operation, value) => void commitTableColumn(tableHeaderStyleCommand(tableEditor.table.tableId, field, operation, value))} onMinHeight={(operation, value) => void commitTableColumn(tableMinHeightCommand(tableEditor.table.tableId, operation, value))} onRules={(field, operation, value) => void commitTableColumn(tableRulesCommand(tableEditor.table.tableId, field, operation, value))} onCellPadding={(field, operation, value) => void commitTableColumn(updateComponentPropertiesCommand([tableEditor.table.tableId], operation === 'clear' ? { field, operation } : { field, operation, value }))} editCount={tableEditorEditCount} onCancel={() => void cancelTableEditor()} />}
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
-    {startupOpen && engine && <StartupDialog cards={startupCards} selected={startupSelected} busy={startupBusy} error={startupError} onSelect={(id) => { setStartupSelected(id); setStartupError(undefined) }} onConfirm={(id) => void chooseStartup(id)} />}
+    {startupOpen && engine && <StartupDialog cards={startupCards} selected={startupSelected} busy={startupBusy} error={startupError} onSelect={(id) => { setStartupSelected(id); setStartupError(undefined) }} onConfirm={chooseStartup} onCancel={cancelStartup} onOpenFile={fileAccess ? requestStartupFile : undefined} />}
+    {unsavedWarningOpen && <UnsavedChangesDialog document={title} onKeep={keepEditing} onDiscard={discardForNew} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
         the dropdown's first group and this line teach one model from one
@@ -5679,6 +5774,35 @@ function DeletePageDialog({ page, onConfirm, onCancel }: { page: number; onConfi
       <h2 id="delete-page-title">{`Delete page ${page + 1}?`}</h2>
       <p id="delete-page-description" className="honest-note">This removes the page and everything on it.</p>
       <div className="page-dialog-actions"><button ref={confirm} type="button" className="page-dialog-confirm" onClick={onConfirm}>Delete page</button><button ref={cancel} type="button" onClick={onCancel}>Cancel</button></div>
+    </div>
+  </section>
+}
+
+// THE UNSAVED-CHANGES WARNING BEFORE THE STARTUP DIALOG (spec-startup-templates
+// story 4, owner renegotiation). DeletePageDialog's shape and `.page-dialog`
+// styling: Keep editing is focused first, Tab stays between the two buttons,
+// and Escape means Keep editing. No Save-first action.
+function UnsavedChangesDialog({ document: name, onKeep, onDiscard }: { document: string; onKeep: () => void; onDiscard: () => void }) {
+  const keep = useRef<HTMLButtonElement>(null)
+  const discard = useRef<HTMLButtonElement>(null)
+  useEffect(() => { keep.current?.focus() }, [])
+  // A press on the backdrop would move focus to <body>, where Escape and Tab no
+  // longer reach this dialog; keep it on Keep editing instead. A press on the
+  // heading or text lands on the section itself (`tabIndex={-1}`, as in
+  // StartupDialog), so its key handler still runs.
+  const holdFocus = (event: { target: EventTarget; preventDefault: () => void }) => {
+    if (event.target instanceof Element && event.target.closest('.page-dialog') === null) { event.preventDefault(); keep.current?.focus() }
+  }
+  return <section tabIndex={-1} className="page-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-warning-title" aria-describedby="unsaved-warning-description" onPointerDown={holdFocus} onMouseDown={holdFocus} onKeyDownCapture={(event) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onKeep(); return }
+    if (event.key !== 'Tab') { event.stopPropagation(); return }
+    event.preventDefault(); event.stopPropagation()
+    ;(document.activeElement === keep.current ? discard.current : keep.current)?.focus()
+  }}>
+    <div className="page-dialog">
+      <h2 id="unsaved-warning-title">Discard unsaved changes?</h2>
+      <p id="unsaved-warning-description" className="honest-note unsaved-warning-description"><span className="unsaved-warning-dot" aria-hidden="true" /><span className="unsaved-warning-document">{name}</span>{' '}<span>has unsaved changes.</span></p>
+      <div className="page-dialog-actions"><button ref={keep} type="button" onClick={onKeep}>Keep editing</button><button ref={discard} type="button" className="page-dialog-confirm" onClick={onDiscard}>Discard</button></div>
     </div>
   </section>
 }

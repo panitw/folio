@@ -10,6 +10,7 @@ import { openFontStore, storedFaceKey, type StoredFaceRecord } from './font-stor
 import { webFamilies } from './font-index'
 import { catalogueFaces } from './generated/font-catalogue'
 import { shippedFaceFamily } from './shipped-face-family'
+import { startBlankFromNew } from './test/new-document'
 
 // STORY 16.7'S OWN SHORT SAMPLE TEXT, deliberately NOT `font-browser-model.
 // ts`'s `latinSample`/`thaiSample` — see `App.tsx`'s own comment on
@@ -311,7 +312,7 @@ describe('the font browser names a refusal the seam returned', () => {
       // vanished only while `canvas` was momentarily undefined and then came
       // BACK over the new document — still carrying a staged set assembled
       // against the old one.
-      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      startBlankFromNew()
       await screen.findByText('Started an unnamed local template')
       // The settle condition is the modal GOING, not the document name — which
       // starts out as `Untitled template` and would have made this pass before
@@ -370,7 +371,7 @@ describe('a fetched face stays on this machine', () => {
     // command to wait on any more, so waiting on one would wait for ever.
     await waitForStoredFamily('Kanit')
     expect(embedPayloads(first), 'nothing has embedded anything yet').toEqual([])
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
 
     // THE NETWORK IS GONE. Any request at all now fails, so a pick that
@@ -848,7 +849,7 @@ describe('a fetched face stays on this machine', () => {
     await waitFor(() => expect(sent.map((payload) => payload['kind'])).toEqual(['embedFontFamily']))
 
     // THE DOCUMENT IS REPLACED WHILE THE EMBED IS STILL IN FLIGHT.
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
     release()
 
@@ -916,7 +917,7 @@ describe('a fetched face stays on this machine', () => {
 
     // THE DOCUMENT IS REPLACED WHILE THAT FIRST RESOLUTION IS STILL RUNNING, and
     // then the first resolution finishes into a document nobody is looking at.
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
     holdTheEmbed = false
     release()

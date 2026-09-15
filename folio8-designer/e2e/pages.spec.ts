@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { openWorkspace } from './app.js'
+import { openWorkspace, startBlankFromNew } from './app.js'
 
 // SPEC-multi-pages story 2 — PAGES ON THE CANVAS, THROUGH THE REAL GO WORKER.
 //
@@ -27,7 +27,7 @@ test('adds pages, deletes one after confirming, undoes it, and saves Page Break 
   })
   await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await page.getByRole('button', { name: 'Start blank' }).click()
+  await startBlankFromNew(page)
   await expect(labels(page)).toHaveText(['Page 1'])
   await expect(tools(page).getByRole('button', { name: 'Delete page' })).toBeDisabled()
 
@@ -92,7 +92,7 @@ test('places on page 2, drags a page-1 element onto page 2, undoes, and saves it
   })
   await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await page.getByRole('button', { name: 'Start blank' }).click()
+  await startBlankFromNew(page)
   await tools(page).getByRole('button', { name: 'Add page' }).click()
   await expect(labels(page)).toHaveText(['Page 1', 'Page 2'])
   const sheets = page.locator('.page-surface')
@@ -161,7 +161,7 @@ test('places a section break on page 2, follows the current page in the palette,
   })
   await openWorkspace(page)
   await expect(revision(page)).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await page.getByRole('button', { name: 'Start blank' }).click()
+  await startBlankFromNew(page)
   await tools(page).getByRole('button', { name: 'Add page' }).click()
   await expect(labels(page)).toHaveText(['Page 1', 'Page 2'])
   const sheets = page.locator('.page-surface')

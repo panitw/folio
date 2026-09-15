@@ -7,6 +7,7 @@ import type { EngineClient } from './engine-client'
 import { FileAccessCancelled } from './file/file-access'
 import type { SampleFileAccess } from './sample-file'
 import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
+import { startBlankFromNew } from './test/new-document'
 
 // face() builds the PROJECTED shape of a named-face chain entry (Story 8.3:
 // an entry is a discriminated object, not a string). A named face carries no
@@ -260,7 +261,7 @@ describe('docked sample data panel', () => {
     fireEvent.click(screen.getAllByRole('treeitem').find((item) => item.getAttribute('aria-level') === '3' && item.textContent?.startsWith('name'))!)
     // STORY 14.6 — the pick above IS the bind; there is no intermediate control.
     await waitFor(() => expect(request.mock.calls.filter(([operation]) => operation === 'command')).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())
     resolveBinding({ snapshot: { documentState: 'loaded', revision: 2, byteLength: 4, canvas: boundCanvas } })
     await Promise.resolve(); await Promise.resolve()
@@ -294,7 +295,7 @@ describe('docked sample data panel', () => {
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} blankBytes={new Uint8Array([7]).buffer} sampleFileAccess={{ openSample }} />)
     openDataTab()
     fireEvent.click(screen.getByRole('button', { name: 'Load sample JSON' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())
     release({ name: 'late.json', bytes: sampleBytes })
     await Promise.resolve(); await Promise.resolve()
@@ -861,7 +862,7 @@ describe('the design-mode parameter fetch is lazy and idempotent', () => {
     render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={{ documentState: 'loaded', revision: 1, byteLength: 3, canvas: textCanvas }} blankBytes={new Uint8Array([7]).buffer} />)
     openDataTab()
     await waitFor(() => expect(referenceCalls(request)).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument())
     await waitFor(() => expect(referenceCalls(request), 'a new document generation must re-arm the fetch').toHaveLength(2))
   })

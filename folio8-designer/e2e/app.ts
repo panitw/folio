@@ -12,6 +12,19 @@ export async function openWorkspace(page: Page): Promise<void> {
   await dismissStartupDialog(page)
 }
 
+// THE DOCUMENT BAR'S NEW… THEN START BLANK (story 4): the dialog's Blank
+// replaces the open document. On real edits New… warns first; Discard there.
+export async function startBlankFromNew(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'New…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'New template' })
+  const warning = page.getByRole('dialog', { name: 'Discard unsaved changes?' })
+  await expect(dialog.or(warning)).toBeVisible()
+  if (await warning.count() > 0) await warning.getByRole('button', { name: 'Discard', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Blank', exact: true })).toBeFocused()
+  await dialog.getByRole('button', { name: 'Start blank' }).click()
+  await expect(dialog).toHaveCount(0)
+}
+
 // Waits for the dialog, and for its initial focus, before pressing Escape: the
 // dialog's key handling is on the dialog, so a key pressed before focus lands
 // inside it would reach the page instead.

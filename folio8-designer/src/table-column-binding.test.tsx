@@ -8,6 +8,7 @@ import { DataPanel } from './DataPanel'
 import { acceptSampleData } from './sample-data'
 import type { CanvasProjection, CanvasTableColumn, EngineSnapshot } from './engine-protocol'
 import type { EngineClient } from './engine-client'
+import { startBlankFromNew } from './test/new-document'
 
 // STORY 14.10 — A TABLE COLUMN IS BOUND FROM THE MAIN WINDOW.
 //
@@ -148,7 +149,7 @@ describe('a whole table is bound from the main window', () => {
     } else if (replacement === 'selection') {
       fireEvent.click(homeOf(view.container, 'e2'))
     } else {
-      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      startBlankFromNew()
       await screen.findByText('Started an unnamed local template')
     }
     reject({ elementId: 'e7', message: 'old collection refusal' })
@@ -164,7 +165,7 @@ describe('a whole table is bound from the main window', () => {
     const view = render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshotOf(1)} initialSampleData={sample()} blankBytes={new Uint8Array([7]).buffer} />)
     chooseTable(view.container)
     fireEvent.click(treeRow('transactions[]')!)
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await screen.findByText('Started an unnamed local template')
     resolve({ snapshot: snapshotOf(2, 'transactions[]') })
     await Promise.resolve(); await Promise.resolve()

@@ -19,6 +19,7 @@ import { MAX_CANVAS_SHEETS } from './sheet-stack'
 import { catalogueFaces } from './generated/font-catalogue'
 import { documentationAssetUrls } from './generated/documentation-assets'
 import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
+import { startBlankFromNew } from './test/new-document'
 import { IDBFactory as FakeIndexedDBFactory } from 'fake-indexeddb'
 
 // STORY 16.5 — SOME OF THESE TESTS NEED A MACHINE THAT CAN KEEP A FACE.
@@ -1166,7 +1167,7 @@ describe('application shell', () => {
     expect(open).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save local template' })).toBeInTheDocument()
     expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start blank' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New…' })).toBeDisabled()
     expect(screen.getByRole('status', { name: 'Offline availability' })).toHaveTextContent('Offline cache unavailable')
   })
 
@@ -1189,7 +1190,7 @@ describe('application shell', () => {
       ['Open local template', 'Open'],
       ['Save local template', `Save (${shortcuts.save})`],
       ['Save As', 'Save As'],
-      ['Start blank', 'Start blank'],
+      ['New…', 'New…'],
       ['Undo', `Undo (${shortcuts.undo})`],
       ['Redo', `Redo (${shortcuts.redo})`],
     ])
@@ -2939,7 +2940,7 @@ describe('application shell', () => {
   it('routes Start blank through the engine and returns to an unnamed unsaved local workspace', async () => {
     const request = vi.fn(async () => ({ snapshot: { documentState: 'loaded' as const, revision: 9, byteLength: 3 }, bytes }))
     render(<App engine={engine(request)} fileAccess={{ open: vi.fn(), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }} blankBytes={bytes} initialSnapshot={{ documentState: 'loaded', revision: 4, byteLength: 3 }} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     // The third argument is the file bar's abort deadline: Start blank holds
     // `fileBusy` across this request, so an engine that never replies would
     // otherwise latch every file button off for the life of the tab.
@@ -6088,7 +6089,7 @@ describe('Story 5.13: image asset selection', () => {
     await waitFor(() => expect(openImage).toHaveBeenCalledOnce())
 
     // A DOCUMENT REPLACEMENT lands while the picker is still open.
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByText('Untitled template')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('GO SNAPSHOT · REVISION 50'))
 
@@ -6169,7 +6170,7 @@ describe('Story 5.13: image asset selection', () => {
       // a canvas whose e1 element carries the SAME assetKey as canvasB —
       // only `generation` changed, isolating it from the assetKey trigger
       // just exercised above.
-      fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+      startBlankFromNew()
       await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(3))
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:paint-2')
       expect(img().src).toContain('blob:paint-3')
@@ -8580,7 +8581,7 @@ describe('preview with no sample data', () => {
     expect(screen.queryByRole('note', { name: 'No-data preview notice' })).not.toBeInTheDocument()
 
     // Start blank clears the accepted sample through clearSampleData.
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(request.mock.calls.some(([name]) => name === 'stand-in-data')).toBe(true))
     expect(await screen.findByRole('note', { name: 'No-data preview notice' })).toBeInTheDocument()
     expect(document.getElementById('preview-freshness-status')).not.toHaveTextContent('Preview is waiting for local inputs')
@@ -9012,7 +9013,7 @@ describe('Story 13.2: the viewer navigates from the preview toolbar', () => {
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF page number' }), '7')
     commitTyped(within(bar).getByRole('textbox', { name: 'PDF zoom percentage' }), '150')
     expect(previewViewerState()).toEqual({ page: 7, scale: 1.5, ['scroll' + 'Top']: 0, ['scroll' + 'Left']: 0 })
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     // THE READOUT IS THE STATUS BAR, NOT THE VIEWER. Clearing unmounts the
     // viewer with the record it belonged to, and Start blank also clears the
     // accepted sample, so nothing re-installs one here. The bar's two typed
@@ -9551,7 +9552,7 @@ describe('Story 13.5: the chrome tells the truth about the preview', () => {
     // had one.
     await waitFor(() => expect(freshnessText()).toMatch(FRESH_CURRENT))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(request.mock.calls.some(([operation]) => operation === 'load')).toBe(true))
     expect(screen.queryByTestId('pdf-viewer-state')).toBeNull()
     expect(freshnessText()).toBe('no render yet')
@@ -10730,7 +10731,7 @@ describe('common property selection scope', () => {
     selectPair()
     const size = screen.getByRole('textbox', { name: 'Font size (pt)' })
     fireEvent.change(size, { target: { value: '18' } }); fireEvent.keyDown(size, { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'Start blank' }))
+    startBlankFromNew()
     await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3'))
     await act(async () => resolveCommit({ snapshot: { ...snapshot, revision: 99 } }))
     expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3')
@@ -11789,6 +11790,16 @@ describe('the startup dialog at launch', () => {
     expect(last).toHaveFocus()
   })
 
+  it('pulls focus back into the cycle when the dialog section itself holds it', () => {
+    launch()
+    act(() => { dialog().focus() })
+    fireEvent.keyDown(dialog(), { key: 'Tab', shiftKey: true })
+    expect(within(dialog()).getByRole('button', { name: 'Start blank' })).toHaveFocus()
+    act(() => { dialog().focus() })
+    fireEvent.keyDown(dialog(), { key: 'Tab' })
+    expect(card('Blank')).toHaveFocus()
+  })
+
   it('lets no App shortcut fire while it is open, and releases them once it closes', async () => {
     const acquireSaveTarget = vi.fn(async (_request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { throw new FileAccessCancelled() })
     launch({ fileAccess: { open: vi.fn(), acquireSaveTarget, writeSave: vi.fn() } })
@@ -11805,3 +11816,327 @@ describe('the startup dialog at launch', () => {
     await waitFor(() => expect(acquireSaveTarget).toHaveBeenCalledOnce())
   })
 })
+
+// spec-startup-templates STORY 4 — NEW…, OPEN EXISTING FILE… AND THE
+// UNSAVED-CHANGES WARNING, which (owner renegotiation) comes BEFORE the startup
+// dialog. Every row of the story's revised I/O matrix.
+describe('New… and the startup dialog reopened', () => {
+  const examples = ['invoice', 'bank-statement', 'legal-contract', 'electricity-bill'].map((id) => ({ id, template: `/examples/${id}.folio`, sample: `/examples/${id}.sample.json`, thumbnail: `/examples/${id}.thumbnail.png` }))
+  const TEMPLATE = new Uint8Array([4, 5, 6]).buffer
+  const SAMPLE = '{"customer":{"name":"Ada"}}'
+  let restoreFetch: typeof globalThis.fetch
+  let fetchMock: ReturnType<typeof vi.fn>
+  const answer = (body: ArrayBuffer) => ({ ok: true, status: 200, arrayBuffer: async () => body.slice(0) })
+  beforeEach(() => {
+    restoreFetch = globalThis.fetch
+    fetchMock = vi.fn(async (url: string) => url.endsWith('.json') ? answer(new TextEncoder().encode(SAMPLE).buffer) : answer(TEMPLATE))
+    globalThis.fetch = fetchMock as never
+  })
+  afterEach(() => { globalThis.fetch = restoreFetch })
+
+  type Snap = { documentState: 'loaded'; revision: number; byteLength: number; canvas: typeof canvas; canUndo?: boolean }
+  // The starter at revision 1. A command is a real edit (next revision, Undo
+  // available); a load installs a fresh document at the next revision.
+  const mount = (props: Partial<Parameters<typeof App>[0]> = {}, failLoad = false) => {
+    let current: Snap = { documentState: 'loaded', revision: 1, byteLength: 3, canvas }
+    const request = vi.fn(async (operation: string) => {
+      if (operation === 'command') { current = { ...current, revision: current.revision + 1, canUndo: true }; return { snapshot: current } }
+      if (operation === 'load') { if (failLoad) throw new Error('engine refused'); current = { documentState: 'loaded', revision: current.revision + 1, byteLength: 3, canvas }; return { snapshot: current } }
+      if (operation === 'serialize') return { snapshot: current, bytes: TEMPLATE }
+      if (operation === 'stand-in-data') return { snapshot: current, bytes: new TextEncoder().encode('{}').buffer }
+      if (operation === 'identity') return { snapshot: current, preview: { revision: current.revision, identity: 'c'.repeat(64) } }
+      if (operation === 'render') return { snapshot: current, bytes: new Uint8Array([9]).buffer, preview: { revision: current.revision, identity: 'c'.repeat(64), pdfSha256: PDF_FIXTURE_DIGEST, elapsedMs: RENDER_ELAPSED_MS, version: RENDER_ENGINE_VERSION, diagnostics: [] } }
+      return { snapshot: current }
+    })
+    render(<App engine={engine(request as never)} initialSnapshot={current} blankBytes={bytes} {...props} />)
+    return request
+  }
+  const files = (open: FileAccess['open'] = vi.fn()): FileAccess => ({ open, acquireSaveTarget: vi.fn(), writeSave: vi.fn() })
+  const dialog = () => screen.getByRole('dialog', { name: 'New template' })
+  const queryDialog = () => screen.queryByRole('dialog', { name: 'New template' })
+  const warning = () => screen.getByRole('dialog', { name: 'Discard unsaved changes?' })
+  const queryWarning = () => screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })
+  const card = (name: string) => within(dialog()).getByRole('button', { name })
+  const dismissLaunch = () => fireEvent.keyDown(card('Blank'), { key: 'Escape' })
+  const edit = async () => {
+    fireEvent.click(within(screen.getByLabelText('Canvas controls')).getByRole('button', { name: 'Add page' }))
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2'))
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  }
+  const expectEditedDocumentIntact = () => {
+    expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 2')
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  }
+  const openInvoice = () => { fireEvent.click(card('Invoice')); fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' })) }
+  // Launch, dismiss, make a real edit, press New… and Discard the warning.
+  const discardedOverEdits = async (props: Partial<Parameters<typeof App>[0]> = {}, failLoad = false) => {
+    const request = mount({ examples, ...props }, failLoad)
+    dismissLaunch()
+    await edit()
+    const before = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    fireEvent.click(within(warning()).getByRole('button', { name: 'Discard' }))
+    return { request, before }
+  }
+
+  it('names the document bar button New…, keeps its glyph, and opens the dialog with Blank selected and focused', () => {
+    mount({ examples })
+    dismissLaunch()
+    const button = screen.getByRole('button', { name: 'New…' })
+    expect(button).toHaveAttribute('data-tip', 'New…')
+    expect(button.querySelector('svg.tool-icon')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Start blank' })).not.toBeInTheDocument()
+    fireEvent.click(button)
+    expect(card('Blank')).toHaveAttribute('aria-pressed', 'true')
+    expect(card('Blank')).toHaveFocus()
+  })
+
+  it('offers Blank without examples, so New… works in any App', () => {
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(within(within(dialog()).getByRole('group', { name: 'Start from' })).getAllByRole('button').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Blank'])
+  })
+
+  it('New… with no unsaved changes opens the startup dialog directly, with no warning', () => {
+    const request = mount({ examples })
+    dismissLaunch()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(card('Blank')).toHaveAttribute('aria-pressed', 'true')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('treats a just-opened example as having no real edits, though the bar still says unsaved', async () => {
+    mount({ examples })
+    openInvoice()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(queryDialog()).toBeInTheDocument()
+  })
+
+  it('a just-saved document opens the dialog without a warning', async () => {
+    const saving: FileAccess = { open: vi.fn(), acquireSaveTarget: vi.fn(async () => ({ name: 'saved.folio', format: folioFileFormat })), writeSave: vi.fn(async () => ({ name: 'saved.folio' })) }
+    mount({ examples, fileAccess: saving })
+    dismissLaunch()
+    await edit()
+    fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
+    await waitFor(() => expect(screen.getByText('Saved local file')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(queryDialog()).toBeInTheDocument()
+  })
+
+  it('New… with real edits shows the warning naming the document, Keep editing focused, no startup dialog and nothing requested', async () => {
+    const request = mount({ examples })
+    dismissLaunch()
+    await edit()
+    const before = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(warning()).toHaveAttribute('aria-modal', 'true')
+    expect(warning()).toHaveAccessibleDescription('Untitled template has unsaved changes.')
+    expect(warning().querySelector('.unsaved-warning-dot')).not.toBeNull()
+    expect(within(warning()).getByText('Untitled template')).toHaveClass('unsaved-warning-document')
+    expect(within(warning()).getByRole('button', { name: 'Keep editing' })).toHaveFocus()
+    expect(within(warning()).getAllByRole('button').map((button) => button.textContent)).toEqual(['Keep editing', 'Discard'])
+    expect(queryDialog()).not.toBeInTheDocument()
+    expect(request.mock.calls.length).toBe(before)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps Tab inside the warning, cycling Keep editing and Discard', async () => {
+    mount({ examples })
+    dismissLaunch()
+    await edit()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    const keep = within(warning()).getByRole('button', { name: 'Keep editing' })
+    const discard = within(warning()).getByRole('button', { name: 'Discard' })
+    fireEvent.keyDown(keep, { key: 'Tab' })
+    expect(discard).toHaveFocus()
+    fireEvent.keyDown(discard, { key: 'Tab' })
+    expect(keep).toHaveFocus()
+    fireEvent.keyDown(keep, { key: 'Tab', shiftKey: true })
+    expect(discard).toHaveFocus()
+    expect(queryDialog()).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Keep editing', () => fireEvent.click(within(warning()).getByRole('button', { name: 'Keep editing' }))],
+    ['Escape', () => fireEvent.keyDown(within(warning()).getByRole('button', { name: 'Discard' }), { key: 'Escape' })],
+  ])('%s closes the warning with no startup dialog, nothing requested, and the document and Undo intact', async (_, keepEditing) => {
+    const request = mount({ examples })
+    dismissLaunch()
+    await edit()
+    const before = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    keepEditing()
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(queryDialog()).not.toBeInTheDocument()
+    expect(request.mock.calls.length).toBe(before)
+    expectEditedDocumentIntact()
+  })
+
+  it('lets no App shortcut fire while the warning is open', async () => {
+    const request = mount({ examples })
+    dismissLaunch()
+    await edit()
+    const before = request.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    const mac = isMacPlatform()
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: !mac, metaKey: mac })
+    fireEvent.keyDown(window, { key: 'p', altKey: true })
+    await act(async () => { await Promise.resolve() })
+    expect(request.mock.calls.length).toBe(before)
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+    expectEditedDocumentIntact()
+  })
+
+  it('Discard opens the startup dialog with Blank selected and replaces nothing', async () => {
+    const { request, before } = await discardedOverEdits()
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(card('Blank')).toHaveAttribute('aria-pressed', 'true')
+    expect(card('Blank')).toHaveFocus()
+    expect(request.mock.calls.length).toBe(before)
+    expectEditedDocumentIntact()
+  })
+
+  it.each([
+    ['Cancel', () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))],
+    ['Escape', () => fireEvent.keyDown(card('Invoice'), { key: 'Escape' })],
+  ])('%s after Discard closes the dialog with the revision and Undo untouched', async (_, dismiss) => {
+    const { request, before } = await discardedOverEdits()
+    fireEvent.click(card('Invoice'))
+    dismiss()
+    expect(queryDialog()).not.toBeInTheDocument()
+    expect(request.mock.calls.length).toBe(before)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expectEditedDocumentIntact()
+  })
+
+  it('an example after Discard opens in Preview with no further question', async () => {
+    const { request } = await discardedOverEdits()
+    openInvoice()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(request).toHaveBeenCalledWith('load', TEMPLATE, expect.any(AbortSignal))
+    expect(screen.getByText('Invoice', { selector: '.document-name' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('an example that fails to load after Discard keeps the dialog open with an alert', async () => {
+    await discardedOverEdits({}, true)
+    openInvoice()
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open Invoice')
+    expect(queryDialog()).toBeInTheDocument()
+  })
+
+  it('Blank after Discard loads the starter, titled Untitled template, and closes', async () => {
+    const request = mount({ examples })
+    openInvoice()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'DESIGN' }))
+    fireEvent.click(within(screen.getByLabelText('Canvas controls')).getByRole('button', { name: 'Add page' }))
+    await waitFor(() => expect(screen.getByTestId('engine-snapshot')).toHaveTextContent('REVISION 3'))
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(warning()).toHaveAccessibleDescription('Invoice has unsaved changes.')
+    fireEvent.click(within(warning()).getByRole('button', { name: 'Discard' }))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' }))
+    expect(queryWarning()).not.toBeInTheDocument()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    expect(request).toHaveBeenCalledWith('load', bytes, expect.any(AbortSignal))
+    expect(screen.getByText('Untitled template', { selector: '.document-name' })).toBeInTheDocument()
+  })
+
+  it('a press inside the warning keeps its keys working: Escape closes it, Tab lands on its buttons', async () => {
+    mount({ examples })
+    dismissLaunch()
+    await edit()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    // What a browser does on a press on the heading: focus goes to the nearest
+    // focusable ancestor — the section — rather than to <body>.
+    act(() => { warning().focus() })
+    expect(warning()).toHaveFocus()
+    fireEvent.keyDown(warning(), { key: 'Tab' })
+    expect([within(warning()).getByRole('button', { name: 'Keep editing' }), within(warning()).getByRole('button', { name: 'Discard' })]).toContain(document.activeElement)
+    act(() => { warning().focus() })
+    fireEvent.keyDown(warning(), { key: 'Escape' })
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(queryDialog()).not.toBeInTheDocument()
+    expectEditedDocumentIntact()
+  })
+
+  it('Start blank resets the real-edits baseline, so New… afterwards opens the dialog without a warning', async () => {
+    await discardedOverEdits()
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' }))
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Untitled template', { selector: '.document-name' })).toBeInTheDocument())
+    expect(screen.getByText('Started an unnamed local template')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    expect(queryWarning()).not.toBeInTheDocument()
+    expect(queryDialog()).toBeInTheDocument()
+  })
+
+  it('Blank that fails keeps a reopened dialog open and names the failure', async () => {
+    mount({}, true)
+    fireEvent.click(screen.getByRole('button', { name: 'New…' }))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' }))
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not start a blank local template')
+  })
+
+  it('launch Blank still closes with no engine request', () => {
+    const request = mount({ examples })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' }))
+    expect(queryDialog()).not.toBeInTheDocument()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('shows Open existing file… only when local file access exists', () => {
+    mount({ examples })
+    expect(within(dialog()).queryByRole('button', { name: 'Open existing file…' })).not.toBeInTheDocument()
+  })
+
+  it('Open existing file… at launch opens a picked .folio, closes the dialog and stays in the current mode', async () => {
+    const open = vi.fn(async () => ({ bytes: TEMPLATE, name: 'statement.folio' }))
+    const request = mount({ examples, fileAccess: files(open) })
+    const button = within(dialog()).getByRole('button', { name: 'Open existing file…' })
+    expect(button.querySelector('svg.tool-icon')).not.toBeNull()
+    fireEvent.click(button)
+    expect(open).toHaveBeenCalledOnce()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    expect(request).toHaveBeenCalledWith('load', TEMPLATE, expect.any(AbortSignal))
+    expect(screen.getByText('statement.folio', { selector: '.document-name' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Open existing file… after Discard opens the file with no further question', async () => {
+    const open = vi.fn(async () => ({ bytes: TEMPLATE, name: 'statement.folio' }))
+    await discardedOverEdits({ fileAccess: files(open) })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open existing file…' }))
+    expect(open).toHaveBeenCalledOnce()
+    expect(queryWarning()).not.toBeInTheDocument()
+    await waitFor(() => expect(queryDialog()).not.toBeInTheDocument())
+    expect(screen.getByText('statement.folio', { selector: '.document-name' })).toBeInTheDocument()
+  })
+
+  it('a cancelled picker keeps the dialog open with no message and the document untouched', async () => {
+    const open = vi.fn(async () => { throw new FileAccessCancelled() })
+    const { request, before } = await discardedOverEdits({ fileAccess: files(open) })
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open existing file…' }))
+    await waitFor(() => expect(open).toHaveBeenCalledOnce())
+    await act(async () => { await Promise.resolve() })
+    expect(queryDialog()).toBeInTheDocument()
+    expect(within(dialog()).queryByRole('alert')).not.toBeInTheDocument()
+    expect(request.mock.calls.length).toBe(before)
+    expectEditedDocumentIntact()
+  })
+
+  it('an invalid file shows its failure in the footer and keeps the dialog open', async () => {
+    const open = vi.fn(async () => ({ bytes: TEMPLATE, name: 'broken.folio' }))
+    mount({ examples, fileAccess: files(open) }, true)
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Open existing file…' }))
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open local file')
+    expect(queryDialog()).toBeInTheDocument()
+  })
+})
+

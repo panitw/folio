@@ -13809,3 +13809,6 @@ name that attributes it to Story 6.7, and the audit trail for 6.7 quietly descri
 - source_spec: `_bmad-output/specs/spec-startup-templates/stories/3-startup-dialog-at-launch.md`
   summary: FontBrowser and TableEditor lose their focus trap and Escape when a click lands on a non-focusable part of the dialog.
   evidence: Both trap Tab and Escape with `onKeyDownCapture` on the dialog section, which only fires while focus is inside it; a click on non-focusable content moves focus to `body`. Story 3 fixes this for the startup dialog only.
+- source_spec: `_bmad-output/specs/spec-startup-templates/stories/4-new-open-existing-file-and-unsaved-changes-confirmation.md`
+  summary: DeletePageDialog loses focus to body when its heading or text is clicked, so Escape and Tab stop working.
+  evidence: Its section has no tabIndex and holdFocus only catches presses outside .page-dialog; story 4 fixed the same shape in UnsavedChangesDialog.

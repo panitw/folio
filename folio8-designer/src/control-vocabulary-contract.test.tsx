@@ -582,7 +582,7 @@ const V2_CENSUS: ReadonlyArray<string> = [
   // the sweep: the six file actions render in every state, and the four canvas
   // toggles/actions beside the zoom steppers in every design state.
   ...states.flatMap((state) => [
-    ...['Open local template', 'Save local template', 'Save As', 'Start blank', 'Undo', 'Redo'],
+    ...['Open local template', 'Save local template', 'Save As', 'New…', 'Undo', 'Redo'],
     ...(state.name === 'preview' ? [] : ['Grid on', 'Snap on', 'Duplicate', 'Delete']),
   ].map((name) => `${state.name} · ${name}`)),
 ]
@@ -1011,7 +1011,7 @@ describe('control vocabulary contract', () => {
       { name: 'Open local template', treatment: 'glyph', text: '' },
       { name: 'Save local template', treatment: 'glyph', text: '' },
       { name: 'Save As', treatment: 'glyph', text: '' },
-      { name: 'Start blank', treatment: 'glyph', text: '' },
+      { name: 'New…', treatment: 'glyph', text: '' },
       { name: 'Undo', treatment: 'glyph', text: '' },
       { name: 'Redo', treatment: 'glyph', text: '' },
     ])

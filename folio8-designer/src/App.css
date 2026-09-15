@@ -1376,6 +1376,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .startup-cancel { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
 .startup-cancel[aria-disabled="true"] { color: var(--color-ink-ghost); cursor: default; }
 .startup-cancel:hover:not([aria-disabled="true"]) { border-color: var(--color-edge-strong); color: var(--color-ink-high); }
+/* Story 4: Open existing file… at the footer's left (`Main.dc.html`). */
+.startup-open-file { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-5); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); white-space: nowrap; cursor: pointer; }
+.startup-open-file .tool-icon { flex: none; }
+.startup-open-file[aria-disabled="true"] { color: var(--color-ink-ghost); cursor: default; }
+.startup-open-file:hover:not([aria-disabled="true"]) { border-color: var(--color-edge-strong); color: var(--color-ink-high); }
+.startup-footer-rule { width: var(--hairline); height: 18px; flex: none; background: var(--color-line); }
+/* Story 4, after the owner's renegotiation: New… on real edits warns first, in
+   the `.page-dialog` shape. The dot is the unsaved-changes dot: amber is data. */
+.unsaved-warning-description { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.unsaved-warning-dot { width: 5px; height: 5px; flex: none; border-radius: var(--radius-dot); background: var(--color-bind); }
+.unsaved-warning-document { min-width: 0; overflow: hidden; color: var(--color-ink-high); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
 .startup-sheet :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 
 /* Preview uses the same compact, centered toolbar as the design canvas. */
