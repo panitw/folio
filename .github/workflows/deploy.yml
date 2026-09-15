@@ -1,0 +1,45 @@
+name: Deploy to Railway
+
+# Deploys Folio Designer to Railway (project folio8, environment production)
+# once "Build, vet, and guardrails" has passed for a push to main — never on a
+# red commit, and never on pull requests. Railway builds the root Dockerfile.
+#
+# Requires the repository secret RAILWAY_TOKEN: a Railway PROJECT token scoped
+# to folio8 / production.
+
+on:
+  workflow_run:
+    workflows: ["Build, vet, and guardrails"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer queued deploy replaces an older pending one.
+concurrency:
+  group: railway-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deploy exactly the commit CI verified, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.57.1
+
+      - name: railway up
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: railway up --service folio-designer --environment production --ci -m "deploy ${SHA::7}"
