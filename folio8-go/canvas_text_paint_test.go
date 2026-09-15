@@ -46,6 +46,35 @@ func TestCanvasTextPaintCarriesEngineOverflowInsteadOfRebreaking(t *testing.T) {
 	}
 }
 
+// TestCanvasTextPaintKeepsAPlaceholderOnOneLine: the canvas paints the
+// expression source, and a call's argument spaces must not wrap it onto a
+// second line below its box — the PDF prints the value, not the source.
+func TestCanvasTextPaintKeepsAPlaceholderOnOneLine(t *testing.T) {
+	const tplJSON = `{"version":"1.0","page":{"size":"A4","orientation":"portrait","margin":{"top":36,"right":36,"bottom":36,"left":36}},"bands":{"pageHeader":{"height":20,"elements":[]},"content":{"elements":[{"id":"e1","type":"text","x":0,"y":0,"width":120,"height":30,"value":"{{formatNumber(amountDue, \"#,##0.00\")}}","style":{"fontFamily":"body","fontSize":22}}]},"pageFooter":{"height":20,"elements":[]}},"fonts":{"body":["Roboto-Regular"]},"locale":"en","utcOffset":"+00:00","assets":{},"nextId":2}`
+	paintOf := func(src string) *CanvasTextPaint {
+		t.Helper()
+		tpl, err := ParseTemplate([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		projection, err := CanvasWithTextPaint(tpl, testFontSet())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return projection.Components[0].TextPaint
+	}
+	paint := paintOf(tplJSON)
+	if paint == nil || len(paint.Lines) != 1 || !paint.Overflow {
+		t.Fatalf("placeholder paint = %#v, want one overflowing line", paint)
+	}
+	// THE NEGATIVE CONTROL: the same characters without the delimiters are
+	// plain text, and plain text still wraps at its spaces.
+	control := paintOf(strings.Replace(tplJSON, `{{formatNumber(amountDue, \"#,##0.00\")}}`, `formatNumber(amountDue, \"#,##0.00\")`, 1))
+	if control == nil || len(control.Lines) < 2 {
+		t.Fatalf("control paint = %#v, want the literal to wrap", control)
+	}
+}
+
 func TestCanvasTextPaintExactlyMatchesTheShippingRunPath(t *testing.T) {
 	tpl := parseFontTestTemplate(t)
 	projection, err := CanvasWithTextPaint(tpl, testFontSet())

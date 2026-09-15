@@ -3,7 +3,10 @@ package folio8
 import (
 	"fmt"
 
+	"unicode/utf8"
+
 	"github.com/panitw/folio8/folio8-go/internal/bind"
+	"github.com/panitw/folio8/folio8-go/internal/expr"
 	"github.com/panitw/folio8/folio8-go/internal/fontset"
 	"github.com/panitw/folio8/folio8-go/internal/geom"
 	"github.com/panitw/folio8/folio8-go/internal/template"
@@ -375,6 +378,35 @@ func packMandatoryOnly(segs []faceSegment, ops []text.Opportunity, totalRunes in
 		lines = append(lines, wrappedLine{from: totalRunes, to: totalRunes})
 	}
 	return lines
+}
+
+// placeholderSpans reports the rune span of every "{{ }}" placeholder in
+// an element's UNBOUND value, delimiters included, for the canvas.
+//
+// The canvas paints the expression source, not a resolved value, and the
+// source of a formatNumber or formatDate call carries spaces a Latin
+// break would take — so without this the designer wraps an expression
+// the PDF prints as one short value. Kept whole, a long expression
+// overflows its box on one line and is clipped, as a table cell's
+// binding is. Render never calls this: its placeholders are gone by the
+// time it breaks lines.
+//
+// A value the scanner refuses (an unterminated "{{") gets no spans; its
+// load error is reported elsewhere and the canvas still paints it.
+func placeholderSpans(value string) []text.Span {
+	literal, placeholders, _, err := expr.ScanPlaceholders(value)
+	if err != nil {
+		return nil
+	}
+	spans := make([]text.Span, 0, len(placeholders))
+	at := 0
+	for i, ph := range placeholders {
+		at += utf8.RuneCountInString(literal[i])
+		end := at + utf8.RuneCountInString(ph.Inner) + 4
+		spans = append(spans, text.Span{Start: at, End: end})
+		at = end
+	}
+	return spans
 }
 
 // atomicSpansFor maps a document's declared unbreakable data paths onto

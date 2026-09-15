@@ -1711,8 +1711,7 @@ func addCanvasTextPaint(t *Template, projection *CanvasProjection, fs FontSet, c
 				degrade(band.name, element, component)
 				continue
 			}
-			atomic := atomicSpansFor(t.doc.UnbreakableValues, nil)
-			ops := text.Opportunities(text.Dictionary(), element.Value.Value, atomic)
+			ops := text.Opportunities(text.Dictionary(), element.Value.Value, placeholderSpans(element.Value.Value))
 			boxWidth := geom.Length(0)
 			if element.Width.Set && !element.Width.Null {
 				boxWidth = element.Width.Value
