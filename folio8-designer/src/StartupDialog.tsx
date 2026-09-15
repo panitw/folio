@@ -9,8 +9,8 @@ import { BLANK_CHOICE_ID } from './startup-examples'
 // them. The focus trap is `FontBrowser`'s shape, deliberately — this designer
 // has one way of trapping a dialog.
 //
-// AT LAUNCH THERE IS NO CANCEL. Escape IS Blank: the starter the engine already
-// holds stays on screen, untouched, at revision 1.
+// CANCEL AND ESCAPE ARE BLANK: the starter the engine already holds stays on
+// screen, untouched, at revision 1. Blank is also the card selected on open.
 export type StartupCard = Readonly<{
   id: string
   name: string
@@ -118,8 +118,11 @@ export function StartupDialog({ cards, selected, busy, error, onSelect, onConfir
                 ? <span>Blank starts an empty A4 page with no sample data</span>
                 : <><span>{current.name} opens in Preview with</span>{' '}<span className="startup-sample-name">{current.sample}</span></>}
           </p>}
-        <span className="startup-spacer" />
-        <button type="button" className="startup-confirm" aria-disabled={busy !== undefined || undefined} onClick={() => current && confirm(current.id)}>{blank ? 'Start blank' : 'Open example'}</button>
+        {/* Cancel and the primary action wrap as one group, right-aligned. */}
+        <span className="startup-actions">
+          <button type="button" className="startup-cancel" aria-disabled={busy !== undefined || undefined} onClick={() => confirm(BLANK_CHOICE_ID)}>Cancel</button>
+          <button type="button" className="startup-confirm" aria-disabled={busy !== undefined || undefined} onClick={() => current && confirm(current.id)}>{blank ? 'Start blank' : 'Open example'}</button>
+        </span>
       </div>
     </div>
   </section>

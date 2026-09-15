@@ -3,9 +3,10 @@ import { expect, test, type Page } from '@playwright/test'
 // STARTUP TEMPLATES, STORY 3 — THE BROWSER WITNESS FOR THE LAUNCH DIALOG.
 //
 // jsdom can prove the dialog's wiring against a fake engine; only a real build
-// can prove the bundled thumbnails decode, that Escape leaves the REAL starter
-// at revision 1, and that an example's template and sample render through the
-// real wasm engine into an admitted production PDF.
+// can prove the bundled thumbnails decode, that Escape and Cancel leave the REAL
+// starter at revision 1, that an example's template and sample render through
+// the real wasm engine into an admitted production PDF, and that the cards lay
+// out without overlapping when the window is narrow.
 
 const usableOfflineState = /^(Offline ready|Update available; current release remains usable)$/
 
@@ -17,9 +18,9 @@ async function expectLaunchDialog(page: Page) {
   const cards = dialog.getByRole('group', { name: 'Start from' }).getByRole('button')
   await expect(cards).toHaveCount(cardNames.length)
   for (const [index, name] of cardNames.entries()) await expect(cards.nth(index)).toHaveAccessibleName(name)
-  const invoice = dialog.getByRole('button', { name: 'Invoice', exact: true })
-  await expect(invoice).toHaveAttribute('aria-pressed', 'true')
-  await expect(invoice).toBeFocused()
+  const blank = dialog.getByRole('button', { name: 'Blank', exact: true })
+  await expect(blank).toHaveAttribute('aria-pressed', 'true')
+  await expect(blank).toBeFocused()
   // FIVE THUMBNAILS: Blank's drawn page and four engine-rendered PNGs, each
   // actually decoded — a broken image is still an <img>.
   await expect(dialog.getByTestId('startup-blank-page')).toBeVisible()
@@ -27,6 +28,13 @@ async function expectLaunchDialog(page: Page) {
   await expect(images).toHaveCount(4)
   await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0))).toBe(true)
   return dialog
+}
+
+async function expectStarterCanvas(page: Page) {
+  await expect(page.getByRole('dialog', { name: 'New template' })).toHaveCount(0)
+  await expect(page.getByLabel('Canvas region')).toBeVisible()
+  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
+  await expect(page.locator('.document-name')).toHaveText('Untitled template')
 }
 
 async function expectExampleInPreview(page: Page, name: string) {
@@ -38,20 +46,27 @@ async function expectExampleInPreview(page: Page, name: string) {
   await expect(page.getByRole('note', { name: 'No-data preview notice' })).toHaveCount(0)
 }
 
-test('launch shows the dialog, and Escape lands on the starter canvas at revision 1', async ({ page }) => {
+test('launch shows the dialog with Blank selected, and Escape lands on the starter canvas at revision 1', async ({ page }) => {
   await page.goto('/')
   const dialog = await expectLaunchDialog(page)
-  await expect(dialog.getByRole('button', { name: 'Open example' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Start blank' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByLabel('Canvas region')).toBeVisible()
-  await expect(page.getByTestId('engine-snapshot')).toHaveText(/GO SNAPSHOT · REVISION 1/)
-  await expect(page.locator('.document-name')).toHaveText('Untitled template')
+  await expectStarterCanvas(page)
+})
+
+test('Cancel lands on the starter canvas at revision 1, even with an example selected', async ({ page }) => {
+  await page.goto('/')
+  const dialog = await expectLaunchDialog(page)
+  await dialog.getByRole('button', { name: 'Invoice', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expectStarterCanvas(page)
 })
 
 test('opening Invoice lands in Preview with its sample loaded', async ({ page }) => {
   await page.goto('/')
   const dialog = await expectLaunchDialog(page)
+  await dialog.getByRole('button', { name: 'Invoice', exact: true }).click()
   await expect(dialog.getByRole('status')).toContainText('Invoice opens in Preview with')
   await expect(dialog.getByRole('status')).toContainText('invoice.sample.json')
   await dialog.getByRole('button', { name: 'Open example' }).click()
@@ -60,6 +75,36 @@ test('opening Invoice lands in Preview with its sample loaded', async ({ page })
   await page.getByRole('tab', { name: 'DATA' }).click()
   await expect(page.getByRole('tree', { name: 'Sample data paths' })).toBeVisible()
 })
+
+// A NARROW WINDOW. Five fixed-width thumbnails in five squeezed columns used to
+// spill over their neighbours; the grid must wrap and each thumbnail stay
+// inside its own card, with nothing wider than the scrolling card area.
+for (const width of [720, 480]) {
+  test(`at ${width}px wide every thumbnail stays inside its own card`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/')
+    const dialog = await expectLaunchDialog(page)
+    const cards = dialog.getByRole('group', { name: 'Start from' }).getByRole('button')
+    for (let index = 0; index < cardNames.length; index++) {
+      const card = await cards.nth(index).boundingBox()
+      const thumbnail = await cards.nth(index).locator('.startup-thumbnail').boundingBox()
+      if (!card || !thumbnail) throw new Error(`card ${cardNames[index]} has no box`)
+      expect(thumbnail.x, `${cardNames[index]} thumbnail left edge`).toBeGreaterThanOrEqual(card.x - 0.5)
+      expect(thumbnail.x + thumbnail.width, `${cardNames[index]} thumbnail right edge`).toBeLessThanOrEqual(card.x + card.width + 0.5)
+    }
+    // No card wider than the card area: every card box inside the body's box.
+    const body = await dialog.locator('.startup-body').boundingBox()
+    if (!body) throw new Error('card area has no box')
+    for (let index = 0; index < cardNames.length; index++) {
+      const card = await cards.nth(index).boundingBox()
+      if (!card) throw new Error(`card ${cardNames[index]} has no box`)
+      expect(card.x + card.width, `${cardNames[index]} card must not spill past the card area`).toBeLessThanOrEqual(body.x + body.width + 0.5)
+    }
+    const sheet = await dialog.locator('.startup-sheet').boundingBox()
+    if (!sheet) throw new Error('sheet has no box')
+    expect(sheet.x + sheet.width).toBeLessThanOrEqual(width)
+  })
+}
 
 test('offline after first load, the dialog and its thumbnails appear and an example opens in Preview', async ({ page, context }) => {
   await page.goto('/')

@@ -1337,23 +1337,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
    browser's sheet: the same scrim, edge, panel ground and sheet elevation, a
    46px header row and a 50px footer. Cyan marks the selected card, amber only
    the sample file name, and the thumbnails sit on the page shell because they
-   are pages. */
+   are pages. Narrower than five cards, the grid wraps and each thumbnail scales
+   down inside its card at page proportions, so nothing spills over a
+   neighbour. */
 .startup-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: var(--space-8); background: var(--tint-scrim); }
 .startup-sheet { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(940px, calc(100vw - 44px)); max-height: calc(100vh - 44px); border: var(--hairline) solid var(--color-edge); background: var(--color-panel); color: var(--color-ink); font: var(--type-body); box-shadow: var(--shadow-sheet); }
 .startup-header { display: flex; align-items: center; gap: var(--space-6); height: 46px; padding: 0 var(--space-6); border-bottom: var(--hairline) solid var(--color-line); }
-.startup-title { margin: 0; color: var(--color-ink-high); font: var(--type-title); }
-.startup-hint { color: var(--color-ink-low); font: var(--type-body); }
+.startup-title { flex: none; margin: 0; color: var(--color-ink-high); font: var(--type-title); white-space: nowrap; }
+.startup-hint { min-width: 0; overflow: hidden; color: var(--color-ink-low); font: var(--type-body); text-overflow: ellipsis; white-space: nowrap; }
 .startup-body { display: flex; flex-direction: column; gap: var(--space-5); min-height: 0; overflow: auto; padding: var(--space-sheet-x); }
-.startup-sections { display: flex; align-items: center; gap: var(--space-4); }
+.startup-sections { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 .startup-section-label { color: var(--color-ink); font: var(--type-label); letter-spacing: var(--tracking-label); }
 .startup-section-rule { width: var(--hairline); height: 10px; background: var(--color-line); }
 .startup-section-note { color: var(--color-ink-faint); font: var(--type-body); }
-.startup-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-5); }
+.startup-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: var(--space-5); }
 .startup-card { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; padding: var(--space-5); border: var(--hairline) solid var(--color-line); border-radius: var(--radius-default); background: var(--color-raised); color: var(--color-ink); font: var(--type-body); text-align: left; cursor: pointer; }
 .startup-card-active { border-color: var(--color-select); background: var(--tint-select-fill-soft); }
 .startup-card[aria-disabled="true"] { cursor: default; }
-.startup-thumbnail-shell { display: flex; justify-content: center; padding: var(--space-5) 0; background: var(--color-page-shell); }
-.startup-thumbnail { display: block; width: 132px; height: 187px; background-color: var(--color-page); object-fit: contain; }
+.startup-thumbnail-shell { display: flex; justify-content: center; padding: var(--space-5) var(--space-4); background: var(--color-page-shell); }
+.startup-thumbnail { display: block; width: 100%; max-width: 132px; height: auto; aspect-ratio: 132 / 187; background-color: var(--color-page); object-fit: contain; }
 .startup-thumbnail-blank { background-image: radial-gradient(var(--color-page-dot) 0.6px, transparent 0.6px); background-size: 6px 6px; }
 .startup-card-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .startup-card-name { color: var(--color-ink-high); font: var(--type-body-em); font-weight: 500; }
@@ -1363,14 +1365,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .startup-sample-dot { width: 5px; height: 5px; flex: none; border-radius: var(--radius-dot); background: var(--color-bind); }
 .startup-sample-name { overflow: hidden; color: var(--color-bind); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
 .startup-sample-none { overflow: hidden; color: var(--color-ink-faint); font: var(--type-mono); text-overflow: ellipsis; white-space: nowrap; }
-.startup-footer { display: flex; align-items: center; gap: var(--space-5); min-height: 50px; padding: 0 var(--space-6); border-top: var(--hairline) solid var(--color-line); }
+.startup-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); min-height: 50px; padding: var(--space-3) var(--space-6); border-top: var(--hairline) solid var(--color-line); }
 .startup-outcome { display: flex; align-items: center; gap: var(--space-3); min-width: 0; margin: 0; color: var(--color-ink); font: var(--type-body-em); }
 .startup-outcome-icon { width: var(--icon-size); height: var(--icon-size); flex: none; color: var(--color-select); }
 .startup-error { margin: 0; color: var(--color-danger); font: var(--type-body-em); }
-.startup-spacer { flex: 1; }
+.startup-actions { display: flex; gap: var(--space-3); margin-left: auto; }
 .startup-confirm { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-select); border-radius: var(--radius-default); background: var(--color-select); color: var(--color-ground); font: var(--type-body-em); font-weight: 500; cursor: pointer; }
 .startup-confirm[aria-disabled="true"] { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink-ghost); cursor: default; }
 .startup-confirm:hover:not([aria-disabled="true"]) { border-color: var(--color-select-hover); background: var(--color-select-hover); }
+.startup-cancel { padding: var(--space-2) var(--space-6); border: var(--hairline) solid var(--color-edge); border-radius: var(--radius-default); background: none; color: var(--color-ink); font: var(--type-body-em); cursor: pointer; }
+.startup-cancel[aria-disabled="true"] { color: var(--color-ink-ghost); cursor: default; }
+.startup-cancel:hover:not([aria-disabled="true"]) { border-color: var(--color-edge-strong); color: var(--color-ink-high); }
 .startup-sheet :focus-visible { outline: 2px solid var(--color-select); outline-offset: -2px; }
 
 /* Preview uses the same compact, centered toolbar as the design canvas. */

@@ -26,7 +26,8 @@ describe('startup dialog copy', () => {
     }
   })
 
-  it('selects an example that ships by default', () => {
-    expect(exampleAssets.map((example) => example.id)).toContain(DEFAULT_STARTUP_CHOICE_ID)
+  it('selects Blank by default', () => {
+    expect(DEFAULT_STARTUP_CHOICE_ID).toBe(BLANK_CHOICE_ID)
+    expect(startupChoices[0]?.id).toBe(DEFAULT_STARTUP_CHOICE_ID)
   })
 })

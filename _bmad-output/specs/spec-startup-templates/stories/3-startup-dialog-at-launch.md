@@ -23,10 +23,10 @@ context:
 ## Boundaries & Constraints
 
 **Always:**
-- Visual and copy follow `Main.dc.html` and DESIGN.md: 940 px sheet over `--tint-scrim` with `--shadow-sheet`; 46 px header "New template" + hint; cards in the order Blank, Invoice, Bank Statement, Legal Contract, Electricity Bill, each with its engine-rendered thumbnail on `--color-page-shell`, name, one-line description, and the sample file name (amber, mono) or "no sample data"; selected card cyan; footer states what the selection does and holds the primary action ("Start blank" / "Open example"). Tokens only — no colour literals, square corners, no new shadow or token.
+- Visual and copy follow `Main.dc.html` and DESIGN.md: 940 px sheet over `--tint-scrim` with `--shadow-sheet`; 46 px header "New template" + hint; cards in the order Blank, Invoice, Bank Statement, Legal Contract, Electricity Bill, each with its engine-rendered thumbnail on `--color-page-shell`, name, one-line description, and the sample file name (amber, mono) or "no sample data"; selected card cyan; footer states what the selection does and holds the primary action ("Start blank" / "Open example") beside a Cancel button. Narrower than five cards, the grid wraps and thumbnails scale down inside their cards. Tokens only — no colour literals, square corners, no new shadow or token.
 - Names and descriptions: Blank "Empty A4 page"; Invoice "Line items, totals, payment QR"; Bank Statement "Paginated transactions"; Legal Contract "Clauses, signature block"; Electricity Bill "Usage, charges, barcode".
-- Invoice is selected when the dialog opens and holds initial focus. Cards are `aria-pressed` buttons in a labelled `role="group"`; click selects, Enter/double-click or the primary action confirms. The dialog is `role="dialog"` `aria-modal` with the existing inline focus-trap shape, and App keyboard shortcuts do not fire while it is open.
-- Blank or Escape closes the dialog without an engine request: the starter the engine already holds stays at revision 1.
+- Blank is selected when the dialog opens and holds initial focus. Cards are `aria-pressed` buttons in a labelled `role="group"`; click selects, Enter/double-click or the primary action confirms. The dialog is `role="dialog"` `aria-modal` with the existing inline focus-trap shape, and App keyboard shortcuts do not fire while it is open.
+- Blank, Cancel or Escape closes the dialog without an engine request: the starter the engine already holds stays at revision 1.
 - An example load reuses Open's document path and sample-load's accept path (factored into shared helpers, not duplicated), sets title to the example name, `target` and `savedRevision` undefined, then enters Preview once; the render uses the sample, so the "No sample data" notice is absent. Files are fetched from `exampleAssets` URLs with `credentials: 'omit'`.
 - A failed fetch or load keeps the dialog open with the failure in the footer (`role="alert"`); Blank still works.
 - The dialog appears only when App receives the examples from `main.tsx`; App mounted without them (unit tests) behaves as today.
@@ -40,8 +40,8 @@ context:
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| Launch | Engine ready, examples passed | Dialog open, Invoice selected and focused, five cards with thumbnails | N/A |
-| Blank | Blank confirmed, or Escape | Dialog closes; canvas shows the starter at revision 1; no engine request | N/A |
+| Launch | Engine ready, examples passed | Dialog open, Blank selected and focused, five cards with thumbnails | N/A |
+| Blank | Blank confirmed, Cancel, or Escape | Dialog closes; canvas shows the starter at revision 1; no engine request | N/A |
 | Open example | Bank Statement confirmed | Title "Bank Statement"; unsaved, no target; Preview renders with its sample; no "No sample data" notice; sample tree available to binding | N/A |
 | Fetch fails | Example URL returns non-OK | Dialog stays open, nothing loaded | Footer alert names the example; Blank still closes |
 | No examples prop | App mounted without examples | No dialog | N/A |
@@ -93,6 +93,8 @@ context:
 - Cosmetic (fixed in review): two whitespace slips — `examples={…}offlineState` in `main.tsx` and `paletteItems … =[[` in `App.tsx`.
 
 ## Spec Change Log
+
+- **2026-09-15 — owner renegotiation after trying the dialog.** Triggered by the owner, not a review finding. Amended inside the frozen block at the owner's request: a Cancel button beside the primary action (same outcome as Escape); Blank, not Invoice, selected and focused on open; the card grid wraps and thumbnails scale down at narrow widths. Cancel and the primary action are grouped (`.startup-actions`) so a wrapping footer keeps them together, right-aligned. Checked in the production build at 1440, 720 and 480 px: no sideways scroll, no thumbnail outside its card, Blank focused, both buttons on one row. Known-bad state avoided: at narrow widths five fixed 132 px thumbnails in five squeezed columns overflowed their cards and overlapped. KEEP: shared install helpers, sample parsed before any engine request, fetch deadline, focusable dialog section, Save shortcut suppressed while open.
 
 ## Review Triage Log
 

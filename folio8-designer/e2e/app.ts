@@ -18,7 +18,7 @@ export async function openWorkspace(page: Page): Promise<void> {
 export async function dismissStartupDialog(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'New template' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('button', { name: 'Invoice', exact: true })).toBeFocused()
+  await expect(dialog.getByRole('button', { name: 'Blank', exact: true })).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
 }

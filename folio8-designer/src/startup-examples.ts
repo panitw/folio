@@ -16,7 +16,7 @@ export type StartupChoice = Readonly<{
 }>
 
 export const BLANK_CHOICE_ID = 'blank'
-export const DEFAULT_STARTUP_CHOICE_ID = 'invoice'
+export const DEFAULT_STARTUP_CHOICE_ID = BLANK_CHOICE_ID
 
 export const startupChoices: ReadonlyArray<StartupChoice> = [
   { id: BLANK_CHOICE_ID, name: 'Blank', description: 'Empty A4 page' },

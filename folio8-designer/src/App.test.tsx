@@ -11632,17 +11632,21 @@ describe('the startup dialog at launch', () => {
   const dialog = () => screen.getByRole('dialog', { name: 'New template' })
   const card = (name: string) => within(dialog()).getByRole('button', { name })
 
-  it('opens at launch with Blank and the four examples, Invoice selected and focused', () => {
+  it('opens at launch with Blank and the four examples, Blank selected and focused, and a Cancel', () => {
     const request = launch()
     expect(dialog()).toHaveAttribute('aria-modal', 'true')
     const cards = within(within(dialog()).getByRole('group', { name: 'Start from' })).getAllByRole('button')
     expect(cards.map((entry) => entry.getAttribute('aria-label'))).toEqual(['Blank', 'Invoice', 'Bank Statement', 'Legal Contract', 'Electricity Bill'])
-    expect(cards.map((entry) => entry.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false', 'false', 'false'])
-    expect(card('Invoice')).toHaveFocus()
+    expect(cards.map((entry) => entry.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+    expect(card('Blank')).toHaveFocus()
     expect(Array.from(dialog().querySelectorAll('img')).map((image) => image.getAttribute('src'))).toEqual(examples.map((example) => example.thumbnail))
     expect(within(dialog()).getByTestId('startup-blank-page')).toBeInTheDocument()
     expect(card('Invoice')).toHaveAccessibleDescription('Line items, totals, payment QR invoice.sample.json')
     expect(card('Blank')).toHaveAccessibleDescription('Empty A4 page no sample data')
+    expect(within(dialog()).getByRole('status')).toHaveTextContent('Blank starts an empty A4 page with no sample data')
+    expect(within(dialog()).getByRole('button', { name: 'Start blank' })).toBeInTheDocument()
+    expect(within(dialog()).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    fireEvent.click(card('Invoice'))
     expect(within(dialog()).getByRole('status')).toHaveTextContent('Invoice opens in Preview with invoice.sample.json')
     expect(within(dialog()).getByRole('button', { name: 'Open example' })).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
@@ -11656,6 +11660,7 @@ describe('the startup dialog at launch', () => {
 
   it.each([
     ['Start blank', () => { fireEvent.click(card('Blank')); expect(within(dialog()).getByRole('status')).toHaveTextContent('Blank starts an empty A4 page'); fireEvent.click(within(dialog()).getByRole('button', { name: 'Start blank' })) }],
+    ['Cancel', () => { fireEvent.click(card('Invoice')); fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' })) }],
     ['Escape', () => { fireEvent.keyDown(card('Invoice'), { key: 'Escape' }) }],
   ])('%s closes the dialog on the starter at revision 1 with no engine request', async (_, dismiss) => {
     const request = launch()
@@ -11695,6 +11700,7 @@ describe('the startup dialog at launch', () => {
   it('an example opens with no file target, so Save asks where to write it', async () => {
     const acquireSaveTarget = vi.fn(async (_request: SaveTargetRequest): Promise<AcquiredSaveTarget> => { throw new FileAccessCancelled() })
     launch({ fileAccess: { open: vi.fn(), acquireSaveTarget, writeSave: vi.fn() } })
+    fireEvent.click(card('Invoice'))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New template' })).not.toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Save local template' }))
@@ -11727,6 +11733,7 @@ describe('the startup dialog at launch', () => {
   it('refuses an example whose sample is not valid JSON with nothing replaced', async () => {
     fetchMock.mockImplementation(async (url: string) => url.endsWith('.json') ? answer(new TextEncoder().encode('{"customer":').buffer) : answer(TEMPLATE))
     const request = launch()
+    fireEvent.click(card('Invoice'))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
     expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open Invoice')
     expect(request).not.toHaveBeenCalled()
@@ -11737,6 +11744,7 @@ describe('the startup dialog at launch', () => {
 
   it('keeps the dialog usable when the engine rejects the example\'s template', async () => {
     launch({ engine: engine(vi.fn(async (operation: string) => { if (operation === 'load') throw new Error('engine refused'); return { snapshot: snapshot(1) } }) as never) })
+    fireEvent.click(card('Invoice'))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
     expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Could not open Invoice')
     expect(screen.getByRole('button', { name: 'PREVIEW' })).toHaveAttribute('aria-pressed', 'false')
@@ -11750,6 +11758,7 @@ describe('the startup dialog at launch', () => {
     vi.useFakeTimers()
     try {
       launch()
+      fireEvent.click(card('Invoice'))
       fireEvent.click(within(dialog()).getByRole('button', { name: 'Open example' }))
       expect(dialog()).toHaveAttribute('aria-busy', 'true')
       await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
@@ -11764,7 +11773,7 @@ describe('the startup dialog at launch', () => {
     const title = within(dialog()).getByRole('heading', { name: 'New template' })
     // What a browser does on that click: focus leaves the card for the nearest
     // focusable ancestor of the click target — or for the body, if there is none.
-    act(() => { card('Invoice').blur(); fireEvent.mouseDown(title); (title.closest('[tabindex]') as HTMLElement | null)?.focus(); fireEvent.click(title) })
+    act(() => { card('Blank').blur(); fireEvent.mouseDown(title); (title.closest('[tabindex]') as HTMLElement | null)?.focus(); fireEvent.click(title) })
     expect(dialog()).toHaveFocus()
     await expectDismissedOnStarter()
   })
@@ -11772,7 +11781,7 @@ describe('the startup dialog at launch', () => {
   it('traps Tab inside the dialog in both directions', () => {
     launch()
     const first = card('Blank')
-    const last = within(dialog()).getByRole('button', { name: 'Open example' })
+    const last = within(dialog()).getByRole('button', { name: 'Start blank' })
     last.focus()
     fireEvent.keyDown(last, { key: 'Tab' })
     expect(first).toHaveFocus()
