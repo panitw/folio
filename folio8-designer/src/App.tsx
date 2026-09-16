@@ -10,7 +10,7 @@ import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { BrandMark } from './BrandMark'
 import type { BindingErrorScope } from './DataPanel'
-import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, pdfFileFormat, type FileAccess, type FileTarget, type LocalFile } from './file/file-access'
+import { FileAccessFailure, folioFileFormat, isFileAccessCancelled, jsonSampleFileFormat, pdfFileFormat, type FileAccess, type FileTarget, type LocalFile } from './file/file-access'
 import { pageSetupCommand } from './page-setup-command'
 import { bandHeightCommand } from './band-height-command'
 import { bandBoundaryCeiling, boundaryOffset, proposedBandHeight } from './band-boundary'
@@ -553,6 +553,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // a PDF save and a template save are different writes to different files, and
   // conflating them would make one silently swallow the other's press.
   const exportInFlight = useRef(false)
+  // STORY 5 (startup templates). A THIRD LATCH, for the reason 13.1 minted the
+  // second: the sample save is a write to a THIRD file, and folding it into
+  // either of the others would let one press silently swallow the other's.
+  const sampleSaveInFlight = useRef(false)
   // ONE APPLY AT A TIME. bindingInFlight is the shipped precedent; this one
   // exists because Apply became a SEQUENCE of commands rather than a single
   // one, and two interleaved sequences would send band heights derived from
@@ -3024,7 +3028,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   }
 
   const save = async (saveAs: boolean) => {
-    if (!engine || !fileAccess || saveInFlight.current || exportInFlight.current) return
+    if (!engine || !fileAccess || saveInFlight.current || exportInFlight.current || sampleSaveInFlight.current) return
     saveInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus(saveAs ? 'Preparing Save As…' : 'Preparing local save…')
     try {
       // Must run inside the gesture before awaiting the worker: the native
@@ -3154,7 +3158,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     // only the rendered `disabled` attributes held the template save and the PDF
     // save apart, which is an ordering property of React's flush rather than an
     // invariant of these two functions. Each refuses while the other is live.
-    if (!fileAccess || !preview || exportInFlight.current || saveInFlight.current) return
+    if (!fileAccess || !preview || exportInFlight.current || saveInFlight.current || sampleSaveInFlight.current) return
     const record = preview
     // Read off the record BEFORE the staleness question: `admittedPreview` is a
     // type predicate, so a `!`-negated alias narrows `record` to `never` in the
@@ -3178,6 +3182,49 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
       if (isFileAccessCancelled(error)) setFileStatus(undefined)
       else announceFailure(fileFailureSentence(error, 'Could not save the preview PDF'))
     } finally { exportInFlight.current = false; setFileBusy(false) }
+  }
+
+  // STORY 5 (startup templates), CAP-7 — SAVE SAMPLE DATA.
+  //
+  // THE BYTES ARE THE ACCEPTED BYTES, AND NOTHING HERE TOUCHES THEM.
+  // `acceptSampleData` already kept `bytes.slice(0)` — the author's own file,
+  // byte for byte — and the display tree beside it is a BOUNDED PROJECTION: a
+  // deep or wide document is truncated for the panel. Re-serializing that
+  // projection would hand the author a file that is not the one their Preview
+  // rendered from, silently, and only for the large documents where they are
+  // least likely to notice. So the buffer goes out untouched: no parse, no
+  // re-encode, no reformat.
+  //
+  // IT IS AN OUTPUT SAVE, NOT A DOCUMENT SAVE. It reaches no engine operation,
+  // moves no revision, and never touches `savedRevision`, the unsaved-changes
+  // baseline, the title, or the retained `.folio` target — a sample is not part
+  // of the template (format rule) and saving one must not make the document look
+  // saved or unsaved. For the same reason NO TARGET IS REMEMBERED: `saveAs:
+  // true` every time, so this can never overwrite a file the author last picked
+  // for something else.
+  //
+  // WHERE THE SAMPLE CAME FROM IS NOT ASKED. An example's bundled sample and one
+  // the author opened with Load sample JSON are the same `SampleData` by the
+  // time they reach here, and the story is explicit that both save alike.
+  const saveSampleData = async () => {
+    // All three latches, for the reason 13.1 gives at the export: the rendered
+    // `disabled` attribute is an ordering property of React's flush, not an
+    // invariant of these functions.
+    if (!fileAccess || !sampleData || sampleSaveInFlight.current || saveInFlight.current || exportInFlight.current) return
+    // Read the record ONCE. A second read of `sampleData` could describe a
+    // different sample than the one whose bytes are being written.
+    const record = sampleData
+    sampleSaveInFlight.current = true; setFileBusy(true); setFileError(undefined); setFileStatus('Preparing sample data save…')
+    try {
+      // Inside the gesture, before any await that is not the picker itself: the
+      // native picker is gated on the click's transient user activation.
+      const acquired = await fileAccess.acquireSaveTarget({ suggestedName: record.name, saveAs: true, format: jsonSampleFileFormat })
+      const saved = await fileAccess.writeSave(acquired, { bytes: record.bytes })
+      setFileStatus(saved.target ? `Saved sample data as ${saved.name}` : `Downloaded sample data ${saved.name}`)
+    } catch (error) {
+      if (isFileAccessCancelled(error)) setFileStatus(undefined)
+      else announceFailure(fileFailureSentence(error, 'Could not save the sample data'))
+    } finally { sampleSaveInFlight.current = false; setFileBusy(false) }
   }
 
   useEffect(() => {
@@ -3696,7 +3743,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
             "Configure columns" stays live throughout: the TABLE is still the
             component selection, so `openTableEditor`'s
             `selectedRef.current[0] !== id` guard is untouched. */}<span className="column-identity-name">Column</span><span className="column-identity-meta">{selectedTableColumn.label === '' ? selectedTableColumn.columnId : selectedTableColumn.label}</span></p>}{mode === 'preview' ? <><p className="section-label">PREVIEW INPUTS</p><ParameterEditor referenceState={parameterReferenceState} accepted={previewParams} draft={previewParamsDraft} error={previewParamsError} onDraft={acceptPreviewParameters} onNamedValue={setNamedParameter} /><p className="honest-note">Parameters are local Preview input and are not part of the template.</p></> : selectedBreak !== undefined && breakPage !== undefined ? <SectionBreakProperties key={`${documentGenerationValue}:${breakPage}:${selectedBreak.offset}`} offset={selectedBreak.offset} anchor={selectedBreak.anchored} onCommit={(draft) => void commitComponent(setSectionBreakCommand(draft, false, breakPage))} onAnchor={(anchor) => void commitComponent(setSectionBreakAnchorCommand(anchor, breakPage))} /> : selected.length > 0 && canvas ? <ComponentProperties key={`${documentGenerationValue}:${selected.join(',')}`} components={canvas.components.filter((component) => selected.includes(component.id))} fontFamilies={canvas.fontFamilies} fontChains={canvas.fontChains} carriedFaces={paintableFaces} specimenBytes={familyControlSpecimenBytes} defaultFontSize={canvas.defaultFontSize} defaultLineSpacing={canvas.defaultLineSpacing} onCommit={applyProperties} onUseFamily={(source) => embedInstalledFamily(source, documentGeneration.current, selected.join(','))} onDeclareFamily={(source) => declareShippedFamily(source, documentGeneration.current, selected.join(','))} onOpenFontBrowser={() => setFontBrowserOpen(true)} browserOpen={fontBrowserOpen} storedFaces={storedFaces} fontChainError={fontChainError} fontChainBusy={fontChainBusy || fileBusy} documentGeneration={documentGenerationValue} propertyError={propertyError} drag={drag} groupPreview={canvasSelection.group} onEditTable={(id) => void openTableEditor(id)} onPickImage={(id) => void applyImageAsset(id)} imageAvailable={imageFileAccess !== undefined} assetBusy={assetBusy} assetError={assetError} /> : <><div className="component-identity"><ToolIcon glyph="blank" /><span className="component-identity-name">Page</span><span className="component-identity-meta">{pageSelection !== undefined ? `page ${pageSelection + 1} of ${pageCount}` : `document · ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`}</span></div>{canvas && pageSelection !== undefined && <PageSection page={pageSelection} pageBreak={canvas.pageBreaks?.[pageSelection] ?? true} disabled={fileBusy} onPageBreak={(value) => void commitComponent(setPageBreakCommand(pageSelection, value))} />}<PageSetup preset={preset} orientation={orientation} draft={draft} onPreset={setPreset} onOrientation={setOrientation} onDraft={updateDraft} onApply={applyPageSetup} disabled={!canvas || fileBusy} /></>}</div>
-        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.type === 'table' ? selectedComponent.tableBind : selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} columnScope={columnBindScope} onLoad={() => void loadSample()} onConnect={(segments) => void bindPickedPath(segments)} onConnectColumn={(field) => void bindPickedColumn(field)} /></div>
+        <div className="panel-body" role="tabpanel" id="inspector-panel-data" aria-labelledby="inspector-tab-data" hidden={inspectorTab !== 'data'}><DataPanel sample={sampleData} error={sampleError} busy={sampleBusy} available={Boolean(sampleFileAccess)} selectedComponentId={selected.length === 1 ? selected[0] : undefined} selectedComponentType={selectedComponent?.type} selectedBinding={selectedComponent?.type === 'table' ? selectedComponent.tableBind : selectedComponent?.binding} bindingError={bindingError} bindingBusy={bindingBusy} runtimeParameters={{ status: parameterReferenceState.status, names: parameterReferenceState.names, values: parameterValues(previewParams) }} columnScope={columnBindScope} saveDisabled={fileBusy || !fileAccess} onLoad={() => void loadSample()} onSave={() => void saveSampleData()} onConnect={(segments) => void bindPickedPath(segments)} onConnectColumn={(field) => void bindPickedColumn(field)} /></div>
         {/* STORY 13.3 — THE EVIDENCE RAIL, A SIBLING OF THE TABPANELS AND NEVER
             INSIDE ONE.
             ⚠ THIS IS THE WHOLE OF DW-281's DISCHARGE — an OWNER REQUEST, not a

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { selectFileAccess, selectSampleFileAccess } from './capability'
-import { FileAccessCancelled, folioFileFormat, localFileName, pdfFileFormat, type LocalFileFormat, type LocalFileHandle } from './file-access'
+import { FileAccessCancelled, folioFileFormat, jsonSampleFileFormat, localFileName, pdfFileFormat, type LocalFileFormat, type LocalFileHandle } from './file-access'
 import { FileSystemAccess } from './file-system-access'
 import { InputDownloadAccess } from './input-download'
 
@@ -220,10 +220,24 @@ describe('local file access boundary', () => {
     // Recognising a suffix across cases is not the same as rewriting one: a
     // cross-format save still restyles the extension it appends.
     expect(localFileName('REPORT.FOLIO', pdfFileFormat)).toBe('REPORT.pdf')
-    // The two shipped formats, pinned: the picker entry and the blob MIME below
-    // are both derived from these, so a wrong value here is a wrong file there.
+    // ⚠ STORY 5 — `.json` IS NOT IN THE STRIP SET, AND THESE THREE ROWS ARE WHAT
+    // SAYS SO. Save sample data introduced a third format; putting it in
+    // `knownFileFormats` would have quietly RENAMED the other two save paths,
+    // because a template can genuinely be titled `data.json` (the download
+    // tier's open input accepts `application/json`, and the title comes from the
+    // opened file's name). The first two rows are the shipped answers that were
+    // invisible until now; the third is the sample save, which needs no strip
+    // because its own suffix takes the case-preserving early return.
+    expect(localFileName('data.json', folioFileFormat)).toBe('data.json.folio')
+    expect(localFileName('data.json', pdfFileFormat)).toBe('data.json.pdf')
+    expect(localFileName('ledger.json', jsonSampleFileFormat)).toBe('ledger.json')
+    expect(localFileName('ledger', jsonSampleFileFormat)).toBe('ledger.json')
+    // The three shipped formats, pinned: the picker entry and the blob MIME
+    // below are both derived from these, so a wrong value here is a wrong file
+    // there — and `sample-file.ts` builds its OPEN picker type from the third.
     expect(folioFileFormat).toEqual({ description: 'folio8 template', mimeType: 'application/json', extension: '.folio' })
     expect(pdfFileFormat).toEqual({ description: 'PDF document', mimeType: 'application/pdf', extension: '.pdf' })
+    expect(jsonSampleFileFormat).toEqual({ description: 'JSON sample data', mimeType: 'application/json', extension: '.json' })
   })
 
   it('offers a PDF-only native picker entry for a PDF save and writes then closes the exact bytes it was handed', async () => {

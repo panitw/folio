@@ -66,7 +66,7 @@ export type RuntimeParameters = Readonly<{ status: 'pending' | 'ready' | 'failed
 // and spelled `Rectangle` for `rect` because the abbreviation is not a word.
 const kindNoun: Readonly<Record<CanvasComponentType, string>> = { text: 'Text', image: 'Image', table: 'Table', line: 'Line', rect: 'Rectangle', barcode: 'Barcode', qrcode: 'QR code' }
 
-export function DataPanel({ sample, error, busy, available, selectedComponentId, selectedComponentType, selectedBinding, bindingError, bindingBusy, runtimeParameters, columnScope, onLoad, onConnect, onConnectColumn }: Readonly<{ sample?: SampleData; error?: string; busy: boolean; available: boolean; selectedComponentId?: string; selectedComponentType?: CanvasComponentType; selectedBinding?: string; bindingError?: BindingErrorScope; bindingBusy?: boolean; runtimeParameters?: RuntimeParameters; columnScope?: ColumnBindScope; onLoad: () => void; onConnect?: (segments: ReadonlyArray<string>) => void; onConnectColumn?: (field: string) => void }>) {
+export function DataPanel({ sample, error, busy, available, saveDisabled, selectedComponentId, selectedComponentType, selectedBinding, bindingError, bindingBusy, runtimeParameters, columnScope, onLoad, onSave, onConnect, onConnectColumn }: Readonly<{ sample?: SampleData; error?: string; busy: boolean; available: boolean; saveDisabled?: boolean; selectedComponentId?: string; selectedComponentType?: CanvasComponentType; selectedBinding?: string; bindingError?: BindingErrorScope; bindingBusy?: boolean; runtimeParameters?: RuntimeParameters; columnScope?: ColumnBindScope; onLoad: () => void; onSave?: () => void; onConnect?: (segments: ReadonlyArray<string>) => void; onConnectColumn?: (field: string) => void }>) {
   const action = sample ? 'Replace sample JSON' : 'Load sample JSON'
   const [pickedState, setPickedState] = useState<Readonly<{ sample: SampleData; node: SampleNode }>>()
   const picked = pickedState && pickedState.sample === sample ? pickedState.node : undefined
@@ -143,7 +143,19 @@ export function DataPanel({ sample, error, busy, available, selectedComponentId,
     onConnect(node.segments)
   }
   return <div className="data-panel" aria-label="Data panel">
-    <button className="file-button" type="button" onClick={onLoad} disabled={busy || !available}>{action}</button>
+    {/* STORY 5 (startup templates) — SAVE SITS BESIDE LOAD, AND ONLY ONCE THERE
+        IS SOMETHING TO SAVE. It is withheld rather than disabled when no sample
+        is loaded: there is no file the author could mean, so there is no reason
+        to state beside a dead control. Once a sample exists the control is
+        always rendered and only ever DISABLED — `saveDisabled` carries the file
+        boundary's own two conditions (a local write already in flight, or no
+        local file access at all), which are not `busy`/`available`'s: those two
+        describe the SAMPLE picker, and a sample can be loaded from a shell whose
+        save tier is a download and vice versa. */}
+    <div className="data-actions">
+      <button className="file-button" type="button" onClick={onLoad} disabled={busy || !available}>{action}</button>
+      {sample && onSave && <button className="file-button" type="button" onClick={onSave} disabled={saveDisabled}>Save sample data</button>}
+    </div>
     {error && <p role="alert" className="data-message">{error}</p>}
     {!sample ? <>
       <p className="data-empty" role="status">No sample data loaded.</p>

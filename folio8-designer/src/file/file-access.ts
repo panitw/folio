@@ -112,8 +112,31 @@ export type LocalFileFormat = Readonly<{ description: string; mimeType: string; 
 
 export const folioFileFormat: LocalFileFormat = { description: 'folio8 template', mimeType: 'application/json', extension: '.folio' }
 export const pdfFileFormat: LocalFileFormat = { description: 'PDF document', mimeType: 'application/pdf', extension: '.pdf' }
+// STORY 5 (startup templates) — SAVE SAMPLE DATA'S FORMAT, AND IT IS THE SAME
+// VALUE THE SAMPLE PICKER ALREADY OPENS WITH. `sample-file.ts` builds its open
+// picker type from this constant, so the wording an author reads when they load
+// a sample and the wording they read when they save one cannot drift apart.
+export const jsonSampleFileFormat: LocalFileFormat = { description: 'JSON sample data', mimeType: 'application/json', extension: '.json' }
 
-// Every format this boundary knows how to name.
+// THE FORMATS WHOSE TRAILING EXTENSION `localFileName` WILL STRIP — and
+// `jsonSampleFileFormat` IS DELIBERATELY NOT ONE OF THEM.
+//
+// Membership here is not "every format this boundary knows"; it is a claim that
+// the suffix is this application's OWN output and may therefore be replaced when
+// the author saves the same document as something else. `.folio` and `.pdf` are
+// that. `.json` is not: it is the author's data file, and the name it ends with
+// belongs to them.
+//
+// It is a SHIPPED-NAMING question rather than a taste one. A template can be
+// titled `data.json` — the download tier's open input accepts
+// `application/json`, and `installOpenedDocument` takes the title from the file
+// name — and adding `.json` to this set silently re-offers that template as
+// `data.folio` instead of `data.json.folio`, with the same loss on the PDF path.
+// Story 5 adds a save; it does not get to rename the other two.
+//
+// The sample save needs nothing from this set: its own suffix is `.json`, so
+// `endsWith(wanted)` below returns the name unchanged before the strip is ever
+// reached, and a sample named without one simply gains it.
 const knownFileFormats: ReadonlyArray<LocalFileFormat> = [folioFileFormat, pdfFileFormat]
 
 // STRIPPING IS SYMMETRIC ACROSS BOTH FORMATS, DELIBERATELY, AND THIS IS THE

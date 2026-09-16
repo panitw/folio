@@ -605,6 +605,11 @@ label.section-break-anchor input[type="checkbox"] { width: 12px; min-height: 12p
    The per-node `{tints.bind-row}` wash is gone with it: that tint belongs to a
    diagnostic's affected page row, and painting every row with it left nothing
    for the picked row to say. */
+/* DESIGN.md:455-456 — sibling controls are a flex row with a `gap`, never
+   adjacent inline-blocks relying on whitespace. Each keeps its natural width;
+   the evidence rail's `flex: 1 1 0` is not inherited here because these two are
+   not a paired set of equals. */
+.data-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .data-empty, .data-message { margin: var(--space-5) 0; color: var(--color-ink-high); font: var(--type-body); }
 .data-message { padding: var(--space-2); border-left: 3px solid var(--color-bind); background: var(--color-bind-tint-warm); }
 .data-file { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; margin: var(--space-5) 0; padding-bottom: var(--space-3); border-bottom: var(--hairline) solid var(--color-line); }

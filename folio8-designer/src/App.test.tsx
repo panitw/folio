@@ -9,7 +9,7 @@ import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
 import { embeddedFaceFamily } from './embedded-face-family'
 import { shippedFaceFamily } from './shipped-face-family'
 import { shippedFamilyEntry } from './shipped-face-cuts'
-import { FileAccessCancelled, FileAccessFailure, folioFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveTargetRequest } from './file/file-access'
+import { FileAccessCancelled, FileAccessFailure, folioFileFormat, jsonSampleFileFormat, pdfFileFormat, type AcquiredSaveTarget, type FileAccess, type SavedLocalFile, type SaveRequest, type SaveTargetRequest } from './file/file-access'
 import { FileSystemAccess } from './file/file-system-access'
 import { InputDownloadAccess } from './file/input-download'
 import type { EngineClient } from './engine-client'
@@ -8424,6 +8424,207 @@ describe('Story 13.1: the preview keeps the PDF', () => {
     releaseTarget()
     await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
     expect(acquireSaveTarget).toHaveBeenCalledOnce()
+  })
+})
+
+// STORY 5 (spec-startup-templates), CAP-7 — SAVE SAMPLE DATA.
+//
+// The sample the Designer loaded is the one artefact an example gives the author
+// that had no way out of the tab. These tests are written over the REAL two file
+// tiers wherever the bytes matter, for the reason the PDF export's are: a save
+// that re-encoded or truncated the body under the right filename would pass any
+// test that only watched the stub it was handed.
+describe('Story 5: the loaded sample data saves to a local file', () => {
+  const sampleText = '{"customer":{"name":"Preview customer"},"transactions":[]}'
+  const sampleBytes = [...new TextEncoder().encode(sampleText)]
+  const openDataTab = () => fireEvent.click(screen.getByRole('tab', { name: 'DATA' }))
+  const saveControl = () => screen.getByRole('button', { name: 'Save sample data' })
+  // A native tier whose picker returns a handle under a DIFFERENT name than the
+  // one suggested, so the status line is proved to read the saved name back
+  // rather than echo what was offered.
+  const nativeTier = (name = 'kept.json') => {
+    const written: number[][] = []
+    const handle = { name, getFile: async () => new File([], name, { type: 'application/json' }), createWritable: async () => ({ write: async (buffer: ArrayBuffer) => { written.push([...new Uint8Array(buffer)]) }, close: async () => undefined }) }
+    const showSaveFilePicker = vi.fn(async (_options: { suggestedName: string; types: ReadonlyArray<unknown> }) => handle)
+    const showOpenFilePicker = vi.fn(async () => [handle])
+    return { written, showSaveFilePicker, access: new FileSystemAccess({ showOpenFilePicker, showSaveFilePicker }) }
+  }
+  const mount = (fileAccess?: FileAccess, initialSampleData = sample) => {
+    const request = vi.fn(async (operation: string) => ({ snapshot: snapshot(1), ...(operation === 'serialize' ? { bytes } : {}) }))
+    render(<App engine={engine(request)} fileAccess={fileAccess} initialSnapshot={snapshot(1)} initialSampleData={initialSampleData} />)
+    openDataTab()
+    return request
+  }
+
+  it('writes the accepted bytes verbatim through the native tier, offers the sample its own name, and leaves the document alone', async () => {
+    const tier = nativeTier()
+    const request = mount(tier.access)
+    const engineCallsBeforeThePress = request.mock.calls.length
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(tier.written).toHaveLength(1))
+    // ONE FORMAT, THREE FACTS. The picker's description, the extension on the
+    // suggested name, and the MIME the download tier below carries are one value
+    // — `jsonSampleFileFormat` — and this is the description the sample OPEN
+    // picker already used.
+    expect(tier.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: 'sample.json', types: [{ description: 'JSON sample data', accept: { 'application/json': ['.json'] } }] })
+    expect(tier.written[0]).toEqual(sampleBytes)
+    await waitFor(() => expect(screen.getByText('Saved sample data as kept.json')).toBeInTheDocument())
+    // THE DOCUMENT IS UNTOUCHED. No engine request crossed the press, so no
+    // revision moved; the title and the clean/dirty verdict are what they were.
+    expect(request.mock.calls.length).toBe(engineCallsBeforeThePress)
+    expect(screen.getByText('Untitled template', { selector: '.document-name' })).toBeInTheDocument()
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('downloads the same bytes under the sample name and a JSON MIME in the fallback tier', async () => {
+    const tier = downloadSaveTier()
+    mount(tier.access)
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(tier.blobs).toHaveLength(1))
+    expect(tier.anchor.download).toBe('sample.json')
+    expect(tier.blobs[0]!.type).toBe('application/json')
+    expect([...new Uint8Array(await tier.blobs[0]!.arrayBuffer())]).toEqual(sampleBytes)
+    // No picker, so no "Saved … as": the tier that cannot promise a destination
+    // does not claim one.
+    await waitFor(() => expect(screen.getByText('Downloaded sample data sample.json')).toBeInTheDocument())
+  })
+
+  it('writes the WHOLE original document for a sample whose tree was truncated for display', async () => {
+    // Wider than `SAMPLE_LIMITS.children`, so the panel's projection is bounded
+    // and `truncated` is set — the exact case where a re-serialized "save" would
+    // hand back a shortened file and nobody would notice.
+    const wide = `{${Array.from({ length: 80 }, (_, index) => `"k${index}":${index}`).join(',')}}`
+    const tier = nativeTier()
+    mount(tier.access, acceptSampleData('wide.json', new TextEncoder().encode(wide).buffer))
+    expect(screen.getByText('Tree inspection is truncated to keep this local panel responsive.')).toBeInTheDocument()
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(tier.written).toHaveLength(1))
+    expect(new TextDecoder().decode(Uint8Array.from(tier.written[0]!))).toBe(wide)
+    expect(tier.showSaveFilePicker.mock.calls[0]![0]).toMatchObject({ suggestedName: 'wide.json' })
+  })
+
+  // ACCEPTANCE CRITERION 1, AND IT IS THE WHOLE POINT OF THE STORY: the saved
+  // file must come BACK as sample data. Comparing bytes proves the write was
+  // verbatim; running the real `acceptSampleData` over them proves the thing an
+  // author actually cares about — that Load sample JSON on the saved file yields
+  // the same tree the Preview was rendering from, truncation and all.
+  it('hands over bytes that reload through acceptSampleData as the very same sample', async () => {
+    const wide = `{${Array.from({ length: 80 }, (_, index) => `"k${index}":${index}`).join(',')}}`
+    const loaded = acceptSampleData('wide.json', new TextEncoder().encode(wide).buffer)
+    expect(loaded.truncated).toBe(true)
+    const tier = nativeTier()
+    mount(tier.access, loaded)
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(tier.written).toHaveLength(1))
+    // The reopen, done exactly as `loadSample` does it. The NAME is deliberately
+    // different — that is the one thing an author may change in the picker — and
+    // everything the panel and the engine read is identical.
+    const reopened = acceptSampleData('elsewhere.json', Uint8Array.from(tier.written[0]!).buffer)
+    expect(reopened.tree).toEqual(loaded.tree)
+    expect(reopened.truncated).toBe(loaded.truncated)
+    expect([...new Uint8Array(reopened.bytes)]).toEqual([...new Uint8Array(loaded.bytes)])
+  })
+
+  // THE CROSS-LATCH, IN THE ONE SHAPE THAT CAN SEE IT. `sampleSaveInFlight` is
+  // read by `save` and by `exportPreviewPdf`, and a `disabled` attribute cannot
+  // stand in for it: React does not re-render between two clicks dispatched in
+  // one flush, so both buttons are still enabled when the second lands. Without
+  // the guard the template save proceeds, opens a second picker, and writes the
+  // serialized document over the destination the author chose for their sample.
+  it('refuses a template save dispatched in the same flush as a sample save', async () => {
+    const written: Array<Readonly<{ name: string; bytes: number[] }>> = []
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => ({ name: request.suggestedName, format: request.format }))
+    const writeSave = vi.fn(async (target: AcquiredSaveTarget, request: SaveRequest): Promise<SavedLocalFile> => { written.push({ name: target.name, bytes: [...new Uint8Array(request.bytes)] }); return { name: target.name } })
+    mount({ open: vi.fn(), acquireSaveTarget, writeSave })
+    const sampleSave = saveControl()
+    const templateSave = screen.getByRole('button', { name: 'Save local template' })
+    expect(templateSave).toBeEnabled()
+    act(() => {
+      sampleSave.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      templateSave.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+    expect(acquireSaveTarget).toHaveBeenCalledOnce()
+    expect(written).toEqual([{ name: 'sample.json', bytes: sampleBytes }])
+  })
+
+  // The same guard's OTHER reader. `exportPreviewPdf` carries its own copy, and
+  // a PDF save that slipped through would write the rendered document over the
+  // sample's destination just as the template save would.
+  it('refuses a PDF export dispatched in the same flush as a sample save', async () => {
+    const written: Array<Readonly<{ name: string; bytes: number[] }>> = []
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => ({ name: request.suggestedName, format: request.format }))
+    const writeSave = vi.fn(async (target: AcquiredSaveTarget, request: SaveRequest): Promise<SavedLocalFile> => { written.push({ name: target.name, bytes: [...new Uint8Array(request.bytes)] }); return { name: target.name } })
+    await showRenderedPreview(previewRequest(), { open: vi.fn(), acquireSaveTarget, writeSave })
+    const pdfSave = screen.getByRole('button', { name: 'Save PDF' })
+    openDataTab()
+    const sampleSave = saveControl()
+    act(() => {
+      sampleSave.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      pdfSave.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+    expect(written).toEqual([{ name: 'sample.json', bytes: sampleBytes }])
+  })
+
+  it('renders the control disabled, not absent, in a shell with no local save tier', () => {
+    render(<App engine={engine()} initialSnapshot={snapshot(1)} initialSampleData={sample} sampleFileAccess={{ openSample: vi.fn() }} />)
+    openDataTab()
+    // The sample was loaded, so there IS something to save — the control stays
+    // on screen and states its unavailability by being dead, rather than
+    // vanishing and leaving the author to wonder where it went.
+    expect(saveControl()).toBeDisabled()
+    // ...and the sample PICKER is unaffected: this shell can still load one. The
+    // two controls answer to two different capabilities, which is why the save's
+    // disabled state is not `available`'s.
+    expect(screen.getByRole('button', { name: 'Replace sample JSON' })).toBeEnabled()
+  })
+
+  it('says nothing and writes nothing when the picker is dismissed, and re-enables the control', async () => {
+    const acquireSaveTarget = vi.fn(async () => { throw new FileAccessCancelled() })
+    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => ({ name: 'kept.json' }))
+    mount({ open: vi.fn(), acquireSaveTarget, writeSave })
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(saveControl()).toBeEnabled())
+    expect(writeSave).not.toHaveBeenCalled()
+    // Nothing in the bar: neither the "Preparing…" line the press put up nor a
+    // "Saved"/"Downloaded" claim about a file that was never written.
+    expect(document.querySelector('.bar-message')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('names the failure in the bar and releases the file latch when the write throws', async () => {
+    const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => ({ name: request.suggestedName, format: request.format }))
+    const writeSave = vi.fn(async () => { throw new FileAccessFailure('Could not save local file: NotAllowedError: permission lapsed') })
+    mount({ open: vi.fn(), acquireSaveTarget, writeSave })
+    fireEvent.click(saveControl())
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('NotAllowedError: permission lapsed'))
+    // `fileBusy` released: a failed save does not leave the workspace latched.
+    expect(saveControl()).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save local template' })).toBeEnabled()
+  })
+
+  it('takes one press while a save is in flight, and offers no control with no sample loaded', async () => {
+    let releaseTarget!: () => void
+    const acquireSaveTarget = vi.fn(() => new Promise<AcquiredSaveTarget>((resolve) => { releaseTarget = () => resolve({ name: 'kept.json', format: jsonSampleFileFormat }) }))
+    const writeSave = vi.fn(async (): Promise<SavedLocalFile> => ({ name: 'kept.json' }))
+    mount({ open: vi.fn(), acquireSaveTarget, writeSave })
+    const control = saveControl()
+    // Three presses inside one `act`, for the reason the PDF export's twin test
+    // gives: no render flushes between them, so the in-flight LATCH is what
+    // stops the second and third rather than a `disabled` attribute.
+    act(() => { for (let press = 0; press < 3; press++) control.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(control).toBeDisabled()
+    expect(acquireSaveTarget).toHaveBeenCalledOnce()
+    releaseTarget()
+    await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+
+    cleanup()
+    render(<App engine={engine()} fileAccess={{ open: vi.fn(), acquireSaveTarget, writeSave }} initialSnapshot={snapshot(1)} />)
+    openDataTab()
+    expect(screen.getByRole('button', { name: 'Load sample JSON' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save sample data' })).not.toBeInTheDocument()
   })
 })
 

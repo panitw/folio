@@ -1,10 +1,12 @@
 import { MAX_ENGINE_PAYLOAD_BYTES } from './engine-protocol'
-import { FileAccessCancelled, FileAccessFailure, type LocalFileHandle } from './file/file-access'
+import { FileAccessCancelled, FileAccessFailure, jsonSampleFileFormat, type LocalFileHandle } from './file/file-access'
 
 export type LocalSampleFile = Readonly<{ bytes: ArrayBuffer; name: string }>
 export interface SampleFileAccess { openSample(): Promise<LocalSampleFile> }
 export type SamplePicker = Readonly<{ showOpenFilePicker(options: Readonly<{ multiple: false; types: ReadonlyArray<Readonly<{ description: string; accept: Readonly<Record<string, ReadonlyArray<string>>> }>> }>): Promise<ReadonlyArray<LocalFileHandle>> }>
-const samplePickerType = { description: 'JSON sample data', accept: { 'application/json': ['.json'] } } as const
+// Derived from the shared format rather than re-spelled, so opening a sample and
+// saving one name the same type with the same words (story 5's "one wording").
+const samplePickerType = { description: jsonSampleFileFormat.description, accept: { [jsonSampleFileFormat.mimeType]: [jsonSampleFileFormat.extension] } } as const
 const rejectOversized = (file: File): void => { if (file.size > MAX_ENGINE_PAYLOAD_BYTES) throw new FileAccessFailure(`Selected JSON exceeds the ${MAX_ENGINE_PAYLOAD_BYTES / 1024 / 1024} MiB local preview limit`) }
 
 export class FileSystemSampleAccess implements SampleFileAccess {

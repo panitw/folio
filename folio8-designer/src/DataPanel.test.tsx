@@ -4,7 +4,7 @@ import App, { PROSE_COMMIT_DEBOUNCE_MS } from './App'
 import { DataPanel } from './DataPanel'
 import { acceptSampleData } from './sample-data'
 import type { EngineClient } from './engine-client'
-import { FileAccessCancelled } from './file/file-access'
+import { FileAccessCancelled, jsonSampleFileFormat, type AcquiredSaveTarget, type SavedLocalFile, type SaveRequest, type SaveTargetRequest } from './file/file-access'
 import type { SampleFileAccess } from './sample-file'
 import { PDF_FIXTURE_DIGEST, RENDER_ELAPSED_MS, RENDER_ENGINE_VERSION } from './test/pdf-fixture'
 import { startBlankFromNew } from './test/new-document'
@@ -302,6 +302,62 @@ describe('docked sample data panel', () => {
     expect(screen.queryByText('late.json')).not.toBeInTheDocument()
     expect(screen.getByText('No sample data loaded.')).toBeInTheDocument()
     expect(request.mock.calls.filter(([operation]) => operation === 'identity')).toHaveLength(0)
+  })
+
+  // STORY 5 (spec-startup-templates), CAP-7 — THE CONTROL ITSELF.
+  //
+  // Where App.test.tsx proves the BYTES that leave, these prove the button: when
+  // it exists at all, what it is called, and the two states it is disabled in.
+  // It is withheld with no sample rather than disabled, because with nothing
+  // loaded there is no file the author could mean and so no reason to state
+  // beside a dead control (DESIGN.md:592 — anything disabled states its reason).
+  describe('Save sample data', () => {
+    const sampleOf = (name = 'sample.json') => acceptSampleData(name, sampleBytes)
+    const panel = (props: Partial<React.ComponentProps<typeof DataPanel>> = {}) => <DataPanel sample={sampleOf()} busy={false} available onLoad={() => undefined} {...props} />
+
+    it('is absent until a sample is loaded, and sits immediately after the load control', () => {
+      const onSave = vi.fn()
+      const view = render(panel({ sample: undefined, onSave }))
+      expect(screen.getByRole('button', { name: 'Load sample JSON' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Save sample data' })).not.toBeInTheDocument()
+      view.rerender(panel({ onSave }))
+      expect(screen.getAllByRole('button').slice(0, 2).map((button) => button.textContent)).toEqual(['Replace sample JSON', 'Save sample data'])
+      fireEvent.click(screen.getByRole('button', { name: 'Save sample data' }))
+      expect(onSave).toHaveBeenCalledOnce()
+    })
+
+    it('is disabled, and answers no click, while a file operation is in flight or no local save tier exists', () => {
+      const onSave = vi.fn()
+      const view = render(panel({ onSave, saveDisabled: true }))
+      const control = screen.getByRole('button', { name: 'Save sample data' })
+      expect(control).toBeDisabled()
+      fireEvent.click(control)
+      expect(onSave).not.toHaveBeenCalled()
+      // The sample PICKER being unavailable is a different fact from the SAVE
+      // tier being unavailable, and the two controls answer to their own.
+      view.rerender(panel({ onSave, available: false, busy: true }))
+      expect(screen.getByRole('button', { name: 'Replace sample JSON' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save sample data' })).toBeEnabled()
+    })
+
+    it('is offered for any loaded sample, whatever opened it', async () => {
+      // A sample the AUTHOR opened with Load sample JSON, not an example's, and
+      // the control is the same one.
+      const openSample = vi.fn<SampleFileAccess['openSample']>().mockResolvedValue({ name: 'mine.json', bytes: sampleBytes })
+      const acquireSaveTarget = vi.fn(async (request: SaveTargetRequest): Promise<AcquiredSaveTarget> => ({ name: request.suggestedName, format: request.format }))
+      const writeSave = vi.fn(async (_target: AcquiredSaveTarget, _request: SaveRequest): Promise<SavedLocalFile> => ({ name: 'mine.json' }))
+      const request = vi.fn(async (operation: string) => operation === 'serialize' ? { snapshot, bytes: new Uint8Array([1]).buffer } : { snapshot })
+      render(<App engine={{ request } as unknown as EngineClient} initialSnapshot={snapshot} sampleFileAccess={{ openSample }} fileAccess={{ open: vi.fn(), acquireSaveTarget, writeSave }} />)
+      openDataTab()
+      expect(screen.queryByRole('button', { name: 'Save sample data' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Load sample JSON' }))
+      await waitFor(() => expect(screen.getByText('mine.json')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'Save sample data' }))
+      await waitFor(() => expect(writeSave).toHaveBeenCalledOnce())
+      expect(acquireSaveTarget.mock.calls[0]![0]).toEqual({ suggestedName: 'mine.json', saveAs: true, format: jsonSampleFileFormat })
+      expect(new Uint8Array(writeSave.mock.calls[0]![1].bytes)).toEqual(new Uint8Array(sampleBytes))
+      expect(screen.getByText('Downloaded sample data mine.json')).toBeInTheDocument()
+    })
   })
 })
 
