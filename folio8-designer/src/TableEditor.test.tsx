@@ -1293,7 +1293,17 @@ describe('the table editor\'s Cancel discards what it counted', { timeout: 30_00
     // the count, and a faked count cannot prove that the APPLICATION's mirror is
     // what the footer reads. The margin is deliberately wide so a slower machine
     // reds the claim rather than the clock.
-  }, 30_000)
+    //
+    // RAISED 30s → 60s. At `5677008` this test TIMED OUT on CI at 30s while the
+    // whole file passed locally, and it was the only red in 1850 — the clock, not
+    // the claim, exactly what the margin exists to prevent. The 30s was never as
+    // wide as it read: the same runner took 196s over this file against 52s here,
+    // a 3.7x that turns the ~6s measured above into ~26s, so 30s left about four
+    // seconds of room and one scheduling hiccup spent it. 60s restores a margin
+    // that is actually a margin. This is the block comment's own point arriving a
+    // second time, now with the loop's real cost measured rather than estimated:
+    // a guard that can only just pass reds a true claim on the next slower runner.
+  }, 60_000)
 
   it('refuses Cancel in the footer while a local file operation is in flight, not only in the handler', async () => {
     // `cancelTableEditor` returns early on `fileBusy`, so without the same flag on
