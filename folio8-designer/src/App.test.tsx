@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { placementPoint, PROSE_COMMIT_DEBOUNCE_MS } from './App'
+import type { OfflineLifecycle } from './offline-lifecycle'
 import { isMacPlatform, shortcutHintsFor } from './shortcuts'
 import { PREVIEW_DEBOUNCE_MS } from './preview/freshness'
 import { PAGE_RAIL_BOUND } from './preview/page-rail-facts'
@@ -12341,3 +12342,63 @@ describe('New… and the startup dialog reopened', () => {
   })
 })
 
+
+describe('the update prompt', () => {
+  const pending = (mandatory: boolean, pendingVersion = '2.0.0'): OfflineLifecycle => ({ state: 'update-available', cacheReady: true, verifiedAssetUrls: [], pendingVersion, mandatory })
+  // The workspace only exists once an engine does, and the prompt lives in the
+  // workspace: an author is never blocked by it before they have a document.
+  const workspace = (loadState: OfflineLifecycle, files?: FileAccess) => {
+    const request = vi.fn(async (operation: string) => ({ snapshot: snapshot(7), ...(operation === 'serialize' ? { bytes } : {}) }))
+    return render(<App engine={engine(request)} fileAccess={files ?? { open: vi.fn(async () => ({ bytes, name: 'report.folio' })), acquireSaveTarget: vi.fn(), writeSave: vi.fn() }} initialSnapshot={snapshot(1)} offlineState={loadState.state} loadState={loadState} />)
+  }
+
+  it('offers an optional update the author can refuse, and stops asking once refused', () => {
+    workspace(pending(false))
+    expect(screen.getByRole('heading', { name: 'Update available' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveTextContent('Version 2.0.0 of folio8 is ready')
+    // THE RUNNING RELEASE IS STILL GOOD, and the copy says so rather than
+    // implying the author is running something broken.
+    expect(screen.getByRole('dialog')).toHaveTextContent('This version keeps working')
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('blocks on a required update and refuses to be dismissed', () => {
+    workspace(pending(true))
+    expect(screen.getByRole('heading', { name: 'Update required' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Later' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  // ⚠ THE ONE THAT PROTECTS THE AUTHOR'S WORK. Activating reloads the tab, and a
+  // reload takes unsaved edits with it. A required update on a dirty document
+  // therefore offers NO WAY TO UPGRADE AT ALL — only a way to save. The block and
+  // the document are not in tension: the block simply waits for the save.
+  it('offers a required update no upgrade button at all while the document is unsaved', () => {
+    workspace(pending(true))
+    expect(screen.getByText('Unsaved local changes')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveTextContent('has unsaved changes')
+    expect(screen.queryByRole('button', { name: 'Upgrade now' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save As…' })).toBeInTheDocument()
+  })
+
+  it('offers the upgrade once the document is safe', async () => {
+    workspace(pending(true))
+    fireEvent.click(screen.getByRole('button', { name: 'Open local template' }))
+    await waitFor(() => expect(screen.getByText('Saved local file')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Upgrade now' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save As…' })).not.toBeInTheDocument()
+  })
+
+  it('names the update generically when the waiting worker never said what it was', () => {
+    workspace({ state: 'update-available', cacheReady: true, verifiedAssetUrls: [], mandatory: false })
+    expect(screen.getByRole('dialog')).toHaveTextContent('A new version of folio8 is ready')
+  })
+
+  it('shows no prompt at all when there is no pending release', () => {
+    workspace({ state: 'ready', cacheReady: true, verifiedAssetUrls: [] })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})

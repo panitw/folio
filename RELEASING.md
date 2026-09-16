@@ -62,6 +62,32 @@ package `folio8` declare the same method name — still holds.
 beside the walker itself; it fires at the commit that creates the collision,
 which is years earlier than anyone reads this file.*
 
+## Choosing the designer version, and forcing an upgrade
+
+`folio8-designer/package.json`'s `version` is the number an open tab compares
+itself against, and its **MAJOR is the entire force-upgrade policy**:
+
+| Bump | What an open tab does |
+| --- | --- |
+| patch / minor (`1.0.0` → `1.2.3`) | Offers a dismissible "Update available". The running release stays usable; "Later" ends the asking for that tab. |
+| **major** (`1.9.9` → `2.0.0`) | Blocks with "Update required". No dismissal, no Escape, no Later. |
+
+Nothing else promotes a release to mandatory. The release `id` is a content
+hash, so it changes on every deploy and answers "are these the same bytes",
+which is the wrong question for "must this author stop what they are doing".
+Forcing is therefore an **authored act with a diff**: bump the major, and no
+build step can do it for you.
+
+**A forced upgrade never discards a document.** Activation reloads the tab, so
+a blocked author with unsaved changes is offered a save and no upgrade button
+at all; the upgrade appears once the work is safe. Before publishing a major,
+be satisfied that stopping every open tab is worth it — a wrong major cannot be
+recalled from tabs that already took it.
+
+**Tabs notice within about 15 minutes**, and immediately on refocusing the tab
+or regaining network. A tab left open across a deploy no longer waits for the
+browser's own ~24h service-worker check.
+
 ## What is NOT yet written here
 
 Version stamping (`version.go` currently reads `Version = "0.0.0-dev"`),

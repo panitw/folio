@@ -50,13 +50,18 @@ async function startObservation() {
     // Inline, either could be mutated with every gate staying green.
     payload = payloadForLifecycle(result)
     const expectedPageId = document.querySelector('meta[name="folio8-page-release"]')?.getAttribute('content') ?? undefined
+    // The version THIS page was built at, beside the release identity it already
+    // reads. Absent on a dev server and on any page built before versioning, and
+    // absent is answered by `upgradeIsMandatory` as "optional" rather than by a
+    // guess in either direction.
+    const appVersion = document.querySelector('meta[name="folio8-app-version"]')?.getAttribute('content') ?? undefined
     // The dev server emits no release bootstrap, so there is nothing to verify.
     // Start the engine straight from the module graph and let the shell say so.
     // GATED ON THAT ONE REASON, not on a falsy payload: a bootstrap that is
     // malformed, or over the release bound, is a real fault and must not be read
     // as "the dev server did not emit one" and quietly bypassed.
     if (import.meta.env.DEV && isDevBypassReason(result)) { lifecycle = { state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] }; render(); void startEngine(); return }
-    stopObservation = registerOfflineLifecycle(expectedPageId, payload, (next) => { lifecycle = next; render(); void startEngine() })
+    stopObservation = registerOfflineLifecycle(expectedPageId, payload, (next) => { lifecycle = next; render(); void startEngine() }, undefined, appVersion)
     render()
   } finally { observationInFlight = false }
 }

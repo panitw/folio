@@ -107,3 +107,38 @@ export function declaredCacheAssetBounds(source, label = source === undefined ? 
   if (minimumCacheAssets > maximumCacheAssets) throw new Error(`${label} declares an inverted cache-asset envelope: \`minimumCacheAssets\` is ${minimumCacheAssets} and \`maximumCacheAssets\` is ${maximumCacheAssets}, so no release can satisfy both and the fault is in the declaration rather than in any release`)
   return { minimumCacheAssets, maximumCacheAssets }
 }
+
+// THE APP VERSION, AND THE ONE RULE THAT MAKES AN UPGRADE MANDATORY.
+//
+// The release `id` is a content hash: it answers "is this the same bytes", which
+// is exactly the wrong question for "must this user stop and take the update".
+// Every deploy changes the hash, and most deploys are not worth interrupting an
+// author mid-document for. So mandatory-ness is carried by a SEPARATE, AUTHORED
+// number — the MAJOR of `package.json`'s version — and the rule is the whole
+// policy in one line: a greater major is mandatory, anything else is optional.
+//
+// Authored, not derived, is the point. The owner decides a release is mandatory
+// by bumping the major, which is a deliberate act with a diff; nothing about the
+// build can promote a release to mandatory on its own.
+const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+
+export function parseAppVersion(value, label = 'app version') {
+  const match = semverPattern.exec(String(value ?? ''))
+  if (!match) throw new Error(`${label} is not a plain MAJOR.MINOR.PATCH version: received ${JSON.stringify(value)}`)
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) }
+}
+
+export function readAppVersion(root) {
+  const declared = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
+  parseAppVersion(declared, 'package.json version')
+  return declared
+}
+
+// `undefined` for either side means "cannot tell", and cannot-tell is NEVER
+// mandatory: an old page that predates versioning, or a worker that declines to
+// answer, must degrade to the optional prompt rather than lock an author out of
+// their document on missing evidence.
+export function upgradeIsMandatory(fromVersion, toVersion) {
+  if (typeof fromVersion !== 'string' || typeof toVersion !== 'string') return false
+  try { return parseAppVersion(toVersion).major > parseAppVersion(fromVersion).major } catch { return false }
+}

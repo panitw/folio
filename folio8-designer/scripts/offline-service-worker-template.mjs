@@ -17,6 +17,26 @@ export function isStatusRequest(value) {
   return Boolean(value) && typeof value === 'object' && value.version === 1 && value.type === 'get-offline-status' && Object.keys(value).length === 2
 }
 
+// ASKED OF A WORKER THAT IS NOT THIS PAGE'S OWN, which is the whole reason it
+// exists. A page only trusts broadcasts whose releaseId and pageId are its own,
+// so a WAITING worker — a different release by definition — has no way to tell
+// an open tab what version it carries. This request is answered on the caller's
+// MessageChannel port instead of broadcast, so the answer reaches exactly the
+// page that asked and no bystander tab can be moved by it.
+export function isVersionRequest(value) {
+  return Boolean(value) && typeof value === 'object' && value.version === 1 && value.type === 'get-release-version' && Object.keys(value).length === 2
+}
+
+// THE ONLY THING THAT MAY RETIRE A RUNNING RELEASE. `skipWaiting` is reachable
+// from here and nowhere else: not from `install`, not from `activate`. That
+// keeps the original invariant intact for every path the browser takes on its
+// own — a new release still waits behind an open tab forever — and narrows the
+// exception to one an author asked for, in a tab that has already established
+// its document is safe to lose.
+export function isActivateRequest(value) {
+  return Boolean(value) && typeof value === 'object' && value.version === 1 && value.type === 'activate-pending-release' && Object.keys(value).length === 2
+}
+
 export function serviceWorkerSource(release) {
   const encoded = JSON.stringify(release)
   return `/* Generated; do not edit. The release is a closed static allowlist. */
@@ -28,6 +48,8 @@ const MESSAGE_VERSION = ${messageVersion}
 const cacheableRequest = ${isCacheableStaticRequest.toString()}
 const documentNavigation = ${isCacheableDocumentNavigation.toString()}
 const statusRequest = ${isStatusRequest.toString()}
+const versionRequest = ${isVersionRequest.toString()}
+const activateRequest = ${isActivateRequest.toString()}
 
 async function progress(state, asset) {
   await notify({ type: 'offline-progress', state, assetUrl: asset?.url ?? null })
@@ -101,6 +123,8 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('message', (event) => {
+  if (versionRequest(event.data)) { event.ports[0] && event.ports[0].postMessage({ version: MESSAGE_VERSION, type: 'release-version', appVersion: RELEASE.appVersion, releaseId: RELEASE.id }); return }
+  if (activateRequest(event.data)) { self.skipWaiting(); return }
   if (!statusRequest(event.data)) return
   event.waitUntil(hasCompleteCache().then((complete) => notify({ type: 'offline-status', state: complete ? 'ready' : 'unavailable' }, event.source)))
 })

@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync 
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { serviceWorkerSource } from './offline-service-worker-template.mjs'
-import { RELEASE_RUNTIME, isCatalogueAssetUrl, normalizePublicPath, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
+import { RELEASE_RUNTIME, isCatalogueAssetUrl, normalizePublicPath, pageIdentity, readAppVersion, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -25,6 +25,10 @@ export function generateOfflineRelease(outputDir = dist) {
   assertPinnedRuntime()
   if (!existsSync(join(outputDir, 'index.html'))) throw new Error('build output is required before offline release generation')
   const workerRevision = sha256(readFileSync(join(root, 'scripts', 'offline-service-worker-template.mjs')))
+  // AUTHORED, AND READ ONCE. `readAppVersion` refuses anything that is not a
+  // plain MAJOR.MINOR.PATCH, so a typo in package.json fails the build here
+  // rather than shipping a release whose mandatory-ness cannot be evaluated.
+  const appVersion = readAppVersion(root)
   const initialAssets = assetsFromDist(outputDir)
   const runtimeAssets = initialAssets.filter((asset) => asset.url !== '/index.html')
   const pageId = pageIdentity(runtimeAssets, workerRevision)
@@ -119,7 +123,7 @@ export function generateOfflineRelease(outputDir = dist) {
   // Regeneration is part of normal local verification. Strip our previous
   // generated bootstrap so a second build:offline run replaces it instead of
   // nesting stale S1 records before the current page identity.
-  const originalHtml = readFileSync(index, 'utf8').replace(/<meta name="folio8-page-release"[^>]*><script id="folio8-release-bootstrap" type="application\/json">[^<]*<\/script>/, '')
+  const originalHtml = readFileSync(index, 'utf8').replace(/<meta name="folio8-page-release"[^>]*>(?:<meta name="folio8-app-version"[^>]*>)?<script id="folio8-release-bootstrap" type="application\/json">[^<]*<\/script>/, '')
   let bootstrappedHtml = originalHtml
   // The bootstrap is cached inside index.html. Its own byte length is the only
   // self-reference, so converge that decimal value before hashing the final page.
@@ -132,7 +136,7 @@ export function generateOfflineRelease(outputDir = dist) {
     const indexAsset = s1.cacheAssets.find((asset) => asset.assetUrl === '/index.html')
     if (!indexAsset) throw new Error('S1 cache asset list has no navigation entry')
     indexAsset.bytes = s1.cachedBytes - otherBytes
-    const bootstrap = `<meta name="folio8-page-release" content="${pageId}"><script id="folio8-release-bootstrap" type="application/json">${JSON.stringify({ s1 })}</script>`
+    const bootstrap = `<meta name="folio8-page-release" content="${pageId}"><meta name="folio8-app-version" content="${appVersion}"><script id="folio8-release-bootstrap" type="application/json">${JSON.stringify({ s1 })}</script>`
     bootstrappedHtml = originalHtml.replace('</head>', `${bootstrap}</head>`)
     if (bootstrappedHtml === originalHtml) throw new Error('production index has no head for release bootstrap')
     const nextBytes = otherBytes + Buffer.byteLength(bootstrappedHtml)
@@ -177,7 +181,7 @@ export function generateOfflineRelease(outputDir = dist) {
       totalBytes: catalogueAssets.reduce((total, asset) => total + asset.brotliBytes, 0),
     },
   }
-  const release = { version: 3, brotli, id: releaseId, pageId, workerRevision, thaiDictionary: { delivery: 'emitted-wasm-digest-witness', sha256: sha256(thaiDictionary), wasmUrl: wasm.url, proof: 'the emitted wasm offline-audit operation reports the embedded thai_words.trie digest' }, assets, s1, s1VisibleBytes: visibleBytes }
+  const release = { version: 3, brotli, id: releaseId, pageId, appVersion, workerRevision, thaiDictionary: { delivery: 'emitted-wasm-digest-witness', sha256: sha256(thaiDictionary), wasmUrl: wasm.url, proof: 'the emitted wasm offline-audit operation reports the embedded thai_words.trie digest' }, assets, s1, s1VisibleBytes: visibleBytes }
   writeFileSync(join(outputDir, 'offline-release-manifest.json'), `${JSON.stringify(release, null, 2)}\n`)
   writeFileSync(join(outputDir, 'sw.js'), serviceWorkerSource(release))
   return release

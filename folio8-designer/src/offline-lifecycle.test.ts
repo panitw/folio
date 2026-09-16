@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { engineMayStart, parseWorkerProgress, parseWorkerStatus, reduceOfflineLifecycle, registerOfflineLifecycle } from './offline-lifecycle'
+import { activatePendingRelease, askWaitingVersion, engineMayStart, parseWorkerProgress, parseWorkerStatus, reduceOfflineLifecycle, registerOfflineLifecycle, upgradeIsMandatory } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 
 const release = 'a'.repeat(64)
@@ -104,5 +104,106 @@ describe('offline lifecycle message boundary', () => {
     expect(engineMayStart({ state: 'ready', cacheReady: true, verifiedAssetUrls: [] })).toBe(true)
     expect(engineMayStart({ state: 'dev-bypass', cacheReady: false, verifiedAssetUrls: [] })).toBe(true)
     for (const state of ['checking', 'caching', 'unavailable'] as const) expect(engineMayStart({ state, cacheReady: false, verifiedAssetUrls: [] })).toBe(false)
+  })
+})
+
+describe('the mandatory-upgrade rule', () => {
+  // THE TABLE IS THE SPEC, and it is run twice: once against the runtime rule in
+  // this module and once against its build-time twin in the contract, which the
+  // browser cannot import. A change to either that the other does not follow reds
+  // here rather than shipping a release that two halves of the system disagree
+  // about — one telling a tab the update is required and the other that it is not.
+  const table: ReadonlyArray<readonly [string | undefined, string | undefined, boolean]> = [
+    ['1.0.0', '1.0.1', false],
+    ['1.0.0', '1.9.9', false],
+    ['1.9.9', '2.0.0', true],
+    ['1.0.0', '3.0.0', true],
+    ['2.0.0', '1.0.0', false],
+    ['2.0.0', '2.0.0', false],
+    // MISSING EVIDENCE IS NEVER MANDATORY. A page built before versioning, or a
+    // worker that never answered, must not lock an author out of a document.
+    [undefined, '2.0.0', false],
+    ['1.0.0', undefined, false],
+    [undefined, undefined, false],
+    // Not a version at all reads as missing, not as zero.
+    ['1.0', '2.0.0', false],
+    ['1.0.0', 'v2.0.0', false],
+    ['1.0.0', '02.0.0', false],
+  ]
+
+  it.each(table)('treats %s → %s as mandatory=%s', (from, to, expected) => {
+    expect(upgradeIsMandatory(from, to)).toBe(expected)
+  })
+
+  it('agrees exactly with the build-time rule the release is stamped by', async () => {
+    // @ts-expect-error The build-time contract is plain Node ESM with no types;
+    // it is imported here precisely BECAUSE the browser bundle cannot import it,
+    // which is the drift this test exists to catch.
+    const contract = await import('../scripts/offline-release-contract.mjs') as { upgradeIsMandatory: (a?: string, b?: string) => boolean }
+    for (const [from, to, expected] of table) {
+      expect(contract.upgradeIsMandatory(from, to), `build-time rule disagreed on ${from} → ${to}`).toBe(expected)
+      expect(upgradeIsMandatory(from, to)).toBe(contract.upgradeIsMandatory(from, to))
+    }
+  })
+
+  it('carries a pending release into the state without ever retiring the running one', () => {
+    const ready = { state: 'ready' as const, cacheReady: true, verifiedAssetUrls: ['/index.html'] }
+    const next = reduceOfflineLifecycle(ready, { kind: 'pending-release', appVersion: '2.0.0', mandatory: true }, payload)
+    expect(next).toMatchObject({ state: 'update-available', pendingVersion: '2.0.0', mandatory: true })
+    // THE RUNNING RELEASE SURVIVES THE PROMPT. `cacheReady` is what lets the
+    // engine keep running underneath an update the author has not taken yet.
+    expect(next.cacheReady).toBe(true)
+    expect(next.verifiedAssetUrls).toEqual(['/index.html'])
+  })
+})
+
+describe('asking the waiting worker what it is', () => {
+  const waitingWorker = (reply: unknown | undefined) => ({ postMessage: vi.fn((_message: unknown, transfer: Transferable[]) => { if (reply === undefined) return; const port = transfer[0] as MessagePort; port.postMessage(reply) }) }) as unknown as ServiceWorker
+
+  it('reads the version off the private port, because the broadcast channel refuses another release', async () => {
+    const worker = waitingWorker({ version: 1, type: 'release-version', appVersion: '2.1.0', releaseId: release })
+    await expect(askWaitingVersion(worker)).resolves.toBe('2.1.0')
+    expect((worker.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual({ version: 1, type: 'get-release-version' })
+  })
+
+  it('resolves undefined rather than hanging when the waiting worker never answers', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending = askWaitingVersion(waitingWorker(undefined), 50)
+      await vi.advanceTimersByTimeAsync(60)
+      await expect(pending).resolves.toBeUndefined()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('refuses a malformed or wrong-typed answer instead of treating it as a version', async () => {
+    await expect(askWaitingVersion(waitingWorker({ version: 1, type: 'release-version', appVersion: 2 }))).resolves.toBeUndefined()
+    await expect(askWaitingVersion(waitingWorker({ version: 2, type: 'release-version', appVersion: '2.0.0' }))).resolves.toBeUndefined()
+    await expect(askWaitingVersion(waitingWorker({ version: 1, type: 'something-else', appVersion: '2.0.0' }))).resolves.toBeUndefined()
+  })
+})
+
+describe('taking the pending release', () => {
+  it('asks the waiting worker to step forward and reloads only once the swap actually happened', async () => {
+    const waiting = { postMessage: vi.fn() } as unknown as ServiceWorker
+    const channel = new EventTarget() as EventTarget & { getRegistration: ReturnType<typeof vi.fn> }
+    channel.getRegistration = vi.fn(async () => ({ waiting }))
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: channel })
+    const reload = vi.fn()
+    expect(await activatePendingRelease(reload)).toBe(true)
+    expect(waiting.postMessage).toHaveBeenCalledWith({ version: 1, type: 'activate-pending-release' })
+    // NOT YET. The message only asks; until the controller actually changes the
+    // tab would reload into the release it is already running.
+    expect(reload).not.toHaveBeenCalled()
+    channel.dispatchEvent(new Event('controllerchange'))
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports that nothing was taken when no release is waiting', async () => {
+    const channel = new EventTarget() as EventTarget & { getRegistration: ReturnType<typeof vi.fn> }
+    channel.getRegistration = vi.fn(async () => ({ waiting: null }))
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: channel })
+    const reload = vi.fn()
+    expect(await activatePendingRelease(reload)).toBe(false)
+    expect(reload).not.toHaveBeenCalled()
   })
 })

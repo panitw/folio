@@ -5,7 +5,7 @@ import { isProducerRenderFailure, type EngineClient, type EngineResult } from '.
 import { CAPPING_BANDS, LOCALE_TAGS, MAX_ENGINE_HISTORY_ENTRIES, MAX_LINE_SPACING_THOUSANDTHS, MIN_LINE_SPACING_THOUSANDTHS, SCALAR_BINDING_COMPONENT_TYPES, type CanvasProjection, type CanvasTableColumn, type CappingBand, type EngineDiagnostic, type EngineError, type EngineSnapshot, type LocaleTag, type TableColumns } from './engine-protocol'
 import type { OfflineLifecycleState } from './offline-lifecycle'
 import type { OfflineLifecycle } from './offline-lifecycle'
-import { engineMayStart } from './offline-lifecycle'
+import { activatePendingRelease, engineMayStart } from './offline-lifecycle'
 import type { S1Payload } from './release-payload'
 import { LoadScreen } from './LoadScreen'
 import { BrandMark } from './BrandMark'
@@ -381,6 +381,10 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
   // with real edits opens this first; only its Discard opens the startup
   // dialog, and nothing inside that dialog asks again.
   const [unsavedWarningOpen, setUnsavedWarningOpen] = useState(false)
+  // Per-tab and deliberately not persisted. "Later" means later in THIS sitting;
+  // a reload is already a chance to take the update, so remembering the refusal
+  // across one would be remembering it past the moment it was about.
+  const [updateDismissed, setUpdateDismissed] = useState(false)
   // THE REVISION THE DOCUMENT HAD WHEN IT WAS LAST STARTED, OPENED, OPENED AS AN
   // EXAMPLE OR SAVED. Separate from `savedRevision`, which drives the bar's
   // "Unsaved local changes" label: an untouched starter, example or opened file
@@ -3788,6 +3792,7 @@ export default function App({ engine, fileAccess, sampleFileAccess, imageFileAcc
     {fontBrowserOpen && canvas && <FontBrowser sources={browsableFamilies} inTemplate={canvas.fontFamilies} previewBytes={browserSpecimenBytes} onAddFamily={(source) => addFamilyToDocument(source, documentGeneration.current, selected.join(','), 'caller')} storeKeepsFaces={storeKeepsFaces} onClose={() => setFontBrowserOpen(false)} />}
     {startupOpen && engine && <StartupDialog cards={startupCards} selected={startupSelected} busy={startupBusy} error={startupError} onSelect={(id) => { setStartupSelected(id); setStartupError(undefined) }} onConfirm={chooseStartup} onCancel={cancelStartup} onOpenFile={fileAccess ? requestStartupFile : undefined} />}
     {unsavedWarningOpen && <UnsavedChangesDialog document={title} onKeep={keepEditing} onDiscard={discardForNew} />}
+    {offlineState === 'update-available' && (loadState?.mandatory === true || !updateDismissed) && <UpdateDialog version={loadState?.pendingVersion} mandatory={loadState?.mandatory === true} dirty={dirty} document={title} onLater={() => setUpdateDismissed(true)} onUpgrade={() => { void activatePendingRelease() }} onSave={(saveAs) => { void save(saveAs) }} />}
     {/* THE FONT COUNT, AND NOTHING ELSE NEW (Story 16.4). It is read off
         `canvas.fontFamilies`, which is `IN THIS TEMPLATE`'s own predicate, so
         the dropdown's first group and this line teach one model from one
@@ -5850,6 +5855,46 @@ function UnsavedChangesDialog({ document: name, onKeep, onDiscard }: { document:
       <h2 id="unsaved-warning-title">Discard unsaved changes?</h2>
       <p id="unsaved-warning-description" className="honest-note unsaved-warning-description"><span className="unsaved-warning-dot" aria-hidden="true" /><span className="unsaved-warning-document">{name}</span>{' '}<span>has unsaved changes.</span></p>
       <div className="page-dialog-actions"><button ref={keep} type="button" onClick={onKeep}>Keep editing</button><button ref={discard} type="button" className="page-dialog-confirm" onClick={onDiscard}>Discard</button></div>
+    </div>
+  </section>
+}
+
+// THE UPDATE PROMPT, IN ITS TWO KINDS.
+//
+// OPTIONAL is the ordinary case and it is genuinely dismissible: the running
+// release stays complete and usable, so an author mid-thought is entitled to say
+// "not now" and never be asked again in this tab.
+//
+// MANDATORY is published by bumping the MAJOR version, and it blocks. What it
+// must NOT do is take the document with it: activating the pending release
+// reloads the tab, and anything unsaved dies in that reload. So a dirty document
+// does not get an upgrade button AT ALL — the only way forward is through a
+// save, and the button appears once the work is safe. The block and the data are
+// not in tension here; the block simply waits.
+function UpdateDialog({ version, mandatory, dirty, document: name, onLater, onUpgrade, onSave }: { version?: string; mandatory: boolean; dirty: boolean; document: string; onLater: () => void; onUpgrade: () => void; onSave: (saveAs: boolean) => void }) {
+  const blocked = mandatory && dirty
+  const named = version ? `Version ${version}` : 'A new version'
+  return <section tabIndex={-1} className="page-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" aria-describedby="update-dialog-description" onKeyDownCapture={(event) => {
+    // Escape is a dismissal, and a mandatory update has none. Swallowed rather
+    // than ignored so it cannot fall through to whatever is behind the backdrop.
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!mandatory) onLater(); return }
+    event.stopPropagation()
+  }}>
+    <div className="page-dialog">
+      <h2 id="update-dialog-title">{mandatory ? 'Update required' : 'Update available'}</h2>
+      <p id="update-dialog-description" className="honest-note">
+        {blocked
+          ? <>{named} of folio8 is required, and <span className="unsaved-warning-document">{name}</span> has unsaved changes. Updating reloads this tab, so save your work to continue.</>
+          : mandatory
+            ? <>{named} of folio8 is required. Updating reloads this tab.</>
+            : <>{named} of folio8 is ready. This version keeps working, so you can update whenever it suits you.</>}
+      </p>
+      <div className="page-dialog-actions">
+        {!mandatory && <button type="button" onClick={onLater}>Later</button>}
+        {blocked
+          ? <><button type="button" onClick={() => onSave(true)}>Save As…</button><button type="button" className="page-dialog-confirm" onClick={() => onSave(false)}>Save</button></>
+          : <button type="button" className="page-dialog-confirm" onClick={onUpgrade}>{mandatory ? 'Upgrade now' : 'Update now'}</button>}
+      </div>
     </div>
   </section>
 }

@@ -9,7 +9,7 @@ import { assertPinnedRuntime, generateOfflineRelease } from './generate-offline-
 import { assertNoVCSStamp, buildEngineWasm } from './wasm-vcs-stamp.mjs'
 import { FORBIDDEN_FONT_HOSTS } from './forbidden-font-hosts.mjs'
 import { exampleIds } from './build-examples.mjs'
-import { RELEASE_RUNTIME, declaredCacheAssetBounds, declaredCacheAssetWarning, isCatalogueAssetUrl, pageIdentity, releaseIdentity, sha256 } from './offline-release-contract.mjs'
+import { RELEASE_RUNTIME, declaredCacheAssetBounds, declaredCacheAssetWarning, isCatalogueAssetUrl, pageIdentity, parseAppVersion, releaseIdentity, sha256 } from './offline-release-contract.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -174,7 +174,28 @@ export function verifyOfflineRelease(outputDir = dist, { wasmWitness = false, re
   const embedded = sw.match(/const RELEASE = (.+)\nconst CACHE_NAME/m)?.[1]
   if (!embedded || JSON.stringify(JSON.parse(embedded)) !== JSON.stringify(release)) fail('service worker and manifest release records differ')
   for (const required of ["const CACHE_NAME = 'folio8-release-' + RELEASE.id", "credentials: 'omit'", 'url.origin === origin', 'paths.has(url.pathname)', 'RELEASE.pageId', 'windows.length === 0', 'offline asset integrity mismatch']) if (!sw.includes(required)) fail(`service worker lacks ${required}`)
-  if (sw.includes('skipWaiting') || sw.includes('cache.addAll') || sw.includes('fetch(event.request)')) fail('service worker has unsafe activation or generic network fallback')
+  if (sw.includes('cache.addAll') || sw.includes('fetch(event.request)')) fail('service worker has a generic network fallback')
+  // `skipWaiting` USED TO BE BANNED OUTRIGHT, and the ban is now a LEASH rather
+  // than a wall: exactly one occurrence, in exactly the author-gated line below.
+  // The property that mattered is unchanged — nothing the BROWSER does on its
+  // own can retire a release out from under an open document — because the only
+  // caller is a message an author's own tab sends after clearing its document.
+  // Counting is the point: a second occurrence, anywhere, is the fault this
+  // check exists to catch, and it would almost certainly be in `install`.
+  const skipWaitingUses = sw.split('skipWaiting').length - 1
+  const gatedActivation = 'if (activateRequest(event.data)) { self.skipWaiting(); return }'
+  if (skipWaitingUses !== 1 || !sw.includes(gatedActivation)) fail(`service worker must reach skipWaiting exactly once, through \`${gatedActivation}\`; found ${skipWaitingUses} use(s)`)
+  for (const handler of ['install', 'activate']) {
+    const start = sw.indexOf(`self.addEventListener('${handler}'`)
+    const end = sw.indexOf("self.addEventListener('", start + 1)
+    if (start < 0 || sw.slice(start, end < 0 ? undefined : end).includes('skipWaiting')) fail(`service worker ${handler} handler must not reach skipWaiting`)
+  }
+  // THE VERSION THAT DECIDES WHETHER AN UPGRADE IS MANDATORY, proved to exist and
+  // to agree between the record, the worker and the page. A release whose three
+  // copies disagree could tell one tab it is optional and another that it is
+  // required, so disagreement fails the build rather than shipping.
+  parseAppVersion(release.appVersion, 'release appVersion')
+  if (!indexHtml.includes(`name="folio8-app-version" content="${release.appVersion}"`)) fail('page does not carry the release app version')
   const markerWrite = sw.indexOf("await cache.put(MARKER")
   const finalVerified = sw.indexOf("await progress('verified', activeAsset)")
   if (markerWrite < 0 || finalVerified < markerWrite) fail('emitted worker can report 100% before its complete marker')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import vm from 'node:vm'
-import { isCacheableDocumentNavigation, isCacheableStaticRequest, isStatusRequest, serviceWorkerSource } from './offline-service-worker-template.mjs'
+import { isActivateRequest, isCacheableDocumentNavigation, isCacheableStaticRequest, isStatusRequest, isVersionRequest, serviceWorkerSource } from './offline-service-worker-template.mjs'
 
 const release = (id = 'a'.repeat(64), workerRevision = 'b'.repeat(64)) => ({ version: 2, id, pageId: 'c'.repeat(64), workerRevision, assets: [{ url: '/index.html', sha256: 'd'.repeat(64), immutable: false }, { url: '/assets/app-abc12345.js', sha256: 'e'.repeat(64), immutable: true }] })
 const request = (overrides = {}) => ({ url: 'https://folio8.test/assets/app-abc12345.js', method: 'GET', credentials: 'omit', mode: 'cors', ...overrides })
@@ -19,9 +19,10 @@ function workerHarness(workerRelease, options = {}) {
     keys: async () => [...cacheData.keys()],
   }
   const clients = { claim: async () => {}, matchAll: async () => options.windows ?? [] }
-  const self = { location: { origin: 'https://folio8.test' }, addEventListener: (name, handler) => { handlers[name] = handler } }
+  const skipWaitingCalls = []
+  const self = { location: { origin: 'https://folio8.test' }, addEventListener: (name, handler) => { handlers[name] = handler }, skipWaiting: () => { skipWaitingCalls.push(true) } }
   vm.runInNewContext(serviceWorkerSource(workerRelease), { self, caches, clients, fetch: options.fetch ?? (async () => { throw new Error('network unavailable') }), crypto: globalThis.crypto, Response, URL, Set, Promise, Uint8Array })
-  return { handlers, cacheData, deleted }
+  return { handlers, cacheData, deleted, skipWaitingCalls }
 }
 
 describe('service worker static policy', () => {
@@ -114,5 +115,50 @@ describe('service worker static policy', () => {
     retired.handlers.activate({ waitUntil: (promise) => { completion = promise } })
     await completion
     expect(cacheData.has(oldCache)).toBe(false)
+  })
+})
+
+describe('the two requests a waiting worker answers', () => {
+  const versioned = { ...release(), appVersion: '2.0.0' }
+
+  it('accepts only its own exact request shapes', () => {
+    expect(isVersionRequest({ version: 1, type: 'get-release-version' })).toBe(true)
+    expect(isActivateRequest({ version: 1, type: 'activate-pending-release' })).toBe(true)
+    // The bounded shape is the point: an extra key is a different message.
+    expect(isVersionRequest({ version: 1, type: 'get-release-version', force: true })).toBe(false)
+    expect(isActivateRequest({ version: 2, type: 'activate-pending-release' })).toBe(false)
+    expect(isActivateRequest({ version: 1, type: 'get-release-version' })).toBe(false)
+    expect(isVersionRequest(null)).toBe(false)
+    expect(isActivateRequest('activate-pending-release')).toBe(false)
+  })
+
+  it('answers its version on the caller\'s port and tells no one else', () => {
+    const { handlers } = workerHarness(versioned)
+    const posted = []
+    handlers.message({ data: { version: 1, type: 'get-release-version' }, ports: [{ postMessage: (message) => posted.push(message) }] })
+    expect(posted).toEqual([{ version: 1, type: 'release-version', appVersion: '2.0.0', releaseId: versioned.id }])
+  })
+
+  it('steps forward ONLY for the activation request, never for a status or version read', () => {
+    const { handlers, skipWaitingCalls } = workerHarness(versioned)
+    handlers.message({ data: { version: 1, type: 'get-release-version' }, ports: [{ postMessage: () => {} }] })
+    handlers.message({ data: { version: 1, type: 'get-offline-status' }, source: { postMessage: () => {} }, waitUntil: () => {} })
+    expect(skipWaitingCalls).toHaveLength(0)
+    handlers.message({ data: { version: 1, type: 'activate-pending-release' } })
+    expect(skipWaitingCalls).toHaveLength(1)
+  })
+
+  // THE INVARIANT THAT SURVIVED THE CHANGE. `skipWaiting` became reachable, but
+  // only from a message an author's own tab sends. Nothing the BROWSER does on
+  // its own — installing, activating — may retire a release under an open
+  // document, so neither lifecycle handler may reach it.
+  it('never steps forward from install or activate', () => {
+    const source = serviceWorkerSource(versioned)
+    for (const handler of ['install', 'activate']) {
+      const start = source.indexOf(`self.addEventListener('${handler}'`)
+      const end = source.indexOf("self.addEventListener('", start + 1)
+      expect(source.slice(start, end < 0 ? undefined : end)).not.toContain('skipWaiting')
+    }
+    expect(source.split('skipWaiting').length - 1).toBe(1)
   })
 })
